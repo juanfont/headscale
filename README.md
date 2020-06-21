@@ -24,12 +24,19 @@ An open source implementation of the Tailscale coordination server.
     POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
   ```
 
-3. Run it (asuming you have renamed the config.json.example to config.json)
+3. Sort some stuff up (headscale Wireguard keys & the config.json file)
+  ```
+  wg genkey > private.key
+  wg pubkey < private.key > public.key
+  cp config.json.example config.json
+  ```
+
+4. Run it
   ```
   ./headcale
   ```
   
-4. Add your first machine
+5. Add your first machine
   ```
   tailscale up -login-server YOUR_HEADSCALE_URL
   ```
