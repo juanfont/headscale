@@ -3,8 +3,10 @@ package headscale
 import (
 	"fmt"
 	"io/ioutil"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/markbates/pkger"
 
 	"github.com/tailscale/wireguard-go/wgcfg"
 )
@@ -58,6 +60,10 @@ func (h *Headscale) Serve() error {
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
 	r.POST("/machine/:id", h.RegistrationHandler)
+
+	// r.LoadHTMLFiles("./frontend/build/index.html")
+	// r.Use(static.Serve("/", static.LocalFile("./frontend/build", true)))
+	r.Use(gin.WrapH(http.FileServer(pkger.Dir("/frontend/build"))))
 	err := r.Run(h.cfg.Addr)
 	return err
 }
