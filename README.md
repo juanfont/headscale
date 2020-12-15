@@ -33,7 +33,7 @@ An open source implementation of the Tailscale coordination server.
 
 4. Run it
   ```
-  ./headcale
+  ./headscale
   ```
   
 5. Add your first machine
