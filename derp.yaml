@@ -1,0 +1,57 @@
+# This file contains some of the official Tailscale DERP servers, 
+# shamelessly taken from https://github.com/tailscale/tailscale/blob/main/derp/derpmap/derpmap.go
+#
+# If you plan to somehow use headscale, please deploy your own DERP infra
+regions: 
+  1:
+    regionid: 1
+    regioncode: nyc
+    regionname: New York City
+    nodes:
+    - name: 1a
+      regionid: 1
+      hostname: derp1.tailscale.com
+      ipv4: 159.89.225.99
+      ipv6: "2604:a880:400:d1::828:b001"
+      stunport: 0
+      stunonly: false
+      derptestport: 0
+  2:
+    regionid: 2
+    regioncode: sfo
+    regionname: San Francisco
+    nodes:
+    - name: 2a
+      regionid: 2
+      hostname: derp2.tailscale.com
+      ipv4: 167.172.206.31
+      ipv6: "2604:a880:2:d1::c5:7001"
+      stunport: 0
+      stunonly: false
+      derptestport: 0
+  3:
+    regionid: 3
+    regioncode: sin
+    regionname: Singapore
+    nodes:
+    - name: 3a
+      regionid: 3
+      hostname: derp3.tailscale.com
+      ipv4: 68.183.179.66
+      ipv6: "2400:6180:0:d1::67d:8001"
+      stunport: 0
+      stunonly: false
+      derptestport: 0
+  4:
+    regionid: 4
+    regioncode: fra
+    regionname: Frankfurt
+    nodes:
+    - name: 4a
+      regionid: 4
+      hostname: derp4.tailscale.com
+      ipv4: 167.172.182.26
+      ipv6: "2a03:b0c0:3:e0::36e:900"
+      stunport: 0
+      stunonly: false
+      derptestport: 0

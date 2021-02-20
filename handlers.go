@@ -201,7 +201,7 @@ func (h *Headscale) getMapResponse(mKey wgcfg.Key, req tailcfg.MapRequest, m Mac
 		SearchPaths:  []string{},
 		Domain:       "foobar@example.com",
 		PacketFilter: tailcfg.FilterAllowAll,
-		DERPMap:      &tailcfg.DERPMap{},
+		DERPMap:      h.cfg.DerpMap,
 		UserProfiles: []tailcfg.UserProfile{},
 		Roles:        []tailcfg.Role{}}
 

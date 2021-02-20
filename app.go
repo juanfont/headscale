@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 
 	"github.com/gin-gonic/gin"
+	"tailscale.com/tailcfg"
 	"tailscale.com/wgengine/wgcfg"
 )
 
@@ -12,6 +13,7 @@ type Config struct {
 	ServerURL      string
 	Addr           string
 	PrivateKeyPath string
+	DerpMap        *tailcfg.DERPMap
 
 	DBhost string
 	DBport int
