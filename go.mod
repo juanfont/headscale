@@ -1,15 +1,14 @@
 module github.com/juanfont/headscale
 
-go 1.14
+go 1.16
 
 require (
 	github.com/gin-gonic/gin v1.6.3
-	github.com/gobuffalo/here v0.6.2 // indirect
-	github.com/jinzhu/gorm v1.9.14
-	github.com/klauspost/compress v1.9.8
-	github.com/markbates/pkger v0.17.0
-	github.com/spf13/viper v1.7.0
-	github.com/tailscale/wireguard-go v0.0.0-20200615180905-687c10194779
-	golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
-	tailscale.com v0.99.1
+	github.com/jinzhu/gorm v1.9.16
+	github.com/klauspost/compress v1.11.7
+	github.com/spf13/viper v1.7.1
+	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+	inet.af/netaddr v0.0.0-20210203214853-aa702495c49b
+	tailscale.com v1.1.1-0.20210220175347-39f7a61e9c1f
+
 )

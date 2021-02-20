@@ -5,8 +5,7 @@ import (
 	"io/ioutil"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/tailscale/wireguard-go/wgcfg"
+	"tailscale.com/wgengine/wgcfg"
 )
 
 type Config struct {

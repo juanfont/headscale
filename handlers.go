@@ -14,8 +14,9 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/klauspost/compress/zstd"
-	"github.com/tailscale/wireguard-go/wgcfg"
+	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/wgengine/wgcfg"
 )
 
 func (h *Headscale) KeyHandler(c *gin.Context) {
@@ -196,7 +197,7 @@ func (h *Headscale) getMapResponse(mKey wgcfg.Key, req tailcfg.MapRequest, m Mac
 		KeepAlive:    false,
 		Node:         node,
 		Peers:        *peers,
-		DNS:          []wgcfg.IP{},
+		DNS:          []netaddr.IP{},
 		SearchPaths:  []string{},
 		Domain:       "foobar@example.com",
 		PacketFilter: tailcfg.FilterAllowAll,

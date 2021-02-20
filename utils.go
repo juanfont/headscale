@@ -16,8 +16,8 @@ import (
 
 	mathrand "math/rand"
 
-	"github.com/tailscale/wireguard-go/wgcfg"
 	"golang.org/x/crypto/nacl/box"
+	"tailscale.com/wgengine/wgcfg"
 )
 
 func decode(msg []byte, v interface{}, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) error {

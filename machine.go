@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm/dialects/postgres"
-	"github.com/tailscale/wireguard-go/wgcfg"
+	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/wgengine/wgcfg"
 )
 
 type Machine struct {
@@ -43,10 +44,10 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	addrs := []wgcfg.CIDR{}
-	allowedIPs := []wgcfg.CIDR{}
+	addrs := []netaddr.IPPrefix{}
+	allowedIPs := []netaddr.IPPrefix{}
 
-	ip, err := wgcfg.ParseCIDR(fmt.Sprintf("%s/32", m.IPAddress))
+	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", m.IPAddress))
 	if err != nil {
 		return nil, err
 	}
