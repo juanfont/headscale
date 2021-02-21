@@ -2,8 +2,8 @@ package headscale
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"tailscale.com/tailcfg"
@@ -34,7 +34,7 @@ type Headscale struct {
 
 // NewHeadscale returns the Headscale app
 func NewHeadscale(cfg Config) (*Headscale, error) {
-	content, err := ioutil.ReadFile(cfg.PrivateKeyPath)
+	content, err := os.ReadFile(cfg.PrivateKeyPath)
 	if err != nil {
 		return nil, err
 	}

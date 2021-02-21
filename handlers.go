@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
@@ -24,7 +23,7 @@ func (h *Headscale) KeyHandler(c *gin.Context) {
 }
 
 func (h *Headscale) RegistrationHandler(c *gin.Context) {
-	body, _ := ioutil.ReadAll(c.Request.Body)
+	body, _ := io.ReadAll(c.Request.Body)
 	mKeyStr := c.Param("id")
 	mKey, err := wgcfg.ParseHexKey(mKeyStr)
 	if err != nil {
@@ -104,7 +103,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 }
 
 func (h *Headscale) PollNetMapHandler(c *gin.Context) {
-	body, _ := ioutil.ReadAll(c.Request.Body)
+	body, _ := io.ReadAll(c.Request.Body)
 	mKeyStr := c.Param("id")
 	mKey, err := wgcfg.ParseHexKey(mKeyStr)
 	if err != nil {
@@ -126,6 +125,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		c.String(http.StatusInternalServerError, ":(")
 		return
 	}
+	defer db.Close()
 	var m Machine
 	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
 		log.Printf("Cannot encode message: %s", err)
