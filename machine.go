@@ -107,7 +107,7 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 
 	// Add user management here?
 	machines := []Machine{}
-	if err = db.Where("machine_key <> ?", m.MachineKey).Find(&machines).Error; err != nil {
+	if err = db.Where("machine_key <> ? AND registered", m.MachineKey).Find(&machines).Error; err != nil {
 		log.Printf("Error accessing db: %s", err)
 		return nil, err
 	}
