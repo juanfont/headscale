@@ -16,6 +16,7 @@ type Machine struct {
 	ID         uint64 `gorm:"primary_key"`
 	MachineKey string `gorm:"type:varchar(64);unique_index"`
 	NodeKey    string
+	DiscoKey   string
 	IPAddress  string
 
 	Registered bool // temp
@@ -41,6 +42,10 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		return nil, err
 	}
 	mKey, err := wgcfg.ParseHexKey(m.MachineKey)
+	if err != nil {
+		return nil, err
+	}
+	dKey, err := wgcfg.ParseHexKey(m.DiscoKey)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +86,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		Key:        tailcfg.NodeKey(nKey),
 		KeyExpiry:  *m.Expiry,
 		Machine:    tailcfg.MachineKey(mKey),
+		DiscoKey:   tailcfg.DiscoKey(dKey),
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
 		Endpoints:  endpoints,

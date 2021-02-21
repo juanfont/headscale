@@ -137,6 +137,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	hostinfo, _ := json.Marshal(req.Hostinfo)
 	m.Endpoints = postgres.Jsonb{RawMessage: json.RawMessage(endpoints)}
 	m.HostInfo = postgres.Jsonb{RawMessage: json.RawMessage(hostinfo)}
+	m.DiscoKey = wgcfg.Key(req.DiscoKey).HexString()
 	now := time.Now().UTC()
 	m.LastSeen = &now
 	db.Save(&m)
@@ -254,8 +255,7 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgcfg.Key, req tailcfg.MapReque
 	return &data, nil
 }
 
-// RegisterWebAPI attaches the machine to a user or team.
-// Currently this is a rather temp implementation, as it just registers it.
+// RegisterWebAPI shows a simple message in the browser to point to the CLI
 func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 	mKeyStr := c.Query("key")
 	if mKeyStr == "" {
