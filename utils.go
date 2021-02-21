@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	mathrand "math/rand"
 
@@ -95,17 +96,17 @@ func (h *Headscale) getAvailableIP() (*net.IP, error) {
 }
 
 func getRandomIP() (*net.IP, error) {
+	mathrand.Seed(time.Now().Unix())
 	ipo, ipnet, err := net.ParseCIDR("100.64.0.0/10")
-
 	if err == nil {
 		ip := ipo.To4()
 		fmt.Println("In Randomize IPAddr: IP ", ip, " IPNET: ", ipnet)
 		fmt.Println("Final address is ", ip)
 		// fmt.Println("Broadcast address is ", ipb)
 		// fmt.Println("Network address is ", ipn)
-
+		r := mathrand.Uint32()
 		ipRaw := make([]byte, 4)
-		binary.LittleEndian.PutUint32(ipRaw, mathrand.Uint32())
+		binary.LittleEndian.PutUint32(ipRaw, r)
 		// ipRaw[3] = 254
 		// fmt.Println("ipRaw is ", ipRaw)
 		for i, v := range ipRaw {
@@ -115,7 +116,7 @@ func getRandomIP() (*net.IP, error) {
 		}
 		fmt.Println("FINAL IP: ", ip.String())
 		return &ip, nil
-	} else {
-		return nil, err
 	}
+
+	return nil, err
 }
