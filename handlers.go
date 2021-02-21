@@ -262,41 +262,26 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 		c.String(http.StatusBadRequest, "Wrong params")
 		return
 	}
-	mKey, err := wgcfg.ParseHexKey(mKeyStr)
-	if err != nil {
-		log.Printf("Cannot parse client key: %s", err)
-		c.String(http.StatusInternalServerError, "Sad!")
-		return
-	}
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		c.String(http.StatusInternalServerError, ":(")
-		return
-	}
-	defer db.Close()
-	m := Machine{}
-	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
-		log.Printf("Cannot find machine with machine key: %s", mKey.Base64())
-		c.String(http.StatusNotFound, "Sad!")
-		return
-	}
 
-	if !m.isAlreadyRegistered() {
-		ip, err := h.getAvailableIP()
-		if err != nil {
-			log.Println(err)
-			c.String(http.StatusInternalServerError, "Upsy dupsy")
-			return
-		}
-		m.IPAddress = ip.String()
-		m.Registered = true // very naive 😱
-		db.Save(&m)
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
+	<html>
+	<body>
+	<h1>headscale</h1>
+	<p>
+		Run the command below in the headscale server to add this machine to your network:
+	</p>
 
-		c.JSON(http.StatusOK, gin.H{"msg": "Ook"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"msg": "Eek"})
+	<p>
+		<code>
+			<b>headscale register %s</b>
+		</code>
+	</p>
+
+	</body>
+	</html>
+	
+	`, mKeyStr)))
+	return
 }
 
 func (h *Headscale) handleNewServer(c *gin.Context, db *gorm.DB, idKey wgcfg.Key, req tailcfg.RegisterRequest) {
