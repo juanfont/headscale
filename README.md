@@ -31,12 +31,19 @@ An open source implementation of the Tailscale coordination server.
   cp config.json.example config.json
   ```
 
-4. Run it
+4. Run the server
   ```
-  ./headscale
+  ./headscale serve
   ```
   
 5. Add your first machine
   ```
   tailscale up -login-server YOUR_HEADSCALE_URL
+  ```
+
+6. Navigate to the URL you will get with `tailscale up`, where you can find your machine key.
+
+7. Register your machine using the headscale CLI
+  ```
+  ./headscale register YOURMACHINEKEY
   ```
