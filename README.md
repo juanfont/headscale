@@ -13,37 +13,37 @@ An open source implementation of the Tailscale coordination server.
 ## Running it
 
 1. Compile the headscale binary
-  ```
+  ```shell
   go build cmd/headscale/headscale.go 
   ```
   
 2. Get youself a PostgreSQL DB running. 
 
-  ``` 
+  ```shell 
   docker run --name headscale -e POSTGRES_DB=headscale -e \
     POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
   ```
 
 3. Sort some stuff up (headscale Wireguard keys & the config.json file)
-  ```
+  ```shell
   wg genkey > private.key
-  wg pubkey < private.key > public.key
+  wg pubkey < private.key > public.key  # although not strictly needed 
   cp config.json.example config.json
   ```
 
 4. Run the server
-  ```
+  ```shell
   ./headscale serve
   ```
   
 5. Add your first machine
-  ```
+  ```shell
   tailscale up -login-server YOUR_HEADSCALE_URL
   ```
 
 6. Navigate to the URL you will get with `tailscale up`, where you can find your machine key.
 
 7. Register your machine using the headscale CLI
-  ```
+  ```shell
   ./headscale register YOURMACHINEKEY
   ```
