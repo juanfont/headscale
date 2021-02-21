@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/jinzhu/gorm/dialects/postgres"
@@ -128,5 +129,6 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 		}
 		peers = append(peers, peer)
 	}
+	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
 	return &peers, nil
 }
