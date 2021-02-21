@@ -10,6 +10,7 @@ import (
 	"tailscale.com/wgengine/wgcfg"
 )
 
+// Config contains the initial Headscale configuration
 type Config struct {
 	ServerURL      string
 	Addr           string
@@ -23,6 +24,7 @@ type Config struct {
 	DBpass string
 }
 
+// Headscale represents the base app of the service
 type Headscale struct {
 	cfg        Config
 	dbString   string
@@ -30,6 +32,7 @@ type Headscale struct {
 	privateKey *wgcfg.PrivateKey
 }
 
+// NewHeadscale returns the Headscale app
 func NewHeadscale(cfg Config) (*Headscale, error) {
 	content, err := ioutil.ReadFile(cfg.PrivateKeyPath)
 	if err != nil {
@@ -54,6 +57,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	return &h, nil
 }
 
+// Serve launches a GIN server with the Headscale API
 func (h *Headscale) Serve() error {
 	r := gin.Default()
 	r.GET("/key", h.KeyHandler)
@@ -67,6 +71,7 @@ func (h *Headscale) Serve() error {
 	return err
 }
 
+// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey
 func (h *Headscale) RegisterMachine(key string) error {
 	mKey, err := wgcfg.ParseHexKey(key)
 	if err != nil {
