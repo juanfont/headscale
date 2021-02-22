@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/jinzhu/gorm/dialects/postgres"
@@ -81,7 +82,8 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	}
 
 	n := tailcfg.Node{
-		ID:         tailcfg.NodeID(m.ID), // this is the actual ID
+		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
+		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permantent
 		Name:       "",
 		User:       1,
 		Key:        tailcfg.NodeKey(nKey),
