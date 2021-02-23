@@ -266,7 +266,8 @@ func (h *Headscale) getMapResponse(mKey wgcfg.Key, req tailcfg.MapRequest, m Mac
 		PacketFilter: tailcfg.FilterAllowAll,
 		DERPMap:      h.cfg.DerpMap,
 		UserProfiles: []tailcfg.UserProfile{},
-		Roles:        []tailcfg.Role{}}
+		Roles:        []tailcfg.Role{},
+	}
 
 	var respBody []byte
 	if req.Compress == "zstd" {
