@@ -107,7 +107,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
 		Endpoints:  endpoints,
-		// DERP:       "127.3.3.40:4", // wtf?
+		DERP:       fmt.Sprintf("127.3.3.40:%d", hostinfo.NetInfo.PreferredDERP),
 
 		Hostinfo: hostinfo,
 		Created:  m.CreatedAt,
@@ -116,6 +116,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		KeepAlive:         true,
 		MachineAuthorized: m.Registered,
 	}
+
 	// n.Key.MarshalText()
 	return &n, nil
 }
