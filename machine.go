@@ -14,12 +14,14 @@ import (
 	"tailscale.com/wgengine/wgcfg"
 )
 
+// Machine is a Headscale client
 type Machine struct {
 	ID         uint64 `gorm:"primary_key"`
 	MachineKey string `gorm:"type:varchar(64);unique_index"`
 	NodeKey    string
 	DiscoKey   string
 	IPAddress  string
+	Name       string
 
 	Registered bool // temp
 	LastSeen   *time.Time
@@ -47,10 +49,18 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	dKey, err := wgcfg.ParseHexKey(m.DiscoKey)
-	if err != nil {
-		return nil, err
+
+	var discoKey tailcfg.DiscoKey
+	if m.DiscoKey != "" {
+		dKey, err := wgcfg.ParseHexKey(m.DiscoKey)
+		if err != nil {
+			return nil, err
+		}
+		discoKey = tailcfg.DiscoKey(dKey)
+	} else {
+		discoKey = tailcfg.DiscoKey{}
 	}
+
 	addrs := []netaddr.IPPrefix{}
 	allowedIPs := []netaddr.IPPrefix{}
 
@@ -58,38 +68,42 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	addrs = append(addrs, ip)
+	addrs = append(addrs, ip)           // missing the ipv6 ?
 	allowedIPs = append(allowedIPs, ip) // looks like the client expect this
 
 	endpoints := []string{}
-	be, err := m.Endpoints.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal(be, &endpoints)
-	if err != nil {
-		return nil, err
+	if len(m.Endpoints.RawMessage) != 0 {
+		be, err := m.Endpoints.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(be, &endpoints)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	hostinfo := tailcfg.Hostinfo{}
-	hi, err := m.HostInfo.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal(hi, &hostinfo)
-	if err != nil {
-		return nil, err
+	if len(m.HostInfo.RawMessage) != 0 {
+		hi, err := m.HostInfo.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(hi, &hostinfo)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	n := tailcfg.Node{
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
 		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permantent
-		Name:       "",
+		Name:       hostinfo.Hostname,
 		User:       1,
 		Key:        tailcfg.NodeKey(nKey),
 		KeyExpiry:  *m.Expiry,
 		Machine:    tailcfg.MachineKey(mKey),
-		DiscoKey:   tailcfg.DiscoKey(dKey),
+		DiscoKey:   discoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
 		Endpoints:  endpoints,
@@ -99,7 +113,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		Created:  m.CreatedAt,
 		LastSeen: m.LastSeen,
 
-		KeepAlive:         false,
+		KeepAlive:         true,
 		MachineAuthorized: m.Registered,
 	}
 	// n.Key.MarshalText()
@@ -114,14 +128,12 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 	}
 	defer db.Close()
 
-	// Add user management here?
+	// Add user management here
 	machines := []Machine{}
 	if err = db.Where("machine_key <> ? AND registered", m.MachineKey).Find(&machines).Error; err != nil {
 		log.Printf("Error accessing db: %s", err)
 		return nil, err
 	}
-
-	log.Printf("Found %d peers of %s", len(machines), m.MachineKey)
 
 	peers := []*tailcfg.Node{}
 	for _, mn := range machines {
