@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"tailscale.com/tailcfg"
@@ -30,6 +31,9 @@ type Headscale struct {
 	dbString   string
 	publicKey  *wgcfg.Key
 	privateKey *wgcfg.PrivateKey
+
+	pollMu         sync.Mutex
+	clientsPolling map[uint64]chan []byte // this is by all means a hackity hack
 }
 
 // NewHeadscale returns the Headscale app
@@ -54,6 +58,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	if err != nil {
 		return nil, err
 	}
+	h.clientsPolling = make(map[uint64]chan []byte)
 	return &h, nil
 }
 
@@ -64,9 +69,6 @@ func (h *Headscale) Serve() error {
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
 	r.POST("/machine/:id", h.RegistrationHandler)
-
-	// r.LoadHTMLFiles("./frontend/build/index.html")
-	// r.Use(static.Serve("/", static.LocalFile("./frontend/build", true)))
 	err := r.Run(h.cfg.Addr)
 	return err
 }
