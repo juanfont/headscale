@@ -9,6 +9,7 @@ import (
 
 const dbVersion = "1"
 
+// KV is a key-value store in a psql table. For future use...
 type KV struct {
 	Key   string
 	Value string
