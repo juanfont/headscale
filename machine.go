@@ -95,6 +95,13 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		}
 	}
 
+	var derp string
+	if hostinfo.NetInfo != nil {
+		derp = fmt.Sprintf("127.3.3.40:%d", hostinfo.NetInfo.PreferredDERP)
+	} else {
+		derp = "127.3.3.40:0" // Zero means disconnected or unknown.
+	}
+
 	n := tailcfg.Node{
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
 		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permantent
@@ -107,7 +114,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
 		Endpoints:  endpoints,
-		DERP:       fmt.Sprintf("127.3.3.40:%d", hostinfo.NetInfo.PreferredDERP),
+		DERP:       derp,
 
 		Hostinfo: hostinfo,
 		Created:  m.CreatedAt,
