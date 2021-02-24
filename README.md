@@ -1,13 +1,27 @@
-# headscale
+# Headscale
 An open source implementation of the Tailscale coordination server.
 
 
-## Disclaimer
+## Status
 
-1. I have nothing to do with Tailscale, or Tailscale Inc. Just a fan of their tech.
-2. The purpose of writing this was to learn a bit how Tailscale works. Hence the emojis in the log messages and other terrible code.
-3. I don't use Headscale myself (their Solo plan + DERP infra is way more convenient).
-4. Headscale adds all the machines under the same user. Be careful!
+- [x] Basic functionality (nodes can communicate with each other)
+- [x] Node registration through the web flow
+- [x] Network changes are relied to the nodes
+- [ ] Node registration via pre-auth keys
+- [ ] Multiuser support
+- [ ] ACLs
+- [ ] DNS
+
+... and probably lots of stuff missing
+
+## Roadmap 🤷
+
+Adding multiuser support seems doable. Rather than actual users, this multi-tenancy will probably look more like namespaces in Kubernetes - a logical partitioning of resources created with a CLI.
+
+Pre-auth keys should also be feasible.
+
+Suggestions/PRs welcomed!
+
 
 
 ## Running it
@@ -17,7 +31,7 @@ An open source implementation of the Tailscale coordination server.
   go build cmd/headscale/headscale.go 
   ```
   
-2. Get youself a PostgreSQL DB running. 
+2. Get youself a PostgreSQL DB running (yes, [I know](https://tailscale.com/blog/an-unlikely-database-migration/))
 
   ```shell 
   docker run --name headscale -e POSTGRES_DB=headscale -e \
@@ -27,7 +41,7 @@ An open source implementation of the Tailscale coordination server.
 3. Sort some stuff up (headscale Wireguard keys & the config.json file)
   ```shell
   wg genkey > private.key
-  wg pubkey < private.key > public.key  # although not strictly needed 
+  wg pubkey < private.key > public.key  # not needed 
   cp config.json.example config.json
   ```
 
@@ -41,9 +55,17 @@ An open source implementation of the Tailscale coordination server.
   tailscale up -login-server YOUR_HEADSCALE_URL
   ```
 
-6. Navigate to the URL you will get with `tailscale up`, where you can find your machine key.
+6. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
 
 7. Register your machine using the headscale CLI
   ```shell
   ./headscale register YOURMACHINEKEY
   ```
+
+
+## Disclaimer
+
+1. I have nothing to do with Tailscale, or Tailscale Inc. 
+2. The purpose of writing this was to learn how Tailscale works.
+3. I don't use Headscale myself.
+
