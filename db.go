@@ -23,6 +23,7 @@ func (h *Headscale) initDB() error {
 	db.Exec("create extension if not exists \"uuid-ossp\";")
 	db.AutoMigrate(&Machine{})
 	db.AutoMigrate(&KV{})
+	db.AutoMigrate(&Namespace{})
 	db.Close()
 
 	h.setValue("db_version", dbVersion)

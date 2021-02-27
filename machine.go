@@ -16,12 +16,14 @@ import (
 
 // Machine is a Headscale client
 type Machine struct {
-	ID         uint64 `gorm:"primary_key"`
-	MachineKey string `gorm:"type:varchar(64);unique_index"`
-	NodeKey    string
-	DiscoKey   string
-	IPAddress  string
-	Name       string
+	ID          uint64 `gorm:"primary_key"`
+	MachineKey  string `gorm:"type:varchar(64);unique_index"`
+	NodeKey     string
+	DiscoKey    string
+	IPAddress   string
+	Name        string
+	NamespaceID uint
+	Namespace   Namespace
 
 	Registered bool // temp
 	LastSeen   *time.Time
@@ -106,7 +108,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
 		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permantent
 		Name:       hostinfo.Hostname,
-		User:       1,
+		User:       tailcfg.UserID(m.NamespaceID),
 		Key:        tailcfg.NodeKey(nKey),
 		KeyExpiry:  *m.Expiry,
 		Machine:    tailcfg.MachineKey(mKey),
@@ -136,9 +138,9 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 	}
 	defer db.Close()
 
-	// Add user management here
 	machines := []Machine{}
-	if err = db.Where("machine_key <> ? AND registered", m.MachineKey).Find(&machines).Error; err != nil {
+	if err = db.Where("namespace_id = ? AND machine_key <> ? AND registered",
+		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Printf("Error accessing db: %s", err)
 		return nil, err
 	}

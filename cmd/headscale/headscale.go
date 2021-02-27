@@ -50,8 +50,31 @@ var serveCmd = &cobra.Command{
 }
 
 var registerCmd = &cobra.Command{
-	Use:   "register machineID",
+	Use:   "register machineID namespace",
 	Short: "Registers a machine to your network",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 2 {
+			return fmt.Errorf("Missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		h.RegisterMachine(args[0], args[1])
+	},
+}
+
+var namespaceCmd = &cobra.Command{
+	Use:   "namespace",
+	Short: "Manage the namespaces of Headscale",
+}
+
+var createNamespaceCmd = &cobra.Command{
+	Use:   "create NAME",
+	Short: "Creates a new namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return fmt.Errorf("Missing parameters")
@@ -63,7 +86,32 @@ var registerCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		h.RegisterMachine(args[0])
+		_, err = h.CreateNamespace(args[0])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Printf("Ook.\n")
+	},
+}
+
+var listNamespacesCmd = &cobra.Command{
+	Use:   "list",
+	Short: "Creates a new namespace",
+	Run: func(cmd *cobra.Command, args []string) {
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		ns, err := h.ListNamespaces()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Printf("ID\tName\n")
+		for _, n := range *ns {
+			fmt.Printf("%d\t%s\n", n.ID, n.Name)
+		}
 	},
 }
 
@@ -79,6 +127,9 @@ func main() {
 	headscaleCmd.AddCommand(versionCmd)
 	headscaleCmd.AddCommand(serveCmd)
 	headscaleCmd.AddCommand(registerCmd)
+	headscaleCmd.AddCommand(namespaceCmd)
+	namespaceCmd.AddCommand(createNamespaceCmd)
+	namespaceCmd.AddCommand(listNamespacesCmd)
 
 	if err := headscaleCmd.Execute(); err != nil {
 		fmt.Println(err)

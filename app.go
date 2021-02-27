@@ -74,7 +74,11 @@ func (h *Headscale) Serve() error {
 }
 
 // RegisterMachine is executed from the CLI to register a new Machine using its MachineKey
-func (h *Headscale) RegisterMachine(key string) error {
+func (h *Headscale) RegisterMachine(key string, namespace string) error {
+	ns, err := h.GetNamespace(namespace)
+	if err != nil {
+		return err
+	}
 	mKey, err := wgcfg.ParseHexKey(key)
 	if err != nil {
 		log.Printf("Cannot parse client key: %s", err)
@@ -103,6 +107,7 @@ func (h *Headscale) RegisterMachine(key string) error {
 		return err
 	}
 	m.IPAddress = ip.String()
+	m.NamespaceID = ns.ID
 	m.Registered = true
 	db.Save(&m)
 	fmt.Println("Machine registered 🎉")

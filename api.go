@@ -18,10 +18,44 @@ import (
 	"tailscale.com/wgengine/wgcfg"
 )
 
+// KeyHandler provides the Headscale pub key
+// Listens in /key
 func (h *Headscale) KeyHandler(c *gin.Context) {
 	c.Data(200, "text/plain; charset=utf-8", []byte(h.publicKey.HexString()))
 }
 
+// RegisterWebAPI shows a simple message in the browser to point to the CLI
+// Listens in /register
+func (h *Headscale) RegisterWebAPI(c *gin.Context) {
+	mKeyStr := c.Query("key")
+	if mKeyStr == "" {
+		c.String(http.StatusBadRequest, "Wrong params")
+		return
+	}
+
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
+	<html>
+	<body>
+	<h1>headscale</h1>
+	<p>
+		Run the command below in the headscale server to add this machine to your network:
+	</p>
+
+	<p>
+		<code>
+			<b>headscale register %s</b>
+		</code>
+	</p>
+
+	</body>
+	</html>
+	
+	`, mKeyStr)))
+	return
+}
+
+// RegistrationHandler handles the actual registration process of a machine
+// Endpoint /machine/:id
 func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	body, _ := io.ReadAll(c.Request.Body)
 	mKeyStr := c.Param("id")
@@ -59,6 +93,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		if m.Registered {
 			log.Println("Client is registered and we have the current key. All clear to /map")
 			resp.AuthURL = ""
+			resp.User = *m.Namespace.toUser()
 			respBody, err := encode(resp, &mKey, h.privateKey)
 			if err != nil {
 				log.Printf("Cannot encode message: %s", err)
@@ -89,6 +124,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		m.NodeKey = wgcfg.Key(req.NodeKey).HexString()
 		db.Save(&m)
 		resp.AuthURL = ""
+		resp.User = *m.Namespace.toUser()
 		respBody, err := encode(resp, &mKey, h.privateKey)
 		if err != nil {
 			log.Printf("Cannot encode message: %s", err)
@@ -316,35 +352,6 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgcfg.Key, req tailcfg.MapReque
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
 	return &data, nil
-}
-
-// RegisterWebAPI shows a simple message in the browser to point to the CLI
-func (h *Headscale) RegisterWebAPI(c *gin.Context) {
-	mKeyStr := c.Query("key")
-	if mKeyStr == "" {
-		c.String(http.StatusBadRequest, "Wrong params")
-		return
-	}
-
-	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
-	<html>
-	<body>
-	<h1>headscale</h1>
-	<p>
-		Run the command below in the headscale server to add this machine to your network:
-	</p>
-
-	<p>
-		<code>
-			<b>headscale register %s</b>
-		</code>
-	</p>
-
-	</body>
-	</html>
-	
-	`, mKeyStr)))
-	return
 }
 
 func (h *Headscale) handleNewServer(c *gin.Context, db *gorm.DB, idKey wgcfg.Key, req tailcfg.RegisterRequest) {
