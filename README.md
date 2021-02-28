@@ -8,7 +8,7 @@ An open source implementation of the Tailscale coordination server.
 - [x] Node registration through the web flow
 - [x] Network changes are relied to the nodes
 - [ ] Node registration via pre-auth keys
-- [ ] Multiuser support
+- [ ] (WIP) Multiuser support
 - [ ] ACLs
 - [ ] DNS
 
@@ -45,21 +45,26 @@ Suggestions/PRs welcomed!
   cp config.json.example config.json
   ```
 
-4. Run the server
+4. Create a namespace (equivalent to a user in tailscale.com)
+  ```shell
+  ./headscale namespace create myfirstnamespace
+  ```
+
+5. Run the server
   ```shell
   ./headscale serve
   ```
   
-5. Add your first machine
+6. Add your first machine
   ```shell
   tailscale up -login-server YOUR_HEADSCALE_URL
   ```
 
-6. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
+7. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
 
-7. Register your machine using the headscale CLI
+8. In the server, register your machine to a namespace with the CLI
   ```shell
-  ./headscale register YOURMACHINEKEY
+  ./headscale register YOURMACHINEKEY myfirstnamespace
   ```
 
 
