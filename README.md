@@ -7,8 +7,9 @@ An open source implementation of the Tailscale coordination server.
 - [x] Basic functionality (nodes can communicate with each other)
 - [x] Node registration through the web flow
 - [x] Network changes are relied to the nodes
+- [x] ~~Multiuser~~ Namespace support
+- [ ] Share nodes between ~~users~~ namespaces
 - [ ] Node registration via pre-auth keys
-- [ ] (WIP) Multiuser support
 - [ ] ACLs
 - [ ] DNS
 
@@ -16,7 +17,7 @@ An open source implementation of the Tailscale coordination server.
 
 ## Roadmap 🤷
 
-Adding multiuser support seems doable. Rather than actual users, this multi-tenancy will probably look more like namespaces in Kubernetes - a logical partitioning of resources created with a CLI.
+Basic multiuser support (multinamespace, actually) is now implemented. No node sharing or ACLs between namespaces yet though...
 
 Pre-auth keys should also be feasible.
 

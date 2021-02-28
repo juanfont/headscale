@@ -63,7 +63,12 @@ var registerCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		h.RegisterMachine(args[0], args[1])
+		err = h.RegisterMachine(args[0], args[1])
+		if err != nil {
+			fmt.Printf("Error: %s", err)
+			return
+		}
+		fmt.Println("Ook.")
 	},
 }
 
