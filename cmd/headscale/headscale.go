@@ -102,7 +102,7 @@ var createNamespaceCmd = &cobra.Command{
 
 var listNamespacesCmd = &cobra.Command{
 	Use:   "list",
-	Short: "Creates a new namespace",
+	Short: "List all the namespaces",
 	Run: func(cmd *cobra.Command, args []string) {
 		h, err := getHeadscaleApp()
 		if err != nil {
@@ -116,6 +116,55 @@ var listNamespacesCmd = &cobra.Command{
 		fmt.Printf("ID\tName\n")
 		for _, n := range *ns {
 			fmt.Printf("%d\t%s\n", n.ID, n.Name)
+		}
+	},
+}
+
+var nodeCmd = &cobra.Command{
+	Use:   "node",
+	Short: "Manage the nodes of Headscale",
+}
+
+var listRoutesCmd = &cobra.Command{
+	Use:   "list-routes NAMESPACE NODE",
+	Short: "List the routes exposed by this node",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 2 {
+			return fmt.Errorf("Missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		err = h.ListNodeRoutes(args[0], args[1])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	},
+}
+
+var enableRouteCmd = &cobra.Command{
+	Use:   "enable-route",
+	Short: "Allows exposing a route declared by this node to the rest of the nodes",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 3 {
+			return fmt.Errorf("Missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		err = h.EnableNodeRoute(args[0], args[1], args[2])
+		if err != nil {
+			fmt.Println(err)
+			return
 		}
 	},
 }
@@ -135,6 +184,10 @@ func main() {
 	headscaleCmd.AddCommand(namespaceCmd)
 	namespaceCmd.AddCommand(createNamespaceCmd)
 	namespaceCmd.AddCommand(listNamespacesCmd)
+
+	headscaleCmd.AddCommand(nodeCmd)
+	nodeCmd.AddCommand(listRoutesCmd)
+	nodeCmd.AddCommand(enableRouteCmd)
 
 	if err := headscaleCmd.Execute(); err != nil {
 		fmt.Println(err)

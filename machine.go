@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/jinzhu/gorm/dialects/postgres"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -29,8 +30,9 @@ type Machine struct {
 	LastSeen   *time.Time
 	Expiry     *time.Time
 
-	HostInfo  postgres.Jsonb
-	Endpoints postgres.Jsonb
+	HostInfo      postgres.Jsonb
+	Endpoints     postgres.Jsonb
+	EnabledRoutes postgres.Jsonb
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -64,14 +66,34 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	}
 
 	addrs := []netaddr.IPPrefix{}
-	allowedIPs := []netaddr.IPPrefix{}
-
 	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", m.IPAddress))
 	if err != nil {
 		return nil, err
 	}
-	addrs = append(addrs, ip)           // missing the ipv6 ?
-	allowedIPs = append(allowedIPs, ip) // looks like the client expect this
+	addrs = append(addrs, ip) // missing the ipv6 ?
+
+	allowedIPs := []netaddr.IPPrefix{}
+	allowedIPs = append(allowedIPs, ip)
+
+	routesStr := []string{}
+	if len(m.EnabledRoutes.RawMessage) != 0 {
+		allwIps, err := m.EnabledRoutes.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(allwIps, &routesStr)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for _, aip := range routesStr {
+		ip, err := netaddr.ParseIPPrefix(aip)
+		if err != nil {
+			return nil, err
+		}
+		allowedIPs = append(allowedIPs, ip)
+	}
 
 	endpoints := []string{}
 	if len(m.Endpoints.RawMessage) != 0 {
@@ -126,6 +148,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		MachineAuthorized: m.Registered,
 	}
 
+	spew.Dump(n)
 	// n.Key.MarshalText()
 	return &n, nil
 }
@@ -155,4 +178,33 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 	}
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
 	return &peers, nil
+}
+
+func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) {
+	machines, err := h.ListMachinesInNamespace(namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, m := range *machines {
+		if m.Name == name {
+			return &m, nil
+		}
+	}
+	return nil, fmt.Errorf("not found")
+}
+
+func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
+	hostinfo := tailcfg.Hostinfo{}
+	if len(m.HostInfo.RawMessage) != 0 {
+		hi, err := m.HostInfo.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(hi, &hostinfo)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &hostinfo, nil
 }

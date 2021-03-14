@@ -8,6 +8,7 @@ An open source implementation of the Tailscale coordination server.
 - [x] Node registration through the web flow
 - [x] Network changes are relied to the nodes
 - [x] ~~Multiuser~~ Namespace support
+- [x] Basic routing (advertise & accept) 
 - [ ] Share nodes between ~~users~~ namespaces
 - [ ] Node registration via pre-auth keys
 - [ ] ACLs
