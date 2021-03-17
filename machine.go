@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/jinzhu/gorm/dialects/postgres"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -73,7 +72,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	addrs = append(addrs, ip) // missing the ipv6 ?
 
 	allowedIPs := []netaddr.IPPrefix{}
-	allowedIPs = append(allowedIPs, ip)
+	allowedIPs = append(allowedIPs, ip) // we append the node own IP, as it is required by the clients
 
 	routesStr := []string{}
 	if len(m.EnabledRoutes.RawMessage) != 0 {
@@ -147,9 +146,6 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		KeepAlive:         true,
 		MachineAuthorized: m.Registered,
 	}
-
-	spew.Dump(n)
-	// n.Key.MarshalText()
 	return &n, nil
 }
 
