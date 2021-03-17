@@ -1,6 +1,15 @@
 # Headscale
 An open source implementation of the Tailscale coordination server.
 
+## Overview
+
+Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/). 
+
+Everything in Tailscale is open source, except the GUI clients for propietary OS (Windows and macOS/iOS), and the 'coordination/control server'. 
+
+The control server works as a public key exchange mechanism for the nodes in the Tailscale network. It also assigns the IP addresses of the clients, creates the boundaries between each user, enables sharing machines between users, and exposes the advertised routes of your nodes.
+
+Headscale implements this coordination server.
 
 ## Status
 
