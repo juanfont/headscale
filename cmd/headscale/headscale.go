@@ -171,6 +171,8 @@ var enableRouteCmd = &cobra.Command{
 
 func main() {
 	viper.SetConfigName("config")
+	viper.AddConfigPath("/etc/headscale/")
+	viper.AddConfigPath("$HOME/.headscale")
 	viper.AddConfigPath(".")
 	viper.AutomaticEnv()
 	err := viper.ReadInConfig()
