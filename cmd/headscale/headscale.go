@@ -5,7 +5,9 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
+	"github.com/hako/durafmt"
 	"github.com/juanfont/headscale"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -195,7 +197,7 @@ var listPreAuthKeys = &cobra.Command{
 		}
 		for _, k := range *keys {
 			fmt.Printf(
-				"key: %s, namespace: %s, reusable: %v, expiration: %s, created_at: %s",
+				"key: %s, namespace: %s, reusable: %v, expiration: %s, created_at: %s\n",
 				k.Key,
 				k.Namespace.Name,
 				k.Reusable,
@@ -203,6 +205,42 @@ var listPreAuthKeys = &cobra.Command{
 				k.CreatedAt.Format("2006-01-02 15:04:05"),
 			)
 		}
+	},
+}
+
+var createPreAuthKeyCmd = &cobra.Command{
+	Use:   "create NAMESPACE",
+	Short: "Creates a new preauthkey in the specified namespace",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 1 {
+			return fmt.Errorf("Missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		reusable, _ := cmd.Flags().GetBool("reusable")
+
+		e, _ := cmd.Flags().GetString("expiration")
+		var expiration *time.Time
+		if e != "" {
+			duration, err := durafmt.ParseStringShort(e)
+			if err != nil {
+				log.Fatalf("Error parsing expiration: %s", err)
+			}
+			exp := time.Now().UTC().Add(duration.Duration())
+			expiration = &exp
+		}
+
+		_, err = h.CreatePreAuthKey(args[0], reusable, expiration)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Printf("Ook.\n")
 	},
 }
 
@@ -231,6 +269,9 @@ func main() {
 	nodeCmd.AddCommand(enableRouteCmd)
 
 	preauthkeysCmd.AddCommand(listPreAuthKeys)
+	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
+	createPreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
+	createPreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
 
 	if err := headscaleCmd.Execute(); err != nil {
 		fmt.Println(err)

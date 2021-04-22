@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/gin-gonic/gin v1.6.3
+	github.com/hako/durafmt v0.0.0-20210316092057-3a2c319c1acd // indirect
 	github.com/jinzhu/gorm v1.9.16
 	github.com/klauspost/compress v1.11.12
 	github.com/spf13/cobra v1.1.3
