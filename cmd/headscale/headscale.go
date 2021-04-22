@@ -169,6 +169,43 @@ var enableRouteCmd = &cobra.Command{
 	},
 }
 
+var preauthkeysCmd = &cobra.Command{
+	Use:   "preauthkey",
+	Short: "Handle the preauthkeys in Headscale",
+}
+
+var listPreAuthKeys = &cobra.Command{
+	Use:   "list NAMESPACE",
+	Short: "List the preauthkeys for this namespace",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 1 {
+			return fmt.Errorf("Missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		keys, err := h.GetPreAuthKeys(args[0])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		for _, k := range *keys {
+			fmt.Printf(
+				"key: %s, namespace: %s, reusable: %v, expiration: %s, created_at: %s",
+				k.Key,
+				k.Namespace.Name,
+				k.Reusable,
+				k.Expiration.Format("2006-01-02 15:04:05"),
+				k.CreatedAt.Format("2006-01-02 15:04:05"),
+			)
+		}
+	},
+}
+
 func main() {
 	viper.SetConfigName("config")
 	viper.AddConfigPath("/etc/headscale/")
@@ -183,13 +220,17 @@ func main() {
 	headscaleCmd.AddCommand(versionCmd)
 	headscaleCmd.AddCommand(serveCmd)
 	headscaleCmd.AddCommand(registerCmd)
+	headscaleCmd.AddCommand(preauthkeysCmd)
 	headscaleCmd.AddCommand(namespaceCmd)
+	headscaleCmd.AddCommand(nodeCmd)
+
 	namespaceCmd.AddCommand(createNamespaceCmd)
 	namespaceCmd.AddCommand(listNamespacesCmd)
 
-	headscaleCmd.AddCommand(nodeCmd)
 	nodeCmd.AddCommand(listRoutesCmd)
 	nodeCmd.AddCommand(enableRouteCmd)
+
+	preauthkeysCmd.AddCommand(listPreAuthKeys)
 
 	if err := headscaleCmd.Execute(); err != nil {
 		fmt.Println(err)

@@ -24,6 +24,7 @@ func (h *Headscale) initDB() error {
 	db.AutoMigrate(&Machine{})
 	db.AutoMigrate(&KV{})
 	db.AutoMigrate(&Namespace{})
+	db.AutoMigrate(&PreAuthKey{})
 	db.Close()
 
 	h.setValue("db_version", dbVersion)
