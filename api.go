@@ -194,7 +194,6 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		m.LastSeen = &now
 	}
 	db.Save(&m)
-	db.Close()
 
 	pollData := make(chan []byte, 1)
 	update := make(chan []byte, 1)
