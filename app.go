@@ -3,6 +3,7 @@ package headscale
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,9 @@ type Config struct {
 	DBname string
 	DBuser string
 	DBpass string
+
+	TLSCertPath string
+	TLSKeyPath  string
 }
 
 // Headscale represents the base app of the service
@@ -68,6 +72,17 @@ func (h *Headscale) Serve() error {
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
 	r.POST("/machine/:id", h.RegistrationHandler)
-	err := r.Run(h.cfg.Addr)
+	var err error
+	if h.cfg.TLSCertPath == "" {
+		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
+			fmt.Println("WARNING: listening without TLS but ServerURL does not start with http://")
+		}
+		err = r.Run(h.cfg.Addr)
+	} else {
+		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
+			fmt.Println("WARNING: listening with TLS but ServerURL does not start with https://")
+		}
+		err = r.RunTLS(h.cfg.Addr, h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
+	}
 	return err
 }

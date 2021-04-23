@@ -7,5 +7,7 @@
     "db_port": 5432,
     "db_name": "headscale",
     "db_user": "foo",
-    "db_pass": "bar"
+    "db_pass": "bar",
+    "tls_cert_path": "",
+    "tls_key_path": ""
 }

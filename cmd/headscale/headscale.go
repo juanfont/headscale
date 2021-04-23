@@ -311,7 +311,11 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		DBname: viper.GetString("db_name"),
 		DBuser: viper.GetString("db_user"),
 		DBpass: viper.GetString("db_pass"),
+
+		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
+		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
 	}
+
 	h, err := headscale.NewHeadscale(cfg)
 	if err != nil {
 		return nil, err
