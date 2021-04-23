@@ -49,7 +49,10 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		h.Serve()
+		err = h.Serve()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
 	},
 }
 
