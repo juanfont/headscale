@@ -5,6 +5,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hako/durafmt"
@@ -280,8 +282,20 @@ func main() {
 
 }
 
+func absPath(path string) string {
+	// If a relative path is provided, prefix it with the the directory where
+	// the config file was found.
+	if !strings.HasPrefix(path, "/") {
+		dir, _ := filepath.Split(viper.ConfigFileUsed())
+		if dir != "" {
+			path = dir + "/" + path
+		}
+	}
+	return path
+}
+
 func getHeadscaleApp() (*headscale.Headscale, error) {
-	derpMap, err := loadDerpMap(viper.GetString("derp_map_path"))
+	derpMap, err := loadDerpMap(absPath(viper.GetString("derp_map_path")))
 	if err != nil {
 		log.Printf("Could not load DERP servers map file: %s", err)
 	}
@@ -289,7 +303,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	cfg := headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
-		PrivateKeyPath: viper.GetString("private_key_path"),
+		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		DerpMap:        derpMap,
 
 		DBhost: viper.GetString("db_host"),

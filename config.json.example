@@ -2,7 +2,7 @@
     "server_url": "http://192.168.1.12:8000",
     "listen_addr": "0.0.0.0:8000",
     "private_key_path": "private.key",
-    "derp_map_path": "./derp.yaml",
+    "derp_map_path": "derp.yaml",
     "db_host": "localhost",
     "db_port": 5432,
     "db_name": "headscale",
