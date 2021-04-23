@@ -285,7 +285,7 @@ func main() {
 func absPath(path string) string {
 	// If a relative path is provided, prefix it with the the directory where
 	// the config file was found.
-	if !strings.HasPrefix(path, "/") {
+	if (path != "") && !strings.HasPrefix(path, "/") {
 		dir, _ := filepath.Split(viper.ConfigFileUsed())
 		if dir != "" {
 			path = dir + "/" + path
