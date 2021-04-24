@@ -255,9 +255,29 @@ func main() {
 	viper.AddConfigPath("$HOME/.headscale")
 	viper.AddConfigPath(".")
 	viper.AutomaticEnv()
+
+	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
+	viper.SetDefault("tls_letsencrypt_challenge_type", "HTTP-01")
+
 	err := viper.ReadInConfig()
 	if err != nil {
 		log.Fatalf("Fatal error config file: %s \n", err)
+	}
+
+	if (viper.GetString("tls_letsencrypt_hostname") != "") && ((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
+		log.Fatalf("Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both")
+	}
+
+	if (viper.GetString("tls_letsencrypt_hostname") != "") && (viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") && (!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
+		log.Fatalf("Fatal config error: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, listen_addr must end in :443")
+	}
+
+	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") && (viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
+		log.Fatalf("Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01")
+	}
+
+	if !strings.HasPrefix(viper.GetString("server_url"), "http://") && !strings.HasPrefix(viper.GetString("server_url"), "https://") {
+		log.Fatalf("Fatal config error: server_url must start with https:// or http://")
 	}
 
 	headscaleCmd.AddCommand(versionCmd)
@@ -314,6 +334,10 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		DBname: viper.GetString("db_name"),
 		DBuser: viper.GetString("db_user"),
 		DBpass: viper.GetString("db_pass"),
+
+		TLSLetsEncryptHostname:      viper.GetString("tls_letsencrypt_hostname"),
+		TLSLetsEncryptCacheDir:      absPath(viper.GetString("tls_letsencrypt_cache_dir")),
+		TLSLetsEncryptChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
 
 		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
