@@ -51,7 +51,6 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 	</html>
 	
 	`, mKeyStr)))
-	return
 }
 
 // RegistrationHandler handles the actual registration process of a machine
@@ -237,7 +236,10 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		select {
 		case data := <-pollData:
 			log.Printf("[%s] Sending data (%d bytes)", m.Name, len(data))
-			w.Write(data)
+			_, err := w.Write(data)
+			if err != nil {
+				fmt.Printf("[%s] 🤮 Cannot write data: %s", m.Name, err)
+			}
 			return true
 
 		case <-update:
@@ -246,7 +248,10 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			if err != nil {
 				fmt.Printf("[%s] 🤮 Cannot get the poll response: %s", m.Name, err)
 			}
-			w.Write(*data)
+			_, err = w.Write(*data)
+			if err != nil {
+				fmt.Printf("[%s] 🤮 Cannot write the poll response: %s", m.Name, err)
+			}
 			return true
 
 		case <-c.Request.Context().Done():

@@ -31,11 +31,11 @@ var versionCmd = &cobra.Command{
 var headscaleCmd = &cobra.Command{
 	Use:   "headscale",
 	Short: "headscale - a Tailscale control server",
-	Long: fmt.Sprintf(`
+	Long: `
 headscale is an open source implementation of the Tailscale control server
 
 Juan Font Alonso <juanfontalonso@gmail.com> - 2021
-https://gitlab.com/juanfont/headscale`),
+https://gitlab.com/juanfont/headscale`,
 }
 
 var serveCmd = &cobra.Command{

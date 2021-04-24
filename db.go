@@ -27,8 +27,8 @@ func (h *Headscale) initDB() error {
 	db.AutoMigrate(&PreAuthKey{})
 	db.Close()
 
-	h.setValue("db_version", dbVersion)
-	return nil
+	err = h.setValue("db_version", dbVersion)
+	return err
 }
 
 func (h *Headscale) db() (*gorm.DB, error) {

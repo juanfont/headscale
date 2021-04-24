@@ -101,7 +101,6 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 			for _, p := range *peers {
 				if pUp, ok := h.clientsPolling[uint64(p.ID)]; ok {
 					pUp <- []byte{}
-				} else {
 				}
 			}
 			h.pollMu.Unlock()
@@ -110,16 +109,4 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 	}
 	return fmt.Errorf("Could not find routable range")
 
-}
-
-func eqCIDRs(a, b []netaddr.IPPrefix) bool {
-	if len(a) != len(b) || ((a == nil) != (b == nil)) {
-		return false
-	}
-	for i, v := range a {
-		if v != b[i] {
-			return false
-		}
-	}
-	return true
 }
