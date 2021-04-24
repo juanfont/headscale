@@ -51,7 +51,6 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 	</html>
 	
 	`, mKeyStr)))
-	return
 }
 
 // RegistrationHandler handles the actual registration process of a machine
@@ -104,7 +103,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			return
 		}
 
-		log.Println("Hey! Not registered. Not asking for key rotation. Send a passive-agressive authurl to register")
+		log.Println("Hey! Not registered. Not asking for key rotation. Send a passive-aggressive authurl to register")
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
 			h.cfg.ServerURL, mKey.HexString())
 		respBody, err := encode(resp, &mKey, h.privateKey)
@@ -237,7 +236,10 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		select {
 		case data := <-pollData:
 			log.Printf("[%s] Sending data (%d bytes)", m.Name, len(data))
-			w.Write(data)
+			_, err := w.Write(data)
+			if err != nil {
+				fmt.Printf("[%s] 🤮 Cannot write data: %s", m.Name, err)
+			}
 			return true
 
 		case <-update:
@@ -246,7 +248,10 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			if err != nil {
 				fmt.Printf("[%s] 🤮 Cannot get the poll response: %s", m.Name, err)
 			}
-			w.Write(*data)
+			_, err = w.Write(*data)
+			if err != nil {
+				fmt.Printf("[%s] 🤮 Cannot write the poll response: %s", m.Name, err)
+			}
 			return true
 
 		case <-c.Request.Context().Done():

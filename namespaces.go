@@ -91,6 +91,7 @@ func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
 	return &machines, nil
 }
 
+// SetMachineNamespace assigns a Machine to a namespace
 func (h *Headscale) SetMachineNamespace(m *Machine, namespaceName string) error {
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {

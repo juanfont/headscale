@@ -114,10 +114,10 @@ func (h *Headscale) Serve() error {
 			go func() {
 				log.Fatal(http.ListenAndServe(":http", m.HTTPHandler(http.HandlerFunc(h.redirect))))
 			}()
+			err = s.ListenAndServeTLS("", "")
 		} else {
 			return errors.New("Unknown value for TLSLetsEncryptChallengeType")
 		}
-		err = s.ListenAndServeTLS("", "")
 	} else if h.cfg.TLSCertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
 			fmt.Println("WARNING: listening without TLS but ServerURL does not start with http://")

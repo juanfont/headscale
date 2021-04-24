@@ -176,6 +176,7 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 	return &peers, nil
 }
 
+// GetMachine finds a Machine by name and namespace and returns the Machine struct
 func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) {
 	machines, err := h.ListMachinesInNamespace(namespace)
 	if err != nil {
@@ -190,6 +191,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 	return nil, fmt.Errorf("not found")
 }
 
+// GetHostInfo returns a Hostinfo struct for the machine
 func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 	hostinfo := tailcfg.Hostinfo{}
 	if len(m.HostInfo.RawMessage) != 0 {
