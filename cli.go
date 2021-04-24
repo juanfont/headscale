@@ -51,6 +51,8 @@ func (h *Headscale) RegisterMachine(key string, namespace string) error {
 	return nil
 }
 
+// ListNodeRoutes prints the subnet routes advertised by a node (identified by
+// namespace and node name)
 func (h *Headscale) ListNodeRoutes(namespace string, nodeName string) error {
 	m, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
@@ -65,6 +67,8 @@ func (h *Headscale) ListNodeRoutes(namespace string, nodeName string) error {
 	return nil
 }
 
+// EnableNodeRoute enables a subnet route advertised by a node (identified by
+// namespace and node name)
 func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr string) error {
 	m, err := h.GetMachine(namespace, nodeName)
 	if err != nil {

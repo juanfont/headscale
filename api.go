@@ -104,7 +104,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			return
 		}
 
-		log.Println("Hey! Not registered. Not asking for key rotation. Send a passive-agressive authurl to register")
+		log.Println("Hey! Not registered. Not asking for key rotation. Send a passive-aggressive authurl to register")
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
 			h.cfg.ServerURL, mKey.HexString())
 		respBody, err := encode(resp, &mKey, h.privateKey)

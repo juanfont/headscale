@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// PreAuthKey describes a pre-authorization key usable in a particular namespace
 type PreAuthKey struct {
 	ID          uint64 `gorm:"primary_key"`
 	Key         string
@@ -18,6 +19,7 @@ type PreAuthKey struct {
 	Expiration *time.Time
 }
 
+// CreatePreAuthKey creates a new PreAuthKey in a namespace, and returns it
 func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, expiration *time.Time) (*PreAuthKey, error) {
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
@@ -49,6 +51,7 @@ func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, expira
 	return &k, nil
 }
 
+// GetPreAuthKeys returns the list of PreAuthKeys for a namespace
 func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) {
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
