@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
@@ -86,7 +87,7 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 				log.Printf("Cannot open DB: %s", err)
 				return err
 			}
-			defer db.Close()
+
 			routes, _ := json.Marshal([]string{routeStr}) // TODO: only one for the time being, so overwriting the rest
 			m.EnabledRoutes = postgres.Jsonb{RawMessage: json.RawMessage(routes)}
 			db.Save(&m)
@@ -104,8 +105,8 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 			return nil
 		}
 	}
-	return fmt.Errorf("Could not find routable range")
 
+	return errors.New("could not find routable range")
 }
 
 func eqCIDRs(a, b []netaddr.IPPrefix) bool {
