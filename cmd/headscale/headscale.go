@@ -249,11 +249,16 @@ var createPreAuthKeyCmd = &cobra.Command{
 	},
 }
 
-func main() {
+func loadConfig(path string) {
 	viper.SetConfigName("config")
-	viper.AddConfigPath("/etc/headscale/")
-	viper.AddConfigPath("$HOME/.headscale")
-	viper.AddConfigPath(".")
+	if path == "" {
+		viper.AddConfigPath("/etc/headscale/")
+		viper.AddConfigPath("$HOME/.headscale")
+		viper.AddConfigPath(".")
+	} else {
+		// For testing
+		viper.AddConfigPath(path)
+	}
 	viper.AutomaticEnv()
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
@@ -279,6 +284,10 @@ func main() {
 	if !strings.HasPrefix(viper.GetString("server_url"), "http://") && !strings.HasPrefix(viper.GetString("server_url"), "https://") {
 		log.Fatalf("Fatal config error: server_url must start with https:// or http://")
 	}
+}
+
+func main() {
+	loadConfig("")
 
 	headscaleCmd.AddCommand(versionCmd)
 	headscaleCmd.AddCommand(serveCmd)
@@ -302,7 +311,6 @@ func main() {
 		fmt.Println(err)
 		os.Exit(-1)
 	}
-
 }
 
 func absPath(path string) string {

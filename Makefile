@@ -7,7 +7,7 @@ build:
 dev: lint test build
 
 test:
-	go test -coverprofile=coverage.out
+	@go test -coverprofile=coverage.out ./...
 
 coverprofile_func:
 	go tool cover -func=coverage.out
