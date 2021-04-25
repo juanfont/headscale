@@ -42,17 +42,17 @@ Suggestions/PRs welcomed!
 
 1. Compile the headscale binary
   ```shell
-  go build cmd/headscale/headscale.go 
+  make
   ```
   
-2. Get youself a PostgreSQL DB running (yes, [I know](https://tailscale.com/blog/an-unlikely-database-migration/))
+2. Get yourself a PostgreSQL DB running (yes, [I know](https://tailscale.com/blog/an-unlikely-database-migration/))
 
   ```shell 
   docker run --name headscale -e POSTGRES_DB=headscale -e \
     POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
   ```
 
-3. Sort some stuff up (headscale Wireguard keys & the config.json file)
+3. Set some stuff up (headscale Wireguard keys & the config.json file)
   ```shell
   wg genkey > private.key
   wg pubkey < private.key > public.key  # not needed 

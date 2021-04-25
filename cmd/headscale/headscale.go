@@ -17,7 +17,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-const version = "0.1"
+var version = "dev"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
