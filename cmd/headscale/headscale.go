@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -249,7 +250,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 	},
 }
 
-func loadConfig(path string) {
+func loadConfig(path string) error {
 	viper.SetConfigName("config")
 	if path == "" {
 		viper.AddConfigPath("/etc/headscale/")
@@ -266,28 +267,38 @@ func loadConfig(path string) {
 
 	err := viper.ReadInConfig()
 	if err != nil {
-		log.Fatalf("Fatal error config file: %s \n", err)
+		return errors.New(fmt.Sprintf("Fatal error reading config file: %s \n", err))
 	}
 
+	// Collect any validation errors and return them all at once
+	var errorText string
 	if (viper.GetString("tls_letsencrypt_hostname") != "") && ((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
-		log.Fatalf("Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both")
+		errorText += "Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both\n"
 	}
 
 	if (viper.GetString("tls_letsencrypt_hostname") != "") && (viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") && (!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
-		log.Fatalf("Fatal config error: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, listen_addr must end in :443")
+		errorText += "Fatal config error: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, listen_addr must end in :443\n"
 	}
 
 	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") && (viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
-		log.Fatalf("Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01")
+		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
 	}
 
 	if !strings.HasPrefix(viper.GetString("server_url"), "http://") && !strings.HasPrefix(viper.GetString("server_url"), "https://") {
-		log.Fatalf("Fatal config error: server_url must start with https:// or http://")
+		errorText += "Fatal config error: server_url must start with https:// or http://\n"
+	}
+	if errorText != "" {
+		return errors.New(strings.TrimSuffix(errorText, "\n"))
+	} else {
+		return nil
 	}
 }
 
 func main() {
-	loadConfig("")
+	err := loadConfig("")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 
 	headscaleCmd.AddCommand(versionCmd)
 	headscaleCmd.AddCommand(serveCmd)
