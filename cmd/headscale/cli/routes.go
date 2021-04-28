@@ -21,11 +21,12 @@ var ListRoutesCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		err = h.ListNodeRoutes(args[0], args[1])
+		routes, err := h.GetNodeRoutes(args[0], args[1])
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+		fmt.Println(routes)
 	},
 }
 
