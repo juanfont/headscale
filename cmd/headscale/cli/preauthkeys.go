@@ -15,31 +15,34 @@ var PreauthkeysCmd = &cobra.Command{
 }
 
 var ListPreAuthKeys = &cobra.Command{
-	Use:   "list NAMESPACE",
+	Use:   "list",
 	Short: "List the preauthkeys for this namespace",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("Missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
+		n, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			log.Fatalf("Error getting namespace: %s", err)
+		}
+
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		keys, err := h.GetPreAuthKeys(args[0])
+		keys, err := h.GetPreAuthKeys(n)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 		for _, k := range *keys {
+			expiration := "-"
+			if k.Expiration != nil {
+				expiration = k.Expiration.Format("2006-01-02 15:04:05")
+			}
 			fmt.Printf(
 				"key: %s, namespace: %s, reusable: %v, expiration: %s, created_at: %s\n",
 				k.Key,
 				k.Namespace.Name,
 				k.Reusable,
-				k.Expiration.Format("2006-01-02 15:04:05"),
+				expiration,
 				k.CreatedAt.Format("2006-01-02 15:04:05"),
 			)
 		}
@@ -47,15 +50,14 @@ var ListPreAuthKeys = &cobra.Command{
 }
 
 var CreatePreAuthKeyCmd = &cobra.Command{
-	Use:   "create NAMESPACE",
+	Use:   "create",
 	Short: "Creates a new preauthkey in the specified namespace",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("Missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
+		n, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			log.Fatalf("Error getting namespace: %s", err)
+		}
+
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
@@ -73,7 +75,7 @@ var CreatePreAuthKeyCmd = &cobra.Command{
 			expiration = &exp
 		}
 
-		_, err = h.CreatePreAuthKey(args[0], reusable, expiration)
+		_, err = h.CreatePreAuthKey(n, reusable, expiration)
 		if err != nil {
 			fmt.Println(err)
 			return

@@ -83,21 +83,35 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 
-	headscaleCmd.AddCommand(versionCmd)
-	headscaleCmd.AddCommand(cli.ServeCmd)
-	headscaleCmd.AddCommand(cli.RegisterCmd)
-	headscaleCmd.AddCommand(cli.PreauthkeysCmd)
 	headscaleCmd.AddCommand(cli.NamespaceCmd)
 	headscaleCmd.AddCommand(cli.NodeCmd)
+	headscaleCmd.AddCommand(cli.PreauthkeysCmd)
+	headscaleCmd.AddCommand(cli.RegisterCmd)
+	headscaleCmd.AddCommand(cli.RoutesCmd)
+	headscaleCmd.AddCommand(cli.ServeCmd)
+	headscaleCmd.AddCommand(versionCmd)
+
+	cli.NodeCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	cli.NodeCmd.MarkPersistentFlagRequired("namespace")
+
+	cli.PreauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	cli.PreauthkeysCmd.MarkPersistentFlagRequired("namespace")
+
+	cli.RegisterCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	cli.RegisterCmd.MarkPersistentFlagRequired("namespace")
+
+	cli.RoutesCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	cli.RoutesCmd.MarkPersistentFlagRequired("namespace")
 
 	cli.NamespaceCmd.AddCommand(cli.CreateNamespaceCmd)
 	cli.NamespaceCmd.AddCommand(cli.ListNamespacesCmd)
 
-	cli.NodeCmd.AddCommand(cli.ListRoutesCmd)
-	cli.NodeCmd.AddCommand(cli.EnableRouteCmd)
+	cli.RoutesCmd.AddCommand(cli.ListRoutesCmd)
+	cli.RoutesCmd.AddCommand(cli.EnableRouteCmd)
 
 	cli.PreauthkeysCmd.AddCommand(cli.ListPreAuthKeys)
 	cli.PreauthkeysCmd.AddCommand(cli.CreatePreAuthKeyCmd)
+
 	cli.CreatePreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
 	cli.CreatePreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
 
