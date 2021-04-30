@@ -1,0 +1,44 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  # The "build" workflow
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v2
+
+    # Install and run golangci-lint as a separate step, it's much faster this
+    # way because this action has caching. It'll get run again in `make lint`
+    # below, but it's still much faster in the end than installing
+    # golangci-lint manually in the `Run lint` step.
+    - uses: golangci/golangci-lint-action@v2
+    
+    # Setup Go
+    - name: Setup Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.16.3' # The Go version to download (if necessary) and use.
+
+    # Install all the dependencies
+    - name: Install dependencies
+      run: |
+        go version
+        go get -u golang.org/x/lint/golint
+        sudo apt update
+        sudo apt install -y make
+        
+    - name: Run tests
+      run: make test
+
+    - name: Run lint
+      run: make lint
+
+    - name: Run build
+      run: make
+      

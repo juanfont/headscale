@@ -90,7 +90,6 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 
 	// Check configuration validation errors (2)
 	configYaml = []byte("---\nserver_url: \"http://192.168.1.12:8000\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"")
-	fmt.Printf(string(configYaml))
 	writeConfig(c, tmpDir, configYaml)
 	err = loadConfig(tmpDir)
 	c.Assert(err, check.NotNil)

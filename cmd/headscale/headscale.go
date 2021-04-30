@@ -50,7 +50,7 @@ func loadConfig(path string) error {
 
 	err := viper.ReadInConfig()
 	if err != nil {
-		return errors.New(fmt.Sprintf("Fatal error reading config file: %s \n", err))
+		return fmt.Errorf("Fatal error reading config file: %s \n", err)
 	}
 
 	// Collect any validation errors and return them all at once
