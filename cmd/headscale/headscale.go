@@ -92,16 +92,28 @@ func main() {
 	headscaleCmd.AddCommand(versionCmd)
 
 	cli.NodeCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
-	cli.NodeCmd.MarkPersistentFlagRequired("namespace")
+	err = cli.NodeCmd.MarkPersistentFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 
 	cli.PreauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
-	cli.PreauthkeysCmd.MarkPersistentFlagRequired("namespace")
+	err = cli.PreauthkeysCmd.MarkPersistentFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 
 	cli.RegisterCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
-	cli.RegisterCmd.MarkPersistentFlagRequired("namespace")
+	err = cli.RegisterCmd.MarkPersistentFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 
 	cli.RoutesCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
-	cli.RoutesCmd.MarkPersistentFlagRequired("namespace")
+	err = cli.RoutesCmd.MarkPersistentFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 
 	cli.NamespaceCmd.AddCommand(cli.CreateNamespaceCmd)
 	cli.NamespaceCmd.AddCommand(cli.ListNamespacesCmd)
