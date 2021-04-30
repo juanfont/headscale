@@ -78,7 +78,7 @@ Suggestions/PRs welcomed!
 
 8. In the server, register your machine to a namespace with the CLI
   ```shell
-  ./headscale -n myfirstnamespace register YOURMACHINEKEY 
+  ./headscale -n myfirstnamespace register YOURMACHINEKEY
   ```
 
 ## Configuration reference
