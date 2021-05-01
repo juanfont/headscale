@@ -53,7 +53,7 @@ var ListNodesCmd = &cobra.Command{
 			log.Fatalf("Error getting nodes: %s", err)
 		}
 
-		fmt.Printf("name\tlast seen")
+		fmt.Printf("name\t\tlast seen\n")
 		for _, m := range *machines {
 			fmt.Printf("%s\t%s\n", m.Name, m.LastSeen.Format("2006-01-02 15:04:05"))
 		}
