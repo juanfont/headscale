@@ -35,6 +35,32 @@ var RegisterCmd = &cobra.Command{
 	},
 }
 
+var ListNodesCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List the nodes in a given namespace",
+	Run: func(cmd *cobra.Command, args []string) {
+		n, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			log.Fatalf("Error getting namespace: %s", err)
+		}
+
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		machines, err := h.ListMachinesInNamespace(n)
+		if err != nil {
+			log.Fatalf("Error getting nodes: %s", err)
+		}
+
+		fmt.Printf("name\tlast seen")
+		for _, m := range *machines {
+			fmt.Printf("%s\t%s\n", m.Name, m.LastSeen.Format("2006-01-02 15:04:05"))
+		}
+
+	},
+}
+
 var NodeCmd = &cobra.Command{
 	Use:   "node",
 	Short: "Manage the nodes of Headscale",
