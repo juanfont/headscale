@@ -42,6 +42,7 @@ func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, expira
 	k := PreAuthKey{
 		Key:         kstr,
 		NamespaceID: n.ID,
+		Namespace:   *n,
 		Reusable:    reusable,
 		CreatedAt:   &now,
 		Expiration:  expiration,
@@ -65,7 +66,7 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 	defer db.Close()
 
 	keys := []PreAuthKey{}
-	if err := db.Where(&PreAuthKey{NamespaceID: n.ID}).Find(&keys).Error; err != nil {
+	if err := db.Preload("Namespace").Where(&PreAuthKey{NamespaceID: n.ID}).Find(&keys).Error; err != nil {
 		return nil, err
 	}
 	return &keys, nil

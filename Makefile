@@ -20,5 +20,5 @@ lint:
 	golangci-lint run
 
 compress: build
-	upx --brute cmd/headscale/headscale
+	upx --brute headscale
 
