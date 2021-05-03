@@ -40,6 +40,8 @@ type Config struct {
 type Headscale struct {
 	cfg        Config
 	dbString   string
+	dbType     string
+	dbDebug    bool
 	publicKey  *wgcfg.Key
 	privateKey *wgcfg.PrivateKey
 
@@ -59,7 +61,8 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	}
 	pubKey := privKey.Public()
 	h := Headscale{
-		cfg: cfg,
+		cfg:    cfg,
+		dbType: "postgres",
 		dbString: fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable", cfg.DBhost,
 			cfg.DBport, cfg.DBname, cfg.DBuser, cfg.DBpass),
 		privateKey: privKey,

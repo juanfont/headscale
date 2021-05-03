@@ -16,11 +16,13 @@ type KV struct {
 }
 
 func (h *Headscale) initDB() error {
-	db, err := gorm.Open("postgres", h.dbString)
+	db, err := gorm.Open(h.dbType, h.dbString)
 	if err != nil {
 		return err
 	}
-	db.Exec("create extension if not exists \"uuid-ossp\";")
+	if h.dbType == "postgres" {
+		db.Exec("create extension if not exists \"uuid-ossp\";")
+	}
 	db.AutoMigrate(&Machine{})
 	db.AutoMigrate(&KV{})
 	db.AutoMigrate(&Namespace{})
@@ -32,9 +34,12 @@ func (h *Headscale) initDB() error {
 }
 
 func (h *Headscale) db() (*gorm.DB, error) {
-	db, err := gorm.Open("postgres", h.dbString)
+	db, err := gorm.Open(h.dbType, h.dbString)
 	if err != nil {
 		return nil, err
+	}
+	if h.dbDebug {
+		db.LogMode(true)
 	}
 	return db, nil
 }
