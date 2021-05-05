@@ -94,3 +94,87 @@ func (*Suite) TestPreAuthKeyDoesNotExist(c *check.C) {
 	c.Assert(err, check.Equals, errorAuthKeyNotFound)
 	c.Assert(p, check.IsNil)
 }
+
+func (*Suite) TestValidateKeyOk(c *check.C) {
+	n, err := h.CreateNamespace("test3")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, true, nil)
+	c.Assert(err, check.IsNil)
+
+	p, err := h.checkKeyValidity(pak.Key)
+	c.Assert(err, check.IsNil)
+	c.Assert(p.ID, check.Equals, pak.ID)
+}
+
+func (*Suite) TestAlreadyUsedKey(c *check.C) {
+	n, err := h.CreateNamespace("test4")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, false, nil)
+	c.Assert(err, check.IsNil)
+
+	db, err := h.db()
+	if err != nil {
+		c.Fatal(err)
+	}
+	defer db.Close()
+	m := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Name:           "testest",
+		NamespaceID:    n.ID,
+		Registered:     true,
+		RegisterMethod: "authKey",
+		AuthKeyID:      uint(pak.ID),
+	}
+	db.Save(&m)
+
+	p, err := h.checkKeyValidity(pak.Key)
+	c.Assert(err, check.Equals, errorAuthKeyNotReusableAlreadyUsed)
+	c.Assert(p, check.IsNil)
+}
+
+func (*Suite) TestReusableBeingUsedKey(c *check.C) {
+	n, err := h.CreateNamespace("test5")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, true, nil)
+	c.Assert(err, check.IsNil)
+
+	db, err := h.db()
+	if err != nil {
+		c.Fatal(err)
+	}
+	defer db.Close()
+	m := Machine{
+		ID:             1,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Name:           "testest",
+		NamespaceID:    n.ID,
+		Registered:     true,
+		RegisterMethod: "authKey",
+		AuthKeyID:      uint(pak.ID),
+	}
+	db.Save(&m)
+
+	p, err := h.checkKeyValidity(pak.Key)
+	c.Assert(err, check.IsNil)
+	c.Assert(p.ID, check.Equals, pak.ID)
+}
+
+func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
+	n, err := h.CreateNamespace("test6")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, false, nil)
+	c.Assert(err, check.IsNil)
+
+	p, err := h.checkKeyValidity(pak.Key)
+	c.Assert(err, check.IsNil)
+	c.Assert(p.ID, check.Equals, pak.ID)
+}

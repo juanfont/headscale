@@ -9,6 +9,7 @@ import (
 
 const errorAuthKeyNotFound = Error("AuthKey not found")
 const errorAuthKeyExpired = Error("AuthKey expired")
+const errorAuthKeyNotReusableAlreadyUsed = Error("AuthKey not reusable already used")
 
 // PreAuthKey describes a pre-authorization key usable in a particular namespace
 type PreAuthKey struct {
@@ -91,6 +92,19 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 
 	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
 		return nil, errorAuthKeyExpired
+	}
+
+	if pak.Reusable { // we don't need to check if has been used before
+		return &pak, nil
+	}
+
+	machines := []Machine{}
+	if err := db.Preload("AuthKey").Where(&Machine{AuthKeyID: uint(pak.ID)}).Find(&machines).Error; err != nil {
+		return nil, err
+	}
+
+	if len(machines) != 0 {
+		return nil, errorAuthKeyNotReusableAlreadyUsed
 	}
 
 	// missing here validation on current usage
