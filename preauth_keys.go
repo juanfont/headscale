@@ -86,7 +86,7 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 	defer db.Close()
 
 	pak := PreAuthKey{}
-	if db.First(&pak, "key = ?", k).RecordNotFound() {
+	if db.Preload("Namespace").First(&pak, "key = ?", k).RecordNotFound() {
 		return nil, errorAuthKeyNotFound
 	}
 
