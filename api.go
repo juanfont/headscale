@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/jinzhu/gorm/dialects/postgres"
@@ -34,7 +33,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 		return
 	}
 
-	spew.Dump(c.Params)
+	// spew.Dump(c.Params)
 
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
 	<html>
