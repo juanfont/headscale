@@ -21,6 +21,10 @@ import (
 	"tailscale.com/wgengine/wgcfg"
 )
 
+type Error string
+
+func (e Error) Error() string { return string(e) }
+
 func decode(msg []byte, v interface{}, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) error {
 	return decodeMsg(msg, v, pubKey, privKey)
 }

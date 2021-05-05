@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+const errorAuthKeyNotFound = Error("AuthKey not found")
+const errorAuthKeyExpired = Error("AuthKey expired")
+
 // PreAuthKey describes a pre-authorization key usable in a particular namespace
 type PreAuthKey struct {
 	ID          uint64 `gorm:"primary_key"`
@@ -70,6 +73,28 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 		return nil, err
 	}
 	return &keys, nil
+}
+
+// checkKeyValidity does the heavy lifting for validation of the PreAuthKey coming from a node
+// If returns no error and a PreAuthKey, it can be used
+func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
+	db, err := h.db()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	pak := PreAuthKey{}
+	if db.First(&pak, "key = ?", k).RecordNotFound() {
+		return nil, errorAuthKeyNotFound
+	}
+
+	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
+		return nil, errorAuthKeyExpired
+	}
+
+	// missing here validation on current usage
+	return &pak, nil
 }
 
 func (h *Headscale) generateKey() (string, error) {
