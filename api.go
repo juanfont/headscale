@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/jinzhu/gorm/dialects/postgres"
@@ -32,6 +33,8 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 		c.String(http.StatusBadRequest, "Wrong params")
 		return
 	}
+
+	spew.Dump(c.Params)
 
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
 	<html>
@@ -71,6 +74,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Very sad!")
 		return
 	}
+
 	db, err := h.db()
 	if err != nil {
 		log.Printf("Cannot open DB: %s", err)
@@ -359,20 +363,58 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgcfg.Key, req tailcfg.MapReque
 }
 
 func (h *Headscale) handleNewServer(c *gin.Context, db *gorm.DB, idKey wgcfg.Key, req tailcfg.RegisterRequest) {
-	mNew := Machine{
+	m := Machine{
 		MachineKey: idKey.HexString(),
 		NodeKey:    wgcfg.Key(req.NodeKey).HexString(),
 		Expiry:     &req.Expiry,
 		Name:       req.Hostinfo.Hostname,
 	}
-	if err := db.Create(&mNew).Error; err != nil {
+	if err := db.Create(&m).Error; err != nil {
 		log.Printf("Could not create row: %s", err)
 		return
 	}
-	resp := tailcfg.RegisterResponse{
-		AuthURL: fmt.Sprintf("%s/register?key=%s",
-			h.cfg.ServerURL, idKey.HexString()),
+
+	resp := tailcfg.RegisterResponse{}
+
+	if req.Auth.AuthKey != "" {
+		pak, err := h.checkKeyValidity(req.Auth.AuthKey)
+		if err != nil {
+			resp.MachineAuthorized = false
+			respBody, err := encode(resp, &idKey, h.privateKey)
+			if err != nil {
+				log.Printf("Cannot encode message: %s", err)
+				c.String(http.StatusInternalServerError, "")
+				return
+			}
+			c.Data(200, "application/json; charset=utf-8", respBody)
+			return
+		}
+		ip, err := h.getAvailableIP()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		m.IPAddress = ip.String()
+		m.NamespaceID = pak.NamespaceID
+		m.AuthKeyID = uint(pak.ID)
+		m.Registered = true
+		db.Save(&m)
+
+		resp.MachineAuthorized = true
+		resp.User = *pak.Namespace.toUser()
+		respBody, err := encode(resp, &idKey, h.privateKey)
+		if err != nil {
+			log.Printf("Cannot encode message: %s", err)
+			c.String(http.StatusInternalServerError, "Extremely sad!")
+			return
+		}
+		c.Data(200, "application/json; charset=utf-8", respBody)
+		return
 	}
+
+	resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
+		h.cfg.ServerURL, idKey.HexString())
 
 	respBody, err := encode(resp, &idKey, h.privateKey)
 	if err != nil {
