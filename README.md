@@ -22,7 +22,7 @@ Headscale implements this coordination server.
 - [x] ~~Multiuser~~ Namespace support
 - [x] Basic routing (advertise & accept) 
 - [ ] Share nodes between ~~users~~ namespaces
-- [ ] Node registration via pre-auth keys
+- [x] Node registration via pre-auth keys
 - [ ] ACLs
 - [ ] DNS
 
@@ -31,8 +31,6 @@ Headscale implements this coordination server.
 ## Roadmap 🤷
 
 Basic multiuser support (multinamespace, actually) is now implemented. No node sharing or ACLs between namespaces yet though...
-
-Pre-auth keys should also be feasible.
 
 Suggestions/PRs welcomed!
 
