@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/jinzhu/gorm/dialects/postgres"
@@ -96,6 +97,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			log.Println("Client is registered and we have the current key. All clear to /map")
 			resp.AuthURL = ""
 			resp.User = *m.Namespace.toUser()
+			resp.MachineAuthorized = true
 			respBody, err := encode(resp, &mKey, h.privateKey)
 			if err != nil {
 				log.Printf("Cannot encode message: %s", err)
@@ -138,6 +140,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	}
 
 	log.Println("We dont know anything about the new key. WTF")
+	spew.Dump(req)
 }
 
 // PollNetMapHandler takes care of /machine/:id/map
