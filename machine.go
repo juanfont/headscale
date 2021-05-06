@@ -25,9 +25,13 @@ type Machine struct {
 	NamespaceID uint
 	Namespace   Namespace
 
-	Registered bool // temp
-	LastSeen   *time.Time
-	Expiry     *time.Time
+	Registered     bool // temp
+	RegisterMethod string
+	AuthKeyID      uint
+	AuthKey        *PreAuthKey
+
+	LastSeen *time.Time
+	Expiry   *time.Time
 
 	HostInfo      postgres.Jsonb
 	Endpoints     postgres.Jsonb

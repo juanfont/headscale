@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+const errorAuthKeyNotFound = Error("AuthKey not found")
+const errorAuthKeyExpired = Error("AuthKey expired")
+const errorAuthKeyNotReusableAlreadyUsed = Error("AuthKey not reusable already used")
+
 // PreAuthKey describes a pre-authorization key usable in a particular namespace
 type PreAuthKey struct {
 	ID          uint64 `gorm:"primary_key"`
@@ -70,6 +74,41 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 		return nil, err
 	}
 	return &keys, nil
+}
+
+// checkKeyValidity does the heavy lifting for validation of the PreAuthKey coming from a node
+// If returns no error and a PreAuthKey, it can be used
+func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
+	db, err := h.db()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	pak := PreAuthKey{}
+	if db.Preload("Namespace").First(&pak, "key = ?", k).RecordNotFound() {
+		return nil, errorAuthKeyNotFound
+	}
+
+	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
+		return nil, errorAuthKeyExpired
+	}
+
+	if pak.Reusable { // we don't need to check if has been used before
+		return &pak, nil
+	}
+
+	machines := []Machine{}
+	if err := db.Preload("AuthKey").Where(&Machine{AuthKeyID: uint(pak.ID)}).Find(&machines).Error; err != nil {
+		return nil, err
+	}
+
+	if len(machines) != 0 {
+		return nil, errorAuthKeyNotReusableAlreadyUsed
+	}
+
+	// missing here validation on current usage
+	return &pak, nil
 }
 
 func (h *Headscale) generateKey() (string, error) {
