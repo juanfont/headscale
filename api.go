@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/jinzhu/gorm/dialects/postgres"
@@ -140,7 +139,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	}
 
 	log.Println("We dont know anything about the new key. WTF")
-	spew.Dump(req)
+	// spew.Dump(req)
 }
 
 // PollNetMapHandler takes care of /machine/:id/map
