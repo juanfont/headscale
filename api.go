@@ -397,6 +397,7 @@ func (h *Headscale) handleNewServer(c *gin.Context, db *gorm.DB, idKey wgcfg.Key
 		m.IPAddress = ip.String()
 		m.NamespaceID = pak.NamespaceID
 		m.AuthKeyID = uint(pak.ID)
+		m.RegisterMethod = "authKey"
 		m.Registered = true
 		db.Save(&m)
 

@@ -43,6 +43,7 @@ func (h *Headscale) RegisterMachine(key string, namespace string) error {
 	m.IPAddress = ip.String()
 	m.NamespaceID = ns.ID
 	m.Registered = true
+	m.RegisterMethod = "cli"
 	db.Save(&m)
 	fmt.Println("Machine registered 🎉")
 	return nil
