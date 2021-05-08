@@ -1,50 +1,45 @@
 package headscale
 
 import (
-	"fmt"
+	"errors"
 	"log"
 
 	"tailscale.com/wgengine/wgcfg"
 )
 
 // RegisterMachine is executed from the CLI to register a new Machine using its MachineKey
-func (h *Headscale) RegisterMachine(key string, namespace string) error {
+func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, error) {
 	ns, err := h.GetNamespace(namespace)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	mKey, err := wgcfg.ParseHexKey(key)
 	if err != nil {
-		log.Printf("Cannot parse client key: %s", err)
-		return err
+		return nil, err
 	}
 	db, err := h.db()
 	if err != nil {
 		log.Printf("Cannot open DB: %s", err)
-		return err
+		return nil, err
 	}
 	defer db.Close()
 	m := Machine{}
 	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
-		log.Printf("Cannot find machine with machine key: %s", mKey.Base64())
-		return err
+		return nil, errors.New("Machine not found")
 	}
 
 	if m.isAlreadyRegistered() {
-		fmt.Println("This machine already registered")
-		return nil
+		return nil, errors.New("Machine already registered")
 	}
 
 	ip, err := h.getAvailableIP()
 	if err != nil {
-		log.Println(err)
-		return err
+		return nil, err
 	}
 	m.IPAddress = ip.String()
 	m.NamespaceID = ns.ID
 	m.Registered = true
 	m.RegisterMethod = "cli"
 	db.Save(&m)
-	fmt.Println("Machine registered 🎉")
-	return nil
+	return &m, nil
 }
