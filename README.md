@@ -23,6 +23,7 @@ Headscale implements this coordination server.
 - [x] Basic routing (advertise & accept) 
 - [ ] Share nodes between ~~users~~ namespaces
 - [x] Node registration via pre-auth keys
+- [X] JSON-formatted output
 - [ ] ACLs
 - [ ] DNS
 
@@ -79,6 +80,22 @@ Suggestions/PRs welcomed!
   ./headscale -n myfirstnamespace node register YOURMACHINEKEY
   ```
 
+Alternatively, you can use Auth Keys to register your machines:
+
+1. Create an authkey
+    ```shell
+    ./headscale -n myfirstnamespace preauthkey create --reusable --expiration 24h
+    ```
+
+2. Use the authkey from your machine to register it
+   ```shell
+   tailscale up -login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
+   ```
+
+
+Please bear in mind that all the commands from headscale support adding `-o json` or `-o json-line`  to get a nicely JSON-formatted output.
+
+
 ## Configuration reference
 
 Headscale's configuration file is named `config.json` or `config.yaml`. Headscale will look for it in `/etc/headscale`, `~/.headscale` and finally the directory from where the Headscale binary is executed.
@@ -131,7 +148,15 @@ To get a certificate automatically via [Let's Encrypt](https://letsencrypt.org/)
 
 ## Disclaimer
 
-1. I have nothing to do with Tailscale, or Tailscale Inc. 
+1. We have nothing to do with Tailscale, or Tailscale Inc. 
 2. The purpose of writing this was to learn how Tailscale works.
-3. I don't use Headscale myself.
+3. ~~I don't use Headscale myself.~~ 
+
+
+
+## More on Tailscale 
+
+- https://tailscale.com/blog/how-tailscale-works/
+- https://tailscale.com/blog/tailscale-key-management/
+- https://tailscale.com/blog/an-unlikely-database-migration/ 
 
