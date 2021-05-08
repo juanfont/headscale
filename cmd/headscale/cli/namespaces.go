@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -22,16 +23,21 @@ var CreateNamespaceCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		o, _ := cmd.Flags().GetString("output")
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		_, err = h.CreateNamespace(args[0])
-		if err != nil {
-			fmt.Println(err)
+		namespace, err := h.CreateNamespace(args[0])
+		if strings.HasPrefix(o, "json") {
+			jsonOutput(namespace, err, o)
 			return
 		}
-		fmt.Printf("Ook.\n")
+		if err != nil {
+			fmt.Printf("Error creating namespace: %s\n", err)
+			return
+		}
+		fmt.Printf("Namespace created\n")
 	},
 }
 
@@ -39,17 +45,22 @@ var ListNamespacesCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all the namespaces",
 	Run: func(cmd *cobra.Command, args []string) {
+		o, _ := cmd.Flags().GetString("output")
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		ns, err := h.ListNamespaces()
+		namespaces, err := h.ListNamespaces()
+		if strings.HasPrefix(o, "json") {
+			jsonOutput(namespaces, err, o)
+			return
+		}
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 		fmt.Printf("ID\tName\n")
-		for _, n := range *ns {
+		for _, n := range *namespaces {
 			fmt.Printf("%d\t%s\n", n.ID, n.Name)
 		}
 	},

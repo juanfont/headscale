@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -21,17 +22,22 @@ var RegisterCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error getting namespace: %s", err)
 		}
+		o, _ := cmd.Flags().GetString("output")
 
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		err = h.RegisterMachine(args[0], n)
-		if err != nil {
-			fmt.Printf("Error: %s", err)
+		m, err := h.RegisterMachine(args[0], n)
+		if strings.HasPrefix(o, "json") {
+			jsonOutput(m, err, o)
 			return
 		}
-		fmt.Println("Ook.")
+		if err != nil {
+			fmt.Printf("Cannot register machine: %s\n", err)
+			return
+		}
+		fmt.Printf("Machine registered\n")
 	},
 }
 

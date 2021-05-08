@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -19,7 +20,27 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version.",
 	Long:  "The version of headscale.",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(version)
+
+		o, _ := cmd.Flags().GetString("output")
+		switch o {
+		case "":
+			fmt.Println(version)
+		case "json":
+			j, err := json.MarshalIndent(map[string]string{"version": version}, "", "\t")
+			if err != nil {
+				log.Fatalln(err)
+			}
+			fmt.Println(string(j))
+
+		case "json-line":
+			j, err := json.Marshal(map[string]string{"version": version})
+			if err != nil {
+				log.Fatalln(err)
+			}
+			fmt.Println(string(j))
+		default:
+			fmt.Printf("Unknown format %s\n", o)
+		}
 	},
 }
 
@@ -122,6 +143,8 @@ func main() {
 
 	cli.CreatePreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
 	cli.CreatePreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
+
+	headscaleCmd.PersistentFlags().StringP("output", "o", "", "Output format. Empty for human-readable, 'json' or 'json-line'")
 
 	if err := headscaleCmd.Execute(); err != nil {
 		fmt.Println(err)
