@@ -36,10 +36,10 @@ var ListRoutesCmd = &cobra.Command{
 		routes, err := h.GetNodeRoutes(n, args[0])
 
 		if strings.HasPrefix(o, "json") {
-			jsonOutput(routes, err, o)
+			JsonOutput(routes, err, o)
 			return
-
 		}
+
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -71,7 +71,7 @@ var EnableRouteCmd = &cobra.Command{
 		}
 		route, err := h.EnableNodeRoute(n, args[0], args[1])
 		if strings.HasPrefix(o, "json") {
-			jsonOutput(route, err, o)
+			JsonOutput(route, err, o)
 			return
 		}
 

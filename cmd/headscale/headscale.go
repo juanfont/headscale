@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -20,27 +19,12 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version.",
 	Long:  "The version of headscale.",
 	Run: func(cmd *cobra.Command, args []string) {
-
 		o, _ := cmd.Flags().GetString("output")
-		switch o {
-		case "":
-			fmt.Println(version)
-		case "json":
-			j, err := json.MarshalIndent(map[string]string{"version": version}, "", "\t")
-			if err != nil {
-				log.Fatalln(err)
-			}
-			fmt.Println(string(j))
-
-		case "json-line":
-			j, err := json.Marshal(map[string]string{"version": version})
-			if err != nil {
-				log.Fatalln(err)
-			}
-			fmt.Println(string(j))
-		default:
-			fmt.Printf("Unknown format %s\n", o)
+		if strings.HasPrefix(o, "json") {
+			cli.JsonOutput(map[string]string{"version": version}, nil, o)
+			return
 		}
+		fmt.Println(version)
 	},
 }
 

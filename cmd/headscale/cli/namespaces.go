@@ -30,7 +30,7 @@ var CreateNamespaceCmd = &cobra.Command{
 		}
 		namespace, err := h.CreateNamespace(args[0])
 		if strings.HasPrefix(o, "json") {
-			jsonOutput(namespace, err, o)
+			JsonOutput(namespace, err, o)
 			return
 		}
 		if err != nil {
@@ -52,7 +52,7 @@ var ListNamespacesCmd = &cobra.Command{
 		}
 		namespaces, err := h.ListNamespaces()
 		if strings.HasPrefix(o, "json") {
-			jsonOutput(namespaces, err, o)
+			JsonOutput(namespaces, err, o)
 			return
 		}
 		if err != nil {

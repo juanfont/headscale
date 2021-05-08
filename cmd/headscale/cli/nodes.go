@@ -30,7 +30,7 @@ var RegisterCmd = &cobra.Command{
 		}
 		m, err := h.RegisterMachine(args[0], n)
 		if strings.HasPrefix(o, "json") {
-			jsonOutput(m, err, o)
+			JsonOutput(m, err, o)
 			return
 		}
 		if err != nil {
@@ -57,7 +57,7 @@ var ListNodesCmd = &cobra.Command{
 		}
 		machines, err := h.ListMachinesInNamespace(n)
 		if strings.HasPrefix(o, "json") {
-			jsonOutput(machines, err, o)
+			JsonOutput(machines, err, o)
 			return
 		}
 

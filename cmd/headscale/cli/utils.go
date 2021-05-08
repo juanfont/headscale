@@ -79,7 +79,7 @@ func loadDerpMap(path string) (*tailcfg.DERPMap, error) {
 	return &derpMap, err
 }
 
-func jsonOutput(result interface{}, errResult error, outputFormat string) {
+func JsonOutput(result interface{}, errResult error, outputFormat string) {
 	var j []byte
 	var err error
 	switch outputFormat {

@@ -31,7 +31,7 @@ var ListPreAuthKeys = &cobra.Command{
 		}
 		keys, err := h.GetPreAuthKeys(n)
 		if strings.HasPrefix(o, "json") {
-			jsonOutput(keys, err, o)
+			JsonOutput(keys, err, o)
 			return
 		}
 
@@ -85,7 +85,7 @@ var CreatePreAuthKeyCmd = &cobra.Command{
 
 		k, err := h.CreatePreAuthKey(n, reusable, expiration)
 		if strings.HasPrefix(o, "json") {
-			jsonOutput(k, err, o)
+			JsonOutput(k, err, o)
 			return
 		}
 		if err != nil {
