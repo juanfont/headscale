@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -12,6 +14,10 @@ import (
 	"gopkg.in/yaml.v2"
 	"tailscale.com/tailcfg"
 )
+
+type ErrorOutput struct {
+	Error string
+}
 
 func absPath(path string) string {
 	// If a relative path is provided, prefix it with the the directory where
@@ -71,4 +77,36 @@ func loadDerpMap(path string) (*tailcfg.DERPMap, error) {
 	}
 	err = yaml.Unmarshal(b, &derpMap)
 	return &derpMap, err
+}
+
+func JsonOutput(result interface{}, errResult error, outputFormat string) {
+	var j []byte
+	var err error
+	switch outputFormat {
+	case "json":
+		if errResult != nil {
+			j, err = json.MarshalIndent(ErrorOutput{errResult.Error()}, "", "\t")
+			if err != nil {
+				log.Fatalln(err)
+			}
+		} else {
+			j, err = json.MarshalIndent(result, "", "\t")
+			if err != nil {
+				log.Fatalln(err)
+			}
+		}
+	case "json-line":
+		if errResult != nil {
+			j, err = json.Marshal(ErrorOutput{errResult.Error()})
+			if err != nil {
+				log.Fatalln(err)
+			}
+		} else {
+			j, err = json.Marshal(result)
+			if err != nil {
+				log.Fatalln(err)
+			}
+		}
+	}
+	fmt.Println(string(j))
 }

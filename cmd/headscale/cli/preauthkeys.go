@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/hako/durafmt"
@@ -22,14 +23,20 @@ var ListPreAuthKeys = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error getting namespace: %s", err)
 		}
+		o, _ := cmd.Flags().GetString("output")
 
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
 		keys, err := h.GetPreAuthKeys(n)
+		if strings.HasPrefix(o, "json") {
+			JsonOutput(keys, err, o)
+			return
+		}
+
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("Error getting the list of keys: %s\n", err)
 			return
 		}
 		for _, k := range *keys {
@@ -57,6 +64,7 @@ var CreatePreAuthKeyCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error getting namespace: %s", err)
 		}
+		o, _ := cmd.Flags().GetString("output")
 
 		h, err := getHeadscaleApp()
 		if err != nil {
@@ -75,11 +83,15 @@ var CreatePreAuthKeyCmd = &cobra.Command{
 			expiration = &exp
 		}
 
-		_, err = h.CreatePreAuthKey(n, reusable, expiration)
+		k, err := h.CreatePreAuthKey(n, reusable, expiration)
+		if strings.HasPrefix(o, "json") {
+			JsonOutput(k, err, o)
+			return
+		}
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("Ook.\n")
+		fmt.Printf("Key: %s\n", k.Key)
 	},
 }

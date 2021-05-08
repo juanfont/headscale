@@ -26,18 +26,18 @@ func (h *Headscale) GetNodeRoutes(namespace string, nodeName string) (*[]netaddr
 
 // EnableNodeRoute enables a subnet route advertised by a node (identified by
 // namespace and node name)
-func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr string) error {
+func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr string) (*netaddr.IPPrefix, error) {
 	m, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	hi, err := m.GetHostInfo()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	route, err := netaddr.ParseIPPrefix(routeStr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, rIP := range hi.RoutableIPs {
@@ -45,7 +45,7 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 			db, err := h.db()
 			if err != nil {
 				log.Printf("Cannot open DB: %s", err)
-				return err
+				return nil, err
 			}
 
 			routes, _ := json.Marshal([]string{routeStr}) // TODO: only one for the time being, so overwriting the rest
@@ -53,6 +53,10 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 			db.Save(&m)
 			db.Close()
 
+			// THIS IS COMPLETELY USELESS.
+			// The peers map is stored in memory in the server process.
+			// Definetely not accessible from the CLI tool.
+			// We need RPC to the server - or some kind of 'needsUpdate' field in the DB
 			peers, _ := h.getPeers(*m)
 			h.pollMu.Lock()
 			for _, p := range *peers {
@@ -61,9 +65,9 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 				}
 			}
 			h.pollMu.Unlock()
-			return nil
+			return &rIP, nil
 		}
 	}
 
-	return errors.New("could not find routable range")
+	return nil, errors.New("could not find routable range")
 }

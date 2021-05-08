@@ -105,8 +105,8 @@ func getRandomIP() (*net.IP, error) {
 	ipo, ipnet, err := net.ParseCIDR("100.64.0.0/10")
 	if err == nil {
 		ip := ipo.To4()
-		fmt.Println("In Randomize IPAddr: IP ", ip, " IPNET: ", ipnet)
-		fmt.Println("Final address is ", ip)
+		// fmt.Println("In Randomize IPAddr: IP ", ip, " IPNET: ", ipnet)
+		// fmt.Println("Final address is ", ip)
 		// fmt.Println("Broadcast address is ", ipb)
 		// fmt.Println("Network address is ", ipn)
 		r := mathrand.Uint32()
@@ -119,7 +119,7 @@ func getRandomIP() (*net.IP, error) {
 			ip[i] = ip[i] + (v &^ ipnet.Mask[i])
 			// fmt.Println("IP After: ", ip[i])
 		}
-		fmt.Println("FINAL IP: ", ip.String())
+		// fmt.Println("FINAL IP: ", ip.String())
 		return &ip, nil
 	}
 

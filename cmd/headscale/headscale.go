@@ -19,6 +19,11 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version.",
 	Long:  "The version of headscale.",
 	Run: func(cmd *cobra.Command, args []string) {
+		o, _ := cmd.Flags().GetString("output")
+		if strings.HasPrefix(o, "json") {
+			cli.JsonOutput(map[string]string{"version": version}, nil, o)
+			return
+		}
 		fmt.Println(version)
 	},
 }
@@ -122,6 +127,8 @@ func main() {
 
 	cli.CreatePreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
 	cli.CreatePreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
+
+	headscaleCmd.PersistentFlags().StringP("output", "o", "", "Output format. Empty for human-readable, 'json' or 'json-line'")
 
 	if err := headscaleCmd.Execute(); err != nil {
 		fmt.Println(err)
