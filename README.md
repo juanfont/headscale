@@ -6,9 +6,9 @@ An open source implementation of the Tailscale coordination server.
 
 ## Overview
 
-Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/). 
+Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/).
 
-Everything in Tailscale is Open Source, except the GUI clients for proprietary OS (Windows and macOS/iOS), and the 'coordination/control server'. 
+Everything in Tailscale is Open Source, except the GUI clients for proprietary OS (Windows and macOS/iOS), and the 'coordination/control server'.
 
 The control server works as an exchange point of cryptographic public keys for the nodes in the Tailscale network. It also assigns the IP addresses of the clients, creates the boundaries between each user, enables sharing machines between users, and exposes the advertised routes of your nodes.
 
@@ -20,7 +20,7 @@ Headscale implements this coordination server.
 - [x] Node registration through the web flow
 - [x] Network changes are relied to the nodes
 - [x] ~~Multiuser~~ Namespace support
-- [x] Basic routing (advertise & accept) 
+- [x] Basic routing (advertise & accept)
 - [ ] Share nodes between ~~users~~ namespaces
 - [x] Node registration via pre-auth keys
 - [X] JSON-formatted output
@@ -43,10 +43,10 @@ Suggestions/PRs welcomed!
   ```shell
   make
   ```
-  
+
 2. Get yourself a PostgreSQL DB running (yes, [I know](https://tailscale.com/blog/an-unlikely-database-migration/))
 
-  ```shell 
+  ```shell
   docker run --name headscale -e POSTGRES_DB=headscale -e \
     POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
   ```
@@ -54,7 +54,7 @@ Suggestions/PRs welcomed!
 3. Set some stuff up (headscale Wireguard keys & the config.json file)
   ```shell
   wg genkey > private.key
-  wg pubkey < private.key > public.key  # not needed 
+  wg pubkey < private.key > public.key  # not needed
   cp config.json.example config.json
   ```
 
@@ -67,7 +67,7 @@ Suggestions/PRs welcomed!
   ```shell
   ./headscale serve
   ```
-  
+
 6. Add your first machine
   ```shell
   tailscale up -login-server YOUR_HEADSCALE_URL
@@ -148,15 +148,15 @@ To get a certificate automatically via [Let's Encrypt](https://letsencrypt.org/)
 
 ## Disclaimer
 
-1. We have nothing to do with Tailscale, or Tailscale Inc. 
+1. We have nothing to do with Tailscale, or Tailscale Inc.
 2. The purpose of writing this was to learn how Tailscale works.
-3. ~~I don't use Headscale myself.~~ 
+3. ~~I don't use Headscale myself.~~
 
 
 
-## More on Tailscale 
+## More on Tailscale
 
 - https://tailscale.com/blog/how-tailscale-works/
 - https://tailscale.com/blog/tailscale-key-management/
-- https://tailscale.com/blog/an-unlikely-database-migration/ 
+- https://tailscale.com/blog/an-unlikely-database-migration/
 
