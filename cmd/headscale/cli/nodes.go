@@ -49,12 +49,18 @@ var ListNodesCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error getting namespace: %s", err)
 		}
+		o, _ := cmd.Flags().GetString("output")
 
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
 		machines, err := h.ListMachinesInNamespace(n)
+		if strings.HasPrefix(o, "json") {
+			jsonOutput(machines, err, o)
+			return
+		}
+
 		if err != nil {
 			log.Fatalf("Error getting nodes: %s", err)
 		}
