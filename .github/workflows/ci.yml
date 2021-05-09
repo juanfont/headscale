@@ -77,8 +77,8 @@ jobs:
         go get -u golang.org/x/lint/golint
         sudo apt update
         sudo apt install -y make jq wireguard-tools
-        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.gpg | apt-key add -
-        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.list | tee /etc/apt/sources.list.d/tailscale.list
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.gpg | sudo apt-key add -
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.list | sudo tee /etc/apt/sources.list.d/tailscale.list
 
 
     - name: Run build
