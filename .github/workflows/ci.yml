@@ -107,20 +107,20 @@ jobs:
       run: |
         ./headscale serve &
 
-    - name: Create namespace 
+    - name: Create namespace
       run: |
         ./headscale namespace create test1 -o json-line
 
     - name: Create AuthKey
       run: |
         echo "AUTHKEY=`./headscale -n test1 preauthkey create -o json-line | jq -r '.Key'`" >> $GITHUB_ENV
-    
+
     - name: Register tailscale node
       run: |
-        sudo tailscale up -login-server http://127.0.0.1:8000 -authkey $AUTHKEY  
+        sudo tailscale up -login-server http://127.0.0.1:8000 -authkey $AUTHKEY
 
 
     - NAME: Check if headscale reports the node
+      run: |
         ./headscale -n test1 node list -o json-line | test $(jq length) -eq 5
 
-    
