@@ -91,24 +91,15 @@ jobs:
     - name: Setup ENV
       run: |
         echo "{}" > config.json
-        export SERVER_URL=http://127.0.0.1:8000
-        echo "::set-env name=SERVER_URL::$SERVER_URL"
-        export LISTEN_ADDR=0.0.0.0:8000
-        echo "::set-env name=LISTEN_ADDR::$LISTEN_ADDR"
-        export PRIVATE_KEY_PATH=private.key
-        echo "::set-env name=PRIVATE_KEY_PATH::$PRIVATE_KEY_PATH"
-        export DERP_MAP_PATH=derp.yaml
-        echo "::set-env name=DERP_MAP_PATH::$DERP_MAP_PATH"
-        export DB_HOST=postgres
-        echo "::set-env name=DB_HOST::$DB_HOST"
-        export DB_PORT=5432
-        echo "::set-env name=DB_PORT::$DB_PORT"
-        export DB_NAME=headscale
-        echo "::set-env name=DB_NAME::$DB_NAME"
-        export DB_USER=foo
-        echo "::set-env name=DB_USER::$DB_USER"
-        export DB_PASS=bar
-        echo "::set-env name=DB_PASS::$DB_PASS"
+        echo "SERVER_URL=http://127.0.0.1:8000" >> $GITHUB_ENV
+        echo "LISTEN_ADDR=0.0.0.0:8000" >> $GITHUB_ENV
+        echo "PRIVATE_KEY_PATH=private.key" >> $GITHUB_ENV
+        echo "DERP_MAP_PATH=derp.yaml" >> $GITHUB_ENV
+        echo "DB_HOST=postgres" >> $GITHUB_ENV
+        echo "DB_PORT=5432" >> $GITHUB_ENV
+        echo "DB_NAME=headscale" >> $GITHUB_ENV
+        echo "DB_USER=foo" >> $GITHUB_ENV
+        echo "DB_PASS=bar" >> $GITHUB_ENV
 
     - name: Print version WIP
       run: |
