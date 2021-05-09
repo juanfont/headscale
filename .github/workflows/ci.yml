@@ -101,6 +101,6 @@ jobs:
         echo "DB_USER=foo" >> $GITHUB_ENV
         echo "DB_PASS=bar" >> $GITHUB_ENV
 
-    - name: Print version WIP
+    - name: Create namespace
       run: |
-        ./headscale version
+        ./headscale namespace create test1 -o json-line
