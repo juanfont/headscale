@@ -81,7 +81,8 @@ jobs:
         sudo apt install -y make jq wireguard-tools
         curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.gpg | sudo apt-key add -
         curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.list | sudo tee /etc/apt/sources.list.d/tailscale.list
-
+        sudo apt update
+        sudo apt install tailscale
 
     - name: Run build
       run: make
