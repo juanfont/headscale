@@ -123,5 +123,5 @@ jobs:
 
     - name: Check if headscale reports the node
       run: |
-        ./headscale -n test1 node list -o json-line | test $(jq length) -eq 5
+        ./headscale -n test1 node list -o json-line | test $(jq length) -eq 1
 
