@@ -41,6 +41,34 @@ var CreateNamespaceCmd = &cobra.Command{
 	},
 }
 
+var DestroyNamespaceCmd = &cobra.Command{
+	Use:   "destroy NAME",
+	Short: "Destroys a namespace",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 1 {
+			return fmt.Errorf("Missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		o, _ := cmd.Flags().GetString("output")
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		err = h.DestroyNamespace(args[0])
+		if strings.HasPrefix(o, "json") {
+			JsonOutput(map[string]string{"Result": "Namespace destroyed"}, err, o)
+			return
+		}
+		if err != nil {
+			fmt.Printf("Error destroying namespace: %s\n", err)
+			return
+		}
+		fmt.Printf("Namespace destroyed\n")
+	},
+}
+
 var ListNamespacesCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all the namespaces",

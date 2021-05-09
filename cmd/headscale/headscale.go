@@ -115,6 +115,7 @@ func main() {
 
 	cli.NamespaceCmd.AddCommand(cli.CreateNamespaceCmd)
 	cli.NamespaceCmd.AddCommand(cli.ListNamespacesCmd)
+	cli.NamespaceCmd.AddCommand(cli.DestroyNamespaceCmd)
 
 	cli.NodeCmd.AddCommand(cli.ListNodesCmd)
 	cli.NodeCmd.AddCommand(cli.RegisterCmd)

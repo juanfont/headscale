@@ -1,13 +1,16 @@
 package headscale
 
 import (
-	"fmt"
 	"log"
 	"time"
 
 	"github.com/jinzhu/gorm"
 	"tailscale.com/tailcfg"
 )
+
+const errorNamespaceExists = Error("Namespace already exists")
+const errorNamespaceNotFound = Error("Namespace not found")
+const errorNamespaceNotEmpty = Error("Namespace not empty")
 
 // Namespace is the way Headscale implements the concept of users in Tailscale
 //
@@ -30,7 +33,7 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 
 	n := Namespace{}
 	if err := db.Where("name = ?", name).First(&n).Error; err == nil {
-		return nil, fmt.Errorf("Namespace already exists")
+		return nil, errorNamespaceExists
 	}
 	n.Name = name
 	if err := db.Create(&n).Error; err != nil {
@@ -38,6 +41,37 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 		return nil, err
 	}
 	return &n, nil
+}
+
+// DestroyNamespace destroys a Namespace. Returns error if the Namespace does
+// not exist or if there are machines associated with it.
+func (h *Headscale) DestroyNamespace(name string) error {
+	db, err := h.db()
+	if err != nil {
+		log.Printf("Cannot open DB: %s", err)
+		return err
+	}
+	defer db.Close()
+
+	n, err := h.GetNamespace(name)
+	if err != nil {
+		return errorNamespaceNotFound
+	}
+
+	m, err := h.ListMachinesInNamespace(name)
+	if err != nil {
+		return err
+	}
+	if len(*m) > 0 {
+		return errorNamespaceNotEmpty
+	}
+
+	err = db.Unscoped().Delete(&n).Error
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetNamespace fetches a namespace by name
@@ -51,7 +85,7 @@ func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 
 	n := Namespace{}
 	if db.First(&n, "name = ?", name).RecordNotFound() {
-		return nil, fmt.Errorf("Namespace not found")
+		return nil, errorNamespaceNotFound
 	}
 	return &n, nil
 }
