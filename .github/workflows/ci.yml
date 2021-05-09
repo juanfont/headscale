@@ -18,7 +18,7 @@ jobs:
     # below, but it's still much faster in the end than installing
     # golangci-lint manually in the `Run lint` step.
     - uses: golangci/golangci-lint-action@v2
-    
+
     # Setup Go
     - name: Setup Go
       uses: actions/setup-go@v2
@@ -32,7 +32,7 @@ jobs:
         go get -u golang.org/x/lint/golint
         sudo apt update
         sudo apt install -y make
-        
+
     - name: Run tests
       run: make test
 
@@ -41,4 +41,75 @@ jobs:
 
     - name: Run build
       run: make
-      
+
+  integration:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-20.04
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_DB: headscale
+          POSTGRES_USER: foo
+          POSTGRES_PASSWORD: bar
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: golangci/golangci-lint-action@v2
+
+    # Setup Go
+    - name: Setup Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.16.3' # The Go version to download (if necessary) and use.
+
+    # Install all the dependencies
+    - name: Install dependencies
+      run: |
+        go version
+        go get -u golang.org/x/lint/golint
+        sudo apt update
+        sudo apt install -y make jq wireguard-tools
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.gpg | apt-key add -
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.list | tee /etc/apt/sources.list.d/tailscale.list
+
+
+    - name: Run build
+      run: make
+
+    - name: Generate wireguard keys
+      run: |
+        wg genkey > private.key
+
+    - name: Setup ENV
+      run: |
+        echo "{}" > config.json
+        export SERVER_URL=http://127.0.0.1:8000
+        echo "::set-env name=SERVER_URL::$SERVER_URL"
+        export LISTEN_ADDR=0.0.0.0:8000
+        echo "::set-env name=LISTEN_ADDR::$LISTEN_ADDR"
+        export PRIVATE_KEY_PATH=private.key
+        echo "::set-env name=PRIVATE_KEY_PATH::$PRIVATE_KEY_PATH"
+        export DERP_MAP_PATH=derp.yaml
+        echo "::set-env name=DERP_MAP_PATH::$DERP_MAP_PATH"
+        export DB_HOST=postgres
+        echo "::set-env name=DB_HOST::$DB_HOST"
+        export DB_PORT=5432
+        echo "::set-env name=DB_PORT::$DB_PORT"
+        export DB_NAME=headscale
+        echo "::set-env name=DB_NAME::$DB_NAME"
+        export DB_USER=foo
+        echo "::set-env name=DB_USER::$DB_USER"
+        export DB_PASS=bar
+        echo "::set-env name=DB_PASS::$DB_PASS"
+
+    - name: Print version WIP
+      run: |
+        ./headscale version
