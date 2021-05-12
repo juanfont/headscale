@@ -40,7 +40,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 	<body>
 	<h1>headscale</h1>
 	<p>
-		Run the command below in the headscale server to add this machine to your network:
+		Run the command below on the headscale server to add this machine to your network:
 	</p>
 
 	<p>
