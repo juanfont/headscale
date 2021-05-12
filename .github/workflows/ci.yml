@@ -18,6 +18,8 @@ jobs:
     # below, but it's still much faster in the end than installing
     # golangci-lint manually in the `Run lint` step.
     - uses: golangci/golangci-lint-action@v2
+      with:
+        args: --timeout 2m
     
     # Setup Go
     - name: Setup Go
@@ -29,7 +31,7 @@ jobs:
     - name: Install dependencies
       run: |
         go version
-        go get -u golang.org/x/lint/golint
+        go install golang.org/x/lint/golint@latest
         sudo apt update
         sudo apt install -y make
         
