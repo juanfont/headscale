@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
-	"github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/klauspost/compress/zstd"
+	"gorm.io/datatypes"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/wgengine/wgcfg"
@@ -40,7 +40,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 	<body>
 	<h1>headscale</h1>
 	<p>
-		Run the command below on the headscale server to add this machine to your network:
+		Run the command below in the headscale server to add this machine to your network:
 	</p>
 
 	<p>
@@ -174,13 +174,13 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	defer db.Close()
 	var m Machine
 	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
-		log.Printf("Cannot find machine: %s", err)
+		log.Printf("Cannot fingitd machine: %s", err)
 		return
 	}
 
 	hostinfo, _ := json.Marshal(req.Hostinfo)
 	m.Name = req.Hostinfo.Hostname
-	m.HostInfo = postgres.Jsonb{RawMessage: json.RawMessage(hostinfo)}
+	m.HostInfo = datatypes.JSON(hostinfo)
 	m.DiscoKey = wgcfg.Key(req.DiscoKey).HexString()
 	now := time.Now().UTC()
 
@@ -194,7 +194,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	// before their first real endpoint update.
 	if !req.ReadOnly {
 		endpoints, _ := json.Marshal(req.Endpoints)
-		m.Endpoints = postgres.Jsonb{RawMessage: json.RawMessage(endpoints)}
+		m.Endpoints = datatypes.JSON(endpoints)
 		m.LastSeen = &now
 	}
 	db.Save(&m)

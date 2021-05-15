@@ -3,8 +3,8 @@ package headscale
 import (
 	"encoding/json"
 
-	"github.com/jinzhu/gorm/dialects/postgres"
 	"gopkg.in/check.v1"
+	"gorm.io/datatypes"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
@@ -46,7 +46,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		Registered:     true,
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       postgres.Jsonb{RawMessage: json.RawMessage(hostinfo)},
+		HostInfo:       datatypes.JSON(hostinfo),
 	}
 	db.Save(&m)
 

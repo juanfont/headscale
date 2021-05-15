@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jinzhu/gorm/dialects/postgres"
+	"gorm.io/datatypes"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/wgengine/wgcfg"
@@ -33,9 +33,9 @@ type Machine struct {
 	LastSeen *time.Time
 	Expiry   *time.Time
 
-	HostInfo      postgres.Jsonb
-	Endpoints     postgres.Jsonb
-	EnabledRoutes postgres.Jsonb
+	HostInfo      datatypes.JSON
+	Endpoints     datatypes.JSON
+	EnabledRoutes datatypes.JSON
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -79,7 +79,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	allowedIPs = append(allowedIPs, ip) // we append the node own IP, as it is required by the clients
 
 	routesStr := []string{}
-	if len(m.EnabledRoutes.RawMessage) != 0 {
+	if len(m.EnabledRoutes) != 0 {
 		allwIps, err := m.EnabledRoutes.MarshalJSON()
 		if err != nil {
 			return nil, err
@@ -99,7 +99,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	}
 
 	endpoints := []string{}
-	if len(m.Endpoints.RawMessage) != 0 {
+	if len(m.Endpoints) != 0 {
 		be, err := m.Endpoints.MarshalJSON()
 		if err != nil {
 			return nil, err
@@ -111,7 +111,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	}
 
 	hostinfo := tailcfg.Hostinfo{}
-	if len(m.HostInfo.RawMessage) != 0 {
+	if len(m.HostInfo) != 0 {
 		hi, err := m.HostInfo.MarshalJSON()
 		if err != nil {
 			return nil, err
@@ -198,7 +198,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 // GetHostInfo returns a Hostinfo struct for the machine
 func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 	hostinfo := tailcfg.Hostinfo{}
-	if len(m.HostInfo.RawMessage) != 0 {
+	if len(m.HostInfo) != 0 {
 		hi, err := m.HostInfo.MarshalJSON()
 		if err != nil {
 			return nil, err

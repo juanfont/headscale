@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/jinzhu/gorm/dialects/postgres"
+	"gorm.io/datatypes"
 	"inet.af/netaddr"
 )
 
@@ -49,7 +49,7 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 			}
 
 			routes, _ := json.Marshal([]string{routeStr}) // TODO: only one for the time being, so overwriting the rest
-			m.EnabledRoutes = postgres.Jsonb{RawMessage: json.RawMessage(routes)}
+			m.EnabledRoutes = datatypes.JSON(routes)
 			db.Save(&m)
 			db.Close()
 
