@@ -44,7 +44,7 @@ Suggestions/PRs welcomed!
   make
   ```
 
-2. Get yourself a PostgreSQL DB running (yes, [I know](https://tailscale.com/blog/an-unlikely-database-migration/))
+2. (Optional, you can also use SQLite) Get yourself a PostgreSQL DB running
 
   ```shell
   docker run --name headscale -e POSTGRES_DB=headscale -e \
@@ -55,7 +55,12 @@ Suggestions/PRs welcomed!
   ```shell
   wg genkey > private.key
   wg pubkey < private.key > public.key  # not needed
-  cp config.json.example config.json
+  
+  # Postgres
+  cp config.json.postgres.example config.json
+  # or
+  # SQLite
+  cp config.json.sqlite.example config.json
   ```
 
 4. Create a namespace (equivalent to a user in tailscale.com)
@@ -96,7 +101,7 @@ Alternatively, you can use Auth Keys to register your machines:
 Please bear in mind that all the commands from headscale support adding `-o json` or `-o json-line`  to get a nicely JSON-formatted output.
 
 
-## Configuration reference
+## Configuration reference-v $(pwd):/project -v $(home)/.ivy2:/r
 
 Headscale's configuration file is named `config.json` or `config.yaml`. Headscale will look for it in `/etc/headscale`, `~/.headscale` and finally the directory from where the Headscale binary is executed.
 
