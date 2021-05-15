@@ -5,6 +5,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres" // sql driver
+	_ "github.com/jinzhu/gorm/dialects/sqlite"   // sql driver
 )
 
 const dbVersion = "1"

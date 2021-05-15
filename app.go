@@ -22,6 +22,8 @@ type Config struct {
 	PrivateKeyPath string
 	DerpMap        *tailcfg.DERPMap
 
+	DBtype string
+	DBpath string
 	DBhost string
 	DBport int
 	DBname string
@@ -60,11 +62,22 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		return nil, err
 	}
 	pubKey := privKey.Public()
+
+	var dbString string
+	switch cfg.DBtype {
+	case "postgres":
+		dbString = fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable", cfg.DBhost,
+			cfg.DBport, cfg.DBname, cfg.DBuser, cfg.DBpass)
+	case "sqlite3":
+		dbString = cfg.DBpath
+	default:
+		return nil, errors.New("Unsupported DB")
+	}
+
 	h := Headscale{
-		cfg:    cfg,
-		dbType: "postgres",
-		dbString: fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable", cfg.DBhost,
-			cfg.DBport, cfg.DBname, cfg.DBuser, cfg.DBpass),
+		cfg:        cfg,
+		dbType:     cfg.DBtype,
+		dbString:   dbString,
 		privateKey: privKey,
 		publicKey:  &pubKey,
 	}
