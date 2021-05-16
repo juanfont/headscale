@@ -101,7 +101,7 @@ Alternatively, you can use Auth Keys to register your machines:
 Please bear in mind that all the commands from headscale support adding `-o json` or `-o json-line`  to get a nicely JSON-formatted output.
 
 
-## Configuration reference-v $(pwd):/project -v $(home)/.ivy2:/r
+## Configuration reference
 
 Headscale's configuration file is named `config.json` or `config.yaml`. Headscale will look for it in `/etc/headscale`, `~/.headscale` and finally the directory from where the Headscale binary is executed.
 
