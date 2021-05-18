@@ -27,7 +27,7 @@ func (s *Suite) TearDownSuite(c *check.C) {
 
 }
 
-func (*Suite) TestConfigLoading(c *check.C) {
+func (*Suite) TestPostgresConfigLoading(c *check.C) {
 	tmpDir, err := ioutil.TempDir("", "headscale")
 	if err != nil {
 		c.Fatal(err)
@@ -40,7 +40,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config.json.example"), filepath.Join(tmpDir, "config.json"))
+	err = os.Symlink(filepath.Clean(path+"/../../config.json.postgres.example"), filepath.Join(tmpDir, "config.json"))
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -50,10 +50,43 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	// Test that config file was interpreted correctly
-	c.Assert(viper.GetString("server_url"), check.Equals, "http://192.168.1.12:8000")
+	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8000")
 	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8000")
 	c.Assert(viper.GetString("derp_map_path"), check.Equals, "derp.yaml")
+	c.Assert(viper.GetString("db_type"), check.Equals, "postgres")
 	c.Assert(viper.GetString("db_port"), check.Equals, "5432")
+	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
+	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
+}
+
+func (*Suite) TestSqliteConfigLoading(c *check.C) {
+	tmpDir, err := ioutil.TempDir("", "headscale")
+	if err != nil {
+		c.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	path, err := os.Getwd()
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	// Symlink the example config file
+	err = os.Symlink(filepath.Clean(path+"/../../config.json.sqlite.example"), filepath.Join(tmpDir, "config.json"))
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	// Load example config, it should load without validation errors
+	err = loadConfig(tmpDir)
+	c.Assert(err, check.IsNil)
+
+	// Test that config file was interpreted correctly
+	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8000")
+	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8000")
+	c.Assert(viper.GetString("derp_map_path"), check.Equals, "derp.yaml")
+	c.Assert(viper.GetString("db_type"), check.Equals, "sqlite3")
+	c.Assert(viper.GetString("db_path"), check.Equals, "db.sqlite")
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
 }
@@ -89,7 +122,7 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	fmt.Println(tmp)
 
 	// Check configuration validation errors (2)
-	configYaml = []byte("---\nserver_url: \"http://192.168.1.12:8000\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"")
+	configYaml = []byte("---\nserver_url: \"http://127.0.0.1:8000\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"")
 	writeConfig(c, tmpDir, configYaml)
 	err = loadConfig(tmpDir)
 	c.Assert(err, check.NotNil)

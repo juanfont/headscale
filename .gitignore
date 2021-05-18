@@ -17,3 +17,4 @@
 /headscale
 config.json
 *.key
+/db.sqlite

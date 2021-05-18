@@ -1,0 +1,17 @@
+{
+    "server_url": "http://127.0.0.1:8000",
+    "listen_addr": "0.0.0.0:8000",
+    "private_key_path": "private.key",
+    "derp_map_path": "derp.yaml",
+    "db_type": "postgres",
+    "db_host": "localhost",
+    "db_port": 5432,
+    "db_name": "headscale",
+    "db_user": "foo",
+    "db_pass": "bar",
+    "tls_letsencrypt_hostname": "",
+    "tls_letsencrypt_cache_dir": ".cache",
+    "tls_letsencrypt_challenge_type": "HTTP-01",
+    "tls_cert_path": "",
+    "tls_key_path": ""
+}

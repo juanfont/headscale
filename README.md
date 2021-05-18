@@ -44,7 +44,7 @@ Suggestions/PRs welcomed!
   make
   ```
 
-2. Get yourself a PostgreSQL DB running (yes, [I know](https://tailscale.com/blog/an-unlikely-database-migration/))
+2. (Optional, you can also use SQLite) Get yourself a PostgreSQL DB running
 
   ```shell
   docker run --name headscale -e POSTGRES_DB=headscale -e \
@@ -55,7 +55,12 @@ Suggestions/PRs welcomed!
   ```shell
   wg genkey > private.key
   wg pubkey < private.key > public.key  # not needed
-  cp config.json.example config.json
+
+  # Postgres
+  cp config.json.postgres.example config.json
+  # or
+  # SQLite
+  cp config.json.sqlite.example config.json
   ```
 
 4. Create a namespace (equivalent to a user in tailscale.com)
