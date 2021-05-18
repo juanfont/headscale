@@ -55,7 +55,7 @@ Suggestions/PRs welcomed!
   ```shell
   wg genkey > private.key
   wg pubkey < private.key > public.key  # not needed
-  
+
   # Postgres
   cp config.json.postgres.example config.json
   # or
