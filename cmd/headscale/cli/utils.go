@@ -22,10 +22,10 @@ type ErrorOutput struct {
 func absPath(path string) string {
 	// If a relative path is provided, prefix it with the the directory where
 	// the config file was found.
-	if (path != "") && !strings.HasPrefix(path, "/") {
+	if (path != "") && !strings.HasPrefix(path, string(os.PathSeparator)) {
 		dir, _ := filepath.Split(viper.ConfigFileUsed())
 		if dir != "" {
-			path = dir + "/" + path
+			path = filepath.Join(dir, path)
 		}
 	}
 	return path
