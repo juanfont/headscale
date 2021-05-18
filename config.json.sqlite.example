@@ -4,7 +4,7 @@
     "private_key_path": "private.key",
     "derp_map_path": "derp.yaml",
     "db_type": "sqlite3",
-    "db_path": "./db.sqlite",
+    "db_path": "db.sqlite",
     "tls_letsencrypt_hostname": "",
     "tls_letsencrypt_cache_dir": ".cache",
     "tls_letsencrypt_challenge_type": "HTTP-01",

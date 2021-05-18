@@ -44,7 +44,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		DerpMap:        derpMap,
 
 		DBtype: viper.GetString("db_type"),
-		DBpath: viper.GetString("db_path"),
+		DBpath: absPath(viper.GetString("db_path")),
 		DBhost: viper.GetString("db_host"),
 		DBport: viper.GetInt("db_port"),
 		DBname: viper.GetString("db_name"),
