@@ -18,13 +18,14 @@ type PreAuthKey struct {
 	NamespaceID uint
 	Namespace   Namespace
 	Reusable    bool
+	Ephemeral   bool `gorm:"default:false"`
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
 }
 
 // CreatePreAuthKey creates a new PreAuthKey in a namespace, and returns it
-func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, expiration *time.Time) (*PreAuthKey, error) {
+func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, ephemeral bool, expiration *time.Time) (*PreAuthKey, error) {
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
@@ -48,6 +49,7 @@ func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, expira
 		NamespaceID: n.ID,
 		Namespace:   *n,
 		Reusable:    reusable,
+		Ephemeral:   ephemeral,
 		CreatedAt:   &now,
 		Expiration:  expiration,
 	}
@@ -94,7 +96,7 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 		return nil, errorAuthKeyExpired
 	}
 
-	if pak.Reusable { // we don't need to check if has been used before
+	if pak.Reusable || pak.Ephemeral { // we don't need to check if has been used before
 		return &pak, nil
 	}
 

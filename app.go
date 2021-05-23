@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/acme/autocert"
@@ -17,10 +18,11 @@ import (
 
 // Config contains the initial Headscale configuration
 type Config struct {
-	ServerURL      string
-	Addr           string
-	PrivateKeyPath string
-	DerpMap        *tailcfg.DERPMap
+	ServerURL                      string
+	Addr                           string
+	PrivateKeyPath                 string
+	DerpMap                        *tailcfg.DERPMap
+	EphemeralNodeInactivityTimeout time.Duration
 
 	DBtype string
 	DBpath string
@@ -95,6 +97,51 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
+// ExpireEphemeralNodes deletes ephemeral machine records that have not been
+// seen for longer than h.cfg.EphemeralNodeInactivityTimeout
+func (h *Headscale) ExpireEphemeralNodes(milliSeconds int64) {
+	if milliSeconds == 0 {
+		// For testing
+		h.expireEphemeralNodesWorker()
+		return
+	}
+	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
+	for range ticker.C {
+		h.expireEphemeralNodesWorker()
+	}
+}
+
+func (h *Headscale) expireEphemeralNodesWorker() {
+	db, err := h.db()
+	if err != nil {
+		log.Printf("Cannot open DB: %s", err)
+		return
+	}
+	defer db.Close()
+
+	namespaces, err := h.ListNamespaces()
+	if err != nil {
+		log.Printf("Error listing namespaces: %s", err)
+		return
+	}
+	for _, ns := range *namespaces {
+		machines, err := h.ListMachinesInNamespace(ns.Name)
+		if err != nil {
+			log.Printf("Error listing machines in namespace %s: %s", ns.Name, err)
+			return
+		}
+		for _, m := range *machines {
+			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral && time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
+				log.Printf("[%s] Ephemeral client removed from database\n", m.Name)
+				err = db.Unscoped().Delete(m).Error
+				if err != nil {
+					log.Printf("[%s] 🤮 Cannot delete ephemeral machine from the database: %s", m.Name, err)
+				}
+			}
+		}
+	}
+}
+
 // Serve launches a GIN server with the Headscale API
 func (h *Headscale) Serve() error {
 	r := gin.Default()
@@ -105,7 +152,7 @@ func (h *Headscale) Serve() error {
 	var err error
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			fmt.Println("WARNING: listening with TLS but ServerURL does not start with https://")
+			log.Println("WARNING: listening with TLS but ServerURL does not start with https://")
 		}
 
 		m := autocert.Manager{
@@ -136,12 +183,12 @@ func (h *Headscale) Serve() error {
 		}
 	} else if h.cfg.TLSCertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
-			fmt.Println("WARNING: listening without TLS but ServerURL does not start with http://")
+			log.Println("WARNING: listening without TLS but ServerURL does not start with http://")
 		}
 		err = r.Run(h.cfg.Addr)
 	} else {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			fmt.Println("WARNING: listening with TLS but ServerURL does not start with https://")
+			log.Println("WARNING: listening with TLS but ServerURL does not start with https://")
 		}
 		err = r.RunTLS(h.cfg.Addr, h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 	}

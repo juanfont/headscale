@@ -9,13 +9,11 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-var _ = check.Suite(&Suite{})
-
 func (s *Suite) TestGetRoutes(c *check.C) {
 	n, err := h.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, nil)
+	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
 	db, err := h.db()

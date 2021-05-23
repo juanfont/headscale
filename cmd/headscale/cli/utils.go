@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/juanfont/headscale"
 	"github.com/spf13/viper"
@@ -37,11 +38,21 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		log.Printf("Could not load DERP servers map file: %s", err)
 	}
 
+	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
+	// to avoid races
+	minInactivityTimeout, _ := time.ParseDuration("65s")
+	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
+		err = fmt.Errorf("ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n", viper.GetString("ephemeral_node_inactivity_timeout"), minInactivityTimeout)
+		return nil, err
+	}
+
 	cfg := headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		DerpMap:        derpMap,
+
+		EphemeralNodeInactivityTimeout: viper.GetDuration("ephemeral_node_inactivity_timeout"),
 
 		DBtype: viper.GetString("db_type"),
 		DBpath: absPath(viper.GetString("db_path")),

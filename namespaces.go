@@ -119,7 +119,7 @@ func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
 	defer db.Close()
 
 	machines := []Machine{}
-	if err := db.Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
+	if err := db.Preload("AuthKey").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
 		return nil, err
 	}
 	return &machines, nil

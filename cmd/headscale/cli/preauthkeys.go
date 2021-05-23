@@ -45,10 +45,11 @@ var ListPreAuthKeys = &cobra.Command{
 				expiration = k.Expiration.Format("2006-01-02 15:04:05")
 			}
 			fmt.Printf(
-				"key: %s, namespace: %s, reusable: %v, expiration: %s, created_at: %s\n",
+				"key: %s, namespace: %s, reusable: %v, ephemeral: %v, expiration: %s, created_at: %s\n",
 				k.Key,
 				k.Namespace.Name,
 				k.Reusable,
+				k.Ephemeral,
 				expiration,
 				k.CreatedAt.Format("2006-01-02 15:04:05"),
 			)
@@ -71,6 +72,7 @@ var CreatePreAuthKeyCmd = &cobra.Command{
 			log.Fatalf("Error initializing: %s", err)
 		}
 		reusable, _ := cmd.Flags().GetBool("reusable")
+		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 
 		e, _ := cmd.Flags().GetString("expiration")
 		var expiration *time.Time
@@ -83,7 +85,7 @@ var CreatePreAuthKeyCmd = &cobra.Command{
 			expiration = &exp
 		}
 
-		k, err := h.CreatePreAuthKey(n, reusable, expiration)
+		k, err := h.CreatePreAuthKey(n, reusable, ephemeral, expiration)
 		if strings.HasPrefix(o, "json") {
 			JsonOutput(k, err, o)
 			return

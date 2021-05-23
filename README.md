@@ -22,7 +22,7 @@ Headscale implements this coordination server.
 - [x] ~~Multiuser~~ Namespace support
 - [x] Basic routing (advertise & accept)
 - [ ] Share nodes between ~~users~~ namespaces
-- [x] Node registration via pre-auth keys
+- [x] Node registration via pre-auth keys (including reusable keys and ephemeral node support)
 - [X] JSON-formatted output
 - [ ] ACLs
 - [ ] DNS
@@ -97,6 +97,7 @@ Alternatively, you can use Auth Keys to register your machines:
    tailscale up -login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
    ```
 
+If you create an authkey with the `--ephemeral` flag, that key will create ephemeral nodes. This implies that `--reusable` is true.
 
 Please bear in mind that all the commands from headscale support adding `-o json` or `-o json-line`  to get a nicely JSON-formatted output.
 
@@ -123,6 +124,12 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
 ```
 
 `derp_map_path` is the path to the [DERP](https://pkg.go.dev/tailscale.com/derp) map file. If the path is relative, it will be interpreted as relative to the directory the configuration file was read from.
+
+```
+    "ephemeral_node_inactivity_timeout": "30m",
+```
+
+`ephemeral_node_inactivity_timeout` is the timeout after which inactive ephemeral node records will be deleted from the database. The default is 30 minutes. This value must be higher than 65 seconds (the keepalive timeout for the HTTP long poll is 60 seconds, plus a few seconds to avoid race conditions).
 
 ```
     "db_host": "localhost",

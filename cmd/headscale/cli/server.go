@@ -17,6 +17,7 @@ var ServeCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
+		go h.ExpireEphemeralNodes(5000)
 		err = h.Serve()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
