@@ -93,7 +93,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	// We do have the updated key!
 	if m.NodeKey == wgcfg.Key(req.NodeKey).HexString() {
 		if m.Registered {
-			log.Println("Client is registered and we have the current key. All clear to /map")
+			log.Printf("[%s] Client is registered and we have the current key. All clear to /map\n", m.Name)
 			resp.AuthURL = ""
 			resp.User = *m.Namespace.toUser()
 			resp.MachineAuthorized = true
@@ -174,7 +174,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	defer db.Close()
 	var m Machine
 	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
-		log.Printf("Cannot fingitd machine: %s", err)
+		log.Printf("Ignoring request, cannot find machine with key %s", mKey.HexString())
 		return
 	}
 
@@ -243,29 +243,34 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			log.Printf("[%s] Sending data (%d bytes)", m.Name, len(data))
 			_, err := w.Write(data)
 			if err != nil {
-				fmt.Printf("[%s] 🤮 Cannot write data: %s", m.Name, err)
+				log.Printf("[%s] 🤮 Cannot write data: %s", m.Name, err)
 			}
+			now := time.Now().UTC()
+			m.LastSeen = &now
+			db.Save(&m)
 			return true
 
 		case <-update:
 			log.Printf("[%s] Received a request for update", m.Name)
 			data, err := h.getMapResponse(mKey, req, m)
 			if err != nil {
-				fmt.Printf("[%s] 🤮 Cannot get the poll response: %s", m.Name, err)
+				log.Printf("[%s] 🤮 Cannot get the poll response: %s", m.Name, err)
 			}
 			_, err = w.Write(*data)
 			if err != nil {
-				fmt.Printf("[%s] 🤮 Cannot write the poll response: %s", m.Name, err)
+				log.Printf("[%s] 🤮 Cannot write the poll response: %s", m.Name, err)
 			}
 			return true
 
 		case <-c.Request.Context().Done():
 			log.Printf("[%s] 😥 The client has closed the connection", m.Name)
+			now := time.Now().UTC()
+			m.LastSeen = &now
+			db.Save(&m)
 			h.pollMu.Lock()
 			cancelKeepAlive <- []byte{}
 			delete(h.clientsPolling, m.ID)
 			h.pollMu.Unlock()
-
 			return false
 
 		}

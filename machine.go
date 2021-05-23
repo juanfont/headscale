@@ -131,7 +131,7 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 
 	n := tailcfg.Node{
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
-		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permantent
+		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostinfo.Hostname,
 		User:       tailcfg.UserID(m.NamespaceID),
 		Key:        tailcfg.NodeKey(nKey),

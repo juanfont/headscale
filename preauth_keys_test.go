@@ -7,14 +7,14 @@ import (
 )
 
 func (*Suite) TestCreatePreAuthKey(c *check.C) {
-	_, err := h.CreatePreAuthKey("bogus", true, nil)
+	_, err := h.CreatePreAuthKey("bogus", true, false, nil)
 
 	c.Assert(err, check.NotNil)
 
 	n, err := h.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	k, err := h.CreatePreAuthKey(n.Name, true, nil)
+	k, err := h.CreatePreAuthKey(n.Name, true, false, nil)
 	c.Assert(err, check.IsNil)
 
 	// Did we get a valid key?
@@ -40,7 +40,7 @@ func (*Suite) TestExpiredPreAuthKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	now := time.Now()
-	pak, err := h.CreatePreAuthKey(n.Name, true, &now)
+	pak, err := h.CreatePreAuthKey(n.Name, true, false, &now)
 	c.Assert(err, check.IsNil)
 
 	p, err := h.checkKeyValidity(pak.Key)
@@ -58,7 +58,7 @@ func (*Suite) TestValidateKeyOk(c *check.C) {
 	n, err := h.CreateNamespace("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, true, nil)
+	pak, err := h.CreatePreAuthKey(n.Name, true, false, nil)
 	c.Assert(err, check.IsNil)
 
 	p, err := h.checkKeyValidity(pak.Key)
@@ -70,7 +70,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	n, err := h.CreateNamespace("test4")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, nil)
+	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
 	db, err := h.db()
@@ -100,7 +100,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	n, err := h.CreateNamespace("test5")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, true, nil)
+	pak, err := h.CreatePreAuthKey(n.Name, true, false, nil)
 	c.Assert(err, check.IsNil)
 
 	db, err := h.db()
@@ -130,10 +130,51 @@ func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
 	n, err := h.CreateNamespace("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, nil)
+	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
 	p, err := h.checkKeyValidity(pak.Key)
 	c.Assert(err, check.IsNil)
 	c.Assert(p.ID, check.Equals, pak.ID)
+}
+
+func (*Suite) TestEphemeralKey(c *check.C) {
+	n, err := h.CreateNamespace("test7")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, false, true, nil)
+	c.Assert(err, check.IsNil)
+
+	db, err := h.db()
+	if err != nil {
+		c.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Now()
+	m := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Name:           "testest",
+		NamespaceID:    n.ID,
+		Registered:     true,
+		RegisterMethod: "authKey",
+		LastSeen:       &now,
+		AuthKeyID:      uint(pak.ID),
+	}
+	db.Save(&m)
+
+	_, err = h.checkKeyValidity(pak.Key)
+	// Ephemeral keys are by definition reusable
+	c.Assert(err, check.IsNil)
+
+	_, err = h.GetMachine("test7", "testest")
+	c.Assert(err, check.IsNil)
+
+	h.ExpireEphemeralNodes(0)
+
+	// The machine record should have been deleted
+	_, err = h.GetMachine("test7", "testest")
+	c.Assert(err, check.NotNil)
 }

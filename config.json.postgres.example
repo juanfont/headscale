@@ -3,6 +3,7 @@
     "listen_addr": "0.0.0.0:8000",
     "private_key_path": "private.key",
     "derp_map_path": "derp.yaml",
+    "ephemeral_node_inactivity_timeout": "30m",
     "db_type": "postgres",
     "db_host": "localhost",
     "db_port": 5432,
