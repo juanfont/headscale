@@ -100,11 +100,6 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 // ExpireEphemeralNodes deletes ephemeral machine records that have not been
 // seen for longer than h.cfg.EphemeralNodeInactivityTimeout
 func (h *Headscale) ExpireEphemeralNodes(milliSeconds int64) {
-	if milliSeconds == 0 {
-		// For testing
-		h.expireEphemeralNodesWorker()
-		return
-	}
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 	for range ticker.C {
 		h.expireEphemeralNodesWorker()

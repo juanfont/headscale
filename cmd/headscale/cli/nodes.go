@@ -67,7 +67,11 @@ var ListNodesCmd = &cobra.Command{
 
 		fmt.Printf("name\t\tlast seen\t\tephemeral\n")
 		for _, m := range *machines {
-			fmt.Printf("%s\t%s\t%t\n", m.Name, m.LastSeen.Format("2006-01-02 15:04:05"), m.AuthKey.Ephemeral)
+			var ephemeral bool
+			if m.AuthKey != nil && m.AuthKey.Ephemeral {
+				ephemeral = true
+			}
+			fmt.Printf("%s\t%s\t%t\n", m.Name, m.LastSeen.Format("2006-01-02 15:04:05"), ephemeral)
 		}
 
 	},
