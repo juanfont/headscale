@@ -172,7 +172,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	_, err = h.GetMachine("test7", "testest")
 	c.Assert(err, check.IsNil)
 
-	h.ExpireEphemeralNodes(0)
+	h.expireEphemeralNodesWorker()
 
 	// The machine record should have been deleted
 	_, err = h.GetMachine("test7", "testest")
