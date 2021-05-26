@@ -227,9 +227,13 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		c.Data(200, "application/json; charset=utf-8", *data)
 		return
 	}
-	if req.OmitPeers {
-		log.Printf("[%s] Client is starting up. Ready to receive the peers", m.Name)
+	if req.OmitPeers && !req.Stream {
+		log.Printf("[%s] Client sent endpoint update and is ok with a response without peer list", m.Name)
 		c.Data(200, "application/json; charset=utf-8", *data)
+		return
+	} else if req.OmitPeers && req.Stream {
+		log.Printf("[%s] Warning, ignoring request, don't know how to handle it", m.Name)
+		c.String(http.StatusBadRequest, "")
 		return
 	}
 
