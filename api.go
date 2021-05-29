@@ -51,7 +51,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 
 	</body>
 	</html>
-	
+
 	`, mKeyStr)))
 }
 
@@ -215,25 +215,44 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[%s] sending initial map", m.Name)
-	pollData <- *data
-
 	// We update our peers if the client is not sending ReadOnly in the MapRequest
 	// so we don't distribute its initial request (it comes with
 	// empty endpoints to peers)
-	if !req.ReadOnly {
-		peers, _ := h.getPeers(m)
-		h.pollMu.Lock()
-		for _, p := range *peers {
-			log.Printf("[%s] notifying peer %s (%s)", m.Name, p.Name, p.Addresses[0])
-			if pUp, ok := h.clientsPolling[uint64(p.ID)]; ok {
-				pUp <- []byte{}
-			} else {
-				log.Printf("[%s] Peer %s does not appear to be polling", m.Name, p.Name)
-			}
-		}
-		h.pollMu.Unlock()
+
+	// Details on the protocol can be found in https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L696
+	log.Printf("[%s] ReadOnly=%t   OmitPeers=%t    Stream=%t", m.Name, req.ReadOnly, req.OmitPeers, req.Stream)
+
+	if req.ReadOnly {
+		log.Printf("[%s] Client is starting up. Asking for DERP map", m.Name)
+		c.Data(200, "application/json; charset=utf-8", *data)
+		return
 	}
+	if req.OmitPeers && !req.Stream {
+		log.Printf("[%s] Client sent endpoint update and is ok with a response without peer list", m.Name)
+		c.Data(200, "application/json; charset=utf-8", *data)
+		return
+	} else if req.OmitPeers && req.Stream {
+		log.Printf("[%s] Warning, ignoring request, don't know how to handle it", m.Name)
+		c.String(http.StatusBadRequest, "")
+		return
+	}
+
+	log.Printf("[%s] Client is ready to access the tailnet", m.Name)
+	log.Printf("[%s] Sending initial map", m.Name)
+	pollData <- *data
+
+	log.Printf("[%s] Notifying peers", m.Name)
+	peers, _ := h.getPeers(m)
+	h.pollMu.Lock()
+	for _, p := range *peers {
+		log.Printf("[%s] Notifying peer %s (%s)", m.Name, p.Name, p.Addresses[0])
+		if pUp, ok := h.clientsPolling[uint64(p.ID)]; ok {
+			pUp <- []byte{}
+		} else {
+			log.Printf("[%s] Peer %s does not appear to be polling", m.Name, p.Name)
+		}
+	}
+	h.pollMu.Unlock()
 
 	go h.keepAlive(cancelKeepAlive, pollData, mKey, req, m)
 
@@ -290,6 +309,7 @@ func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgc
 				log.Printf("Error generating the keep alive msg: %s", err)
 				return
 			}
+			log.Printf("[%s] Sending keepalive", m.Name)
 			pollData <- *data
 			h.pollMu.Unlock()
 			time.Sleep(60 * time.Second)
