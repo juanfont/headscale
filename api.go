@@ -136,7 +136,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 	// The NodeKey we have matches OldNodeKey, which means this is a refresh after an key expiration
 	if m.NodeKey == wgcfg.Key(req.OldNodeKey).HexString() {
-		log.Printf("[%s] We have the NodeKey in the database. This is a key refresh", m.Name)
+		log.Printf("[%s] We have the OldNodeKey in the database. This is a key refresh", m.Name)
 		m.NodeKey = wgcfg.Key(req.NodeKey).HexString()
 		db.Save(&m)
 
