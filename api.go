@@ -467,5 +467,4 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgcfg.Key, 
 	}
 	c.Data(200, "application/json; charset=utf-8", respBody)
 	log.Printf("[%s] Successfully authenticated via AuthKey", m.Name)
-	return
 }
