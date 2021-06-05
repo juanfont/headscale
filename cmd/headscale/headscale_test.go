@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/spf13/viper"
 	"gopkg.in/check.v1"
 )
@@ -46,7 +47,7 @@ func (*Suite) TestPostgresConfigLoading(c *check.C) {
 	}
 
 	// Load example config, it should load without validation errors
-	err = loadConfig(tmpDir)
+	err = cli.LoadConfig(tmpDir)
 	c.Assert(err, check.IsNil)
 
 	// Test that config file was interpreted correctly
@@ -78,7 +79,7 @@ func (*Suite) TestSqliteConfigLoading(c *check.C) {
 	}
 
 	// Load example config, it should load without validation errors
-	err = loadConfig(tmpDir)
+	err = cli.LoadConfig(tmpDir)
 	c.Assert(err, check.IsNil)
 
 	// Test that config file was interpreted correctly
@@ -112,7 +113,7 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	writeConfig(c, tmpDir, configYaml)
 
 	// Check configuration validation errors (1)
-	err = loadConfig(tmpDir)
+	err = cli.LoadConfig(tmpDir)
 	c.Assert(err, check.NotNil)
 	// check.Matches can not handle multiline strings
 	tmp := strings.ReplaceAll(err.Error(), "\n", "***")
@@ -124,7 +125,7 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	// Check configuration validation errors (2)
 	configYaml = []byte("---\nserver_url: \"http://127.0.0.1:8000\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"")
 	writeConfig(c, tmpDir, configYaml)
-	err = loadConfig(tmpDir)
+	err = cli.LoadConfig(tmpDir)
 	c.Assert(err, check.NotNil)
 	c.Assert(err, check.ErrorMatches, "Fatal config error: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, listen_addr must end in :443.*")
 }
