@@ -81,51 +81,65 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		return
 	}
 	defer db.Close()
-	var m Machine
-	resp := tailcfg.RegisterResponse{}
 
+	var m Machine
 	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
 		log.Println("New Machine!")
-		h.handleNewServer(c, db, mKey, req)
+		m = Machine{
+			Expiry:     &req.Expiry,
+			MachineKey: mKey.HexString(),
+			Name:       req.Hostinfo.Hostname,
+			NodeKey:    wgcfg.Key(req.NodeKey).HexString(),
+		}
+		if err := db.Create(&m).Error; err != nil {
+			log.Printf("Could not create row: %s", err)
+			return
+		}
+	}
+
+	if !m.Registered && req.Auth.AuthKey != "" {
+		h.handleAuthKey(c, db, mKey, req, m)
 		return
 	}
 
-	// We do have the updated key!
+	resp := tailcfg.RegisterResponse{}
+
+	// We have the updated key!
 	if m.NodeKey == wgcfg.Key(req.NodeKey).HexString() {
 		if m.Registered {
-			log.Printf("[%s] Client is registered and we have the current key. All clear to /map\n", m.Name)
+			log.Printf("[%s] Client is registered and we have the current NodeKey. All clear to /map", m.Name)
 			resp.AuthURL = ""
-			resp.User = *m.Namespace.toUser()
 			resp.MachineAuthorized = true
+			resp.User = *m.Namespace.toUser()
 			respBody, err := encode(resp, &mKey, h.privateKey)
 			if err != nil {
 				log.Printf("Cannot encode message: %s", err)
-				c.String(http.StatusInternalServerError, "Extremely sad!")
+				c.String(http.StatusInternalServerError, "")
 				return
 			}
 			c.Data(200, "application/json; charset=utf-8", respBody)
 			return
 		}
 
-		log.Println("Hey! Not registered. Not asking for key rotation. Send a passive-aggressive authurl to register")
+		log.Printf("[%s] Not registered and not NodeKey rotation. Sending a authurl to register", m.Name)
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
 			h.cfg.ServerURL, mKey.HexString())
 		respBody, err := encode(resp, &mKey, h.privateKey)
 		if err != nil {
 			log.Printf("Cannot encode message: %s", err)
-			c.String(http.StatusInternalServerError, "Extremely sad!")
+			c.String(http.StatusInternalServerError, "")
 			return
 		}
 		c.Data(200, "application/json; charset=utf-8", respBody)
 		return
-
 	}
 
-	// We dont have the updated key in the DB. Lets try with the old one.
+	// The NodeKey we have matches OldNodeKey, which means this is a refresh after an key expiration
 	if m.NodeKey == wgcfg.Key(req.OldNodeKey).HexString() {
-		log.Println("Key rotation!")
+		log.Printf("[%s] We have the OldNodeKey in the database. This is a key refresh", m.Name)
 		m.NodeKey = wgcfg.Key(req.NodeKey).HexString()
 		db.Save(&m)
+
 		resp.AuthURL = ""
 		resp.User = *m.Namespace.toUser()
 		respBody, err := encode(resp, &mKey, h.privateKey)
@@ -138,8 +152,32 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		return
 	}
 
-	log.Println("We dont know anything about the new key. WTF")
-	// spew.Dump(req)
+	// We arrive here after a client is restarted without finalizing the authentication flow or
+	// when headscale is stopped in the middle of the auth process.
+	if m.Registered {
+		log.Printf("[%s] The node is sending us a new NodeKey, but machine is registered. All clear for /map", m.Name)
+		resp.AuthURL = ""
+		resp.MachineAuthorized = true
+		resp.User = *m.Namespace.toUser()
+		respBody, err := encode(resp, &mKey, h.privateKey)
+		if err != nil {
+			log.Printf("Cannot encode message: %s", err)
+			c.String(http.StatusInternalServerError, "")
+			return
+		}
+		c.Data(200, "application/json; charset=utf-8", respBody)
+		return
+	}
+	log.Printf("[%s] The node is sending us a new NodeKey, sending auth url", m.Name)
+	resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
+		h.cfg.ServerURL, mKey.HexString())
+	respBody, err := encode(resp, &mKey, h.privateKey)
+	if err != nil {
+		log.Printf("Cannot encode message: %s", err)
+		c.String(http.StatusInternalServerError, "")
+		return
+	}
+	c.Data(200, "application/json; charset=utf-8", respBody)
 }
 
 // PollNetMapHandler takes care of /machine/:id/map
@@ -390,61 +428,37 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgcfg.Key, req tailcfg.MapReque
 	return &data, nil
 }
 
-func (h *Headscale) handleNewServer(c *gin.Context, db *gorm.DB, idKey wgcfg.Key, req tailcfg.RegisterRequest) {
-	m := Machine{
-		MachineKey: idKey.HexString(),
-		NodeKey:    wgcfg.Key(req.NodeKey).HexString(),
-		Expiry:     &req.Expiry,
-		Name:       req.Hostinfo.Hostname,
-	}
-	if err := db.Create(&m).Error; err != nil {
-		log.Printf("Could not create row: %s", err)
-		return
-	}
-
+func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgcfg.Key, req tailcfg.RegisterRequest, m Machine) {
 	resp := tailcfg.RegisterResponse{}
-
-	if req.Auth.AuthKey != "" {
-		pak, err := h.checkKeyValidity(req.Auth.AuthKey)
-		if err != nil {
-			resp.MachineAuthorized = false
-			respBody, err := encode(resp, &idKey, h.privateKey)
-			if err != nil {
-				log.Printf("Cannot encode message: %s", err)
-				c.String(http.StatusInternalServerError, "")
-				return
-			}
-			c.Data(200, "application/json; charset=utf-8", respBody)
-			return
-		}
-		ip, err := h.getAvailableIP()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		m.IPAddress = ip.String()
-		m.NamespaceID = pak.NamespaceID
-		m.AuthKeyID = uint(pak.ID)
-		m.RegisterMethod = "authKey"
-		m.Registered = true
-		db.Save(&m)
-
-		resp.MachineAuthorized = true
-		resp.User = *pak.Namespace.toUser()
+	pak, err := h.checkKeyValidity(req.Auth.AuthKey)
+	if err != nil {
+		resp.MachineAuthorized = false
 		respBody, err := encode(resp, &idKey, h.privateKey)
 		if err != nil {
 			log.Printf("Cannot encode message: %s", err)
-			c.String(http.StatusInternalServerError, "Extremely sad!")
+			c.String(http.StatusInternalServerError, "")
 			return
 		}
 		c.Data(200, "application/json; charset=utf-8", respBody)
+		log.Printf("[%s] Failed authentication via AuthKey", m.Name)
+		return
+	}
+	ip, err := h.getAvailableIP()
+	if err != nil {
+		log.Println(err)
 		return
 	}
 
-	resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-		h.cfg.ServerURL, idKey.HexString())
+	m.AuthKeyID = uint(pak.ID)
+	m.IPAddress = ip.String()
+	m.NamespaceID = pak.NamespaceID
+	m.NodeKey = wgcfg.Key(req.NodeKey).HexString() // we update it just in case
+	m.Registered = true
+	m.RegisterMethod = "authKey"
+	db.Save(&m)
 
+	resp.MachineAuthorized = true
+	resp.User = *pak.Namespace.toUser()
 	respBody, err := encode(resp, &idKey, h.privateKey)
 	if err != nil {
 		log.Printf("Cannot encode message: %s", err)
@@ -452,4 +466,5 @@ func (h *Headscale) handleNewServer(c *gin.Context, db *gorm.DB, idKey wgcfg.Key
 		return
 	}
 	c.Data(200, "application/json; charset=utf-8", respBody)
+	log.Printf("[%s] Successfully authenticated via AuthKey", m.Name)
 }
