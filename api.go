@@ -241,7 +241,6 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	update := make(chan []byte, 1)
 	cancelKeepAlive := make(chan []byte, 1)
 	defer close(pollData)
-	defer close(update)
 	defer close(cancelKeepAlive)
 	h.pollMu.Lock()
 	h.clientsPolling[m.ID] = update
@@ -283,8 +282,9 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	peers, _ := h.getPeers(m)
 	h.pollMu.Lock()
 	for _, p := range *peers {
-		log.Printf("[%s] Notifying peer %s (%s)", m.Name, p.Name, p.Addresses[0])
-		if pUp, ok := h.clientsPolling[uint64(p.ID)]; ok {
+		pUp, ok := h.clientsPolling[uint64(p.ID)]
+		if ok {
+			log.Printf("[%s] Notifying peer %s (%s)", m.Name, p.Name, p.Addresses[0])
 			pUp <- []byte{}
 		} else {
 			log.Printf("[%s] Peer %s does not appear to be polling", m.Name, p.Name)
@@ -311,22 +311,23 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			log.Printf("[%s] Received a request for update", m.Name)
 			data, err := h.getMapResponse(mKey, req, m)
 			if err != nil {
-				log.Printf("[%s] 🤮 Cannot get the poll response: %s", m.Name, err)
+				log.Printf("[%s] Could not get the map update: %s", m.Name, err)
 			}
 			_, err = w.Write(*data)
 			if err != nil {
-				log.Printf("[%s] 🤮 Cannot write the poll response: %s", m.Name, err)
+				log.Printf("[%s] Could not write the map response: %s", m.Name, err)
 			}
 			return true
 
 		case <-c.Request.Context().Done():
-			log.Printf("[%s] 😥 The client has closed the connection", m.Name)
+			log.Printf("[%s] The client has closed the connection", m.Name)
 			now := time.Now().UTC()
 			m.LastSeen = &now
 			db.Save(&m)
 			h.pollMu.Lock()
 			cancelKeepAlive <- []byte{}
 			delete(h.clientsPolling, m.ID)
+			close(update)
 			h.pollMu.Unlock()
 			return false
 
