@@ -320,11 +320,11 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			return true
 
 		case <-c.Request.Context().Done():
-			h.pollMu.Lock()
 			log.Printf("[%s] The client has closed the connection", m.Name)
 			now := time.Now().UTC()
 			m.LastSeen = &now
 			db.Save(&m)
+			h.pollMu.Lock()
 			cancelKeepAlive <- []byte{}
 			delete(h.clientsPolling, m.ID)
 			close(update)
