@@ -41,3 +41,5 @@ jobs:
     - name: Run lint
       run: make lint
 
+    - name: Run build
+      run: make
