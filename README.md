@@ -39,10 +39,8 @@ Suggestions/PRs welcomed!
 
 ## Running it
 
-1. Compile the headscale binary
-  ```shell
-  make
-  ```
+1. Download the Headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your PATH
+ 
 
 2. (Optional, you can also use SQLite) Get yourself a PostgreSQL DB running
 
@@ -65,12 +63,12 @@ Suggestions/PRs welcomed!
 
 4. Create a namespace (equivalent to a user in tailscale.com)
   ```shell
-  ./headscale namespace create myfirstnamespace
+  headscale namespace create myfirstnamespace
   ```
 
 5. Run the server
   ```shell
-  ./headscale serve
+  headscale serve
   ```
 
 6. Add your first machine
@@ -82,14 +80,14 @@ Suggestions/PRs welcomed!
 
 8. In the server, register your machine to a namespace with the CLI
   ```shell
-  ./headscale -n myfirstnamespace node register YOURMACHINEKEY
+  headscale -n myfirstnamespace node register YOURMACHINEKEY
   ```
 
 Alternatively, you can use Auth Keys to register your machines:
 
 1. Create an authkey
     ```shell
-    ./headscale -n myfirstnamespace preauthkey create --reusable --expiration 24h
+    headscale -n myfirstnamespace preauthkey create --reusable --expiration 24h
     ```
 
 2. Use the authkey from your machine to register it
@@ -162,7 +160,6 @@ To get a certificate automatically via [Let's Encrypt](https://letsencrypt.org/)
 
 1. We have nothing to do with Tailscale, or Tailscale Inc.
 2. The purpose of writing this was to learn how Tailscale works.
-3. ~~I don't use Headscale myself.~~
 
 
 
