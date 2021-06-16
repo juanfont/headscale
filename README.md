@@ -61,7 +61,7 @@ Suggestions/PRs welcomed!
   cp config.json.sqlite.example config.json
   ```
 
-4. Create a namespace (equivalent to a user in tailscale.com)
+4. Create a namespace (a namespace is a 'tailnet', a group of Tailscale nodes that can talk to each other)
   ```shell
   headscale namespace create myfirstnamespace
   ```
