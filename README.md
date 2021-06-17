@@ -71,14 +71,21 @@ Suggestions/PRs welcomed!
   headscale serve
   ```
 
-6. Add your first machine
+6. If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
+ ```shell
+ systemctl stop tailscaled
+ rm -fr /var/lib/tailscale
+ systemctl start tailscaled 
+ ```
+
+7. Add your first machine
   ```shell
   tailscale up -login-server YOUR_HEADSCALE_URL
   ```
 
-7. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
+8. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
 
-8. In the server, register your machine to a namespace with the CLI
+9. In the server, register your machine to a namespace with the CLI
   ```shell
   headscale -n myfirstnamespace node register YOURMACHINEKEY
   ```
