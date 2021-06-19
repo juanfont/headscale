@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -71,7 +72,11 @@ var ListNodesCmd = &cobra.Command{
 			if m.AuthKey != nil && m.AuthKey.Ephemeral {
 				ephemeral = true
 			}
-			fmt.Printf("%s\t%s\t%t\n", m.Name, m.LastSeen.Format("2006-01-02 15:04:05"), ephemeral)
+			var lastSeen time.Time
+			if m.LastSeen != nil {
+				lastSeen = *m.LastSeen
+			}
+			fmt.Printf("%s\t%s\t%t\n", m.Name, lastSeen.Format("2006-01-02 15:04:05"), ephemeral)
 		}
 
 	},
