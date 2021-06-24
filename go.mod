@@ -6,7 +6,6 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/gin-gonic/gin v1.7.1
 	github.com/hako/durafmt v0.0.0-20210316092057-3a2c319c1acd
-	github.com/jinzhu/gorm v1.9.16
 	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/klauspost/compress v1.12.2
 	github.com/kr/text v0.2.0 // indirect
@@ -22,6 +21,9 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	gorm.io/datatypes v1.0.1
+	gorm.io/driver/postgres v1.0.8
+	gorm.io/driver/sqlite v1.1.4
+	gorm.io/gorm v1.21.6
 	inet.af/netaddr v0.0.0-20210511181906-37180328850c
 	tailscale.com v1.6.0
 

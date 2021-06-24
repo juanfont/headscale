@@ -5,8 +5,6 @@ import (
 	"os"
 	"testing"
 
-	_ "github.com/jinzhu/gorm/dialects/sqlite" // sql driver
-
 	"gopkg.in/check.v1"
 )
 

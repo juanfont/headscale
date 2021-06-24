@@ -20,7 +20,6 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	defer db.Close()
 
 	_, err = h.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
