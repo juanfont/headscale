@@ -50,9 +50,13 @@ func (h *Headscale) db() (*gorm.DB, error) {
 	var err error
 	switch h.dbType {
 	case "sqlite3":
-		db, err = gorm.Open(sqlite.Open(h.dbString), &gorm.Config{})
+		db, err = gorm.Open(sqlite.Open(h.dbString), &gorm.Config{
+			DisableForeignKeyConstraintWhenMigrating: true,
+		})
 	case "postgres":
-		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{})
+		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
+			DisableForeignKeyConstraintWhenMigrating: true,
+		})
 	}
 
 	if err != nil {
