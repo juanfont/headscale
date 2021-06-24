@@ -51,7 +51,6 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 			routes, _ := json.Marshal([]string{routeStr}) // TODO: only one for the time being, so overwriting the rest
 			m.EnabledRoutes = datatypes.JSON(routes)
 			db.Save(&m)
-			db.Close()
 
 			// THIS IS COMPLETELY USELESS.
 			// The peers map is stored in memory in the server process.

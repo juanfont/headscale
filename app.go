@@ -112,7 +112,6 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 		log.Printf("Cannot open DB: %s", err)
 		return
 	}
-	defer db.Close()
 
 	namespaces, err := h.ListNamespaces()
 	if err != nil {

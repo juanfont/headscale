@@ -1,10 +1,11 @@
 package headscale
 
 import (
+	"errors"
 	"log"
 	"time"
 
-	"github.com/jinzhu/gorm"
+	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
@@ -29,7 +30,6 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 		log.Printf("Cannot open DB: %s", err)
 		return nil, err
 	}
-	defer db.Close()
 
 	n := Namespace{}
 	if err := db.Where("name = ?", name).First(&n).Error; err == nil {
@@ -51,7 +51,6 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		log.Printf("Cannot open DB: %s", err)
 		return err
 	}
-	defer db.Close()
 
 	n, err := h.GetNamespace(name)
 	if err != nil {
@@ -66,8 +65,7 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		return errorNamespaceNotEmpty
 	}
 
-	err = db.Unscoped().Delete(&n).Error
-	if err != nil {
+	if result := db.Unscoped().Delete(&n); result.Error != nil {
 		return err
 	}
 
@@ -81,10 +79,9 @@ func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 		log.Printf("Cannot open DB: %s", err)
 		return nil, err
 	}
-	defer db.Close()
 
 	n := Namespace{}
-	if db.First(&n, "name = ?", name).RecordNotFound() {
+	if result := db.First(&n, "name = ?", name); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, errorNamespaceNotFound
 	}
 	return &n, nil
@@ -97,7 +94,6 @@ func (h *Headscale) ListNamespaces() (*[]Namespace, error) {
 		log.Printf("Cannot open DB: %s", err)
 		return nil, err
 	}
-	defer db.Close()
 	namespaces := []Namespace{}
 	if err := db.Find(&namespaces).Error; err != nil {
 		return nil, err
@@ -116,7 +112,6 @@ func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
 		log.Printf("Cannot open DB: %s", err)
 		return nil, err
 	}
-	defer db.Close()
 
 	machines := []Machine{}
 	if err := db.Preload("AuthKey").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
@@ -136,7 +131,6 @@ func (h *Headscale) SetMachineNamespace(m *Machine, namespaceName string) error 
 		log.Printf("Cannot open DB: %s", err)
 		return err
 	}
-	defer db.Close()
 	m.NamespaceID = n.ID
 	db.Save(&m)
 	return nil

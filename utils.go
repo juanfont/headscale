@@ -18,6 +18,7 @@ import (
 	mathrand "math/rand"
 
 	"golang.org/x/crypto/nacl/box"
+	"gorm.io/gorm"
 	"tailscale.com/wgengine/wgcfg"
 )
 
@@ -81,7 +82,6 @@ func (h *Headscale) getAvailableIP() (*net.IP, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 	i := 0
 	for {
 		ip, err := getRandomIP()
@@ -89,7 +89,7 @@ func (h *Headscale) getAvailableIP() (*net.IP, error) {
 			return nil, err
 		}
 		m := Machine{}
-		if db.First(&m, "ip_address = ?", ip.String()).RecordNotFound() {
+		if result := db.First(&m, "ip_address = ?", ip.String()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return ip, nil
 		}
 		i++
