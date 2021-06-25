@@ -11,7 +11,7 @@ import (
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/wgengine/wgcfg"
+	"tailscale.com/types/wgkey"
 )
 
 // Machine is a Headscale client
@@ -23,7 +23,7 @@ type Machine struct {
 	IPAddress   string
 	Name        string
 	NamespaceID uint
-	Namespace   Namespace
+	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
 
 	Registered     bool // temp
 	RegisterMethod string
@@ -48,18 +48,18 @@ func (m Machine) isAlreadyRegistered() bool {
 }
 
 func (m Machine) toNode() (*tailcfg.Node, error) {
-	nKey, err := wgcfg.ParseHexKey(m.NodeKey)
+	nKey, err := wgkey.ParseHex(m.NodeKey)
 	if err != nil {
 		return nil, err
 	}
-	mKey, err := wgcfg.ParseHexKey(m.MachineKey)
+	mKey, err := wgkey.ParseHex(m.MachineKey)
 	if err != nil {
 		return nil, err
 	}
 
 	var discoKey tailcfg.DiscoKey
 	if m.DiscoKey != "" {
-		dKey, err := wgcfg.ParseHexKey(m.DiscoKey)
+		dKey, err := wgkey.ParseHex(m.DiscoKey)
 		if err != nil {
 			return nil, err
 		}
