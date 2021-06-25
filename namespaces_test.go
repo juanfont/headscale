@@ -34,7 +34,6 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	defer db.Close()
 	m := Machine{
 		ID:             0,
 		MachineKey:     "foo",

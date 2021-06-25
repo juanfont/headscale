@@ -3,9 +3,9 @@ package headscale
 import (
 	"errors"
 
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres" // sql driver
-	_ "github.com/jinzhu/gorm/dialects/sqlite"   // sql driver
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 const dbVersion = "1"
@@ -17,30 +17,53 @@ type KV struct {
 }
 
 func (h *Headscale) initDB() error {
-	db, err := gorm.Open(h.dbType, h.dbString)
+	db, err := h.db()
 	if err != nil {
 		return err
 	}
 	if h.dbType == "postgres" {
 		db.Exec("create extension if not exists \"uuid-ossp\";")
 	}
-	db.AutoMigrate(&Machine{})
-	db.AutoMigrate(&KV{})
-	db.AutoMigrate(&Namespace{})
-	db.AutoMigrate(&PreAuthKey{})
-	db.Close()
+	err = db.AutoMigrate(&Machine{})
+	if err != nil {
+		return err
+	}
+	err = db.AutoMigrate(&KV{})
+	if err != nil {
+		return err
+	}
+	err = db.AutoMigrate(&Namespace{})
+	if err != nil {
+		return err
+	}
+	err = db.AutoMigrate(&PreAuthKey{})
+	if err != nil {
+		return err
+	}
 
 	err = h.setValue("db_version", dbVersion)
 	return err
 }
 
 func (h *Headscale) db() (*gorm.DB, error) {
-	db, err := gorm.Open(h.dbType, h.dbString)
+	var db *gorm.DB
+	var err error
+	switch h.dbType {
+	case "sqlite3":
+		db, err = gorm.Open(sqlite.Open(h.dbString), &gorm.Config{
+			DisableForeignKeyConstraintWhenMigrating: true,
+		})
+	case "postgres":
+		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
+			DisableForeignKeyConstraintWhenMigrating: true,
+		})
+	}
+
 	if err != nil {
 		return nil, err
 	}
 	if h.dbDebug {
-		db.LogMode(true)
+		db.Debug()
 	}
 	return db, nil
 }
@@ -50,9 +73,8 @@ func (h *Headscale) getValue(key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer db.Close()
 	var row KV
-	if db.First(&row, "key = ?", key).RecordNotFound() {
+	if result := db.First(&row, "key = ?", key); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return "", errors.New("not found")
 	}
 	return row.Value, nil
@@ -67,7 +89,6 @@ func (h *Headscale) setValue(key string, value string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
 	_, err = h.getValue(key)
 	if err == nil {
 		db.Model(&kv).Where("key = ?", key).Update("value", value)

@@ -77,7 +77,6 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	defer db.Close()
 	m := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -107,7 +106,6 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	defer db.Close()
 	m := Machine{
 		ID:             1,
 		MachineKey:     "foo",
@@ -149,7 +147,6 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	defer db.Close()
 	now := time.Now()
 	m := Machine{
 		ID:             0,

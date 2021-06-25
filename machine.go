@@ -159,7 +159,6 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 		log.Printf("Cannot open DB: %s", err)
 		return nil, err
 	}
-	defer db.Close()
 
 	machines := []Machine{}
 	if err = db.Where("namespace_id = ? AND machine_key <> ? AND registered",

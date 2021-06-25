@@ -3,8 +3,11 @@ package headscale
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 const errorAuthKeyNotFound = Error("AuthKey not found")
@@ -36,7 +39,6 @@ func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, epheme
 		log.Printf("Cannot open DB: %s", err)
 		return nil, err
 	}
-	defer db.Close()
 
 	now := time.Now().UTC()
 	kstr, err := h.generateKey()
@@ -69,7 +71,6 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 		log.Printf("Cannot open DB: %s", err)
 		return nil, err
 	}
-	defer db.Close()
 
 	keys := []PreAuthKey{}
 	if err := db.Preload("Namespace").Where(&PreAuthKey{NamespaceID: n.ID}).Find(&keys).Error; err != nil {
@@ -85,10 +86,9 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
 	pak := PreAuthKey{}
-	if db.Preload("Namespace").First(&pak, "key = ?", k).RecordNotFound() {
+	if result := db.Preload("Namespace").First(&pak, "key = ?", k); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, errorAuthKeyNotFound
 	}
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 
+	"gorm.io/gorm"
 	"tailscale.com/wgengine/wgcfg"
 )
 
@@ -22,9 +23,8 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 		log.Printf("Cannot open DB: %s", err)
 		return nil, err
 	}
-	defer db.Close()
 	m := Machine{}
-	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
+	if result := db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, errors.New("Machine not found")
 	}
 

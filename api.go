@@ -3,6 +3,7 @@ package headscale
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,9 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/gorm"
 	"github.com/klauspost/compress/zstd"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/wgengine/wgcfg"
@@ -80,10 +81,9 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		c.String(http.StatusInternalServerError, ":(")
 		return
 	}
-	defer db.Close()
 
 	var m Machine
-	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
+	if result := db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Println("New Machine!")
 		m = Machine{
 			Expiry:     &req.Expiry,
@@ -209,9 +209,8 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		log.Printf("Cannot open DB: %s", err)
 		return
 	}
-	defer db.Close()
 	var m Machine
-	if db.First(&m, "machine_key = ?", mKey.HexString()).RecordNotFound() {
+	if result := db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Printf("Ignoring request, cannot find machine with key %s", mKey.HexString())
 		return
 	}
