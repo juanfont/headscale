@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/crypto/nacl/box"
 	"gorm.io/gorm"
-	"tailscale.com/wgengine/wgcfg"
+	"tailscale.com/types/wgkey"
 )
 
 // Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
@@ -27,11 +27,11 @@ type Error string
 
 func (e Error) Error() string { return string(e) }
 
-func decode(msg []byte, v interface{}, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) error {
+func decode(msg []byte, v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) error {
 	return decodeMsg(msg, v, pubKey, privKey)
 }
 
-func decodeMsg(msg []byte, v interface{}, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) error {
+func decodeMsg(msg []byte, v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) error {
 	decrypted, err := decryptMsg(msg, pubKey, privKey)
 	if err != nil {
 		return err
@@ -43,7 +43,7 @@ func decodeMsg(msg []byte, v interface{}, pubKey *wgcfg.Key, privKey *wgcfg.Priv
 	return nil
 }
 
-func decryptMsg(msg []byte, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) ([]byte, error) {
+func decryptMsg(msg []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, error) {
 	var nonce [24]byte
 	if len(msg) < len(nonce)+1 {
 		return nil, fmt.Errorf("response missing nonce, len=%d", len(msg))
@@ -59,7 +59,7 @@ func decryptMsg(msg []byte, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) ([]byt
 	return decrypted, nil
 }
 
-func encode(v interface{}, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) ([]byte, error) {
+func encode(v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func encode(v interface{}, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) ([]byte
 	return encodeMsg(b, pubKey, privKey)
 }
 
-func encodeMsg(b []byte, pubKey *wgcfg.Key, privKey *wgcfg.PrivateKey) ([]byte, error) {
+func encodeMsg(b []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, error) {
 	var nonce [24]byte
 	if _, err := io.ReadFull(rand.Reader, nonce[:]); err != nil {
 		panic(err)

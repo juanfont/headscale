@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/wgengine/wgcfg"
+	"tailscale.com/types/wgkey"
 )
 
 // KeyHandler provides the Headscale pub key
@@ -61,7 +61,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	body, _ := io.ReadAll(c.Request.Body)
 	mKeyStr := c.Param("id")
-	mKey, err := wgcfg.ParseHexKey(mKeyStr)
+	mKey, err := wgkey.ParseHex(mKeyStr)
 	if err != nil {
 		log.Printf("Cannot parse machine key: %s", err)
 		c.String(http.StatusInternalServerError, "Sad!")
@@ -89,7 +89,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Expiry:     &req.Expiry,
 			MachineKey: mKey.HexString(),
 			Name:       req.Hostinfo.Hostname,
-			NodeKey:    wgcfg.Key(req.NodeKey).HexString(),
+			NodeKey:    wgkey.Key(req.NodeKey).HexString(),
 		}
 		if err := db.Create(&m).Error; err != nil {
 			log.Printf("Could not create row: %s", err)
@@ -105,7 +105,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	resp := tailcfg.RegisterResponse{}
 
 	// We have the updated key!
-	if m.NodeKey == wgcfg.Key(req.NodeKey).HexString() {
+	if m.NodeKey == wgkey.Key(req.NodeKey).HexString() {
 		if m.Registered {
 			log.Printf("[%s] Client is registered and we have the current NodeKey. All clear to /map", m.Name)
 			resp.AuthURL = ""
@@ -135,9 +135,9 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	}
 
 	// The NodeKey we have matches OldNodeKey, which means this is a refresh after an key expiration
-	if m.NodeKey == wgcfg.Key(req.OldNodeKey).HexString() {
+	if m.NodeKey == wgkey.Key(req.OldNodeKey).HexString() {
 		log.Printf("[%s] We have the OldNodeKey in the database. This is a key refresh", m.Name)
-		m.NodeKey = wgcfg.Key(req.NodeKey).HexString()
+		m.NodeKey = wgkey.Key(req.NodeKey).HexString()
 		db.Save(&m)
 
 		resp.AuthURL = ""
@@ -192,7 +192,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	body, _ := io.ReadAll(c.Request.Body)
 	mKeyStr := c.Param("id")
-	mKey, err := wgcfg.ParseHexKey(mKeyStr)
+	mKey, err := wgkey.ParseHex(mKeyStr)
 	if err != nil {
 		log.Printf("Cannot parse client key: %s", err)
 		return
@@ -218,7 +218,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	hostinfo, _ := json.Marshal(req.Hostinfo)
 	m.Name = req.Hostinfo.Hostname
 	m.HostInfo = datatypes.JSON(hostinfo)
-	m.DiscoKey = wgcfg.Key(req.DiscoKey).HexString()
+	m.DiscoKey = wgkey.Key(req.DiscoKey).HexString()
 	now := time.Now().UTC()
 
 	// From Tailscale client:
@@ -334,7 +334,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	})
 }
 
-func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgcfg.Key, req tailcfg.MapRequest, m Machine) {
+func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgkey.Key, req tailcfg.MapRequest, m Machine) {
 	for {
 		select {
 		case <-cancel:
@@ -355,7 +355,7 @@ func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgc
 	}
 }
 
-func (h *Headscale) getMapResponse(mKey wgcfg.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
+func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
 	node, err := m.toNode()
 	if err != nil {
 		log.Printf("Cannot convert to node: %s", err)
@@ -376,7 +376,6 @@ func (h *Headscale) getMapResponse(mKey wgcfg.Key, req tailcfg.MapRequest, m Mac
 		PacketFilter: tailcfg.FilterAllowAll,
 		DERPMap:      h.cfg.DerpMap,
 		UserProfiles: []tailcfg.UserProfile{},
-		Roles:        []tailcfg.Role{},
 	}
 
 	var respBody []byte
@@ -402,7 +401,7 @@ func (h *Headscale) getMapResponse(mKey wgcfg.Key, req tailcfg.MapRequest, m Mac
 	return &data, nil
 }
 
-func (h *Headscale) getMapKeepAliveResponse(mKey wgcfg.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
+func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
 	resp := tailcfg.MapResponse{
 		KeepAlive: true,
 	}
@@ -428,7 +427,7 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgcfg.Key, req tailcfg.MapReque
 	return &data, nil
 }
 
-func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgcfg.Key, req tailcfg.RegisterRequest, m Machine) {
+func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, req tailcfg.RegisterRequest, m Machine) {
 	resp := tailcfg.RegisterResponse{}
 	pak, err := h.checkKeyValidity(req.Auth.AuthKey)
 	if err != nil {
@@ -452,7 +451,7 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgcfg.Key, 
 	m.AuthKeyID = uint(pak.ID)
 	m.IPAddress = ip.String()
 	m.NamespaceID = pak.NamespaceID
-	m.NodeKey = wgcfg.Key(req.NodeKey).HexString() // we update it just in case
+	m.NodeKey = wgkey.Key(req.NodeKey).HexString() // we update it just in case
 	m.Registered = true
 	m.RegisterMethod = "authKey"
 	db.Save(&m)

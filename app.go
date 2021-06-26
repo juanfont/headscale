@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/acme/autocert"
 	"tailscale.com/tailcfg"
-	"tailscale.com/wgengine/wgcfg"
+	"tailscale.com/types/wgkey"
 )
 
 // Config contains the initial Headscale configuration
@@ -46,8 +46,8 @@ type Headscale struct {
 	dbString   string
 	dbType     string
 	dbDebug    bool
-	publicKey  *wgcfg.Key
-	privateKey *wgcfg.PrivateKey
+	publicKey  *wgkey.Key
+	privateKey *wgkey.Private
 
 	pollMu         sync.Mutex
 	clientsPolling map[uint64]chan []byte // this is by all means a hackity hack
@@ -59,7 +59,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	if err != nil {
 		return nil, err
 	}
-	privKey, err := wgcfg.ParsePrivateKey(string(content))
+	privKey, err := wgkey.ParsePrivate(string(content))
 	if err != nil {
 		return nil, err
 	}

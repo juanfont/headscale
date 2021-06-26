@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"gorm.io/gorm"
-	"tailscale.com/wgengine/wgcfg"
+	"tailscale.com/types/wgkey"
 )
 
 // RegisterMachine is executed from the CLI to register a new Machine using its MachineKey
@@ -14,7 +14,7 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 	if err != nil {
 		return nil, err
 	}
-	mKey, err := wgcfg.ParseHexKey(key)
+	mKey, err := wgkey.ParseHex(key)
 	if err != nil {
 		return nil, err
 	}

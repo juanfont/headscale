@@ -144,7 +144,6 @@ func (n *Namespace) toUser() *tailcfg.User {
 		ProfilePicURL: "",
 		Domain:        "",
 		Logins:        []tailcfg.LoginID{},
-		Roles:         []tailcfg.RoleID{},
 		Created:       time.Time{},
 	}
 	return &u
