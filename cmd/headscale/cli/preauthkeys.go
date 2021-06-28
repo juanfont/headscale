@@ -11,7 +11,7 @@ import (
 )
 
 var PreauthkeysCmd = &cobra.Command{
-	Use:   "preauthkey",
+	Use:   "preauthkeys",
 	Short: "Handle the preauthkeys in Headscale",
 }
 

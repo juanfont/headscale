@@ -9,7 +9,7 @@ import (
 )
 
 var NamespaceCmd = &cobra.Command{
-	Use:   "namespace",
+	Use:   "namespaces",
 	Short: "Manage the namespaces of Headscale",
 }
 
