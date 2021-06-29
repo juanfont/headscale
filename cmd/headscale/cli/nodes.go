@@ -9,6 +9,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var NodeCmd = &cobra.Command{
+	Use:   "nodes",
+	Short: "Manage the nodes of Headscale",
+}
+
 var RegisterCmd = &cobra.Command{
 	Use:   "register machineID",
 	Short: "Registers a machine to your network",
@@ -80,9 +85,4 @@ var ListNodesCmd = &cobra.Command{
 		}
 
 	},
-}
-
-var NodeCmd = &cobra.Command{
-	Use:   "node",
-	Short: "Manage the nodes of Headscale",
 }
