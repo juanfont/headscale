@@ -10,28 +10,27 @@ Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](
 
 Everything in Tailscale is Open Source, except the GUI clients for proprietary OS (Windows and macOS/iOS), and the 'coordination/control server'.
 
-The control server works as an exchange point of cryptographic public keys for the nodes in the Tailscale network. It also assigns the IP addresses of the clients, creates the boundaries between each user, enables sharing machines between users, and exposes the advertised routes of your nodes.
+The control server works as an exchange point of Wireguard public keys for the nodes in the Tailscale network. It also assigns the IP addresses of the clients, creates the boundaries between each user, enables sharing machines between users, and exposes the advertised routes of your nodes.
 
 Headscale implements this coordination server.
 
 ## Status
 
-- [x] Basic functionality (nodes can communicate with each other)
+- [x] Base functionality (nodes can communicate with each other)
 - [x] Node registration through the web flow
 - [x] Network changes are relied to the nodes
-- [x] ~~Multiuser~~ Namespace support
-- [x] Basic routing (advertise & accept)
-- [ ] Share nodes between ~~users~~ namespaces
-- [x] Node registration via pre-auth keys (including reusable keys and ephemeral node support)
+- [x] ~~Multiuser/multitailnet~~ Namespace support
+- [x] Routing (advertise & accept, including exit nodes)
+- [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
 - [X] JSON-formatted output
-- [ ] ACLs
+- [ ] (✨ WIP) ACLs
+- [ ] Share nodes between ~~users~~ namespaces 
 - [ ] DNS
 
-... and probably lots of stuff missing
 
 ## Roadmap 🤷
 
-Basic multiuser support (multinamespace, actually) is now implemented. No node sharing or ACLs between namespaces yet though...
+We are now working on adding ACLs https://tailscale.com/kb/1018/acls
 
 Suggestions/PRs welcomed!
 
