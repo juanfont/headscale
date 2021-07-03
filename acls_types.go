@@ -3,6 +3,7 @@ package headscale
 import (
 	"strings"
 
+	"github.com/tailscale/hujson"
 	"inet.af/netaddr"
 )
 
@@ -22,17 +23,35 @@ type ACL struct {
 
 type Groups map[string][]string
 
-type Hosts map[string]string
+type Hosts map[string]netaddr.IPPrefix
 
-type TagOwners struct {
-	TagMontrealWebserver []string `json:"tag:montreal-webserver"`
-	TagAPIServer         []string `json:"tag:api-server"`
-}
+type TagOwners map[string][]string
 
 type ACLTest struct {
 	User  string   `json:"User"`
 	Allow []string `json:"Allow"`
 	Deny  []string `json:"Deny,omitempty"`
+}
+
+func (h *Hosts) UnmarshalJSON(data []byte) error {
+	hosts := Hosts{}
+	hs := make(map[string]string)
+	err := hujson.Unmarshal(data, &hs)
+	if err != nil {
+		return err
+	}
+	for k, v := range hs {
+		if !strings.Contains(v, "/") {
+			v = v + "/32"
+		}
+		prefix, err := netaddr.ParseIPPrefix(v)
+		if err != nil {
+			return err
+		}
+		hosts[k] = prefix
+	}
+	*h = hosts
+	return nil
 }
 
 // IsZero is perhaps a bit naive here
@@ -41,19 +60,4 @@ func (p ACLPolicy) IsZero() bool {
 		return true
 	}
 	return false
-}
-
-func (p ACLPolicy) GetHosts() (*map[string]netaddr.IPPrefix, error) {
-	hosts := make(map[string]netaddr.IPPrefix)
-	for k, v := range p.Hosts {
-		if !strings.Contains(v, "/") {
-			v = v + "/32"
-		}
-		prefix, err := netaddr.ParseIPPrefix(v)
-		if err != nil {
-			return nil, err
-		}
-		hosts[k] = prefix
-	}
-	return &hosts, nil
 }

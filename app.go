@@ -49,6 +49,8 @@ type Headscale struct {
 	publicKey  *wgkey.Key
 	privateKey *wgkey.Private
 
+	aclPolicy *ACLPolicy
+
 	pollMu         sync.Mutex
 	clientsPolling map[uint64]chan []byte // this is by all means a hackity hack
 }
