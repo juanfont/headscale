@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/tailscale/hujson"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -82,8 +81,6 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 			DstPorts: destPorts,
 		})
 	}
-	// fmt.Println(rules)
-	spew.Dump(rules)
 
 	return &rules, nil
 }

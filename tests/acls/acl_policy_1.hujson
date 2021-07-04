@@ -20,12 +20,11 @@
         // Everyone in the montreal-admins or global-admins group are
         // allowed to tag servers as montreal-webserver.
         "tag:montreal-webserver": [
-            "group:montreal-admins",
-            "group:global-admins",
+            "group:example",
         ],
         // Only a few admins are allowed to create API servers.
-        "tag:api-server": [
-            "group:global-admins",
+        "tag:production": [
+            "group:example",
             "president@example.com",
         ],
     },
@@ -38,7 +37,7 @@
             "Action": "accept",
             "Users": [
                 "group:example2",
-                "192.168.1.1"
+                "192.168.1.0/24"
             ],
             "Ports": [
                 "*:22,3389",
@@ -62,8 +61,7 @@
         {
             "Action": "accept",
             "Users": [
-                "example-host-2",
-                "192.168.1.0/24"
+                "example-host-2", 
             ],
             "Ports": [
                 "example-host-1:*",
