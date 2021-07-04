@@ -30,10 +30,6 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	db, err := h.db()
-	if err != nil {
-		c.Fatal(err)
-	}
 	m := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -45,7 +41,7 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	err = h.DestroyNamespace("test")
 	c.Assert(err, check.Equals, errorNamespaceNotEmpty)

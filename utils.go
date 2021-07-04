@@ -78,10 +78,6 @@ func encodeMsg(b []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, err
 }
 
 func (h *Headscale) getAvailableIP() (*net.IP, error) {
-	db, err := h.db()
-	if err != nil {
-		return nil, err
-	}
 	i := 0
 	for {
 		ip, err := getRandomIP()
@@ -89,7 +85,7 @@ func (h *Headscale) getAvailableIP() (*net.IP, error) {
 			return nil, err
 		}
 		m := Machine{}
-		if result := db.First(&m, "ip_address = ?", ip.String()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		if result := h.db.First(&m, "ip_address = ?", ip.String()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return ip, nil
 		}
 		i++

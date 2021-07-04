@@ -2,7 +2,6 @@ package headscale
 
 import (
 	"errors"
-	"log"
 
 	"gorm.io/gorm"
 	"tailscale.com/types/wgkey"
@@ -18,13 +17,9 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 	if err != nil {
 		return nil, err
 	}
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return nil, err
-	}
+
 	m := Machine{}
-	if result := db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, errors.New("Machine not found")
 	}
 
@@ -40,6 +35,6 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 	m.NamespaceID = ns.ID
 	m.Registered = true
 	m.RegisterMethod = "cli"
-	db.Save(&m)
+	h.db.Save(&m)
 	return &m, nil
 }

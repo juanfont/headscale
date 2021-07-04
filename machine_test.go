@@ -11,11 +11,6 @@ func (s *Suite) TestGetMachine(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	db, err := h.db()
-	if err != nil {
-		c.Fatal(err)
-	}
-
 	_, err = h.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
@@ -30,7 +25,7 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	m1, err := h.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
