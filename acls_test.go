@@ -58,12 +58,21 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 	c.Assert(rules, check.IsNil)
 }
 
-func (s *Suite) TestRuleGeneration(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/acl_policy_1.hujson")
+func (s *Suite) TestBasicRule(c *check.C) {
+	err := h.LoadPolicy("./tests/acls/acl_policy_basic_1.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
 	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-
+	c.Assert(rules, check.IsNil)
 }
+
+// func (s *Suite) TestRuleGeneration(c *check.C) {
+// 	err := h.LoadPolicy("./tests/acls/acl_policy_1.hujson")
+// 	c.Assert(err, check.IsNil)
+
+// 	rules, err := h.generateACLRules()
+// 	c.Assert(err, check.IsNil)
+// 	c.Assert(rules, check.NotNil)
+
+// }
