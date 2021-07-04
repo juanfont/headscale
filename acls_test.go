@@ -5,18 +5,18 @@ import (
 )
 
 func (s *Suite) TestWrongPath(c *check.C) {
-	err := h.LoadAclPolicy("asdfg")
+	err := h.LoadACLPolicy("asdfg")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestBrokenHuJson(c *check.C) {
-	err := h.LoadAclPolicy("./tests/acls/broken.hujson")
+	err := h.LoadACLPolicy("./tests/acls/broken.hujson")
 	c.Assert(err, check.NotNil)
 
 }
 
 func (s *Suite) TestInvalidPolicyHuson(c *check.C) {
-	err := h.LoadAclPolicy("./tests/acls/invalid.hujson")
+	err := h.LoadACLPolicy("./tests/acls/invalid.hujson")
 	c.Assert(err, check.NotNil)
 	c.Assert(err, check.Equals, errorEmptyPolicy)
 }
@@ -36,13 +36,13 @@ func (s *Suite) TestParseInvalidCIDR(c *check.C) {
 }
 
 func (s *Suite) TestCheckLoaded(c *check.C) {
-	err := h.LoadAclPolicy("./tests/acls/acl_policy_1.hujson")
+	err := h.LoadACLPolicy("./tests/acls/acl_policy_1.hujson")
 	c.Assert(err, check.IsNil)
 	c.Assert(h.aclPolicy, check.NotNil)
 }
 
 func (s *Suite) TestValidCheckParsedHosts(c *check.C) {
-	err := h.LoadAclPolicy("./tests/acls/acl_policy_1.hujson")
+	err := h.LoadACLPolicy("./tests/acls/acl_policy_1.hujson")
 	c.Assert(err, check.IsNil)
 	c.Assert(h.aclPolicy, check.NotNil)
 	c.Assert(h.aclPolicy.IsZero(), check.Equals, false)
@@ -50,7 +50,7 @@ func (s *Suite) TestValidCheckParsedHosts(c *check.C) {
 }
 
 func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
-	err := h.LoadAclPolicy("./tests/acls/acl_policy_invalid.hujson")
+	err := h.LoadACLPolicy("./tests/acls/acl_policy_invalid.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -59,7 +59,7 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 }
 
 func (s *Suite) TestBasicRule(c *check.C) {
-	err := h.LoadAclPolicy("./tests/acls/acl_policy_basic_1.hujson")
+	err := h.LoadACLPolicy("./tests/acls/acl_policy_basic_1.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -68,7 +68,7 @@ func (s *Suite) TestBasicRule(c *check.C) {
 }
 
 func (s *Suite) TestPortRange(c *check.C) {
-	err := h.LoadAclPolicy("./tests/acls/acl_policy_basic_range.hujson")
+	err := h.LoadACLPolicy("./tests/acls/acl_policy_basic_range.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -82,7 +82,7 @@ func (s *Suite) TestPortRange(c *check.C) {
 }
 
 func (s *Suite) TestPortWildcard(c *check.C) {
-	err := h.LoadAclPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
+	err := h.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -126,7 +126,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	}
 	db.Save(&m)
 
-	err = h.LoadAclPolicy("./tests/acls/acl_policy_basic_namespace_as_user.hujson")
+	err = h.LoadACLPolicy("./tests/acls/acl_policy_basic_namespace_as_user.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -171,7 +171,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	}
 	db.Save(&m)
 
-	err = h.LoadAclPolicy("./tests/acls/acl_policy_basic_groups.hujson")
+	err = h.LoadACLPolicy("./tests/acls/acl_policy_basic_groups.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()

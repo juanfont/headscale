@@ -22,7 +22,8 @@ const errorInvalidTag = Error("invalid tag")
 const errorInvalidNamespace = Error("invalid namespace")
 const errorInvalidPortFormat = Error("invalid port format")
 
-func (h *Headscale) LoadAclPolicy(path string) error {
+// LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules
+func (h *Headscale) LoadACLPolicy(path string) error {
 	policyFile, err := os.Open(path)
 	if err != nil {
 		return err
@@ -35,6 +36,9 @@ func (h *Headscale) LoadAclPolicy(path string) error {
 		return err
 	}
 	err = hujson.Unmarshal(b, &policy)
+	if err != nil {
+		return err
+	}
 	if policy.IsZero() {
 		return errorEmptyPolicy
 	}
@@ -61,7 +65,7 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 		srcIPs := []string{}
 		for j, u := range a.Users {
 			fmt.Printf("acl %d, user %d: ", i, j)
-			srcs, err := h.generateAclPolicySrcIP(u)
+			srcs, err := h.generateACLPolicySrcIP(u)
 			fmt.Printf("  ->  %s\n", err)
 			if err != nil {
 				return nil, err
@@ -73,7 +77,7 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 		destPorts := []tailcfg.NetPortRange{}
 		for j, d := range a.Ports {
 			fmt.Printf("acl %d, port %d: ", i, j)
-			dests, err := h.generateAclPolicyDestPorts(d)
+			dests, err := h.generateACLPolicyDestPorts(d)
 			fmt.Printf("  ->  %s\n", err)
 			if err != nil {
 				return nil, err
@@ -90,11 +94,11 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 	return &rules, nil
 }
 
-func (h *Headscale) generateAclPolicySrcIP(u string) (*[]string, error) {
+func (h *Headscale) generateACLPolicySrcIP(u string) (*[]string, error) {
 	return h.expandAlias(u)
 }
 
-func (h *Headscale) generateAclPolicyDestPorts(d string) (*[]tailcfg.NetPortRange, error) {
+func (h *Headscale) generateACLPolicyDestPorts(d string) (*[]tailcfg.NetPortRange, error) {
 	tokens := strings.Split(d, ":")
 	if len(tokens) < 2 || len(tokens) > 3 {
 		return nil, errorInvalidPortFormat
