@@ -10,5 +10,6 @@
     "tls_letsencrypt_cache_dir": ".cache",
     "tls_letsencrypt_challenge_type": "HTTP-01",
     "tls_cert_path": "",
-    "tls_key_path": ""
+    "tls_key_path": "",
+    "acl_policy_path": ""
 }
