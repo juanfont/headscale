@@ -73,10 +73,6 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	db, err := h.db()
-	if err != nil {
-		c.Fatal(err)
-	}
 	m := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -88,7 +84,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	p, err := h.checkKeyValidity(pak.Key)
 	c.Assert(err, check.Equals, errorAuthKeyNotReusableAlreadyUsed)
@@ -102,10 +98,6 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, true, false, nil)
 	c.Assert(err, check.IsNil)
 
-	db, err := h.db()
-	if err != nil {
-		c.Fatal(err)
-	}
 	m := Machine{
 		ID:             1,
 		MachineKey:     "foo",
@@ -117,7 +109,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	p, err := h.checkKeyValidity(pak.Key)
 	c.Assert(err, check.IsNil)
@@ -143,10 +135,6 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, false, true, nil)
 	c.Assert(err, check.IsNil)
 
-	db, err := h.db()
-	if err != nil {
-		c.Fatal(err)
-	}
 	now := time.Now()
 	m := Machine{
 		ID:             0,
@@ -160,7 +148,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 		LastSeen:       &now,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	_, err = h.checkKeyValidity(pak.Key)
 	// Ephemeral keys are by definition reusable

@@ -47,4 +47,9 @@ func (s *Suite) ResetDB(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
+	db, err := h.openDB()
+	if err != nil {
+		c.Fatal(err)
+	}
+	h.db = db
 }
