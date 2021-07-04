@@ -35,27 +35,9 @@ func (s *Suite) TestParseInvalidCIDR(c *check.C) {
 	c.Assert(err, check.NotNil)
 }
 
-func (s *Suite) TestCheckLoaded(c *check.C) {
-	err := h.LoadACLPolicy("./tests/acls/acl_policy_1.hujson")
-	c.Assert(err, check.IsNil)
-	c.Assert(h.aclPolicy, check.NotNil)
-}
-
-func (s *Suite) TestValidCheckParsedHosts(c *check.C) {
-	err := h.LoadACLPolicy("./tests/acls/acl_policy_1.hujson")
-	c.Assert(err, check.IsNil)
-	c.Assert(h.aclPolicy, check.NotNil)
-	c.Assert(h.aclPolicy.IsZero(), check.Equals, false)
-	c.Assert(h.aclPolicy.Hosts, check.HasLen, 2)
-}
-
 func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 	err := h.LoadACLPolicy("./tests/acls/acl_policy_invalid.hujson")
-	c.Assert(err, check.IsNil)
-
-	rules, err := h.generateACLRules()
 	c.Assert(err, check.NotNil)
-	c.Assert(rules, check.IsNil)
 }
 
 func (s *Suite) TestBasicRule(c *check.C) {
