@@ -5,18 +5,18 @@ import (
 )
 
 func (s *Suite) TestWrongPath(c *check.C) {
-	err := h.LoadPolicy("asdfg")
+	err := h.LoadAclPolicy("asdfg")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestBrokenHuJson(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/broken.hujson")
+	err := h.LoadAclPolicy("./tests/acls/broken.hujson")
 	c.Assert(err, check.NotNil)
 
 }
 
 func (s *Suite) TestInvalidPolicyHuson(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/invalid.hujson")
+	err := h.LoadAclPolicy("./tests/acls/invalid.hujson")
 	c.Assert(err, check.NotNil)
 	c.Assert(err, check.Equals, errorEmptyPolicy)
 }
@@ -36,13 +36,13 @@ func (s *Suite) TestParseInvalidCIDR(c *check.C) {
 }
 
 func (s *Suite) TestCheckLoaded(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/acl_policy_1.hujson")
+	err := h.LoadAclPolicy("./tests/acls/acl_policy_1.hujson")
 	c.Assert(err, check.IsNil)
 	c.Assert(h.aclPolicy, check.NotNil)
 }
 
 func (s *Suite) TestValidCheckParsedHosts(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/acl_policy_1.hujson")
+	err := h.LoadAclPolicy("./tests/acls/acl_policy_1.hujson")
 	c.Assert(err, check.IsNil)
 	c.Assert(h.aclPolicy, check.NotNil)
 	c.Assert(h.aclPolicy.IsZero(), check.Equals, false)
@@ -50,7 +50,7 @@ func (s *Suite) TestValidCheckParsedHosts(c *check.C) {
 }
 
 func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/acl_policy_invalid.hujson")
+	err := h.LoadAclPolicy("./tests/acls/acl_policy_invalid.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -59,7 +59,7 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 }
 
 func (s *Suite) TestBasicRule(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/acl_policy_basic_1.hujson")
+	err := h.LoadAclPolicy("./tests/acls/acl_policy_basic_1.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -68,7 +68,7 @@ func (s *Suite) TestBasicRule(c *check.C) {
 }
 
 func (s *Suite) TestPortRange(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/acl_policy_basic_range.hujson")
+	err := h.LoadAclPolicy("./tests/acls/acl_policy_basic_range.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -82,7 +82,7 @@ func (s *Suite) TestPortRange(c *check.C) {
 }
 
 func (s *Suite) TestPortWildcard(c *check.C) {
-	err := h.LoadPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
+	err := h.LoadAclPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -126,7 +126,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	}
 	db.Save(&m)
 
-	err = h.LoadPolicy("./tests/acls/acl_policy_basic_namespace_as_user.hujson")
+	err = h.LoadAclPolicy("./tests/acls/acl_policy_basic_namespace_as_user.hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := h.generateACLRules()
@@ -142,12 +142,47 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	c.Assert((*rules)[0].SrcIPs[0], check.Equals, ip.String())
 }
 
-// func (s *Suite) TestRuleGeneration(c *check.C) {
-// 	err := h.LoadPolicy("./tests/acls/acl_policy_1.hujson")
-// 	c.Assert(err, check.IsNil)
+func (s *Suite) TestPortGroup(c *check.C) {
+	n, err := h.CreateNamespace("testnamespace")
+	c.Assert(err, check.IsNil)
 
-// 	rules, err := h.generateACLRules()
-// 	c.Assert(err, check.IsNil)
-// 	c.Assert(rules, check.NotNil)
+	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
 
-// }
+	db, err := h.db()
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	_, err = h.GetMachine("testnamespace", "testmachine")
+	c.Assert(err, check.NotNil)
+	ip, _ := h.getAvailableIP()
+	m := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Name:           "testmachine",
+		NamespaceID:    n.ID,
+		Registered:     true,
+		RegisterMethod: "authKey",
+		IPAddress:      ip.String(),
+		AuthKeyID:      uint(pak.ID),
+	}
+	db.Save(&m)
+
+	err = h.LoadAclPolicy("./tests/acls/acl_policy_basic_groups.hujson")
+	c.Assert(err, check.IsNil)
+
+	rules, err := h.generateACLRules()
+	c.Assert(err, check.IsNil)
+	c.Assert(rules, check.NotNil)
+
+	c.Assert(*rules, check.HasLen, 1)
+	c.Assert((*rules)[0].DstPorts, check.HasLen, 1)
+	c.Assert((*rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert((*rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert((*rules)[0].SrcIPs, check.HasLen, 1)
+	c.Assert((*rules)[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
+	c.Assert((*rules)[0].SrcIPs[0], check.Equals, ip.String())
+}
