@@ -373,7 +373,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 		DNS:          []netaddr.IP{},
 		SearchPaths:  []string{},
 		Domain:       "foobar@example.com",
-		PacketFilter: tailcfg.FilterAllowAll,
+		PacketFilter: *h.aclRules,
 		DERPMap:      h.cfg.DerpMap,
 		UserProfiles: []tailcfg.UserProfile{},
 	}

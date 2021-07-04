@@ -22,7 +22,7 @@ const errorInvalidTag = Error("invalid tag")
 const errorInvalidNamespace = Error("invalid namespace")
 const errorInvalidPortFormat = Error("invalid port format")
 
-func (h *Headscale) LoadPolicy(path string) error {
+func (h *Headscale) LoadAclPolicy(path string) error {
 	policyFile, err := os.Open(path)
 	if err != nil {
 		return err
@@ -40,7 +40,12 @@ func (h *Headscale) LoadPolicy(path string) error {
 	}
 
 	h.aclPolicy = &policy
-	return err
+	rules, err := h.generateACLRules()
+	if err != nil {
+		return err
+	}
+	h.aclRules = rules
+	return nil
 }
 
 func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {

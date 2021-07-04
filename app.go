@@ -50,6 +50,7 @@ type Headscale struct {
 	privateKey *wgkey.Private
 
 	aclPolicy *ACLPolicy
+	aclRules  *[]tailcfg.FilterRule
 
 	pollMu         sync.Mutex
 	clientsPolling map[uint64]chan []byte // this is by all means a hackity hack
@@ -84,7 +85,9 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		dbString:   dbString,
 		privateKey: privKey,
 		publicKey:  &pubKey,
+		aclRules:   &tailcfg.FilterAllowAll, // default allowall
 	}
+
 	err = h.initDB()
 	if err != nil {
 		return nil, err
