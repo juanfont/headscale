@@ -3,7 +3,6 @@ package headscale
 import (
 	"encoding/json"
 	"errors"
-	"log"
 
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
@@ -42,15 +41,9 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 
 	for _, rIP := range hi.RoutableIPs {
 		if rIP == route {
-			db, err := h.db()
-			if err != nil {
-				log.Printf("Cannot open DB: %s", err)
-				return nil, err
-			}
-
 			routes, _ := json.Marshal([]string{routeStr}) // TODO: only one for the time being, so overwriting the rest
 			m.EnabledRoutes = datatypes.JSON(routes)
-			db.Save(&m)
+			h.db.Save(&m)
 
 			// THIS IS COMPLETELY USELESS.
 			// The peers map is stored in memory in the server process.

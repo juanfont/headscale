@@ -17,10 +17,12 @@ type KV struct {
 }
 
 func (h *Headscale) initDB() error {
-	db, err := h.db()
+	db, err := h.openDB()
 	if err != nil {
 		return err
 	}
+	h.db = db
+
 	if h.dbType == "postgres" {
 		db.Exec("create extension if not exists \"uuid-ossp\";")
 	}
@@ -45,7 +47,7 @@ func (h *Headscale) initDB() error {
 	return err
 }
 
-func (h *Headscale) db() (*gorm.DB, error) {
+func (h *Headscale) openDB() (*gorm.DB, error) {
 	var db *gorm.DB
 	var err error
 	switch h.dbType {
@@ -69,12 +71,8 @@ func (h *Headscale) db() (*gorm.DB, error) {
 }
 
 func (h *Headscale) getValue(key string) (string, error) {
-	db, err := h.db()
-	if err != nil {
-		return "", err
-	}
 	var row KV
-	if result := db.First(&row, "key = ?", key); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.First(&row, "key = ?", key); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return "", errors.New("not found")
 	}
 	return row.Value, nil
@@ -85,16 +83,13 @@ func (h *Headscale) setValue(key string, value string) error {
 		Key:   key,
 		Value: value,
 	}
-	db, err := h.db()
-	if err != nil {
-		return err
-	}
-	_, err = h.getValue(key)
+
+	_, err := h.getValue(key)
 	if err == nil {
-		db.Model(&kv).Where("key = ?", key).Update("value", value)
+		h.db.Model(&kv).Where("key = ?", key).Update("value", value)
 		return nil
 	}
 
-	db.Create(kv)
+	h.db.Create(kv)
 	return nil
 }

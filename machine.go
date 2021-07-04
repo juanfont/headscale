@@ -154,14 +154,9 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 }
 
 func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return nil, err
-	}
 
 	machines := []Machine{}
-	if err = db.Where("namespace_id = ? AND machine_key <> ? AND registered",
+	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Printf("Error accessing db: %s", err)
 		return nil, err

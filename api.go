@@ -75,15 +75,8 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		return
 	}
 
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		c.String(http.StatusInternalServerError, ":(")
-		return
-	}
-
 	var m Machine
-	if result := db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Println("New Machine!")
 		m = Machine{
 			Expiry:     &req.Expiry,
@@ -91,14 +84,14 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Name:       req.Hostinfo.Hostname,
 			NodeKey:    wgkey.Key(req.NodeKey).HexString(),
 		}
-		if err := db.Create(&m).Error; err != nil {
+		if err := h.db.Create(&m).Error; err != nil {
 			log.Printf("Could not create row: %s", err)
 			return
 		}
 	}
 
 	if !m.Registered && req.Auth.AuthKey != "" {
-		h.handleAuthKey(c, db, mKey, req, m)
+		h.handleAuthKey(c, h.db, mKey, req, m)
 		return
 	}
 
@@ -138,7 +131,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	if m.NodeKey == wgkey.Key(req.OldNodeKey).HexString() {
 		log.Printf("[%s] We have the OldNodeKey in the database. This is a key refresh", m.Name)
 		m.NodeKey = wgkey.Key(req.NodeKey).HexString()
-		db.Save(&m)
+		h.db.Save(&m)
 
 		resp.AuthURL = ""
 		resp.User = *m.Namespace.toUser()
@@ -204,13 +197,8 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		return
 	}
 
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return
-	}
 	var m Machine
-	if result := db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Printf("Ignoring request, cannot find machine with key %s", mKey.HexString())
 		return
 	}
@@ -234,7 +222,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		m.Endpoints = datatypes.JSON(endpoints)
 		m.LastSeen = &now
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	pollData := make(chan []byte, 1)
 	update := make(chan []byte, 1)
@@ -303,7 +291,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			}
 			now := time.Now().UTC()
 			m.LastSeen = &now
-			db.Save(&m)
+			h.db.Save(&m)
 			return true
 
 		case <-update:
@@ -322,7 +310,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			log.Printf("[%s] The client has closed the connection", m.Name)
 			now := time.Now().UTC()
 			m.LastSeen = &now
-			db.Save(&m)
+			h.db.Save(&m)
 			h.pollMu.Lock()
 			cancelKeepAlive <- []byte{}
 			delete(h.clientsPolling, m.ID)

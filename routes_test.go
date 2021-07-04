@@ -16,11 +16,6 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	db, err := h.db()
-	if err != nil {
-		c.Fatal(err)
-	}
-
 	_, err = h.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
@@ -45,7 +40,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       datatypes.JSON(hostinfo),
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	r, err := h.GetNodeRoutes("test", "testmachine")
 	c.Assert(err, check.IsNil)

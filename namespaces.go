@@ -25,18 +25,12 @@ type Namespace struct {
 // CreateNamespace creates a new Namespace. Returns error if could not be created
 // or another namespace already exists
 func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return nil, err
-	}
-
 	n := Namespace{}
-	if err := db.Where("name = ?", name).First(&n).Error; err == nil {
+	if err := h.db.Where("name = ?", name).First(&n).Error; err == nil {
 		return nil, errorNamespaceExists
 	}
 	n.Name = name
-	if err := db.Create(&n).Error; err != nil {
+	if err := h.db.Create(&n).Error; err != nil {
 		log.Printf("Could not create row: %s", err)
 		return nil, err
 	}
@@ -46,12 +40,6 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 // DestroyNamespace destroys a Namespace. Returns error if the Namespace does
 // not exist or if there are machines associated with it.
 func (h *Headscale) DestroyNamespace(name string) error {
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return err
-	}
-
 	n, err := h.GetNamespace(name)
 	if err != nil {
 		return errorNamespaceNotFound
@@ -65,7 +53,7 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		return errorNamespaceNotEmpty
 	}
 
-	if result := db.Unscoped().Delete(&n); result.Error != nil {
+	if result := h.db.Unscoped().Delete(&n); result.Error != nil {
 		return err
 	}
 
@@ -74,14 +62,8 @@ func (h *Headscale) DestroyNamespace(name string) error {
 
 // GetNamespace fetches a namespace by name
 func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return nil, err
-	}
-
 	n := Namespace{}
-	if result := db.First(&n, "name = ?", name); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.First(&n, "name = ?", name); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, errorNamespaceNotFound
 	}
 	return &n, nil
@@ -89,13 +71,8 @@ func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 
 // ListNamespaces gets all the existing namespaces
 func (h *Headscale) ListNamespaces() (*[]Namespace, error) {
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return nil, err
-	}
 	namespaces := []Namespace{}
-	if err := db.Find(&namespaces).Error; err != nil {
+	if err := h.db.Find(&namespaces).Error; err != nil {
 		return nil, err
 	}
 	return &namespaces, nil
@@ -107,14 +84,9 @@ func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return nil, err
-	}
 
 	machines := []Machine{}
-	if err := db.Preload("AuthKey").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
 		return nil, err
 	}
 	return &machines, nil
@@ -126,13 +98,8 @@ func (h *Headscale) SetMachineNamespace(m *Machine, namespaceName string) error 
 	if err != nil {
 		return err
 	}
-	db, err := h.db()
-	if err != nil {
-		log.Printf("Cannot open DB: %s", err)
-		return err
-	}
 	m.NamespaceID = n.ID
-	db.Save(&m)
+	h.db.Save(&m)
 	return nil
 }
 
