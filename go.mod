@@ -10,7 +10,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.7 // indirect
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/viper v1.8.1
-	github.com/tailscale/hujson v0.0.0-20200924210142-dde312d0d6a2 // indirect
+	github.com/tailscale/hujson v0.0.0-20200924210142-dde312d0d6a2
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
