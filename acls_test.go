@@ -86,11 +86,6 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	db, err := h.db()
-	if err != nil {
-		c.Fatal(err)
-	}
-
 	_, err = h.GetMachine("testnamespace", "testmachine")
 	c.Assert(err, check.NotNil)
 	ip, _ := h.getAvailableIP()
@@ -106,7 +101,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 		IPAddress:      ip.String(),
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	err = h.LoadACLPolicy("./tests/acls/acl_policy_basic_namespace_as_user.hujson")
 	c.Assert(err, check.IsNil)
@@ -131,11 +126,6 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	db, err := h.db()
-	if err != nil {
-		c.Fatal(err)
-	}
-
 	_, err = h.GetMachine("testnamespace", "testmachine")
 	c.Assert(err, check.NotNil)
 	ip, _ := h.getAvailableIP()
@@ -151,7 +141,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 		IPAddress:      ip.String(),
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.Save(&m)
+	h.db.Save(&m)
 
 	err = h.LoadACLPolicy("./tests/acls/acl_policy_basic_groups.hujson")
 	c.Assert(err, check.IsNil)

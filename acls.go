@@ -166,13 +166,8 @@ func (h *Headscale) expandAlias(s string) (*[]string, error) {
 
 		// This will have HORRIBLE performance.
 		// We need to change the data model to better store tags
-		db, err := h.db()
-		if err != nil {
-			log.Printf("Cannot open DB: %s", err)
-			return nil, err
-		}
 		machines := []Machine{}
-		if err = db.Where("registered").Find(&machines).Error; err != nil {
+		if err := h.db.Where("registered").Find(&machines).Error; err != nil {
 			return nil, err
 		}
 		ips := []string{}
