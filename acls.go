@@ -64,10 +64,9 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 
 		srcIPs := []string{}
 		for j, u := range a.Users {
-			fmt.Printf("acl %d, user %d: ", i, j)
 			srcs, err := h.generateACLPolicySrcIP(u)
-			fmt.Printf("  ->  %s\n", err)
 			if err != nil {
+				log.Printf("Error parsing ACL %d, User %d", i, j)
 				return nil, err
 			}
 			srcIPs = append(srcIPs, *srcs...)
@@ -76,10 +75,9 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 
 		destPorts := []tailcfg.NetPortRange{}
 		for j, d := range a.Ports {
-			fmt.Printf("acl %d, port %d: ", i, j)
 			dests, err := h.generateACLPolicyDestPorts(d)
-			fmt.Printf("  ->  %s\n", err)
 			if err != nil {
+				log.Printf("Error parsing ACL %d, Port %d", i, j)
 				return nil, err
 			}
 			destPorts = append(destPorts, *dests...)
@@ -141,12 +139,10 @@ func (h *Headscale) generateACLPolicyDestPorts(d string) (*[]tailcfg.NetPortRang
 
 func (h *Headscale) expandAlias(s string) (*[]string, error) {
 	if s == "*" {
-		fmt.Printf("%s -> wildcard", s)
 		return &[]string{"*"}, nil
 	}
 
 	if strings.HasPrefix(s, "group:") {
-		fmt.Printf("%s -> group", s)
 		if _, ok := h.aclPolicy.Groups[s]; !ok {
 			return nil, errorInvalidGroup
 		}
@@ -164,7 +160,6 @@ func (h *Headscale) expandAlias(s string) (*[]string, error) {
 	}
 
 	if strings.HasPrefix(s, "tag:") {
-		fmt.Printf("%s -> tag", s)
 		if _, ok := h.aclPolicy.TagOwners[s]; !ok {
 			return nil, errorInvalidTag
 		}
@@ -178,7 +173,6 @@ func (h *Headscale) expandAlias(s string) (*[]string, error) {
 		}
 		machines := []Machine{}
 		if err = db.Where("registered").Find(&machines).Error; err != nil {
-			log.Printf("Error accessing db: %s", err)
 			return nil, err
 		}
 		ips := []string{}
@@ -208,7 +202,6 @@ func (h *Headscale) expandAlias(s string) (*[]string, error) {
 
 	n, err := h.GetNamespace(s)
 	if err == nil {
-		fmt.Printf("%s -> namespace %s", s, n.Name)
 		nodes, err := h.ListMachinesInNamespace(n.Name)
 		if err != nil {
 			return nil, err
@@ -221,23 +214,19 @@ func (h *Headscale) expandAlias(s string) (*[]string, error) {
 	}
 
 	if h, ok := h.aclPolicy.Hosts[s]; ok {
-		fmt.Printf("%s -> host %s", s, h)
 		return &[]string{h.String()}, nil
 	}
 
 	ip, err := netaddr.ParseIP(s)
 	if err == nil {
-		fmt.Printf(" %s -> ip %s", s, ip)
 		return &[]string{ip.String()}, nil
 	}
 
 	cidr, err := netaddr.ParseIPPrefix(s)
 	if err == nil {
-		fmt.Printf("%s -> cidr %s", s, cidr)
 		return &[]string{cidr.String()}, nil
 	}
 
-	fmt.Printf("%s: cannot be mapped to anything\n", s)
 	return nil, errorInvalidUserSection
 }
 
