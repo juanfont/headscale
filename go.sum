@@ -746,6 +746,8 @@ github.com/subosito/gotenv v1.2.0 h1:Slr1R9HxAlEKefgq5jn9U+DnETlIUa6HfgEzj0g5d7s
 github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
 github.com/tailscale/certstore v0.0.0-20210528134328-066c94b793d3/go.mod h1:2P+hpOwd53e7JMX/L4f3VXkv1G+33ES6IWZSrkIeWNs=
 github.com/tailscale/depaware v0.0.0-20201214215404-77d1e9757027/go.mod h1:p9lPsd+cx33L3H9nNoecRRxPssFKUwwI50I3pZ0yT+8=
+github.com/tailscale/hujson v0.0.0-20200924210142-dde312d0d6a2 h1:reREUgl2FG+o7YCsrZB8XLjnuKv5hEIWtnOdAbRAXZI=
+github.com/tailscale/hujson v0.0.0-20200924210142-dde312d0d6a2/go.mod h1:STqf+YV0ADdzk4ejtXFsGqDpATP9JoL0OB+hiFQbkdE=
 github.com/tcnksm/go-httpstat v0.2.0/go.mod h1:s3JVJFtQxtBEBC9dwcdTTXS9xFnM3SXAZwPG41aurT8=
 github.com/tdakkota/asciicheck v0.0.0-20200416190851-d7f85be797a2/go.mod h1:yHp0ai0Z9gUljN3o0xMhYJnH/IcvkdTBOX2fmJ93JEM=
 github.com/tdakkota/asciicheck v0.0.0-20200416200610-e657995f937b/go.mod h1:yHp0ai0Z9gUljN3o0xMhYJnH/IcvkdTBOX2fmJ93JEM=

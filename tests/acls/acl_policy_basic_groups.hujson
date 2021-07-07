@@ -1,0 +1,26 @@
+// This ACL is used to test group expansion
+
+{
+    "Groups": {
+        "group:example": [
+            "testnamespace",
+        ],
+    },
+
+    "Hosts": {
+        "host-1": "100.100.100.100",
+        "subnet-1": "100.100.101.100/24",
+    },
+
+    "ACLs": [
+        {
+            "Action": "accept",
+            "Users": [
+                "group:example",
+            ],
+            "Ports": [
+                "host-1:*",
+            ],
+        },
+    ],
+}

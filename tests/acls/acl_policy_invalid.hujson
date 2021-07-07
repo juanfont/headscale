@@ -1,0 +1,125 @@
+{
+    // Declare static groups of users beyond those in the identity service.
+    "Groups": {
+        "group:example": [
+            "user1@example.com",
+            "user2@example.com",
+        ],
+    },
+    // Declare hostname aliases to use in place of IP addresses or subnets.
+    "Hosts": {
+        "example-host-1": "100.100.100.100",
+        "example-host-2": "100.100.101.100/24",
+    },
+    // Define who is allowed to use which tags.
+    "TagOwners": {
+        // Everyone in the montreal-admins or global-admins group are
+        // allowed to tag servers as montreal-webserver.
+        "tag:montreal-webserver": [
+            "group:montreal-admins",
+            "group:global-admins",
+        ],
+        // Only a few admins are allowed to create API servers.
+        "tag:api-server": [
+            "group:global-admins",
+            "example-host-1",
+        ],
+    },
+    // Access control lists.
+    "ACLs": [
+        // Engineering users, plus the president, can access port 22 (ssh)
+        // and port 3389 (remote desktop protocol) on all servers, and all
+        // ports on git-server or ci-server.
+        {
+            "Action": "accept",
+            "Users": [
+                "group:engineering",
+                "president@example.com"
+            ],
+            "Ports": [
+                "*:22,3389",
+                "git-server:*",
+                "ci-server:*"
+            ],
+        },
+        // Allow engineer users to access any port on a device tagged with
+        // tag:production.
+        {
+            "Action": "accept",
+            "Users": [
+                "group:engineers"
+            ],
+            "Ports": [
+                "tag:production:*"
+            ],
+        },
+        // Allow servers in the my-subnet host and 192.168.1.0/24 to access hosts
+        // on both networks.
+        {
+            "Action": "accept",
+            "Users": [
+                "my-subnet",
+                "192.168.1.0/24"
+            ],
+            "Ports": [
+                "my-subnet:*",
+                "192.168.1.0/24:*"
+            ],
+        },
+        // Allow every user of your network to access anything on the network.
+        // Comment out this section if you want to define specific ACL
+        // restrictions above.
+        {
+            "Action": "accept",
+            "Users": [
+                "*"
+            ],
+            "Ports": [
+                "*:*"
+            ],
+        },
+        // All users in Montreal are allowed to access the Montreal web
+        // servers.
+        {
+            "Action": "accept",
+            "Users": [
+                "group:montreal-users"
+            ],
+            "Ports": [
+                "tag:montreal-webserver:80,443"
+            ],
+        },
+        // Montreal web servers are allowed to make outgoing connections to
+        // the API servers, but only on https port 443.
+        // In contrast, this doesn't grant API servers the right to initiate
+        // any connections.
+        {
+            "Action": "accept",
+            "Users": [
+                "tag:montreal-webserver"
+            ],
+            "Ports": [
+                "tag:api-server:443"
+            ],
+        },
+    ],
+    // Declare tests to check functionality of ACL rules
+    "Tests": [
+        {
+            "User": "user1@example.com",
+            "Allow": [
+                "example-host-1:22",
+                "example-host-2:80"
+            ],
+            "Deny": [
+                "exapmle-host-2:100"
+            ],
+        },
+        {
+            "User": "user2@example.com",
+            "Allow": [
+                "100.60.3.4:22"
+            ],
+        },
+    ],
+}
