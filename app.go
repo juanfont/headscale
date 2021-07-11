@@ -78,7 +78,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	case "sqlite3":
 		dbString = cfg.DBpath
 	default:
-		return nil, errors.New("Unsupported DB")
+		return nil, errors.New("unsupported DB")
 	}
 
 	h := Headscale{
