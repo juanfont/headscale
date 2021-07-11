@@ -46,7 +46,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 
 	<p>
 		<code>
-			<b>headscale -n NAMESPACE node register %s</b>
+			<b>headscale -n NAMESPACE nodes register %s</b>
 		</code>
 	</p>
 
