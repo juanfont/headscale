@@ -154,7 +154,6 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 }
 
 func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
-
 	machines := []Machine{}
 	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {

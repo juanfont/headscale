@@ -76,7 +76,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	}
 
 	var m Machine
-	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Println("New Machine!")
 		m = Machine{
 			Expiry:     &req.Expiry,
@@ -200,7 +200,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	}
 
 	var m Machine
-	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Printf("Ignoring request, cannot find machine with key %s", mKey.HexString())
 		c.String(http.StatusUnauthorized, "")
 		return
@@ -357,16 +357,23 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 		log.Printf("Cannot fetch peers: %s", err)
 		return nil, err
 	}
+
+	profile := tailcfg.UserProfile{
+		ID:          tailcfg.UserID(m.NamespaceID),
+		LoginName:   m.Namespace.Name,
+		DisplayName: m.Namespace.Name,
+	}
+
 	resp := tailcfg.MapResponse{
 		KeepAlive:    false,
 		Node:         node,
 		Peers:        *peers,
 		DNS:          []netaddr.IP{},
 		SearchPaths:  []string{},
-		Domain:       "foobar@example.com",
+		Domain:       "headscale.net",
 		PacketFilter: *h.aclRules,
 		DERPMap:      h.cfg.DerpMap,
-		UserProfiles: []tailcfg.UserProfile{},
+		UserProfiles: []tailcfg.UserProfile{profile},
 	}
 
 	var respBody []byte

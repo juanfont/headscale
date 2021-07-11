@@ -106,10 +106,10 @@ func (h *Headscale) SetMachineNamespace(m *Machine, namespaceName string) error 
 func (n *Namespace) toUser() *tailcfg.User {
 	u := tailcfg.User{
 		ID:            tailcfg.UserID(n.ID),
-		LoginName:     "",
+		LoginName:     n.Name,
 		DisplayName:   n.Name,
 		ProfilePicURL: "",
-		Domain:        "",
+		Domain:        "headscale.net",
 		Logins:        []tailcfg.LoginID{},
 		Created:       time.Time{},
 	}

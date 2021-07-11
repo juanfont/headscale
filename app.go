@@ -175,7 +175,7 @@ func (h *Headscale) Serve() error {
 			}()
 			err = s.ListenAndServeTLS("", "")
 		} else {
-			return errors.New("Unknown value for TLSLetsEncryptChallengeType")
+			return errors.New("unknown value for TLSLetsEncryptChallengeType")
 		}
 	} else if h.cfg.TLSCertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
