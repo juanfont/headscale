@@ -19,18 +19,18 @@ Headscale implements this coordination server.
 - [x] Base functionality (nodes can communicate with each other)
 - [x] Node registration through the web flow
 - [x] Network changes are relied to the nodes
-- [x] ~~Multiuser/multitailnet~~ Namespace support
+- [x] Namespace support (~equivalent to multi-user in Tailscale.com)
 - [x] Routing (advertise & accept, including exit nodes)
 - [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
 - [X] JSON-formatted output
-- [ ] (✨ WIP) ACLs
+- [X] ACLs
 - [ ] Share nodes between ~~users~~ namespaces 
 - [ ] DNS
 
 
 ## Roadmap 🤷
 
-We are now working on adding ACLs https://tailscale.com/kb/1018/acls
+We are now focusing on adding integration tests with the official clients. 
 
 Suggestions/PRs welcomed!
 
@@ -145,6 +145,7 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
 
 The fields starting with `db_` are used for the PostgreSQL connection information.
 
+
 ### Running the service via TLS (optional)
 
 ```
@@ -161,6 +162,17 @@ Headscale can be configured to expose its web service via TLS. To configure the 
 ```
 
 To get a certificate automatically via [Let's Encrypt](https://letsencrypt.org/), set `tls_letsencrypt_hostname` to the desired certificate hostname. This name must resolve to the IP address(es) Headscale is reachable on (i.e., it must correspond to the `server_url` configuration parameter). The certificate and Let's Encrypt account credentials will be stored in the directory configured in `tls_letsencrypt_cache_dir`. If the path is relative, it will be interpreted as relative to the directory the configuration file was read from. The certificate will automatically be renewed as needed. The default challenge type HTTP-01 requires that Headscale listens on port 80 for the Let's Encrypt automated validation, in addition to whatever port is configured in `listen_addr`. Alternatively, `tls_letsencrypt_challenge_type` can be set to `TLS-ALPN-01`. In this configuration, Headscale must be reachable via port 443, but port 80 is not required.
+
+
+### Policy ACLs
+
+Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-hosted environment. 
+
+For instance, instead of referring to users when defining groups you must
+ use namespaces (which are the equivalent to user/logins in Tailscale.com).
+
+Please check https://tailscale.com/kb/1018/acls/, and `./tests/acls/` in this repo for working examples.
+
 
 ## Disclaimer
 
