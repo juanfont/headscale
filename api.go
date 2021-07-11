@@ -188,18 +188,21 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	mKey, err := wgkey.ParseHex(mKeyStr)
 	if err != nil {
 		log.Printf("Cannot parse client key: %s", err)
+		c.String(http.StatusBadRequest, "")
 		return
 	}
 	req := tailcfg.MapRequest{}
 	err = decode(body, &req, &mKey, h.privateKey)
 	if err != nil {
 		log.Printf("Cannot decode message: %s", err)
+		c.String(http.StatusBadRequest, "")
 		return
 	}
 
 	var m Machine
 	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Printf("Ignoring request, cannot find machine with key %s", mKey.HexString())
+		c.String(http.StatusUnauthorized, "")
 		return
 	}
 
@@ -287,7 +290,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			log.Printf("[%s] Sending data (%d bytes)", m.Name, len(data))
 			_, err := w.Write(data)
 			if err != nil {
-				log.Printf("[%s] 🤮 Cannot write data: %s", m.Name, err)
+				log.Printf("[%s] Cannot write data: %s", m.Name, err)
 			}
 			now := time.Now().UTC()
 			m.LastSeen = &now
