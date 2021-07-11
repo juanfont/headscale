@@ -6,6 +6,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 const dbVersion = "1"
@@ -50,23 +51,31 @@ func (h *Headscale) initDB() error {
 func (h *Headscale) openDB() (*gorm.DB, error) {
 	var db *gorm.DB
 	var err error
+
+	var log logger.Interface
+	if h.dbDebug {
+		log = logger.Default
+	} else {
+		log = logger.Default.LogMode(logger.Silent)
+	}
+
 	switch h.dbType {
 	case "sqlite3":
 		db, err = gorm.Open(sqlite.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
+			Logger:                                   log,
 		})
 	case "postgres":
 		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
+			Logger:                                   log,
 		})
 	}
 
 	if err != nil {
 		return nil, err
 	}
-	if h.dbDebug {
-		db.Debug()
-	}
+
 	return db, nil
 }
 
