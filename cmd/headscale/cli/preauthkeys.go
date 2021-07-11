@@ -44,11 +44,19 @@ var ListPreAuthKeys = &cobra.Command{
 			if k.Expiration != nil {
 				expiration = k.Expiration.Format("2006-01-02 15:04:05")
 			}
+
+			var reusable string
+			if k.Ephemeral {
+				reusable = "N/A"
+			} else {
+				reusable = fmt.Sprintf("%v", k.Reusable)
+			}
+
 			fmt.Printf(
-				"key: %s, namespace: %s, reusable: %v, ephemeral: %v, expiration: %s, created_at: %s\n",
+				"key: %s, namespace: %s, reusable: %s, ephemeral: %v, expiration: %s, created_at: %s\n",
 				k.Key,
 				k.Namespace.Name,
-				k.Reusable,
+				reusable,
 				k.Ephemeral,
 				expiration,
 				k.CreatedAt.Format("2006-01-02 15:04:05"),
