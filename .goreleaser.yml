@@ -62,8 +62,7 @@ archives:
       - linux-armhf
       - linux-amd64
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: zip
-    # wrap_in_directory: true
+    format: binary
 
 checksum:
   name_template: 'checksums.txt'
