@@ -62,7 +62,7 @@ Suggestions/PRs welcomed!
 
 4. Create a namespace (a namespace is a 'tailnet', a group of Tailscale nodes that can talk to each other)
   ```shell
-  headscale namespace create myfirstnamespace
+  headscale namespaces create myfirstnamespace
   ```
 
 5. Run the server
