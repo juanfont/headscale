@@ -73,6 +73,7 @@ func main() {
 
 	cli.NodeCmd.AddCommand(cli.ListNodesCmd)
 	cli.NodeCmd.AddCommand(cli.RegisterCmd)
+	cli.NodeCmd.AddCommand(cli.DeleteCmd)
 
 	cli.RoutesCmd.AddCommand(cli.ListRoutesCmd)
 	cli.RoutesCmd.AddCommand(cli.EnableRouteCmd)

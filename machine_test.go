@@ -79,7 +79,7 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 		AuthKeyID:      uint(1),
 	}
 	h.db.Save(&m)
-	h.DeleteMachine(m)
+	h.DeleteMachine(&m)
 	_, err = h.GetMachine(n.Name, "testmachine")
 	c.Assert(err, check.NotNil)
 }
@@ -99,7 +99,7 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 		AuthKeyID:      uint(1),
 	}
 	h.db.Save(&m)
-	h.HardDeleteMachine(m)
+	h.HardDeleteMachine(&m)
 	_, err = h.GetMachine(n.Name, "testmachine3")
 	c.Assert(err, check.NotNil)
 }

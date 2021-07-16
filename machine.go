@@ -198,7 +198,7 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 }
 
 // DeleteMachine softs deletes a Machine from the database
-func (h *Headscale) DeleteMachine(m Machine) error {
+func (h *Headscale) DeleteMachine(m *Machine) error {
 	if err := h.db.Delete(&m).Error; err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (h *Headscale) DeleteMachine(m Machine) error {
 }
 
 // HardDeleteMachine hard deletes a Machine from the database
-func (h *Headscale) HardDeleteMachine(m Machine) error {
+func (h *Headscale) HardDeleteMachine(m *Machine) error {
 	if err := h.db.Unscoped().Delete(&m).Error; err != nil {
 		return err
 	}
