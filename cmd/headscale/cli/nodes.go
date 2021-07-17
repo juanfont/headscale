@@ -116,7 +116,10 @@ var DeleteCmd = &cobra.Command{
 		prompt := &survey.Confirm{
 			Message: fmt.Sprintf("Do you want to remove the node %s?", m.Name),
 		}
-		survey.AskOne(prompt, &confirm)
+		err = survey.AskOne(prompt, &confirm)
+		if err != nil {
+			return
+		}
 
 		if confirm {
 			err = h.DeleteMachine(m)
