@@ -126,6 +126,5 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	configYaml = []byte("---\nserver_url: \"http://127.0.0.1:8000\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"")
 	writeConfig(c, tmpDir, configYaml)
 	err = cli.LoadConfig(tmpDir)
-	c.Assert(err, check.NotNil)
-	c.Assert(err, check.ErrorMatches, "Fatal config error: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, listen_addr must end in :443.*")
+	c.Assert(err, check.IsNil)
 }
