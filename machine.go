@@ -199,6 +199,8 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 
 // DeleteMachine softs deletes a Machine from the database
 func (h *Headscale) DeleteMachine(m *Machine) error {
+	m.Registered = false
+	h.db.Save(&m) // we mark it as unregistered, just in case
 	if err := h.db.Delete(&m).Error; err != nil {
 		return err
 	}
