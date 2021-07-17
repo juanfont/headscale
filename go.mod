@@ -3,6 +3,7 @@ module github.com/juanfont/headscale
 go 1.16
 
 require (
+	github.com/AlecAivazis/survey/v2 v2.0.5
 	github.com/gin-gonic/gin v1.7.2
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/klauspost/compress v1.13.1

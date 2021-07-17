@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	survey "github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -110,10 +111,21 @@ var DeleteCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error getting node: %s", err)
 		}
-		err = h.DeleteMachine(m)
-		if err != nil {
-			log.Fatalf("Error deleting node: %s", err)
+
+		confirm := false
+		prompt := &survey.Confirm{
+			Message: fmt.Sprintf("Do you want to remove the node %s?", m.Name),
 		}
-		fmt.Printf("Node deleted\n")
+		survey.AskOne(prompt, &confirm)
+
+		if confirm {
+			err = h.DeleteMachine(m)
+			if err != nil {
+				log.Fatalf("Error deleting node: %s", err)
+			}
+			fmt.Printf("Node deleted\n")
+		} else {
+			fmt.Printf("Node not deleted\n")
+		}
 	},
 }
