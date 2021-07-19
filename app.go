@@ -1,6 +1,7 @@
 package headscale
 
 import (
+	_ "embed" // used to add the derp.yaml map
 	"errors"
 	"fmt"
 	"log"
@@ -16,6 +17,10 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
+
+// BaseDerp is the base derp map included in derp.yaml
+//go:embed derp.yaml
+var BaseDerp string
 
 // Config contains the initial Headscale configuration
 type Config struct {
