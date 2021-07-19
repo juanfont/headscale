@@ -39,9 +39,10 @@ https://gitlab.com/juanfont/headscale`,
 func main() {
 	err := cli.LoadConfig("")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Printf("Warning: could not load config %s", err)
 	}
 
+	headscaleCmd.AddCommand(cli.InitCmd)
 	headscaleCmd.AddCommand(cli.NamespaceCmd)
 	headscaleCmd.AddCommand(cli.NodeCmd)
 	headscaleCmd.AddCommand(cli.PreauthkeysCmd)
@@ -67,6 +68,8 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 
+	cli.InitCmd.AddCommand(cli.InitSqliteCmd)
+
 	cli.NamespaceCmd.AddCommand(cli.CreateNamespaceCmd)
 	cli.NamespaceCmd.AddCommand(cli.ListNamespacesCmd)
 	cli.NamespaceCmd.AddCommand(cli.DestroyNamespaceCmd)
@@ -80,6 +83,8 @@ func main() {
 
 	cli.PreauthkeysCmd.AddCommand(cli.ListPreAuthKeys)
 	cli.PreauthkeysCmd.AddCommand(cli.CreatePreAuthKeyCmd)
+
+	cli.InitSqliteCmd.PersistentFlags().Bool("force", false, "Overwrite existing files if any")
 
 	cli.CreatePreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
 	cli.CreatePreAuthKeyCmd.PersistentFlags().Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
