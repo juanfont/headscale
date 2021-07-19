@@ -1,7 +1,7 @@
 package headscale
 
 import (
-	_ "embed"
+	_ "embed" // used to add the derp.yaml map
 	"errors"
 	"fmt"
 	"log"
@@ -18,6 +18,7 @@ import (
 	"tailscale.com/types/wgkey"
 )
 
+// BaseDerp is the base derp map included in derp.yaml
 //go:embed derp.yaml
 var BaseDerp string
 
