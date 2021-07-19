@@ -3,9 +3,11 @@ package cli
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
+	survey "github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -71,7 +73,7 @@ var ListNodesCmd = &cobra.Command{
 			log.Fatalf("Error getting nodes: %s", err)
 		}
 
-		fmt.Printf("name\t\tlast seen\t\tephemeral\n")
+		fmt.Printf("ID\tname\t\tlast seen\t\tephemeral\n")
 		for _, m := range *machines {
 			var ephemeral bool
 			if m.AuthKey != nil && m.AuthKey.Ephemeral {
@@ -81,8 +83,52 @@ var ListNodesCmd = &cobra.Command{
 			if m.LastSeen != nil {
 				lastSeen = *m.LastSeen
 			}
-			fmt.Printf("%s\t%s\t%t\n", m.Name, lastSeen.Format("2006-01-02 15:04:05"), ephemeral)
+			fmt.Printf("%d\t%s\t%s\t%t\n", m.ID, m.Name, lastSeen.Format("2006-01-02 15:04:05"), ephemeral)
 		}
 
+	},
+}
+
+var DeleteCmd = &cobra.Command{
+	Use:   "delete ID",
+	Short: "Delete a node",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 1 {
+			return fmt.Errorf("Missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		id, err := strconv.Atoi(args[0])
+		if err != nil {
+			log.Fatalf("Error converting ID to integer: %s", err)
+		}
+		m, err := h.GetMachineByID(uint64(id))
+		if err != nil {
+			log.Fatalf("Error getting node: %s", err)
+		}
+
+		confirm := false
+		prompt := &survey.Confirm{
+			Message: fmt.Sprintf("Do you want to remove the node %s?", m.Name),
+		}
+		err = survey.AskOne(prompt, &confirm)
+		if err != nil {
+			return
+		}
+
+		if confirm {
+			err = h.DeleteMachine(m)
+			if err != nil {
+				log.Fatalf("Error deleting node: %s", err)
+			}
+			fmt.Printf("Node deleted\n")
+		} else {
+			fmt.Printf("Node not deleted\n")
+		}
 	},
 }

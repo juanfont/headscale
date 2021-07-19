@@ -188,6 +188,33 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 	return nil, fmt.Errorf("not found")
 }
 
+// GetMachineByID finds a Machine by ID and returns the Machine struct
+func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
+	m := Machine{}
+	if result := h.db.Find(&Machine{ID: id}).First(&m); result.Error != nil {
+		return nil, result.Error
+	}
+	return &m, nil
+}
+
+// DeleteMachine softs deletes a Machine from the database
+func (h *Headscale) DeleteMachine(m *Machine) error {
+	m.Registered = false
+	h.db.Save(&m) // we mark it as unregistered, just in case
+	if err := h.db.Delete(&m).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+// HardDeleteMachine hard deletes a Machine from the database
+func (h *Headscale) HardDeleteMachine(m *Machine) error {
+	if err := h.db.Unscoped().Delete(&m).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
 // GetHostInfo returns a Hostinfo struct for the machine
 func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 	hostinfo := tailcfg.Hostinfo{}
