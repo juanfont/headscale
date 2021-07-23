@@ -33,6 +33,7 @@ type Config struct {
 	DBuser string
 	DBpass string
 
+	TLSLetsEncryptListen        string
 	TLSLetsEncryptHostname      string
 	TLSLetsEncryptCacheDir      string
 	TLSLetsEncryptChallengeType string
@@ -171,7 +172,7 @@ func (h *Headscale) Serve() error {
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
 			go func() {
-				log.Fatal(http.ListenAndServe(":http", m.HTTPHandler(http.HandlerFunc(h.redirect))))
+				log.Fatal(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, m.HTTPHandler(http.HandlerFunc(h.redirect))))
 			}()
 			err = s.ListenAndServeTLS("", "")
 		} else {
