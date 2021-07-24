@@ -57,6 +57,7 @@ func (*Suite) TestPostgresConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("db_type"), check.Equals, "postgres")
 	c.Assert(viper.GetString("db_port"), check.Equals, "5432")
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
+	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
 }
 
@@ -89,6 +90,7 @@ func (*Suite) TestSqliteConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("db_type"), check.Equals, "sqlite3")
 	c.Assert(viper.GetString("db_path"), check.Equals, "db.sqlite")
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
+	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
 }
 

@@ -7,6 +7,7 @@
     "db_type": "sqlite3",
     "db_path": "db.sqlite",
     "tls_letsencrypt_hostname": "",
+    "tls_letsencrypt_listen": ":http",
     "tls_letsencrypt_cache_dir": ".cache",
     "tls_letsencrypt_challenge_type": "HTTP-01",
     "tls_cert_path": "",

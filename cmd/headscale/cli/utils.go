@@ -109,6 +109,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		DBpass: viper.GetString("db_pass"),
 
 		TLSLetsEncryptHostname:      viper.GetString("tls_letsencrypt_hostname"),
+		TLSLetsEncryptListen:        viper.GetString("tls_letsencrypt_listen"),
 		TLSLetsEncryptCacheDir:      absPath(viper.GetString("tls_letsencrypt_cache_dir")),
 		TLSLetsEncryptChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
 

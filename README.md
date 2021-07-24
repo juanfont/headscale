@@ -157,12 +157,14 @@ Headscale can be configured to expose its web service via TLS. To configure the 
 
 ```
     "tls_letsencrypt_hostname": "",
+    "tls_letsencrypt_listen": ":http",
     "tls_letsencrypt_cache_dir": ".cache",
     "tls_letsencrypt_challenge_type": "HTTP-01",
 ```
 
 To get a certificate automatically via [Let's Encrypt](https://letsencrypt.org/), set `tls_letsencrypt_hostname` to the desired certificate hostname. This name must resolve to the IP address(es) Headscale is reachable on (i.e., it must correspond to the `server_url` configuration parameter). The certificate and Let's Encrypt account credentials will be stored in the directory configured in `tls_letsencrypt_cache_dir`. If the path is relative, it will be interpreted as relative to the directory the configuration file was read from. The certificate will automatically be renewed as needed. The default challenge type HTTP-01 requires that Headscale listens on port 80 for the Let's Encrypt automated validation, in addition to whatever port is configured in `listen_addr`. Alternatively, `tls_letsencrypt_challenge_type` can be set to `TLS-ALPN-01`. In this configuration, Headscale must be reachable via port 443, but port 80 is not required.
 
+If you need to change the ip/port used for the Let's Encrypt process, set `tls_letsencrypt_listen` to the appropriate value. This can be handy if you are running `headscale` as non-root (or can't run `setcap`). Keep in mind, however, Let's Encrypt will _only_ connect to port 80, so if you change `tls_letsencrypt_listen` you will also need to configure something else to send the traffic to the port you specify!
 
 ### Policy ACLs
 
