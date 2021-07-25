@@ -11,12 +11,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var NodeCmd = &cobra.Command{
+func init () {
+	nodeCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	nodeCmd.MarkPersistentFlagRequired("namespace")
+	nodeCmd.AddCommand(listNodesCmd)
+	nodeCmd.AddCommand(registerNodeCmd)
+	nodeCmd.AddCommand(deleteNodeCmd)
+}
+
+var nodeCmd = &cobra.Command{
 	Use:   "nodes",
 	Short: "Manage the nodes of Headscale",
 }
 
-var RegisterCmd = &cobra.Command{
+var registerNodeCmd = &cobra.Command{
 	Use:   "register machineID",
 	Short: "Registers a machine to your network",
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -49,7 +57,7 @@ var RegisterCmd = &cobra.Command{
 	},
 }
 
-var ListNodesCmd = &cobra.Command{
+var listNodesCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List the nodes in a given namespace",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -89,7 +97,7 @@ var ListNodesCmd = &cobra.Command{
 	},
 }
 
-var DeleteCmd = &cobra.Command{
+var deleteNodeCmd = &cobra.Command{
 	Use:   "delete ID",
 	Short: "Delete a node",
 	Args: func(cmd *cobra.Command, args []string) error {
