@@ -165,7 +165,7 @@ func (h *Headscale) Serve() error {
 		if h.cfg.TLSLetsEncryptChallengeType == "TLS-ALPN-01" {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
-			// must be configured to run on port 443.
+			// must be reachable on port 443.
 			err = s.ListenAndServeTLS("", "")
 		} else if h.cfg.TLSLetsEncryptChallengeType == "HTTP-01" {
 			// Configuration via autocert with HTTP-01. This requires listening on
