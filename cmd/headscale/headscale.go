@@ -4,27 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/spf13/cobra"
 )
-
-var version = "dev"
-
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print the version.",
-	Long:  "The version of headscale.",
-	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		if strings.HasPrefix(o, "json") {
-			cli.JsonOutput(map[string]string{"version": version}, nil, o)
-			return
-		}
-		fmt.Println(version)
-	},
-}
 
 var headscaleCmd = &cobra.Command{
 	Use:   "headscale",
@@ -47,7 +30,7 @@ func main() {
 	headscaleCmd.AddCommand(cli.PreauthkeysCmd)
 	headscaleCmd.AddCommand(cli.RoutesCmd)
 	headscaleCmd.AddCommand(cli.ServeCmd)
-	headscaleCmd.AddCommand(versionCmd)
+	headscaleCmd.AddCommand(cli.VersionCmd)
 
 	cli.NodeCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
 	err = cli.NodeCmd.MarkPersistentFlagRequired("namespace")
