@@ -154,6 +154,7 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 		return
 	}
 	for _, name := range names {
+		log.Printf("Sending updates to nodes in namespace %s", name)
 		machines, err := h.ListMachinesInNamespace(name)
 		if err != nil {
 			continue
