@@ -10,12 +10,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var PreauthkeysCmd = &cobra.Command{
+func init() {
+	rootCmd.AddCommand(preauthkeysCmd)
+	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	preauthkeysCmd.AddCommand(listPreAuthKeys)
+	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
+	createPreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
+	createPreAuthKeyCmd.PersistentFlags().Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
+    createPreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
+}
+
+var preauthkeysCmd = &cobra.Command{
 	Use:   "preauthkeys",
 	Short: "Handle the preauthkeys in Headscale",
 }
 
-var ListPreAuthKeys = &cobra.Command{
+var listPreAuthKeys = &cobra.Command{
 	Use:   "list",
 	Short: "List the preauthkeys for this namespace",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -65,7 +75,7 @@ var ListPreAuthKeys = &cobra.Command{
 	},
 }
 
-var CreatePreAuthKeyCmd = &cobra.Command{
+var createPreAuthKeyCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Creates a new preauthkey in the specified namespace",
 	Run: func(cmd *cobra.Command, args []string) {
