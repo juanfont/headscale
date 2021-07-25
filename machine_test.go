@@ -1,6 +1,8 @@
 package headscale
 
 import (
+	"encoding/json"
+
 	"gopkg.in/check.v1"
 )
 
@@ -81,6 +83,15 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 	h.db.Save(&m)
 	err = h.DeleteMachine(&m)
 	c.Assert(err, check.IsNil)
+	v, err := h.getValue("namespaces_pending_updates")
+	c.Assert(err, check.IsNil)
+	names := []string{}
+	err = json.Unmarshal([]byte(v), &names)
+	c.Assert(err, check.IsNil)
+	c.Assert(names, check.DeepEquals, []string{n.Name})
+	h.checkForNamespacesPendingUpdates()
+	v, _ = h.getValue("namespaces_pending_updates")
+	c.Assert(v, check.Equals, "")
 	_, err = h.GetMachine(n.Name, "testmachine")
 	c.Assert(err, check.NotNil)
 }
