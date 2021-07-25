@@ -11,6 +11,10 @@ import (
 func init() {
 	rootCmd.AddCommand(routesCmd)
 	routesCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	err := routesCmd.MarkPersistentFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	routesCmd.AddCommand(listRoutesCmd)
 	routesCmd.AddCommand(enableRouteCmd)
 }

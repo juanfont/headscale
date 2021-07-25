@@ -13,6 +13,10 @@ import (
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
 	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	err := preauthkeysCmd.MarkPersistentFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	preauthkeysCmd.AddCommand(listPreAuthKeys)
 	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
 	createPreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")

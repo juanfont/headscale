@@ -13,7 +13,10 @@ import (
 
 func init () {
 	nodeCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
-	nodeCmd.MarkPersistentFlagRequired("namespace")
+	err := nodeCmd.MarkPersistentFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(listNodesCmd)
 	nodeCmd.AddCommand(registerNodeCmd)
 	nodeCmd.AddCommand(deleteNodeCmd)
