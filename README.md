@@ -93,7 +93,7 @@ Alternatively, you can use Auth Keys to register your machines:
 
 1. Create an authkey
     ```shell
-    headscale -n myfirstnamespace preauthkey create --reusable --expiration 24h
+    headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
     ```
 
 2. Use the authkey from your machine to register it
