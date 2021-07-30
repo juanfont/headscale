@@ -51,8 +51,8 @@ func (*Suite) TestPostgresConfigLoading(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	// Test that config file was interpreted correctly
-	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8000")
-	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8000")
+	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
+	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8080")
 	c.Assert(viper.GetString("derp_map_path"), check.Equals, "derp.yaml")
 	c.Assert(viper.GetString("db_type"), check.Equals, "postgres")
 	c.Assert(viper.GetString("db_port"), check.Equals, "5432")
@@ -84,8 +84,8 @@ func (*Suite) TestSqliteConfigLoading(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	// Test that config file was interpreted correctly
-	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8000")
-	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8000")
+	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
+	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8080")
 	c.Assert(viper.GetString("derp_map_path"), check.Equals, "derp.yaml")
 	c.Assert(viper.GetString("db_type"), check.Equals, "sqlite3")
 	c.Assert(viper.GetString("db_path"), check.Equals, "db.sqlite")
@@ -125,7 +125,7 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	fmt.Println(tmp)
 
 	// Check configuration validation errors (2)
-	configYaml = []byte("---\nserver_url: \"http://127.0.0.1:8000\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"")
+	configYaml = []byte("---\nserver_url: \"http://127.0.0.1:8080\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"")
 	writeConfig(c, tmpDir, configYaml)
 	err = cli.LoadConfig(tmpDir)
 	c.Assert(err, check.IsNil)
