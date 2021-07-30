@@ -8,12 +8,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var RoutesCmd = &cobra.Command{
+func init() {
+	rootCmd.AddCommand(routesCmd)
+	routesCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
+	err := routesCmd.MarkPersistentFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	routesCmd.AddCommand(listRoutesCmd)
+	routesCmd.AddCommand(enableRouteCmd)
+}
+
+var routesCmd = &cobra.Command{
 	Use:   "routes",
 	Short: "Manage the routes of Headscale",
 }
 
-var ListRoutesCmd = &cobra.Command{
+var listRoutesCmd = &cobra.Command{
 	Use:   "list NODE",
 	Short: "List the routes exposed by this node",
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -49,7 +60,7 @@ var ListRoutesCmd = &cobra.Command{
 	},
 }
 
-var EnableRouteCmd = &cobra.Command{
+var enableRouteCmd = &cobra.Command{
 	Use:   "enable node-name route",
 	Short: "Allows exposing a route declared by this node to the rest of the nodes",
 	Args: func(cmd *cobra.Command, args []string) error {

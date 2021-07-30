@@ -8,12 +8,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var NamespaceCmd = &cobra.Command{
+func init() {
+	rootCmd.AddCommand(namespaceCmd)
+	namespaceCmd.AddCommand(createNamespaceCmd)
+	namespaceCmd.AddCommand(listNamespacesCmd)
+	namespaceCmd.AddCommand(destroyNamespaceCmd)
+}
+
+var namespaceCmd = &cobra.Command{
 	Use:   "namespaces",
 	Short: "Manage the namespaces of Headscale",
 }
 
-var CreateNamespaceCmd = &cobra.Command{
+var createNamespaceCmd = &cobra.Command{
 	Use:   "create NAME",
 	Short: "Creates a new namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -41,7 +48,7 @@ var CreateNamespaceCmd = &cobra.Command{
 	},
 }
 
-var DestroyNamespaceCmd = &cobra.Command{
+var destroyNamespaceCmd = &cobra.Command{
 	Use:   "destroy NAME",
 	Short: "Destroys a namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -69,7 +76,7 @@ var DestroyNamespaceCmd = &cobra.Command{
 	},
 }
 
-var ListNamespacesCmd = &cobra.Command{
+var listNamespacesCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all the namespaces",
 	Run: func(cmd *cobra.Command, args []string) {

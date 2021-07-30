@@ -8,7 +8,11 @@ import (
 
 var version = "dev"
 
-var VersionCmd = &cobra.Command{
+func init() {
+	rootCmd.AddCommand(versionCmd)
+}
+
+var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version.",
 	Long:  "The version of headscale.",

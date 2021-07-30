@@ -6,7 +6,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var ServeCmd = &cobra.Command{
+func init() {
+	rootCmd.AddCommand(serveCmd)
+}
+
+var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Launches the headscale server",
 	Args: func(cmd *cobra.Command, args []string) error {
