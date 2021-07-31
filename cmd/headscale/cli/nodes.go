@@ -11,7 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init () {
+func init() {
+	rootCmd.AddCommand(nodeCmd)
 	nodeCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
 	err := nodeCmd.MarkPersistentFlagRequired("namespace")
 	if err != nil {
