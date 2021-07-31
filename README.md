@@ -111,8 +111,8 @@ Please bear in mind that all the commands from headscale support adding `-o json
 Headscale's configuration file is named `config.json` or `config.yaml`. Headscale will look for it in `/etc/headscale`, `~/.headscale` and finally the directory from where the Headscale binary is executed.
 
 ```
-    "server_url": "http://192.168.1.12:8000",
-    "listen_addr": "0.0.0.0:8000",
+    "server_url": "http://192.168.1.12:8080",
+    "listen_addr": "0.0.0.0:8080",
 ```
 
 `server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on.
