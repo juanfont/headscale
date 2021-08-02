@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/crypto/nacl/box"
 	"gorm.io/gorm"
+	"inet.af/netaddr"
 	"tailscale.com/types/wgkey"
 )
 
@@ -80,7 +81,7 @@ func encodeMsg(b []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, err
 func (h *Headscale) getAvailableIP() (*net.IP, error) {
 	i := 0
 	for {
-		ip, err := getRandomIP()
+		ip, err := getRandomIP(h.cfg.IPPrefix)
 		if err != nil {
 			return nil, err
 		}
@@ -93,12 +94,12 @@ func (h *Headscale) getAvailableIP() (*net.IP, error) {
 			break
 		}
 	}
-	return nil, errors.New("Could not find an available IP address in 100.64.0.0/10")
+	return nil, errors.New(fmt.Sprintf("Could not find an available IP address in %s", h.cfg.IPPrefix.String()))
 }
 
-func getRandomIP() (*net.IP, error) {
+func getRandomIP(ipPrefix netaddr.IPPrefix) (*net.IP, error) {
 	mathrand.Seed(time.Now().Unix())
-	ipo, ipnet, err := net.ParseCIDR("100.64.0.0/10")
+	ipo, ipnet, err := net.ParseCIDR(ipPrefix.String())
 	if err == nil {
 		ip := ipo.To4()
 		// fmt.Println("In Randomize IPAddr: IP ", ip, " IPNET: ", ipnet)
