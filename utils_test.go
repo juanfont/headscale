@@ -49,6 +49,11 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	expected := netaddr.MustParseIP("10.27.0.0")
 
 	c.Assert(ips[0], check.Equals, expected)
+
+	m1, err := h.GetMachineByID(0)
+	c.Assert(err, check.IsNil)
+
+	c.Assert(m1.IPAddress, check.Equals, expected.String())
 }
 
 func (s *Suite) TestGetMultiIp(c *check.C) {
@@ -66,7 +71,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		c.Assert(err, check.NotNil)
 
 		m := Machine{
-			ID:             0,
+			ID:             uint64(i),
 			MachineKey:     "foo",
 			NodeKey:        "bar",
 			DiscoKey:       "faa",
@@ -89,6 +94,15 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(ips[0], check.Equals, netaddr.MustParseIP("10.27.0.0"))
 	c.Assert(ips[9], check.Equals, netaddr.MustParseIP("10.27.0.9"))
 	c.Assert(ips[300], check.Equals, netaddr.MustParseIP("10.27.1.44"))
+
+	// Check that we can read back the IPs
+	m1, err := h.GetMachineByID(1)
+	c.Assert(err, check.IsNil)
+	c.Assert(m1.IPAddress, check.Equals, netaddr.MustParseIP("10.27.0.0").String())
+
+	m50, err := h.GetMachineByID(50)
+	c.Assert(err, check.IsNil)
+	c.Assert(m50.IPAddress, check.Equals, netaddr.MustParseIP("10.27.0.49").String())
 
 	expectedNextIP := netaddr.MustParseIP("10.27.1.94")
 	nextIP, err := h.getAvailableIP()
