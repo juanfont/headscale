@@ -445,6 +445,7 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 		log.Println(err)
 		return
 	}
+	log.Printf("Assigning %s to %s", ip, m.Name)
 
 	m.AuthKeyID = uint(pak.ID)
 	m.IPAddress = ip.String()
