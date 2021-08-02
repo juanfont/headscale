@@ -38,7 +38,7 @@ func (s *Suite) ResetDB(c *check.C) {
 		c.Fatal(err)
 	}
 	cfg := Config{
-		IPPrefix: netaddr.MustParseIPPrefix("127.0.0.1/32"),
+		IPPrefix: netaddr.MustParseIPPrefix("10.27.0.0/23"),
 	}
 
 	h = Headscale{

@@ -15,6 +15,7 @@ func (s *Suite) TestRegisterMachine(c *check.C) {
 		DiscoKey:    "faa",
 		Name:        "testmachine",
 		NamespaceID: n.ID,
+		IPAddress:   "10.0.0.1",
 	}
 	h.db.Save(&m)
 
