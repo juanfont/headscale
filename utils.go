@@ -7,18 +7,12 @@ package headscale
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
-	"time"
-
-	mathrand "math/rand"
 
 	"golang.org/x/crypto/nacl/box"
-	"gorm.io/gorm"
+	"inet.af/netaddr"
 	"tailscale.com/types/wgkey"
 )
 
@@ -77,47 +71,71 @@ func encodeMsg(b []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, err
 	return msg, nil
 }
 
-func (h *Headscale) getAvailableIP() (*net.IP, error) {
-	i := 0
-	for {
-		ip, err := getRandomIP()
-		if err != nil {
-			return nil, err
-		}
-		m := Machine{}
-		if result := h.db.First(&m, "ip_address = ?", ip.String()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return ip, nil
-		}
-		i++
-		if i == 100 { // really random number
-			break
-		}
+func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
+	ipPrefix := h.cfg.IPPrefix
+
+	usedIps, err := h.getUsedIPs()
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("Could not find an available IP address in 100.64.0.0/10")
+
+	// Get the first IP in our prefix
+	ip := ipPrefix.IP()
+
+	for {
+		if !ipPrefix.Contains(ip) {
+			return nil, fmt.Errorf("could not find any suitable IP in %s", ipPrefix)
+		}
+
+		// Some OS (including Linux) does not like when IPs ends with 0 or 255, which
+		// is typically called network or broadcast. Lets avoid them and continue
+		// to look when we get one of those traditionally reserved IPs.
+		ipRaw := ip.As4()
+		if ipRaw[3] == 0 || ipRaw[3] == 255 {
+			ip = ip.Next()
+			continue
+		}
+
+		if ip.IsZero() &&
+			ip.IsLoopback() {
+
+			ip = ip.Next()
+			continue
+		}
+
+		if !containsIPs(usedIps, ip) {
+			return &ip, nil
+		}
+
+		ip = ip.Next()
+	}
 }
 
-func getRandomIP() (*net.IP, error) {
-	mathrand.Seed(time.Now().Unix())
-	ipo, ipnet, err := net.ParseCIDR("100.64.0.0/10")
-	if err == nil {
-		ip := ipo.To4()
-		// fmt.Println("In Randomize IPAddr: IP ", ip, " IPNET: ", ipnet)
-		// fmt.Println("Final address is ", ip)
-		// fmt.Println("Broadcast address is ", ipb)
-		// fmt.Println("Network address is ", ipn)
-		r := mathrand.Uint32()
-		ipRaw := make([]byte, 4)
-		binary.LittleEndian.PutUint32(ipRaw, r)
-		// ipRaw[3] = 254
-		// fmt.Println("ipRaw is ", ipRaw)
-		for i, v := range ipRaw {
-			// fmt.Println("IP Before: ", ip[i], " v is ", v, " Mask is: ", ipnet.Mask[i])
-			ip[i] = ip[i] + (v &^ ipnet.Mask[i])
-			// fmt.Println("IP After: ", ip[i])
+func (h *Headscale) getUsedIPs() ([]netaddr.IP, error) {
+	var addresses []string
+	h.db.Model(&Machine{}).Pluck("ip_address", &addresses)
+
+	ips := make([]netaddr.IP, len(addresses))
+	for index, addr := range addresses {
+		if addr != "" {
+			ip, err := netaddr.ParseIP(addr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse ip from database, %w", err)
+			}
+
+			ips[index] = ip
 		}
-		// fmt.Println("FINAL IP: ", ip.String())
-		return &ip, nil
 	}
 
-	return nil, err
+	return ips, nil
+}
+
+func containsIPs(ips []netaddr.IP, ip netaddr.IP) bool {
+	for _, v := range ips {
+		if v == ip {
+			return true
+		}
+	}
+
+	return false
 }

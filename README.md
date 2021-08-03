@@ -113,9 +113,10 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
 ```
     "server_url": "http://192.168.1.12:8080",
     "listen_addr": "0.0.0.0:8080",
+    "ip_prefix": "100.64.0.0/10"
 ```
 
-`server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on.
+`server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on. `ip_prefix` is the IP prefix (range) in which IP addresses for nodes will be allocated.
 
 ```
     "private_key_path": "private.key",

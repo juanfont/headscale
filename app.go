@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/acme/autocert"
 	"gorm.io/gorm"
+	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
@@ -24,6 +25,7 @@ type Config struct {
 	PrivateKeyPath                 string
 	DerpMap                        *tailcfg.DERPMap
 	EphemeralNodeInactivityTimeout time.Duration
+	IPPrefix                       netaddr.IPPrefix
 
 	DBtype string
 	DBpath string

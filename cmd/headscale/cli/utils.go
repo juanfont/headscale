@@ -14,6 +14,7 @@ import (
 	"github.com/juanfont/headscale"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
+	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -35,6 +36,8 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", "HTTP-01")
+
+	viper.SetDefault("ip_prefix", "100.64.0.0/10")
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -97,6 +100,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		DerpMap:        derpMap,
+		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
 
 		EphemeralNodeInactivityTimeout: viper.GetDuration("ephemeral_node_inactivity_timeout"),
 
