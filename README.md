@@ -24,6 +24,7 @@ Headscale implements this coordination server.
 - [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
 - [X] JSON-formatted output
 - [X] ACLs
+- [X] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [ ] Share nodes between ~~users~~ namespaces 
 - [ ] DNS
 
@@ -116,7 +117,7 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
     "ip_prefix": "100.64.0.0/10"
 ```
 
-`server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on. `ip_prefix` is the IP prefix (range) in which IP addresses for nodes will be allocated.
+`server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on. `ip_prefix` is the IP prefix (range) in which IP addresses for nodes will be allocated (default 100.64.0.0/10, e.g., 192.168.4.0/24, 10.0.0.0/8)
 
 ```
     "private_key_path": "private.key",
