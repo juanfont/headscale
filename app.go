@@ -141,6 +141,20 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 	}
 }
 
+// WatchForKVUpdates checks the KV DB table for requests to perform tailnet upgrades
+// This is a way to communitate the CLI with the headscale server
+func (h *Headscale) watchForKVUpdates(milliSeconds int64) {
+	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
+	for range ticker.C {
+		h.watchForKVUpdatesWorker()
+	}
+}
+
+func (h *Headscale) watchForKVUpdatesWorker() {
+	h.checkForNamespacesPendingUpdates()
+	// more functions will come here in the future
+}
+
 // Serve launches a GIN server with the Headscale API
 func (h *Headscale) Serve() error {
 	r := gin.Default()
@@ -149,6 +163,9 @@ func (h *Headscale) Serve() error {
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
 	r.POST("/machine/:id", h.RegistrationHandler)
 	var err error
+
+	go h.watchForKVUpdates(5000)
+
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Println("WARNING: listening with TLS but ServerURL does not start with https://")

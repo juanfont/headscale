@@ -1,7 +1,9 @@
 package headscale
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -101,6 +103,88 @@ func (h *Headscale) SetMachineNamespace(m *Machine, namespaceName string) error 
 	m.NamespaceID = n.ID
 	h.db.Save(&m)
 	return nil
+}
+
+// RequestMapUpdates signals the KV worker to update the maps for this namespace
+func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
+	namespace := Namespace{}
+	if err := h.db.First(&namespace, namespaceID).Error; err != nil {
+		return err
+	}
+
+	v, err := h.getValue("namespaces_pending_updates")
+	if err != nil || v == "" {
+		err = h.setValue("namespaces_pending_updates", fmt.Sprintf(`["%s"]`, namespace.Name))
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	names := []string{}
+	err = json.Unmarshal([]byte(v), &names)
+	if err != nil {
+		err = h.setValue("namespaces_pending_updates", fmt.Sprintf(`["%s"]`, namespace.Name))
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	names = append(names, namespace.Name)
+	data, err := json.Marshal(names)
+	if err != nil {
+		log.Printf("Could not marshal namespaces_pending_updates: %s", err)
+		return err
+	}
+	return h.setValue("namespaces_pending_updates", string(data))
+}
+
+func (h *Headscale) checkForNamespacesPendingUpdates() {
+	v, err := h.getValue("namespaces_pending_updates")
+	if err != nil {
+		return
+	}
+	if v == "" {
+		return
+	}
+
+	names := []string{}
+	err = json.Unmarshal([]byte(v), &names)
+	if err != nil {
+		return
+	}
+	for _, name := range names {
+		log.Printf("Sending updates to nodes in namespace %s", name)
+		machines, err := h.ListMachinesInNamespace(name)
+		if err != nil {
+			continue
+		}
+		for _, m := range *machines {
+			peers, _ := h.getPeers(m)
+			h.pollMu.Lock()
+			for _, p := range *peers {
+				pUp, ok := h.clientsPolling[uint64(p.ID)]
+				if ok {
+					log.Printf("[%s] Notifying peer %s (%s)", m.Name, p.Name, p.Addresses[0])
+					pUp <- []byte{}
+				} else {
+					log.Printf("[%s] Peer %s does not appear to be polling", m.Name, p.Name)
+				}
+			}
+			h.pollMu.Unlock()
+		}
+	}
+	newV, err := h.getValue("namespaces_pending_updates")
+	if err != nil {
+		return
+	}
+	if v == newV { // only clear when no changes, so we notified everybody
+		err = h.setValue("namespaces_pending_updates", "")
+		if err != nil {
+			log.Printf("Could not save to KV: %s", err)
+			return
+		}
+	}
 }
 
 func (n *Namespace) toUser() *tailcfg.User {

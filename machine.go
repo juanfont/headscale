@@ -200,19 +200,22 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 // DeleteMachine softs deletes a Machine from the database
 func (h *Headscale) DeleteMachine(m *Machine) error {
 	m.Registered = false
+	namespaceID := m.NamespaceID
 	h.db.Save(&m) // we mark it as unregistered, just in case
 	if err := h.db.Delete(&m).Error; err != nil {
 		return err
 	}
-	return nil
+
+	return h.RequestMapUpdates(namespaceID)
 }
 
 // HardDeleteMachine hard deletes a Machine from the database
 func (h *Headscale) HardDeleteMachine(m *Machine) error {
+	namespaceID := m.NamespaceID
 	if err := h.db.Unscoped().Delete(&m).Error; err != nil {
 		return err
 	}
-	return nil
+	return h.RequestMapUpdates(namespaceID)
 }
 
 // GetHostInfo returns a Hostinfo struct for the machine

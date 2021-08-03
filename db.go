@@ -79,6 +79,7 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 	return db, nil
 }
 
+// getValue returns the value for the given key in KV
 func (h *Headscale) getValue(key string) (string, error) {
 	var row KV
 	if result := h.db.First(&row, "key = ?", key); errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -87,6 +88,7 @@ func (h *Headscale) getValue(key string) (string, error) {
 	return row.Value, nil
 }
 
+// setValue sets value for the given key in KV
 func (h *Headscale) setValue(key string, value string) error {
 	kv := KV{
 		Key:   key,
