@@ -117,3 +117,39 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 
 	c.Assert(nextIP2.String(), check.Equals, expectedNextIP.String())
 }
+
+func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
+	ip, err := h.getAvailableIP()
+	c.Assert(err, check.IsNil)
+
+	expected := netaddr.MustParseIP("10.27.0.0")
+
+	c.Assert(ip.String(), check.Equals, expected.String())
+
+	n, err := h.CreateNamespace("test_ip")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = h.GetMachine("test", "testmachine")
+	c.Assert(err, check.NotNil)
+
+	m := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Name:           "testmachine",
+		NamespaceID:    n.ID,
+		Registered:     true,
+		RegisterMethod: "authKey",
+		AuthKeyID:      uint(pak.ID),
+	}
+	h.db.Save(&m)
+
+	ip2, err := h.getAvailableIP()
+	c.Assert(err, check.IsNil)
+
+	c.Assert(ip2.String(), check.Equals, expected.String())
+}
