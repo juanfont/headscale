@@ -79,21 +79,6 @@ func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
 		return nil, err
 	}
 
-	// for _, ip := range usedIps {
-	// 	nextIP := ip.Next()
-
-	// 	if !containsIPs(usedIps, nextIP) && ipPrefix.Contains(nextIP) {
-	// 		return &nextIP, nil
-	// 	}
-	// }
-
-	// // If there are no IPs in use, we are starting fresh and
-	// // can issue IPs from the beginning of the prefix.
-	// ip := ipPrefix.IP()
-	// return &ip, nil
-
-	// return nil, fmt.Errorf("failed to find any available IP in %s", ipPrefix)
-
 	// Get the first IP in our prefix
 	ip := ipPrefix.IP()
 
@@ -102,8 +87,19 @@ func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
 			return nil, fmt.Errorf("could not find any suitable IP in %s", ipPrefix)
 		}
 
+		// Some OS (including Linux) does not like when IPs ends with 0 or 255, which
+		// is typically called network or broadcast. Lets avoid them and continue
+		// to look when we get one of those traditionally reserved IPs.
+		ipRaw := ip.As4()
+		if ipRaw[3] == 0 || ipRaw[3] == 255 {
+			ip = ip.Next()
+			continue
+		}
+
 		if ip.IsZero() &&
 			ip.IsLoopback() {
+
+			ip = ip.Next()
 			continue
 		}
 
