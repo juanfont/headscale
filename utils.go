@@ -121,12 +121,14 @@ func (h *Headscale) getUsedIPs() ([]netaddr.IP, error) {
 
 	ips := make([]netaddr.IP, len(addresses))
 	for index, addr := range addresses {
-		ip, err := netaddr.ParseIP(addr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ip from database, %w", err)
-		}
+		if addr != "" {
+			ip, err := netaddr.ParseIP(addr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse ip from database, %w", err)
+			}
 
-		ips[index] = ip
+			ips[index] = ip
+		}
 	}
 
 	return ips, nil
