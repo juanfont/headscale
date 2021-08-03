@@ -10,7 +10,7 @@ func (s *Suite) TestGetAvailableIp(c *check.C) {
 
 	c.Assert(err, check.IsNil)
 
-	expected := netaddr.MustParseIP("10.27.0.0")
+	expected := netaddr.MustParseIP("10.27.0.1")
 
 	c.Assert(ip.String(), check.Equals, expected.String())
 }
@@ -46,7 +46,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 
 	c.Assert(err, check.IsNil)
 
-	expected := netaddr.MustParseIP("10.27.0.0")
+	expected := netaddr.MustParseIP("10.27.0.1")
 
 	c.Assert(ips[0], check.Equals, expected)
 
@@ -91,20 +91,20 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 
 	c.Assert(len(ips), check.Equals, 350)
 
-	c.Assert(ips[0], check.Equals, netaddr.MustParseIP("10.27.0.0"))
-	c.Assert(ips[9], check.Equals, netaddr.MustParseIP("10.27.0.9"))
-	c.Assert(ips[300], check.Equals, netaddr.MustParseIP("10.27.1.44"))
+	c.Assert(ips[0], check.Equals, netaddr.MustParseIP("10.27.0.1"))
+	c.Assert(ips[9], check.Equals, netaddr.MustParseIP("10.27.0.10"))
+	c.Assert(ips[300], check.Equals, netaddr.MustParseIP("10.27.1.47"))
 
 	// Check that we can read back the IPs
 	m1, err := h.GetMachineByID(1)
 	c.Assert(err, check.IsNil)
-	c.Assert(m1.IPAddress, check.Equals, netaddr.MustParseIP("10.27.0.0").String())
+	c.Assert(m1.IPAddress, check.Equals, netaddr.MustParseIP("10.27.0.1").String())
 
 	m50, err := h.GetMachineByID(50)
 	c.Assert(err, check.IsNil)
-	c.Assert(m50.IPAddress, check.Equals, netaddr.MustParseIP("10.27.0.49").String())
+	c.Assert(m50.IPAddress, check.Equals, netaddr.MustParseIP("10.27.0.50").String())
 
-	expectedNextIP := netaddr.MustParseIP("10.27.1.94")
+	expectedNextIP := netaddr.MustParseIP("10.27.1.97")
 	nextIP, err := h.getAvailableIP()
 	c.Assert(err, check.IsNil)
 
@@ -116,4 +116,40 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	c.Assert(nextIP2.String(), check.Equals, expectedNextIP.String())
+}
+
+func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
+	ip, err := h.getAvailableIP()
+	c.Assert(err, check.IsNil)
+
+	expected := netaddr.MustParseIP("10.27.0.1")
+
+	c.Assert(ip.String(), check.Equals, expected.String())
+
+	n, err := h.CreateNamespace("test_ip")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = h.GetMachine("test", "testmachine")
+	c.Assert(err, check.NotNil)
+
+	m := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Name:           "testmachine",
+		NamespaceID:    n.ID,
+		Registered:     true,
+		RegisterMethod: "authKey",
+		AuthKeyID:      uint(pak.ID),
+	}
+	h.db.Save(&m)
+
+	ip2, err := h.getAvailableIP()
+	c.Assert(err, check.IsNil)
+
+	c.Assert(ip2.String(), check.Equals, expected.String())
 }
