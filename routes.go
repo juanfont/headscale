@@ -52,8 +52,8 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 			peers, _ := h.getPeers(*m)
 			h.pollMu.Lock()
 			for _, p := range *peers {
-				if pUp, ok := h.clientsPolling[uint64(p.ID)]; ok {
-					pUp <- []byte{}
+				if pUp, ok := h.clientsPolling.Load(uint64(p.ID)); ok {
+					pUp.(chan []byte) <- []byte{}
 				}
 			}
 			h.pollMu.Unlock()
