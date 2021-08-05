@@ -225,6 +225,10 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 //
 // At this moment the updates are sent in a quite horrendous way, but they kinda work.
 func (h *Headscale) PollNetMapHandler(c *gin.Context) {
+	log.Trace().
+		Str("handler", "PollNetMap").
+		Str("id", c.Param("id")).
+		Msg("PollNetMapHandler called")
 	body, _ := io.ReadAll(c.Request.Body)
 	mKeyStr := c.Param("id")
 	mKey, err := wgkey.ParseHex(mKeyStr)
@@ -255,6 +259,11 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		c.String(http.StatusUnauthorized, "")
 		return
 	}
+	log.Trace().
+		Str("handler", "PollNetMap").
+		Str("id", c.Param("id")).
+		Str("machine", m.Name).
+		Msg("Found machine in database")
 
 	hostinfo, _ := json.Marshal(req.Hostinfo)
 	m.Name = req.Hostinfo.Hostname
@@ -277,17 +286,36 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	}
 	h.db.Save(&m)
 
-	pollData := make(chan []byte, 1)
 	update := make(chan []byte, 1)
-	cancelKeepAlive := make(chan []byte, 1)
+
+	pollData := make(chan []byte, 1)
 	defer close(pollData)
+
+	cancelKeepAlive := make(chan []byte, 1)
 	defer close(cancelKeepAlive)
+
+	log.Trace().
+		Str("handler", "PollNetMap").
+		Str("id", c.Param("id")).
+		Str("machine", m.Name).
+		Msg("Locking poll mutex")
 	h.pollMu.Lock()
 	h.clientsPolling[m.ID] = update
 	h.pollMu.Unlock()
+	log.Trace().
+		Str("handler", "PollNetMap").
+		Str("id", c.Param("id")).
+		Str("machine", m.Name).
+		Msg("Unlocking poll mutex")
 
 	data, err := h.getMapResponse(mKey, req, m)
 	if err != nil {
+		log.Error().
+			Str("handler", "PollNetMap").
+			Str("id", c.Param("id")).
+			Str("machine", m.Name).
+			Err(err).
+			Msg("Failed to get Map response")
 		c.String(http.StatusInternalServerError, ":(")
 		return
 	}
@@ -299,10 +327,12 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	// Details on the protocol can be found in https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L696
 	log.Debug().
 		Str("handler", "PollNetMap").
+		Str("id", c.Param("id")).
 		Str("machine", m.Name).
 		Bool("readOnly", req.ReadOnly).
 		Bool("omitPeers", req.OmitPeers).
-		Bool("stream", req.Stream)
+		Bool("stream", req.Stream).
+		Msg("Client map request processed")
 
 	if req.ReadOnly {
 		log.Info().
@@ -457,6 +487,10 @@ func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgk
 }
 
 func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
+	log.Trace().
+		Str("func", "getMapResponse").
+		Str("machine", req.Hostinfo.Hostname).
+		Msg("Creating Map response")
 	node, err := m.toNode()
 	if err != nil {
 		log.Error().
