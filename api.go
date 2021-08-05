@@ -113,7 +113,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			log.Debug().
 				Str("handler", "Registration").
 				Str("machine", m.Name).
-				Msg("Client is registered and we have the current NodeKey. All clear to /mSending keepaliveap")
+				Msg("Client is registered and we have the current NodeKey. All clear to /map")
 
 			resp.AuthURL = ""
 			resp.MachineAuthorized = true
