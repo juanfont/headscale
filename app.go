@@ -127,15 +127,15 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 	for _, ns := range *namespaces {
 		machines, err := h.ListMachinesInNamespace(ns.Name)
 		if err != nil {
-			log.Error().Err(err).Str("Namespace", ns.Name).Msg("Error listing machines in namespace")
+			log.Error().Err(err).Str("namespace", ns.Name).Msg("Error listing machines in namespace")
 			return
 		}
 		for _, m := range *machines {
 			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral && time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
-				log.Info().Str("Machine", m.Name).Msg("Ephemeral client removed from database")
+				log.Info().Str("machine", m.Name).Msg("Ephemeral client removed from database")
 				err = h.db.Unscoped().Delete(m).Error
 				if err != nil {
-					log.Error().Err(err).Str("Name", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
+					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
 			}
 		}

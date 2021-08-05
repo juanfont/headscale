@@ -34,7 +34,7 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 	n.Name = name
 	if err := h.db.Create(&n).Error; err != nil {
 		log.Error().
-			Str("Func", "CreateNamespace").
+			Str("func", "CreateNamespace").
 			Err(err).
 			Msg("Could not create row")
 		return nil, err
@@ -137,7 +137,7 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 	data, err := json.Marshal(names)
 	if err != nil {
 		log.Error().
-			Str("Func", "RequestMapUpdates").
+			Str("func", "RequestMapUpdates").
 			Err(err).
 			Msg("Could not marshal namespaces_pending_updates")
 		return err
@@ -161,8 +161,8 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 	}
 	for _, name := range names {
 		log.Trace().
-			Str("Func", "RequestMapUpdates").
-			Str("Machine", name).
+			Str("func", "RequestMapUpdates").
+			Str("machine", name).
 			Msg("Sending updates to nodes in namespace")
 		machines, err := h.ListMachinesInNamespace(name)
 		if err != nil {
@@ -175,17 +175,17 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 				pUp, ok := h.clientsPolling[uint64(p.ID)]
 				if ok {
 					log.Info().
-						Str("Func", "checkForNamespacesPendingUpdates").
-						Str("Machine", m.Name).
-						Str("Peer", m.Name).
-						Str("Address", p.Addresses[0].String()).
+						Str("func", "checkForNamespacesPendingUpdates").
+						Str("machine", m.Name).
+						Str("peer", m.Name).
+						Str("address", p.Addresses[0].String()).
 						Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
 					pUp <- []byte{}
 				} else {
 					log.Info().
-						Str("Func", "checkForNamespacesPendingUpdates").
-						Str("Machine", m.Name).
-						Str("Peer", m.Name).
+						Str("func", "checkForNamespacesPendingUpdates").
+						Str("machine", m.Name).
+						Str("peer", m.Name).
 						Msgf("Peer %s does not appear to be polling", p.Name)
 				}
 			}
@@ -200,7 +200,7 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 		err = h.setValue("namespaces_pending_updates", "")
 		if err != nil {
 			log.Error().
-				Str("Func", "checkForNamespacesPendingUpdates").
+				Str("func", "checkForNamespacesPendingUpdates").
 				Err(err).
 				Msg("Could not save to KV")
 			return

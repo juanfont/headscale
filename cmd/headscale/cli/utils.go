@@ -89,7 +89,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	derpMap, err := loadDerpMap(derpPath)
 	if err != nil {
 		log.Error().
-			Str("Path", derpPath).
+			Str("path", derpPath).
 			Err(err).
 			Msg("Could not load DERP servers map file")
 	}
@@ -140,7 +140,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		err = h.LoadACLPolicy(aclPath)
 		if err != nil {
 			log.Error().
-				Str("Path", aclPath).
+				Str("path", aclPath).
 				Err(err).
 				Msg("Could not load the ACL policy")
 		}
