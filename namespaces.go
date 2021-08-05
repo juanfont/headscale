@@ -170,9 +170,8 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 		}
 		for _, m := range *machines {
 			peers, _ := h.getPeers(m)
-			h.pollMu.Lock()
 			for _, p := range *peers {
-				pUp, ok := h.clientsPolling[uint64(p.ID)]
+				pUp, ok := h.clientsPolling.Load(uint64(p.ID))
 				if ok {
 					log.Info().
 						Str("func", "checkForNamespacesPendingUpdates").
@@ -180,7 +179,7 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 						Str("peer", m.Name).
 						Str("address", p.Addresses[0].String()).
 						Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
-					pUp <- []byte{}
+					pUp.(chan []byte) <- []byte{}
 				} else {
 					log.Info().
 						Str("func", "checkForNamespacesPendingUpdates").
@@ -189,7 +188,6 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 						Msgf("Peer %s does not appear to be polling", p.Name)
 				}
 			}
-			h.pollMu.Unlock()
 		}
 	}
 	newV, err := h.getValue("namespaces_pending_updates")

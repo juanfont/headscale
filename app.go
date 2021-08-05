@@ -59,7 +59,7 @@ type Headscale struct {
 	aclRules  *[]tailcfg.FilterRule
 
 	pollMu         sync.Mutex
-	clientsPolling map[uint64]chan []byte // this is by all means a hackity hack
+	clientsPolling sync.Map
 }
 
 // NewHeadscale returns the Headscale app
@@ -99,7 +99,6 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		return nil, err
 	}
 
-	h.clientsPolling = make(map[uint64]chan []byte)
 	return &h, nil
 }
 

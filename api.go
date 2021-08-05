@@ -299,9 +299,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("id", c.Param("id")).
 		Str("machine", m.Name).
 		Msg("Locking poll mutex")
-	h.pollMu.Lock()
-	h.clientsPolling[m.ID] = update
-	h.pollMu.Unlock()
+	h.clientsPolling.Store(m.ID, update)
 	log.Trace().
 		Str("handler", "PollNetMap").
 		Str("id", c.Param("id")).
@@ -373,9 +371,8 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("machine", m.Name).
 		Msg("Notifying peers")
 	peers, _ := h.getPeers(m)
-	h.pollMu.Lock()
 	for _, p := range *peers {
-		pUp, ok := h.clientsPolling[uint64(p.ID)]
+		pUp, ok := h.clientsPolling.Load(uint64(p.ID))
 		if ok {
 			log.Info().
 				Str("handler", "PollNetMap").
@@ -383,7 +380,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 				Str("peer", m.Name).
 				Str("address", p.Addresses[0].String()).
 				Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
-			pUp <- []byte{}
+			pUp.(chan []byte) <- []byte{}
 		} else {
 			log.Info().
 				Str("handler", "PollNetMap").
@@ -392,7 +389,6 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 				Msgf("Peer %s does not appear to be polling", p.Name)
 		}
 	}
-	h.pollMu.Unlock()
 
 	go h.keepAlive(cancelKeepAlive, pollData, mKey, req, m)
 
@@ -448,11 +444,9 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			now := time.Now().UTC()
 			m.LastSeen = &now
 			h.db.Save(&m)
-			h.pollMu.Lock()
 			cancelKeepAlive <- []byte{}
-			delete(h.clientsPolling, m.ID)
+			h.clientsPolling.Delete(m.ID)
 			close(update)
-			h.pollMu.Unlock()
 			return false
 
 		}
