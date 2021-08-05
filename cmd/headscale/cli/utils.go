@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 	"inet.af/netaddr"
@@ -52,7 +52,8 @@ func LoadConfig(path string) error {
 
 	if (viper.GetString("tls_letsencrypt_hostname") != "") && (viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") && (!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
-		log.Println("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
+		log.Warn().
+			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
 	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") && (viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
@@ -82,9 +83,13 @@ func absPath(path string) string {
 }
 
 func getHeadscaleApp() (*headscale.Headscale, error) {
-	derpMap, err := loadDerpMap(absPath(viper.GetString("derp_map_path")))
+	derpPath := absPath(viper.GetString("derp_map_path"))
+	derpMap, err := loadDerpMap(derpPath)
 	if err != nil {
-		log.Printf("Could not load DERP servers map file: %s", err)
+		log.Error().
+			Str("Path", derpPath).
+			Err(err).
+			Msg("Could not load DERP servers map file")
 	}
 
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
@@ -129,9 +134,13 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	// We are doing this here, as in the future could be cool to have it also hot-reload
 
 	if viper.GetString("acl_policy_path") != "" {
-		err = h.LoadACLPolicy(absPath(viper.GetString("acl_policy_path")))
+		aclPath := absPath(viper.GetString("acl_policy_path"))
+		err = h.LoadACLPolicy(aclPath)
 		if err != nil {
-			log.Printf("Could not load the ACL policy: %s", err)
+			log.Error().
+				Str("Path", aclPath).
+				Err(err).
+				Msg("Could not load the ACL policy")
 		}
 	}
 
