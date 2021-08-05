@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
@@ -63,21 +64,27 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	mKeyStr := c.Param("id")
 	mKey, err := wgkey.ParseHex(mKeyStr)
 	if err != nil {
-		log.Printf("Cannot parse machine key: %s", err)
+		log.Error().
+			Str("Handler", "Registration").
+			Err(err).
+			Msg("Cannot parse machine key")
 		c.String(http.StatusInternalServerError, "Sad!")
 		return
 	}
 	req := tailcfg.RegisterRequest{}
 	err = decode(body, &req, &mKey, h.privateKey)
 	if err != nil {
-		log.Printf("Cannot decode message: %s", err)
+		log.Error().
+			Str("Handler", "Registration").
+			Err(err).
+			Msg("Cannot decode message")
 		c.String(http.StatusInternalServerError, "Very sad!")
 		return
 	}
 
 	var m Machine
 	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		log.Println("New Machine!")
+		log.Info().Str("Name", req.Hostinfo.Hostname).Msg("New machine")
 		m = Machine{
 			Expiry:     &req.Expiry,
 			MachineKey: mKey.HexString(),
@@ -100,13 +107,20 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	// We have the updated key!
 	if m.NodeKey == wgkey.Key(req.NodeKey).HexString() {
 		if m.Registered {
-			log.Printf("[%s] Client is registered and we have the current NodeKey. All clear to /map", m.Name)
+			log.Debug().
+				Str("Handler", "Registration").
+				Str("Machine", m.Name).
+				Msg("Client is registered and we have the current NodeKey. All clear to /mSending keepaliveap")
+
 			resp.AuthURL = ""
 			resp.MachineAuthorized = true
 			resp.User = *m.Namespace.toUser()
 			respBody, err := encode(resp, &mKey, h.privateKey)
 			if err != nil {
-				log.Printf("Cannot encode message: %s", err)
+				log.Error().
+					Str("Handler", "Registration").
+					Err(err).
+					Msg("Cannot encode message")
 				c.String(http.StatusInternalServerError, "")
 				return
 			}
@@ -114,12 +128,18 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			return
 		}
 
-		log.Printf("[%s] Not registered and not NodeKey rotation. Sending a authurl to register", m.Name)
+		log.Debug().
+			Str("Handler", "Registration").
+			Str("Machine", m.Name).
+			Msg("Not registered and not NodeKey rotation. Sending a authurl to register")
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
 			h.cfg.ServerURL, mKey.HexString())
 		respBody, err := encode(resp, &mKey, h.privateKey)
 		if err != nil {
-			log.Printf("Cannot encode message: %s", err)
+			log.Error().
+				Str("Handler", "Registration").
+				Err(err).
+				Msg("Cannot encode message")
 			c.String(http.StatusInternalServerError, "")
 			return
 		}
@@ -129,7 +149,10 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 	// The NodeKey we have matches OldNodeKey, which means this is a refresh after an key expiration
 	if m.NodeKey == wgkey.Key(req.OldNodeKey).HexString() {
-		log.Printf("[%s] We have the OldNodeKey in the database. This is a key refresh", m.Name)
+		log.Debug().
+			Str("Handler", "Registration").
+			Str("Machine", m.Name).
+			Msg("We have the OldNodeKey in the database. This is a key refresh")
 		m.NodeKey = wgkey.Key(req.NodeKey).HexString()
 		h.db.Save(&m)
 
@@ -137,7 +160,10 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		resp.User = *m.Namespace.toUser()
 		respBody, err := encode(resp, &mKey, h.privateKey)
 		if err != nil {
-			log.Printf("Cannot encode message: %s", err)
+			log.Error().
+				Str("Handler", "Registration").
+				Err(err).
+				Msg("Cannot encode message")
 			c.String(http.StatusInternalServerError, "Extremely sad!")
 			return
 		}
@@ -148,25 +174,38 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	// We arrive here after a client is restarted without finalizing the authentication flow or
 	// when headscale is stopped in the middle of the auth process.
 	if m.Registered {
-		log.Printf("[%s] The node is sending us a new NodeKey, but machine is registered. All clear for /map", m.Name)
+		log.Debug().
+			Str("Handler", "Registration").
+			Str("Machine", m.Name).
+			Msg("The node is sending us a new NodeKey, but machine is registered. All clear for /map")
 		resp.AuthURL = ""
 		resp.MachineAuthorized = true
 		resp.User = *m.Namespace.toUser()
 		respBody, err := encode(resp, &mKey, h.privateKey)
 		if err != nil {
-			log.Printf("Cannot encode message: %s", err)
+			log.Error().
+				Str("Handler", "Registration").
+				Err(err).
+				Msg("Cannot encode message")
 			c.String(http.StatusInternalServerError, "")
 			return
 		}
 		c.Data(200, "application/json; charset=utf-8", respBody)
 		return
 	}
-	log.Printf("[%s] The node is sending us a new NodeKey, sending auth url", m.Name)
+
+	log.Debug().
+		Str("Handler", "Registration").
+		Str("Machine", m.Name).
+		Msg("The node is sending us a new NodeKey, sending auth url")
 	resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
 		h.cfg.ServerURL, mKey.HexString())
 	respBody, err := encode(resp, &mKey, h.privateKey)
 	if err != nil {
-		log.Printf("Cannot encode message: %s", err)
+		log.Error().
+			Str("Handler", "Registration").
+			Err(err).
+			Msg("Cannot encode message")
 		c.String(http.StatusInternalServerError, "")
 		return
 	}
@@ -187,21 +226,29 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	mKeyStr := c.Param("id")
 	mKey, err := wgkey.ParseHex(mKeyStr)
 	if err != nil {
-		log.Printf("Cannot parse client key: %s", err)
+		log.Error().
+			Str("Handler", "PollNetMap").
+			Err(err).
+			Msg("Cannot parse client key")
 		c.String(http.StatusBadRequest, "")
 		return
 	}
 	req := tailcfg.MapRequest{}
 	err = decode(body, &req, &mKey, h.privateKey)
 	if err != nil {
-		log.Printf("Cannot decode message: %s", err)
+		log.Error().
+			Str("Handler", "PollNetMap").
+			Err(err).
+			Msg("Cannot decode message")
 		c.String(http.StatusBadRequest, "")
 		return
 	}
 
 	var m Machine
 	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		log.Printf("Ignoring request, cannot find machine with key %s", mKey.HexString())
+		log.Warn().
+			Str("Handler", "PollNetMap").
+			Msgf("Ignoring request, cannot find machine with key %s", mKey.HexString())
 		c.String(http.StatusUnauthorized, "")
 		return
 	}
@@ -247,37 +294,66 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	// empty endpoints to peers)
 
 	// Details on the protocol can be found in https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L696
-	log.Printf("[%s] ReadOnly=%t   OmitPeers=%t    Stream=%t", m.Name, req.ReadOnly, req.OmitPeers, req.Stream)
+	log.Debug().
+		Str("Handler", "PollNetMap").
+		Str("Machine", m.Name).
+		Bool("ReadOnly", req.ReadOnly).
+		Bool("OmitPeers", req.OmitPeers).
+		Bool("Stream", req.Stream)
 
 	if req.ReadOnly {
-		log.Printf("[%s] Client is starting up. Asking for DERP map", m.Name)
+		log.Info().
+			Str("Handler", "PollNetMap").
+			Str("Machine", m.Name).
+			Msg("Client is starting up. Asking for DERP map")
 		c.Data(200, "application/json; charset=utf-8", *data)
 		return
 	}
 	if req.OmitPeers && !req.Stream {
-		log.Printf("[%s] Client sent endpoint update and is ok with a response without peer list", m.Name)
+		log.Info().
+			Str("Handler", "PollNetMap").
+			Str("Machine", m.Name).
+			Msg("Client sent endpoint update and is ok with a response without peer list")
 		c.Data(200, "application/json; charset=utf-8", *data)
 		return
 	} else if req.OmitPeers && req.Stream {
-		log.Printf("[%s] Warning, ignoring request, don't know how to handle it", m.Name)
+		log.Warn().
+			Str("Handler", "PollNetMap").
+			Str("Machine", m.Name).
+			Msg("Ignoring request, don't know how to handle it")
 		c.String(http.StatusBadRequest, "")
 		return
 	}
 
-	log.Printf("[%s] Client is ready to access the tailnet", m.Name)
-	log.Printf("[%s] Sending initial map", m.Name)
+	log.Info().
+		Str("Handler", "PollNetMap").
+		Str("Machine", m.Name).
+		Msg("Client is ready to access the tailnet")
+	log.Info().
+		Str("Handler", "PollNetMap").
+		Str("Machine", m.Name).
+		Msg("Sending initial map")
 	pollData <- *data
 
-	log.Printf("[%s] Notifying peers", m.Name)
+	log.Printf("[PollMap] (%s) Notifying peers", m.Name)
 	peers, _ := h.getPeers(m)
 	h.pollMu.Lock()
 	for _, p := range *peers {
 		pUp, ok := h.clientsPolling[uint64(p.ID)]
 		if ok {
-			log.Printf("[%s] Notifying peer %s (%s)", m.Name, p.Name, p.Addresses[0])
+			log.Info().
+				Str("Handler", "PollNetMap").
+				Str("Machine", m.Name).
+				Str("Peer", m.Name).
+				Str("Address", p.Addresses[0].String()).
+				Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
 			pUp <- []byte{}
 		} else {
-			log.Printf("[%s] Peer %s does not appear to be polling", m.Name, p.Name)
+			log.Info().
+				Str("Handler", "PollNetMap").
+				Str("Machine", m.Name).
+				Str("Peer", m.Name).
+				Msgf("Peer %s does not appear to be polling", p.Name)
 		}
 	}
 	h.pollMu.Unlock()
@@ -287,10 +363,18 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case data := <-pollData:
-			log.Printf("[%s] Sending data (%d bytes)", m.Name, len(data))
+			log.Trace().
+				Str("Handler", "PollNetMap").
+				Str("Machine", m.Name).
+				Int("Bytes", len(data)).
+				Msg("Sending data")
 			_, err := w.Write(data)
 			if err != nil {
-				log.Printf("[%s] Cannot write data: %s", m.Name, err)
+				log.Error().
+					Str("Handler", "PollNetMap").
+					Str("Machine", m.Name).
+					Err(err).
+					Msg("Cannot write data")
 			}
 			now := time.Now().UTC()
 			m.LastSeen = &now
@@ -298,19 +382,33 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			return true
 
 		case <-update:
-			log.Printf("[%s] Received a request for update", m.Name)
+			log.Debug().
+				Str("Handler", "PollNetMap").
+				Str("Machine", m.Name).
+				Msg("Received a request for update")
 			data, err := h.getMapResponse(mKey, req, m)
 			if err != nil {
-				log.Printf("[%s] Could not get the map update: %s", m.Name, err)
+				log.Error().
+					Str("Handler", "PollNetMap").
+					Str("Machine", m.Name).
+					Err(err).
+					Msg("Could not get the map update")
 			}
 			_, err = w.Write(*data)
 			if err != nil {
-				log.Printf("[%s] Could not write the map response: %s", m.Name, err)
+				log.Error().
+					Str("Handler", "PollNetMap").
+					Str("Machine", m.Name).
+					Err(err).
+					Msg("Could not write the map response")
 			}
 			return true
 
 		case <-c.Request.Context().Done():
-			log.Printf("[%s] The client has closed the connection", m.Name)
+			log.Info().
+				Str("Handler", "PollNetMap").
+				Str("Machine", m.Name).
+				Msg("The client has closed the connection")
 			now := time.Now().UTC()
 			m.LastSeen = &now
 			h.db.Save(&m)
@@ -335,10 +433,16 @@ func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgk
 			h.pollMu.Lock()
 			data, err := h.getMapKeepAliveResponse(mKey, req, m)
 			if err != nil {
-				log.Printf("Error generating the keep alive msg: %s", err)
+				log.Error().
+					Str("Func", "keepAlive").
+					Err(err).
+					Msg("Error generating the keep alive msg")
 				return
 			}
-			log.Printf("[%s] Sending keepalive", m.Name)
+			log.Debug().
+				Str("Func", "keepAlive").
+				Str("Machine", m.Name).
+				Msg("Sending keepalive")
 			pollData <- *data
 			h.pollMu.Unlock()
 			time.Sleep(60 * time.Second)
@@ -349,12 +453,18 @@ func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgk
 func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
 	node, err := m.toNode()
 	if err != nil {
-		log.Printf("Cannot convert to node: %s", err)
+		log.Error().
+			Str("Func", "getMapResponse").
+			Err(err).
+			Msg("Cannot convert to node")
 		return nil, err
 	}
 	peers, err := h.getPeers(m)
 	if err != nil {
-		log.Printf("Cannot fetch peers: %s", err)
+		log.Error().
+			Str("Func", "getMapResponse").
+			Err(err).
+			Msg("Cannot fetch peers")
 		return nil, err
 	}
 
@@ -426,26 +536,49 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapReque
 }
 
 func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, req tailcfg.RegisterRequest, m Machine) {
+	log.Debug().
+		Str("Func", "handleAuthKey").
+		Str("Machine", req.Hostinfo.Hostname).
+		Msgf("Processing auth key for %s", req.Hostinfo.Hostname)
 	resp := tailcfg.RegisterResponse{}
 	pak, err := h.checkKeyValidity(req.Auth.AuthKey)
 	if err != nil {
 		resp.MachineAuthorized = false
 		respBody, err := encode(resp, &idKey, h.privateKey)
 		if err != nil {
-			log.Printf("Cannot encode message: %s", err)
+			log.Error().
+				Str("Func", "handleAuthKey").
+				Str("Machine", m.Name).
+				Err(err).
+				Msg("Cannot encode message")
 			c.String(http.StatusInternalServerError, "")
 			return
 		}
 		c.Data(200, "application/json; charset=utf-8", respBody)
-		log.Printf("[%s] Failed authentication via AuthKey", m.Name)
+		log.Error().
+			Str("Func", "handleAuthKey").
+			Str("Machine", m.Name).
+			Msg("Failed authentication via AuthKey")
 		return
 	}
+
+	log.Debug().
+		Str("Func", "handleAuthKey").
+		Str("Machine", m.Name).
+		Msg("Authentication key was valid, proceeding to acquire an IP address")
 	ip, err := h.getAvailableIP()
 	if err != nil {
-		log.Println(err)
+		log.Error().
+			Str("Func", "handleAuthKey").
+			Str("Machine", m.Name).
+			Msg("Failed to find an available IP")
 		return
 	}
-	log.Printf("Assigning %s to %s", ip, m.Name)
+	log.Info().
+		Str("Func", "handleAuthKey").
+		Str("Machine", m.Name).
+		Str("IP", ip.String()).
+		Msgf("Assining %s to %s", ip, m.Name)
 
 	m.AuthKeyID = uint(pak.ID)
 	m.IPAddress = ip.String()
@@ -459,10 +592,18 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 	resp.User = *pak.Namespace.toUser()
 	respBody, err := encode(resp, &idKey, h.privateKey)
 	if err != nil {
-		log.Printf("Cannot encode message: %s", err)
+		log.Error().
+			Str("Func", "handleAuthKey").
+			Str("Machine", m.Name).
+			Err(err).
+			Msg("Cannot encode message")
 		c.String(http.StatusInternalServerError, "Extremely sad!")
 		return
 	}
 	c.Data(200, "application/json; charset=utf-8", respBody)
-	log.Printf("[%s] Successfully authenticated via AuthKey", m.Name)
+	log.Info().
+		Str("Func", "handleAuthKey").
+		Str("Machine", m.Name).
+		Str("IP", ip.String()).
+		Msg("Successfully authenticated via AuthKey")
 }

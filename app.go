@@ -3,12 +3,13 @@ package headscale
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/acme/autocert"
@@ -120,21 +121,21 @@ func (h *Headscale) ExpireEphemeralNodes(milliSeconds int64) {
 func (h *Headscale) expireEphemeralNodesWorker() {
 	namespaces, err := h.ListNamespaces()
 	if err != nil {
-		log.Printf("Error listing namespaces: %s", err)
+		log.Error().Err(err).Msg("Error listing namespaces")
 		return
 	}
 	for _, ns := range *namespaces {
 		machines, err := h.ListMachinesInNamespace(ns.Name)
 		if err != nil {
-			log.Printf("Error listing machines in namespace %s: %s", ns.Name, err)
+			log.Error().Err(err).Str("Namespace", ns.Name).Msg("Error listing machines in namespace")
 			return
 		}
 		for _, m := range *machines {
 			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral && time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
-				log.Printf("[%s] Ephemeral client removed from database\n", m.Name)
+				log.Info().Str("Machine", m.Name).Msg("Ephemeral client removed from database")
 				err = h.db.Unscoped().Delete(m).Error
 				if err != nil {
-					log.Printf("[%s] 🤮 Cannot delete ephemeral machine from the database: %s", m.Name, err)
+					log.Error().Err(err).Str("Name", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
 			}
 		}
@@ -168,7 +169,7 @@ func (h *Headscale) Serve() error {
 
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Println("WARNING: listening with TLS but ServerURL does not start with https://")
+			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
 		m := autocert.Manager{
@@ -191,7 +192,10 @@ func (h *Headscale) Serve() error {
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
 			go func() {
-				log.Fatal(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, m.HTTPHandler(http.HandlerFunc(h.redirect))))
+
+				log.Fatal().
+					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, m.HTTPHandler(http.HandlerFunc(h.redirect)))).
+					Msg("failed to set up a HTTP server")
 			}()
 			err = s.ListenAndServeTLS("", "")
 		} else {
@@ -199,12 +203,12 @@ func (h *Headscale) Serve() error {
 		}
 	} else if h.cfg.TLSCertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
-			log.Println("WARNING: listening without TLS but ServerURL does not start with http://")
+			log.Warn().Msg("Listening without TLS but ServerURL does not start with http://")
 		}
 		err = r.Run(h.cfg.Addr)
 	} else {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Println("WARNING: listening with TLS but ServerURL does not start with https://")
+			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 		err = r.RunTLS(h.cfg.Addr, h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 	}
