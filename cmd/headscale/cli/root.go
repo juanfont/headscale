@@ -17,7 +17,6 @@ var rootCmd = &cobra.Command{
 	Long: `
 headscale is an open source implementation of the Tailscale control server
 
-Juan Font Alonso <juanfontalonso@gmail.com> - 2021
 https://github.com/juanfont/headscale`,
 }
 
