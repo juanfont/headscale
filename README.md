@@ -120,6 +120,11 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
 `server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on. `ip_prefix` is the IP prefix (range) in which IP addresses for nodes will be allocated (default 100.64.0.0/10, e.g., 192.168.4.0/24, 10.0.0.0/8)
 
 ```
+    "log_level": "debug"
+```
+`log_level` can be used to set the Log level for Headscale, it defaults to `debug`, and the available levels are: `trace`, `debug`, `info`, `warn` and `error`.
+
+```
     "private_key_path": "private.key",
 ```
 

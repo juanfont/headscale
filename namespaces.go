@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
@@ -33,7 +33,10 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 	}
 	n.Name = name
 	if err := h.db.Create(&n).Error; err != nil {
-		log.Printf("Could not create row: %s", err)
+		log.Error().
+			Str("func", "CreateNamespace").
+			Err(err).
+			Msg("Could not create row")
 		return nil, err
 	}
 	return &n, nil
@@ -133,7 +136,10 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 	names = append(names, namespace.Name)
 	data, err := json.Marshal(names)
 	if err != nil {
-		log.Printf("Could not marshal namespaces_pending_updates: %s", err)
+		log.Error().
+			Str("func", "RequestMapUpdates").
+			Err(err).
+			Msg("Could not marshal namespaces_pending_updates")
 		return err
 	}
 	return h.setValue("namespaces_pending_updates", string(data))
@@ -154,7 +160,10 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 		return
 	}
 	for _, name := range names {
-		log.Printf("Sending updates to nodes in namespace %s", name)
+		log.Trace().
+			Str("func", "RequestMapUpdates").
+			Str("machine", name).
+			Msg("Sending updates to nodes in namespace")
 		machines, err := h.ListMachinesInNamespace(name)
 		if err != nil {
 			continue
@@ -165,10 +174,19 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 			for _, p := range *peers {
 				pUp, ok := h.clientsPolling[uint64(p.ID)]
 				if ok {
-					log.Printf("[%s] Notifying peer %s (%s)", m.Name, p.Name, p.Addresses[0])
+					log.Info().
+						Str("func", "checkForNamespacesPendingUpdates").
+						Str("machine", m.Name).
+						Str("peer", m.Name).
+						Str("address", p.Addresses[0].String()).
+						Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
 					pUp <- []byte{}
 				} else {
-					log.Printf("[%s] Peer %s does not appear to be polling", m.Name, p.Name)
+					log.Info().
+						Str("func", "checkForNamespacesPendingUpdates").
+						Str("machine", m.Name).
+						Str("peer", m.Name).
+						Msgf("Peer %s does not appear to be polling", p.Name)
 				}
 			}
 			h.pollMu.Unlock()
@@ -181,7 +199,10 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 	if v == newV { // only clear when no changes, so we notified everybody
 		err = h.setValue("namespaces_pending_updates", "")
 		if err != nil {
-			log.Printf("Could not save to KV: %s", err)
+			log.Error().
+				Str("func", "checkForNamespacesPendingUpdates").
+				Err(err).
+				Msg("Could not save to KV")
 			return
 		}
 	}

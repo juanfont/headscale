@@ -3,10 +3,11 @@ package headscale
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
@@ -157,7 +158,7 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 	machines := []Machine{}
 	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
-		log.Printf("Error accessing db: %s", err)
+		log.Error().Err(err).Msg("Error accessing db")
 		return nil, err
 	}
 
