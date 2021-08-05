@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/tailscale/hujson"
 	"inet.af/netaddr"
@@ -66,7 +67,8 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 		for j, u := range a.Users {
 			srcs, err := h.generateACLPolicySrcIP(u)
 			if err != nil {
-				log.Printf("Error parsing ACL %d, User %d", i, j)
+				log.Error().
+					Msgf("Error parsing ACL %d, User %d", i, j)
 				return nil, err
 			}
 			srcIPs = append(srcIPs, *srcs...)
@@ -77,7 +79,8 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 		for j, d := range a.Ports {
 			dests, err := h.generateACLPolicyDestPorts(d)
 			if err != nil {
-				log.Printf("Error parsing ACL %d, Port %d", i, j)
+				log.Error().
+					Msgf("Error parsing ACL %d, Port %d", i, j)
 				return nil, err
 			}
 			destPorts = append(destPorts, *dests...)
