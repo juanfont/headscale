@@ -92,7 +92,10 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			NodeKey:    wgkey.Key(req.NodeKey).HexString(),
 		}
 		if err := h.db.Create(&m).Error; err != nil {
-			log.Printf("Could not create row: %s", err)
+			log.Error().
+				Str("Handler", "Registration").
+				Err(err).
+				Msg("Could not create row")
 			return
 		}
 	}
@@ -335,7 +338,10 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Msg("Sending initial map")
 	pollData <- *data
 
-	log.Printf("[PollMap] (%s) Notifying peers", m.Name)
+	log.Info().
+		Str("Handler", "PollNetMap").
+		Str("Machine", m.Name).
+		Msg("Notifying peers")
 	peers, _ := h.getPeers(m)
 	h.pollMu.Lock()
 	for _, p := range *peers {
