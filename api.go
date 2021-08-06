@@ -455,7 +455,6 @@ func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgk
 			return
 
 		default:
-			h.pollMu.Lock()
 			data, err := h.getMapKeepAliveResponse(mKey, req, m)
 			if err != nil {
 				log.Error().
@@ -464,12 +463,13 @@ func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgk
 					Msg("Error generating the keep alive msg")
 				return
 			}
+
 			log.Debug().
 				Str("func", "keepAlive").
 				Str("machine", m.Name).
 				Msg("Sending keepalive")
 			pollData <- *data
-			h.pollMu.Unlock()
+
 			time.Sleep(60 * time.Second)
 		}
 	}
