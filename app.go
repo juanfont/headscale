@@ -58,7 +58,6 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
 
-	pollMu         sync.Mutex
 	clientsPolling sync.Map
 }
 
