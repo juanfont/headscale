@@ -4,6 +4,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/efekarakus/termcolor"
 	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -11,10 +12,32 @@ import (
 )
 
 func main() {
+	var colors bool
+	switch l := termcolor.SupportLevel(os.Stderr); l {
+	case termcolor.Level16M:
+		colors = true
+	case termcolor.Level256:
+		colors = true
+	case termcolor.LevelBasic:
+		colors = true
+	default:
+		// no color, return text as is.
+		log.Trace().Msg("Colors are not supported, disabling")
+		colors = false
+	}
+
+	// Adhere to no-color.org manifesto of allowing users to
+	// turn off color in cli/services
+	if _, noColorIsSet := os.LookupEnv("NO_COLOR"); noColorIsSet {
+		log.Trace().Msg("NO_COLOR is set, disabling colors")
+		colors = false
+	}
+
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339,
+		NoColor:    !colors,
 	})
 
 	err := cli.LoadConfig("")
