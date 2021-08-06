@@ -298,13 +298,8 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("id", c.Param("id")).
 		Str("machine", m.Name).
-		Msg("Locking poll mutex")
+		Msg("Storing update channel")
 	h.clientsPolling.Store(m.ID, update)
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Str("id", c.Param("id")).
-		Str("machine", m.Name).
-		Msg("Unlocking poll mutex")
 
 	data, err := h.getMapResponse(mKey, req, m)
 	if err != nil {
