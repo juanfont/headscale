@@ -81,7 +81,7 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 	return pak, nil
 }
 
-// MarkExpirePreauthKey marks a PreAuthKey as expired
+// MarkExpirePreAuthKey marks a PreAuthKey as expired
 func (h *Headscale) MarkExpirePreAuthKey(k *PreAuthKey) error {
 	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
 		return err
