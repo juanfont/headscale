@@ -67,6 +67,19 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 	return &keys, nil
 }
 
+func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, error) {
+	pak, err := h.checkKeyValidity(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if pak.Namespace.Name != namespace {
+		return nil, errors.New("Namespace mismatch")
+	}
+
+	return pak, nil
+}
+
 func (h *Headscale) MarkExpirePreAuthKey(k *PreAuthKey) error {
 	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
 		return err
