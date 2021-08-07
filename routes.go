@@ -47,7 +47,7 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 
 			// THIS IS COMPLETELY USELESS.
 			// The peers map is stored in memory in the server process.
-			// Definetely not accessible from the CLI tool.
+			// Definitely not accessible from the CLI tool.
 			// We need RPC to the server - or some kind of 'needsUpdate' field in the DB
 			peers, _ := h.getPeers(*m)
 			for _, p := range *peers {
