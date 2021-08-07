@@ -67,6 +67,7 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 	return &keys, nil
 }
 
+// GetPreAuthKey returns a PreAuthKey for a given key
 func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, error) {
 	pak, err := h.checkKeyValidity(key)
 	if err != nil {
@@ -80,6 +81,7 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 	return pak, nil
 }
 
+// MarkExpirePreauthKey marks a PreAuthKey as expired
 func (h *Headscale) MarkExpirePreAuthKey(k *PreAuthKey) error {
 	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
 		return err
