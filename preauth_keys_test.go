@@ -163,3 +163,20 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	_, err = h.GetMachine("test7", "testest")
 	c.Assert(err, check.NotNil)
 }
+
+func (*Suite) TestExpirePreauthKey(c *check.C) {
+	n, err := h.CreateNamespace("test3")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, true, false, nil)
+	c.Assert(err, check.IsNil)
+	c.Assert(pak.Expiration, check.IsNil)
+
+	err = h.MarkExpirePreAuthKey(pak)
+	c.Assert(err, check.IsNil)
+	c.Assert(pak.Expiration, check.NotNil)
+
+	p, err := h.checkKeyValidity(pak.Key)
+	c.Assert(err, check.Equals, errorAuthKeyExpired)
+	c.Assert(p, check.IsNil)
+}
