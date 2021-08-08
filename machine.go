@@ -72,6 +72,10 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	addrs := []netaddr.IPPrefix{}
 	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", m.IPAddress))
 	if err != nil {
+		log.Trace().
+			Str("func", "toNode").
+			Str("ip", m.IPAddress).
+			Msgf("Failed to parse IP Prefix from IP: %s", m.IPAddress)
 		return nil, err
 	}
 	addrs = append(addrs, ip) // missing the ipv6 ?
