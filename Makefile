@@ -9,6 +9,9 @@ dev: lint test build
 test:
 	@go test -coverprofile=coverage.out ./...
 
+test_integration:
+	go test -tags integration ./...
+
 coverprofile_func:
 	go tool cover -func=coverage.out
 

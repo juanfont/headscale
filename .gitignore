@@ -18,3 +18,4 @@
 config.json
 *.key
 /db.sqlite
+*.sqlite3
