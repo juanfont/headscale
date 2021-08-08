@@ -116,6 +116,6 @@ var createPreAuthKeyCmd = &cobra.Command{
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("Key: %s\n", k.Key)
+		fmt.Printf("%s\n", k.Key)
 	},
 }
