@@ -67,6 +67,28 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 	return &keys, nil
 }
 
+// GetPreAuthKey returns a PreAuthKey for a given key
+func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, error) {
+	pak, err := h.checkKeyValidity(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if pak.Namespace.Name != namespace {
+		return nil, errors.New("Namespace mismatch")
+	}
+
+	return pak, nil
+}
+
+// MarkExpirePreAuthKey marks a PreAuthKey as expired
+func (h *Headscale) MarkExpirePreAuthKey(k *PreAuthKey) error {
+	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
 // checkKeyValidity does the heavy lifting for validation of the PreAuthKey coming from a node
 // If returns no error and a PreAuthKey, it can be used
 func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
