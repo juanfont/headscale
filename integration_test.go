@@ -177,7 +177,7 @@ func (s *IntegrationSuite) SetUpSuite(c *check.C) {
 
 	fmt.Printf("Joining tailscale containers to headscale at %s\n", headscaleEndpoint)
 	for hostname, tailscale := range tailscales {
-		command := []string{"tailscale", "up", "-login-server", headscaleEndpoint, "--authkey", strings.TrimSuffix(authKey, "\n"), "--hostname", headscaleEndpoint}
+		command := []string{"tailscale", "up", "-login-server", headscaleEndpoint, "--authkey", strings.TrimSuffix(authKey, "\n"), "--hostname", hostname}
 
 		fmt.Println("Join command:", command)
 		fmt.Printf("Running join command for %s\n", hostname)
