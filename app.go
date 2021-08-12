@@ -107,9 +107,9 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
-// ExpireEphemeralNodes deletes ephemeral machine records that have not been
+// expireEphemeralNodes deletes ephemeral machine records that have not been
 // seen for longer than h.cfg.EphemeralNodeInactivityTimeout
-func (h *Headscale) ExpireEphemeralNodes(milliSeconds int64) {
+func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 	for range ticker.C {
 		h.expireEphemeralNodesWorker()
@@ -165,7 +165,7 @@ func (h *Headscale) Serve() error {
 	var err error
 
 	go h.watchForKVUpdates(5000)
-	go h.ExpireEphemeralNodes(5000)
+	go h.expireEphemeralNodes(5000)
 
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
