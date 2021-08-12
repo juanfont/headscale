@@ -165,6 +165,7 @@ func (h *Headscale) Serve() error {
 	var err error
 
 	go h.watchForKVUpdates(5000)
+	go h.ExpireEphemeralNodes(5000)
 
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
