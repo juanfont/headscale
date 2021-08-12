@@ -238,3 +238,26 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 	}
 	return &hostinfo, nil
 }
+
+func (h *Headscale) notifyChangesToPeers(m *Machine) error {
+	peers, _ := h.getPeers(*m)
+	for _, p := range *peers {
+		pUp, ok := h.clientsPolling.Load(uint64(p.ID))
+		if ok {
+			log.Info().
+				Str("func", "notifyChangesToPeers").
+				Str("machine", m.Name).
+				Str("peer", m.Name).
+				Str("address", p.Addresses[0].String()).
+				Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
+			pUp.(chan []byte) <- []byte{}
+		} else {
+			log.Info().
+				Str("func", "notifyChangesToPeers").
+				Str("machine", m.Name).
+				Str("peer", m.Name).
+				Msgf("Peer %s does not appear to be polling", p.Name)
+		}
+	}
+	return nil
+}
