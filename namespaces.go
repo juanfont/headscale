@@ -169,10 +169,7 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 			continue
 		}
 		for _, m := range *machines {
-			err = h.notifyChangesToPeers(&m)
-			if err != nil {
-				continue
-			}
+			h.notifyChangesToPeers(&m)
 		}
 	}
 	newV, err := h.getValue("namespaces_pending_updates")

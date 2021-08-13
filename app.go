@@ -135,10 +135,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 				if err != nil {
 					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
-				err = h.notifyChangesToPeers(&m)
-				if err != nil {
-					continue
-				}
+				h.notifyChangesToPeers(&m)
 			}
 		}
 	}

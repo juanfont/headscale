@@ -2,6 +2,7 @@
 // ignoring it let us speed up the integration test
 // development
 integration_test.go
+integration_test/
 
 Dockerfile*
 docker-compose*
