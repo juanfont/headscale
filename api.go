@@ -286,21 +286,6 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 	}
 	h.db.Save(&m)
 
-	update := make(chan []byte, 1)
-
-	pollData := make(chan []byte, 1)
-	defer close(pollData)
-
-	cancelKeepAlive := make(chan []byte, 1)
-	defer close(cancelKeepAlive)
-
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Str("id", c.Param("id")).
-		Str("machine", m.Name).
-		Msg("Storing update channel")
-	h.clientsPolling.Store(m.ID, update)
-
 	data, err := h.getMapResponse(mKey, req, m)
 	if err != nil {
 		log.Error().
@@ -351,6 +336,23 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		return
 	}
 
+	// Only create update channel if it has not been created
+	var update chan []byte
+	log.Trace().
+		Str("handler", "PollNetMap").
+		Str("id", c.Param("id")).
+		Str("machine", m.Name).
+		Msg("Creating or loading update channel")
+	if result, ok := h.clientsPolling.LoadOrStore(m.ID, make(chan []byte, 1)); ok {
+		update = result.(chan []byte)
+	}
+
+	pollData := make(chan []byte, 1)
+	defer close(pollData)
+
+	cancelKeepAlive := make(chan []byte, 1)
+	defer close(cancelKeepAlive)
+
 	log.Info().
 		Str("handler", "PollNetMap").
 		Str("machine", m.Name).
@@ -365,87 +367,15 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("machine", m.Name).
 		Msg("Notifying peers")
-	peers, _ := h.getPeers(m)
-	for _, p := range *peers {
-		pUp, ok := h.clientsPolling.Load(uint64(p.ID))
-		if ok {
-			log.Info().
-				Str("handler", "PollNetMap").
-				Str("machine", m.Name).
-				Str("peer", m.Name).
-				Str("address", p.Addresses[0].String()).
-				Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
-			pUp.(chan []byte) <- []byte{}
-		} else {
-			log.Info().
-				Str("handler", "PollNetMap").
-				Str("machine", m.Name).
-				Str("peer", m.Name).
-				Msgf("Peer %s does not appear to be polling", p.Name)
-		}
-	}
+		// TODO: Why does this block?
+	go h.notifyChangesToPeers(&m)
 
-	go h.keepAlive(cancelKeepAlive, pollData, mKey, req, m)
-
-	c.Stream(func(w io.Writer) bool {
-		select {
-		case data := <-pollData:
-			log.Trace().
-				Str("handler", "PollNetMap").
-				Str("machine", m.Name).
-				Int("bytes", len(data)).
-				Msg("Sending data")
-			_, err := w.Write(data)
-			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMap").
-					Str("machine", m.Name).
-					Err(err).
-					Msg("Cannot write data")
-			}
-			now := time.Now().UTC()
-			m.LastSeen = &now
-			h.db.Save(&m)
-			return true
-
-		case <-update:
-			log.Debug().
-				Str("handler", "PollNetMap").
-				Str("machine", m.Name).
-				Msg("Received a request for update")
-			data, err := h.getMapResponse(mKey, req, m)
-			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMap").
-					Str("machine", m.Name).
-					Err(err).
-					Msg("Could not get the map update")
-			}
-			_, err = w.Write(*data)
-			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMap").
-					Str("machine", m.Name).
-					Err(err).
-					Msg("Could not write the map response")
-			}
-			return true
-
-		case <-c.Request.Context().Done():
-			log.Info().
-				Str("handler", "PollNetMap").
-				Str("machine", m.Name).
-				Msg("The client has closed the connection")
-			now := time.Now().UTC()
-			m.LastSeen = &now
-			h.db.Save(&m)
-			cancelKeepAlive <- []byte{}
-			h.clientsPolling.Delete(m.ID)
-			close(update)
-			return false
-
-		}
-	})
+	h.PollNetMapStream(c, m, req, mKey, pollData, update, cancelKeepAlive)
+	log.Trace().
+		Str("handler", "PollNetMap").
+		Str("id", c.Param("id")).
+		Str("machine", m.Name).
+		Msg("Finished stream, closing PollNetMap session")
 }
 
 func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgkey.Key, req tailcfg.MapRequest, m Machine) {
@@ -514,10 +444,15 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 		DERPMap:      h.cfg.DerpMap,
 		UserProfiles: []tailcfg.UserProfile{profile},
 	}
+	log.Trace().
+		Str("func", "getMapResponse").
+		Str("machine", req.Hostinfo.Hostname).
+		Msgf("Generated map response: %s", tailMapResponseToString(resp))
 
 	var respBody []byte
 	if req.Compress == "zstd" {
 		src, _ := json.Marshal(resp)
+
 		encoder, _ := zstd.NewWriter(nil)
 		srcCompressed := encoder.EncodeAll(src, nil)
 		respBody, err = encodeMsg(srcCompressed, &mKey, h.privateKey)
