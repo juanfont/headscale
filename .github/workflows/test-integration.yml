@@ -1,0 +1,23 @@
+name: CI
+
+on: [pull_request]
+
+jobs:
+  # The "build" workflow
+  integration-test:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # Setup Go
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.16.3"
+
+      - name: Run Integration tests
+        run: go test -tags integration -timeout 30m
