@@ -295,7 +295,7 @@ func (s *IntegrationTestSuite) TestPingAllPeers() {
 			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 				// We currently cant ping ourselves, so skip that.
 				if peername != hostname {
-					command := []string{"tailscale", "ping", "--timeout=1s", "--c=1", ip.String()}
+					command := []string{"tailscale", "ping", "--timeout=5s", "--c=1", ip.String()}
 
 					fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
 					result, err := executeCommand(
