@@ -286,30 +286,30 @@ func (s *IntegrationTestSuite) TestStatus() {
 	}
 }
 
-// func (s *IntegrationTestSuite) TestPingAllPeers() {
-// 	ips, err := getIPs()
-// 	assert.Nil(s.T(), err)
-//
-// 	for hostname, tailscale := range tailscales {
-// 		for peername, ip := range ips {
-// 			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
-// 				// We currently cant ping ourselves, so skip that.
-// 				if peername != hostname {
-// 					command := []string{"tailscale", "ping", "--timeout=1s", "--c=1", ip.String()}
-//
-// 					fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
-// 					result, err := executeCommand(
-// 						&tailscale,
-// 						command,
-// 					)
-// 					assert.Nil(t, err)
-// 					fmt.Printf("Result for %s: %s\n", hostname, result)
-// 					assert.Contains(t, result, "pong")
-// 				}
-// 			})
-// 		}
-// 	}
-// }
+func (s *IntegrationTestSuite) TestPingAllPeers() {
+	ips, err := getIPs()
+	assert.Nil(s.T(), err)
+
+	for hostname, tailscale := range tailscales {
+		for peername, ip := range ips {
+			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+				// We currently cant ping ourselves, so skip that.
+				if peername != hostname {
+					command := []string{"tailscale", "ping", "--timeout=1s", "--c=1", ip.String()}
+
+					fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
+					result, err := executeCommand(
+						&tailscale,
+						command,
+					)
+					assert.Nil(t, err)
+					fmt.Printf("Result for %s: %s\n", hostname, result)
+					assert.Contains(t, result, "pong")
+				}
+			})
+		}
+	}
+}
 
 func getIPs() (map[string]netaddr.IP, error) {
 	ips := make(map[string]netaddr.IP)
