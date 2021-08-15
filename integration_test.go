@@ -9,17 +9,24 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"testing"
+	"time"
 
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
-	"inet.af/netaddr"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 
-	"gopkg.in/check.v1"
+	"inet.af/netaddr"
 )
 
-var _ = check.Suite(&IntegrationSuite{})
+type IntegrationTestSuite struct {
+	suite.Suite
+}
 
-type IntegrationSuite struct{}
+func TestIntegrationTestSuite(t *testing.T) {
+	suite.Run(t, new(IntegrationTestSuite))
+}
 
 var integrationTmpDir string
 var ih Headscale
@@ -27,7 +34,7 @@ var ih Headscale
 var pool dockertest.Pool
 var network dockertest.Network
 var headscale dockertest.Resource
-var tailscaleCount int = 10
+var tailscaleCount int = 5
 var tailscales map[string]dockertest.Resource
 
 func executeCommand(resource *dockertest.Resource, cmd []string) (string, error) {
@@ -63,7 +70,7 @@ func dockerRestartPolicy(config *docker.HostConfig) {
 	}
 }
 
-func (s *IntegrationSuite) SetUpSuite(c *check.C) {
+func (s *IntegrationTestSuite) SetupSuite() {
 	var err error
 	h = Headscale{
 		dbType:   "sqlite3",
@@ -104,8 +111,7 @@ func (s *IntegrationSuite) SetUpSuite(c *check.C) {
 			fmt.Sprintf("%s/derp.yaml:/etc/headscale/derp.yaml", currentPath),
 		},
 		Networks: []*dockertest.Network{&network},
-		// Cmd: []string{"sleep", "3600"},
-		Cmd: []string{"headscale", "serve"},
+		Cmd:      []string{"headscale", "serve"},
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			"8080/tcp": []docker.PortBinding{{HostPort: "8080"}},
 		},
@@ -127,10 +133,8 @@ func (s *IntegrationSuite) SetUpSuite(c *check.C) {
 		tailscaleOptions := &dockertest.RunOptions{
 			Name:     hostname,
 			Networks: []*dockertest.Network{&network},
-			// Make the container run until killed
-			// Cmd: []string{"sleep", "3600"},
-			Cmd: []string{"tailscaled", "--tun=userspace-networking", "--socks5-server=localhost:1055"},
-			Env: []string{},
+			Cmd:      []string{"tailscaled", "--tun=userspace-networking", "--socks5-server=localhost:1055"},
+			Env:      []string{},
 		}
 
 		if pts, err := pool.BuildAndRunWithBuildOptions(tailscaleBuildOptions, tailscaleOptions, dockerRestartPolicy); err == nil {
@@ -141,6 +145,7 @@ func (s *IntegrationSuite) SetUpSuite(c *check.C) {
 		fmt.Printf("Created %s container\n", hostname)
 	}
 
+	// TODO: Replace this logic with something that can be detected on Github Actions
 	fmt.Println("Waiting for headscale to be ready")
 	hostEndpoint := fmt.Sprintf("localhost:%s", headscale.GetPort("8080/tcp"))
 
@@ -164,14 +169,14 @@ func (s *IntegrationSuite) SetUpSuite(c *check.C) {
 		&headscale,
 		[]string{"headscale", "namespaces", "create", "test"},
 	)
-	c.Assert(err, check.IsNil)
+	assert.Nil(s.T(), err)
 
 	fmt.Println("Creating pre auth key")
 	authKey, err := executeCommand(
 		&headscale,
 		[]string{"headscale", "-n", "test", "preauthkeys", "create", "--reusable", "--expiration", "24h"},
 	)
-	c.Assert(err, check.IsNil)
+	assert.Nil(s.T(), err)
 
 	headscaleEndpoint := fmt.Sprintf("http://headscale:%s", headscale.GetPort("8080/tcp"))
 
@@ -186,12 +191,16 @@ func (s *IntegrationSuite) SetUpSuite(c *check.C) {
 			command,
 		)
 		fmt.Println("tailscale result: ", result)
-		c.Assert(err, check.IsNil)
+		assert.Nil(s.T(), err)
 		fmt.Printf("%s joined\n", hostname)
 	}
+
+	// The nodes need a bit of time to get their updated maps from headscale
+	// TODO: See if we can have a more deterministic wait here.
+	time.Sleep(20 * time.Second)
 }
 
-func (s *IntegrationSuite) TearDownSuite(c *check.C) {
+func (s *IntegrationTestSuite) TearDownSuite() {
 	if err := pool.Purge(&headscale); err != nil {
 		log.Printf("Could not purge resource: %s\n", err)
 	}
@@ -207,21 +216,102 @@ func (s *IntegrationSuite) TearDownSuite(c *check.C) {
 	}
 }
 
-func (s *IntegrationSuite) TestListNodes(c *check.C) {
+func (s *IntegrationTestSuite) TestListNodes() {
 	fmt.Println("Listing nodes")
 	result, err := executeCommand(
 		&headscale,
 		[]string{"headscale", "-n", "test", "nodes", "list"},
 	)
-	c.Assert(err, check.IsNil)
+	assert.Nil(s.T(), err)
+
+	fmt.Printf("List nodes: \n%s\n", result)
+
+	// Chck that the correct count of host is present in node list
+	lines := strings.Split(result, "\n")
+	assert.Equal(s.T(), len(tailscales), len(lines)-2)
 
 	for hostname, _ := range tailscales {
-		c.Assert(strings.Contains(result, hostname), check.Equals, true)
+		assert.Contains(s.T(), result, hostname)
 	}
 }
 
-func (s *IntegrationSuite) TestGetIpAddresses(c *check.C) {
+func (s *IntegrationTestSuite) TestGetIpAddresses() {
 	ipPrefix := netaddr.MustParseIPPrefix("100.64.0.0/10")
+	ips, err := getIPs()
+	assert.Nil(s.T(), err)
+
+	for hostname, _ := range tailscales {
+		s.T().Run(hostname, func(t *testing.T) {
+			ip := ips[hostname]
+
+			fmt.Printf("IP for %s: %s\n", hostname, ip)
+
+			// c.Assert(ip.Valid(), check.IsTrue)
+			assert.True(t, ip.Is4())
+			assert.True(t, ipPrefix.Contains(ip))
+
+			ips[hostname] = ip
+		})
+	}
+}
+
+func (s *IntegrationTestSuite) TestStatus() {
+	ips, err := getIPs()
+	assert.Nil(s.T(), err)
+
+	for hostname, tailscale := range tailscales {
+		s.T().Run(hostname, func(t *testing.T) {
+			command := []string{"tailscale", "status"}
+
+			fmt.Printf("Getting status for %s\n", hostname)
+			result, err := executeCommand(
+				&tailscale,
+				command,
+			)
+			assert.Nil(t, err)
+			// fmt.Printf("Status for %s: %s", hostname, result)
+
+			// Check if we have as many nodes in status
+			// as we have IPs/tailscales
+			lines := strings.Split(result, "\n")
+			assert.Equal(t, len(ips), len(lines)-1)
+			assert.Equal(t, len(tailscales), len(lines)-1)
+
+			// Check that all hosts is present in all hosts status
+			for ipHostname, ip := range ips {
+				assert.Contains(t, result, ip.String())
+				assert.Contains(t, result, ipHostname)
+			}
+		})
+	}
+}
+
+func (s *IntegrationTestSuite) TestPingAllPeers() {
+	ips, err := getIPs()
+	assert.Nil(s.T(), err)
+
+	for hostname, tailscale := range tailscales {
+		for peername, ip := range ips {
+			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+				// We currently cant ping ourselves, so skip that.
+				if peername != hostname {
+					command := []string{"tailscale", "ping", "--timeout=1s", "--c=1", ip.String()}
+
+					fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
+					result, err := executeCommand(
+						&tailscale,
+						command,
+					)
+					assert.Nil(t, err)
+					fmt.Printf("Result for %s: %s\n", hostname, result)
+					assert.Contains(t, result, "pong")
+				}
+			})
+		}
+	}
+}
+
+func getIPs() (map[string]netaddr.IP, error) {
 	ips := make(map[string]netaddr.IP)
 	for hostname, tailscale := range tailscales {
 		command := []string{"tailscale", "ip"}
@@ -230,17 +320,16 @@ func (s *IntegrationSuite) TestGetIpAddresses(c *check.C) {
 			&tailscale,
 			command,
 		)
-		c.Assert(err, check.IsNil)
+		if err != nil {
+			return nil, err
+		}
 
 		ip, err := netaddr.ParseIP(strings.TrimSuffix(result, "\n"))
-		c.Assert(err, check.IsNil)
-
-		fmt.Printf("IP for %s: %s", hostname, result)
-
-		// c.Assert(ip.Valid(), check.IsTrue)
-		c.Assert(ip.Is4(), check.Equals, true)
-		c.Assert(ipPrefix.Contains(ip), check.Equals, true)
+		if err != nil {
+			return nil, err
+		}
 
 		ips[hostname] = ip
 	}
+	return ips, nil
 }

@@ -159,6 +159,10 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 }
 
 func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
+	log.Trace().
+		Str("func", "getPeers").
+		Str("machine", m.Name).
+		Msg("Finding peers")
 	machines := []Machine{}
 	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
@@ -175,6 +179,11 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 		peers = append(peers, peer)
 	}
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
+
+	log.Trace().
+		Str("func", "getPeers").
+		Str("machine", m.Name).
+		Msgf("Found peers: %s", tailNodesToString(peers))
 	return &peers, nil
 }
 
@@ -237,4 +246,26 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 		}
 	}
 	return &hostinfo, nil
+}
+
+func (h *Headscale) notifyChangesToPeers(m *Machine) {
+	peers, _ := h.getPeers(*m)
+	for _, p := range *peers {
+		pUp, ok := h.clientsPolling.Load(uint64(p.ID))
+		if ok {
+			log.Info().
+				Str("func", "notifyChangesToPeers").
+				Str("machine", m.Name).
+				Str("peer", m.Name).
+				Str("address", p.Addresses[0].String()).
+				Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
+			pUp.(chan []byte) <- []byte{}
+		} else {
+			log.Info().
+				Str("func", "notifyChangesToPeers").
+				Str("machine", m.Name).
+				Str("peer", m.Name).
+				Msgf("Peer %s does not appear to be polling", p.Name)
+		}
+	}
 }

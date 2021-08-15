@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"golang.org/x/crypto/nacl/box"
 	"inet.af/netaddr"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
 
@@ -58,6 +60,7 @@ func encode(v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
+
 	return encodeMsg(b, pubKey, privKey)
 }
 
@@ -138,4 +141,18 @@ func containsIPs(ips []netaddr.IP, ip netaddr.IP) bool {
 	}
 
 	return false
+}
+
+func tailNodesToString(nodes []*tailcfg.Node) string {
+	temp := make([]string, len(nodes))
+
+	for index, node := range nodes {
+		temp[index] = node.Name
+	}
+
+	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
+}
+
+func tailMapResponseToString(resp tailcfg.MapResponse) string {
+	return fmt.Sprintf("{ Node: %s, Peers: %s }", resp.Node.Name, tailNodesToString(resp.Peers))
 }
