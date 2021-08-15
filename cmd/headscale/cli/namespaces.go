@@ -3,8 +3,10 @@ package cli
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -94,9 +96,11 @@ var listNamespacesCmd = &cobra.Command{
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("ID\tName\n")
+
+		d := pterm.TableData{{"ID", "Name", "Created"}}
 		for _, n := range *namespaces {
-			fmt.Printf("%d\t%s\n", n.ID, n.Name)
+			d = append(d, []string{strconv.FormatUint(uint64(n.ID), 10), n.Name, n.CreatedAt.Format("2006-01-02 15:04:05")})
 		}
+		pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 	},
 }
