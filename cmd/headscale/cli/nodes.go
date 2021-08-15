@@ -8,7 +8,11 @@ import (
 	"time"
 
 	survey "github.com/AlecAivazis/survey/v2"
+	"github.com/juanfont/headscale"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/wgkey"
 )
 
 func init() {
@@ -33,7 +37,7 @@ var registerNodeCmd = &cobra.Command{
 	Short: "Registers a machine to your network",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("Missing parameters")
+			return fmt.Errorf("missing parameters")
 		}
 		return nil
 	},
@@ -85,18 +89,12 @@ var listNodesCmd = &cobra.Command{
 			log.Fatalf("Error getting nodes: %s", err)
 		}
 
-		fmt.Printf("ID\tname\t\tlast seen\t\tephemeral\n")
-		for _, m := range *machines {
-			var ephemeral bool
-			if m.AuthKey != nil && m.AuthKey.Ephemeral {
-				ephemeral = true
-			}
-			var lastSeen time.Time
-			if m.LastSeen != nil {
-				lastSeen = *m.LastSeen
-			}
-			fmt.Printf("%d\t%s\t%s\t%t\n", m.ID, m.Name, lastSeen.Format("2006-01-02 15:04:05"), ephemeral)
+		d, err := nodesToPtables(*machines)
+		if err != nil {
+			log.Fatalf("Error converting to table: %s", err)
 		}
+
+		pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 
 	},
 }
@@ -106,7 +104,7 @@ var deleteNodeCmd = &cobra.Command{
 	Short: "Delete a node",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("Missing parameters")
+			return fmt.Errorf("missing parameters")
 		}
 		return nil
 	},
@@ -143,4 +141,33 @@ var deleteNodeCmd = &cobra.Command{
 			fmt.Printf("Node not deleted\n")
 		}
 	},
+}
+
+func nodesToPtables(m []headscale.Machine) (pterm.TableData, error) {
+	d := pterm.TableData{{"ID", "Name", "NodeKey", "IP address", "Ephemeral", "Last seen", "Online"}}
+
+	for _, m := range m {
+		var ephemeral bool
+		if m.AuthKey != nil && m.AuthKey.Ephemeral {
+			ephemeral = true
+		}
+		var lastSeen time.Time
+		if m.LastSeen != nil {
+			lastSeen = *m.LastSeen
+		}
+		nKey, err := wgkey.ParseHex(m.NodeKey)
+		if err != nil {
+			return nil, err
+		}
+		nodeKey := tailcfg.NodeKey(nKey)
+
+		var online string
+		if m.LastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
+			online = pterm.LightGreen("true")
+		} else {
+			online = pterm.LightRed("false")
+		}
+		d = append(d, []string{strconv.FormatUint(m.ID, 10), m.Name, nodeKey.ShortString(), m.IPAddress, strconv.FormatBool(ephemeral), lastSeen.Format("2006-01-02 15:04:05"), online})
+	}
+	return d, nil
 }
