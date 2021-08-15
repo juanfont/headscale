@@ -81,7 +81,10 @@ var listPreAuthKeys = &cobra.Command{
 			})
 
 		}
-		pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		if err != nil {
+			log.Fatal(err)
+		}
 	},
 }
 

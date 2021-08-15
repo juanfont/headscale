@@ -94,8 +94,10 @@ var listNodesCmd = &cobra.Command{
 			log.Fatalf("Error converting to table: %s", err)
 		}
 
-		pterm.DefaultTable.WithHasHeader().WithData(d).Render()
-
+		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		if err != nil {
+			log.Fatal(err)
+		}
 	},
 }
 
