@@ -45,19 +45,12 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 			m.EnabledRoutes = datatypes.JSON(routes)
 			h.db.Save(&m)
 
-			// THIS IS COMPLETELY USELESS.
-			// The peers map is stored in memory in the server process.
-			// Definitely not accessible from the CLI tool.
-			// We need RPC to the server - or some kind of 'needsUpdate' field in the DB
-			peers, _ := h.getPeers(*m)
-			for _, p := range *peers {
-				if pUp, ok := h.clientsPolling.Load(uint64(p.ID)); ok {
-					pUp.(chan []byte) <- []byte{}
-				}
+			err = h.RequestMapUpdates(m.NamespaceID)
+			if err != nil {
+				return nil, err
 			}
 			return &rIP, nil
 		}
 	}
-
 	return nil, errors.New("could not find routable range")
 }
