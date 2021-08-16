@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hako/durafmt"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -54,6 +56,8 @@ var listPreAuthKeys = &cobra.Command{
 			fmt.Printf("Error getting the list of keys: %s\n", err)
 			return
 		}
+
+		d := pterm.TableData{{"ID", "Key", "Reusable", "Ephemeral", "Expiration", "Created"}}
 		for _, k := range *keys {
 			expiration := "-"
 			if k.Expiration != nil {
@@ -67,15 +71,19 @@ var listPreAuthKeys = &cobra.Command{
 				reusable = fmt.Sprintf("%v", k.Reusable)
 			}
 
-			fmt.Printf(
-				"key: %s, namespace: %s, reusable: %s, ephemeral: %v, expiration: %s, created_at: %s\n",
+			d = append(d, []string{
+				strconv.FormatUint(k.ID, 10),
 				k.Key,
-				k.Namespace.Name,
 				reusable,
-				k.Ephemeral,
+				strconv.FormatBool(k.Ephemeral),
 				expiration,
 				k.CreatedAt.Format("2006-01-02 15:04:05"),
-			)
+			})
+
+		}
+		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		if err != nil {
+			log.Fatal(err)
 		}
 	},
 }
