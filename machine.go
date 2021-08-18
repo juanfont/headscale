@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -31,8 +32,9 @@ type Machine struct {
 	AuthKeyID      uint
 	AuthKey        *PreAuthKey
 
-	LastSeen *time.Time
-	Expiry   *time.Time
+	LastSeen             *time.Time
+	LastSuccessfulUpdate *time.Time
+	Expiry               *time.Time
 
 	HostInfo      datatypes.JSON
 	Endpoints     datatypes.JSON
@@ -211,6 +213,13 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	return &m, nil
 }
 
+func (h *Headscale) UpdateMachine(m *Machine) error {
+	if result := h.db.Find(m).First(&m); result.Error != nil {
+		return result.Error
+	}
+	return nil
+}
+
 // DeleteMachine softs deletes a Machine from the database
 func (h *Headscale) DeleteMachine(m *Machine) error {
 	m.Registered = false
@@ -251,21 +260,67 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 func (h *Headscale) notifyChangesToPeers(m *Machine) {
 	peers, _ := h.getPeers(*m)
 	for _, p := range *peers {
-		pUp, ok := h.clientsPolling.Load(uint64(p.ID))
-		if ok {
+		log.Info().
+			Str("func", "notifyChangesToPeers").
+			Str("machine", m.Name).
+			Str("peer", p.Name).
+			Str("address", p.Addresses[0].String()).
+			Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
+		err := h.requestUpdate(p)
+		if err != nil {
 			log.Info().
 				Str("func", "notifyChangesToPeers").
 				Str("machine", m.Name).
-				Str("peer", m.Name).
-				Str("address", p.Addresses[0].String()).
-				Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
-			pUp.(chan []byte) <- []byte{}
-		} else {
-			log.Info().
-				Str("func", "notifyChangesToPeers").
-				Str("machine", m.Name).
-				Str("peer", m.Name).
+				Str("peer", p.Name).
 				Msgf("Peer %s does not appear to be polling", p.Name)
 		}
+		log.Trace().
+			Str("func", "notifyChangesToPeers").
+			Str("machine", m.Name).
+			Str("peer", p.Name).
+			Str("address", p.Addresses[0].String()).
+			Msgf("Notified peer %s (%s)", p.Name, p.Addresses[0])
 	}
+}
+
+func (h *Headscale) requestUpdate(m *tailcfg.Node) error {
+	pUp, ok := h.clientsUpdateChannels.Load(uint64(m.ID))
+	if ok {
+		log.Info().
+			Str("func", "requestUpdate").
+			Str("machine", m.Name).
+			Msgf("Notifying peer %s", m.Name)
+
+		if update, ok := pUp.(chan struct{}); ok {
+			log.Trace().
+				Str("func", "requestUpdate").
+				Str("machine", m.Name).
+				Msgf("Update channel is %#v", update)
+
+			update <- struct{}{}
+
+			log.Trace().
+				Str("func", "requestUpdate").
+				Str("machine", m.Name).
+				Msgf("Notified machine %s", m.Name)
+		}
+	} else {
+		log.Info().
+			Str("func", "requestUpdate").
+			Str("machine", m.Name).
+			Msgf("Machine %s does not appear to be polling", m.Name)
+		return errors.New("machine does not seem to be polling")
+	}
+	return nil
+}
+
+func (h *Headscale) isOutdated(m *Machine) bool {
+	lastChange := h.getLastStateChange()
+	log.Trace().
+		Str("func", "keepAlive").
+		Str("machine", m.Name).
+		Time("last_successful_update", *m.LastSuccessfulUpdate).
+		Time("last_state_change", lastChange).
+		Msgf("Checking if %s is missing updates", m.Name)
+	return m.LastSuccessfulUpdate.Before(lastChange)
 }
