@@ -58,7 +58,10 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
 
-	clientsPolling sync.Map
+	clientsUpdateChannels sync.Map
+
+	lastStateChangeMutex sync.RWMutex
+	lastStateChange      time.Time
 }
 
 // NewHeadscale returns the Headscale app
@@ -85,12 +88,13 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	}
 
 	h := Headscale{
-		cfg:        cfg,
-		dbType:     cfg.DBtype,
-		dbString:   dbString,
-		privateKey: privKey,
-		publicKey:  &pubKey,
-		aclRules:   &tailcfg.FilterAllowAll, // default allowall
+		cfg:             cfg,
+		dbType:          cfg.DBtype,
+		dbString:        dbString,
+		privateKey:      privKey,
+		publicKey:       &pubKey,
+		aclRules:        &tailcfg.FilterAllowAll, // default allowall
+		lastStateChange: time.Now().UTC(),
 	}
 
 	err = h.initDB()
@@ -168,6 +172,13 @@ func (h *Headscale) Serve() error {
 	go h.watchForKVUpdates(5000)
 	go h.expireEphemeralNodes(5000)
 
+	s := &http.Server{
+		Addr:         h.cfg.Addr,
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
@@ -179,9 +190,11 @@ func (h *Headscale) Serve() error {
 			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
 		}
 		s := &http.Server{
-			Addr:      h.cfg.Addr,
-			TLSConfig: m.TLSConfig(),
-			Handler:   r,
+			Addr:         h.cfg.Addr,
+			TLSConfig:    m.TLSConfig(),
+			Handler:      r,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
 		}
 		if h.cfg.TLSLetsEncryptChallengeType == "TLS-ALPN-01" {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
@@ -206,12 +219,27 @@ func (h *Headscale) Serve() error {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
 			log.Warn().Msg("Listening without TLS but ServerURL does not start with http://")
 		}
-		err = r.Run(h.cfg.Addr)
+		err = s.ListenAndServe()
 	} else {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
-		err = r.RunTLS(h.cfg.Addr, h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
+		err = s.ListenAndServeTLS(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 	}
 	return err
+}
+
+func (h *Headscale) setLastStateChangeToNow() {
+	h.lastStateChangeMutex.Lock()
+
+	now := time.Now().UTC()
+	h.lastStateChange = now
+
+	h.lastStateChangeMutex.Unlock()
+}
+
+func (h *Headscale) getLastStateChange() time.Time {
+	h.lastStateChangeMutex.RLock()
+	defer h.lastStateChangeMutex.RUnlock()
+	return h.lastStateChange
 }
