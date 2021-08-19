@@ -218,7 +218,7 @@ func (h *Headscale) PollNetMapStream(
 	updateChan chan struct{},
 	cancelKeepAlive chan struct{},
 ) {
-	go h.keepAlive(cancelKeepAlive, keepAliveChan, mKey, req, m)
+	go h.scheduledPollWorker(cancelKeepAlive, keepAliveChan, mKey, req, m)
 
 	c.Stream(func(w io.Writer) bool {
 		log.Trace().
@@ -376,8 +376,7 @@ func (h *Headscale) PollNetMapStream(
 	})
 }
 
-// TODO: Rename this function to schedule ...
-func (h *Headscale) keepAlive(
+func (h *Headscale) scheduledPollWorker(
 	cancelChan <-chan struct{},
 	keepAliveChan chan<- []byte,
 	mKey wgkey.Key,
