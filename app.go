@@ -167,14 +167,16 @@ func (h *Headscale) Serve() error {
 	r.POST("/machine/:id", h.RegistrationHandler)
 	var err error
 
+	timeout := 30 * time.Second
+
 	go h.watchForKVUpdates(5000)
 	go h.expireEphemeralNodes(5000)
 
 	s := &http.Server{
 		Addr:         h.cfg.Addr,
 		Handler:      r,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  timeout,
+		WriteTimeout: timeout,
 	}
 
 	if h.cfg.TLSLetsEncryptHostname != "" {
@@ -191,8 +193,8 @@ func (h *Headscale) Serve() error {
 			Addr:         h.cfg.Addr,
 			TLSConfig:    m.TLSConfig(),
 			Handler:      r,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			ReadTimeout:  timeout,
+			WriteTimeout: timeout,
 		}
 		if h.cfg.TLSLetsEncryptChallengeType == "TLS-ALPN-01" {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
