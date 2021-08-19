@@ -315,6 +315,11 @@ func (h *Headscale) requestUpdate(m *tailcfg.Node) error {
 }
 
 func (h *Headscale) isOutdated(m *Machine) bool {
+	err := h.UpdateMachine(m)
+	if err != nil {
+		return true
+	}
+
 	lastChange := h.getLastStateChange()
 	log.Trace().
 		Str("func", "keepAlive").

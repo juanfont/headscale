@@ -300,12 +300,18 @@ func (h *Headscale) PollNetMapStream(
 			return true
 
 		case <-updateChan:
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "update").
+				Msg("Received a request for update")
 			if h.isOutdated(&m) {
-				log.Trace().
+				log.Debug().
 					Str("handler", "PollNetMapStream").
 					Str("machine", m.Name).
-					Str("channel", "update").
-					Msg("Received a request for update")
+					Time("last_successful_update", *m.LastSuccessfulUpdate).
+					Time("last_state_change", h.getLastStateChange()).
+					Msgf("There has been updates since the last successful update to %s", m.Name)
 				data, err := h.getMapResponse(mKey, req, m)
 				if err != nil {
 					log.Error().
@@ -337,6 +343,13 @@ func (h *Headscale) PollNetMapStream(
 				now := time.Now().UTC()
 				m.LastSuccessfulUpdate = &now
 				h.db.Save(&m)
+			} else {
+				log.Trace().
+					Str("handler", "PollNetMapStream").
+					Str("machine", m.Name).
+					Time("last_successful_update", *m.LastSuccessfulUpdate).
+					Time("last_state_change", h.getLastStateChange()).
+					Msgf("%s is up to date", m.Name)
 			}
 			return true
 
@@ -396,33 +409,16 @@ func (h *Headscale) keepAlive(
 			keepAliveChan <- *data
 
 		case <-updateCheckerTicker.C:
-			err := h.UpdateMachine(&m)
+			// Send an update request regardless of outdated or not, if data is sent
+			// to the node is determined in the updateChan consumer block
+			n, _ := m.toNode()
+			err := h.requestUpdate(n)
 			if err != nil {
 				log.Error().
 					Str("func", "keepAlive").
 					Str("machine", m.Name).
 					Err(err).
-					Msg("Could not refresh machine details from database")
-				return
-			}
-			if h.isOutdated(&m) {
-				log.Debug().
-					Str("func", "keepAlive").
-					Str("machine", m.Name).
-					Time("last_successful_update", *m.LastSuccessfulUpdate).
-					Time("last_state_change", h.getLastStateChange()).
-					Msgf("There has been updates since the last successful update to %s", m.Name)
-
-				// TODO Error checking
-				n, _ := m.toNode()
-				h.requestUpdate(n)
-			} else {
-				log.Trace().
-					Str("func", "keepAlive").
-					Str("machine", m.Name).
-					Time("last_successful_update", *m.LastSuccessfulUpdate).
-					Time("last_state_change", h.getLastStateChange()).
-					Msgf("%s is up to date", m.Name)
+					Msgf("Failed to send update request to %s", m.Name)
 			}
 		}
 	}
