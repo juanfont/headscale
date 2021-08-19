@@ -123,7 +123,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 
 	// There has been an update to _any_ of the nodes that the other nodes would
 	// need to know about
-	h.setLastStateChangeToNow()
+	h.setLastStateChangeToNow(m.Namespace.Name)
 
 	// The request is not ReadOnly, so we need to set up channels for updating
 	// peers via longpoll
@@ -310,7 +310,7 @@ func (h *Headscale) PollNetMapStream(
 					Str("handler", "PollNetMapStream").
 					Str("machine", m.Name).
 					Time("last_successful_update", *m.LastSuccessfulUpdate).
-					Time("last_state_change", h.getLastStateChange()).
+					Time("last_state_change", h.getLastStateChange(m.Namespace.Name)).
 					Msgf("There has been updates since the last successful update to %s", m.Name)
 				data, err := h.getMapResponse(mKey, req, m)
 				if err != nil {
@@ -348,7 +348,7 @@ func (h *Headscale) PollNetMapStream(
 					Str("handler", "PollNetMapStream").
 					Str("machine", m.Name).
 					Time("last_successful_update", *m.LastSuccessfulUpdate).
-					Time("last_state_change", h.getLastStateChange()).
+					Time("last_state_change", h.getLastStateChange(m.Namespace.Name)).
 					Msgf("%s is up to date", m.Name)
 			}
 			return true

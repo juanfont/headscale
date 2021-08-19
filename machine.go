@@ -320,7 +320,7 @@ func (h *Headscale) isOutdated(m *Machine) bool {
 		return true
 	}
 
-	lastChange := h.getLastStateChange()
+	lastChange := h.getLastStateChange(m.Namespace.Name)
 	log.Trace().
 		Str("func", "keepAlive").
 		Str("machine", m.Name).

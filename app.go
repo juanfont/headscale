@@ -60,8 +60,7 @@ type Headscale struct {
 
 	clientsUpdateChannels sync.Map
 
-	lastStateChangeMutex sync.RWMutex
-	lastStateChange      time.Time
+	lastStateChange sync.Map
 }
 
 // NewHeadscale returns the Headscale app
@@ -88,13 +87,12 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	}
 
 	h := Headscale{
-		cfg:             cfg,
-		dbType:          cfg.DBtype,
-		dbString:        dbString,
-		privateKey:      privKey,
-		publicKey:       &pubKey,
-		aclRules:        &tailcfg.FilterAllowAll, // default allowall
-		lastStateChange: time.Now().UTC(),
+		cfg:        cfg,
+		dbType:     cfg.DBtype,
+		dbString:   dbString,
+		privateKey: privKey,
+		publicKey:  &pubKey,
+		aclRules:   &tailcfg.FilterAllowAll, // default allowall
 	}
 
 	err = h.initDB()
@@ -229,17 +227,19 @@ func (h *Headscale) Serve() error {
 	return err
 }
 
-func (h *Headscale) setLastStateChangeToNow() {
-	h.lastStateChangeMutex.Lock()
-
+func (h *Headscale) setLastStateChangeToNow(namespace string) {
 	now := time.Now().UTC()
-	h.lastStateChange = now
-
-	h.lastStateChangeMutex.Unlock()
+	h.lastStateChange.Store(namespace, now)
 }
 
-func (h *Headscale) getLastStateChange() time.Time {
-	h.lastStateChangeMutex.RLock()
-	defer h.lastStateChangeMutex.RUnlock()
-	return h.lastStateChange
+func (h *Headscale) getLastStateChange(namespace string) time.Time {
+	if wrapped, ok := h.lastStateChange.Load(namespace); ok {
+		lastChange, _ := wrapped.(time.Time)
+		return lastChange
+
+	}
+
+	now := time.Now().UTC()
+	h.lastStateChange.Store(namespace, now)
+	return now
 }
