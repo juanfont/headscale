@@ -266,7 +266,7 @@ func (h *Headscale) notifyChangesToPeers(m *Machine) {
 			Str("peer", p.Name).
 			Str("address", p.Addresses[0].String()).
 			Msgf("Notifying peer %s (%s)", p.Name, p.Addresses[0])
-		err := h.requestUpdate(p)
+		err := h.sendRequestOnUpdateChannel(p)
 		if err != nil {
 			log.Info().
 				Str("func", "notifyChangesToPeers").
@@ -283,7 +283,45 @@ func (h *Headscale) notifyChangesToPeers(m *Machine) {
 	}
 }
 
-func (h *Headscale) requestUpdate(m *tailcfg.Node) error {
+func (h *Headscale) getOrOpenUpdateChannel(m *Machine) <-chan struct{} {
+	var updateChan chan struct{}
+	if storedChan, ok := h.clientsUpdateChannels.Load(m.ID); ok {
+		if unwrapped, ok := storedChan.(chan struct{}); ok {
+			updateChan = unwrapped
+		} else {
+			log.Error().
+				Str("handler", "openUpdateChannel").
+				Str("machine", m.Name).
+				Msg("Failed to convert update channel to struct{}")
+		}
+	} else {
+		log.Debug().
+			Str("handler", "openUpdateChannel").
+			Str("machine", m.Name).
+			Msg("Update channel not found, creating")
+
+		updateChan = make(chan struct{})
+		h.clientsUpdateChannels.Store(m.ID, updateChan)
+	}
+	return updateChan
+}
+
+func (h *Headscale) closeUpdateChannel(m *Machine) {
+	h.clientsUpdateChannelMutex.Lock()
+	defer h.clientsUpdateChannelMutex.Unlock()
+
+	if storedChan, ok := h.clientsUpdateChannels.Load(m.ID); ok {
+		if unwrapped, ok := storedChan.(chan struct{}); ok {
+			close(unwrapped)
+		}
+	}
+	h.clientsUpdateChannels.Delete(m.ID)
+}
+
+func (h *Headscale) sendRequestOnUpdateChannel(m *tailcfg.Node) error {
+	h.clientsUpdateChannelMutex.Lock()
+	defer h.clientsUpdateChannelMutex.Unlock()
+
 	pUp, ok := h.clientsUpdateChannels.Load(uint64(m.ID))
 	if ok {
 		log.Info().

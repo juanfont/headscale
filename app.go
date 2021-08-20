@@ -58,7 +58,8 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
 
-	clientsUpdateChannels sync.Map
+	clientsUpdateChannels     sync.Map
+	clientsUpdateChannelMutex sync.Mutex
 
 	lastStateChange sync.Map
 }

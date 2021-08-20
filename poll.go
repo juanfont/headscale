@@ -134,27 +134,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("id", c.Param("id")).
 		Str("machine", m.Name).
 		Msg("Loading or creating update channel")
-	var updateChan chan struct{}
-	if storedChan, ok := h.clientsUpdateChannels.Load(m.ID); ok {
-		if wrapped, ok := storedChan.(chan struct{}); ok {
-			updateChan = wrapped
-		} else {
-			log.Error().
-				Str("handler", "PollNetMap").
-				Str("id", c.Param("id")).
-				Str("machine", m.Name).
-				Msg("Failed to convert update channel to struct{}")
-		}
-	} else {
-		log.Debug().
-			Str("handler", "PollNetMap").
-			Str("id", c.Param("id")).
-			Str("machine", m.Name).
-			Msg("Update channel not found, creating")
-
-		updateChan = make(chan struct{})
-		h.clientsUpdateChannels.Store(m.ID, updateChan)
-	}
+	updateChan := h.getOrOpenUpdateChannel(&m)
 
 	pollDataChan := make(chan []byte)
 	// defer close(pollData)
@@ -215,7 +195,7 @@ func (h *Headscale) PollNetMapStream(
 	mKey wgkey.Key,
 	pollDataChan chan []byte,
 	keepAliveChan chan []byte,
-	updateChan chan struct{},
+	updateChan <-chan struct{},
 	cancelKeepAlive chan struct{},
 ) {
 	go h.scheduledPollWorker(cancelKeepAlive, keepAliveChan, mKey, req, m)
@@ -364,8 +344,7 @@ func (h *Headscale) PollNetMapStream(
 
 			cancelKeepAlive <- struct{}{}
 
-			h.clientsUpdateChannels.Delete(m.ID)
-			// close(updateChan)
+			h.closeUpdateChannel(&m)
 
 			close(pollDataChan)
 
@@ -411,7 +390,7 @@ func (h *Headscale) scheduledPollWorker(
 			// Send an update request regardless of outdated or not, if data is sent
 			// to the node is determined in the updateChan consumer block
 			n, _ := m.toNode()
-			err := h.requestUpdate(n)
+			err := h.sendRequestOnUpdateChannel(n)
 			if err != nil {
 				log.Error().
 					Str("func", "keepAlive").
