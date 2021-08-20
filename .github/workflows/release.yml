@@ -49,7 +49,6 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/headsacle
             ghcr.io/${{ github.repository_owner }}/headscale
           tags: |
-            type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha
