@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - "*"  # triggers only if push new tag version
+  workflow_dispatch:
 
 jobs:
   goreleaser:
@@ -66,5 +67,6 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: true
+          context: .
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
