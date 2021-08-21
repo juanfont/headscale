@@ -46,7 +46,7 @@ jobs:
         with:
           # list of Docker images to use as base name for tags
           images: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/headsacle
+            ${{ secrets.DOCKERHUB_USERNAME }}/headscale
             ghcr.io/${{ github.repository_owner }}/headscale
           tags: |
             type=semver,pattern={{major}}.{{minor}}
