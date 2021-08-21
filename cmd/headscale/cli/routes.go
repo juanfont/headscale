@@ -16,6 +16,9 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+
+	enableRouteCmd.Flags().BoolP("all", "a", false, "Enable all routes advertised by the node")
+
 	routesCmd.AddCommand(listRoutesCmd)
 	routesCmd.AddCommand(enableRouteCmd)
 }
@@ -71,33 +74,74 @@ var enableRouteCmd = &cobra.Command{
 	Use:   "enable node-name route",
 	Short: "Allows exposing a route declared by this node to the rest of the nodes",
 	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 2 {
-			return fmt.Errorf("Missing parameters")
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			log.Fatalf("Error getting namespace: %s", err)
 		}
-		return nil
+
+		if all {
+			if len(args) < 1 {
+				return fmt.Errorf("Missing parameters")
+			}
+			return nil
+		} else {
+			if len(args) < 2 {
+				return fmt.Errorf("Missing parameters")
+			}
+			return nil
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		n, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			log.Fatalf("Error getting namespace: %s", err)
 		}
+
 		o, _ := cmd.Flags().GetString("output")
+
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			log.Fatalf("Error getting namespace: %s", err)
+		}
 
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
 
-		err = h.EnableNodeRoute(n, args[0], args[1])
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(args[1], err, o)
-			return
-		}
+		if all {
+			availableRoutes, err := h.GetAdvertisedNodeRoutes(n, args[0])
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 
-		if err != nil {
-			fmt.Println(err)
-			return
+			for _, availableRoute := range *availableRoutes {
+				err = h.EnableNodeRoute(n, args[0], availableRoute.String())
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+				if strings.HasPrefix(o, "json") {
+					JsonOutput(availableRoute, err, o)
+				} else {
+					fmt.Printf("Enabled route %s\n", availableRoute)
+				}
+			}
+		} else {
+			err = h.EnableNodeRoute(n, args[0], args[1])
+
+			if strings.HasPrefix(o, "json") {
+				JsonOutput(args[1], err, o)
+				return
+			}
+
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			fmt.Printf("Enabled route %s\n", args[1])
 		}
-		fmt.Printf("Enabled route %s\n", args[1])
 	},
 }
