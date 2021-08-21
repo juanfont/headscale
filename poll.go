@@ -234,6 +234,18 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "pollData").
 				Int("bytes", len(data)).
 				Msg("Data from pollData channel written successfully")
+				// TODO: Abstract away all the database calls, this can cause race conditions
+				// when an outdated machine object is kept alive, e.g. db is update from
+				// command line, but then overwritten.
+			err = h.UpdateMachine(&m)
+			if err != nil {
+				log.Error().
+					Str("handler", "PollNetMapStream").
+					Str("machine", m.Name).
+					Str("channel", "pollData").
+					Err(err).
+					Msg("Cannot update machine from database")
+			}
 			now := time.Now().UTC()
 			m.LastSeen = &now
 			m.LastSuccessfulUpdate = &now
@@ -268,6 +280,18 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "keepAlive").
 				Int("bytes", len(data)).
 				Msg("Keep alive sent successfully")
+				// TODO: Abstract away all the database calls, this can cause race conditions
+				// when an outdated machine object is kept alive, e.g. db is update from
+				// command line, but then overwritten.
+			err = h.UpdateMachine(&m)
+			if err != nil {
+				log.Error().
+					Str("handler", "PollNetMapStream").
+					Str("machine", m.Name).
+					Str("channel", "keepAlive").
+					Err(err).
+					Msg("Cannot update machine from database")
+			}
 			now := time.Now().UTC()
 			m.LastSeen = &now
 			h.db.Save(&m)
@@ -316,10 +340,22 @@ func (h *Headscale) PollNetMapStream(
 					Str("channel", "update").
 					Msg("Updated Map has been sent")
 
-				// Keep track of the last successful update,
-				// we sometimes end in a state were the update
-				// is not picked up by a client and we use this
-				// to determine if we should "force" an update.
+					// Keep track of the last successful update,
+					// we sometimes end in a state were the update
+					// is not picked up by a client and we use this
+					// to determine if we should "force" an update.
+					// TODO: Abstract away all the database calls, this can cause race conditions
+					// when an outdated machine object is kept alive, e.g. db is update from
+					// command line, but then overwritten.
+				err = h.UpdateMachine(&m)
+				if err != nil {
+					log.Error().
+						Str("handler", "PollNetMapStream").
+						Str("machine", m.Name).
+						Str("channel", "update").
+						Err(err).
+						Msg("Cannot update machine from database")
+				}
 				now := time.Now().UTC()
 				m.LastSuccessfulUpdate = &now
 				h.db.Save(&m)
@@ -338,6 +374,18 @@ func (h *Headscale) PollNetMapStream(
 				Str("handler", "PollNetMapStream").
 				Str("machine", m.Name).
 				Msg("The client has closed the connection")
+				// TODO: Abstract away all the database calls, this can cause race conditions
+				// when an outdated machine object is kept alive, e.g. db is update from
+				// command line, but then overwritten.
+			err := h.UpdateMachine(&m)
+			if err != nil {
+				log.Error().
+					Str("handler", "PollNetMapStream").
+					Str("machine", m.Name).
+					Str("channel", "Done").
+					Err(err).
+					Msg("Cannot update machine from database")
+			}
 			now := time.Now().UTC()
 			m.LastSeen = &now
 			h.db.Save(&m)
