@@ -23,6 +23,15 @@ import (
 	"inet.af/netaddr"
 )
 
+var integrationTmpDir string
+var ih Headscale
+
+var pool dockertest.Pool
+var network dockertest.Network
+var headscale dockertest.Resource
+var tailscaleCount int = 50
+var tailscales map[string]dockertest.Resource
+
 type IntegrationTestSuite struct {
 	suite.Suite
 	stats *suite.SuiteInformation
@@ -55,15 +64,6 @@ func TestIntegrationTestSuite(t *testing.T) {
 		log.Printf("Could not close network: %s\n", err)
 	}
 }
-
-var integrationTmpDir string
-var ih Headscale
-
-var pool dockertest.Pool
-var network dockertest.Network
-var headscale dockertest.Resource
-var tailscaleCount int = 25
-var tailscales map[string]dockertest.Resource
 
 func executeCommand(resource *dockertest.Resource, cmd []string) (string, error) {
 	var stdout bytes.Buffer
