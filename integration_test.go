@@ -29,7 +29,7 @@ var ih Headscale
 var pool dockertest.Pool
 var network dockertest.Network
 var headscale dockertest.Resource
-var tailscaleCount int = 50
+var tailscaleCount int = 25
 var tailscales map[string]dockertest.Resource
 
 type IntegrationTestSuite struct {
