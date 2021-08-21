@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -44,19 +45,25 @@ var listRoutesCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		routes, err := h.GetNodeRoutes(n, args[0])
 
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(routes, err, o)
-			return
-		}
-
+		availableRoutes, err := h.GetAdvertisedNodeRoutes(n, args[0])
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		fmt.Println(routes)
+		if strings.HasPrefix(o, "json") {
+			// TODO: Add enable/disabled information to this interface
+			JsonOutput(availableRoutes, err, o)
+			return
+		}
+
+		d := h.RoutesToPtables(n, args[0], *availableRoutes)
+
+		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		if err != nil {
+			log.Fatal(err)
+		}
 	},
 }
 
@@ -80,9 +87,10 @@ var enableRouteCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		route, err := h.EnableNodeRoute(n, args[0], args[1])
+
+		err = h.EnableNodeRoute(n, args[0], args[1])
 		if strings.HasPrefix(o, "json") {
-			JsonOutput(route, err, o)
+			JsonOutput(args[1], err, o)
 			return
 		}
 
@@ -90,6 +98,6 @@ var enableRouteCmd = &cobra.Command{
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("Enabled route %s\n", route)
+		fmt.Printf("Enabled route %s\n", args[1])
 	},
 }
