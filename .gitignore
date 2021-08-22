@@ -19,3 +19,6 @@ config.json
 *.key
 /db.sqlite
 *.sqlite3
+
+# Exclude Jetbrains Editors
+.idea
