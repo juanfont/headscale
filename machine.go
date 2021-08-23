@@ -213,6 +213,8 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	return &m, nil
 }
 
+// UpdateMachine takes a Machine struct pointer (typically already loaded from database
+// and updates it with the latest data from the database.
 func (h *Headscale) UpdateMachine(m *Machine) error {
 	if result := h.db.Find(m).First(&m); result.Error != nil {
 		return result.Error
