@@ -39,7 +39,7 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("ip_prefix", "100.64.0.0/10")
 
-	viper.SetDefault("log_level", "debug")
+	viper.SetDefault("log_level", "info")
 
 	err := viper.ReadInConfig()
 	if err != nil {
