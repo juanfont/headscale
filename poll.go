@@ -188,6 +188,9 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Msg("Finished stream, closing PollNetMap session")
 }
 
+// PollNetMapStream takes care of /machine/:id/map 
+// stream logic, ensuring we communicate updates and data
+// to the connected clients.
 func (h *Headscale) PollNetMapStream(
 	c *gin.Context,
 	m Machine,
