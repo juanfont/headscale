@@ -14,7 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
 	"gorm.io/gorm"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
@@ -245,10 +244,15 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 	}
 
 	resp := tailcfg.MapResponse{
-		KeepAlive:    false,
-		Node:         node,
-		Peers:        *peers,
-		DNS:          []netaddr.IP{},
+		KeepAlive: false,
+		Node:      node,
+		Peers:     *peers,
+		//TODO(kradalby): As per tailscale docs, if DNSConfig is nil,
+		// it means its not updated, maybe we can have some logic
+		// to check and only pass updates when its updates.
+		// This is probably more relevant if we try to implement
+		// "MagicDNS"
+		DNSConfig:    h.cfg.DNSConfig,
 		SearchPaths:  []string{},
 		Domain:       "headscale.net",
 		PacketFilter: *h.aclRules,
