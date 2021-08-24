@@ -58,7 +58,7 @@ func (*Suite) TestPostgresConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("db_port"), check.Equals, "5432")
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
 	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
-	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
+	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 }
 
 func (*Suite) TestSqliteConfigLoading(c *check.C) {
@@ -92,6 +92,7 @@ func (*Suite) TestSqliteConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
 	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
+	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 }
 
 func writeConfig(c *check.C, tmpDir string, configYaml []byte) {
