@@ -41,6 +41,8 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("log_level", "info")
 
+	viper.SetDefault("dns_config", nil)
+
 	err := viper.ReadInConfig()
 	if err != nil {
 		return fmt.Errorf("Fatal error reading config file: %s \n", err)
@@ -70,6 +72,40 @@ func LoadConfig(path string) error {
 	} else {
 		return nil
 	}
+
+}
+
+func getDNSConfig() *tailcfg.DNSConfig {
+	if viper.IsSet("dns_config") {
+		dnsConfig := &tailcfg.DNSConfig{}
+
+		if viper.IsSet("dns_config.nameservers") {
+			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
+
+			nameservers := make([]netaddr.IP, len(nameserversStr))
+
+			for index, nameserverStr := range nameserversStr {
+				nameserver, err := netaddr.ParseIP(nameserverStr)
+				if err != nil {
+					log.Error().
+						Str("func", "getDNSConfig").
+						Err(err).
+						Msgf("Could not parse nameserver IP: %s", nameserverStr)
+				}
+
+				nameservers[index] = nameserver
+			}
+
+			dnsConfig.Nameservers = nameservers
+		}
+		if viper.IsSet("dns_config.domains") {
+			dnsConfig.Domains = viper.GetStringSlice("dns_config.domains")
+		}
+
+		return dnsConfig
+	}
+
+	return nil
 }
 
 func absPath(path string) string {
@@ -126,6 +162,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
+
+		DNSConfig: getDNSConfig(),
 	}
 
 	h, err := headscale.NewHeadscale(cfg)
