@@ -43,6 +43,8 @@ type Config struct {
 
 	TLSCertPath string
 	TLSKeyPath  string
+
+	DNSConfig *tailcfg.DNSConfig
 }
 
 // Headscale represents the base app of the service
