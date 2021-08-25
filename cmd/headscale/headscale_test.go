@@ -95,6 +95,36 @@ func (*Suite) TestSqliteConfigLoading(c *check.C) {
 	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 }
 
+func (*Suite) TestDNSConfigLoading(c *check.C) {
+	tmpDir, err := ioutil.TempDir("", "headscale")
+	if err != nil {
+		c.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	path, err := os.Getwd()
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	// Symlink the example config file
+	err = os.Symlink(filepath.Clean(path+"/../../config.json.sqlite.example"), filepath.Join(tmpDir, "config.json"))
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	// Load example config, it should load without validation errors
+	err = cli.LoadConfig(tmpDir)
+	c.Assert(err, check.IsNil)
+
+	dnsConfig := cli.GetDNSConfig()
+	fmt.Println(dnsConfig)
+
+	c.Assert(dnsConfig.Nameservers[0].String(), check.Equals, "1.1.1.1")
+
+	c.Assert(dnsConfig.Resolvers[0].Addr, check.Equals, "1.1.1.1")
+}
+
 func writeConfig(c *check.C, tmpDir string, configYaml []byte) {
 	// Populate a custom config file
 	configFile := filepath.Join(tmpDir, "config.yaml")

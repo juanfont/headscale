@@ -75,7 +75,7 @@ func LoadConfig(path string) error {
 
 }
 
-func getDNSConfig() *tailcfg.DNSConfig {
+func GetDNSConfig() *tailcfg.DNSConfig {
 	if viper.IsSet("dns_config") {
 		dnsConfig := &tailcfg.DNSConfig{}
 
@@ -168,7 +168,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
 
-		DNSConfig: getDNSConfig(),
+		DNSConfig: GetDNSConfig(),
 	}
 
 	h, err := headscale.NewHeadscale(cfg)
