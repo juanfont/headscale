@@ -83,6 +83,7 @@ func getDNSConfig() *tailcfg.DNSConfig {
 			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
 
 			nameservers := make([]netaddr.IP, len(nameserversStr))
+			resolvers := make([]tailcfg.DNSResolver, len(nameserversStr))
 
 			for index, nameserverStr := range nameserversStr {
 				nameserver, err := netaddr.ParseIP(nameserverStr)
@@ -94,9 +95,13 @@ func getDNSConfig() *tailcfg.DNSConfig {
 				}
 
 				nameservers[index] = nameserver
+				resolvers[index] = tailcfg.DNSResolver{
+					Addr: nameserver.String() + ":53",
+				}
 			}
 
 			dnsConfig.Nameservers = nameservers
+			dnsConfig.Resolvers = resolvers
 		}
 		if viper.IsSet("dns_config.domains") {
 			dnsConfig.Domains = viper.GetStringSlice("dns_config.domains")
