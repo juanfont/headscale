@@ -25,8 +25,9 @@ Headscale implements this coordination server.
 - [X] JSON-formatted output
 - [X] ACLs
 - [X] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
+- [X] DNS (passing DNS servers to nodes)
 - [ ] Share nodes between ~~users~~ namespaces 
-- [ ] DNS
+- [ ] MagicDNS / Smart DNS
 
 
 ## Roadmap 🤷
