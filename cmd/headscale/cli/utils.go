@@ -96,7 +96,7 @@ func getDNSConfig() *tailcfg.DNSConfig {
 
 				nameservers[index] = nameserver
 				resolvers[index] = tailcfg.DNSResolver{
-					Addr: nameserver.String() + ":53",
+					Addr: nameserver.String(),
 				}
 			}
 
