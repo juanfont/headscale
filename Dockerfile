@@ -10,7 +10,7 @@ COPY . /go/src/headscale
 RUN go install -a -ldflags="-extldflags=-static" -tags netgo,sqlite_omit_load_extension ./cmd/headscale
 RUN test -e /go/bin/headscale
 
-FROM ubuntu:latest
+FROM ubuntu:20.04
 
 COPY --from=build /go/bin/headscale /usr/local/bin/headscale
 ENV TZ UTC
