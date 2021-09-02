@@ -50,7 +50,7 @@ func (m Machine) isAlreadyRegistered() bool {
 	return m.Registered
 }
 
-func (m Machine) toNode() (*tailcfg.Node, error) {
+func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
 	nKey, err := wgkey.ParseHex(m.NodeKey)
 	if err != nil {
 		return nil, err
@@ -85,24 +85,26 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 	allowedIPs := []netaddr.IPPrefix{}
 	allowedIPs = append(allowedIPs, ip) // we append the node own IP, as it is required by the clients
 
-	routesStr := []string{}
-	if len(m.EnabledRoutes) != 0 {
-		allwIps, err := m.EnabledRoutes.MarshalJSON()
-		if err != nil {
-			return nil, err
+	if includeRoutes {
+		routesStr := []string{}
+		if len(m.EnabledRoutes) != 0 {
+			allwIps, err := m.EnabledRoutes.MarshalJSON()
+			if err != nil {
+				return nil, err
+			}
+			err = json.Unmarshal(allwIps, &routesStr)
+			if err != nil {
+				return nil, err
+			}
 		}
-		err = json.Unmarshal(allwIps, &routesStr)
-		if err != nil {
-			return nil, err
-		}
-	}
 
-	for _, aip := range routesStr {
-		ip, err := netaddr.ParseIPPrefix(aip)
-		if err != nil {
-			return nil, err
+		for _, aip := range routesStr {
+			ip, err := netaddr.ParseIPPrefix(aip)
+			if err != nil {
+				return nil, err
+			}
+			allowedIPs = append(allowedIPs, ip)
 		}
-		allowedIPs = append(allowedIPs, ip)
 	}
 
 	endpoints := []string{}
@@ -136,13 +138,20 @@ func (m Machine) toNode() (*tailcfg.Node, error) {
 		derp = "127.3.3.40:0" // Zero means disconnected or unknown.
 	}
 
+	var keyExpiry time.Time
+	if m.Expiry != nil {
+		keyExpiry = *m.Expiry
+	} else {
+		keyExpiry = time.Time{}
+	}
+
 	n := tailcfg.Node{
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
 		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostinfo.Hostname,
 		User:       tailcfg.UserID(m.NamespaceID),
 		Key:        tailcfg.NodeKey(nKey),
-		KeyExpiry:  *m.Expiry,
+		KeyExpiry:  keyExpiry,
 		Machine:    tailcfg.MachineKey(mKey),
 		DiscoKey:   discoKey,
 		Addresses:  addrs,
@@ -165,6 +174,7 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 		Str("func", "getPeers").
 		Str("machine", m.Name).
 		Msg("Finding peers")
+
 	machines := []Machine{}
 	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
@@ -172,9 +182,23 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 		return nil, err
 	}
 
+	// We fetch here machines that are shared to the `Namespace` of the machine we are getting peers for
+	sharedNodes := []SharedNode{}
+	if err := h.db.Preload("Namespace").Preload("Machine").Where("namespace_id = ?",
+		m.NamespaceID).Find(&sharedNodes).Error; err != nil {
+		return nil, err
+	}
+
 	peers := []*tailcfg.Node{}
 	for _, mn := range machines {
-		peer, err := mn.toNode()
+		peer, err := mn.toNode(true)
+		if err != nil {
+			return nil, err
+		}
+		peers = append(peers, peer)
+	}
+	for _, sn := range sharedNodes {
+		peer, err := sn.Machine.toNode(false) // shared nodes do not expose their routes
 		if err != nil {
 			return nil, err
 		}
@@ -201,7 +225,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 			return &m, nil
 		}
 	}
-	return nil, fmt.Errorf("not found")
+	return nil, fmt.Errorf("machine not found")
 }
 
 // GetMachineByID finds a Machine by ID and returns the Machine struct
@@ -260,7 +284,14 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 }
 
 func (h *Headscale) notifyChangesToPeers(m *Machine) {
-	peers, _ := h.getPeers(*m)
+	peers, err := h.getPeers(*m)
+	if err != nil {
+		log.Error().
+			Str("func", "notifyChangesToPeers").
+			Str("machine", m.Name).
+			Msgf("Error getting peers: %s", err)
+		return
+	}
 	for _, p := range *peers {
 		log.Info().
 			Str("func", "notifyChangesToPeers").

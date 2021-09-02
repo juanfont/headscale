@@ -33,8 +33,6 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 		return
 	}
 
-	// spew.Dump(c.Params)
-
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
 	<html>
 	<body>
@@ -220,7 +218,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := m.toNode()
+	node, err := m.toNode(true)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").
@@ -280,7 +278,6 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 			return nil, err
 		}
 	}
-	// spew.Dump(resp)
 	// declare the incoming size on the first 4 bytes
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
