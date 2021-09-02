@@ -5,7 +5,7 @@ import "gorm.io/gorm"
 const errorSameNamespace = Error("Destination namespace same as origin")
 const errorNodeAlreadyShared = Error("Node already shared to this namespace")
 
-// Sharing is a join table to support sharing nodes between namespaces
+// SharedNode is a join table to support sharing nodes between namespaces
 type SharedNode struct {
 	gorm.Model
 	MachineID   uint64

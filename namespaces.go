@@ -97,7 +97,7 @@ func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
 	return &machines, nil
 }
 
-// ListSharedMachinesInNamespaces returns all the machines that are shared to the specified namespace
+// ListSharedMachinesInNamespace returns all the machines that are shared to the specified namespace
 func (h *Headscale) ListSharedMachinesInNamespace(name string) (*[]Machine, error) {
 	n, err := h.GetNamespace(name)
 	if err != nil {

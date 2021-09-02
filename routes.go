@@ -56,6 +56,7 @@ func (h *Headscale) GetEnabledNodeRoutes(namespace string, nodeName string) ([]n
 	return routes, nil
 }
 
+// IsNodeRouteEnabled checks if a certain route has been enabled
 func (h *Headscale) IsNodeRouteEnabled(namespace string, nodeName string, routeStr string) bool {
 	route, err := netaddr.ParseIPPrefix(routeStr)
 	if err != nil {
@@ -129,6 +130,7 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 	return nil
 }
 
+// RoutesToPtables converts the list of routes to a nice table
 func (h *Headscale) RoutesToPtables(namespace string, nodeName string, availableRoutes []netaddr.IPPrefix) pterm.TableData {
 	d := pterm.TableData{{"Route", "Enabled"}}
 
