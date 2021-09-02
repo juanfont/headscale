@@ -79,6 +79,12 @@ var listNodesCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
+
+		ns, err := h.GetNamespace(n)
+		if err != nil {
+			log.Fatalf("Error fetching namespace: %s", err)
+		}
+
 		machines, err := h.ListMachinesInNamespace(n)
 		if strings.HasPrefix(o, "json") {
 			JsonOutput(machines, err, o)
@@ -89,7 +95,7 @@ var listNodesCmd = &cobra.Command{
 			log.Fatalf("Error getting nodes: %s", err)
 		}
 
-		d, err := nodesToPtables(*machines)
+		d, err := nodesToPtables(*ns, *machines)
 		if err != nil {
 			log.Fatalf("Error converting to table: %s", err)
 		}
@@ -145,8 +151,8 @@ var deleteNodeCmd = &cobra.Command{
 	},
 }
 
-func nodesToPtables(m []headscale.Machine) (pterm.TableData, error) {
-	d := pterm.TableData{{"ID", "Name", "NodeKey", "IP address", "Ephemeral", "Last seen", "Online"}}
+func nodesToPtables(currNs headscale.Namespace, m []headscale.Machine) (pterm.TableData, error) {
+	d := pterm.TableData{{"ID", "Name", "NodeKey", "Namespace", "IP address", "Ephemeral", "Last seen", "Online"}}
 
 	for _, m := range m {
 		var ephemeral bool
@@ -169,7 +175,14 @@ func nodesToPtables(m []headscale.Machine) (pterm.TableData, error) {
 		} else {
 			online = pterm.LightRed("false")
 		}
-		d = append(d, []string{strconv.FormatUint(m.ID, 10), m.Name, nodeKey.ShortString(), m.IPAddress, strconv.FormatBool(ephemeral), lastSeen.Format("2006-01-02 15:04:05"), online})
+
+		var namespace string
+		if currNs.ID == m.NamespaceID {
+			namespace = pterm.LightMagenta(m.Namespace.Name)
+		} else {
+			namespace = pterm.LightYellow(currNs.Name)
+		}
+		d = append(d, []string{strconv.FormatUint(m.ID, 10), m.Name, nodeKey.ShortString(), namespace, m.IPAddress, strconv.FormatBool(ephemeral), lastSeen.Format("2006-01-02 15:04:05"), online})
 	}
 	return d, nil
 }
