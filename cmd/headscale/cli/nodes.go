@@ -25,6 +25,7 @@ func init() {
 	nodeCmd.AddCommand(listNodesCmd)
 	nodeCmd.AddCommand(registerNodeCmd)
 	nodeCmd.AddCommand(deleteNodeCmd)
+	nodeCmd.AddCommand(shareNodeCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -86,8 +87,19 @@ var listNodesCmd = &cobra.Command{
 		}
 
 		machines, err := h.ListMachinesInNamespace(n)
+		if err != nil {
+			log.Fatalf("Error fetching machines: %s", err)
+		}
+
+		sharedMachines, err := h.ListSharedMachinesInNamespace(n)
+		if err != nil {
+			log.Fatalf("Error fetching shared machines: %s", err)
+		}
+
+		allMachines := append(*machines, *sharedMachines...)
+
 		if strings.HasPrefix(o, "json") {
-			JsonOutput(machines, err, o)
+			JsonOutput(allMachines, err, o)
 			return
 		}
 
@@ -95,7 +107,7 @@ var listNodesCmd = &cobra.Command{
 			log.Fatalf("Error getting nodes: %s", err)
 		}
 
-		d, err := nodesToPtables(*ns, *machines)
+		d, err := nodesToPtables(*ns, allMachines)
 		if err != nil {
 			log.Fatalf("Error converting to table: %s", err)
 		}
@@ -151,6 +163,60 @@ var deleteNodeCmd = &cobra.Command{
 	},
 }
 
+var shareNodeCmd = &cobra.Command{
+	Use:   "share ID namespace",
+	Short: "Shares a node from the current namespace to the specified one",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 2 {
+			return fmt.Errorf("missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		n, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			log.Fatalf("Error getting namespace: %s", err)
+		}
+		o, _ := cmd.Flags().GetString("output")
+
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+
+		_, err = h.GetNamespace(n)
+		if err != nil {
+			log.Fatalf("Error fetching origin namespace: %s", err)
+		}
+
+		destNs, err := h.GetNamespace(args[1])
+		if err != nil {
+			log.Fatalf("Error fetching destination namespace: %s", err)
+		}
+
+		id, err := strconv.Atoi(args[0])
+		if err != nil {
+			log.Fatalf("Error converting ID to integer: %s", err)
+		}
+		m, err := h.GetMachineByID(uint64(id))
+		if err != nil {
+			log.Fatalf("Error getting node: %s", err)
+		}
+
+		err = h.ShareNodeInNamespace(m, destNs)
+		if strings.HasPrefix(o, "json") {
+			JsonOutput(map[string]string{"Result": "Node shared"}, err, o)
+			return
+		}
+		if err != nil {
+			fmt.Printf("Error sharing node: %s\n", err)
+			return
+		}
+
+		fmt.Println("Node shared!")
+	},
+}
+
 func nodesToPtables(currNs headscale.Namespace, m []headscale.Machine) (pterm.TableData, error) {
 	d := pterm.TableData{{"ID", "Name", "NodeKey", "Namespace", "IP address", "Ephemeral", "Last seen", "Online"}}
 
@@ -180,7 +246,7 @@ func nodesToPtables(currNs headscale.Namespace, m []headscale.Machine) (pterm.Ta
 		if currNs.ID == m.NamespaceID {
 			namespace = pterm.LightMagenta(m.Namespace.Name)
 		} else {
-			namespace = pterm.LightYellow(currNs.Name)
+			namespace = pterm.LightYellow(m.Namespace.Name)
 		}
 		d = append(d, []string{strconv.FormatUint(m.ID, 10), m.Name, nodeKey.ShortString(), namespace, m.IPAddress, strconv.FormatBool(ephemeral), lastSeen.Format("2006-01-02 15:04:05"), online})
 	}
