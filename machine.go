@@ -231,7 +231,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 // GetMachineByID finds a Machine by ID and returns the Machine struct
 func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	m := Machine{}
-	if result := h.db.Find(&Machine{ID: id}).First(&m); result.Error != nil {
+	if result := h.db.Preload("Namespace").Find(&Machine{ID: id}).First(&m); result.Error != nil {
 		return nil, result.Error
 	}
 	return &m, nil

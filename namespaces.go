@@ -104,13 +104,17 @@ func (h *Headscale) ListSharedMachinesInNamespace(name string) (*[]Machine, erro
 		return nil, err
 	}
 	sharedNodes := []SharedNode{}
-	if err := h.db.Preload("Namespace").Preload("Machine").Where(&SharedNode{NamespaceID: n.ID}).Find(&sharedNodes).Error; err != nil {
+	if err := h.db.Preload("Namespace").Where(&SharedNode{NamespaceID: n.ID}).Find(&sharedNodes).Error; err != nil {
 		return nil, err
 	}
 
 	machines := []Machine{}
 	for _, sn := range sharedNodes {
-		machines = append(machines, sn.Machine)
+		m, err := h.GetMachineByID(sn.MachineID) // otherwise not everything comes filled
+		if err != nil {
+			return nil, err
+		}
+		machines = append(machines, *m)
 	}
 	return &machines, nil
 }
