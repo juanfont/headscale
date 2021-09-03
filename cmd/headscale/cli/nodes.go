@@ -154,8 +154,10 @@ func nodesToPtables(m []headscale.Machine) (pterm.TableData, error) {
 			ephemeral = true
 		}
 		var lastSeen time.Time
+		var lastSeenTime string
 		if m.LastSeen != nil {
 			lastSeen = *m.LastSeen
+			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
 		nKey, err := wgkey.ParseHex(m.NodeKey)
 		if err != nil {
@@ -164,12 +166,12 @@ func nodesToPtables(m []headscale.Machine) (pterm.TableData, error) {
 		nodeKey := tailcfg.NodeKey(nKey)
 
 		var online string
-		if m.LastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
+		if lastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
 			online = pterm.LightGreen("true")
 		} else {
 			online = pterm.LightRed("false")
 		}
-		d = append(d, []string{strconv.FormatUint(m.ID, 10), m.Name, nodeKey.ShortString(), m.IPAddress, strconv.FormatBool(ephemeral), lastSeen.Format("2006-01-02 15:04:05"), online})
+		d = append(d, []string{strconv.FormatUint(m.ID, 10), m.Name, nodeKey.ShortString(), m.IPAddress, strconv.FormatBool(ephemeral), lastSeenTime, online})
 	}
 	return d, nil
 }
