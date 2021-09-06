@@ -5,8 +5,8 @@ import "gorm.io/gorm"
 const errorSameNamespace = Error("Destination namespace same as origin")
 const errorNodeAlreadyShared = Error("Node already shared to this namespace")
 
-// SharedNode is a join table to support sharing nodes between namespaces
-type SharedNode struct {
+// SharedMachine is a join table to support sharing nodes between namespaces
+type SharedMachine struct {
 	gorm.Model
 	MachineID   uint64
 	Machine     Machine
@@ -20,12 +20,12 @@ func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error
 		return errorSameNamespace
 	}
 
-	sn := SharedNode{}
+	sn := SharedMachine{}
 	if err := h.db.Where("machine_id = ? AND namespace_id", m.ID, ns.ID).First(&sn).Error; err == nil {
 		return errorNodeAlreadyShared
 	}
 
-	sn = SharedNode{
+	sn = SharedMachine{
 		MachineID:   m.ID,
 		Machine:     *m,
 		NamespaceID: ns.ID,

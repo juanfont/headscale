@@ -183,7 +183,7 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 	}
 
 	// We fetch here machines that are shared to the `Namespace` of the machine we are getting peers for
-	sharedNodes := []SharedNode{}
+	sharedNodes := []SharedMachine{}
 	if err := h.db.Preload("Namespace").Preload("Machine").Where("namespace_id = ?",
 		m.NamespaceID).Find(&sharedNodes).Error; err != nil {
 		return nil, err

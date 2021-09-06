@@ -103,8 +103,8 @@ func (h *Headscale) ListSharedMachinesInNamespace(name string) (*[]Machine, erro
 	if err != nil {
 		return nil, err
 	}
-	sharedNodes := []SharedNode{}
-	if err := h.db.Preload("Namespace").Where(&SharedNode{NamespaceID: n.ID}).Find(&sharedNodes).Error; err != nil {
+	sharedNodes := []SharedMachine{}
+	if err := h.db.Preload("Namespace").Where(&SharedMachine{NamespaceID: n.ID}).Find(&sharedNodes).Error; err != nil {
 		return nil, err
 	}
 

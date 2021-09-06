@@ -44,7 +44,7 @@ func (h *Headscale) initDB() error {
 		return err
 	}
 
-	err = db.AutoMigrate(&SharedNode{})
+	err = db.AutoMigrate(&SharedMachine{})
 	if err != nil {
 		return err
 	}
