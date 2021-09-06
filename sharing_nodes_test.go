@@ -59,7 +59,7 @@ func (s *Suite) TestBasicSharedNodesInNamespace(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(*p1s), check.Equals, 0)
 
-	err = h.ShareNodeInNamespace(&m2, n1)
+	err = h.AddSharedMachineToNamespace(&m2, n1)
 	c.Assert(err, check.IsNil)
 
 	p1sAfter, err := h.getPeers(m1)
@@ -122,7 +122,7 @@ func (s *Suite) TestSameNamespace(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(*p1s), check.Equals, 0)
 
-	err = h.ShareNodeInNamespace(&m1, n1)
+	err = h.AddSharedMachineToNamespace(&m1, n1)
 	c.Assert(err, check.Equals, errorSameNamespace)
 }
 
@@ -180,9 +180,9 @@ func (s *Suite) TestAlreadyShared(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(*p1s), check.Equals, 0)
 
-	err = h.ShareNodeInNamespace(&m2, n1)
+	err = h.AddSharedMachineToNamespace(&m2, n1)
 	c.Assert(err, check.IsNil)
-	err = h.ShareNodeInNamespace(&m2, n1)
+	err = h.AddSharedMachineToNamespace(&m2, n1)
 	c.Assert(err, check.Equals, errorNodeAlreadyShared)
 }
 
@@ -240,7 +240,7 @@ func (s *Suite) TestDoNotIncludeRoutesOnShared(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(*p1s), check.Equals, 0)
 
-	err = h.ShareNodeInNamespace(&m2, n1)
+	err = h.AddSharedMachineToNamespace(&m2, n1)
 	c.Assert(err, check.IsNil)
 
 	p1sAfter, err := h.getPeers(m1)
@@ -346,7 +346,7 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(*p1s), check.Equals, 1) // nodes 1 and 4
 
-	err = h.ShareNodeInNamespace(&m2, n1)
+	err = h.AddSharedMachineToNamespace(&m2, n1)
 	c.Assert(err, check.IsNil)
 
 	p1sAfter, err := h.getPeers(m1)

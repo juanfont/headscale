@@ -14,8 +14,8 @@ type SharedNode struct {
 	Namespace   Namespace
 }
 
-// ShareNodeInNamespace adds a machine as a shared node to a namespace
-func (h *Headscale) ShareNodeInNamespace(m *Machine, ns *Namespace) error {
+// AddSharedMachineToNamespace adds a machine as a shared node to a namespace
+func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error {
 	if m.NamespaceID == ns.ID {
 		return errorSameNamespace
 	}

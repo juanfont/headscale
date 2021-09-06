@@ -203,7 +203,7 @@ var shareNodeCmd = &cobra.Command{
 			log.Fatalf("Error getting node: %s", err)
 		}
 
-		err = h.ShareNodeInNamespace(m, destNs)
+		err = h.AddSharedMachineToNamespace(m, destNs)
 		if strings.HasPrefix(o, "json") {
 			JsonOutput(map[string]string{"Result": "Node shared"}, err, o)
 			return
