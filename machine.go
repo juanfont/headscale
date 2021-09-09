@@ -98,8 +98,8 @@ func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
 			}
 		}
 
-		for _, aip := range routesStr {
-			ip, err := netaddr.ParseIPPrefix(aip)
+		for _, routeStr := range routesStr {
+			ip, err := netaddr.ParseIPPrefix(routeStr)
 			if err != nil {
 				return nil, err
 			}
@@ -183,9 +183,9 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 	}
 
 	// We fetch here machines that are shared to the `Namespace` of the machine we are getting peers for
-	sharedNodes := []SharedMachine{}
+	sharedMachines := []SharedMachine{}
 	if err := h.db.Preload("Namespace").Preload("Machine").Where("namespace_id = ?",
-		m.NamespaceID).Find(&sharedNodes).Error; err != nil {
+		m.NamespaceID).Find(&sharedMachines).Error; err != nil {
 		return nil, err
 	}
 
@@ -197,8 +197,8 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 		}
 		peers = append(peers, peer)
 	}
-	for _, sn := range sharedNodes {
-		peer, err := sn.Machine.toNode(false) // shared nodes do not expose their routes
+	for _, sharedMachine := range sharedMachines {
+		peer, err := sharedMachine.Machine.toNode(false) // shared nodes do not expose their routes
 		if err != nil {
 			return nil, err
 		}

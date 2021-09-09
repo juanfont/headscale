@@ -183,7 +183,7 @@ func (s *Suite) TestAlreadyShared(c *check.C) {
 	err = h.AddSharedMachineToNamespace(&m2, n1)
 	c.Assert(err, check.IsNil)
 	err = h.AddSharedMachineToNamespace(&m2, n1)
-	c.Assert(err, check.Equals, errorNodeAlreadyShared)
+	c.Assert(err, check.Equals, errorMachineAlreadyShared)
 }
 
 func (s *Suite) TestDoNotIncludeRoutesOnShared(c *check.C) {
