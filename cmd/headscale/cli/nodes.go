@@ -204,8 +204,8 @@ var shareMachineCmd = &cobra.Command{
 		}
 
 		err = h.AddSharedMachineToNamespace(machine, destinationNamespace)
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(map[string]string{"Result": "Node shared"}, err, o)
+		if strings.HasPrefix(output, "json") {
+			JsonOutput(map[string]string{"Result": "Node shared"}, err, output)
 			return
 		}
 		if err != nil {
@@ -222,21 +222,21 @@ func nodesToPtables(currentNamespace headscale.Namespace, machines []headscale.M
 
 	for _, machine := range machines {
 		var ephemeral bool
-		if m.AuthKey != nil && m.AuthKey.Ephemeral {
+		if machine.AuthKey != nil && machine.AuthKey.Ephemeral {
 			ephemeral = true
 		}
 		var lastSeen time.Time
-		if m.LastSeen != nil {
-			lastSeen = *m.LastSeen
+		if machine.LastSeen != nil {
+			lastSeen = *machine.LastSeen
 		}
-		nKey, err := wgkey.ParseHex(m.NodeKey)
+		nKey, err := wgkey.ParseHex(machine.NodeKey)
 		if err != nil {
 			return nil, err
 		}
 		nodeKey := tailcfg.NodeKey(nKey)
 
 		var online string
-		if m.LastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
+		if machine.LastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
 			online = pterm.LightGreen("true")
 		} else {
 			online = pterm.LightRed("false")
