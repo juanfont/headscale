@@ -3,7 +3,7 @@ package headscale
 import "gorm.io/gorm"
 
 const errorSameNamespace = Error("Destination namespace same as origin")
-const errorNodeAlreadyShared = Error("Node already shared to this namespace")
+const errorMachineAlreadyShared = Error("Node already shared to this namespace")
 
 // SharedMachine is a join table to support sharing nodes between namespaces
 type SharedMachine struct {
