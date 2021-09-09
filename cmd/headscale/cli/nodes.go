@@ -228,7 +228,7 @@ func nodesToPtables(currentNamespace headscale.Namespace, machines []headscale.M
 		var lastSeen time.Time
 		var lastSeenTime string
 		if machine.LastSeen != nil {
-			lastSeen = *m.LastSeen
+			lastSeen = *machine.LastSeen
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
 		nKey, err := wgkey.ParseHex(machine.NodeKey)
@@ -239,8 +239,7 @@ func nodesToPtables(currentNamespace headscale.Namespace, machines []headscale.M
 
 		var online string
 		if lastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
-			online = pter
-      LightGreen("true")
+			online = pterm.LightGreen("true")
 		} else {
 			online = pterm.LightRed("false")
 		}
