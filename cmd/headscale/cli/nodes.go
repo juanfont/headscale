@@ -226,8 +226,10 @@ func nodesToPtables(currentNamespace headscale.Namespace, machines []headscale.M
 			ephemeral = true
 		}
 		var lastSeen time.Time
+		var lastSeenTime string
 		if machine.LastSeen != nil {
-			lastSeen = *machine.LastSeen
+			lastSeen = *m.LastSeen
+			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
 		nKey, err := wgkey.ParseHex(machine.NodeKey)
 		if err != nil {
@@ -236,8 +238,9 @@ func nodesToPtables(currentNamespace headscale.Namespace, machines []headscale.M
 		nodeKey := tailcfg.NodeKey(nKey)
 
 		var online string
-		if machine.LastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
-			online = pterm.LightGreen("true")
+		if lastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
+			online = pter
+      LightGreen("true")
 		} else {
 			online = pterm.LightRed("false")
 		}
@@ -248,7 +251,7 @@ func nodesToPtables(currentNamespace headscale.Namespace, machines []headscale.M
 		} else {
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
-		d = append(d, []string{strconv.FormatUint(machine.ID, 10), machine.Name, nodeKey.ShortString(), namespace, machine.IPAddress, strconv.FormatBool(ephemeral), lastSeen.Format("2006-01-02 15:04:05"), online})
+		d = append(d, []string{strconv.FormatUint(machine.ID, 10), machine.Name, nodeKey.ShortString(), namespace, machine.IPAddress, strconv.FormatBool(ephemeral), lastSeenTime, online})
 	}
 	return d, nil
 }
