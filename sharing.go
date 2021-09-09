@@ -20,7 +20,7 @@ func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error
 		return errorSameNamespace
 	}
 
-	sn := SharedMachine{}
+	sharedMachine := SharedMachine{}
 	if err := h.db.Where("machine_id = ? AND namespace_id", m.ID, ns.ID).First(&sharedMachine).Error; err == nil {
 		return errorMachineAlreadyShared
 	}
