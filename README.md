@@ -26,13 +26,11 @@ Headscale implements this coordination server.
 - [X] ACLs
 - [X] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [X] DNS (passing DNS servers to nodes)
-- [ ] Share nodes between ~~users~~ namespaces 
+- [X] Share nodes between ~~users~~ namespaces 
 - [ ] MagicDNS / Smart DNS
 
 
 ## Roadmap 🤷
-
-We are now focusing on adding integration tests with the official clients. 
 
 Suggestions/PRs welcomed!
 

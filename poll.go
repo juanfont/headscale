@@ -188,7 +188,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Msg("Finished stream, closing PollNetMap session")
 }
 
-// PollNetMapStream takes care of /machine/:id/map 
+// PollNetMapStream takes care of /machine/:id/map
 // stream logic, ensuring we communicate updates and data
 // to the connected clients.
 func (h *Headscale) PollNetMapStream(
@@ -440,7 +440,7 @@ func (h *Headscale) scheduledPollWorker(
 		case <-updateCheckerTicker.C:
 			// Send an update request regardless of outdated or not, if data is sent
 			// to the node is determined in the updateChan consumer block
-			n, _ := m.toNode()
+			n, _ := m.toNode(true)
 			err := h.sendRequestOnUpdateChannel(n)
 			if err != nil {
 				log.Error().
