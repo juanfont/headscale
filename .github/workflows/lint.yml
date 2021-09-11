@@ -36,4 +36,6 @@ jobs:
           sudo apt install -y make
 
       - name: Run lint
+        with:
+          args: --timeout 4m
         run: make lint
