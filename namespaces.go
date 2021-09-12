@@ -91,8 +91,30 @@ func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
 	}
 
 	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("Namespace").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
 		return nil, err
+	}
+	return &machines, nil
+}
+
+// ListSharedMachinesInNamespace returns all the machines that are shared to the specified namespace
+func (h *Headscale) ListSharedMachinesInNamespace(name string) (*[]Machine, error) {
+	namespace, err := h.GetNamespace(name)
+	if err != nil {
+		return nil, err
+	}
+	sharedMachines := []SharedMachine{}
+	if err := h.db.Preload("Namespace").Where(&SharedMachine{NamespaceID: namespace.ID}).Find(&sharedMachines).Error; err != nil {
+		return nil, err
+	}
+
+	machines := []Machine{}
+	for _, sharedMachine := range sharedMachines {
+		machine, err := h.GetMachineByID(sharedMachine.MachineID) // otherwise not everything comes filled
+		if err != nil {
+			return nil, err
+		}
+		machines = append(machines, *machine)
 	}
 	return &machines, nil
 }

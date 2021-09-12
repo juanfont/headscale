@@ -22,3 +22,5 @@ config.json
 
 # Exclude Jetbrains Editors
 .idea
+
+test_output/ 

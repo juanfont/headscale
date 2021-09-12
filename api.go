@@ -13,9 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
@@ -34,8 +32,6 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 		c.String(http.StatusBadRequest, "Wrong params")
 		return
 	}
-
-	// spew.Dump(c.Params)
 
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
 	<html>
@@ -82,14 +78,16 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		return
 	}
 
+	now := time.Now().UTC()
 	var m Machine
 	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Info().Str("machine", req.Hostinfo.Hostname).Msg("New machine")
 		m = Machine{
-			Expiry:     &req.Expiry,
-			MachineKey: mKey.HexString(),
-			Name:       req.Hostinfo.Hostname,
-			NodeKey:    wgkey.Key(req.NodeKey).HexString(),
+			Expiry:               &req.Expiry,
+			MachineKey:           mKey.HexString(),
+			Name:                 req.Hostinfo.Hostname,
+			NodeKey:              wgkey.Key(req.NodeKey).HexString(),
+			LastSuccessfulUpdate: &now,
 		}
 		if err := h.db.Create(&m).Error; err != nil {
 			log.Error().
@@ -215,202 +213,12 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	c.Data(200, "application/json; charset=utf-8", respBody)
 }
 
-// PollNetMapHandler takes care of /machine/:id/map
-//
-// This is the busiest endpoint, as it keeps the HTTP long poll that updates
-// the clients when something in the network changes.
-//
-// The clients POST stuff like HostInfo and their Endpoints here, but
-// only after their first request (marked with the ReadOnly field).
-//
-// At this moment the updates are sent in a quite horrendous way, but they kinda work.
-func (h *Headscale) PollNetMapHandler(c *gin.Context) {
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Str("id", c.Param("id")).
-		Msg("PollNetMapHandler called")
-	body, _ := io.ReadAll(c.Request.Body)
-	mKeyStr := c.Param("id")
-	mKey, err := wgkey.ParseHex(mKeyStr)
-	if err != nil {
-		log.Error().
-			Str("handler", "PollNetMap").
-			Err(err).
-			Msg("Cannot parse client key")
-		c.String(http.StatusBadRequest, "")
-		return
-	}
-	req := tailcfg.MapRequest{}
-	err = decode(body, &req, &mKey, h.privateKey)
-	if err != nil {
-		log.Error().
-			Str("handler", "PollNetMap").
-			Err(err).
-			Msg("Cannot decode message")
-		c.String(http.StatusBadRequest, "")
-		return
-	}
-
-	var m Machine
-	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		log.Warn().
-			Str("handler", "PollNetMap").
-			Msgf("Ignoring request, cannot find machine with key %s", mKey.HexString())
-		c.String(http.StatusUnauthorized, "")
-		return
-	}
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Str("id", c.Param("id")).
-		Str("machine", m.Name).
-		Msg("Found machine in database")
-
-	hostinfo, _ := json.Marshal(req.Hostinfo)
-	m.Name = req.Hostinfo.Hostname
-	m.HostInfo = datatypes.JSON(hostinfo)
-	m.DiscoKey = wgkey.Key(req.DiscoKey).HexString()
-	now := time.Now().UTC()
-
-	// From Tailscale client:
-	//
-	// ReadOnly is whether the client just wants to fetch the MapResponse,
-	// without updating their Endpoints. The Endpoints field will be ignored and
-	// LastSeen will not be updated and peers will not be notified of changes.
-	//
-	// The intended use is for clients to discover the DERP map at start-up
-	// before their first real endpoint update.
-	if !req.ReadOnly {
-		endpoints, _ := json.Marshal(req.Endpoints)
-		m.Endpoints = datatypes.JSON(endpoints)
-		m.LastSeen = &now
-	}
-	h.db.Save(&m)
-
-	data, err := h.getMapResponse(mKey, req, m)
-	if err != nil {
-		log.Error().
-			Str("handler", "PollNetMap").
-			Str("id", c.Param("id")).
-			Str("machine", m.Name).
-			Err(err).
-			Msg("Failed to get Map response")
-		c.String(http.StatusInternalServerError, ":(")
-		return
-	}
-
-	// We update our peers if the client is not sending ReadOnly in the MapRequest
-	// so we don't distribute its initial request (it comes with
-	// empty endpoints to peers)
-
-	// Details on the protocol can be found in https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L696
-	log.Debug().
-		Str("handler", "PollNetMap").
-		Str("id", c.Param("id")).
-		Str("machine", m.Name).
-		Bool("readOnly", req.ReadOnly).
-		Bool("omitPeers", req.OmitPeers).
-		Bool("stream", req.Stream).
-		Msg("Client map request processed")
-
-	if req.ReadOnly {
-		log.Info().
-			Str("handler", "PollNetMap").
-			Str("machine", m.Name).
-			Msg("Client is starting up. Asking for DERP map")
-		c.Data(200, "application/json; charset=utf-8", *data)
-		return
-	}
-	if req.OmitPeers && !req.Stream {
-		log.Info().
-			Str("handler", "PollNetMap").
-			Str("machine", m.Name).
-			Msg("Client sent endpoint update and is ok with a response without peer list")
-		c.Data(200, "application/json; charset=utf-8", *data)
-		return
-	} else if req.OmitPeers && req.Stream {
-		log.Warn().
-			Str("handler", "PollNetMap").
-			Str("machine", m.Name).
-			Msg("Ignoring request, don't know how to handle it")
-		c.String(http.StatusBadRequest, "")
-		return
-	}
-
-	// Only create update channel if it has not been created
-	var update chan []byte
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Str("id", c.Param("id")).
-		Str("machine", m.Name).
-		Msg("Creating or loading update channel")
-	if result, ok := h.clientsPolling.LoadOrStore(m.ID, make(chan []byte, 1)); ok {
-		update = result.(chan []byte)
-	}
-
-	pollData := make(chan []byte, 1)
-	defer close(pollData)
-
-	cancelKeepAlive := make(chan []byte, 1)
-	defer close(cancelKeepAlive)
-
-	log.Info().
-		Str("handler", "PollNetMap").
-		Str("machine", m.Name).
-		Msg("Client is ready to access the tailnet")
-	log.Info().
-		Str("handler", "PollNetMap").
-		Str("machine", m.Name).
-		Msg("Sending initial map")
-	pollData <- *data
-
-	log.Info().
-		Str("handler", "PollNetMap").
-		Str("machine", m.Name).
-		Msg("Notifying peers")
-		// TODO: Why does this block?
-	go h.notifyChangesToPeers(&m)
-
-	h.PollNetMapStream(c, m, req, mKey, pollData, update, cancelKeepAlive)
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Str("id", c.Param("id")).
-		Str("machine", m.Name).
-		Msg("Finished stream, closing PollNetMap session")
-}
-
-func (h *Headscale) keepAlive(cancel chan []byte, pollData chan []byte, mKey wgkey.Key, req tailcfg.MapRequest, m Machine) {
-	for {
-		select {
-		case <-cancel:
-			return
-
-		default:
-			data, err := h.getMapKeepAliveResponse(mKey, req, m)
-			if err != nil {
-				log.Error().
-					Str("func", "keepAlive").
-					Err(err).
-					Msg("Error generating the keep alive msg")
-				return
-			}
-
-			log.Debug().
-				Str("func", "keepAlive").
-				Str("machine", m.Name).
-				Msg("Sending keepalive")
-			pollData <- *data
-
-			time.Sleep(60 * time.Second)
-		}
-	}
-}
-
 func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
 	log.Trace().
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := m.toNode()
+	node, err := m.toNode(true)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").
@@ -434,10 +242,15 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 	}
 
 	resp := tailcfg.MapResponse{
-		KeepAlive:    false,
-		Node:         node,
-		Peers:        *peers,
-		DNS:          []netaddr.IP{},
+		KeepAlive: false,
+		Node:      node,
+		Peers:     *peers,
+		//TODO(kradalby): As per tailscale docs, if DNSConfig is nil,
+		// it means its not updated, maybe we can have some logic
+		// to check and only pass updates when its updates.
+		// This is probably more relevant if we try to implement
+		// "MagicDNS"
+		DNSConfig:    h.cfg.DNSConfig,
 		SearchPaths:  []string{},
 		Domain:       "headscale.net",
 		PacketFilter: *h.aclRules,
@@ -465,7 +278,6 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 			return nil, err
 		}
 	}
-	// spew.Dump(resp)
 	// declare the incoming size on the first 4 bytes
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
@@ -542,7 +354,7 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 		Str("func", "handleAuthKey").
 		Str("machine", m.Name).
 		Str("ip", ip.String()).
-		Msgf("Assining %s to %s", ip, m.Name)
+		Msgf("Assigning %s to %s", ip, m.Name)
 
 	m.AuthKeyID = uint(pak.ID)
 	m.IPAddress = ip.String()

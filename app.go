@@ -43,6 +43,8 @@ type Config struct {
 
 	TLSCertPath string
 	TLSKeyPath  string
+
+	DNSConfig *tailcfg.DNSConfig
 }
 
 // Headscale represents the base app of the service
@@ -58,7 +60,10 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
 
-	clientsPolling sync.Map
+	clientsUpdateChannels     sync.Map
+	clientsUpdateChannelMutex sync.Mutex
+
+	lastStateChange sync.Map
 }
 
 // NewHeadscale returns the Headscale app
@@ -165,8 +170,17 @@ func (h *Headscale) Serve() error {
 	r.POST("/machine/:id", h.RegistrationHandler)
 	var err error
 
+	timeout := 30 * time.Second
+
 	go h.watchForKVUpdates(5000)
 	go h.expireEphemeralNodes(5000)
+
+	s := &http.Server{
+		Addr:         h.cfg.Addr,
+		Handler:      r,
+		ReadTimeout:  timeout,
+		WriteTimeout: timeout,
+	}
 
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
@@ -179,9 +193,11 @@ func (h *Headscale) Serve() error {
 			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
 		}
 		s := &http.Server{
-			Addr:      h.cfg.Addr,
-			TLSConfig: m.TLSConfig(),
-			Handler:   r,
+			Addr:         h.cfg.Addr,
+			TLSConfig:    m.TLSConfig(),
+			Handler:      r,
+			ReadTimeout:  timeout,
+			WriteTimeout: timeout,
 		}
 		if h.cfg.TLSLetsEncryptChallengeType == "TLS-ALPN-01" {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
@@ -206,12 +222,29 @@ func (h *Headscale) Serve() error {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
 			log.Warn().Msg("Listening without TLS but ServerURL does not start with http://")
 		}
-		err = r.Run(h.cfg.Addr)
+		err = s.ListenAndServe()
 	} else {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
-		err = r.RunTLS(h.cfg.Addr, h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
+		err = s.ListenAndServeTLS(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 	}
 	return err
+}
+
+func (h *Headscale) setLastStateChangeToNow(namespace string) {
+	now := time.Now().UTC()
+	h.lastStateChange.Store(namespace, now)
+}
+
+func (h *Headscale) getLastStateChange(namespace string) time.Time {
+	if wrapped, ok := h.lastStateChange.Load(namespace); ok {
+		lastChange, _ := wrapped.(time.Time)
+		return lastChange
+
+	}
+
+	now := time.Now().UTC()
+	h.lastStateChange.Store(namespace, now)
+	return now
 }

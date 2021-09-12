@@ -1,10 +1,10 @@
 name: CI
 
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
   # The "build" workflow
-  test:
+  integration-test:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
@@ -17,17 +17,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: "1.16.3" # The Go version to download (if necessary) and use.
+          go-version: "1.16.3"
 
-      # Install all the dependencies
-      - name: Install dependencies
-        run: |
-          go version
-          sudo apt update
-          sudo apt install -y make
-
-      - name: Run tests
-        run: make test
-
-      - name: Run build
-        run: make
+      - name: Run Integration tests
+        run: go test -tags integration -timeout 30m

@@ -4,10 +4,13 @@ package headscale
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -20,22 +23,47 @@ import (
 	"inet.af/netaddr"
 )
 
-type IntegrationTestSuite struct {
-	suite.Suite
-}
-
-func TestIntegrationTestSuite(t *testing.T) {
-	suite.Run(t, new(IntegrationTestSuite))
-}
-
 var integrationTmpDir string
 var ih Headscale
 
 var pool dockertest.Pool
 var network dockertest.Network
 var headscale dockertest.Resource
-var tailscaleCount int = 5
+var tailscaleCount int = 25
 var tailscales map[string]dockertest.Resource
+
+type IntegrationTestSuite struct {
+	suite.Suite
+	stats *suite.SuiteInformation
+}
+
+func TestIntegrationTestSuite(t *testing.T) {
+	s := new(IntegrationTestSuite)
+	suite.Run(t, s)
+
+	// HandleStats, which allows us to check if we passed and save logs
+	// is called after TearDown, so we cannot tear down containers before
+	// we have potentially saved the logs.
+	for _, tailscale := range tailscales {
+		if err := pool.Purge(&tailscale); err != nil {
+			log.Printf("Could not purge resource: %s\n", err)
+		}
+	}
+
+	if !s.stats.Passed() {
+		err := saveLog(&headscale, "test_output")
+		if err != nil {
+			log.Printf("Could not save log: %s\n", err)
+		}
+	}
+	if err := pool.Purge(&headscale); err != nil {
+		log.Printf("Could not purge resource: %s\n", err)
+	}
+
+	if err := network.Close(); err != nil {
+		log.Printf("Could not close network: %s\n", err)
+	}
+}
 
 func executeCommand(resource *dockertest.Resource, cmd []string) (string, error) {
 	var stdout bytes.Buffer
@@ -60,6 +88,48 @@ func executeCommand(resource *dockertest.Resource, cmd []string) (string, error)
 	}
 
 	return stdout.String(), nil
+}
+
+func saveLog(resource *dockertest.Resource, basePath string) error {
+	err := os.MkdirAll(basePath, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err = pool.Client.Logs(
+		docker.LogsOptions{
+			Context:      context.TODO(),
+			Container:    resource.Container.ID,
+			OutputStream: &stdout,
+			ErrorStream:  &stderr,
+			Tail:         "all",
+			RawTerminal:  false,
+			Stdout:       true,
+			Stderr:       true,
+			Follow:       false,
+			Timestamps:   false,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
+
+	err = ioutil.WriteFile(path.Join(basePath, resource.Container.Name+".stdout.log"), []byte(stdout.String()), 0644)
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(path.Join(basePath, resource.Container.Name+".stderr.log"), []byte(stdout.String()), 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func dockerRestartPolicy(config *docker.HostConfig) {
@@ -115,7 +185,6 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			"8080/tcp": []docker.PortBinding{{HostPort: "8080"}},
 		},
-		Env: []string{},
 	}
 
 	fmt.Println("Creating headscale container")
@@ -134,7 +203,6 @@ func (s *IntegrationTestSuite) SetupSuite() {
 			Name:     hostname,
 			Networks: []*dockertest.Network{&network},
 			Cmd:      []string{"tailscaled", "--tun=userspace-networking", "--socks5-server=localhost:1055"},
-			Env:      []string{},
 		}
 
 		if pts, err := pool.BuildAndRunWithBuildOptions(tailscaleBuildOptions, tailscaleOptions, dockerRestartPolicy); err == nil {
@@ -145,7 +213,6 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		fmt.Printf("Created %s container\n", hostname)
 	}
 
-	// TODO: Replace this logic with something that can be detected on Github Actions
 	fmt.Println("Waiting for headscale to be ready")
 	hostEndpoint := fmt.Sprintf("localhost:%s", headscale.GetPort("8080/tcp"))
 
@@ -197,23 +264,14 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 	// The nodes need a bit of time to get their updated maps from headscale
 	// TODO: See if we can have a more deterministic wait here.
-	time.Sleep(20 * time.Second)
+	time.Sleep(60 * time.Second)
 }
 
 func (s *IntegrationTestSuite) TearDownSuite() {
-	if err := pool.Purge(&headscale); err != nil {
-		log.Printf("Could not purge resource: %s\n", err)
-	}
+}
 
-	for _, tailscale := range tailscales {
-		if err := pool.Purge(&tailscale); err != nil {
-			log.Printf("Could not purge resource: %s\n", err)
-		}
-	}
-
-	if err := network.Close(); err != nil {
-		log.Printf("Could not close network: %s\n", err)
-	}
+func (s *IntegrationTestSuite) HandleStats(suiteName string, stats *suite.SuiteInformation) {
+	s.stats = stats
 }
 
 func (s *IntegrationTestSuite) TestListNodes() {
@@ -295,7 +353,15 @@ func (s *IntegrationTestSuite) TestPingAllPeers() {
 			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 				// We currently cant ping ourselves, so skip that.
 				if peername != hostname {
-					command := []string{"tailscale", "ping", "--timeout=1s", "--c=1", ip.String()}
+					// We are only interested in "direct ping" which means what we
+					// might need a couple of more attempts before reaching the node.
+					command := []string{
+						"tailscale", "ping",
+						"--timeout=1s",
+						"--c=20",
+						"--until-direct=true",
+						ip.String(),
+					}
 
 					fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
 					result, err := executeCommand(
