@@ -22,14 +22,12 @@ func main() {
 		colors = true
 	default:
 		// no color, return text as is.
-		log.Trace().Msg("Colors are not supported, disabling")
 		colors = false
 	}
 
 	// Adhere to no-color.org manifesto of allowing users to
 	// turn off color in cli/services
 	if _, noColorIsSet := os.LookupEnv("NO_COLOR"); noColorIsSet {
-		log.Trace().Msg("NO_COLOR is set, disabling colors")
 		colors = false
 	}
 
