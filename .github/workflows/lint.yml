@@ -19,7 +19,7 @@ jobs:
       # golangci-lint manually in the `Run lint` step.
       - uses: golangci/golangci-lint-action@v2
         with:
-          args: --timeout 4m
+          args: --timeout 2m
 
       # Setup Go
       - name: Setup Go
@@ -36,6 +36,4 @@ jobs:
           sudo apt install -y make
 
       - name: Run lint
-        with:
-          args: --timeout 4m
         run: make lint
