@@ -19,7 +19,7 @@ jobs:
       # golangci-lint manually in the `Run lint` step.
       - uses: golangci/golangci-lint-action@v2
         with:
-          args: --timeout 2m
+          args: --timeout 10m
 
       # Setup Go
       - name: Setup Go
