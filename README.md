@@ -38,8 +38,16 @@ Suggestions/PRs welcomed!
 
 ## Running it
 
-1. Download the Headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your PATH
- 
+1. Download the Headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your PATH or use the docker container
+
+  ```shell
+  docker pull headscale/headscale:x.x.x
+  ```
+
+  or
+  ```shell
+  docker pull ghrc.io/juanfont/headscale:x.x.x
+  ```
 
 2. (Optional, you can also use SQLite) Get yourself a PostgreSQL DB running
 
@@ -64,10 +72,18 @@ Suggestions/PRs welcomed!
   ```shell
   headscale namespaces create myfirstnamespace
   ```
+  or docker:
+  ```shell
+  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale namespace create myfirstnamespace
+  ```
 
 5. Run the server
   ```shell
   headscale serve
+  ```
+  or docker:
+  ```shell
+  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derb.yaml:/derb.yaml -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale serve
   ```
 
 6. If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
@@ -88,6 +104,10 @@ Suggestions/PRs welcomed!
   ```shell
   headscale -n myfirstnamespace node register YOURMACHINEKEY
   ```
+  or docker:
+  ```shell
+  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale -n myfirstnamespace node register YOURMACHINEKEY
+  ```
 
 Alternatively, you can use Auth Keys to register your machines:
 
@@ -95,6 +115,10 @@ Alternatively, you can use Auth Keys to register your machines:
     ```shell
     headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
     ```
+  or docker:
+  ```shell
+  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+  ```
 
 2. Use the authkey from your machine to register it
    ```shell

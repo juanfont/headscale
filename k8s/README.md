@@ -89,7 +89,6 @@ Use "headscale [command] --help" for more information about a command.
 
 # TODO / Ideas
 
-- Github action to publish the docker image
 - Interpolate `email:` option to the ClusterIssuer from site configuration.
   This probably needs to be done with a transformer, kustomize vars don't seem to work.
 - Add kustomize examples for cloud-native ingress, load balancer
