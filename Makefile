@@ -20,7 +20,7 @@ coverprofile_html:
 
 lint:
 	golint
-	golangci-lint run
+	golangci-lint run --timeout 5m
 
 compress: build
 	upx --brute headscale
