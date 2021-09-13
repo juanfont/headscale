@@ -37,5 +37,3 @@ jobs:
 
       - name: Run lint
         run: make lint
-        with:
-          args: --timeout 10m
