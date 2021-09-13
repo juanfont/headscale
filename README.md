@@ -43,11 +43,11 @@ Suggestions/PRs welcomed!
   ```shell
   docker pull headscale/headscale:x.x.x
   ```
-
+<!-- 
   or
   ```shell
   docker pull ghrc.io/juanfont/headscale:x.x.x
-  ```
+  ``` -->
 
 2. (Optional, you can also use SQLite) Get yourself a PostgreSQL DB running
 
