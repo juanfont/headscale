@@ -33,6 +33,6 @@ require (
 	gorm.io/driver/postgres v1.1.1
 	gorm.io/driver/sqlite v1.1.5
 	gorm.io/gorm v1.21.15
-	inet.af/netaddr v0.0.0-20210603230628-bf05d8b52dda
-	tailscale.com v1.10.0
+	inet.af/netaddr v0.0.0-20210903134321-85fa6c94624e
+	tailscale.com v1.14.2
 )
