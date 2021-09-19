@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gopkg.in/check.v1"
+	"inet.af/netaddr"
 )
 
 func Test(t *testing.T) {
@@ -36,7 +37,9 @@ func (s *Suite) ResetDB(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	cfg := Config{}
+	cfg := Config{
+		IPPrefix: netaddr.MustParseIPPrefix("10.27.0.0/23"),
+	}
 
 	h = Headscale{
 		cfg:      cfg,

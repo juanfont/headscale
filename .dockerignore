@@ -1,0 +1,17 @@
+// integration tests are not needed in docker
+// ignoring it let us speed up the integration test
+// development
+integration_test.go
+integration_test/
+
+Dockerfile*
+docker-compose*
+.dockerignore
+.goreleaser.yml
+.git
+.github
+.gitignore
+README.md
+LICENSE
+.vscode
+

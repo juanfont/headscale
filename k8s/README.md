@@ -65,7 +65,6 @@ tasks like creating namespaces, authkeys, etc.
 
 headscale is an open source implementation of the Tailscale control server
 
-Juan Font Alonso <juanfontalonso@gmail.com> - 2021
 https://gitlab.com/juanfont/headscale
 
 Usage:
@@ -90,7 +89,6 @@ Use "headscale [command] --help" for more information about a command.
 
 # TODO / Ideas
 
-- Github action to publish the docker image
 - Interpolate `email:` option to the ClusterIssuer from site configuration.
   This probably needs to be done with a transformer, kustomize vars don't seem to work.
 - Add kustomize examples for cloud-native ingress, load balancer

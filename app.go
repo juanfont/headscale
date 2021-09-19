@@ -3,16 +3,18 @@ package headscale
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/acme/autocert"
 	"gorm.io/gorm"
+	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
@@ -24,6 +26,7 @@ type Config struct {
 	PrivateKeyPath                 string
 	DerpMap                        *tailcfg.DERPMap
 	EphemeralNodeInactivityTimeout time.Duration
+	IPPrefix                       netaddr.IPPrefix
 
 	DBtype string
 	DBpath string
@@ -40,6 +43,8 @@ type Config struct {
 
 	TLSCertPath string
 	TLSKeyPath  string
+
+	DNSConfig *tailcfg.DNSConfig
 }
 
 // Headscale represents the base app of the service
@@ -55,8 +60,10 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
 
-	pollMu         sync.Mutex
-	clientsPolling map[uint64]chan []byte // this is by all means a hackity hack
+	clientsUpdateChannels     sync.Map
+	clientsUpdateChannelMutex sync.Mutex
+
+	lastStateChange sync.Map
 }
 
 // NewHeadscale returns the Headscale app
@@ -96,7 +103,6 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		return nil, err
 	}
 
-	h.clientsPolling = make(map[uint64]chan []byte)
 	return &h, nil
 }
 
@@ -106,9 +112,9 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
-// ExpireEphemeralNodes deletes ephemeral machine records that have not been
+// expireEphemeralNodes deletes ephemeral machine records that have not been
 // seen for longer than h.cfg.EphemeralNodeInactivityTimeout
-func (h *Headscale) ExpireEphemeralNodes(milliSeconds int64) {
+func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 	for range ticker.C {
 		h.expireEphemeralNodesWorker()
@@ -118,30 +124,46 @@ func (h *Headscale) ExpireEphemeralNodes(milliSeconds int64) {
 func (h *Headscale) expireEphemeralNodesWorker() {
 	namespaces, err := h.ListNamespaces()
 	if err != nil {
-		log.Printf("Error listing namespaces: %s", err)
+		log.Error().Err(err).Msg("Error listing namespaces")
 		return
 	}
 	for _, ns := range *namespaces {
 		machines, err := h.ListMachinesInNamespace(ns.Name)
 		if err != nil {
-			log.Printf("Error listing machines in namespace %s: %s", ns.Name, err)
+			log.Error().Err(err).Str("namespace", ns.Name).Msg("Error listing machines in namespace")
 			return
 		}
 		for _, m := range *machines {
 			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral && time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
-				log.Printf("[%s] Ephemeral client removed from database\n", m.Name)
+				log.Info().Str("machine", m.Name).Msg("Ephemeral client removed from database")
 				err = h.db.Unscoped().Delete(m).Error
 				if err != nil {
-					log.Printf("[%s] 🤮 Cannot delete ephemeral machine from the database: %s", m.Name, err)
+					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
+				h.notifyChangesToPeers(&m)
 			}
 		}
 	}
 }
 
+// WatchForKVUpdates checks the KV DB table for requests to perform tailnet upgrades
+// This is a way to communitate the CLI with the headscale server
+func (h *Headscale) watchForKVUpdates(milliSeconds int64) {
+	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
+	for range ticker.C {
+		h.watchForKVUpdatesWorker()
+	}
+}
+
+func (h *Headscale) watchForKVUpdatesWorker() {
+	h.checkForNamespacesPendingUpdates()
+	// more functions will come here in the future
+}
+
 // Serve launches a GIN server with the Headscale API
 func (h *Headscale) Serve() error {
 	r := gin.Default()
+	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"healthy": "ok"}) })
 	r.GET("/key", h.KeyHandler)
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
@@ -149,9 +171,22 @@ func (h *Headscale) Serve() error {
 	r.GET("/apple", h.AppleMobileConfig)
 	r.GET("/apple/:platform", h.ApplePlatformConfig)
 	var err error
+
+	timeout := 30 * time.Second
+
+	go h.watchForKVUpdates(5000)
+	go h.expireEphemeralNodes(5000)
+
+	s := &http.Server{
+		Addr:         h.cfg.Addr,
+		Handler:      r,
+		ReadTimeout:  timeout,
+		WriteTimeout: timeout,
+	}
+
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Println("WARNING: listening with TLS but ServerURL does not start with https://")
+			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
 		m := autocert.Manager{
@@ -160,9 +195,11 @@ func (h *Headscale) Serve() error {
 			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
 		}
 		s := &http.Server{
-			Addr:      h.cfg.Addr,
-			TLSConfig: m.TLSConfig(),
-			Handler:   r,
+			Addr:         h.cfg.Addr,
+			TLSConfig:    m.TLSConfig(),
+			Handler:      r,
+			ReadTimeout:  timeout,
+			WriteTimeout: timeout,
 		}
 		if h.cfg.TLSLetsEncryptChallengeType == "TLS-ALPN-01" {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
@@ -174,7 +211,10 @@ func (h *Headscale) Serve() error {
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
 			go func() {
-				log.Fatal(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, m.HTTPHandler(http.HandlerFunc(h.redirect))))
+
+				log.Fatal().
+					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, m.HTTPHandler(http.HandlerFunc(h.redirect)))).
+					Msg("failed to set up a HTTP server")
 			}()
 			err = s.ListenAndServeTLS("", "")
 		} else {
@@ -182,14 +222,31 @@ func (h *Headscale) Serve() error {
 		}
 	} else if h.cfg.TLSCertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
-			log.Println("WARNING: listening without TLS but ServerURL does not start with http://")
+			log.Warn().Msg("Listening without TLS but ServerURL does not start with http://")
 		}
-		err = r.Run(h.cfg.Addr)
+		err = s.ListenAndServe()
 	} else {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Println("WARNING: listening with TLS but ServerURL does not start with https://")
+			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
-		err = r.RunTLS(h.cfg.Addr, h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
+		err = s.ListenAndServeTLS(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 	}
 	return err
+}
+
+func (h *Headscale) setLastStateChangeToNow(namespace string) {
+	now := time.Now().UTC()
+	h.lastStateChange.Store(namespace, now)
+}
+
+func (h *Headscale) getLastStateChange(namespace string) time.Time {
+	if wrapped, ok := h.lastStateChange.Load(namespace); ok {
+		lastChange, _ := wrapped.(time.Time)
+		return lastChange
+
+	}
+
+	now := time.Now().UTC()
+	h.lastStateChange.Store(namespace, now)
+	return now
 }

@@ -5,15 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
+	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -36,6 +37,12 @@ func LoadConfig(path string) error {
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", "HTTP-01")
 
+	viper.SetDefault("ip_prefix", "100.64.0.0/10")
+
+	viper.SetDefault("log_level", "info")
+
+	viper.SetDefault("dns_config", nil)
+
 	err := viper.ReadInConfig()
 	if err != nil {
 		return fmt.Errorf("Fatal error reading config file: %s \n", err)
@@ -49,7 +56,8 @@ func LoadConfig(path string) error {
 
 	if (viper.GetString("tls_letsencrypt_hostname") != "") && (viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") && (!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
-		log.Println("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
+		log.Warn().
+			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
 	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") && (viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
@@ -64,6 +72,45 @@ func LoadConfig(path string) error {
 	} else {
 		return nil
 	}
+
+}
+
+func GetDNSConfig() *tailcfg.DNSConfig {
+	if viper.IsSet("dns_config") {
+		dnsConfig := &tailcfg.DNSConfig{}
+
+		if viper.IsSet("dns_config.nameservers") {
+			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
+
+			nameservers := make([]netaddr.IP, len(nameserversStr))
+			resolvers := make([]tailcfg.DNSResolver, len(nameserversStr))
+
+			for index, nameserverStr := range nameserversStr {
+				nameserver, err := netaddr.ParseIP(nameserverStr)
+				if err != nil {
+					log.Error().
+						Str("func", "getDNSConfig").
+						Err(err).
+						Msgf("Could not parse nameserver IP: %s", nameserverStr)
+				}
+
+				nameservers[index] = nameserver
+				resolvers[index] = tailcfg.DNSResolver{
+					Addr: nameserver.String(),
+				}
+			}
+
+			dnsConfig.Nameservers = nameservers
+			dnsConfig.Resolvers = resolvers
+		}
+		if viper.IsSet("dns_config.domains") {
+			dnsConfig.Domains = viper.GetStringSlice("dns_config.domains")
+		}
+
+		return dnsConfig
+	}
+
+	return nil
 }
 
 func absPath(path string) string {
@@ -79,9 +126,13 @@ func absPath(path string) string {
 }
 
 func getHeadscaleApp() (*headscale.Headscale, error) {
-	derpMap, err := loadDerpMap(absPath(viper.GetString("derp_map_path")))
+	derpPath := absPath(viper.GetString("derp_map_path"))
+	derpMap, err := loadDerpMap(derpPath)
 	if err != nil {
-		log.Printf("Could not load DERP servers map file: %s", err)
+		log.Error().
+			Str("path", derpPath).
+			Err(err).
+			Msg("Could not load DERP servers map file")
 	}
 
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
@@ -97,6 +148,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		DerpMap:        derpMap,
+		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
 
 		EphemeralNodeInactivityTimeout: viper.GetDuration("ephemeral_node_inactivity_timeout"),
 
@@ -115,6 +167,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
+
+		DNSConfig: GetDNSConfig(),
 	}
 
 	h, err := headscale.NewHeadscale(cfg)
@@ -125,9 +179,13 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	// We are doing this here, as in the future could be cool to have it also hot-reload
 
 	if viper.GetString("acl_policy_path") != "" {
-		err = h.LoadACLPolicy(absPath(viper.GetString("acl_policy_path")))
+		aclPath := absPath(viper.GetString("acl_policy_path"))
+		err = h.LoadACLPolicy(aclPath)
 		if err != nil {
-			log.Printf("Could not load the ACL policy: %s", err)
+			log.Error().
+				Str("path", aclPath).
+				Err(err).
+				Msg("Could not load the ACL policy")
 		}
 	}
 
@@ -157,24 +215,24 @@ func JsonOutput(result interface{}, errResult error, outputFormat string) {
 		if errResult != nil {
 			j, err = json.MarshalIndent(ErrorOutput{errResult.Error()}, "", "\t")
 			if err != nil {
-				log.Fatalln(err)
+				log.Fatal().Err(err)
 			}
 		} else {
 			j, err = json.MarshalIndent(result, "", "\t")
 			if err != nil {
-				log.Fatalln(err)
+				log.Fatal().Err(err)
 			}
 		}
 	case "json-line":
 		if errResult != nil {
 			j, err = json.Marshal(ErrorOutput{errResult.Error()})
 			if err != nil {
-				log.Fatalln(err)
+				log.Fatal().Err(err)
 			}
 		} else {
 			j, err = json.Marshal(result)
 			if err != nil {
-				log.Fatalln(err)
+				log.Fatal().Err(err)
 			}
 		}
 	}

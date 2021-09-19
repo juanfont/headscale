@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hako/durafmt"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -19,6 +21,7 @@ func init() {
 	}
 	preauthkeysCmd.AddCommand(listPreAuthKeys)
 	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
+	preauthkeysCmd.AddCommand(expirePreAuthKeyCmd)
 	createPreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
 	createPreAuthKeyCmd.PersistentFlags().Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
@@ -53,6 +56,8 @@ var listPreAuthKeys = &cobra.Command{
 			fmt.Printf("Error getting the list of keys: %s\n", err)
 			return
 		}
+
+		d := pterm.TableData{{"ID", "Key", "Reusable", "Ephemeral", "Expiration", "Created"}}
 		for _, k := range *keys {
 			expiration := "-"
 			if k.Expiration != nil {
@@ -66,15 +71,19 @@ var listPreAuthKeys = &cobra.Command{
 				reusable = fmt.Sprintf("%v", k.Reusable)
 			}
 
-			fmt.Printf(
-				"key: %s, namespace: %s, reusable: %s, ephemeral: %v, expiration: %s, created_at: %s\n",
+			d = append(d, []string{
+				strconv.FormatUint(k.ID, 10),
 				k.Key,
-				k.Namespace.Name,
 				reusable,
-				k.Ephemeral,
+				strconv.FormatBool(k.Ephemeral),
 				expiration,
 				k.CreatedAt.Format("2006-01-02 15:04:05"),
-			)
+			})
+
+		}
+		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		if err != nil {
+			log.Fatal(err)
 		}
 	},
 }
@@ -116,6 +125,45 @@ var createPreAuthKeyCmd = &cobra.Command{
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("Key: %s\n", k.Key)
+		fmt.Printf("%s\n", k.Key)
+	},
+}
+
+var expirePreAuthKeyCmd = &cobra.Command{
+	Use:   "expire",
+	Short: "Expire a preauthkey",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 1 {
+			return fmt.Errorf("missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		n, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			log.Fatalf("Error getting namespace: %s", err)
+		}
+		o, _ := cmd.Flags().GetString("output")
+
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+
+		k, err := h.GetPreAuthKey(n, args[0])
+		if err != nil {
+			log.Fatalf("Error getting the key: %s", err)
+		}
+
+		err = h.MarkExpirePreAuthKey(k)
+		if strings.HasPrefix(o, "json") {
+			JsonOutput(k, err, o)
+			return
+		}
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Println("Expired")
 	},
 }

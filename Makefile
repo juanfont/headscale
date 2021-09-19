@@ -2,12 +2,15 @@
 version = $(shell ./scripts/version-at-commit.sh)
 
 build:
-	go build -ldflags "-s -w -X main.version=$(version)" cmd/headscale/headscale.go
+	go build -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.version=$(version)" cmd/headscale/headscale.go
 
 dev: lint test build
 
 test:
 	@go test -coverprofile=coverage.out ./...
+
+test_integration:
+	go test -tags integration -timeout 30m ./...
 
 coverprofile_func:
 	go tool cover -func=coverage.out
@@ -17,7 +20,7 @@ coverprofile_html:
 
 lint:
 	golint
-	golangci-lint run
+	golangci-lint run --timeout 5m
 
 compress: build
 	upx --brute headscale

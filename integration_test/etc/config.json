@@ -1,0 +1,11 @@
+{
+  "server_url": "http://headscale:8080",
+  "listen_addr": "0.0.0.0:8080",
+  "private_key_path": "private.key",
+  "derp_map_path": "derp.yaml",
+  "ephemeral_node_inactivity_timeout": "30m",
+  "db_type": "sqlite3",
+  "db_path": "/tmp/integration_test_db.sqlite3",
+  "acl_policy_path": "",
+  "log_level": "debug"
+}

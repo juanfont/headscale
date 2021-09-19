@@ -18,19 +18,19 @@ Headscale implements this coordination server.
 
 - [x] Base functionality (nodes can communicate with each other)
 - [x] Node registration through the web flow
-- [x] Network changes are relied to the nodes
+- [x] Network changes are relayed to the nodes
 - [x] Namespace support (~equivalent to multi-user in Tailscale.com)
 - [x] Routing (advertise & accept, including exit nodes)
 - [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
 - [X] JSON-formatted output
 - [X] ACLs
-- [ ] Share nodes between ~~users~~ namespaces 
-- [ ] DNS
+- [X] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
+- [X] DNS (passing DNS servers to nodes)
+- [X] Share nodes between ~~users~~ namespaces 
+- [ ] MagicDNS / Smart DNS
 
 
 ## Roadmap 🤷
-
-We are now focusing on adding integration tests with the official clients. 
 
 Suggestions/PRs welcomed!
 
@@ -38,8 +38,16 @@ Suggestions/PRs welcomed!
 
 ## Running it
 
-1. Download the Headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your PATH
- 
+1. Download the Headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your PATH or use the docker container
+
+  ```shell
+  docker pull headscale/headscale:x.x.x
+  ```
+<!-- 
+  or
+  ```shell
+  docker pull ghrc.io/juanfont/headscale:x.x.x
+  ``` -->
 
 2. (Optional, you can also use SQLite) Get yourself a PostgreSQL DB running
 
@@ -64,10 +72,18 @@ Suggestions/PRs welcomed!
   ```shell
   headscale namespaces create myfirstnamespace
   ```
+  or docker:
+  ```shell
+  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale namespace create myfirstnamespace
+  ```
 
 5. Run the server
   ```shell
   headscale serve
+  ```
+  or docker:
+  ```shell
+  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derb.yaml:/derb.yaml -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale serve
   ```
 
 6. If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
@@ -88,6 +104,10 @@ Suggestions/PRs welcomed!
   ```shell
   headscale -n myfirstnamespace node register YOURMACHINEKEY
   ```
+  or docker:
+  ```shell
+  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale -n myfirstnamespace node register YOURMACHINEKEY
+  ```
 
 Alternatively, you can use Auth Keys to register your machines:
 
@@ -95,6 +115,10 @@ Alternatively, you can use Auth Keys to register your machines:
     ```shell
     headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
     ```
+  or docker:
+  ```shell
+  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+  ```
 
 2. Use the authkey from your machine to register it
    ```shell
@@ -113,9 +137,15 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
 ```
     "server_url": "http://192.168.1.12:8080",
     "listen_addr": "0.0.0.0:8080",
+    "ip_prefix": "100.64.0.0/10"
 ```
 
-`server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on.
+`server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on. `ip_prefix` is the IP prefix (range) in which IP addresses for nodes will be allocated (default 100.64.0.0/10, e.g., 192.168.4.0/24, 10.0.0.0/8)
+
+```
+    "log_level": "debug"
+```
+`log_level` can be used to set the Log level for Headscale, it defaults to `debug`, and the available levels are: `trace`, `debug`, `info`, `warn` and `error`.
 
 ```
     "private_key_path": "private.key",

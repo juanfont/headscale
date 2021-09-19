@@ -2,64 +2,142 @@ package headscale
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
+	"strconv"
 
+	"github.com/pterm/pterm"
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
 )
 
-// GetNodeRoutes returns the subnet routes advertised by a node (identified by
+// GetAdvertisedNodeRoutes returns the subnet routes advertised by a node (identified by
 // namespace and node name)
-func (h *Headscale) GetNodeRoutes(namespace string, nodeName string) (*[]netaddr.IPPrefix, error) {
+func (h *Headscale) GetAdvertisedNodeRoutes(namespace string, nodeName string) (*[]netaddr.IPPrefix, error) {
 	m, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	hi, err := m.GetHostInfo()
+	hostInfo, err := m.GetHostInfo()
 	if err != nil {
 		return nil, err
 	}
-	return &hi.RoutableIPs, nil
+	return &hostInfo.RoutableIPs, nil
+}
+
+// GetEnabledNodeRoutes returns the subnet routes enabled by a node (identified by
+// namespace and node name)
+func (h *Headscale) GetEnabledNodeRoutes(namespace string, nodeName string) ([]netaddr.IPPrefix, error) {
+	m, err := h.GetMachine(namespace, nodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := m.EnabledRoutes.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+
+	routesStr := []string{}
+	err = json.Unmarshal(data, &routesStr)
+	if err != nil {
+		return nil, err
+	}
+
+	routes := make([]netaddr.IPPrefix, len(routesStr))
+	for index, routeStr := range routesStr {
+		route, err := netaddr.ParseIPPrefix(routeStr)
+		if err != nil {
+			return nil, err
+		}
+		routes[index] = route
+	}
+
+	return routes, nil
+}
+
+// IsNodeRouteEnabled checks if a certain route has been enabled
+func (h *Headscale) IsNodeRouteEnabled(namespace string, nodeName string, routeStr string) bool {
+	route, err := netaddr.ParseIPPrefix(routeStr)
+	if err != nil {
+		return false
+	}
+
+	enabledRoutes, err := h.GetEnabledNodeRoutes(namespace, nodeName)
+	if err != nil {
+		return false
+	}
+
+	for _, enabledRoute := range enabledRoutes {
+		if route == enabledRoute {
+			return true
+		}
+	}
+	return false
 }
 
 // EnableNodeRoute enables a subnet route advertised by a node (identified by
 // namespace and node name)
-func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr string) (*netaddr.IPPrefix, error) {
+func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr string) error {
 	m, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	hi, err := m.GetHostInfo()
-	if err != nil {
-		return nil, err
-	}
+
 	route, err := netaddr.ParseIPPrefix(routeStr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	for _, rIP := range hi.RoutableIPs {
-		if rIP == route {
-			routes, _ := json.Marshal([]string{routeStr}) // TODO: only one for the time being, so overwriting the rest
-			m.EnabledRoutes = datatypes.JSON(routes)
-			h.db.Save(&m)
+	availableRoutes, err := h.GetAdvertisedNodeRoutes(namespace, nodeName)
+	if err != nil {
+		return err
+	}
 
-			// THIS IS COMPLETELY USELESS.
-			// The peers map is stored in memory in the server process.
-			// Definetely not accessible from the CLI tool.
-			// We need RPC to the server - or some kind of 'needsUpdate' field in the DB
-			peers, _ := h.getPeers(*m)
-			h.pollMu.Lock()
-			for _, p := range *peers {
-				if pUp, ok := h.clientsPolling[uint64(p.ID)]; ok {
-					pUp <- []byte{}
-				}
+	enabledRoutes, err := h.GetEnabledNodeRoutes(namespace, nodeName)
+	if err != nil {
+		return err
+	}
+
+	available := false
+	for _, availableRoute := range *availableRoutes {
+		// If the route is available, and not yet enabled, add it to the new routing table
+		if route == availableRoute {
+			available = true
+			if !h.IsNodeRouteEnabled(namespace, nodeName, routeStr) {
+				enabledRoutes = append(enabledRoutes, route)
 			}
-			h.pollMu.Unlock()
-			return &rIP, nil
 		}
 	}
 
-	return nil, errors.New("could not find routable range")
+	if !available {
+		return fmt.Errorf("route (%s) is not available on node %s", nodeName, routeStr)
+	}
+
+	routes, err := json.Marshal(enabledRoutes)
+	if err != nil {
+		return err
+	}
+
+	m.EnabledRoutes = datatypes.JSON(routes)
+	h.db.Save(&m)
+
+	err = h.RequestMapUpdates(m.NamespaceID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RoutesToPtables converts the list of routes to a nice table
+func (h *Headscale) RoutesToPtables(namespace string, nodeName string, availableRoutes []netaddr.IPPrefix) pterm.TableData {
+	d := pterm.TableData{{"Route", "Enabled"}}
+
+	for _, route := range availableRoutes {
+		enabled := h.IsNodeRouteEnabled(namespace, nodeName, route.String())
+
+		d = append(d, []string{route.String(), strconv.FormatBool(enabled)})
+	}
+	return d
 }

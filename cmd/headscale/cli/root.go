@@ -2,8 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
 func init() {
@@ -16,8 +17,7 @@ var rootCmd = &cobra.Command{
 	Long: `
 headscale is an open source implementation of the Tailscale control server
 
-Juan Font Alonso <juanfontalonso@gmail.com> - 2021
-https://gitlab.com/juanfont/headscale`,
+https://github.com/juanfont/headscale`,
 }
 
 func Execute() {
