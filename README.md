@@ -18,7 +18,7 @@ Headscale implements this coordination server.
 
 - [x] Base functionality (nodes can communicate with each other)
 - [x] Node registration through the web flow
-- [x] Network changes are relied to the nodes
+- [x] Network changes are relayed to the nodes
 - [x] Namespace support (~equivalent to multi-user in Tailscale.com)
 - [x] Routing (advertise & accept, including exit nodes)
 - [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
