@@ -83,7 +83,7 @@ Suggestions/PRs welcomed!
   ```
   or docker:
   ```shell
-  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derb.yaml:/derb.yaml -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale serve
+  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale serve
   ```
 
 6. If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
