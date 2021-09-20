@@ -26,7 +26,7 @@ Headscale implements this coordination server.
 - [X] ACLs
 - [X] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [X] DNS (passing DNS servers to nodes)
-- [X] Share nodes between ~~users~~ namespaces 
+- [X] Share nodes between ~~users~~ namespaces
 - [ ] MagicDNS / Smart DNS
 
 
@@ -43,7 +43,7 @@ Suggestions/PRs welcomed!
   ```shell
   docker pull headscale/headscale:x.x.x
   ```
-<!-- 
+<!--
   or
   ```shell
   docker pull ghrc.io/juanfont/headscale:x.x.x
@@ -73,8 +73,13 @@ Suggestions/PRs welcomed!
   headscale namespaces create myfirstnamespace
   ```
   or docker:
+  the db.sqlite mount is only needed if you use sqlite
   ```shell
-  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale namespaces create myfirstnamespace
+  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale create myfirstnamespace
+  ```
+  or if your server is already running in docker:
+  ```shell
+  docker exec <container_name> headscale  create myfirstnamespace
   ```
 
 5. Run the server
@@ -82,15 +87,16 @@ Suggestions/PRs welcomed!
   headscale serve
   ```
   or docker:
+  the db.sqlite mount is only needed if you use sqlite
   ```shell
-  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale serve
+  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale serve
   ```
 
-6. If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
+6. If you used tailscale.com before in your nodes, make sure you clear the tailscald data folder
  ```shell
  systemctl stop tailscaled
  rm -fr /var/lib/tailscale
- systemctl start tailscaled 
+ systemctl start tailscaled
  ```
 
 7. Add your first machine
@@ -106,7 +112,11 @@ Suggestions/PRs welcomed!
   ```
   or docker:
   ```shell
-  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale -n myfirstnamespace node register YOURMACHINEKEY
+  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml headscale/headscale:x.x.x headscale -n myfirstnamespace node register YOURMACHINEKEY
+  ```
+  or if your server is already running in docker:
+  ```shell
+  docker exec <container_name> headscale -n myfistnamespace node register YOURMACHINEKEY
   ```
 
 Alternatively, you can use Auth Keys to register your machines:
@@ -117,7 +127,11 @@ Alternatively, you can use Auth Keys to register your machines:
     ```
   or docker:
   ```shell
-  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+  docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v$(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite headscale/headscale:x.x.x headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+  ```
+  or if your server is already running in docker:
+  ```shell
+  docker exec <container_name> headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
   ```
 
 2. Use the authkey from your machine to register it
@@ -206,7 +220,7 @@ Alternatively, `tls_letsencrypt_challenge_type` can be set to `TLS-ALPN-01`. In 
 
 ### Policy ACLs
 
-Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-hosted environment. 
+Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-hosted environment.
 
 For instance, instead of referring to users when defining groups you must
  use namespaces (which are the equivalent to user/logins in Tailscale.com).
