@@ -1,4 +1,4 @@
-FROM golang:latest AS build
+FROM golang:1.17.1-bullseye AS build
 ENV GOPATH /go
 
 COPY go.mod go.sum /go/src/headscale/
