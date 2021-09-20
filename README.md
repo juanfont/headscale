@@ -74,7 +74,7 @@ Suggestions/PRs welcomed!
   ```
   or docker:
   ```shell
-  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale namespace create myfirstnamespace
+  docker run -v ./private.key:/private.key -v ./config.json:/config.json headscale/headscale:x.x.x headscale namespaces create myfirstnamespace
   ```
 
 5. Run the server
