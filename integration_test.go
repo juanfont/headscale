@@ -6,6 +6,7 @@ package headscale
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -20,6 +21,7 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"tailscale.com/ipn/ipnstate"
 
 	"inet.af/netaddr"
 )
@@ -282,7 +284,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		fmt.Printf("Creating pre auth key for %s\n", namespace)
 		authKey, err := executeCommand(
 			&headscale,
-			[]string{"headscale", "-n", namespace, "preauthkeys", "create", "--reusable", "--expiration", "24h"},
+			[]string{"headscale", "--namespace", namespace, "preauthkeys", "create", "--reusable", "--expiration", "24h"},
 		)
 		assert.Nil(s.T(), err)
 
@@ -321,7 +323,7 @@ func (s *IntegrationTestSuite) TestListNodes() {
 		fmt.Println("Listing nodes")
 		result, err := executeCommand(
 			&headscale,
-			[]string{"headscale", "-n", namespace, "nodes", "list"},
+			[]string{"headscale", "--namespace", namespace, "nodes", "list"},
 		)
 		assert.Nil(s.T(), err)
 
@@ -366,7 +368,7 @@ func (s *IntegrationTestSuite) TestStatus() {
 
 		for hostname, tailscale := range scales.tailscales {
 			s.T().Run(hostname, func(t *testing.T) {
-				command := []string{"tailscale", "status"}
+				command := []string{"tailscale", "status", "--json"}
 
 				fmt.Printf("Getting status for %s\n", hostname)
 				result, err := executeCommand(
@@ -374,22 +376,39 @@ func (s *IntegrationTestSuite) TestStatus() {
 					command,
 				)
 				assert.Nil(t, err)
-				// fmt.Printf("Status for %s: %s", hostname, result)
 
+				var status ipnstate.Status
+				err = json.Unmarshal([]byte(result), &status)
+				assert.Nil(s.T(), err)
+
+				// TODO(kradalby): Replace this check with peer length of SAME namespace
 				// Check if we have as many nodes in status
 				// as we have IPs/tailscales
-				lines := strings.Split(result, "\n")
-				assert.Equal(t, len(ips), len(lines)-1)
-				assert.Equal(t, len(scales.tailscales), len(lines)-1)
+				// lines := strings.Split(result, "\n")
+				// assert.Equal(t, len(ips), len(lines)-1)
+				// assert.Equal(t, len(scales.tailscales), len(lines)-1)
+
+				peerIps := getIPsfromIPNstate(status)
 
 				// Check that all hosts is present in all hosts status
 				for ipHostname, ip := range ips {
-					assert.Contains(t, result, ip.String())
-					assert.Contains(t, result, ipHostname)
+					if hostname != ipHostname {
+						assert.Contains(t, peerIps, ip)
+					}
 				}
 			})
 		}
 	}
+}
+
+func getIPsfromIPNstate(status ipnstate.Status) []netaddr.IP {
+	ips := make([]netaddr.IP, 0)
+
+	for _, peer := range status.Peer {
+		ips = append(ips, peer.TailscaleIPs...)
+	}
+
+	return ips
 }
 
 func (s *IntegrationTestSuite) TestPingAllPeers() {
