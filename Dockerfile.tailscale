@@ -1,9 +1,11 @@
 FROM ubuntu:latest
 
+ARG TAILSCALE_VERSION=now
+
 RUN apt-get update \
     && apt-get install -y gnupg curl \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.gpg | apt-key add - \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.list | tee /etc/apt/sources.list.d/tailscale.list \
     && apt-get update \
-    && apt-get install -y tailscale \
+    && apt-get install -y tailscale=${TAILSCALE_VERSION} \
     && rm -rf /var/lib/apt/lists/*

@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package headscale
@@ -23,14 +24,20 @@ import (
 	"inet.af/netaddr"
 )
 
-var integrationTmpDir string
-var ih Headscale
+var (
+	integrationTmpDir string
+	ih                Headscale
+)
 
-var pool dockertest.Pool
-var network dockertest.Network
-var headscale dockertest.Resource
-var tailscaleCount int = 25
-var tailscales map[string]dockertest.Resource
+var (
+	pool           dockertest.Pool
+	network        dockertest.Network
+	headscale      dockertest.Resource
+	tailscaleCount int = 25
+	tailscales     map[string]dockertest.Resource
+)
+
+var tailscaleVersions = []string{"1.14.3", "1.12.3"}
 
 type IntegrationTestSuite struct {
 	suite.Suite
@@ -119,12 +126,12 @@ func saveLog(resource *dockertest.Resource, basePath string) error {
 
 	fmt.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
 
-	err = ioutil.WriteFile(path.Join(basePath, resource.Container.Name+".stdout.log"), []byte(stdout.String()), 0644)
+	err = ioutil.WriteFile(path.Join(basePath, resource.Container.Name+".stdout.log"), []byte(stdout.String()), 0o644)
 	if err != nil {
 		return err
 	}
 
-	err = ioutil.WriteFile(path.Join(basePath, resource.Container.Name+".stderr.log"), []byte(stdout.String()), 0644)
+	err = ioutil.WriteFile(path.Join(basePath, resource.Container.Name+".stderr.log"), []byte(stdout.String()), 0o644)
 	if err != nil {
 		return err
 	}
@@ -138,6 +145,32 @@ func dockerRestartPolicy(config *docker.HostConfig) {
 	config.RestartPolicy = docker.RestartPolicy{
 		Name: "no",
 	}
+}
+
+func tailscaleContainer(identifier string, version string) (string, *dockertest.Resource) {
+	tailscaleBuildOptions := &dockertest.BuildOptions{
+		Dockerfile: "Dockerfile.tailscale",
+		ContextDir: ".",
+		BuildArgs: []docker.BuildArg{
+			{
+				Name:  "TAILSCALE_VERSION",
+				Value: version,
+			},
+		},
+	}
+	hostname := fmt.Sprintf("tailscale-%s-%s", strings.Replace(version, ".", "-", -1), identifier)
+	tailscaleOptions := &dockertest.RunOptions{
+		Name:     hostname,
+		Networks: []*dockertest.Network{&network},
+		Cmd:      []string{"tailscaled", "--tun=userspace-networking", "--socks5-server=localhost:1055"},
+	}
+
+	pts, err := pool.BuildAndRunWithBuildOptions(tailscaleBuildOptions, tailscaleOptions, dockerRestartPolicy)
+	if err != nil {
+		log.Fatalf("Could not start resource: %s", err)
+	}
+	fmt.Printf("Created %s container\n", hostname)
+	return hostname, pts
 }
 
 func (s *IntegrationTestSuite) SetupSuite() {
@@ -164,11 +197,6 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		ContextDir: ".",
 	}
 
-	tailscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile.tailscale",
-		ContextDir: ".",
-	}
-
 	currentPath, err := os.Getwd()
 	if err != nil {
 		log.Fatalf("Could not determine current path: %s", err)
@@ -183,7 +211,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		Networks: []*dockertest.Network{&network},
 		Cmd:      []string{"headscale", "serve"},
 		PortBindings: map[docker.Port][]docker.PortBinding{
-			"8080/tcp": []docker.PortBinding{{HostPort: "8080"}},
+			"8080/tcp": {{HostPort: "8080"}},
 		},
 	}
 
@@ -198,19 +226,10 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	fmt.Println("Creating tailscale containers")
 	tailscales = make(map[string]dockertest.Resource)
 	for i := 0; i < tailscaleCount; i++ {
-		hostname := fmt.Sprintf("tailscale%d", i)
-		tailscaleOptions := &dockertest.RunOptions{
-			Name:     hostname,
-			Networks: []*dockertest.Network{&network},
-			Cmd:      []string{"tailscaled", "--tun=userspace-networking", "--socks5-server=localhost:1055"},
-		}
+		version := tailscaleVersions[i%len(tailscaleVersions)]
 
-		if pts, err := pool.BuildAndRunWithBuildOptions(tailscaleBuildOptions, tailscaleOptions, dockerRestartPolicy); err == nil {
-			tailscales[hostname] = *pts
-		} else {
-			log.Fatalf("Could not start resource: %s", err)
-		}
-		fmt.Printf("Created %s container\n", hostname)
+		hostname, container := tailscaleContainer(fmt.Sprint(i), version)
+		tailscales[hostname] = *container
 	}
 
 	fmt.Println("Waiting for headscale to be ready")
@@ -288,7 +307,7 @@ func (s *IntegrationTestSuite) TestListNodes() {
 	lines := strings.Split(result, "\n")
 	assert.Equal(s.T(), len(tailscales), len(lines)-2)
 
-	for hostname, _ := range tailscales {
+	for hostname := range tailscales {
 		assert.Contains(s.T(), result, hostname)
 	}
 }
@@ -298,7 +317,7 @@ func (s *IntegrationTestSuite) TestGetIpAddresses() {
 	ips, err := getIPs()
 	assert.Nil(s.T(), err)
 
-	for hostname, _ := range tailscales {
+	for hostname := range tailscales {
 		s.T().Run(hostname, func(t *testing.T) {
 			ip := ips[hostname]
 
