@@ -80,7 +80,7 @@ Suggestions/PRs welcomed!
     ```
     or if your server is already running in docker:
     ```shell
-    docker exec <container_name> headscale  create myfirstnamespace
+    docker exec <container_name> headscale create myfirstnamespace
     ```
 
 5. Run the server
