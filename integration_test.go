@@ -446,6 +446,89 @@ func (s *IntegrationTestSuite) TestPingAllPeers() {
 	}
 }
 
+func (s *IntegrationTestSuite) TestSharedNodes() {
+	main := s.namespaces["main"]
+	shared := s.namespaces["shared"]
+
+	result, err := executeCommand(
+		&headscale,
+		[]string{"headscale", "nodes", "list", "-o", "json", "--namespace", "shared"},
+	)
+	assert.Nil(s.T(), err)
+
+	var machineList []Machine
+	err = json.Unmarshal([]byte(result), &machineList)
+	assert.Nil(s.T(), err)
+
+	for _, machine := range machineList {
+
+		result, err := executeCommand(
+			&headscale,
+			[]string{"headscale", "nodes", "share", "--namespace", "shared", fmt.Sprint(machine.ID), "main"},
+		)
+		assert.Nil(s.T(), err)
+
+		fmt.Println("Shared node with result: ", result)
+	}
+
+	result, err = executeCommand(
+		&headscale,
+		[]string{"headscale", "nodes", "list", "--namespace", "main"},
+	)
+	assert.Nil(s.T(), err)
+	fmt.Println("Nodelist after sharing", result)
+
+	// Chck that the correct count of host is present in node list
+	lines := strings.Split(result, "\n")
+	assert.Equal(s.T(), len(main.tailscales)+len(shared.tailscales), len(lines)-2)
+
+	for hostname := range main.tailscales {
+		assert.Contains(s.T(), result, hostname)
+	}
+
+	for hostname := range shared.tailscales {
+		assert.Contains(s.T(), result, hostname)
+	}
+
+	// TODO(kradalby): Figure out why these connections are not set up
+	// // TODO: See if we can have a more deterministic wait here.
+	// time.Sleep(100 * time.Second)
+
+	// mainIps, err := getIPs(main.tailscales)
+	// assert.Nil(s.T(), err)
+
+	// sharedIps, err := getIPs(shared.tailscales)
+	// assert.Nil(s.T(), err)
+
+	// for hostname, tailscale := range main.tailscales {
+	// 	for peername, ip := range sharedIps {
+	// 		s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+	// 			// We currently cant ping ourselves, so skip that.
+	// 			if peername != hostname {
+	// 				// We are only interested in "direct ping" which means what we
+	// 				// might need a couple of more attempts before reaching the node.
+	// 				command := []string{
+	// 					"tailscale", "ping",
+	// 					"--timeout=1s",
+	// 					"--c=20",
+	// 					"--until-direct=true",
+	// 					ip.String(),
+	// 				}
+
+	// 				fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, mainIps[hostname], peername, ip)
+	// 				result, err := executeCommand(
+	// 					&tailscale,
+	// 					command,
+	// 				)
+	// 				assert.Nil(t, err)
+	// 				fmt.Printf("Result for %s: %s\n", hostname, result)
+	// 				assert.Contains(t, result, "pong")
+	// 			}
+	// 		})
+	// 	}
+	// }
+}
+
 func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, error) {
 	ips := make(map[string]netaddr.IP)
 	for hostname, tailscale := range tailscales {
