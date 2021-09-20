@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"text/template"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
 )
@@ -46,7 +48,11 @@ func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 
 	var payload bytes.Buffer
 	if err := t.Execute(&payload, config); err != nil {
-		c.Error(err)
+		log.Error().
+			Str("handler", "AppleMobileConfig").
+			Err(err).
+			Msg("Could not render Apple index template")
+		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Apple index template"))
 		return
 	}
 
@@ -58,13 +64,21 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 
 	id, err := uuid.NewV4()
 	if err != nil {
-		c.Error(err)
+		log.Error().
+			Str("handler", "ApplePlatformConfig").
+			Err(err).
+			Msg("Failed not create UUID")
+		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Failed to create UUID"))
 		return
 	}
 
 	contentId, err := uuid.NewV4()
 	if err != nil {
-		c.Error(err)
+		log.Error().
+			Str("handler", "ApplePlatformConfig").
+			Err(err).
+			Msg("Failed not create UUID")
+		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Failed to create UUID"))
 		return
 	}
 
@@ -78,12 +92,20 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 	switch platform {
 	case "macos":
 		if err := macosTemplate.Execute(&payload, platformConfig); err != nil {
-			c.Error(err)
+			log.Error().
+				Str("handler", "ApplePlatformConfig").
+				Err(err).
+				Msg("Could not render Apple macOS template")
+			c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Apple macOS template"))
 			return
 		}
 	case "ios":
 		if err := iosTemplate.Execute(&payload, platformConfig); err != nil {
-			c.Error(err)
+			log.Error().
+				Str("handler", "ApplePlatformConfig").
+				Err(err).
+				Msg("Could not render Apple iOS template")
+			c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Apple iOS template"))
 			return
 		}
 	default:
@@ -99,7 +121,11 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 
 	var content bytes.Buffer
 	if err := commonTemplate.Execute(&content, config); err != nil {
-		c.Error(err)
+		log.Error().
+			Str("handler", "ApplePlatformConfig").
+			Err(err).
+			Msg("Could not render Apple platform template")
+		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Apple platform template"))
 		return
 	}
 
