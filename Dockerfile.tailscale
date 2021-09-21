@@ -1,6 +1,6 @@
 FROM ubuntu:latest
 
-ARG TAILSCALE_VERSION=now
+ARG TAILSCALE_VERSION
 
 RUN apt-get update \
     && apt-get install -y gnupg curl \
