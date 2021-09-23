@@ -30,14 +30,31 @@ func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 		<p><code>curl {{.Url}}/apple/ios</code></p>
 		<p><code>curl {{.Url}}/apple/macos</code></p>
 		
-		<h3>Profiles</h3>
+		<h2>Profiles</h2>
+		
+		<h3>iOS</h3>
 		<p>
-		    <a href="/apple/ios" download="headscale_ios.mobileconfig">iOS</a>
+		    <a href="/apple/ios" download="headscale_ios.mobileconfig">iOS profile</a>
 		</p>
 		
+		<h3>macOS</h3>
+		<p>Headscale can be set to the default server by installing a Headscale configuration profile:</p>
 		<p>
-		    <a href="/apple/macos" download="headscale_macos.mobileconfig">macOS</a>
+		    <a href="/apple/macos" download="headscale_macos.mobileconfig">macOS profile</a>
 		</p>
+
+		<ol>
+		<li>Download the profile, then open it. When it has been opened, there should be a notification that a profile can be installed</li>
+		<li>Open System Preferences and go to "Profiles"</li>
+		<li>Find and install the Headscale profile</li>
+		<li>Restart Tailscale.app and log in</li>
+		</ol>
+
+		<p>Or</p>
+		<p>Use your terminal to configure the default setting for Tailscale by issuing:</p>
+		<code>defaults write io.tailscale.ipn.macos ControlURL {{.Url}}</code>
+
+		<p>Restart Tailscale.app and log in.</p>
 	
 	</body>
 </html>`))
