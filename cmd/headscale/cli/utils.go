@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/dnstype"
 )
 
 type ErrorOutput struct {
@@ -83,7 +84,7 @@ func GetDNSConfig() *tailcfg.DNSConfig {
 			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
 
 			nameservers := make([]netaddr.IP, len(nameserversStr))
-			resolvers := make([]tailcfg.DNSResolver, len(nameserversStr))
+			resolvers := make([]dnstype.Resolver, len(nameserversStr))
 
 			for index, nameserverStr := range nameserversStr {
 				nameserver, err := netaddr.ParseIP(nameserverStr)
@@ -95,7 +96,7 @@ func GetDNSConfig() *tailcfg.DNSConfig {
 				}
 
 				nameservers[index] = nameserver
-				resolvers[index] = tailcfg.DNSResolver{
+				resolvers[index] = dnstype.Resolver{
 					Addr: nameserver.String(),
 				}
 			}
