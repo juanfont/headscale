@@ -76,7 +76,8 @@ Suggestions/PRs welcomed!
 
     the db.sqlite mount is only needed if you use sqlite
     ```shell
-    docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale create myfirstnamespace
+    touch db.sqlite
+    docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale namespaces create myfirstnamespace
     ```
     or if your server is already running in docker:
     ```shell
