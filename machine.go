@@ -167,6 +167,7 @@ func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
 
 		KeepAlive:         true,
 		MachineAuthorized: m.Registered,
+		Capabilities:      []string{tailcfg.CapabilityFileSharing},
 	}
 	return &n, nil
 }
