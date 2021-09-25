@@ -529,6 +529,73 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 	// }
 }
 
+func (s *IntegrationTestSuite) TestTailDrop() {
+	for _, scales := range s.namespaces {
+		ips, err := getIPs(scales.tailscales)
+		assert.Nil(s.T(), err)
+
+		for hostname, tailscale := range scales.tailscales {
+			command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", hostname)}
+			_, err := executeCommand(
+				&tailscale,
+				command,
+			)
+			assert.Nil(s.T(), err)
+			for peername, ip := range ips {
+				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+					// We currently cant send files to so skip that
+					if peername != hostname {
+						command := []string{
+							"tailscale",
+							"file",
+							"cp",
+							fmt.Sprintf("/tmp/file_from_%s", hostname),
+							fmt.Sprintf("%s:", ip),
+						}
+						fmt.Printf("Sending file from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
+						_, err := executeCommand(
+							&tailscale,
+							command,
+						)
+						assert.Nil(t, err)
+					}
+				})
+			}
+		}
+
+		for hostname, tailscale := range scales.tailscales {
+			command := []string{
+				"tailscale", "file",
+				"get",
+				".",
+			}
+			_, err := executeCommand(
+				&tailscale,
+				command,
+			)
+			assert.Nil(s.T(), err)
+			for peername, ip := range ips {
+				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+					if peername != hostname {
+						command := []string{
+							"ls",
+							fmt.Sprintf("/tmp/file_from_%s", peername),
+						}
+						fmt.Printf("Checking file in %s (%s) from %s (%s)\n", hostname, ips[hostname], peername, ip)
+						result, err := executeCommand(
+							&tailscale,
+							command,
+						)
+						assert.Nil(t, err)
+						fmt.Printf("Result for %s: %s\n", peername, result)
+						assert.Equal(t, result, fmt.Sprintf("/tmp/file_from_%s\n", peername))
+					}
+				})
+			}
+		}
+	}
+}
+
 func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, error) {
 	ips := make(map[string]netaddr.IP)
 	for hostname, tailscale := range tailscales {
