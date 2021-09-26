@@ -168,6 +168,8 @@ func (h *Headscale) Serve() error {
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
 	r.POST("/machine/:id", h.RegistrationHandler)
+	r.GET("/apple", h.AppleMobileConfig)
+	r.GET("/apple/:platform", h.ApplePlatformConfig)
 	var err error
 
 	timeout := 30 * time.Second
