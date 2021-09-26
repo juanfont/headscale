@@ -675,8 +675,7 @@ func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]strin
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println(ip)
-		fmt.Println(result)
+
 		var pft []apitype.FileTarget
 		if err := json.Unmarshal([]byte(result), &pft); err != nil {
 			return nil, fmt.Errorf("invalid JSON: %w", err)
@@ -690,6 +689,5 @@ func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]strin
 			}
 		}
 	}
-	fmt.Printf("API URLs: %+v\n", fts)
 	return fts, nil
 }
