@@ -27,15 +27,19 @@ func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 
 		<h3>Caution</h3>
 		<p>You should always inspect the profile before installing it:</p>
+		<!--
 		<p><code>curl {{.Url}}/apple/ios</code></p>
+		-->
 		<p><code>curl {{.Url}}/apple/macos</code></p>
 		
 		<h2>Profiles</h2>
-		
+
+		<!--
 		<h3>iOS</h3>
 		<p>
 		    <a href="/apple/ios" download="headscale_ios.mobileconfig">iOS profile</a>
 		</p>
+		-->
 		
 		<h3>macOS</h3>
 		<p>Headscale can be set to the default server by installing a Headscale configuration profile:</p>
