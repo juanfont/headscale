@@ -533,6 +533,8 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 	for _, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
+		apiURLs, err := getAPIURLs(scales.tailscales)
+		assert.Nil(s.T(), err)
 
 		for hostname, tailscale := range scales.tailscales {
 			command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", hostname)}
@@ -545,12 +547,19 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 					// We currently cant send files to so skip that
 					if peername != hostname {
+
+						// Under normal circumstances, we should be able to send a file
+						// using `tailscale file cp` - but not in userspace networking mode
+						// So curl!
+						peerAPI, ok := apiURLs[ip]
 						command := []string{
-							"tailscale",
-							"file",
-							"cp",
+							"ALL_PROXY=socks5://localhost:1055/",
+							"curl",
+							"-X",
+							"PUT",
+							"--upload-file",
 							fmt.Sprintf("/tmp/file_from_%s", hostname),
-							fmt.Sprintf("%s:", ip),
+							fmt.Sprintf("%s/v0/put/file_from_%s", peerAPI, hostname),
 						}
 						fmt.Printf("Sending file from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
 						_, err := executeCommand(
@@ -617,4 +626,50 @@ func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, e
 		ips[hostname] = ip
 	}
 	return ips, nil
+}
+
+func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]string, error) {
+	fts := make(map[netaddr.IP]string)
+	for hostname, tailscale := range tailscales {
+		command := []string{"tailscale", "ip"}
+		result, err := executeCommand(
+			&tailscale,
+			command,
+		)
+		if err != nil {
+			return nil, err
+		}
+		ip, err := netaddr.ParseIP(strings.TrimSuffix(result, "\n"))
+		if err != nil {
+			return nil, err
+		}
+
+		command := []string{
+			"curl",
+			"--unix-socket",
+			"/run/tailscale/tailscaled.sock",
+			"http://localhost/localapi/v0/file-targets",
+		}
+		result, err := executeCommand(
+			&tailscale,
+			command,
+		)
+		if err != nil {
+			return nil, err
+		}
+		var pft []apitype.FileTarget
+		if err := json.Unmarshal(body, &ft); err != nil {
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
+		for _, ft := range pft {
+			n := ft.Node
+			for _, a := range n.Addresses {
+				if a.IP() == ip {
+					fts[ip] = ft.PeerAPIURL
+					break
+				}
+			}
+		}
+		return fts, nil
+	}
 }
