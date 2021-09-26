@@ -565,22 +565,44 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						// So curl!
 						peerAPI, ok := apiURLs[ip]
 						assert.True(t, ok)
-						command := []string{
-							"curl",
-							"--retry",
-							"10",
-							"-X",
-							"PUT",
-							"--upload-file",
-							fmt.Sprintf("/tmp/file_from_%s", hostname),
-							fmt.Sprintf("%s/v0/put/file_from_%s", peerAPI, hostname),
+
+						// We still have some issues with the test infrastructure, so
+						// lets run curl multiple times until it works.
+
+						attempts := 0
+						var err error
+						for {
+							command := []string{
+								"curl",
+								"--retry-connrefused",
+								"--retry-delay",
+								"30",
+								"--retry",
+								"10",
+								"--connect-timeout",
+								"60",
+								"-X",
+								"PUT",
+								"--upload-file",
+								fmt.Sprintf("/tmp/file_from_%s", hostname),
+								fmt.Sprintf("%s/v0/put/file_from_%s", peerAPI, hostname),
+							}
+							fmt.Printf("Sending file from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
+							_, err = executeCommand(
+								&tailscale,
+								command,
+								[]string{"ALL_PROXY=socks5://localhost:1055/"},
+							)
+							if err == nil {
+								break
+							} else {
+								time.Sleep(10 * time.Second)
+								attempts++
+								if attempts > 10 {
+									break
+								}
+							}
 						}
-						fmt.Printf("Sending file from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
-						_, err := executeCommand(
-							&tailscale,
-							command,
-							[]string{"ALL_PROXY=socks5://localhost:1055/"},
-						)
 						assert.Nil(t, err)
 					}
 				})
