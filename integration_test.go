@@ -567,6 +567,8 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						assert.True(t, ok)
 						command := []string{
 							"curl",
+							"--retry",
+							"10",
 							"-X",
 							"PUT",
 							"--upload-file",
