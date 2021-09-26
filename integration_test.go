@@ -557,7 +557,6 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 			assert.Nil(s.T(), err)
 			for peername, ip := range ips {
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
-					// We currently cant send files to so skip that
 					if peername != hostname {
 
 						// Under normal circumstances, we should be able to send a file
@@ -566,9 +565,8 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						peerAPI, ok := apiURLs[ip]
 						assert.True(t, ok)
 
-						// We still have some issues with the test infrastructure, so
+						// TODO(juanfont): We still have some issues with the test infrastructure, so
 						// lets run curl multiple times until it works.
-
 						attempts := 0
 						var err error
 						for {
