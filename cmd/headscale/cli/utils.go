@@ -170,6 +170,10 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
 
 		DNSConfig: GetDNSConfig(),
+
+		OIDCEndpoint:     viper.GetString("oidc_endpoint"),
+		OIDCClientID:     viper.GetString("oidc_client_id"),
+		OIDCClientSecret: viper.GetString("oidc_client_secret"),
 	}
 
 	h, err := headscale.NewHeadscale(cfg)

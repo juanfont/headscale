@@ -17,8 +17,10 @@ require (
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/opencontainers/runc v1.0.2 // indirect
 	github.com/ory/dockertest/v3 v3.7.0
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pterm/pterm v0.12.30
 	github.com/rs/zerolog v1.25.0
+	github.com/s12v/go-jwks v0.2.1
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/viper v1.8.1
 	github.com/stretchr/testify v1.7.0
@@ -28,6 +30,7 @@ require (
 	golang.org/x/net v0.0.0-20210913180222-943fd674d43e // indirect
 	golang.org/x/sys v0.0.0-20210910150752-751e447fb3d0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
+	gopkg.in/square/go-jose.v2 v2.3.1
 	gopkg.in/yaml.v2 v2.4.0
 	gorm.io/datatypes v1.0.2
 	gorm.io/driver/postgres v1.1.1

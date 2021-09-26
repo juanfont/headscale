@@ -45,6 +45,10 @@ type Config struct {
 	TLSKeyPath  string
 
 	DNSConfig *tailcfg.DNSConfig
+
+	OIDCEndpoint     string
+	OIDCClientID     string
+	OIDCClientSecret string
 }
 
 // Headscale represents the base app of the service
@@ -168,6 +172,8 @@ func (h *Headscale) Serve() error {
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
 	r.POST("/machine/:id", h.RegistrationHandler)
+	r.GET("/oidc/register/:mKey", h.RegisterOIDC)
+	r.GET("/oidc/callback", h.OIDCCallback)
 	var err error
 
 	timeout := 30 * time.Second
