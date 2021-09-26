@@ -22,20 +22,17 @@ Headscale implements this coordination server.
 - [x] Namespace support (~equivalent to multi-user in Tailscale.com)
 - [x] Routing (advertise & accept, including exit nodes)
 - [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
-- [X] JSON-formatted output
-- [X] ACLs
-- [X] Taildrop (File Sharing)
-- [X] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
-- [X] DNS (passing DNS servers to nodes)
-- [X] Share nodes between ~~users~~ namespaces
+- [x] JSON-formatted output
+- [x] ACLs
+- [x] Taildrop (File Sharing)
+- [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
+- [x] DNS (passing DNS servers to nodes)
+- [x] Share nodes between ~~users~~ namespaces
 - [ ] MagicDNS / Smart DNS
-
 
 ## Roadmap 🤷
 
 Suggestions/PRs welcomed!
-
-
 
 ## Running it
 
@@ -44,109 +41,125 @@ Suggestions/PRs welcomed!
    ```shell
    docker pull headscale/headscale:x.x.x
    ```
-  <!--
-   or
-   ```shell
-   docker pull ghrc.io/juanfont/headscale:x.x.x
-   ``` -->
+
+   <!--
+    or
+    ```shell
+    docker pull ghrc.io/juanfont/headscale:x.x.x
+    ``` -->
 
 2. (Optional, you can also use SQLite) Get yourself a PostgreSQL DB running
 
-    ```shell
-    docker run --name headscale -e POSTGRES_DB=headscale -e \
-      POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
-    ```
+   ```shell
+   docker run --name headscale -e POSTGRES_DB=headscale -e \
+     POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
+   ```
 
 3. Set some stuff up (headscale Wireguard keys & the config.json file)
-    ```shell
-    wg genkey > private.key
-    wg pubkey < private.key > public.key  # not needed
 
-    # Postgres
-    cp config.json.postgres.example config.json
-    # or
-    # SQLite
-    cp config.json.sqlite.example config.json
-    ```
+   ```shell
+   wg genkey > private.key
+   wg pubkey < private.key > public.key  # not needed
+
+   # Postgres
+   cp config.json.postgres.example config.json
+   # or
+   # SQLite
+   cp config.json.sqlite.example config.json
+   ```
 
 4. Create a namespace (a namespace is a 'tailnet', a group of Tailscale nodes that can talk to each other)
-    ```shell
-    headscale namespaces create myfirstnamespace
-    ```
-    or docker:
 
-    the db.sqlite mount is only needed if you use sqlite
-    ```shell
-    touch db.sqlite
-    docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale namespaces create myfirstnamespace
-    ```
-    or if your server is already running in docker:
-    ```shell
-    docker exec <container_name> headscale create myfirstnamespace
-    ```
+   ```shell
+   headscale namespaces create myfirstnamespace
+   ```
+
+   or docker:
+
+   the db.sqlite mount is only needed if you use sqlite
+
+   ```shell
+   touch db.sqlite
+   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale namespaces create myfirstnamespace
+   ```
+
+   or if your server is already running in docker:
+
+   ```shell
+   docker exec <container_name> headscale create myfirstnamespace
+   ```
 
 5. Run the server
-    ```shell
-    headscale serve
-    ```
-    or docker:
 
-    the db.sqlite mount is only needed if you use sqlite
-    ```shell
-    docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale serve
-    ```
+   ```shell
+   headscale serve
+   ```
+
+   or docker:
+
+   the db.sqlite mount is only needed if you use sqlite
+
+   ```shell
+   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale serve
+   ```
 
 6. If you used tailscale.com before in your nodes, make sure you clear the tailscald data folder
-    ```shell
-    systemctl stop tailscaled
-    rm -fr /var/lib/tailscale
-    systemctl start tailscaled
-    ```
+
+   ```shell
+   systemctl stop tailscaled
+   rm -fr /var/lib/tailscale
+   systemctl start tailscaled
+   ```
 
 7. Add your first machine
-    ```shell
-    tailscale up -login-server YOUR_HEADSCALE_URL
-    ```
+
+   ```shell
+   tailscale up -login-server YOUR_HEADSCALE_URL
+   ```
 
 8. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
 
 9. In the server, register your machine to a namespace with the CLI
-    ```shell
-    headscale -n myfirstnamespace node register YOURMACHINEKEY
-    ```
-    or docker:
-    ```shell
-    docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml headscale/headscale:x.x.x headscale -n myfirstnamespace node register YOURMACHINEKEY
-    ```
-    or if your server is already running in docker:
-    ```shell
-    docker exec <container_name> headscale -n myfistnamespace node register YOURMACHINEKEY
-    ```
+   ```shell
+   headscale -n myfirstnamespace node register YOURMACHINEKEY
+   ```
+   or docker:
+   ```shell
+   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml headscale/headscale:x.x.x headscale -n myfirstnamespace node register YOURMACHINEKEY
+   ```
+   or if your server is already running in docker:
+   ```shell
+   docker exec <container_name> headscale -n myfistnamespace node register YOURMACHINEKEY
+   ```
 
 Alternatively, you can use Auth Keys to register your machines:
 
 1. Create an authkey
-    ```shell
-    headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
-    ```
-    or docker:
-    ```shell
-    docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v$(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite headscale/headscale:x.x.x headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
-    ```
-    or if your server is already running in docker:
-    ```shell
-    docker exec <container_name> headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
-    ```
+
+   ```shell
+   headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+   ```
+
+   or docker:
+
+   ```shell
+   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v$(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite headscale/headscale:x.x.x headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+   ```
+
+   or if your server is already running in docker:
+
+   ```shell
+   docker exec <container_name> headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+   ```
 
 2. Use the authkey from your machine to register it
-    ```shell
-    tailscale up -login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
-    ```
+   ```shell
+   tailscale up -login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
+   ```
 
 If you create an authkey with the `--ephemeral` flag, that key will create ephemeral nodes. This implies that `--reusable` is true.
 
-Please bear in mind that all the commands from headscale support adding `-o json` or `-o json-line`  to get a nicely JSON-formatted output.
-
+Please bear in mind that all the commands from headscale support adding `-o json` or `-o json-line` to get a nicely JSON-formatted output.
 
 ## Configuration reference
 
@@ -163,6 +176,7 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
 ```
     "log_level": "debug"
 ```
+
 `log_level` can be used to set the Log level for Headscale, it defaults to `debug`, and the available levels are: `trace`, `debug`, `info`, `warn` and `error`.
 
 ```
@@ -192,7 +206,6 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
 ```
 
 The fields starting with `db_` are used for the PostgreSQL connection information.
-
 
 ### Running the service via TLS (optional)
 
@@ -227,21 +240,21 @@ Alternatively, `tls_letsencrypt_challenge_type` can be set to `TLS-ALPN-01`. In 
 Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-hosted environment.
 
 For instance, instead of referring to users when defining groups you must
- use namespaces (which are the equivalent to user/logins in Tailscale.com).
+use namespaces (which are the equivalent to user/logins in Tailscale.com).
 
 Please check https://tailscale.com/kb/1018/acls/, and `./tests/acls/` in this repo for working examples.
 
+### Apple devices
+
+An endpoint with information on how to connect your Apple devices (currently macOS only) is available at `/apple` on your running instance.
 
 ## Disclaimer
 
 1. We have nothing to do with Tailscale, or Tailscale Inc.
 2. The purpose of writing this was to learn how Tailscale works.
 
-
-
 ## More on Tailscale
 
 - https://tailscale.com/blog/how-tailscale-works/
 - https://tailscale.com/blog/tailscale-key-management/
 - https://tailscale.com/blog/an-unlikely-database-migration/
-
