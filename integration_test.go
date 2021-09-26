@@ -647,27 +647,13 @@ func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, e
 func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]string, error) {
 	fts := make(map[netaddr.IP]string)
 	for _, tailscale := range tailscales {
-		command := []string{"tailscale", "ip"}
-		result, err := executeCommand(
-			&tailscale,
-			command,
-			[]string{},
-		)
-		if err != nil {
-			return nil, err
-		}
-		ip, err := netaddr.ParseIP(strings.TrimSuffix(result, "\n"))
-		if err != nil {
-			return nil, err
-		}
-
-		command = []string{
+		command := []string{
 			"curl",
 			"--unix-socket",
 			"/run/tailscale/tailscaled.sock",
 			"http://localhost/localapi/v0/file-targets",
 		}
-		result, err = executeCommand(
+		result, err := executeCommand(
 			&tailscale,
 			command,
 			[]string{},
