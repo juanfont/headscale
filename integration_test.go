@@ -21,6 +21,7 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn/ipnstate"
 
 	"inet.af/netaddr"
@@ -93,13 +94,14 @@ func TestIntegrationTestSuite(t *testing.T) {
 	}
 }
 
-func executeCommand(resource *dockertest.Resource, cmd []string) (string, error) {
+func executeCommand(resource *dockertest.Resource, cmd []string, env []string) (string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
 	exitCode, err := resource.Exec(
 		cmd,
 		dockertest.ExecOptions{
+			Env:    env,
 			StdOut: &stdout,
 			StdErr: &stderr,
 		},
@@ -277,6 +279,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		result, err := executeCommand(
 			&headscale,
 			[]string{"headscale", "namespaces", "create", namespace},
+			[]string{},
 		)
 		assert.Nil(s.T(), err)
 		fmt.Println("headscale create namespace result: ", result)
@@ -285,6 +288,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		authKey, err := executeCommand(
 			&headscale,
 			[]string{"headscale", "--namespace", namespace, "preauthkeys", "create", "--reusable", "--expiration", "24h"},
+			[]string{},
 		)
 		assert.Nil(s.T(), err)
 
@@ -299,6 +303,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 			result, err := executeCommand(
 				&tailscale,
 				command,
+				[]string{},
 			)
 			fmt.Println("tailscale result: ", result)
 			assert.Nil(s.T(), err)
@@ -324,6 +329,7 @@ func (s *IntegrationTestSuite) TestListNodes() {
 		result, err := executeCommand(
 			&headscale,
 			[]string{"headscale", "--namespace", namespace, "nodes", "list"},
+			[]string{},
 		)
 		assert.Nil(s.T(), err)
 
@@ -374,6 +380,7 @@ func (s *IntegrationTestSuite) TestStatus() {
 				result, err := executeCommand(
 					&tailscale,
 					command,
+					[]string{},
 				)
 				assert.Nil(t, err)
 
@@ -435,6 +442,7 @@ func (s *IntegrationTestSuite) TestPingAllPeers() {
 						result, err := executeCommand(
 							&tailscale,
 							command,
+							[]string{},
 						)
 						assert.Nil(t, err)
 						fmt.Printf("Result for %s: %s\n", hostname, result)
@@ -453,6 +461,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 	result, err := executeCommand(
 		&headscale,
 		[]string{"headscale", "nodes", "list", "-o", "json", "--namespace", "shared"},
+		[]string{},
 	)
 	assert.Nil(s.T(), err)
 
@@ -465,6 +474,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 		result, err := executeCommand(
 			&headscale,
 			[]string{"headscale", "nodes", "share", "--namespace", "shared", fmt.Sprint(machine.ID), "main"},
+			[]string{},
 		)
 		assert.Nil(s.T(), err)
 
@@ -474,6 +484,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 	result, err = executeCommand(
 		&headscale,
 		[]string{"headscale", "nodes", "list", "--namespace", "main"},
+		[]string{},
 	)
 	assert.Nil(s.T(), err)
 	fmt.Println("Nodelist after sharing", result)
@@ -541,6 +552,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 			_, err := executeCommand(
 				&tailscale,
 				command,
+				[]string{},
 			)
 			assert.Nil(s.T(), err)
 			for peername, ip := range ips {
@@ -552,8 +564,8 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						// using `tailscale file cp` - but not in userspace networking mode
 						// So curl!
 						peerAPI, ok := apiURLs[ip]
+						assert.True(t, ok)
 						command := []string{
-							"ALL_PROXY=socks5://localhost:1055/",
 							"curl",
 							"-X",
 							"PUT",
@@ -565,6 +577,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						_, err := executeCommand(
 							&tailscale,
 							command,
+							[]string{"ALL_PROXY=socks5://localhost:1055/"},
 						)
 						assert.Nil(t, err)
 					}
@@ -576,11 +589,12 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 			command := []string{
 				"tailscale", "file",
 				"get",
-				".",
+				"/tmp/",
 			}
 			_, err := executeCommand(
 				&tailscale,
 				command,
+				[]string{},
 			)
 			assert.Nil(s.T(), err)
 			for peername, ip := range ips {
@@ -594,6 +608,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						result, err := executeCommand(
 							&tailscale,
 							command,
+							[]string{},
 						)
 						assert.Nil(t, err)
 						fmt.Printf("Result for %s: %s\n", peername, result)
@@ -613,6 +628,7 @@ func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, e
 		result, err := executeCommand(
 			&tailscale,
 			command,
+			[]string{},
 		)
 		if err != nil {
 			return nil, err
@@ -630,11 +646,12 @@ func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, e
 
 func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]string, error) {
 	fts := make(map[netaddr.IP]string)
-	for hostname, tailscale := range tailscales {
+	for _, tailscale := range tailscales {
 		command := []string{"tailscale", "ip"}
 		result, err := executeCommand(
 			&tailscale,
 			command,
+			[]string{},
 		)
 		if err != nil {
 			return nil, err
@@ -644,32 +661,35 @@ func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]strin
 			return nil, err
 		}
 
-		command := []string{
+		command = []string{
 			"curl",
 			"--unix-socket",
 			"/run/tailscale/tailscaled.sock",
 			"http://localhost/localapi/v0/file-targets",
 		}
-		result, err := executeCommand(
+		result, err = executeCommand(
 			&tailscale,
 			command,
+			[]string{},
 		)
 		if err != nil {
 			return nil, err
 		}
+		fmt.Println(ip)
+		fmt.Println(result)
 		var pft []apitype.FileTarget
-		if err := json.Unmarshal(body, &ft); err != nil {
+		if err := json.Unmarshal([]byte(result), &pft); err != nil {
 			return nil, fmt.Errorf("invalid JSON: %w", err)
 		}
 		for _, ft := range pft {
 			n := ft.Node
-			for _, a := range n.Addresses {
-				if a.IP() == ip {
-					fts[ip] = ft.PeerAPIURL
-					break
+			for _, a := range n.Addresses { // just add all the addresses
+				if _, ok := fts[a.IP()]; !ok {
+					fts[a.IP()] = ft.PeerAPIURL
 				}
 			}
 		}
-		return fts, nil
 	}
+	fmt.Printf("API URLs: %+v\n", fts)
+	return fts, nil
 }
