@@ -24,6 +24,7 @@ Headscale implements this coordination server.
 - [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
 - [X] JSON-formatted output
 - [X] ACLs
+- [X] Taildrop (File Sharing)
 - [X] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [X] DNS (passing DNS servers to nodes)
 - [X] Share nodes between ~~users~~ namespaces
