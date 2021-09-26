@@ -94,7 +94,7 @@ func verifyToken(token string) (*AccessToken, error) {
 		}
 
 	} else {
-		return nil, err
+		return nil, errors.New("JWT does not contain a key id")
 	}
 }
 
@@ -200,6 +200,13 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 
 	b := make([]byte, 16)
 	_, err = rand.Read(b)
+
+	if err != nil {
+		log.Error().Msg("could not read 16 bytes from rand")
+		c.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
+		return
+	}
+
 	stateStr := hex.EncodeToString(b)[:32]
 
 	// init the state cache if it hasn't been already
@@ -281,6 +288,13 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 		ns, err := h.GetNamespace(claims.Email)
 		if err != nil {
 			ns, err = h.CreateNamespace(claims.Email)
+
+			if err != nil {
+				log.Error().Msgf("could not create new namespace '%s'", claims.Email)
+				c.String(http.StatusInternalServerError, "could not create new namespace")
+				return
+			}
+
 		}
 
 		ip, err := h.getAvailableIP()
@@ -301,10 +315,10 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 <body>
 <h1>headscale</h1>
 <p>
-    Authenticated, you can now close this window.
+    Authenticated as %s, you can now close this window.
 </p>
 </body>
 </html>
 
-`)))
+`, claims.Email)))
 }
