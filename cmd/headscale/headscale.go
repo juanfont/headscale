@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/efekarakus/termcolor"
@@ -40,19 +41,6 @@ func main() {
 		NoColor:    !colors,
 	})
 
-	githubTag := &latest.GithubTag{
-		Owner:      "juanfont",
-		Repository: "headscale",
-	}
-
-	if cli.Version != "dev" {
-		res, err := latest.Check(githubTag, cli.Version)
-		if err == nil && res.Outdated {
-			fmt.Printf("An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
-				res.Current, cli.Version)
-		}
-	}
-
 	err := cli.LoadConfig("")
 	if err != nil {
 		log.Fatal().Err(err)
@@ -72,6 +60,20 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
 	default:
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
+
+	if !viper.GetBool("disable_check_updates") {
+		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && cli.Version != "dev" {
+			githubTag := &latest.GithubTag{
+				Owner:      "juanfont",
+				Repository: "headscale",
+			}
+			res, err := latest.Check(githubTag, cli.Version)
+			if err == nil && res.Outdated {
+				fmt.Printf("An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
+					res.Current, cli.Version)
+			}
+		}
 	}
 
 	cli.Execute()
