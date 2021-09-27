@@ -108,7 +108,12 @@ func GetDNSConfig() *tailcfg.DNSConfig {
 			dnsConfig.Domains = viper.GetStringSlice("dns_config.domains")
 		}
 
+		if viper.IsSet("dns_config.magic_dns") {
+			dnsConfig.Proxied = viper.GetBool("dns_config.magic_dns")
+		}
+
 		return dnsConfig
+
 	}
 
 	return nil
