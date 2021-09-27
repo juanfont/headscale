@@ -46,8 +46,8 @@ func main() {
 	}
 
 	if cli.Version != "dev" {
-		res, _ := latest.Check(githubTag, cli.Version)
-		if res.Outdated {
+		res, err := latest.Check(githubTag, cli.Version)
+		if err == nil && res.Outdated {
 			fmt.Printf("An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
 				res.Current, cli.Version)
 		}
