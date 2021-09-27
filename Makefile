@@ -2,7 +2,7 @@
 version = $(shell ./scripts/version-at-commit.sh)
 
 build:
-	go build -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.version=$(version)" cmd/headscale/headscale.go
+	go build -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
 
 dev: lint test build
 

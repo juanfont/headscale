@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"github.com/tcnksm/go-latest"
 )
 
 func main() {
@@ -37,6 +39,19 @@ func main() {
 		TimeFormat: time.RFC3339,
 		NoColor:    !colors,
 	})
+
+	githubTag := &latest.GithubTag{
+		Owner:      "juanfont",
+		Repository: "headscale",
+	}
+
+	if cli.Version != "dev" {
+		res, _ := latest.Check(githubTag, cli.Version)
+		if res.Outdated {
+			fmt.Printf("An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
+				res.Current, cli.Version)
+		}
+	}
 
 	err := cli.LoadConfig("")
 	if err != nil {
