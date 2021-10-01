@@ -20,14 +20,20 @@ type PreAuthKey struct {
 	NamespaceID uint
 	Namespace   Namespace
 	Reusable    bool
-	Ephemeral   bool `gorm:"default:false"`
+	Ephemeral   bool   `gorm:"default:false"`
+	Subnet      string `gorm:"default:''"`
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
 }
 
-// CreatePreAuthKey creates a new PreAuthKey in a namespace, and returns it
+// CreatePreAuthKey creates a new PreAuthKey in a namespace for the default subnet, and returns it
 func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, ephemeral bool, expiration *time.Time) (*PreAuthKey, error) {
+	return h.CreatePreAuthKeyWithSubnet(namespaceName, reusable, ephemeral, expiration, "")
+}
+
+// CreatePreAuthKey creates a new PreAuthKey in a namespace with a subnet, and returns it
+func (h *Headscale) CreatePreAuthKeyWithSubnet(namespaceName string, reusable bool, ephemeral bool, expiration *time.Time, subnet string) (*PreAuthKey, error) {
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
@@ -47,6 +53,7 @@ func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, epheme
 		Ephemeral:   ephemeral,
 		CreatedAt:   &now,
 		Expiration:  expiration,
+		Subnet:      subnet,
 	}
 	h.db.Save(&k)
 
@@ -55,6 +62,7 @@ func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, epheme
 
 // GetPreAuthKeys returns the list of PreAuthKeys for a namespace
 func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) {
+	h.getAvailableIP() // temp
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err

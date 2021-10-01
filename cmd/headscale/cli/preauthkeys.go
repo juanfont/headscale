@@ -25,6 +25,7 @@ func init() {
 	createPreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
 	createPreAuthKeyCmd.PersistentFlags().Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
+	createPreAuthKeyCmd.Flags().StringP("subnet", "s", "", "Subnet to assign new nodes to")
 }
 
 var preauthkeysCmd = &cobra.Command{
@@ -116,7 +117,8 @@ var createPreAuthKeyCmd = &cobra.Command{
 			expiration = &exp
 		}
 
-		k, err := h.CreatePreAuthKey(n, reusable, ephemeral, expiration)
+		subnet, _ := cmd.Flags().GetString("subnet")
+		k, err := h.CreatePreAuthKeyWithSubnet(n, reusable, ephemeral, expiration, subnet)
 		if strings.HasPrefix(o, "json") {
 			JsonOutput(k, err, o)
 			return

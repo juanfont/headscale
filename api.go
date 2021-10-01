@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"inet.af/netaddr"
 
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
@@ -342,7 +343,27 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 		Str("func", "handleAuthKey").
 		Str("machine", m.Name).
 		Msg("Authentication key was valid, proceeding to acquire an IP address")
-	ip, err := h.getAvailableIP()
+
+	var prefix netaddr.IPPrefix
+	var prefixErr error
+	if pak.Subnet != "" {
+		prefix, prefixErr = netaddr.ParseIPPrefix(pak.Subnet)
+
+		if prefixErr != nil {
+			log.Debug().
+				Str("func", "handleAuthKey").
+				Str("machine", m.Name).
+				Msg("Subnet was not valid, using default")
+		}
+	}
+
+	var ip *netaddr.IP
+	if pak.Subnet != "" && prefixErr == nil {
+		ip, err = h.getAvailableIPForPrefix(prefix)
+	} else {
+		ip, err = h.getAvailableIP()
+	}
+
 	if err != nil {
 		log.Error().
 			Str("func", "handleAuthKey").

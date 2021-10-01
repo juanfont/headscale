@@ -75,8 +75,10 @@ func encodeMsg(b []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, err
 }
 
 func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
-	ipPrefix := h.cfg.IPPrefix
+	return h.getAvailableIPForPrefix(h.cfg.IPPrefix)
+}
 
+func (h *Headscale) getAvailableIPForPrefix(ipPrefix netaddr.IPPrefix) (*netaddr.IP, error) {
 	usedIps, err := h.getUsedIPs()
 	if err != nil {
 		return nil, err
