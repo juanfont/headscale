@@ -58,7 +58,7 @@ var listPreAuthKeys = &cobra.Command{
 			return
 		}
 
-		d := pterm.TableData{{"ID", "Key", "Reusable", "Ephemeral", "Expiration", "Created"}}
+		d := pterm.TableData{{"ID", "Key", "Reusable", "Ephemeral", "Expiration", "Subnet", "Created"}}
 		for _, k := range *keys {
 			expiration := "-"
 			if k.Expiration != nil {
@@ -78,6 +78,7 @@ var listPreAuthKeys = &cobra.Command{
 				reusable,
 				strconv.FormatBool(k.Ephemeral),
 				expiration,
+				k.Subnet,
 				k.CreatedAt.Format("2006-01-02 15:04:05"),
 			})
 
