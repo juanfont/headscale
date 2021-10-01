@@ -62,7 +62,6 @@ func (h *Headscale) CreatePreAuthKeyWithSubnet(namespaceName string, reusable bo
 
 // GetPreAuthKeys returns the list of PreAuthKeys for a namespace
 func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) {
-	h.getAvailableIP() // temp
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
