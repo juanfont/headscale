@@ -400,7 +400,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("handler", "PollNetMapStream").
 				Str("machine", m.Name).
 				Str("channel", "Done").
-				Msg("Canceling keepAlive channel")
+				Msg("Cancelling keepAlive channel")
 			cancelKeepAlive <- struct{}{}
 
 			log.Trace().
