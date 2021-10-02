@@ -259,7 +259,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("machine", m.Name).
 				Str("channel", "pollData").
 				Int("bytes", len(data)).
-				Msg("Machine updated successfully after sending pollData")
+				Msg("Machine entry in database updated successfully after sending pollData")
 			return true
 
 		case data := <-keepAliveChan:
@@ -396,13 +396,33 @@ func (h *Headscale) PollNetMapStream(
 			m.LastSeen = &now
 			h.db.Save(&m)
 
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "Done").
+				Msg("Canceling keepAlive channel")
 			cancelKeepAlive <- struct{}{}
 
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "Done").
+				Msg("Closing update channel")
 			h.closeUpdateChannel(&m)
 
 			close(pollDataChan)
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "Done").
+				Msg("Closing pollData channel")
 
 			close(keepAliveChan)
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "Done").
+				Msg("Closing keepAliveChan channel")
 
 			return false
 		}
