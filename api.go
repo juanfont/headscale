@@ -249,7 +249,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 		if err != nil {
 			return nil, err
 		}
-		dnsConfig := h.cfg.DNSConfig.Clone()
+		dnsConfig = h.cfg.DNSConfig.Clone()
 		for _, ns := range *namespaces {
 			dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", ns.Name, h.cfg.BaseDomain))
 		}
