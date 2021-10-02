@@ -114,7 +114,7 @@ Suggestions/PRs welcomed!
 7. Add your first machine
 
    ```shell
-   tailscale up -login-server YOUR_HEADSCALE_URL
+   tailscale up --login-server YOUR_HEADSCALE_URL
    ```
 
 8. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
@@ -154,7 +154,7 @@ Alternatively, you can use Auth Keys to register your machines:
 
 2. Use the authkey from your machine to register it
    ```shell
-   tailscale up -login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
+   tailscale up --login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
    ```
 
 If you create an authkey with the `--ephemeral` flag, that key will create ephemeral nodes. This implies that `--reusable` is true.
