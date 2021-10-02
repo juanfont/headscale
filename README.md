@@ -80,7 +80,7 @@ Suggestions/PRs welcomed!
 
    ```shell
    touch db.sqlite
-   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale namespaces create myfirstnamespace
+   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale namespaces create myfirstnamespace
    ```
 
    or if your server is already running in docker:
@@ -100,7 +100,7 @@ Suggestions/PRs welcomed!
    the db.sqlite mount is only needed if you use sqlite
 
    ```shell
-   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8000:8000 headscale/headscale:x.x.x headscale serve
+   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale serve
    ```
 
 6. If you used tailscale.com before in your nodes, make sure you clear the tailscald data folder
@@ -114,22 +114,22 @@ Suggestions/PRs welcomed!
 7. Add your first machine
 
    ```shell
-   tailscale up -login-server YOUR_HEADSCALE_URL
+   tailscale up --login-server YOUR_HEADSCALE_URL
    ```
 
 8. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
 
 9. In the server, register your machine to a namespace with the CLI
    ```shell
-   headscale -n myfirstnamespace node register YOURMACHINEKEY
+   headscale -n myfirstnamespace nodes register YOURMACHINEKEY
    ```
    or docker:
    ```shell
-   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml headscale/headscale:x.x.x headscale -n myfirstnamespace node register YOURMACHINEKEY
+   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml headscale/headscale:x.x.x headscale -n myfirstnamespace nodes register YOURMACHINEKEY
    ```
    or if your server is already running in docker:
    ```shell
-   docker exec <container_name> headscale -n myfistnamespace node register YOURMACHINEKEY
+   docker exec <container_name> headscale -n myfirstnamespace nodes register YOURMACHINEKEY
    ```
 
 Alternatively, you can use Auth Keys to register your machines:
@@ -154,7 +154,7 @@ Alternatively, you can use Auth Keys to register your machines:
 
 2. Use the authkey from your machine to register it
    ```shell
-   tailscale up -login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
+   tailscale up --login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
    ```
 
 If you create an authkey with the `--ephemeral` flag, that key will create ephemeral nodes. This implies that `--reusable` is true.
