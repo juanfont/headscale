@@ -172,16 +172,18 @@ func (h *Headscale) Serve() error {
 	r.GET("/apple/:platform", h.ApplePlatformConfig)
 	var err error
 
-	timeout := 30 * time.Second
-
 	go h.watchForKVUpdates(5000)
 	go h.expireEphemeralNodes(5000)
 
 	s := &http.Server{
-		Addr:         h.cfg.Addr,
-		Handler:      r,
-		ReadTimeout:  timeout,
-		WriteTimeout: timeout,
+		Addr:        h.cfg.Addr,
+		Handler:     r,
+		ReadTimeout: 30 * time.Second,
+		// Go does not handle timeouts in HTTP very well, and there is
+		// no good way to handle streaming timeouts, therefore we need to
+		// keep this at unlimited and be careful to clean up connections
+		// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#aboutstreaming
+		WriteTimeout: 0,
 	}
 
 	if h.cfg.TLSLetsEncryptHostname != "" {
@@ -194,13 +196,9 @@ func (h *Headscale) Serve() error {
 			HostPolicy: autocert.HostWhitelist(h.cfg.TLSLetsEncryptHostname),
 			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
 		}
-		s := &http.Server{
-			Addr:         h.cfg.Addr,
-			TLSConfig:    m.TLSConfig(),
-			Handler:      r,
-			ReadTimeout:  timeout,
-			WriteTimeout: timeout,
-		}
+
+		s.TLSConfig = m.TLSConfig()
+
 		if h.cfg.TLSLetsEncryptChallengeType == "TLS-ALPN-01" {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
@@ -211,7 +209,6 @@ func (h *Headscale) Serve() error {
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
 			go func() {
-
 				log.Fatal().
 					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, m.HTTPHandler(http.HandlerFunc(h.redirect)))).
 					Msg("failed to set up a HTTP server")
