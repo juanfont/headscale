@@ -642,6 +642,19 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 	}
 }
 
+// func (s *IntegrationTestSuite) TestMagicDNS() {
+// 	for _, scales := range s.namespaces {
+// 		ips, err := getIPs(scales.tailscales)
+// 		assert.Nil(s.T(), err)
+// 		apiURLs, err := getAPIURLs(scales.tailscales)
+// 		assert.Nil(s.T(), err)
+
+// 		for hostname, tailscale := range scales.tailscales {
+
+// 		}
+// 	}
+// }
+
 func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, error) {
 	ips := make(map[string]netaddr.IP)
 	for hostname, tailscale := range tailscales {

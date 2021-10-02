@@ -218,7 +218,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := m.toNode(true)
+	node, err := h.toNode(m, true)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").
@@ -242,17 +242,11 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 	}
 
 	resp := tailcfg.MapResponse{
-		KeepAlive: false,
-		Node:      node,
-		Peers:     *peers,
-		//TODO(kradalby): As per tailscale docs, if DNSConfig is nil,
-		// it means its not updated, maybe we can have some logic
-		// to check and only pass updates when its updates.
-		// This is probably more relevant if we try to implement
-		// "MagicDNS"
+		KeepAlive:    false,
+		Node:         node,
+		Peers:        *peers,
 		DNSConfig:    h.cfg.DNSConfig,
-		SearchPaths:  []string{},
-		Domain:       "headscale.net",
+		Domain:       h.cfg.BaseDomain,
 		PacketFilter: *h.aclRules,
 		DERPMap:      h.cfg.DerpMap,
 		UserProfiles: []tailcfg.UserProfile{profile},

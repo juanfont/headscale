@@ -440,7 +440,7 @@ func (h *Headscale) scheduledPollWorker(
 		case <-updateCheckerTicker.C:
 			// Send an update request regardless of outdated or not, if data is sent
 			// to the node is determined in the updateChan consumer block
-			n, _ := m.toNode(true)
+			n, _ := h.toNode(m, true)
 			err := h.sendRequestOnUpdateChannel(n)
 			if err != nil {
 				log.Error().

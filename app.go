@@ -27,6 +27,7 @@ type Config struct {
 	DerpMap                        *tailcfg.DERPMap
 	EphemeralNodeInactivityTimeout time.Duration
 	IPPrefix                       netaddr.IPPrefix
+	BaseDomain                     string
 
 	DBtype string
 	DBpath string

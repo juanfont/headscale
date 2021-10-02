@@ -76,7 +76,7 @@ func LoadConfig(path string) error {
 
 }
 
-func GetDNSConfig() *tailcfg.DNSConfig {
+func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	if viper.IsSet("dns_config") {
 		dnsConfig := &tailcfg.DNSConfig{}
 
@@ -112,11 +112,16 @@ func GetDNSConfig() *tailcfg.DNSConfig {
 			dnsConfig.Proxied = viper.GetBool("dns_config.magic_dns")
 		}
 
-		return dnsConfig
-
+		var baseDomain string
+		if viper.IsSet("dns_config.base_domain") {
+			baseDomain = viper.GetString("dns_config.base_domain")
+		} else {
+			baseDomain = "headscale.net" // does not really matter when MagicDNS is not enabled
+		}
+		return dnsConfig, baseDomain
 	}
 
-	return nil
+	return nil, ""
 }
 
 func absPath(path string) string {
@@ -149,12 +154,15 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		return nil, err
 	}
 
+	dnsConfig, baseDomain := GetDNSConfig()
+
 	cfg := headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		DerpMap:        derpMap,
 		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
+		BaseDomain:     baseDomain,
 
 		EphemeralNodeInactivityTimeout: viper.GetDuration("ephemeral_node_inactivity_timeout"),
 
@@ -174,7 +182,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
 
-		DNSConfig: GetDNSConfig(),
+		DNSConfig: dnsConfig,
 	}
 
 	h, err := headscale.NewHeadscale(cfg)

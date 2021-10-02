@@ -52,7 +52,7 @@ func (m Machine) isAlreadyRegistered() bool {
 
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS
-func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
+func (h *Headscale) toNode(m Machine, includeRoutes bool) (*tailcfg.Node, error) {
 	nKey, err := wgkey.ParseHex(m.NodeKey)
 	if err != nil {
 		return nil, err
@@ -147,10 +147,12 @@ func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
 		keyExpiry = time.Time{}
 	}
 
+	hostname := fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, h.cfg.BaseDomain)
+
 	n := tailcfg.Node{
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
 		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permanent
-		Name:       hostinfo.Hostname,
+		Name:       hostname,
 		User:       tailcfg.UserID(m.NamespaceID),
 		Key:        tailcfg.NodeKey(nKey),
 		KeyExpiry:  keyExpiry,
@@ -169,6 +171,8 @@ func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
 		MachineAuthorized: m.Registered,
 		Capabilities:      []string{tailcfg.CapabilityFileSharing},
 	}
+	// TODO(juanfont): Node also has Sharer when is a shared node with info on the profile
+
 	return &n, nil
 }
 
@@ -179,7 +183,7 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 		Msg("Finding peers")
 
 	machines := []Machine{}
-	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
+	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 		return nil, err
@@ -194,14 +198,14 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 
 	peers := []*tailcfg.Node{}
 	for _, mn := range machines {
-		peer, err := mn.toNode(true)
+		peer, err := h.toNode(mn, true)
 		if err != nil {
 			return nil, err
 		}
 		peers = append(peers, peer)
 	}
 	for _, sharedMachine := range sharedMachines {
-		peer, err := sharedMachine.Machine.toNode(false) // shared nodes do not expose their routes
+		peer, err := h.toNode(sharedMachine.Machine, false) // shared nodes do not expose their routes
 		if err != nil {
 			return nil, err
 		}
