@@ -10,8 +10,8 @@ require (
 	github.com/docker/cli v20.10.8+incompatible // indirect
 	github.com/docker/docker v20.10.8+incompatible // indirect
 	github.com/efekarakus/termcolor v1.0.1
-	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/gin-gonic/gin v1.7.4
+	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/klauspost/compress v1.13.5
 	github.com/lib/pq v1.10.3 // indirect
