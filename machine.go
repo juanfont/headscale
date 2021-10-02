@@ -147,7 +147,12 @@ func (h *Headscale) toNode(m Machine, includeRoutes bool) (*tailcfg.Node, error)
 		keyExpiry = time.Time{}
 	}
 
-	hostname := fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, h.cfg.BaseDomain)
+	var hostname string
+	if h.cfg.DNSConfig.Proxied { // MagicDNS
+		hostname = fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, h.cfg.BaseDomain)
+	} else {
+		hostname = m.Name
+	}
 
 	n := tailcfg.Node{
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
