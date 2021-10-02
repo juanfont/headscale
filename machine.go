@@ -148,7 +148,7 @@ func (h *Headscale) toNode(m Machine, includeRoutes bool) (*tailcfg.Node, error)
 	}
 
 	var hostname string
-	if h.cfg.DNSConfig.Proxied { // MagicDNS
+	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // MagicDNS
 		hostname = fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, h.cfg.BaseDomain)
 	} else {
 		hostname = m.Name
