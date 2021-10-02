@@ -242,11 +242,20 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		DisplayName: m.Namespace.Name,
 	}
 
+	nodePeers, err := peers.toNodes(true)
+	if err != nil {
+		log.Error().
+			Str("func", "getMapResponse").
+			Err(err).
+			Msg("Failed to convert peers to Tailscale nodes")
+		return nil, err
+	}
+
 	resp := tailcfg.MapResponse{
 		KeepAlive: false,
 		Node:      node,
-		Peers:     *peers,
-		//TODO(kradalby): As per tailscale docs, if DNSConfig is nil,
+		Peers:     nodePeers,
+		// TODO(kradalby): As per tailscale docs, if DNSConfig is nil,
 		// it means its not updated, maybe we can have some logic
 		// to check and only pass updates when its updates.
 		// This is probably more relevant if we try to implement
