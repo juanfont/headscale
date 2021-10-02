@@ -240,6 +240,15 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	return &m, nil
 }
 
+// GetMachineByMachineKey finds a Machine by ID and returns the Machine struct
+func (h *Headscale) GetMachineByMachineKey(mKey string) (*Machine, error) {
+	m := Machine{}
+	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey); result.Error != nil {
+		return nil, result.Error
+	}
+	return &m, nil
+}
+
 // UpdateMachine takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
 func (h *Headscale) UpdateMachine(m *Machine) error {

@@ -51,13 +51,19 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		return
 	}
 
-	var m Machine
-	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		log.Warn().
+	m, err := h.GetMachineByMachineKey(mKey.HexString())
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().
+				Str("handler", "PollNetMap").
+				Msgf("Ignoring request, cannot find machine with key %s", mKey.HexString())
+			c.String(http.StatusUnauthorized, "")
+			return
+		}
+		log.Error().
 			Str("handler", "PollNetMap").
-			Msgf("Ignoring request, cannot find machine with key %s", mKey.HexString())
-		c.String(http.StatusUnauthorized, "")
-		return
+			Msgf("Failed to fetch machine from the database with Machine key: %s", mKey.HexString())
+		c.String(http.StatusInternalServerError, "")
 	}
 	log.Trace().
 		Str("handler", "PollNetMap").

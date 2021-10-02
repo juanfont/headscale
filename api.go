@@ -226,6 +226,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 			Msg("Cannot convert to node")
 		return nil, err
 	}
+
 	peers, err := h.getPeers(m)
 	if err != nil {
 		log.Error().
