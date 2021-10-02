@@ -140,7 +140,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("id", c.Param("id")).
 		Str("machine", m.Name).
 		Msg("Loading or creating update channel")
-	updateChan := h.getOrOpenUpdateChannel(&m)
+	updateChan := h.getOrOpenUpdateChannel(m)
 
 	pollDataChan := make(chan []byte)
 	// defer close(pollData)
@@ -159,7 +159,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
-		go h.notifyChangesToPeers(&m)
+		go h.notifyChangesToPeers(m)
 		return
 	} else if req.OmitPeers && req.Stream {
 		log.Warn().
@@ -184,7 +184,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("machine", m.Name).
 		Msg("Notifying peers")
-	go h.notifyChangesToPeers(&m)
+	go h.notifyChangesToPeers(m)
 
 	h.PollNetMapStream(c, m, req, mKey, pollDataChan, keepAliveChan, updateChan, cancelKeepAlive)
 	log.Trace().
@@ -199,7 +199,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 // to the connected clients.
 func (h *Headscale) PollNetMapStream(
 	c *gin.Context,
-	m Machine,
+	m *Machine,
 	req tailcfg.MapRequest,
 	mKey wgkey.Key,
 	pollDataChan chan []byte,
@@ -246,7 +246,7 @@ func (h *Headscale) PollNetMapStream(
 				// TODO: Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
-			err = h.UpdateMachine(&m)
+			err = h.UpdateMachine(m)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -292,7 +292,7 @@ func (h *Headscale) PollNetMapStream(
 				// TODO: Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
-			err = h.UpdateMachine(&m)
+			err = h.UpdateMachine(m)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -318,7 +318,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("machine", m.Name).
 				Str("channel", "update").
 				Msg("Received a request for update")
-			if h.isOutdated(&m) {
+			if h.isOutdated(m) {
 				log.Debug().
 					Str("handler", "PollNetMapStream").
 					Str("machine", m.Name).
@@ -356,7 +356,7 @@ func (h *Headscale) PollNetMapStream(
 					// TODO: Abstract away all the database calls, this can cause race conditions
 					// when an outdated machine object is kept alive, e.g. db is update from
 					// command line, but then overwritten.
-				err = h.UpdateMachine(&m)
+				err = h.UpdateMachine(m)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").
@@ -386,7 +386,7 @@ func (h *Headscale) PollNetMapStream(
 				// TODO: Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
-			err := h.UpdateMachine(&m)
+			err := h.UpdateMachine(m)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -401,7 +401,7 @@ func (h *Headscale) PollNetMapStream(
 
 			cancelKeepAlive <- struct{}{}
 
-			h.closeUpdateChannel(&m)
+			h.closeUpdateChannel(m)
 
 			close(pollDataChan)
 
@@ -417,7 +417,7 @@ func (h *Headscale) scheduledPollWorker(
 	keepAliveChan chan<- []byte,
 	mKey wgkey.Key,
 	req tailcfg.MapRequest,
-	m Machine,
+	m *Machine,
 ) {
 	keepAliveTicker := time.NewTicker(60 * time.Second)
 	updateCheckerTicker := time.NewTicker(30 * time.Second)
@@ -446,8 +446,7 @@ func (h *Headscale) scheduledPollWorker(
 		case <-updateCheckerTicker.C:
 			// Send an update request regardless of outdated or not, if data is sent
 			// to the node is determined in the updateChan consumer block
-			n, _ := m.toNode(true)
-			err := h.sendRequestOnUpdateChannel(n)
+			err := h.sendRequestOnUpdateChannel(m)
 			if err != nil {
 				log.Error().
 					Str("func", "keepAlive").

@@ -213,7 +213,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	c.Data(200, "application/json; charset=utf-8", respBody)
 }
 
-func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
+func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Machine) (*[]byte, error) {
 	log.Trace().
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
@@ -286,7 +286,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 	return &data, nil
 }
 
-func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
+func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Machine) (*[]byte, error) {
 	resp := tailcfg.MapResponse{
 		KeepAlive: true,
 	}

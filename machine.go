@@ -296,7 +296,7 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 }
 
 func (h *Headscale) notifyChangesToPeers(m *Machine) {
-	peers, err := h.getPeers(*m)
+	peers, err := h.getPeers(m)
 	if err != nil {
 		log.Error().
 			Str("func", "notifyChangesToPeers").
@@ -363,7 +363,7 @@ func (h *Headscale) closeUpdateChannel(m *Machine) {
 	h.clientsUpdateChannels.Delete(m.ID)
 }
 
-func (h *Headscale) sendRequestOnUpdateChannel(m *tailcfg.Node) error {
+func (h *Headscale) sendRequestOnUpdateChannel(m *Machine) error {
 	h.clientsUpdateChannelMutex.Lock()
 	defer h.clientsUpdateChannelMutex.Unlock()
 

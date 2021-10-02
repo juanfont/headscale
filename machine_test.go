@@ -16,7 +16,7 @@ func (s *Suite) TestGetMachine(c *check.C) {
 	_, err = h.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
-	m := Machine{
+	m := &Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
@@ -27,7 +27,7 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
 	}
-	h.db.Save(&m)
+	h.db.Save(m)
 
 	m1, err := h.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
