@@ -309,6 +309,7 @@ func (h *Headscale) notifyChangesToPeers(m *Machine) {
 				Str("machine", m.Name).
 				Str("peer", p.Name).
 				Msgf("Peer %s does not appear to be polling", p.Name)
+			return
 		}
 		log.Trace().
 			Str("func", "notifyChangesToPeers").
