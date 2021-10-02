@@ -433,7 +433,7 @@ func (s *IntegrationTestSuite) TestPingAllPeers() {
 						command := []string{
 							"tailscale", "ping",
 							"--timeout=1s",
-							"--c=100",
+							"--c=10",
 							"--until-direct=true",
 							ip.String(),
 						}
