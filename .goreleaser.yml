@@ -19,7 +19,7 @@ builds:
     flags:
       - -mod=readonly
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
   - id: linux-armhf
     main: ./cmd/headscale/headscale.go
     mod_timestamp: '{{ .CommitTimestamp }}'
@@ -39,7 +39,7 @@ builds:
     flags:
       - -mod=readonly
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
 
 
   - id: linux-amd64
@@ -54,6 +54,8 @@ builds:
       - 7
     main: ./cmd/headscale/headscale.go
     mod_timestamp: '{{ .CommitTimestamp }}'
+    ldflags:
+      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
 
 archives:
   - id: golang-cross
