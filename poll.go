@@ -236,6 +236,7 @@ func (h *Headscale) PollNetMapStream(
 					Str("channel", "pollData").
 					Err(err).
 					Msg("Cannot write data")
+				return false
 			}
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -243,7 +244,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "pollData").
 				Int("bytes", len(data)).
 				Msg("Data from pollData channel written successfully")
-				// TODO: Abstract away all the database calls, this can cause race conditions
+				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
 			err = h.UpdateMachine(m)
@@ -264,7 +265,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("machine", m.Name).
 				Str("channel", "pollData").
 				Int("bytes", len(data)).
-				Msg("Machine updated successfully after sending pollData")
+				Msg("Machine entry in database updated successfully after sending pollData")
 			return true
 
 		case data := <-keepAliveChan:
@@ -282,6 +283,7 @@ func (h *Headscale) PollNetMapStream(
 					Str("channel", "keepAlive").
 					Err(err).
 					Msg("Cannot write keep alive message")
+				return false
 			}
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -289,7 +291,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "keepAlive").
 				Int("bytes", len(data)).
 				Msg("Keep alive sent successfully")
-				// TODO: Abstract away all the database calls, this can cause race conditions
+				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
 			err = h.UpdateMachine(m)
@@ -342,6 +344,7 @@ func (h *Headscale) PollNetMapStream(
 						Str("channel", "update").
 						Err(err).
 						Msg("Could not write the map response")
+					return false
 				}
 				log.Trace().
 					Str("handler", "PollNetMapStream").
@@ -353,7 +356,7 @@ func (h *Headscale) PollNetMapStream(
 					// we sometimes end in a state were the update
 					// is not picked up by a client and we use this
 					// to determine if we should "force" an update.
-					// TODO: Abstract away all the database calls, this can cause race conditions
+					// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
 					// when an outdated machine object is kept alive, e.g. db is update from
 					// command line, but then overwritten.
 				err = h.UpdateMachine(m)
@@ -399,12 +402,32 @@ func (h *Headscale) PollNetMapStream(
 			m.LastSeen = &now
 			h.db.Save(&m)
 
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "Done").
+				Msg("Cancelling keepAlive channel")
 			cancelKeepAlive <- struct{}{}
 
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "Done").
+				Msg("Closing update channel")
 			h.closeUpdateChannel(m)
 
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "Done").
+				Msg("Closing pollData channel")
 			close(pollDataChan)
 
+			log.Trace().
+				Str("handler", "PollNetMapStream").
+				Str("machine", m.Name).
+				Str("channel", "Done").
+				Msg("Closing keepAliveChan channel")
 			close(keepAliveChan)
 
 			return false
