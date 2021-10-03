@@ -169,8 +169,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
 
-		ACMEEmail: absPath(viper.GetString("acme_email")),
-		ACMEURL:   absPath(viper.GetString("acme_url")),
+		ACMEEmail: viper.GetString("acme_email"),
+		ACMEURL:   viper.GetString("acme_url"),
 
 		DNSConfig: GetDNSConfig(),
 	}
