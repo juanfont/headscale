@@ -108,9 +108,13 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			dnsConfig.Domains = viper.GetStringSlice("dns_config.domains")
 		}
 
-		if len(dnsConfig.Nameservers) > 0 {
-			if viper.IsSet("dns_config.magic_dns") {
-				dnsConfig.Proxied = viper.GetBool("dns_config.magic_dns")
+		if viper.IsSet("dns_config.magic_dns") {
+			magicDNS := viper.GetBool("dns_config.magic_dns")
+			if len(dnsConfig.Nameservers) > 0 {
+				dnsConfig.Proxied = magicDNS
+			} else if magicDNS {
+				log.Warn().
+					Msg("Warning: dns_config.magic_dns is set, but no nameservers are configured. Ignoring magic_dns.")
 			}
 		}
 
@@ -186,7 +190,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
 
 		DNSConfig: dnsConfig,
-    
+
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
 	}
