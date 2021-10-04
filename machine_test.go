@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"encoding/json"
+	"strconv"
 
 	"gopkg.in/check.v1"
 )
@@ -115,4 +116,44 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 	c.Assert(err, check.IsNil)
 	_, err = h.GetMachine(n.Name, "testmachine3")
 	c.Assert(err, check.NotNil)
+}
+
+func (s *Suite) TestGetDirectPeers(c *check.C) {
+	n, err := h.CreateNamespace("test")
+	c.Assert(err, check.IsNil)
+
+	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = h.GetMachineByID(0)
+	c.Assert(err, check.NotNil)
+
+	for i := 0; i <= 10; i++ {
+		m := Machine{
+			ID:             uint64(i),
+			MachineKey:     "foo" + strconv.Itoa(i),
+			NodeKey:        "bar" + strconv.Itoa(i),
+			DiscoKey:       "faa" + strconv.Itoa(i),
+			Name:           "testmachine" + strconv.Itoa(i),
+			NamespaceID:    n.ID,
+			Registered:     true,
+			RegisterMethod: "authKey",
+			AuthKeyID:      uint(pak.ID),
+		}
+		h.db.Save(&m)
+	}
+
+	m1, err := h.GetMachineByID(0)
+	c.Assert(err, check.IsNil)
+
+	_, err = m1.GetHostInfo()
+	c.Assert(err, check.IsNil)
+
+	peers, err := h.getDirectPeers(m1)
+	c.Assert(err, check.IsNil)
+
+	c.Assert(len(peers), check.Equals, 9)
+	c.Assert(peers[0].Name, check.Equals, "testmachine2")
+	c.Assert(peers[5].Name, check.Equals, "testmachine7")
+	c.Assert(peers[8].Name, check.Equals, "testmachine10")
 }
