@@ -6,6 +6,8 @@
     "ephemeral_node_inactivity_timeout": "30m",
     "db_type": "sqlite3",
     "db_path": "db.sqlite",
+    "acme_url": "https://acme-v02.api.letsencrypt.org/directory",
+    "acme_email": "",
     "tls_letsencrypt_hostname": "",
     "tls_letsencrypt_listen": ":http",
     "tls_letsencrypt_cache_dir": ".cache",

@@ -317,7 +317,8 @@ func (h *Headscale) notifyChangesToPeers(m *Machine) {
 				Str("func", "notifyChangesToPeers").
 				Str("machine", m.Name).
 				Str("peer", p.Name).
-				Msgf("Peer %s does not appear to be polling", p.Name)
+				Msgf("Peer %s does not have an open update client, skipping.", p.Name)
+			continue
 		}
 		log.Trace().
 			Str("func", "notifyChangesToPeers").
@@ -388,11 +389,12 @@ func (h *Headscale) sendRequestOnUpdateChannel(m *tailcfg.Node) error {
 				Msgf("Notified machine %s", m.Name)
 		}
 	} else {
+		err := errors.New("machine does not have an open update channel")
 		log.Info().
 			Str("func", "requestUpdate").
 			Str("machine", m.Name).
-			Msgf("Machine %s does not appear to be polling", m.Name)
-		return errors.New("machine does not seem to be polling")
+			Msgf("Machine %s does not have an open update channel", m.Name)
+		return err
 	}
 	return nil
 }
