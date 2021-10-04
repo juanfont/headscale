@@ -30,6 +30,16 @@ Headscale implements this coordination server.
 - [x] Share nodes between ~~users~~ namespaces
 - [ ] MagicDNS / Smart DNS
 
+## Client OS support
+
+| OS | Supports headscale |
+| --- | --- |
+| Linux | Yes |
+| macOS | Yes |
+| Windows | Yes |
+| Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
+| iOS | Not yet |
+
 ## Roadmap 🤷
 
 Suggestions/PRs welcomed!
