@@ -20,7 +20,7 @@ require (
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/opencontainers/runc v1.0.2 // indirect
 	github.com/ory/dockertest/v3 v3.7.0
-	github.com/prometheus/client_golang v1.11.0 // indirect
+	github.com/prometheus/client_golang v1.11.0
 	github.com/pterm/pterm v0.12.30
 	github.com/rs/zerolog v1.25.0
 	github.com/spf13/cobra v1.2.1
@@ -29,7 +29,7 @@ require (
 	github.com/tailscale/hujson v0.0.0-20210818175511-7360507a6e88
 	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
-	github.com/zsais/go-gin-prometheus v0.1.0 // indirect
+	github.com/zsais/go-gin-prometheus v0.1.0
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
 	golang.org/x/net v0.0.0-20210913180222-943fd674d43e // indirect
 	golang.org/x/sys v0.0.0-20210910150752-751e447fb3d0 // indirect
