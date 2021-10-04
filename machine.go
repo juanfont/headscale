@@ -52,7 +52,7 @@ func (m Machine) isAlreadyRegistered() bool {
 
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS
-func (h *Headscale) toNode(m Machine, includeRoutes bool) (*tailcfg.Node, error) {
+func (m *Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) (*tailcfg.Node, error) {
 	nKey, err := wgkey.ParseHex(m.NodeKey)
 	if err != nil {
 		return nil, err
@@ -148,8 +148,8 @@ func (h *Headscale) toNode(m Machine, includeRoutes bool) (*tailcfg.Node, error)
 	}
 
 	var hostname string
-	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // MagicDNS
-		hostname = fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, h.cfg.BaseDomain)
+	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
+		hostname = fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, baseDomain)
 	} else {
 		hostname = m.Name
 	}
@@ -203,14 +203,14 @@ func (h *Headscale) getPeers(m Machine) (*[]*tailcfg.Node, error) {
 
 	peers := []*tailcfg.Node{}
 	for _, mn := range machines {
-		peer, err := h.toNode(mn, true)
+		peer, err := mn.toNode(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
 		if err != nil {
 			return nil, err
 		}
 		peers = append(peers, peer)
 	}
 	for _, sharedMachine := range sharedMachines {
-		peer, err := h.toNode(sharedMachine.Machine, false) // shared nodes do not expose their routes
+		peer, err := sharedMachine.Machine.toNode(h.cfg.BaseDomain, h.cfg.DNSConfig, false) // shared nodes do not expose their routes
 		if err != nil {
 			return nil, err
 		}
