@@ -35,6 +35,7 @@ Headscale implements this coordination server.
 | OS | Supports headscale |
 | --- | --- |
 | Linux | Yes |
+| OpenBSD | Yes |
 | macOS | Yes |
 | Windows | Yes |
 | Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
