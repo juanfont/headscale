@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -692,6 +693,9 @@ func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]strin
 			n := ft.Node
 			for _, a := range n.Addresses { // just add all the addresses
 				if _, ok := fts[a.IP()]; !ok {
+					if ft.PeerAPIURL == "" {
+						return nil, errors.New("api url is empty")
+					}
 					fts[a.IP()] = ft.PeerAPIURL
 				}
 			}
