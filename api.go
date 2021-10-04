@@ -225,7 +225,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := m.toNode(true)
+	node, err := m.toNode(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").
@@ -249,7 +249,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		DisplayName: m.Namespace.Name,
 	}
 
-	nodePeers, err := peers.toNodes(true)
+	nodePeers, err := peers.toNodes(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").
