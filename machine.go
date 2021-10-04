@@ -297,6 +297,7 @@ func (h *Headscale) sendRequestOnUpdateChannel(m *Machine) error {
 				Str("machine", m.Name).
 				Msgf("Update channel is %#v", update)
 
+			updateRequestsToNode.Inc()
 			update <- struct{}{}
 
 			log.Trace().

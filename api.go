@@ -64,6 +64,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Str("handler", "Registration").
 			Err(err).
 			Msg("Cannot parse machine key")
+		machineRegistrations.WithLabelValues("unkown", "web", "error", "unknown").Inc()
 		c.String(http.StatusInternalServerError, "Sad!")
 		return
 	}
@@ -74,6 +75,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Str("handler", "Registration").
 			Err(err).
 			Msg("Cannot decode message")
+		machineRegistrations.WithLabelValues("unkown", "web", "error", "unknown").Inc()
 		c.String(http.StatusInternalServerError, "Very sad!")
 		return
 	}
@@ -94,6 +96,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				Str("handler", "Registration").
 				Err(err).
 				Msg("Could not create row")
+			machineRegistrations.WithLabelValues("unkown", "web", "error", m.Namespace.Name).Inc()
 			return
 		}
 	}
@@ -122,9 +125,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 					Str("handler", "Registration").
 					Err(err).
 					Msg("Cannot encode message")
+				machineRegistrations.WithLabelValues("update", "web", "error", m.Namespace.Name).Inc()
 				c.String(http.StatusInternalServerError, "")
 				return
 			}
+			machineRegistrations.WithLabelValues("update", "web", "success", m.Namespace.Name).Inc()
 			c.Data(200, "application/json; charset=utf-8", respBody)
 			return
 		}
@@ -141,9 +146,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				Str("handler", "Registration").
 				Err(err).
 				Msg("Cannot encode message")
+			machineRegistrations.WithLabelValues("new", "web", "error", m.Namespace.Name).Inc()
 			c.String(http.StatusInternalServerError, "")
 			return
 		}
+		machineRegistrations.WithLabelValues("new", "web", "success", m.Namespace.Name).Inc()
 		c.Data(200, "application/json; charset=utf-8", respBody)
 		return
 	}
@@ -338,13 +345,15 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 				Err(err).
 				Msg("Cannot encode message")
 			c.String(http.StatusInternalServerError, "")
+			machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).Inc()
 			return
 		}
-		c.Data(200, "application/json; charset=utf-8", respBody)
+		c.Data(401, "application/json; charset=utf-8", respBody)
 		log.Error().
 			Str("func", "handleAuthKey").
 			Str("machine", m.Name).
 			Msg("Failed authentication via AuthKey")
+		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).Inc()
 		return
 	}
 
@@ -358,6 +367,7 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 			Str("func", "handleAuthKey").
 			Str("machine", m.Name).
 			Msg("Failed to find an available IP")
+		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).Inc()
 		return
 	}
 	log.Info().
@@ -383,9 +393,11 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 			Str("machine", m.Name).
 			Err(err).
 			Msg("Cannot encode message")
+		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).Inc()
 		c.String(http.StatusInternalServerError, "Extremely sad!")
 		return
 	}
+	machineRegistrations.WithLabelValues("new", "authkey", "success", m.Namespace.Name).Inc()
 	c.Data(200, "application/json; charset=utf-8", respBody)
 	log.Info().
 		Str("func", "handleAuthKey").

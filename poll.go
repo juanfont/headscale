@@ -159,6 +159,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
+		updateRequestsFromNode.WithLabelValues("endpoint-update").Inc()
 		go h.notifyChangesToPeers(m)
 		return
 	} else if req.OmitPeers && req.Stream {
@@ -184,6 +185,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("machine", m.Name).
 		Msg("Notifying peers")
+	updateRequestsFromNode.WithLabelValues("full-update").Inc()
 	go h.notifyChangesToPeers(m)
 
 	h.PollNetMapStream(c, m, req, mKey, pollDataChan, keepAliveChan, updateChan, cancelKeepAlive)
@@ -258,7 +260,10 @@ func (h *Headscale) PollNetMapStream(
 			}
 			now := time.Now().UTC()
 			m.LastSeen = &now
+
+			lastStateUpdate.WithLabelValues(m.Namespace.Name, m.Name).Set(float64(now.Unix()))
 			m.LastSuccessfulUpdate = &now
+
 			h.db.Save(&m)
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -320,6 +325,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("machine", m.Name).
 				Str("channel", "update").
 				Msg("Received a request for update")
+			updateRequestsReceivedOnChannel.WithLabelValues(m.Name).Inc()
 			if h.isOutdated(m) {
 				log.Debug().
 					Str("handler", "PollNetMapStream").
@@ -369,7 +375,10 @@ func (h *Headscale) PollNetMapStream(
 						Msg("Cannot update machine from database")
 				}
 				now := time.Now().UTC()
+
+				lastStateUpdate.WithLabelValues(m.Namespace.Name, m.Name).Set(float64(now.Unix()))
 				m.LastSuccessfulUpdate = &now
+
 				h.db.Save(&m)
 			} else {
 				log.Trace().
