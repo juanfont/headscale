@@ -242,7 +242,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 	}
 
 	var dnsConfig *tailcfg.DNSConfig
-	if h.cfg.DNSConfig.Proxied { // if MagicDNS is enabled
+	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS is enabled
 		// TODO(juanfont): We should not be regenerating this all the time
 		// And we should only send the domains of the peers (this own namespace + those from the shared peers)
 		namespaces, err := h.ListNamespaces()
@@ -329,6 +329,11 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 	resp := tailcfg.RegisterResponse{}
 	pak, err := h.checkKeyValidity(req.Auth.AuthKey)
 	if err != nil {
+		log.Error().
+			Str("func", "handleAuthKey").
+			Str("machine", m.Name).
+			Err(err).
+			Msg("Failed authentication via AuthKey")
 		resp.MachineAuthorized = false
 		respBody, err := encode(resp, &idKey, h.privateKey)
 		if err != nil {
@@ -341,10 +346,6 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 			return
 		}
 		c.Data(200, "application/json; charset=utf-8", respBody)
-		log.Error().
-			Str("func", "handleAuthKey").
-			Str("machine", m.Name).
-			Msg("Failed authentication via AuthKey")
 		return
 	}
 
