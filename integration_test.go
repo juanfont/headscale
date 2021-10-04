@@ -258,7 +258,11 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		}
 		return nil
 	}); err != nil {
-		log.Fatalf("Could not connect to docker: %s", err)
+		// TODO(kradalby): If we cannot access headscale, or any other fatal error during
+		// test setup, we need to abort and tear down. However, testify does not seem to
+		// support that at the moment:
+		// https://github.com/stretchr/testify/issues/849
+		return // fmt.Errorf("Could not connect to headscale: %s", err)
 	}
 	fmt.Println("headscale container is ready")
 
