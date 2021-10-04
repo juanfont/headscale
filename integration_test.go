@@ -234,9 +234,6 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		},
 		Networks: []*dockertest.Network{&network},
 		Cmd:      []string{"headscale", "serve"},
-		PortBindings: map[docker.Port][]docker.PortBinding{
-			"8080/tcp": {{HostPort: "8080"}},
-		},
 	}
 
 	fmt.Println("Creating headscale container")
