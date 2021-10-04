@@ -589,7 +589,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 							_, err = executeCommand(
 								&tailscale,
 								command,
-								[]string{"ALL_PROXY=socks5://localhost:1055/"},
+								[]string{"ALL_PROXY=socks5://localhost:1055"},
 							)
 							if err == nil {
 								break
@@ -642,18 +642,37 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 	}
 }
 
-// func (s *IntegrationTestSuite) TestMagicDNS() {
-// 	for _, scales := range s.namespaces {
-// 		ips, err := getIPs(scales.tailscales)
-// 		assert.Nil(s.T(), err)
-// 		apiURLs, err := getAPIURLs(scales.tailscales)
-// 		assert.Nil(s.T(), err)
+func (s *IntegrationTestSuite) TestMagicDNS() {
+	for namespace, scales := range s.namespaces {
+		ips, err := getIPs(scales.tailscales)
+		assert.Nil(s.T(), err)
+		for hostname, tailscale := range scales.tailscales {
+			for peername, ip := range ips {
+				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+					if peername != hostname {
+						command := []string{
+							"tailscale", "ping",
+							"--timeout=10s",
+							"--c=20",
+							"--until-direct=true",
+							fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
+						}
 
-// 		for hostname, tailscale := range scales.tailscales {
-
-// 		}
-// 	}
-// }
+						fmt.Printf("Pinging using Hostname (magicdns) from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
+						result, err := executeCommand(
+							&tailscale,
+							command,
+							[]string{},
+						)
+						assert.Nil(t, err)
+						fmt.Printf("Result for %s: %s\n", hostname, result)
+						assert.Contains(t, result, "pong")
+					}
+				})
+			}
+		}
+	}
+}
 
 func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, error) {
 	ips := make(map[string]netaddr.IP)

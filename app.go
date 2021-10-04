@@ -116,7 +116,6 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		}
 	}
 
-	fmt.Printf("dns: %+v\n", h.cfg.DNSConfig)
 	return &h, nil
 }
 
