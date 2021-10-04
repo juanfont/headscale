@@ -294,7 +294,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		)
 		assert.Nil(s.T(), err)
 
-		headscaleEndpoint := fmt.Sprintf("http://headscale:%s", headscale.GetPort("8080/tcp"))
+		headscaleEndpoint := "http://headscale:8080"
 
 		fmt.Printf("Joining tailscale containers to headscale at %s\n", headscaleEndpoint)
 		for hostname, tailscale := range scales.tailscales {
