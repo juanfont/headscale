@@ -29,5 +29,5 @@ The setup is done via the `config.json` file, under the `dns_config` key.
 ```
 - `nameservers`:  The list of DNS servers to use.
 - `domains`: Search domains to inject.
-- `magic_dns`: Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
+- `magic_dns`: Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/). Only works if there is at least a nameserver defined.
 - `base_domain`: Defines the base domain to create the hostnames for MagicDNS. `base_domain` must be a FQDNs, without the trailing dot. The FQDN of the hosts will be `hostname.namespace.base_domain` (e.g., _myhost.mynamespace.example.com_).
