@@ -191,6 +191,7 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 			continue
 		}
 		for _, m := range *machines {
+			updateRequestsFromNode.WithLabelValues("namespace-update").Inc()
 			h.notifyChangesToPeers(&m)
 		}
 	}

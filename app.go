@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"gorm.io/gorm"
@@ -144,6 +145,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 				if err != nil {
 					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
+				updateRequestsFromNode.WithLabelValues("ephemeral-node-update").Inc()
 				h.notifyChangesToPeers(&m)
 			}
 		}
@@ -167,6 +169,10 @@ func (h *Headscale) watchForKVUpdatesWorker() {
 // Serve launches a GIN server with the Headscale API
 func (h *Headscale) Serve() error {
 	r := gin.Default()
+
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r)
+
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"healthy": "ok"}) })
 	r.GET("/key", h.KeyHandler)
 	r.GET("/register", h.RegisterWebAPI)
@@ -241,6 +247,7 @@ func (h *Headscale) Serve() error {
 
 func (h *Headscale) setLastStateChangeToNow(namespace string) {
 	now := time.Now().UTC()
+	lastStateUpdate.WithLabelValues("", "headscale").Set(float64(now.Unix()))
 	h.lastStateChange.Store(namespace, now)
 }
 
