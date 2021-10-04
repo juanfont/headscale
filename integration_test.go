@@ -35,6 +35,7 @@ var (
 
 var (
 	pool      dockertest.Pool
+	network   dockertest.Network
 	headscale dockertest.Resource
 )
 
@@ -87,6 +88,10 @@ func TestIntegrationTestSuite(t *testing.T) {
 	}
 	if err := pool.Purge(&headscale); err != nil {
 		log.Printf("Could not purge resource: %s\n", err)
+	}
+
+	if err := network.Close(); err != nil {
+		log.Printf("Could not close network: %s\n", err)
 	}
 }
 
@@ -179,8 +184,9 @@ func tailscaleContainer(namespace, identifier, version string) (string, *dockert
 	}
 	hostname := fmt.Sprintf("%s-tailscale-%s-%s", namespace, strings.Replace(version, ".", "-", -1), identifier)
 	tailscaleOptions := &dockertest.RunOptions{
-		Name: hostname,
-		Cmd:  []string{"tailscaled", "--tun=userspace-networking", "--socks5-server=localhost:1055"},
+		Name:     hostname,
+		Networks: []*dockertest.Network{&network},
+		Cmd:      []string{"tailscaled", "--tun=userspace-networking", "--socks5-server=localhost:1055"},
 	}
 
 	pts, err := pool.BuildAndRunWithBuildOptions(tailscaleBuildOptions, tailscaleOptions, dockerRestartPolicy)
@@ -204,6 +210,12 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		log.Fatalf("Could not connect to docker: %s", err)
 	}
 
+	if pnetwork, err := pool.CreateNetwork("headscale-test"); err == nil {
+		network = *pnetwork
+	} else {
+		log.Fatalf("Could not create network: %s", err)
+	}
+
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile",
 		ContextDir: ".",
@@ -220,10 +232,11 @@ func (s *IntegrationTestSuite) SetupSuite() {
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 			fmt.Sprintf("%s/derp.yaml:/etc/headscale/derp.yaml", currentPath),
 		},
-		Cmd: []string{"headscale", "serve"},
-		// PortBindings: map[docker.Port][]docker.PortBinding{
-		// 	"8080/tcp": {{HostPort: "8080"}},
-		// },
+		Networks: []*dockertest.Network{&network},
+		Cmd:      []string{"headscale", "serve"},
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"8080/tcp": {{HostPort: "8080"}},
+		},
 	}
 
 	fmt.Println("Creating headscale container")
