@@ -345,15 +345,16 @@ func (s *IntegrationTestSuite) TestGetIpAddresses() {
 
 		for hostname := range scales.tailscales {
 			s.T().Run(hostname, func(t *testing.T) {
-				ip := ips[hostname]
+				ip, ok := ips[hostname]
+
+				assert.True(t, ok)
+				assert.NotNil(t, ip)
 
 				fmt.Printf("IP for %s: %s\n", hostname, ip)
 
 				// c.Assert(ip.Valid(), check.IsTrue)
 				assert.True(t, ip.Is4())
 				assert.True(t, ipPrefix.Contains(ip))
-
-				ips[hostname] = ip
 			})
 		}
 	}
