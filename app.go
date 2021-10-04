@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/zsais/go-gin-prometheus"
+	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
@@ -44,6 +45,9 @@ type Config struct {
 
 	TLSCertPath string
 	TLSKeyPath  string
+
+	ACMEURL   string
+	ACMEEmail string
 
 	DNSConfig *tailcfg.DNSConfig
 }
@@ -201,6 +205,10 @@ func (h *Headscale) Serve() error {
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(h.cfg.TLSLetsEncryptHostname),
 			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
+			Client: &acme.Client{
+				DirectoryURL: h.cfg.ACMEURL,
+			},
+			Email: h.cfg.ACMEEmail,
 		}
 
 		s.TLSConfig = m.TLSConfig()

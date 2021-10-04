@@ -10,6 +10,8 @@
     "db_name": "headscale",
     "db_user": "foo",
     "db_pass": "bar",
+    "acme_url": "https://acme-v02.api.letsencrypt.org/directory",
+    "acme_email": "",
     "tls_letsencrypt_hostname": "",
     "tls_letsencrypt_listen": ":http",
     "tls_letsencrypt_cache_dir": ".cache",
