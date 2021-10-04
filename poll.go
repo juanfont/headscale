@@ -123,7 +123,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Str("handler", "PollNetMap").
 			Str("machine", m.Name).
 			Msg("Client is starting up. Probably interested in a DERP map")
-		c.Data(200, "application/json; charset=utf-8", *data)
+		c.Data(200, "application/json; charset=utf-8", data)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Str("handler", "PollNetMap").
 			Str("machine", m.Name).
 			Msg("Client sent endpoint update and is ok with a response without peer list")
-		c.Data(200, "application/json; charset=utf-8", *data)
+		c.Data(200, "application/json; charset=utf-8", data)
 
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
@@ -179,7 +179,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("machine", m.Name).
 		Msg("Sending initial map")
-	go func() { pollDataChan <- *data }()
+	go func() { pollDataChan <- data }()
 
 	log.Info().
 		Str("handler", "PollNetMap").
@@ -342,7 +342,7 @@ func (h *Headscale) PollNetMapStream(
 						Err(err).
 						Msg("Could not get the map update")
 				}
-				_, err = w.Write(*data)
+				_, err = w.Write(data)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").
@@ -473,7 +473,7 @@ func (h *Headscale) scheduledPollWorker(
 				Str("func", "keepAlive").
 				Str("machine", m.Name).
 				Msg("Sending keepalive")
-			keepAliveChan <- *data
+			keepAliveChan <- data
 
 		case <-updateCheckerTicker.C:
 			// Send an update request regardless of outdated or not, if data is sent

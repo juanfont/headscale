@@ -56,34 +56,29 @@ func (m Machine) isAlreadyRegistered() bool {
 	return m.Registered
 }
 
-func (h *Headscale) getDirectPeers(m *Machine) (MachinesP, error) {
+func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 	log.Trace().
 		Str("func", "getDirectPeers").
 		Str("machine", m.Name).
-		Msg("Finding peers")
+		Msg("Finding direct peers")
 
-	machines := []Machine{}
+	machines := Machines{}
 	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 		return nil, err
 	}
 
-	peers := make(MachinesP, 0)
-	for _, peer := range machines {
-		peers = append(peers, &peer)
-	}
-
-	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
+	sort.Slice(machines, func(i, j int) bool { return machines[i].ID < machines[j].ID })
 
 	log.Trace().
-		Str("func", "getDirectPeers").
+		Str("func", "getDirectmachines").
 		Str("machine", m.Name).
-		Msgf("Found peers: %s", peers.String())
-	return peers, nil
+		Msgf("Found direct machines: %s", machines.String())
+	return machines, nil
 }
 
-func (h *Headscale) getShared(m *Machine) (MachinesP, error) {
+func (h *Headscale) getShared(m *Machine) (Machines, error) {
 	log.Trace().
 		Str("func", "getShared").
 		Str("machine", m.Name).
@@ -96,9 +91,9 @@ func (h *Headscale) getShared(m *Machine) (MachinesP, error) {
 		return nil, err
 	}
 
-	peers := make(MachinesP, 0)
+	peers := make(Machines, 0)
 	for _, sharedMachine := range sharedMachines {
-		peers = append(peers, &sharedMachine.Machine)
+		peers = append(peers, sharedMachine.Machine)
 	}
 
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
@@ -110,7 +105,7 @@ func (h *Headscale) getShared(m *Machine) (MachinesP, error) {
 	return peers, nil
 }
 
-func (h *Headscale) getPeers(m *Machine) (MachinesP, error) {
+func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 	direct, err := h.getDirectPeers(m)
 	if err != nil {
 		log.Error().
@@ -129,7 +124,15 @@ func (h *Headscale) getPeers(m *Machine) (MachinesP, error) {
 		return nil, err
 	}
 
-	return append(direct, shared...), nil
+	peers := append(direct, shared...)
+	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
+
+	log.Trace().
+		Str("func", "getShared").
+		Str("machine", m.Name).
+		Msgf("Found total peers: %s", peers.String())
+
+	return peers, nil
 }
 
 // GetMachine finds a Machine by name and namespace and returns the Machine struct
@@ -227,7 +230,7 @@ func (h *Headscale) notifyChangesToPeers(m *Machine) {
 			Str("peer", peer.Name).
 			Str("address", peer.IPAddress).
 			Msgf("Notifying peer %s (%s)", peer.Name, peer.IPAddress)
-		err := h.sendRequestOnUpdateChannel(peer)
+		err := h.sendRequestOnUpdateChannel(&peer)
 		if err != nil {
 			log.Info().
 				Str("func", "notifyChangesToPeers").
@@ -357,7 +360,7 @@ func (ms MachinesP) String() string {
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (ms MachinesP) toNodes(includeRoutes bool) ([]*tailcfg.Node, error) {
+func (ms Machines) toNodes(includeRoutes bool) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(ms))
 
 	for index, machine := range ms {
