@@ -12,7 +12,7 @@ func (h *Headscale) generateMagicDNSRootDomains() (*[]dnsname.FQDN, error) {
 		return nil, err
 	}
 
-	// TODO(juanfont): we are not handing over IPv6 addresses yet
+	// TODO(juanfont): we are not handing out IPv6 addresses yet
 	// and in fact this is Tailscale.com's range (not the fd7a:115c:a1e0: range in the fc00::/7 network)
 	ipv6base := dnsname.FQDN("0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
 	fqdns := []dnsname.FQDN{base, ipv6base}
