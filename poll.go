@@ -158,7 +158,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
-		updateRequestsFromNode.WithLabelValues("endpoint-update").Inc()
+		updateRequestsFromNode.WithLabelValues(m.Name, m.Namespace.Name, "endpoint-update").Inc()
 		go func() { updateChan <- struct{}{} }()
 		return
 	} else if req.OmitPeers && req.Stream {
@@ -184,7 +184,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("machine", m.Name).
 		Msg("Notifying peers")
-	updateRequestsFromNode.WithLabelValues("full-update").Inc()
+	updateRequestsFromNode.WithLabelValues(m.Name, m.Namespace.Name, "full-update").Inc()
 	go func() { updateChan <- struct{}{} }()
 
 	h.PollNetMapStream(c, m, req, mKey, pollDataChan, keepAliveChan, updateChan, cancelKeepAlive)
@@ -324,7 +324,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("machine", m.Name).
 				Str("channel", "update").
 				Msg("Received a request for update")
-			updateRequestsReceivedOnChannel.WithLabelValues(m.Name).Inc()
+			updateRequestsReceivedOnChannel.WithLabelValues(m.Name, m.Namespace.Name).Inc()
 			if h.isOutdated(m) {
 				log.Debug().
 					Str("handler", "PollNetMapStream").
@@ -349,6 +349,7 @@ func (h *Headscale) PollNetMapStream(
 						Str("channel", "update").
 						Err(err).
 						Msg("Could not write the map response")
+					updateRequestsSentToNode.WithLabelValues(m.Name, m.Namespace.Name, "failed").Inc()
 					return false
 				}
 				log.Trace().
@@ -356,14 +357,15 @@ func (h *Headscale) PollNetMapStream(
 					Str("machine", m.Name).
 					Str("channel", "update").
 					Msg("Updated Map has been sent")
+				updateRequestsSentToNode.WithLabelValues(m.Name, m.Namespace.Name, "success").Inc()
 
-					// Keep track of the last successful update,
-					// we sometimes end in a state were the update
-					// is not picked up by a client and we use this
-					// to determine if we should "force" an update.
-					// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
-					// when an outdated machine object is kept alive, e.g. db is update from
-					// command line, but then overwritten.
+				// Keep track of the last successful update,
+				// we sometimes end in a state were the update
+				// is not picked up by a client and we use this
+				// to determine if we should "force" an update.
+				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
+				// when an outdated machine object is kept alive, e.g. db is update from
+				// command line, but then overwritten.
 				err = h.UpdateMachine(m)
 				if err != nil {
 					log.Error().
@@ -481,7 +483,7 @@ func (h *Headscale) scheduledPollWorker(
 				Str("func", "scheduledPollWorker").
 				Str("machine", m.Name).
 				Msg("Sending update request")
-			updateRequestsFromNode.WithLabelValues("scheduled-update").Inc()
+			updateRequestsFromNode.WithLabelValues(m.Name, m.Namespace.Name, "scheduled-update").Inc()
 			updateChan <- struct{}{}
 		}
 	}

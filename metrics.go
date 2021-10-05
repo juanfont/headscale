@@ -26,16 +26,16 @@ var (
 		Namespace: prometheusNamespace,
 		Name:      "update_request_from_node_total",
 		Help:      "The number of updates requested by a node/update function",
-	}, []string{"state"})
-	updateRequestsToNode = promauto.NewCounter(prometheus.CounterOpts{
+	}, []string{"namespace", "machine", "state"})
+	updateRequestsSentToNode = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
-		Name:      "update_request_to_node_total",
+		Name:      "update_request_sent_to_node_total",
 		Help:      "The number of calls/messages issued on a specific nodes update channel",
-	})
+	}, []string{"namespace", "machine", "status"})
 	//TODO(kradalby): This is very debugging, we might want to remove it.
 	updateRequestsReceivedOnChannel = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "update_request_received_on_channel_total",
 		Help:      "The number of update requests received on an update channel",
-	}, []string{"machine"})
+	}, []string{"namespace", "machine"})
 )
