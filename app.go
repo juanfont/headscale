@@ -65,9 +65,6 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
 
-	clientsUpdateChannels     sync.Map
-	clientsUpdateChannelMutex sync.Mutex
-
 	lastStateChange sync.Map
 }
 
@@ -145,10 +142,9 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 				if err != nil {
 					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
-				updateRequestsFromNode.WithLabelValues("ephemeral-node-update").Inc()
-				h.notifyChangesToPeers(&m)
 			}
 		}
+		h.setLastStateChangeToNow(ns.Name)
 	}
 }
 

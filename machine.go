@@ -2,7 +2,6 @@ package headscale
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -212,111 +211,6 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 		}
 	}
 	return &hostinfo, nil
-}
-
-func (h *Headscale) notifyChangesToPeers(m *Machine) {
-	peers, err := h.getPeers(m)
-	if err != nil {
-		log.Error().
-			Str("func", "notifyChangesToPeers").
-			Str("machine", m.Name).
-			Msgf("Error getting peers: %s", err)
-		return
-	}
-	for _, peer := range peers {
-		log.Info().
-			Str("func", "notifyChangesToPeers").
-			Str("machine", m.Name).
-			Str("peer", peer.Name).
-			Str("address", peer.IPAddress).
-			Msgf("Notifying peer %s (%s)", peer.Name, peer.IPAddress)
-		err := h.sendRequestOnUpdateChannel(&peer)
-		if err != nil {
-			log.Info().
-				Str("func", "notifyChangesToPeers").
-				Str("machine", m.Name).
-				Str("peer", peer.Name).
-				Msgf("Peer %s does not have an open update client, skipping.", peer.Name)
-			continue
-		}
-		log.Trace().
-			Str("func", "notifyChangesToPeers").
-			Str("machine", m.Name).
-			Str("peer", peer.Name).
-			Str("address", peer.IPAddress).
-			Msgf("Notified peer %s (%s)", peer.Name, peer.IPAddress)
-	}
-}
-
-func (h *Headscale) getOrOpenUpdateChannel(m *Machine) <-chan struct{} {
-	var updateChan chan struct{}
-	if storedChan, ok := h.clientsUpdateChannels.Load(m.ID); ok {
-		if unwrapped, ok := storedChan.(chan struct{}); ok {
-			updateChan = unwrapped
-		} else {
-			log.Error().
-				Str("handler", "openUpdateChannel").
-				Str("machine", m.Name).
-				Msg("Failed to convert update channel to struct{}")
-		}
-	} else {
-		log.Debug().
-			Str("handler", "openUpdateChannel").
-			Str("machine", m.Name).
-			Msg("Update channel not found, creating")
-
-		updateChan = make(chan struct{})
-		h.clientsUpdateChannels.Store(m.ID, updateChan)
-	}
-	return updateChan
-}
-
-func (h *Headscale) closeUpdateChannel(m *Machine) {
-	h.clientsUpdateChannelMutex.Lock()
-	defer h.clientsUpdateChannelMutex.Unlock()
-
-	if storedChan, ok := h.clientsUpdateChannels.Load(m.ID); ok {
-		if unwrapped, ok := storedChan.(chan struct{}); ok {
-			close(unwrapped)
-		}
-	}
-	h.clientsUpdateChannels.Delete(m.ID)
-}
-
-func (h *Headscale) sendRequestOnUpdateChannel(m *Machine) error {
-	h.clientsUpdateChannelMutex.Lock()
-	defer h.clientsUpdateChannelMutex.Unlock()
-
-	pUp, ok := h.clientsUpdateChannels.Load(uint64(m.ID))
-	if ok {
-		log.Info().
-			Str("func", "requestUpdate").
-			Str("machine", m.Name).
-			Msgf("Notifying peer %s", m.Name)
-
-		if update, ok := pUp.(chan struct{}); ok {
-			log.Trace().
-				Str("func", "requestUpdate").
-				Str("machine", m.Name).
-				Msgf("Update channel is %#v", update)
-
-			updateRequestsToNode.Inc()
-			update <- struct{}{}
-
-			log.Trace().
-				Str("func", "requestUpdate").
-				Str("machine", m.Name).
-				Msgf("Notified machine %s", m.Name)
-		}
-	} else {
-		err := errors.New("machine does not have an open update channel")
-		log.Info().
-			Str("func", "requestUpdate").
-			Str("machine", m.Name).
-			Msgf("Machine %s does not have an open update channel", m.Name)
-		return err
-	}
-	return nil
 }
 
 func (h *Headscale) isOutdated(m *Machine) bool {
