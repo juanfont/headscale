@@ -17,10 +17,10 @@ func (h *Headscale) generateMagicDNSRootDomains() (*[]dnsname.FQDN, error) {
 	ipv6base := dnsname.FQDN("0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
 	fqdns := []dnsname.FQDN{base, ipv6base}
 
+	// TODO(juanfont): This only works for the 100.64.0.0/10 range.
 	for i := 64; i <= 127; i++ {
 		fqdn, err := dnsname.ToFQDN(fmt.Sprintf("%d.100.in-addr.arpa.", i))
 		if err != nil {
-			// TODO: propagate error
 			continue
 		}
 		fqdns = append(fqdns, fqdn)
