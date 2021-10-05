@@ -260,16 +260,9 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 
 	var dnsConfig *tailcfg.DNSConfig
 	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS is enabled
-		// TODO(juanfont): We should not be regenerating this all the time
-		// And we should only send the domains of the peers (this own namespace + those from the shared peers)
-		namespaces, err := h.ListNamespaces()
-		if err != nil {
-			return nil, err
-		}
+		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
 		dnsConfig = h.cfg.DNSConfig.Clone()
-		for _, ns := range *namespaces {
-			dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", ns.Name, h.cfg.BaseDomain))
-		}
+		dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", m.Namespace.Name, h.cfg.BaseDomain))
 	} else {
 		dnsConfig = h.cfg.DNSConfig
 	}
