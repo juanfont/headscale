@@ -231,7 +231,10 @@ func (h *Headscale) isOutdated(m *Machine) bool {
 			Time("last_successful_update", *m.LastSuccessfulUpdate).
 			Time("last_state_change", lastChange).
 			Msgf("Checking if %s is missing updates", m.Name)
-		return m.LastSuccessfulUpdate.Before(lastChange)
+		// Only return if we have a shared node with a newer update.
+		if m.LastSuccessfulUpdate.Before(lastChange) {
+			return true
+		}
 	}
 
 	lastChange := h.getLastStateChange(m.Namespace.Name)
