@@ -171,7 +171,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		DNSConfig: GetDNSConfig(),
 
-		OIDCEndpoint:     viper.GetString("oidc_endpoint"),
+		OIDCIssuer:       viper.GetString("oidc_issuer"),
 		OIDCClientID:     viper.GetString("oidc_client_id"),
 		OIDCClientSecret: viper.GetString("oidc_client_secret"),
 	}

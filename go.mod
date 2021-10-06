@@ -7,11 +7,12 @@ require (
 	github.com/Microsoft/go-winio v0.5.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.1 // indirect
 	github.com/containerd/continuity v0.1.0 // indirect
+	github.com/coreos/go-oidc/v3 v3.1.0
 	github.com/docker/cli v20.10.8+incompatible // indirect
 	github.com/docker/docker v20.10.8+incompatible // indirect
 	github.com/efekarakus/termcolor v1.0.1
 	github.com/gin-gonic/gin v1.7.4
-	github.com/gofrs/uuid v4.0.0+incompatible // indirect
+	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/google/go-github v17.0.0+incompatible // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
@@ -28,13 +29,13 @@ require (
 	github.com/spf13/viper v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/tailscale/hujson v0.0.0-20210818175511-7360507a6e88
-	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e // indirect
+	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
 	golang.org/x/net v0.0.0-20210913180222-943fd674d43e // indirect
+	golang.org/x/oauth2 v0.0.0-20210402161424-2e8d93401602
 	golang.org/x/sys v0.0.0-20210910150752-751e447fb3d0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-	gopkg.in/square/go-jose.v2 v2.3.1
 	gopkg.in/yaml.v2 v2.4.0
 	gorm.io/datatypes v1.0.2
 	gorm.io/driver/postgres v1.1.1

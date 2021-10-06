@@ -46,7 +46,7 @@ type Config struct {
 
 	DNSConfig *tailcfg.DNSConfig
 
-	OIDCEndpoint     string
+	OIDCIssuer       string
 	OIDCClientID     string
 	OIDCClientSecret string
 }
@@ -172,11 +172,11 @@ func (h *Headscale) Serve() error {
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
 	r.POST("/machine/:id", h.RegistrationHandler)
-	r.GET("/oidc/register/:mKey", h.RegisterOIDC)
+	r.GET("/oidc/register/:mkey", h.RegisterOIDC)
 	r.GET("/oidc/callback", h.OIDCCallback)
 	r.GET("/apple", h.AppleMobileConfig)
 	r.GET("/apple/:platform", h.ApplePlatformConfig)
-  
+
 	var err error
 
 	timeout := 30 * time.Second

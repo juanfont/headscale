@@ -50,6 +50,11 @@ func (m Machine) isAlreadyRegistered() bool {
 	return m.Registered
 }
 
+// isExpired returns whether the machine registration has expired
+func (m Machine) isExpired() bool {
+	return time.Now().UTC().After(*m.Expiry)
+}
+
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS
 func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {

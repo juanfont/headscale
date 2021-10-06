@@ -134,7 +134,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Str("machine", m.Name).
 			Msg("Not registered and not NodeKey rotation. Sending a authurl to register")
 
-		if h.cfg.OIDCEndpoint != "" {
+		if h.cfg.OIDCIssuer != "" {
 			resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s", h.cfg.ServerURL, mKey.HexString())
 		} else {
 			resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
@@ -204,7 +204,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		Str("handler", "Registration").
 		Str("machine", m.Name).
 		Msg("The node is sending us a new NodeKey, sending auth url")
-	if h.cfg.OIDCEndpoint != "" {
+	if h.cfg.OIDCIssuer != "" {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s", h.cfg.ServerURL, mKey.HexString())
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
