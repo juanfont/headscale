@@ -250,8 +250,8 @@ func (h *Headscale) setLastStateChangeToNow(namespace string) {
 func (h *Headscale) getLastStateChange(namespace string) time.Time {
 	if wrapped, ok := h.lastStateChange.Load(namespace); ok {
 		lastChange, _ := wrapped.(time.Time)
-		return lastChange
 
+		return lastChange
 	}
 
 	now := time.Now().UTC()

@@ -65,7 +65,7 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
-		return nil, err
+		return Machines{}, err
 	}
 
 	sort.Slice(machines, func(i, j int) bool { return machines[i].ID < machines[j].ID })
@@ -87,7 +87,7 @@ func (h *Headscale) getShared(m *Machine) (Machines, error) {
 	sharedMachines := []SharedMachine{}
 	if err := h.db.Preload("Namespace").Preload("Machine").Where("namespace_id = ?",
 		m.NamespaceID).Find(&sharedMachines).Error; err != nil {
-		return nil, err
+		return Machines{}, err
 	}
 
 	peers := make(Machines, 0)
@@ -111,7 +111,7 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 			Str("func", "getPeers").
 			Err(err).
 			Msg("Cannot fetch peers")
-		return nil, err
+		return Machines{}, err
 	}
 
 	shared, err := h.getShared(m)
@@ -120,7 +120,7 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 			Str("func", "getDirectPeers").
 			Err(err).
 			Msg("Cannot fetch peers")
-		return nil, err
+		return Machines{}, err
 	}
 
 	peers := append(direct, shared...)
@@ -217,6 +217,21 @@ func (h *Headscale) isOutdated(m *Machine) bool {
 	err := h.UpdateMachine(m)
 	if err != nil {
 		return true
+	}
+
+	sharedMachines, _ := h.getShared(m)
+
+	// Check if any of our shared namespaces has updates that we have
+	// not propagated.
+	for _, sharedMachine := range sharedMachines {
+		lastChange := h.getLastStateChange(sharedMachine.Namespace.Name)
+		log.Trace().
+			Str("func", "keepAlive").
+			Str("machine", m.Name).
+			Time("last_successful_update", *m.LastSuccessfulUpdate).
+			Time("last_state_change", lastChange).
+			Msgf("Checking if %s is missing updates", m.Name)
+		return m.LastSuccessfulUpdate.Before(lastChange)
 	}
 
 	lastChange := h.getLastStateChange(m.Namespace.Name)
