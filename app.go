@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -247,14 +248,28 @@ func (h *Headscale) setLastStateChangeToNow(namespace string) {
 	h.lastStateChange.Store(namespace, now)
 }
 
-func (h *Headscale) getLastStateChange(namespace string) time.Time {
-	if wrapped, ok := h.lastStateChange.Load(namespace); ok {
-		lastChange, _ := wrapped.(time.Time)
+func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
+	times := []time.Time{}
 
-		return lastChange
+	for _, namespace := range namespaces {
+		if wrapped, ok := h.lastStateChange.Load(namespace); ok {
+			lastChange, _ := wrapped.(time.Time)
+
+			times = append(times, lastChange)
+		}
+
 	}
 
-	now := time.Now().UTC()
-	h.lastStateChange.Store(namespace, now)
-	return now
+	sort.Slice(times, func(i, j int) bool {
+		return times[i].After(times[j])
+	})
+
+	log.Trace().Msgf("Latest times %#v", times)
+
+	if len(times) == 0 {
+		return time.Now().UTC()
+
+	} else {
+		return times[0]
+	}
 }

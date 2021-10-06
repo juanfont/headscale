@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/set"
 	"github.com/rs/zerolog/log"
 
 	"gorm.io/datatypes"
@@ -221,23 +222,21 @@ func (h *Headscale) isOutdated(m *Machine) bool {
 
 	sharedMachines, _ := h.getShared(m)
 
+	namespaceSet := set.New(set.ThreadSafe)
+	namespaceSet.Add(m.Namespace.Name)
+
 	// Check if any of our shared namespaces has updates that we have
 	// not propagated.
 	for _, sharedMachine := range sharedMachines {
-		lastChange := h.getLastStateChange(sharedMachine.Namespace.Name)
-		log.Trace().
-			Str("func", "keepAlive").
-			Str("machine", m.Name).
-			Time("last_successful_update", *m.LastSuccessfulUpdate).
-			Time("last_state_change", lastChange).
-			Msgf("Checking if %s is missing updates", m.Name)
-		// Only return if we have a shared node with a newer update.
-		if m.LastSuccessfulUpdate.Before(lastChange) {
-			return true
-		}
+		namespaceSet.Add(sharedMachine.Namespace.Name)
 	}
 
-	lastChange := h.getLastStateChange(m.Namespace.Name)
+	namespaces := make([]string, namespaceSet.Size())
+	for index, namespace := range namespaceSet.List() {
+		namespaces[index] = namespace.(string)
+	}
+
+	lastChange := h.getLastStateChange(namespaces...)
 	log.Trace().
 		Str("func", "keepAlive").
 		Str("machine", m.Name).
