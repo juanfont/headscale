@@ -217,6 +217,8 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 func (h *Headscale) isOutdated(m *Machine) bool {
 	err := h.UpdateMachine(m)
 	if err != nil {
+		// It does not seem meaningful to propagate this error as the end result
+		// will have to be that the machine has to be considered outdated.
 		return true
 	}
 
