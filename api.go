@@ -277,7 +277,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 	log.Trace().
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
-		Interface("payload", resp).
+		// Interface("payload", resp).
 		Msgf("Generated map response: %s", tailMapResponseToString(resp))
 
 	var respBody []byte

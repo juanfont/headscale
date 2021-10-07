@@ -176,24 +176,17 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 		return
 	}
 
-	names := []string{}
-	err = json.Unmarshal([]byte(v), &names)
+	namespaces := []string{}
+	err = json.Unmarshal([]byte(v), &namespaces)
 	if err != nil {
 		return
 	}
-	for _, name := range names {
+	for _, namespace := range namespaces {
 		log.Trace().
 			Str("func", "RequestMapUpdates").
-			Str("machine", name).
-			Msg("Sending updates to nodes in namespace")
-		machines, err := h.ListMachinesInNamespace(name)
-		if err != nil {
-			continue
-		}
-		for _, m := range *machines {
-			updateRequestsFromNode.WithLabelValues("namespace-update").Inc()
-			h.notifyChangesToPeers(&m)
-		}
+			Str("machine", namespace).
+			Msg("Sending updates to nodes in namespacespace")
+		h.setLastStateChangeToNow(namespace)
 	}
 	newV, err := h.getValue("namespaces_pending_updates")
 	if err != nil {

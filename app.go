@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -64,9 +65,6 @@ type Headscale struct {
 
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
-
-	clientsUpdateChannels     sync.Map
-	clientsUpdateChannelMutex sync.Mutex
 
 	lastStateChange sync.Map
 }
@@ -145,10 +143,9 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 				if err != nil {
 					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
-				updateRequestsFromNode.WithLabelValues("ephemeral-node-update").Inc()
-				h.notifyChangesToPeers(&m)
 			}
 		}
+		h.setLastStateChangeToNow(ns.Name)
 	}
 }
 
@@ -251,14 +248,28 @@ func (h *Headscale) setLastStateChangeToNow(namespace string) {
 	h.lastStateChange.Store(namespace, now)
 }
 
-func (h *Headscale) getLastStateChange(namespace string) time.Time {
-	if wrapped, ok := h.lastStateChange.Load(namespace); ok {
-		lastChange, _ := wrapped.(time.Time)
-		return lastChange
+func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
+	times := []time.Time{}
+
+	for _, namespace := range namespaces {
+		if wrapped, ok := h.lastStateChange.Load(namespace); ok {
+			lastChange, _ := wrapped.(time.Time)
+
+			times = append(times, lastChange)
+		}
 
 	}
 
-	now := time.Now().UTC()
-	h.lastStateChange.Store(namespace, now)
-	return now
+	sort.Slice(times, func(i, j int) bool {
+		return times[i].After(times[j])
+	})
+
+	log.Trace().Msgf("Latest times %#v", times)
+
+	if len(times) == 0 {
+		return time.Now().UTC()
+
+	} else {
+		return times[0]
+	}
 }

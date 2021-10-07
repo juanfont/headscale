@@ -10,6 +10,7 @@ require (
 	github.com/docker/cli v20.10.8+incompatible // indirect
 	github.com/docker/docker v20.10.8+incompatible // indirect
 	github.com/efekarakus/termcolor v1.0.1
+	github.com/fatih/set v0.2.1 // indirect
 	github.com/gin-gonic/gin v1.7.4
 	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/google/go-github v17.0.0+incompatible // indirect
