@@ -26,6 +26,7 @@ func init() {
 	createPreAuthKeyCmd.PersistentFlags().Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
 	createPreAuthKeyCmd.Flags().StringP("subnet", "s", "", "Subnet to assign new nodes to")
+	createPreAuthKeyCmd.Flags().String("ip", "", "IP to assign a node to (only supported for non-resuable keys)")
 }
 
 var preauthkeysCmd = &cobra.Command{
@@ -119,6 +120,19 @@ var createPreAuthKeyCmd = &cobra.Command{
 		}
 
 		subnet, _ := cmd.Flags().GetString("subnet")
+
+		if !reusable && subnet == "" {
+			ip, _ := cmd.Flags().GetString("ip")
+			if ip != "" {
+				// If IP is in CIDR notation, strip the last octet
+				if strings.Contains(ip, "/") {
+					ip = strings.Split(ip, "/")[0]
+				}
+
+				subnet = ip + "/32"
+			}
+		}
+
 		k, err := h.CreatePreAuthKeyWithSubnet(n, reusable, ephemeral, expiration, subnet)
 		if strings.HasPrefix(o, "json") {
 			JsonOutput(k, err, o)
