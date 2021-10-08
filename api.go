@@ -135,10 +135,10 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Msg("Not registered and not NodeKey rotation. Sending a authurl to register")
 
 		if h.cfg.OIDCIssuer != "" {
-			resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s", h.cfg.ServerURL, mKey.HexString())
+			resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s", strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 		} else {
 			resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-				h.cfg.ServerURL, mKey.HexString())
+				strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 		}
 		respBody, err := encode(resp, &mKey, h.privateKey)
 		if err != nil {
@@ -205,10 +205,10 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		Str("machine", m.Name).
 		Msg("The node is sending us a new NodeKey, sending auth url")
 	if h.cfg.OIDCIssuer != "" {
-		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s", h.cfg.ServerURL, mKey.HexString())
+		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s", strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			h.cfg.ServerURL, mKey.HexString())
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 	}
 	respBody, err := encode(resp, &mKey, h.privateKey)
 	if err != nil {

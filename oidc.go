@@ -53,7 +53,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 			ClientID:     h.cfg.OIDCClientID,
 			ClientSecret: h.cfg.OIDCClientSecret,
 			Endpoint:     oidcProvider.Endpoint(),
-			RedirectURL:  fmt.Sprintf("%s/oidc/callback", h.cfg.ServerURL),
+			RedirectURL:  fmt.Sprintf("%s/oidc/callback", strings.TrimSuffix(h.cfg.ServerURL, "/")),
 			Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 		}
 
