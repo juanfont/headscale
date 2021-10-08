@@ -7,5 +7,5 @@
   "db_type": "sqlite3",
   "db_path": "/tmp/integration_test_db.sqlite3",
   "acl_policy_path": "",
-  "log_level": "debug"
+  "log_level": "trace"
 }

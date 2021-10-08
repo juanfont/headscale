@@ -8,6 +8,7 @@ import (
 	"golang.org/x/oauth2"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zsais/go-gin-prometheus"
+	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
@@ -47,6 +50,9 @@ type Config struct {
 	TLSCertPath string
 	TLSKeyPath  string
 
+	ACMEURL   string
+	ACMEEmail string
+
 	DNSConfig *tailcfg.DNSConfig
 
 	OIDCIssuer       string
@@ -69,9 +75,6 @@ type Headscale struct {
 
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
-
-	clientsUpdateChannels     sync.Map
-	clientsUpdateChannelMutex sync.Mutex
 
 	lastStateChange sync.Map
 
@@ -161,9 +164,9 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 				if err != nil {
 					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
-				h.notifyChangesToPeers(&m)
 			}
 		}
+		h.setLastStateChangeToNow(ns.Name)
 	}
 }
 
@@ -184,6 +187,10 @@ func (h *Headscale) watchForKVUpdatesWorker() {
 // Serve launches a GIN server with the Headscale API
 func (h *Headscale) Serve() error {
 	r := gin.Default()
+
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r)
+
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"healthy": "ok"}) })
 	r.GET("/key", h.KeyHandler)
 	r.GET("/register", h.RegisterWebAPI)
@@ -196,16 +203,18 @@ func (h *Headscale) Serve() error {
 
 	var err error
 
-	timeout := 30 * time.Second
-
 	go h.watchForKVUpdates(5000)
 	go h.expireEphemeralNodes(5000)
 
 	s := &http.Server{
-		Addr:         h.cfg.Addr,
-		Handler:      r,
-		ReadTimeout:  timeout,
-		WriteTimeout: timeout,
+		Addr:        h.cfg.Addr,
+		Handler:     r,
+		ReadTimeout: 30 * time.Second,
+		// Go does not handle timeouts in HTTP very well, and there is
+		// no good way to handle streaming timeouts, therefore we need to
+		// keep this at unlimited and be careful to clean up connections
+		// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#aboutstreaming
+		WriteTimeout: 0,
 	}
 
 	if h.cfg.TLSLetsEncryptHostname != "" {
@@ -217,14 +226,14 @@ func (h *Headscale) Serve() error {
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(h.cfg.TLSLetsEncryptHostname),
 			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
+			Client: &acme.Client{
+				DirectoryURL: h.cfg.ACMEURL,
+			},
+			Email: h.cfg.ACMEEmail,
 		}
-		s := &http.Server{
-			Addr:         h.cfg.Addr,
-			TLSConfig:    m.TLSConfig(),
-			Handler:      r,
-			ReadTimeout:  timeout,
-			WriteTimeout: timeout,
-		}
+
+		s.TLSConfig = m.TLSConfig()
+
 		if h.cfg.TLSLetsEncryptChallengeType == "TLS-ALPN-01" {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
@@ -235,7 +244,6 @@ func (h *Headscale) Serve() error {
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
 			go func() {
-
 				log.Fatal().
 					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, m.HTTPHandler(http.HandlerFunc(h.redirect)))).
 					Msg("failed to set up a HTTP server")
@@ -260,17 +268,32 @@ func (h *Headscale) Serve() error {
 
 func (h *Headscale) setLastStateChangeToNow(namespace string) {
 	now := time.Now().UTC()
+	lastStateUpdate.WithLabelValues("", "headscale").Set(float64(now.Unix()))
 	h.lastStateChange.Store(namespace, now)
 }
 
-func (h *Headscale) getLastStateChange(namespace string) time.Time {
-	if wrapped, ok := h.lastStateChange.Load(namespace); ok {
-		lastChange, _ := wrapped.(time.Time)
-		return lastChange
+func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
+	times := []time.Time{}
+
+	for _, namespace := range namespaces {
+		if wrapped, ok := h.lastStateChange.Load(namespace); ok {
+			lastChange, _ := wrapped.(time.Time)
+
+			times = append(times, lastChange)
+		}
 
 	}
 
-	now := time.Now().UTC()
-	h.lastStateChange.Store(namespace, now)
-	return now
+	sort.Slice(times, func(i, j int) bool {
+		return times[i].After(times[j])
+	})
+
+	log.Trace().Msgf("Latest times %#v", times)
+
+	if len(times) == 0 {
+		return time.Now().UTC()
+
+	} else {
+		return times[0]
+	}
 }
