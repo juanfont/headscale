@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -233,9 +234,6 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		},
 		Networks: []*dockertest.Network{&network},
 		Cmd:      []string{"headscale", "serve"},
-		PortBindings: map[docker.Port][]docker.PortBinding{
-			"8080/tcp": {{HostPort: "8080"}},
-		},
 	}
 
 	fmt.Println("Creating headscale container")
@@ -270,7 +268,11 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		}
 		return nil
 	}); err != nil {
-		log.Fatalf("Could not connect to docker: %s", err)
+		// TODO(kradalby): If we cannot access headscale, or any other fatal error during
+		// test setup, we need to abort and tear down. However, testify does not seem to
+		// support that at the moment:
+		// https://github.com/stretchr/testify/issues/849
+		return // fmt.Errorf("Could not connect to headscale: %s", err)
 	}
 	fmt.Println("headscale container is ready")
 
@@ -292,7 +294,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		)
 		assert.Nil(s.T(), err)
 
-		headscaleEndpoint := fmt.Sprintf("http://headscale:%s", headscale.GetPort("8080/tcp"))
+		headscaleEndpoint := "http://headscale:8080"
 
 		fmt.Printf("Joining tailscale containers to headscale at %s\n", headscaleEndpoint)
 		for hostname, tailscale := range scales.tailscales {
@@ -353,15 +355,16 @@ func (s *IntegrationTestSuite) TestGetIpAddresses() {
 
 		for hostname := range scales.tailscales {
 			s.T().Run(hostname, func(t *testing.T) {
-				ip := ips[hostname]
+				ip, ok := ips[hostname]
+
+				assert.True(t, ok)
+				assert.NotNil(t, ip)
 
 				fmt.Printf("IP for %s: %s\n", hostname, ip)
 
 				// c.Assert(ip.Valid(), check.IsTrue)
 				assert.True(t, ip.Is4())
 				assert.True(t, ipPrefix.Contains(ip))
-
-				ips[hostname] = ip
 			})
 		}
 	}
@@ -692,6 +695,9 @@ func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]strin
 			n := ft.Node
 			for _, a := range n.Addresses { // just add all the addresses
 				if _, ok := fts[a.IP()]; !ok {
+					if ft.PeerAPIURL == "" {
+						return nil, errors.New("api url is empty")
+					}
 					fts[a.IP()] = ft.PeerAPIURL
 				}
 			}

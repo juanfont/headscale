@@ -65,6 +65,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Str("handler", "Registration").
 			Err(err).
 			Msg("Cannot parse machine key")
+		machineRegistrations.WithLabelValues("unkown", "web", "error", "unknown").Inc()
 		c.String(http.StatusInternalServerError, "Sad!")
 		return
 	}
@@ -75,6 +76,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Str("handler", "Registration").
 			Err(err).
 			Msg("Cannot decode message")
+		machineRegistrations.WithLabelValues("unkown", "web", "error", "unknown").Inc()
 		c.String(http.StatusInternalServerError, "Very sad!")
 		return
 	}
@@ -95,6 +97,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				Str("handler", "Registration").
 				Err(err).
 				Msg("Could not create row")
+			machineRegistrations.WithLabelValues("unkown", "web", "error", m.Namespace.Name).Inc()
 			return
 		}
 	}
@@ -123,9 +126,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 					Str("handler", "Registration").
 					Err(err).
 					Msg("Cannot encode message")
+				machineRegistrations.WithLabelValues("update", "web", "error", m.Namespace.Name).Inc()
 				c.String(http.StatusInternalServerError, "")
 				return
 			}
+			machineRegistrations.WithLabelValues("update", "web", "success", m.Namespace.Name).Inc()
 			c.Data(200, "application/json; charset=utf-8", respBody)
 			return
 		}
@@ -142,9 +147,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				Str("handler", "Registration").
 				Err(err).
 				Msg("Cannot encode message")
+			machineRegistrations.WithLabelValues("new", "web", "error", m.Namespace.Name).Inc()
 			c.String(http.StatusInternalServerError, "")
 			return
 		}
+		machineRegistrations.WithLabelValues("new", "web", "success", m.Namespace.Name).Inc()
 		c.Data(200, "application/json; charset=utf-8", respBody)
 		return
 	}
@@ -214,7 +221,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	c.Data(200, "application/json; charset=utf-8", respBody)
 }
 
-func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
+func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Machine) ([]byte, error) {
 	log.Trace().
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
@@ -227,6 +234,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 			Msg("Cannot convert to node")
 		return nil, err
 	}
+
 	peers, err := h.getPeers(m)
 	if err != nil {
 		log.Error().
@@ -242,11 +250,20 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 		DisplayName: m.Namespace.Name,
 	}
 
+	nodePeers, err := peers.toNodes(true)
+	if err != nil {
+		log.Error().
+			Str("func", "getMapResponse").
+			Err(err).
+			Msg("Failed to convert peers to Tailscale nodes")
+		return nil, err
+	}
+
 	resp := tailcfg.MapResponse{
 		KeepAlive: false,
 		Node:      node,
-		Peers:     *peers,
-		//TODO(kradalby): As per tailscale docs, if DNSConfig is nil,
+		Peers:     nodePeers,
+		// TODO(kradalby): As per tailscale docs, if DNSConfig is nil,
 		// it means its not updated, maybe we can have some logic
 		// to check and only pass updates when its updates.
 		// This is probably more relevant if we try to implement
@@ -261,6 +278,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 	log.Trace().
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
+		// Interface("payload", resp).
 		Msgf("Generated map response: %s", tailMapResponseToString(resp))
 
 	var respBody []byte
@@ -283,10 +301,10 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Mac
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
-	return &data, nil
+	return data, nil
 }
 
-func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapRequest, m Machine) (*[]byte, error) {
+func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Machine) ([]byte, error) {
 	resp := tailcfg.MapResponse{
 		KeepAlive: true,
 	}
@@ -309,7 +327,7 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapReque
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
-	return &data, nil
+	return data, nil
 }
 
 func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, req tailcfg.RegisterRequest, m Machine) {
@@ -329,13 +347,15 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 				Err(err).
 				Msg("Cannot encode message")
 			c.String(http.StatusInternalServerError, "")
+			machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).Inc()
 			return
 		}
-		c.Data(200, "application/json; charset=utf-8", respBody)
+		c.Data(401, "application/json; charset=utf-8", respBody)
 		log.Error().
 			Str("func", "handleAuthKey").
 			Str("machine", m.Name).
 			Msg("Failed authentication via AuthKey")
+		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).Inc()
 		return
 	}
 
@@ -369,6 +389,7 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 			Str("func", "handleAuthKey").
 			Str("machine", m.Name).
 			Msg("Failed to find an available IP")
+		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).Inc()
 		return
 	}
 	log.Info().
@@ -394,9 +415,11 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 			Str("machine", m.Name).
 			Err(err).
 			Msg("Cannot encode message")
+		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).Inc()
 		c.String(http.StatusInternalServerError, "Extremely sad!")
 		return
 	}
+	machineRegistrations.WithLabelValues("new", "authkey", "success", m.Namespace.Name).Inc()
 	c.Data(200, "application/json; charset=utf-8", respBody)
 	log.Info().
 		Str("func", "handleAuthKey").

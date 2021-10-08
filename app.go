@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"gorm.io/gorm"
@@ -63,9 +65,6 @@ type Headscale struct {
 
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
-
-	clientsUpdateChannels     sync.Map
-	clientsUpdateChannelMutex sync.Mutex
 
 	lastStateChange sync.Map
 }
@@ -144,9 +143,9 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 				if err != nil {
 					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
-				h.notifyChangesToPeers(&m)
 			}
 		}
+		h.setLastStateChangeToNow(ns.Name)
 	}
 }
 
@@ -167,6 +166,10 @@ func (h *Headscale) watchForKVUpdatesWorker() {
 // Serve launches a GIN server with the Headscale API
 func (h *Headscale) Serve() error {
 	r := gin.Default()
+
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r)
+
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"healthy": "ok"}) })
 	r.GET("/key", h.KeyHandler)
 	r.GET("/register", h.RegisterWebAPI)
@@ -241,17 +244,32 @@ func (h *Headscale) Serve() error {
 
 func (h *Headscale) setLastStateChangeToNow(namespace string) {
 	now := time.Now().UTC()
+	lastStateUpdate.WithLabelValues("", "headscale").Set(float64(now.Unix()))
 	h.lastStateChange.Store(namespace, now)
 }
 
-func (h *Headscale) getLastStateChange(namespace string) time.Time {
-	if wrapped, ok := h.lastStateChange.Load(namespace); ok {
-		lastChange, _ := wrapped.(time.Time)
-		return lastChange
+func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
+	times := []time.Time{}
+
+	for _, namespace := range namespaces {
+		if wrapped, ok := h.lastStateChange.Load(namespace); ok {
+			lastChange, _ := wrapped.(time.Time)
+
+			times = append(times, lastChange)
+		}
 
 	}
 
-	now := time.Now().UTC()
-	h.lastStateChange.Store(namespace, now)
-	return now
+	sort.Slice(times, func(i, j int) bool {
+		return times[i].After(times[j])
+	})
+
+	log.Trace().Msgf("Latest times %#v", times)
+
+	if len(times) == 0 {
+		return time.Now().UTC()
+
+	} else {
+		return times[0]
+	}
 }
