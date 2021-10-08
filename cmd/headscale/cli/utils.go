@@ -144,6 +144,16 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		return nil, err
 	}
 
+	maxMachineExpiry, _ := time.ParseDuration("8h")
+	if viper.GetDuration("max_machine_expiry") >= time.Second {
+		maxMachineExpiry = viper.GetDuration("max_machine_expiry")
+	}
+
+	defaultMachineExpiry, _ := time.ParseDuration("8h")
+	if viper.GetDuration("default_machine_expiry") >= time.Second {
+		defaultMachineExpiry = viper.GetDuration("default_machine_expiry")
+	}
+
 	cfg := headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
@@ -174,6 +184,9 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		OIDCIssuer:       viper.GetString("oidc_issuer"),
 		OIDCClientID:     viper.GetString("oidc_client_id"),
 		OIDCClientSecret: viper.GetString("oidc_client_secret"),
+
+		MaxMachineExpiry:     maxMachineExpiry,
+		DefaultMachineExpiry: defaultMachineExpiry,
 	}
 
 	h, err := headscale.NewHeadscale(cfg)

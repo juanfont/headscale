@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -83,7 +84,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		log.Info().Str("machine", req.Hostinfo.Hostname).Msg("New machine")
 		m = Machine{
-			Expiry:               &req.Expiry,
+			Expiry:               &time.Time{},
 			MachineKey:           mKey.HexString(),
 			Name:                 req.Hostinfo.Hostname,
 			NodeKey:              wgkey.Key(req.NodeKey).HexString(),
@@ -107,7 +108,33 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 	// We have the updated key!
 	if m.NodeKey == wgkey.Key(req.NodeKey).HexString() {
-		if m.Registered {
+
+		if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
+			log.Debug().
+				Str("handler", "Registration").
+				Str("machine", m.Name).
+				Msg("Client requested logout")
+
+			m.Expiry = &req.Expiry
+			h.db.Save(&m)
+
+			resp.AuthURL = ""
+			resp.MachineAuthorized = false
+			resp.User = *m.Namespace.toUser()
+			respBody, err := encode(resp, &mKey, h.privateKey)
+			if err != nil {
+				log.Error().
+					Str("handler", "Registration").
+					Err(err).
+					Msg("Cannot encode message")
+				c.String(http.StatusInternalServerError, "")
+				return
+			}
+			c.Data(200, "application/json; charset=utf-8", respBody)
+			return
+		}
+
+		if m.Registered && m.Expiry.UTC().After(now) {
 			log.Debug().
 				Str("handler", "Registration").
 				Str("machine", m.Name).
@@ -132,14 +159,19 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		log.Debug().
 			Str("handler", "Registration").
 			Str("machine", m.Name).
-			Msg("Not registered and not NodeKey rotation. Sending a authurl to register")
+			Msg("Not registered (or expired) and not NodeKey rotation. Sending a authurl to register")
 
 		if h.cfg.OIDCIssuer != "" {
-			resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s", strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
+			resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
+				strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 		} else {
 			resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
 				strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 		}
+
+		m.Expiry = &req.Expiry // save the requested expiry time for retrieval later
+		h.db.Save(&m)
+
 		respBody, err := encode(resp, &mKey, h.privateKey)
 		if err != nil {
 			log.Error().
@@ -153,8 +185,8 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		return
 	}
 
-	// The NodeKey we have matches OldNodeKey, which means this is a refresh after an key expiration
-	if m.NodeKey == wgkey.Key(req.OldNodeKey).HexString() {
+	// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
+	if m.NodeKey == wgkey.Key(req.OldNodeKey).HexString() && m.Expiry.UTC().After(now) {
 		log.Debug().
 			Str("handler", "Registration").
 			Str("machine", m.Name).
@@ -179,14 +211,19 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 	// We arrive here after a client is restarted without finalizing the authentication flow or
 	// when headscale is stopped in the middle of the auth process.
-	if m.Registered {
+	if m.Registered && m.Expiry.UTC().After(now) {
 		log.Debug().
 			Str("handler", "Registration").
 			Str("machine", m.Name).
 			Msg("The node is sending us a new NodeKey, but machine is registered. All clear for /map")
+
+		m.NodeKey = wgkey.Key(req.NodeKey).HexString()
+		h.db.Save(&m)
+
 		resp.AuthURL = ""
 		resp.MachineAuthorized = true
 		resp.User = *m.Namespace.toUser()
+
 		respBody, err := encode(resp, &mKey, h.privateKey)
 		if err != nil {
 			log.Error().
@@ -210,6 +247,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 	}
+
+	m.Expiry = &req.Expiry                         // save the requested expiry time for retrieval later
+	m.NodeKey = wgkey.Key(req.NodeKey).HexString() // save the new nodekey
+	h.db.Save(&m)
+
 	respBody, err := encode(resp, &mKey, h.privateKey)
 	if err != nil {
 		log.Error().

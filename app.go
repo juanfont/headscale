@@ -3,6 +3,9 @@ package headscale
 import (
 	"errors"
 	"fmt"
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/patrickmn/go-cache"
+	"golang.org/x/oauth2"
 	"net/http"
 	"os"
 	"strings"
@@ -49,6 +52,9 @@ type Config struct {
 	OIDCIssuer       string
 	OIDCClientID     string
 	OIDCClientSecret string
+
+	MaxMachineExpiry     time.Duration
+	DefaultMachineExpiry time.Duration
 }
 
 // Headscale represents the base app of the service
@@ -68,6 +74,10 @@ type Headscale struct {
 	clientsUpdateChannelMutex sync.Mutex
 
 	lastStateChange sync.Map
+
+	oidcProvider   *oidc.Provider
+	oauth2Config   *oauth2.Config
+	oidcStateCache *cache.Cache
 }
 
 // NewHeadscale returns the Headscale app
@@ -105,6 +115,13 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	err = h.initDB()
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.OIDCIssuer != "" {
+		err = h.initOIDC()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &h, nil
