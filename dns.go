@@ -8,6 +8,9 @@ import (
 	"tailscale.com/util/dnsname"
 )
 
+// generateMagicDNSRootDomains generates a list of DNS entries to be included in the
+// routing for DNS in the MapResponse struct. This list of DNS instructs the OS
+// on what domains the Tailscale embedded DNS server should be used for.
 func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) (*[]dnsname.FQDN, error) {
 	base, err := dnsname.ToFQDN(baseDomain)
 	if err != nil {
@@ -19,14 +22,22 @@ func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) (
 	ipv6base := dnsname.FQDN("0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
 	fqdns := []dnsname.FQDN{base, ipv6base}
 
+	// Conversion to the std lib net.IPnet, a bit easier to operate
 	netRange := ipPrefix.IPNet()
 	maskBits, _ := netRange.Mask.Size()
 
+	// lastByte is the last IP byte covered by the mask
 	lastByte := maskBits / 8
+
+	// unmaskedBits is the number of bits not under the mask in the byte lastByte
 	unmaskedBits := 8 - maskBits%8
+
+	// min is the value in the lastByte byte of the IP
+	// max is basically 2^unmaskedBits - i.e., the value when all the unmaskedBits are set to 1
 	min := uint(netRange.IP[lastByte])
 	max := uint((min + 1<<uint(unmaskedBits)) - 1)
 
+	// here we generate the base domain (e.g., 100.in-addr.arpa., 16.172.in-addr.arpa., etc.)
 	rdnsSlice := []string{}
 	for i := lastByte - 1; i >= 0; i-- {
 		rdnsSlice = append(rdnsSlice, fmt.Sprintf("%d", netRange.IP[i]))
