@@ -12,7 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zsais/go-gin-prometheus"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"gorm.io/gorm"
@@ -111,7 +111,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	}
 
 	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS
-		magicDNSDomains, err := h.generateMagicDNSRootDomains()
+		magicDNSDomains, err := generateMagicDNSRootDomains(h.cfg.IPPrefix, h.cfg.BaseDomain)
 		if err != nil {
 			return nil, err
 		}
