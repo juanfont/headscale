@@ -140,10 +140,9 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("id", c.Param("id")).
 		Str("machine", m.Name).
 		Msg("Loading or creating update channel")
-	updateChan := h.getOrOpenUpdateChannel(m)
+	updateChan := make(chan struct{})
 
 	pollDataChan := make(chan []byte)
-	// defer close(pollData)
 
 	keepAliveChan := make(chan []byte)
 
@@ -159,8 +158,8 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
-		updateRequestsFromNode.WithLabelValues("endpoint-update").Inc()
-		go h.notifyChangesToPeers(m)
+		updateRequestsFromNode.WithLabelValues(m.Name, m.Namespace.Name, "endpoint-update").Inc()
+		go func() { updateChan <- struct{}{} }()
 		return
 	} else if req.OmitPeers && req.Stream {
 		log.Warn().
@@ -185,8 +184,8 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("machine", m.Name).
 		Msg("Notifying peers")
-	updateRequestsFromNode.WithLabelValues("full-update").Inc()
-	go h.notifyChangesToPeers(m)
+	updateRequestsFromNode.WithLabelValues(m.Name, m.Namespace.Name, "full-update").Inc()
+	go func() { updateChan <- struct{}{} }()
 
 	h.PollNetMapStream(c, m, req, mKey, pollDataChan, keepAliveChan, updateChan, cancelKeepAlive)
 	log.Trace().
@@ -206,10 +205,10 @@ func (h *Headscale) PollNetMapStream(
 	mKey wgkey.Key,
 	pollDataChan chan []byte,
 	keepAliveChan chan []byte,
-	updateChan <-chan struct{},
+	updateChan chan struct{},
 	cancelKeepAlive chan struct{},
 ) {
-	go h.scheduledPollWorker(cancelKeepAlive, keepAliveChan, mKey, req, m)
+	go h.scheduledPollWorker(cancelKeepAlive, updateChan, keepAliveChan, mKey, req, m)
 
 	c.Stream(func(w io.Writer) bool {
 		log.Trace().
@@ -325,7 +324,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("machine", m.Name).
 				Str("channel", "update").
 				Msg("Received a request for update")
-			updateRequestsReceivedOnChannel.WithLabelValues(m.Name).Inc()
+			updateRequestsReceivedOnChannel.WithLabelValues(m.Name, m.Namespace.Name).Inc()
 			if h.isOutdated(m) {
 				log.Debug().
 					Str("handler", "PollNetMapStream").
@@ -350,6 +349,7 @@ func (h *Headscale) PollNetMapStream(
 						Str("channel", "update").
 						Err(err).
 						Msg("Could not write the map response")
+					updateRequestsSentToNode.WithLabelValues(m.Name, m.Namespace.Name, "failed").Inc()
 					return false
 				}
 				log.Trace().
@@ -357,14 +357,15 @@ func (h *Headscale) PollNetMapStream(
 					Str("machine", m.Name).
 					Str("channel", "update").
 					Msg("Updated Map has been sent")
+				updateRequestsSentToNode.WithLabelValues(m.Name, m.Namespace.Name, "success").Inc()
 
-					// Keep track of the last successful update,
-					// we sometimes end in a state were the update
-					// is not picked up by a client and we use this
-					// to determine if we should "force" an update.
-					// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
-					// when an outdated machine object is kept alive, e.g. db is update from
-					// command line, but then overwritten.
+				// Keep track of the last successful update,
+				// we sometimes end in a state were the update
+				// is not picked up by a client and we use this
+				// to determine if we should "force" an update.
+				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
+				// when an outdated machine object is kept alive, e.g. db is update from
+				// command line, but then overwritten.
 				err = h.UpdateMachine(m)
 				if err != nil {
 					log.Error().
@@ -423,7 +424,8 @@ func (h *Headscale) PollNetMapStream(
 				Str("machine", m.Name).
 				Str("channel", "Done").
 				Msg("Closing update channel")
-			h.closeUpdateChannel(m)
+			//h.closeUpdateChannel(m)
+			close(updateChan)
 
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -446,13 +448,14 @@ func (h *Headscale) PollNetMapStream(
 
 func (h *Headscale) scheduledPollWorker(
 	cancelChan <-chan struct{},
+	updateChan chan<- struct{},
 	keepAliveChan chan<- []byte,
 	mKey wgkey.Key,
 	req tailcfg.MapRequest,
 	m *Machine,
 ) {
 	keepAliveTicker := time.NewTicker(60 * time.Second)
-	updateCheckerTicker := time.NewTicker(30 * time.Second)
+	updateCheckerTicker := time.NewTicker(10 * time.Second)
 
 	for {
 		select {
@@ -476,16 +479,12 @@ func (h *Headscale) scheduledPollWorker(
 			keepAliveChan <- data
 
 		case <-updateCheckerTicker.C:
-			// Send an update request regardless of outdated or not, if data is sent
-			// to the node is determined in the updateChan consumer block
-			err := h.sendRequestOnUpdateChannel(m)
-			if err != nil {
-				log.Error().
-					Str("func", "keepAlive").
-					Str("machine", m.Name).
-					Err(err).
-					Msgf("Failed to send update request to %s", m.Name)
-			}
+			log.Debug().
+				Str("func", "scheduledPollWorker").
+				Str("machine", m.Name).
+				Msg("Sending update request")
+			updateRequestsFromNode.WithLabelValues(m.Name, m.Namespace.Name, "scheduled-update").Inc()
+			updateChan <- struct{}{}
 		}
 	}
 }
