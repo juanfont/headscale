@@ -63,7 +63,7 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
+	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 		return nil, err
