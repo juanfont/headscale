@@ -23,6 +23,8 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 		return nil, errors.New("Machine not found")
 	}
 
+	h.updateMachineExpiry(&m) // update the machine's expiry before bailing if its already registered
+
 	if m.isAlreadyRegistered() {
 		return nil, errors.New("Machine already registered")
 	}
@@ -36,5 +38,6 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 	m.Registered = true
 	m.RegisterMethod = "cli"
 	h.db.Save(&m)
+
 	return &m, nil
 }

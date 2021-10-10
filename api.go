@@ -65,7 +65,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Str("handler", "Registration").
 			Err(err).
 			Msg("Cannot parse machine key")
-		machineRegistrations.WithLabelValues("unkown", "web", "error", "unknown").Inc()
+		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		c.String(http.StatusInternalServerError, "Sad!")
 		return
 	}
@@ -76,34 +76,33 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Str("handler", "Registration").
 			Err(err).
 			Msg("Cannot decode message")
-		machineRegistrations.WithLabelValues("unkown", "web", "error", "unknown").Inc()
+		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		c.String(http.StatusInternalServerError, "Very sad!")
 		return
 	}
 
 	now := time.Now().UTC()
-	var m Machine
-	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	m, err := h.GetMachineByMachineKey(mKey.HexString())
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Info().Str("machine", req.Hostinfo.Hostname).Msg("New machine")
-		m = Machine{
-			Expiry:               &time.Time{},
-			MachineKey:           mKey.HexString(),
-			Name:                 req.Hostinfo.Hostname,
-			NodeKey:              wgkey.Key(req.NodeKey).HexString(),
-			LastSuccessfulUpdate: &now,
+		newMachine := Machine{
+			Expiry:     &time.Time{},
+			MachineKey: mKey.HexString(),
+			Name:       req.Hostinfo.Hostname,
 		}
-		if err := h.db.Create(&m).Error; err != nil {
+		if err := h.db.Create(&newMachine).Error; err != nil {
 			log.Error().
 				Str("handler", "Registration").
 				Err(err).
 				Msg("Could not create row")
-			machineRegistrations.WithLabelValues("unkown", "web", "error", m.Namespace.Name).Inc()
+			machineRegistrations.WithLabelValues("unknown", "web", "error", m.Namespace.Name).Inc()
 			return
 		}
+		m = &newMachine
 	}
 
 	if !m.Registered && req.Auth.AuthKey != "" {
-		h.handleAuthKey(c, h.db, mKey, req, m)
+		h.handleAuthKey(c, h.db, mKey, req, *m)
 		return
 	}
 
@@ -112,13 +111,14 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	// We have the updated key!
 	if m.NodeKey == wgkey.Key(req.NodeKey).HexString() {
 
+		// The client sends an Expiry in the past if the client is requesting a logout
 		if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
-			log.Debug().
+			log.Info().
 				Str("handler", "Registration").
 				Str("machine", m.Name).
 				Msg("Client requested logout")
 
-			m.Expiry = &req.Expiry
+			m.Expiry = &req.Expiry // save the expiry so that the machine is marked as expired
 			h.db.Save(&m)
 
 			resp.AuthURL = ""
@@ -138,6 +138,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		}
 
 		if m.Registered && m.Expiry.UTC().After(now) {
+			// The machine registration is valid, respond with redirect to /map
 			log.Debug().
 				Str("handler", "Registration").
 				Str("machine", m.Name).
@@ -161,10 +162,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			return
 		}
 
+		// The client has registered before, but has expired
 		log.Debug().
 			Str("handler", "Registration").
 			Str("machine", m.Name).
-			Msg("Not registered (or expired) and not NodeKey rotation. Sending a authurl to register")
+			Msg("Machine registration has expired. Sending a authurl to register")
 
 		if h.cfg.OIDCIssuer != "" {
 			resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
@@ -174,7 +176,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 		}
 
-		m.Expiry = &req.Expiry // save the requested expiry time for retrieval later
+		m.RequestedExpiry = &req.Expiry // save the requested expiry time for retrieval later in the authentication flow
 		h.db.Save(&m)
 
 		respBody, err := encode(resp, &mKey, h.privateKey)
@@ -216,34 +218,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		return
 	}
 
-	// We arrive here after a client is restarted without finalizing the authentication flow or
-	// when headscale is stopped in the middle of the auth process.
-	if m.Registered && m.Expiry.UTC().After(now) {
-		log.Debug().
-			Str("handler", "Registration").
-			Str("machine", m.Name).
-			Msg("The node is sending us a new NodeKey, but machine is registered. All clear for /map")
-
-		m.NodeKey = wgkey.Key(req.NodeKey).HexString()
-		h.db.Save(&m)
-
-		resp.AuthURL = ""
-		resp.MachineAuthorized = true
-		resp.User = *m.Namespace.toUser()
-
-		respBody, err := encode(resp, &mKey, h.privateKey)
-		if err != nil {
-			log.Error().
-				Str("handler", "Registration").
-				Err(err).
-				Msg("Cannot encode message")
-			c.String(http.StatusInternalServerError, "")
-			return
-		}
-		c.Data(200, "application/json; charset=utf-8", respBody)
-		return
-	}
-
+	// The machine registration is new, redirect the client to the registration URL
 	log.Debug().
 		Str("handler", "Registration").
 		Str("machine", m.Name).
@@ -255,8 +230,8 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 	}
 
-	m.Expiry = &req.Expiry                         // save the requested expiry time for retrieval later
-	m.NodeKey = wgkey.Key(req.NodeKey).HexString() // save the new nodekey
+	m.RequestedExpiry = &req.Expiry                // save the requested expiry time for retrieval later in the authentication flow
+	m.NodeKey = wgkey.Key(req.NodeKey).HexString() // save the NodeKey
 	h.db.Save(&m)
 
 	respBody, err := encode(resp, &mKey, h.privateKey)
@@ -435,6 +410,8 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 	m.Registered = true
 	m.RegisterMethod = "authKey"
 	db.Save(&m)
+
+	h.updateMachineExpiry(&m) // TODO: do we want to do different expiry times for AuthKeys?
 
 	resp.MachineAuthorized = true
 	resp.User = *pak.Namespace.toUser()

@@ -4,14 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
-	"gorm.io/gorm"
 	"net/http"
 	"strings"
 	"time"
@@ -103,6 +101,8 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 		return
 	}
 
+	log.Debug().Msgf("AccessToken: %v", oauth2Token.AccessToken)
+
 	rawIDToken, rawIDTokenOK := oauth2Token.Extra("id_token").(string)
 	if !rawIDTokenOK {
 		c.String(http.StatusBadRequest, "Could not extract ID Token")
@@ -117,16 +117,17 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 		return
 	}
 
+	// TODO: we can use userinfo at some point to grab additional information about the user (groups membership, etc)
 	//userInfo, err := oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
 	//if err != nil {
-	//	c.String(http.StatusBadRequest, "Failed to retrieve userinfo: "+err.Error())
+	//	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo: %s", err))
 	//	return
 	//}
 
 	// Extract custom claims
 	var claims IDTokenClaims
 	if err = idToken.Claims(&claims); err != nil {
-		c.String(http.StatusBadRequest, "Failed to decode id token claims: "+err.Error())
+		c.String(http.StatusBadRequest, fmt.Sprintf("Failed to decode id token claims: %s", err))
 		return
 	}
 
@@ -134,39 +135,44 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	mKeyIf, mKeyFound := h.oidcStateCache.Get(state)
 
 	if !mKeyFound {
+		log.Error().Msg("requested machine state key expired before authorisation completed")
 		c.String(http.StatusBadRequest, "state has expired")
 		return
 	}
 	mKeyStr, mKeyOK := mKeyIf.(string)
 
 	if !mKeyOK {
+		log.Error().Msg("could not get machine key from cache")
 		c.String(http.StatusInternalServerError, "could not get machine key from cache")
 		return
 	}
 
 	// retrieve machine information
-	var m Machine
-	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKeyStr); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	m, err := h.GetMachineByMachineKey(mKeyStr)
+
+	if err != nil {
 		log.Error().Msg("machine key not found in database")
 		c.String(http.StatusInternalServerError, "could not get machine info from database")
 		return
 	}
 
-	//look for a namespace of the users email for now
+	now := time.Now().UTC()
+
+	// register the machine if it's new
 	if !m.Registered {
+		nsName := strings.ReplaceAll(claims.Email, "@", "-") // TODO: Implement a better email sanitisation
 
 		log.Debug().Msg("Registering new machine after successful callback")
 
-		ns, err := h.GetNamespace(claims.Email)
+		ns, err := h.GetNamespace(nsName)
 		if err != nil {
-			ns, err = h.CreateNamespace(claims.Email)
+			ns, err = h.CreateNamespace(nsName)
 
 			if err != nil {
 				log.Error().Msgf("could not create new namespace '%s'", claims.Email)
 				c.String(http.StatusInternalServerError, "could not create new namespace")
 				return
 			}
-
 		}
 
 		ip, err := h.getAvailableIP()
@@ -179,24 +185,11 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 		m.NamespaceID = ns.ID
 		m.Registered = true
 		m.RegisterMethod = "oidc"
+		m.LastSuccessfulUpdate = &now
 		h.db.Save(&m)
 	}
 
-	if m.isExpired() {
-		maxExpiry := time.Now().UTC().Add(h.cfg.MaxMachineExpiry)
-
-		// use the maximum expiry if it's sooner than the requested expiry
-		if maxExpiry.Before(*m.Expiry) {
-			log.Debug().Msgf("Clamping expiry time to maximum: %v (%v)", maxExpiry, h.cfg.MaxMachineExpiry)
-			m.Expiry = &maxExpiry
-			h.db.Save(&m)
-		} else if m.Expiry.IsZero() {
-			log.Debug().Msgf("Using default machine expiry time: %v (%v)", maxExpiry, h.cfg.MaxMachineExpiry)
-			defaultExpiry := time.Now().UTC().Add(h.cfg.DefaultMachineExpiry)
-			m.Expiry = &defaultExpiry
-			h.db.Save(&m)
-		}
-	}
+	h.updateMachineExpiry(m)
 
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
 <html>

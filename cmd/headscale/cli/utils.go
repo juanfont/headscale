@@ -144,14 +144,16 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		return nil, err
 	}
 
-	maxMachineExpiry, _ := time.ParseDuration("8h")
-	if viper.GetDuration("max_machine_expiry") >= time.Second {
-		maxMachineExpiry = viper.GetDuration("max_machine_expiry")
+	// maxMachineRegistrationDuration is the maximum time a client can request for a client registration
+	maxMachineRegistrationDuration, _ := time.ParseDuration("10h")
+	if viper.GetDuration("max_machine_registration_duration") >= time.Second {
+		maxMachineRegistrationDuration = viper.GetDuration("max_machine_registration_duration")
 	}
 
-	defaultMachineExpiry, _ := time.ParseDuration("8h")
-	if viper.GetDuration("default_machine_expiry") >= time.Second {
-		defaultMachineExpiry = viper.GetDuration("default_machine_expiry")
+	// defaultMachineRegistrationDuration is the default time assigned to a client registration if one is not specified by the client
+	defaultMachineRegistrationDuration, _ := time.ParseDuration("8h")
+	if viper.GetDuration("default_machine_registration_duration") >= time.Second {
+		defaultMachineRegistrationDuration = viper.GetDuration("default_machine_registration_duration")
 	}
 
 	cfg := headscale.Config{
@@ -188,8 +190,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		OIDCClientID:     viper.GetString("oidc_client_id"),
 		OIDCClientSecret: viper.GetString("oidc_client_secret"),
 
-		MaxMachineExpiry:     maxMachineExpiry,
-		DefaultMachineExpiry: defaultMachineExpiry,
+		MaxMachineRegistrationDuration:     maxMachineRegistrationDuration,     // the maximum duration a client may request for expiry time
+		DefaultMachineRegistrationDuration: defaultMachineRegistrationDuration, // if a client does not request a specific expiry time, use this duration
 	}
 
 	h, err := headscale.NewHeadscale(cfg)

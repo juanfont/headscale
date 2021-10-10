@@ -59,8 +59,8 @@ type Config struct {
 	OIDCClientID     string
 	OIDCClientSecret string
 
-	MaxMachineExpiry     time.Duration
-	DefaultMachineExpiry time.Duration
+	MaxMachineRegistrationDuration     time.Duration
+	DefaultMachineRegistrationDuration time.Duration
 }
 
 // Headscale represents the base app of the service

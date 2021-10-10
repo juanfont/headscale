@@ -36,6 +36,7 @@ type Machine struct {
 	LastSeen             *time.Time
 	LastSuccessfulUpdate *time.Time
 	Expiry               *time.Time
+	RequestedExpiry      *time.Time // when a client connects, it may request a specific expiry time, use this field to store it
 
 	HostInfo      datatypes.JSON
 	Endpoints     datatypes.JSON
@@ -59,8 +60,33 @@ func (m Machine) isAlreadyRegistered() bool {
 // isExpired returns whether the machine registration has expired
 func (m Machine) isExpired() bool {
 	return time.Now().UTC().After(*m.Expiry)
-}  
-  
+}
+
+// If the Machine is expired, updateMachineExpiry updates the Machine Expiry time to the maximum allowed duration,
+// or the default duration if no Expiry time was requested by the client
+func (h *Headscale) updateMachineExpiry(m *Machine) {
+
+	if m.isExpired() {
+		now := time.Now().UTC()
+		maxExpiry := now.Add(h.cfg.MaxMachineRegistrationDuration)         // calculate the maximum expiry
+		defaultExpiry := now.Add(h.cfg.DefaultMachineRegistrationDuration) // calculate the default expiry
+
+		// clamp the expiry time of the machine registration to the maximum allowed, or use the default if none supplied
+		if maxExpiry.Before(*m.RequestedExpiry) {
+			log.Debug().Msgf("Clamping registration expiry time to maximum: %v (%v)", maxExpiry, h.cfg.MaxMachineRegistrationDuration)
+			m.Expiry = &maxExpiry
+		} else if m.RequestedExpiry.IsZero() {
+			log.Debug().Msgf("Using default machine registration expiry time: %v (%v)", defaultExpiry, h.cfg.DefaultMachineRegistrationDuration)
+			m.Expiry = &defaultExpiry
+		} else {
+			log.Debug().Msgf("Using requested machine registration expiry time: %v", m.RequestedExpiry)
+			m.Expiry = m.RequestedExpiry
+		}
+
+		h.db.Save(&m)
+	}
+}
+
 func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 	log.Trace().
 		Str("func", "getDirectPeers").
