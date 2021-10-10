@@ -30,18 +30,18 @@ Headscale implements this coordination server.
 - [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [x] DNS (passing DNS servers to nodes)
 - [x] Share nodes between ~~users~~ namespaces
-- [ ] MagicDNS / Smart DNS
+- [x] MagicDNS (see `docs/`)
 
 ## Client OS support
 
-| OS | Supports headscale |
-| --- | --- |
-| Linux | Yes |
-| OpenBSD | Yes |
-| macOS | Yes (see `/apple` on your headscale for more information) |
-| Windows | Yes |
+| OS      | Supports headscale                                                                                                |
+| ------- | ----------------------------------------------------------------------------------------------------------------- |
+| Linux   | Yes                                                                                                               |
+| OpenBSD | Yes                                                                                                               |
+| macOS   | Yes (see `/apple` on your headscale for more information)                                                         |
+| Windows | Yes                                                                                                               |
 | Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
-| iOS | Not yet |
+| iOS     | Not yet                                                                                                           |
 
 ## Roadmap 🤷
 
