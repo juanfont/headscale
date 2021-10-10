@@ -28,6 +28,7 @@ Headscale implements this coordination server.
 - [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [x] DNS (passing DNS servers to nodes)
 - [x] Share nodes between ~~users~~ namespaces
+- [x] SSO (via OIDC)
 - [ ] MagicDNS / Smart DNS
 
 ## Client OS support
@@ -100,7 +101,21 @@ Suggestions/PRs welcomed!
    docker exec <container_name> headscale create myfirstnamespace
    ```
 
-5. Run the server
+5. (Optional) Configure an OIDC Issuer
+
+   You can optionally configure an OIDC endpoint to which your users will be redirected to authenticate with headscale. In config.json set the following parameters:
+
+   ```json
+   {
+   "oidc_issuer": "https://your-oidc.issuer.com/path",
+   "oidc_client_id": "your-oidc-client-id",
+   "oidc_client_secret": "your-oidc-client-secret"
+   }
+   ```
+   
+   If `oidc_issuer` is set, headscale will attempt to send your users to the OIDC server for authentication, otherwise it will give instructions on how to authorise clients via the CLI.
+
+6. Run the server
 
    ```shell
    headscale serve
@@ -114,7 +129,7 @@ Suggestions/PRs welcomed!
    docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale serve
    ```
 
-6. If you used tailscale.com before in your nodes, make sure you clear the tailscald data folder
+7. If you used tailscale.com before in your nodes, make sure you clear the tailscald data folder
 
    ```shell
    systemctl stop tailscaled
@@ -122,26 +137,26 @@ Suggestions/PRs welcomed!
    systemctl start tailscaled
    ```
 
-7. Add your first machine
+8. Add your first machine
 
    ```shell
    tailscale up --login-server YOUR_HEADSCALE_URL
    ```
 
-8. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key.
+9. Navigate to the URL you will get with `tailscale up`, where you'll find your machine key. If OIDC is configured, once you login your user will be added to a namespace automatically, and you can skip step 10.
 
-9. In the server, register your machine to a namespace with the CLI
-   ```shell
-   headscale -n myfirstnamespace nodes register YOURMACHINEKEY
-   ```
-   or docker:
-   ```shell
-   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml headscale/headscale:x.x.x headscale -n myfirstnamespace nodes register YOURMACHINEKEY
-   ```
-   or if your server is already running in docker:
-   ```shell
-   docker exec <container_name> headscale -n myfirstnamespace nodes register YOURMACHINEKEY
-   ```
+10. In the server, register your machine to a namespace with the CLI
+    ```shell
+    headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+    ```
+    or docker:
+    ```shell
+    docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml headscale/headscale:x.x.x headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+    ```
+    or if your server is already running in docker:
+    ```shell
+    docker exec <container_name> headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+    ```
 
 Alternatively, you can use Auth Keys to register your machines:
 
@@ -217,6 +232,14 @@ Headscale's configuration file is named `config.json` or `config.yaml`. Headscal
 ```
 
 The fields starting with `db_` are used for the PostgreSQL connection information.
+
+OpenID Connect settings:
+```
+   "oidc_issuer": "https://your-oidc.issuer.com/path",
+   "oidc_client_id": "your-oidc-client-id",
+   "oidc_client_secret": "your-oidc-client-secret"
+```
+
 
 ### Running the service via TLS (optional)
 
