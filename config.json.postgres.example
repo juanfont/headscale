@@ -22,6 +22,9 @@
     "dns_config": {
         "nameservers": [
             "1.1.1.1"
-        ]
+        ],
+        "domains": [],
+        "magic_dns": true,
+        "base_domain": "example.com"
     }
 }

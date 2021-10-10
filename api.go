@@ -226,7 +226,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := m.toNode(true)
+	node, err := m.toNode(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").
@@ -250,7 +250,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		DisplayName: m.Namespace.Name,
 	}
 
-	nodePeers, err := peers.toNodes(true)
+	nodePeers, err := peers.toNodes(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").
@@ -259,20 +259,25 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		return nil, err
 	}
 
+	var dnsConfig *tailcfg.DNSConfig
+	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS is enabled
+		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
+		dnsConfig = h.cfg.DNSConfig.Clone()
+		dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", m.Namespace.Name, h.cfg.BaseDomain))
+	} else {
+		dnsConfig = h.cfg.DNSConfig
+	}
+
 	resp := tailcfg.MapResponse{
-		KeepAlive: false,
-		Node:      node,
-		Peers:     nodePeers,
-		// TODO(kradalby): As per tailscale docs, if DNSConfig is nil,
-		// it means its not updated, maybe we can have some logic
-		// to check and only pass updates when its updates.
-		// This is probably more relevant if we try to implement
-		// "MagicDNS"
-		DNSConfig:    h.cfg.DNSConfig,
-		SearchPaths:  []string{},
-		Domain:       "headscale.net",
+		KeepAlive:    false,
+		Node:         node,
+		Peers:        nodePeers,
+		DNSConfig:    dnsConfig,
+		Domain:       h.cfg.BaseDomain,
 		PacketFilter: *h.aclRules,
 		DERPMap:      h.cfg.DerpMap,
+
+		// TODO(juanfont): We should send the profiles of all the peers (this own namespace + those from the shared peers)
 		UserProfiles: []tailcfg.UserProfile{profile},
 	}
 	log.Trace().
@@ -338,6 +343,11 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 	resp := tailcfg.RegisterResponse{}
 	pak, err := h.checkKeyValidity(req.Auth.AuthKey)
 	if err != nil {
+		log.Error().
+			Str("func", "handleAuthKey").
+			Str("machine", m.Name).
+			Err(err).
+			Msg("Failed authentication via AuthKey")
 		resp.MachineAuthorized = false
 		respBody, err := encode(resp, &idKey, h.privateKey)
 		if err != nil {
