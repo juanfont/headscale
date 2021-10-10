@@ -63,7 +63,7 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
+	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 		return Machines{}, err
@@ -273,11 +273,11 @@ func (ms MachinesP) String() string {
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (ms Machines) toNodes(includeRoutes bool) ([]*tailcfg.Node, error) {
+func (ms Machines) toNodes(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(ms))
 
 	for index, machine := range ms {
-		node, err := machine.toNode(includeRoutes)
+		node, err := machine.toNode(baseDomain, dnsConfig, includeRoutes)
 		if err != nil {
 			return nil, err
 		}
@@ -290,7 +290,7 @@ func (ms Machines) toNodes(includeRoutes bool) ([]*tailcfg.Node, error) {
 
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS
-func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
+func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) (*tailcfg.Node, error) {
 	nKey, err := wgkey.ParseHex(m.NodeKey)
 	if err != nil {
 		return nil, err
@@ -385,10 +385,17 @@ func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
 		keyExpiry = time.Time{}
 	}
 
+	var hostname string
+	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
+		hostname = fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, baseDomain)
+	} else {
+		hostname = m.Name
+	}
+
 	n := tailcfg.Node{
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
 		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permanent
-		Name:       hostinfo.Hostname,
+		Name:       hostname,
 		User:       tailcfg.UserID(m.NamespaceID),
 		Key:        tailcfg.NodeKey(nKey),
 		KeyExpiry:  keyExpiry,
