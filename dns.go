@@ -28,7 +28,7 @@ import (
 
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
-func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) (*[]dnsname.FQDN, error) {
+func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) ([]dnsname.FQDN, error) {
 	base, err := dnsname.ToFQDN(baseDomain)
 	if err != nil {
 		return nil, err
@@ -69,5 +69,5 @@ func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) (
 		}
 		fqdns = append(fqdns, fqdn)
 	}
-	return &fqdns, nil
+	return fqdns, nil
 }

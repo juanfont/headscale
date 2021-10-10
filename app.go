@@ -114,7 +114,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 			return nil, err
 		}
 		h.cfg.DNSConfig.Routes = make(map[string][]dnstype.Resolver)
-		for _, d := range *magicDNSDomains {
+		for _, d := range magicDNSDomains {
 			h.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
 	}
