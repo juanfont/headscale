@@ -179,6 +179,11 @@ func (h *Headscale) UpdateMachine(m *Machine) error {
 
 // DeleteMachine softs deletes a Machine from the database
 func (h *Headscale) DeleteMachine(m *Machine) error {
+	err := h.RemoveSharedMachineFromAllNamespaces(m)
+	if err != nil && err != errorMachineNotShared {
+		return err
+	}
+
 	m.Registered = false
 	namespaceID := m.NamespaceID
 	h.db.Save(&m) // we mark it as unregistered, just in case
@@ -191,10 +196,16 @@ func (h *Headscale) DeleteMachine(m *Machine) error {
 
 // HardDeleteMachine hard deletes a Machine from the database
 func (h *Headscale) HardDeleteMachine(m *Machine) error {
+	err := h.RemoveSharedMachineFromAllNamespaces(m)
+	if err != nil && err != errorMachineNotShared {
+		return err
+	}
+
 	namespaceID := m.NamespaceID
 	if err := h.db.Unscoped().Delete(&m).Error; err != nil {
 		return err
 	}
+
 	return h.RequestMapUpdates(namespaceID)
 }
 
