@@ -22,6 +22,8 @@ type PreAuthKey struct {
 	Reusable    bool
 	Ephemeral   bool `gorm:"default:false"`
 
+	AlreadyUsed bool `gorm:"-"` // this field is not stored in the DB, has to be manually filled
+
 	CreatedAt  *time.Time
 	Expiration *time.Time
 }
@@ -63,6 +65,16 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 	keys := []PreAuthKey{}
 	if err := h.db.Preload("Namespace").Where(&PreAuthKey{NamespaceID: n.ID}).Find(&keys).Error; err != nil {
 		return nil, err
+	}
+
+	for i, k := range keys {
+		machines := []Machine{}
+		if err := h.db.Preload("AuthKey").Where(&Machine{AuthKeyID: uint(k.ID)}).Find(&machines).Error; err != nil {
+			return nil, err
+		}
+		if len(machines) > 0 {
+			keys[i].AlreadyUsed = true
+		}
 	}
 	return &keys, nil
 }
