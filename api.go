@@ -395,6 +395,9 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 	m.RegisterMethod = "authKey"
 	db.Save(&m)
 
+	pak.AlreadyUsed = true
+	db.Save(&pak)
+
 	resp.MachineAuthorized = true
 	resp.User = *pak.Namespace.toUser()
 	respBody, err := encode(resp, &idKey, h.privateKey)

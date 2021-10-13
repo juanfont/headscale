@@ -21,6 +21,7 @@ type PreAuthKey struct {
 	Namespace   Namespace
 	Reusable    bool
 	Ephemeral   bool `gorm:"default:false"`
+	AlreadyUsed bool `gorm:"default:false"`
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
@@ -110,11 +111,10 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 		return nil, err
 	}
 
-	if len(machines) != 0 {
+	if len(machines) != 0 || pak.AlreadyUsed {
 		return nil, errorAuthKeyNotReusableAlreadyUsed
 	}
 
-	// missing here validation on current usage
 	return &pak, nil
 }
 
