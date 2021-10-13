@@ -343,7 +343,7 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 
 	p1s, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(p1s), check.Equals, 1) // nodes 1 and 4
+	c.Assert(len(p1s), check.Equals, 1) // node1 can see node4
 	c.Assert(p1s[0].Name, check.Equals, "test_get_shared_nodes_4")
 
 	err = h.AddSharedMachineToNamespace(m2, n1)
@@ -351,18 +351,24 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 
 	p1sAfter, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(p1sAfter), check.Equals, 2) // nodes 1, 2, 4
+	c.Assert(len(p1sAfter), check.Equals, 2) // node1 can see node2 (shared) and node4 (same namespace)
 	c.Assert(p1sAfter[0].Name, check.Equals, "test_get_shared_nodes_2")
 	c.Assert(p1sAfter[1].Name, check.Equals, "test_get_shared_nodes_4")
 
 	node1shared, err := h.getShared(m1)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(node1shared), check.Equals, 1) // nodes 1, 2, 4
+	c.Assert(len(node1shared), check.Equals, 1) // node1 can see node2 as shared
 	c.Assert(node1shared[0].Name, check.Equals, "test_get_shared_nodes_2")
 
 	pAlone, err := h.getPeers(m3)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(pAlone), check.Equals, 0) // node 3 is alone
+	c.Assert(len(pAlone), check.Equals, 0) // node3 is alone
+
+	pSharedTo, err := h.getPeers(m2)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(pSharedTo), check.Equals, 2) // node2 should see node1 (sharedTo) and node4 (sharedTo), as is shared in namespace1
+	c.Assert(pSharedTo[0].Name, check.Equals, "test_get_shared_nodes_1")
+	c.Assert(pSharedTo[1].Name, check.Equals, "test_get_shared_nodes_4")
 }
 
 func (s *Suite) TestDeleteSharedMachine(c *check.C) {
