@@ -62,7 +62,8 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	if !viper.GetBool("disable_check_updates") {
+	jsonOutput := cli.HasJsonOutputFlag()
+	if !viper.GetBool("disable_check_updates") && !jsonOutput {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && cli.Version != "dev" {
 			githubTag := &latest.GithubTag{
 				Owner:      "juanfont",
