@@ -274,7 +274,7 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 	c.Assert(err, check.NotNil)
 
 	m1 := &Machine{
-		ID:             0,
+		ID:             1,
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		DiscoKey:       "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
@@ -291,7 +291,7 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	m2 := &Machine{
-		ID:             1,
+		ID:             2,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -308,7 +308,7 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	m3 := &Machine{
-		ID:             2,
+		ID:             3,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -325,7 +325,7 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	m4 := &Machine{
-		ID:             3,
+		ID:             4,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -391,7 +391,7 @@ func (s *Suite) TestDeleteSharedMachine(c *check.C) {
 	c.Assert(err, check.NotNil)
 
 	m1 := &Machine{
-		ID:             0,
+		ID:             1,
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		DiscoKey:       "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
@@ -408,7 +408,7 @@ func (s *Suite) TestDeleteSharedMachine(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	m2 := &Machine{
-		ID:             1,
+		ID:             2,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -425,7 +425,7 @@ func (s *Suite) TestDeleteSharedMachine(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	m3 := &Machine{
-		ID:             2,
+		ID:             3,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -442,7 +442,7 @@ func (s *Suite) TestDeleteSharedMachine(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	m4 := &Machine{
-		ID:             3,
+		ID:             4,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
