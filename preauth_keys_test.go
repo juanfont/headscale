@@ -87,7 +87,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	h.db.Save(&m)
 
 	p, err := h.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errorAuthKeyNotReusableAlreadyUsed)
+	c.Assert(err, check.Equals, errSingleUseAuthKeyHasBeenUsed)
 	c.Assert(p, check.IsNil)
 }
 
@@ -191,5 +191,5 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	h.db.Save(&pak)
 
 	_, err = h.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errorAuthKeyNotReusableAlreadyUsed)
+	c.Assert(err, check.Equals, errSingleUseAuthKeyHasBeenUsed)
 }
