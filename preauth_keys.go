@@ -11,7 +11,7 @@ import (
 
 const errorAuthKeyNotFound = Error("AuthKey not found")
 const errorAuthKeyExpired = Error("AuthKey expired")
-const errorAuthKeyNotReusableAlreadyUsed = Error("AuthKey not reusable already used")
+const errSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
 
 // PreAuthKey describes a pre-authorization key usable in a particular namespace
 type PreAuthKey struct {
@@ -111,7 +111,7 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 	}
 
 	if len(machines) != 0 {
-		return nil, errorAuthKeyNotReusableAlreadyUsed
+		return nil, errSingleUseAuthKeyHasBeenUsed
 	}
 
 	// missing here validation on current usage
