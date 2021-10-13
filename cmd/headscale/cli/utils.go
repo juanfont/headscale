@@ -262,3 +262,12 @@ func JsonOutput(result interface{}, errResult error, outputFormat string) {
 	}
 	fmt.Println(string(j))
 }
+
+func HasJsonOutputFlag() bool {
+	for _, arg := range os.Args {
+		if arg == "json" || arg == "json-line" {
+			return true
+		}
+	}
+	return false
+}
