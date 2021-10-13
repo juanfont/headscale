@@ -129,6 +129,7 @@ var deleteNodeCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
@@ -153,11 +154,19 @@ var deleteNodeCmd = &cobra.Command{
 
 		if confirm {
 			err = h.DeleteMachine(m)
+			if strings.HasPrefix(output, "json") {
+				JsonOutput(map[string]string{"Result": "Node deleted"}, err, output)
+				return
+			}
 			if err != nil {
 				log.Fatalf("Error deleting node: %s", err)
 			}
 			fmt.Printf("Node deleted\n")
 		} else {
+			if strings.HasPrefix(output, "json") {
+				JsonOutput(map[string]string{"Result": "Node not deleted"}, err, output)
+				return
+			}
 			fmt.Printf("Node not deleted\n")
 		}
 	},
