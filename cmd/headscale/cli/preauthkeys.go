@@ -153,6 +153,10 @@ var expirePreAuthKeyCmd = &cobra.Command{
 
 		k, err := h.GetPreAuthKey(n, args[0])
 		if err != nil {
+			if strings.HasPrefix(o, "json") {
+				JsonOutput(k, err, o)
+				return
+			}
 			log.Fatalf("Error getting the key: %s", err)
 		}
 
