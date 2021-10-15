@@ -147,6 +147,8 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			resp.AuthURL = ""
 			resp.MachineAuthorized = true
 			resp.User = *m.Namespace.toUser()
+			resp.Login = *m.Namespace.toLogin()
+
 			respBody, err := encode(resp, &mKey, h.privateKey)
 			if err != nil {
 				log.Error().

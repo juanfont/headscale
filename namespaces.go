@@ -216,3 +216,14 @@ func (n *Namespace) toUser() *tailcfg.User {
 	}
 	return &u
 }
+
+func (n *Namespace) toLogin() *tailcfg.Login {
+	l := tailcfg.Login{
+		ID:            tailcfg.LoginID(n.ID),
+		LoginName:     n.Name,
+		DisplayName:   n.Name,
+		ProfilePicURL: "",
+		Domain:        "headscale.net",
+	}
+	return &l
+}
