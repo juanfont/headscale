@@ -58,11 +58,11 @@ func TestIntegrationTestSuite(t *testing.T) {
 
 	s.namespaces = map[string]TestNamespace{
 		"main": {
-			count:      5,
+			count:      20,
 			tailscales: make(map[string]dockertest.Resource),
 		},
 		"shared": {
-			count:      2,
+			count:      5,
 			tailscales: make(map[string]dockertest.Resource),
 		},
 	}
