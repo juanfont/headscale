@@ -20,6 +20,7 @@ builds:
       - -mod=readonly
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
+
   - id: linux-armhf
     main: ./cmd/headscale/headscale.go
     mod_timestamp: '{{ .CommitTimestamp }}'
@@ -49,9 +50,16 @@ builds:
       - linux
     goarch:
       - amd64
-    goarm:
-      - 6
-      - 7
+    main: ./cmd/headscale/headscale.go
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    ldflags:
+      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
+
+  - id: linux-arm64
+    goos:
+      - linux
+    goarch:
+      - arm64
     main: ./cmd/headscale/headscale.go
     mod_timestamp: '{{ .CommitTimestamp }}'
     ldflags:
@@ -63,6 +71,7 @@ archives:
       - darwin-amd64
       - linux-armhf
       - linux-amd64
+      - linux-arm64
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format: binary
 
