@@ -504,43 +504,43 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 		assert.Contains(s.T(), result, hostname)
 	}
 
-	// TODO(kradalby): Figure out why these connections are not set up
-	// // TODO: See if we can have a more deterministic wait here.
-	// time.Sleep(100 * time.Second)
+	// TODO(juanfont): We have to find out why do we need to wait
+	time.Sleep(100 * time.Second) // Wait for the nodes to receive updates
 
-	// mainIps, err := getIPs(main.tailscales)
-	// assert.Nil(s.T(), err)
+	mainIps, err := getIPs(main.tailscales)
+	assert.Nil(s.T(), err)
 
-	// sharedIps, err := getIPs(shared.tailscales)
-	// assert.Nil(s.T(), err)
+	sharedIps, err := getIPs(shared.tailscales)
+	assert.Nil(s.T(), err)
 
-	// for hostname, tailscale := range main.tailscales {
-	// 	for peername, ip := range sharedIps {
-	// 		s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
-	// 			// We currently cant ping ourselves, so skip that.
-	// 			if peername != hostname {
-	// 				// We are only interested in "direct ping" which means what we
-	// 				// might need a couple of more attempts before reaching the node.
-	// 				command := []string{
-	// 					"tailscale", "ping",
-	// 					"--timeout=1s",
-	// 					"--c=20",
-	// 					"--until-direct=true",
-	// 					ip.String(),
-	// 				}
+	for hostname, tailscale := range main.tailscales {
+		for peername, ip := range sharedIps {
+			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+				// We currently cant ping ourselves, so skip that.
+				if peername != hostname {
+					// We are only interested in "direct ping" which means what we
+					// might need a couple of more attempts before reaching the node.
+					command := []string{
+						"tailscale", "ping",
+						"--timeout=15s",
+						"--c=20",
+						"--until-direct=true",
+						ip.String(),
+					}
 
-	// 				fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, mainIps[hostname], peername, ip)
-	// 				result, err := executeCommand(
-	// 					&tailscale,
-	// 					command,
-	// 				)
-	// 				assert.Nil(t, err)
-	// 				fmt.Printf("Result for %s: %s\n", hostname, result)
-	// 				assert.Contains(t, result, "pong")
-	// 			}
-	// 		})
-	// 	}
-	// }
+					fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, mainIps[hostname], peername, ip)
+					result, err := executeCommand(
+						&tailscale,
+						command,
+						[]string{},
+					)
+					assert.Nil(t, err)
+					fmt.Printf("Result for %s: %s\n", hostname, result)
+					assert.Contains(t, result, "pong")
+				}
+			})
+		}
+	}
 }
 
 func (s *IntegrationTestSuite) TestTailDrop() {
