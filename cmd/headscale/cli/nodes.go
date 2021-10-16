@@ -144,15 +144,18 @@ var deleteNodeCmd = &cobra.Command{
 		}
 
 		confirm := false
-		prompt := &survey.Confirm{
-			Message: fmt.Sprintf("Do you want to remove the node %s?", m.Name),
-		}
-		err = survey.AskOne(prompt, &confirm)
-		if err != nil {
-			return
+		force, _ := cmd.Flags().GetBool("force")
+		if !force {
+			prompt := &survey.Confirm{
+				Message: fmt.Sprintf("Do you want to remove the node %s?", m.Name),
+			}
+			err = survey.AskOne(prompt, &confirm)
+			if err != nil {
+				return
+			}
 		}
 
-		if confirm {
+		if confirm || force {
 			err = h.DeleteMachine(m)
 			if strings.HasPrefix(output, "json") {
 				JsonOutput(map[string]string{"Result": "Node deleted"}, err, output)
