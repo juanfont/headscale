@@ -131,7 +131,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 }
 
 var expirePreAuthKeyCmd = &cobra.Command{
-	Use:   "expire",
+	Use:   "expire KEY",
 	Short: "Expire a preauthkey",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
@@ -153,6 +153,10 @@ var expirePreAuthKeyCmd = &cobra.Command{
 
 		k, err := h.GetPreAuthKey(n, args[0])
 		if err != nil {
+			if strings.HasPrefix(o, "json") {
+				JsonOutput(k, err, o)
+				return
+			}
 			log.Fatalf("Error getting the key: %s", err)
 		}
 
