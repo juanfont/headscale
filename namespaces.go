@@ -91,7 +91,7 @@ func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
 	}
 
 	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("Namespace").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
 		return nil, err
 	}
 	return &machines, nil

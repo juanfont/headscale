@@ -94,7 +94,7 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Where("namespace_id = ? AND machine_key <> ? AND registered",
+	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 		return Machines{}, err
@@ -109,13 +109,13 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 	return machines, nil
 }
 
+// getShared fetches machines that are shared to the `Namespace` of the machine we are getting peers for
 func (h *Headscale) getShared(m *Machine) (Machines, error) {
 	log.Trace().
 		Str("func", "getShared").
 		Str("machine", m.Name).
 		Msg("Finding shared peers")
 
-	// We fetch here machines that are shared to the `Namespace` of the machine we are getting peers for
 	sharedMachines := []SharedMachine{}
 	if err := h.db.Preload("Namespace").Preload("Machine").Where("namespace_id = ?",
 		m.NamespaceID).Find(&sharedMachines).Error; err != nil {
@@ -136,6 +136,37 @@ func (h *Headscale) getShared(m *Machine) (Machines, error) {
 	return peers, nil
 }
 
+// getSharedTo fetches the machines of the namespaces this machine is shared in
+func (h *Headscale) getSharedTo(m *Machine) (Machines, error) {
+	log.Trace().
+		Str("func", "getSharedTo").
+		Str("machine", m.Name).
+		Msg("Finding peers in namespaces this machine is shared with")
+
+	sharedMachines := []SharedMachine{}
+	if err := h.db.Preload("Namespace").Preload("Machine").Where("machine_id = ?",
+		m.ID).Find(&sharedMachines).Error; err != nil {
+		return Machines{}, err
+	}
+
+	peers := make(Machines, 0)
+	for _, sharedMachine := range sharedMachines {
+		namespaceMachines, err := h.ListMachinesInNamespace(sharedMachine.Namespace.Name)
+		if err != nil {
+			return Machines{}, err
+		}
+		peers = append(peers, *namespaceMachines...)
+	}
+
+	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
+
+	log.Trace().
+		Str("func", "getSharedTo").
+		Str("machine", m.Name).
+		Msgf("Found peers we are shared with: %s", peers.String())
+	return peers, nil
+}
+
 func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 	direct, err := h.getDirectPeers(m)
 	if err != nil {
@@ -149,13 +180,24 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 	shared, err := h.getShared(m)
 	if err != nil {
 		log.Error().
-			Str("func", "getDirectPeers").
+			Str("func", "getShared").
+			Err(err).
+			Msg("Cannot fetch peers")
+		return Machines{}, err
+	}
+
+	sharedTo, err := h.getSharedTo(m)
+	if err != nil {
+		log.Error().
+			Str("func", "sharedTo").
 			Err(err).
 			Msg("Cannot fetch peers")
 		return Machines{}, err
 	}
 
 	peers := append(direct, shared...)
+	peers = append(peers, sharedTo...)
+
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
 
 	log.Trace().
@@ -210,6 +252,11 @@ func (h *Headscale) UpdateMachine(m *Machine) error {
 
 // DeleteMachine softs deletes a Machine from the database
 func (h *Headscale) DeleteMachine(m *Machine) error {
+	err := h.RemoveSharedMachineFromAllNamespaces(m)
+	if err != nil && err != errorMachineNotShared {
+		return err
+	}
+
 	m.Registered = false
 	namespaceID := m.NamespaceID
 	h.db.Save(&m) // we mark it as unregistered, just in case
@@ -222,10 +269,16 @@ func (h *Headscale) DeleteMachine(m *Machine) error {
 
 // HardDeleteMachine hard deletes a Machine from the database
 func (h *Headscale) HardDeleteMachine(m *Machine) error {
+	err := h.RemoveSharedMachineFromAllNamespaces(m)
+	if err != nil && err != errorMachineNotShared {
+		return err
+	}
+
 	namespaceID := m.NamespaceID
 	if err := h.db.Unscoped().Delete(&m).Error; err != nil {
 		return err
 	}
+
 	return h.RequestMapUpdates(namespaceID)
 }
 
@@ -304,11 +357,11 @@ func (ms MachinesP) String() string {
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (ms Machines) toNodes(includeRoutes bool) ([]*tailcfg.Node, error) {
+func (ms Machines) toNodes(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(ms))
 
 	for index, machine := range ms {
-		node, err := machine.toNode(includeRoutes)
+		node, err := machine.toNode(baseDomain, dnsConfig, includeRoutes)
 		if err != nil {
 			return nil, err
 		}
@@ -321,7 +374,7 @@ func (ms Machines) toNodes(includeRoutes bool) ([]*tailcfg.Node, error) {
 
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS
-func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
+func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) (*tailcfg.Node, error) {
 	nKey, err := wgkey.ParseHex(m.NodeKey)
 	if err != nil {
 		return nil, err
@@ -416,10 +469,17 @@ func (m Machine) toNode(includeRoutes bool) (*tailcfg.Node, error) {
 		keyExpiry = time.Time{}
 	}
 
+	var hostname string
+	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
+		hostname = fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, baseDomain)
+	} else {
+		hostname = m.Name
+	}
+
 	n := tailcfg.Node{
 		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
 		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permanent
-		Name:       hostinfo.Hostname,
+		Name:       hostname,
 		User:       tailcfg.UserID(m.NamespaceID),
 		Key:        tailcfg.NodeKey(nKey),
 		KeyExpiry:  keyExpiry,

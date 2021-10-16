@@ -1,8 +1,10 @@
-# Headscale
+# headscale
 
-[![Join the chat at https://gitter.im/headscale-dev/community](https://badges.gitter.im/headscale-dev/community.svg)](https://gitter.im/headscale-dev/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) ![ci](https://github.com/juanfont/headscale/actions/workflows/test.yml/badge.svg)
+![ci](https://github.com/juanfont/headscale/actions/workflows/test.yml/badge.svg)
 
 An open source, self-hosted implementation of the Tailscale coordination server.
+
+Join our [Discord](https://discord.gg/XcQxk2VHjx) server for a chat.
 
 ## Overview
 
@@ -29,18 +31,18 @@ Headscale implements this coordination server.
 - [x] DNS (passing DNS servers to nodes)
 - [x] Share nodes between ~~users~~ namespaces
 - [x] SSO (via OIDC)
-- [ ] MagicDNS / Smart DNS
+- [x] MagicDNS (see `docs/`)
 
 ## Client OS support
 
-| OS | Supports headscale |
-| --- | --- |
-| Linux | Yes |
-| OpenBSD | Yes |
-| macOS | Yes (see `/apple` on your headscale for more information) |
-| Windows | Yes |
+| OS      | Supports headscale                                                                                                |
+| ------- | ----------------------------------------------------------------------------------------------------------------- |
+| Linux   | Yes                                                                                                               |
+| OpenBSD | Yes                                                                                                               |
+| macOS   | Yes (see `/apple` on your headscale for more information)                                                         |
+| Windows | Yes                                                                                                               |
 | Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
-| iOS | Not yet |
+| iOS     | Not yet                                                                                                           |
 
 ## Roadmap 🤷
 

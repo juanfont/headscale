@@ -16,12 +16,13 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zsais/go-gin-prometheus"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/dnstype"
 	"tailscale.com/types/wgkey"
 )
 
@@ -33,6 +34,7 @@ type Config struct {
 	DerpMap                        *tailcfg.DERPMap
 	EphemeralNodeInactivityTimeout time.Duration
 	IPPrefix                       netaddr.IPPrefix
+	BaseDomain                     string
 
 	DBtype string
 	DBpath string
@@ -124,6 +126,17 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		err = h.initOIDC()
 		if err != nil {
 			return nil, err
+		}
+  }
+
+  if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS
+		magicDNSDomains, err := generateMagicDNSRootDomains(h.cfg.IPPrefix, h.cfg.BaseDomain)
+		if err != nil {
+			return nil, err
+		}
+		h.cfg.DNSConfig.Routes = make(map[string][]dnstype.Resolver)
+		for _, d := range magicDNSDomains {
+			h.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
 	}
 

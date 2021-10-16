@@ -76,7 +76,7 @@ func LoadConfig(path string) error {
 
 }
 
-func GetDNSConfig() *tailcfg.DNSConfig {
+func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	if viper.IsSet("dns_config") {
 		dnsConfig := &tailcfg.DNSConfig{}
 
@@ -108,10 +108,27 @@ func GetDNSConfig() *tailcfg.DNSConfig {
 			dnsConfig.Domains = viper.GetStringSlice("dns_config.domains")
 		}
 
-		return dnsConfig
+		if viper.IsSet("dns_config.magic_dns") {
+			magicDNS := viper.GetBool("dns_config.magic_dns")
+			if len(dnsConfig.Nameservers) > 0 {
+				dnsConfig.Proxied = magicDNS
+			} else if magicDNS {
+				log.Warn().
+					Msg("Warning: dns_config.magic_dns is set, but no nameservers are configured. Ignoring magic_dns.")
+			}
+		}
+
+		var baseDomain string
+		if viper.IsSet("dns_config.base_domain") {
+			baseDomain = viper.GetString("dns_config.base_domain")
+		} else {
+			baseDomain = "headscale.net" // does not really matter when MagicDNS is not enabled
+		}
+
+		return dnsConfig, baseDomain
 	}
 
-	return nil
+	return nil, ""
 }
 
 func absPath(path string) string {
@@ -144,7 +161,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		return nil, err
 	}
 
-	// maxMachineRegistrationDuration is the maximum time a client can request for a client registration
+
+  // maxMachineRegistrationDuration is the maximum time a client can request for a client registration
 	maxMachineRegistrationDuration, _ := time.ParseDuration("10h")
 	if viper.GetDuration("max_machine_registration_duration") >= time.Second {
 		maxMachineRegistrationDuration = viper.GetDuration("max_machine_registration_duration")
@@ -156,12 +174,15 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		defaultMachineRegistrationDuration = viper.GetDuration("default_machine_registration_duration")
 	}
 
+  dnsConfig, baseDomain := GetDNSConfig()
+
 	cfg := headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		DerpMap:        derpMap,
 		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
+		BaseDomain:     baseDomain,
 
 		EphemeralNodeInactivityTimeout: viper.GetDuration("ephemeral_node_inactivity_timeout"),
 
@@ -181,6 +202,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
 		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
 
+		DNSConfig: dnsConfig,
+
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
 
@@ -192,6 +215,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		MaxMachineRegistrationDuration:     maxMachineRegistrationDuration,     // the maximum duration a client may request for expiry time
 		DefaultMachineRegistrationDuration: defaultMachineRegistrationDuration, // if a client does not request a specific expiry time, use this duration
+
 	}
 
 	h, err := headscale.NewHeadscale(cfg)
@@ -260,4 +284,13 @@ func JsonOutput(result interface{}, errResult error, outputFormat string) {
 		}
 	}
 	fmt.Println(string(j))
+}
+
+func HasJsonOutputFlag() bool {
+	for _, arg := range os.Args {
+		if arg == "json" || arg == "json-line" {
+			return true
+		}
+	}
+	return false
 }
