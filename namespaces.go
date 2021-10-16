@@ -59,7 +59,7 @@ func (h *Headscale) DestroyNamespace(name string) error {
 	}
 
 	if result := h.db.Unscoped().Delete(&n); result.Error != nil {
-		return err
+		return result.Error
 	}
 
 	return nil
