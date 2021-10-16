@@ -161,8 +161,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		return nil, err
 	}
 
-
-  // maxMachineRegistrationDuration is the maximum time a client can request for a client registration
+	// maxMachineRegistrationDuration is the maximum time a client can request for a client registration
 	maxMachineRegistrationDuration, _ := time.ParseDuration("10h")
 	if viper.GetDuration("max_machine_registration_duration") >= time.Second {
 		maxMachineRegistrationDuration = viper.GetDuration("max_machine_registration_duration")
@@ -174,7 +173,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		defaultMachineRegistrationDuration = viper.GetDuration("default_machine_registration_duration")
 	}
 
-  dnsConfig, baseDomain := GetDNSConfig()
+	dnsConfig, baseDomain := GetDNSConfig()
 
 	cfg := headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
@@ -206,8 +205,6 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
-
-		DNSConfig: GetDNSConfig(),
 
 		OIDCIssuer:       viper.GetString("oidc_issuer"),
 		OIDCClientID:     viper.GetString("oidc_client_id"),
