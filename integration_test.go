@@ -503,6 +503,8 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 	for hostname := range shared.tailscales {
 		assert.Contains(s.T(), result, hostname)
 	}
+
+	// TODO(juanfont): We have to find out why do we need to wait
 	time.Sleep(100 * time.Second) // Wait for the nodes to receive updates
 
 	mainIps, err := getIPs(main.tailscales)
