@@ -65,6 +65,35 @@ func (h *Headscale) DestroyNamespace(name string) error {
 	return nil
 }
 
+// RenameNamespace renames a Namespace. Returns error if the Namespace does
+// not exist or if another Namespace exists with the new name.
+func (h *Headscale) RenameNamespace(oldName, newName string) error {
+	n, err := h.GetNamespace(oldName)
+	if err != nil {
+		return err
+	}
+	_, err = h.GetNamespace(newName)
+	if err == nil {
+		return errorNamespaceExists
+	}
+	if !errors.Is(err, errorNamespaceNotFound) {
+		return err
+	}
+
+	n.Name = newName
+
+	if result := h.db.Save(&n); result.Error != nil {
+		return result.Error
+	}
+
+	err = h.RequestMapUpdates(n.ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GetNamespace fetches a namespace by name
 func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 	n := Namespace{}
