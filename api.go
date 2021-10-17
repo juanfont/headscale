@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/fatih/set"
 	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
@@ -243,11 +244,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		return nil, err
 	}
 
-	profile := tailcfg.UserProfile{
-		ID:          tailcfg.UserID(m.NamespaceID),
-		LoginName:   m.Namespace.Name,
-		DisplayName: m.Namespace.Name,
-	}
+	profiles := getMapResponseUserProfiles(*m, peers)
 
 	nodePeers, err := peers.toNodes(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
 	if err != nil {
@@ -275,10 +272,9 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		Domain:       h.cfg.BaseDomain,
 		PacketFilter: *h.aclRules,
 		DERPMap:      h.cfg.DerpMap,
-
-		// TODO(juanfont): We should send the profiles of all the peers (this own namespace + those from the shared peers)
-		UserProfiles: []tailcfg.UserProfile{profile},
+		UserProfiles: profiles,
 	}
+
 	log.Trace().
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).
@@ -418,4 +414,23 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 		Str("machine", m.Name).
 		Str("ip", ip.String()).
 		Msg("Successfully authenticated via AuthKey")
+}
+
+func getMapResponseUserProfiles(m Machine, peers Machines) []tailcfg.UserProfile {
+	namespaceSet := set.New(set.ThreadSafe)
+	namespaceSet.Add(m.Namespace)
+	for _, p := range peers {
+		namespaceSet.Add(p.Namespace)
+	}
+
+	profiles := []tailcfg.UserProfile{}
+	for _, namespace := range namespaceSet.List() {
+		profiles = append(profiles,
+			tailcfg.UserProfile{
+				ID:          tailcfg.UserID(namespace.(Namespace).ID),
+				LoginName:   namespace.(Namespace).Name,
+				DisplayName: namespace.(Namespace).Name,
+			})
+	}
+	return profiles
 }
