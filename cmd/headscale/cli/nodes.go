@@ -26,6 +26,7 @@ func init() {
 	nodeCmd.AddCommand(registerNodeCmd)
 	nodeCmd.AddCommand(deleteNodeCmd)
 	nodeCmd.AddCommand(shareMachineCmd)
+	nodeCmd.AddCommand(unshareMachineCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -226,6 +227,55 @@ var shareMachineCmd = &cobra.Command{
 		}
 
 		fmt.Println("Node shared!")
+	},
+}
+
+var unshareMachineCmd = &cobra.Command{
+	Use:   "unshare ID",
+	Short: "Unshares a node from the specified namespace",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 1 {
+			return fmt.Errorf("missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		namespace, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			log.Fatalf("Error getting namespace: %s", err)
+		}
+		output, _ := cmd.Flags().GetString("output")
+
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+
+		n, err := h.GetNamespace(namespace)
+		if err != nil {
+			log.Fatalf("Error fetching namespace: %s", err)
+		}
+
+		id, err := strconv.Atoi(args[0])
+		if err != nil {
+			log.Fatalf("Error converting ID to integer: %s", err)
+		}
+		machine, err := h.GetMachineByID(uint64(id))
+		if err != nil {
+			log.Fatalf("Error getting node: %s", err)
+		}
+
+		err = h.RemoveSharedMachineFromNamespace(machine, n)
+		if strings.HasPrefix(output, "json") {
+			JsonOutput(map[string]string{"Result": "Node unshared"}, err, output)
+			return
+		}
+		if err != nil {
+			fmt.Printf("Error unsharing node: %s\n", err)
+			return
+		}
+
+		fmt.Println("Node unshared!")
 	},
 }
 
