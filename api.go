@@ -258,13 +258,13 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		return nil, err
 	}
 
-	var dnsConfig *tailcfg.DNSConfig
-	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS is enabled
-		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
-		dnsConfig = h.cfg.DNSConfig.Clone()
-		dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", m.Namespace.Name, h.cfg.BaseDomain))
-	} else {
-		dnsConfig = h.cfg.DNSConfig
+	dnsConfig, err := h.getMapResponseDNSConfig(*m, peers)
+	if err != nil {
+		log.Error().
+			Str("func", "getMapResponse").
+			Err(err).
+			Msg("Failed generate the DNSConfig")
+		return nil, err
 	}
 
 	resp := tailcfg.MapResponse{
