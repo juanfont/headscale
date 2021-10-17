@@ -82,8 +82,8 @@ func getMapResponseDNSConfig(dnsConfigOrig *tailcfg.DNSConfig, baseDomain string
 			namespaceSet.Add(p.Namespace)
 		}
 		for _, namespace := range namespaceSet.List() {
-			dnsRoute := dnsname.FQDN(fmt.Sprintf("%s.%s", namespace.(Namespace).Name, baseDomain))
-			dnsConfig.Routes[dnsRoute.WithoutTrailingDot()] = nil
+			dnsRoute := fmt.Sprintf("%s.%s", namespace.(Namespace).Name, baseDomain)
+			dnsConfig.Routes[dnsRoute] = nil
 		}
 	} else {
 		dnsConfig = dnsConfigOrig

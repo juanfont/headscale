@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/fatih/set"
 	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
@@ -414,23 +413,4 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 		Str("machine", m.Name).
 		Str("ip", ip.String()).
 		Msg("Successfully authenticated via AuthKey")
-}
-
-func getMapResponseUserProfiles(m Machine, peers Machines) []tailcfg.UserProfile {
-	namespaceSet := set.New(set.ThreadSafe)
-	namespaceSet.Add(m.Namespace)
-	for _, p := range peers {
-		namespaceSet.Add(p.Namespace)
-	}
-
-	profiles := []tailcfg.UserProfile{}
-	for _, namespace := range namespaceSet.List() {
-		profiles = append(profiles,
-			tailcfg.UserProfile{
-				ID:          tailcfg.UserID(namespace.(Namespace).ID),
-				LoginName:   namespace.(Namespace).Name,
-				DisplayName: namespace.(Namespace).Name,
-			})
-	}
-	return profiles
 }
