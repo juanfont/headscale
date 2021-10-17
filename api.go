@@ -255,7 +255,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		return nil, err
 	}
 
-	dnsConfig, err := h.getMapResponseDNSConfig(*m, peers)
+	dnsConfig, err := getMapResponseDNSConfig(h.cfg.DNSConfig, h.cfg.BaseDomain, *m, peers)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").

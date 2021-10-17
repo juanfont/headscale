@@ -69,12 +69,12 @@ func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) (
 	return fqdns, nil
 }
 
-func (h *Headscale) getMapResponseDNSConfig(m Machine, peers Machines) (*tailcfg.DNSConfig, error) {
+func getMapResponseDNSConfig(dnsConfigOrig *tailcfg.DNSConfig, baseDomain string, m Machine, peers Machines) (*tailcfg.DNSConfig, error) {
 	var dnsConfig *tailcfg.DNSConfig
-	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS is enabled
+	if dnsConfigOrig != nil && dnsConfigOrig.Proxied { // if MagicDNS is enabled
 		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
-		dnsConfig = h.cfg.DNSConfig.Clone()
-		dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", m.Namespace.Name, h.cfg.BaseDomain))
+		dnsConfig = dnsConfigOrig.Clone()
+		dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", m.Namespace.Name, baseDomain))
 
 		namespaceSet := set.New(set.ThreadSafe)
 		namespaceSet.Add(m.Namespace)
@@ -82,11 +82,11 @@ func (h *Headscale) getMapResponseDNSConfig(m Machine, peers Machines) (*tailcfg
 			namespaceSet.Add(p.Namespace)
 		}
 		for _, namespace := range namespaceSet.List() {
-			dnsRoute := dnsname.FQDN(fmt.Sprintf("%s.%s", namespace.(Namespace).Name, h.cfg.BaseDomain))
+			dnsRoute := dnsname.FQDN(fmt.Sprintf("%s.%s", namespace.(Namespace).Name, baseDomain))
 			dnsConfig.Routes[dnsRoute.WithoutTrailingDot()] = nil
 		}
 	} else {
-		dnsConfig = h.cfg.DNSConfig
+		dnsConfig = dnsConfigOrig
 	}
 	return dnsConfig, nil
 }
