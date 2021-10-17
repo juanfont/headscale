@@ -15,6 +15,7 @@ func init() {
 	namespaceCmd.AddCommand(createNamespaceCmd)
 	namespaceCmd.AddCommand(listNamespacesCmd)
 	namespaceCmd.AddCommand(destroyNamespaceCmd)
+	namespaceCmd.AddCommand(renameNamespaceCmd)
 }
 
 var namespaceCmd = &cobra.Command{
@@ -105,5 +106,33 @@ var listNamespacesCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
+	},
+}
+
+var renameNamespaceCmd = &cobra.Command{
+	Use:   "rename OLD_NAME NEW_NAME",
+	Short: "Renames a namespace",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 2 {
+			return fmt.Errorf("Missing parameters")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		o, _ := cmd.Flags().GetString("output")
+		h, err := getHeadscaleApp()
+		if err != nil {
+			log.Fatalf("Error initializing: %s", err)
+		}
+		err = h.RenameNamespace(args[0], args[1])
+		if strings.HasPrefix(o, "json") {
+			JsonOutput(map[string]string{"Result": "Namespace renamed"}, err, o)
+			return
+		}
+		if err != nil {
+			fmt.Printf("Error renaming namespace: %s\n", err)
+			return
+		}
+		fmt.Printf("Namespace renamed\n")
 	},
 }
