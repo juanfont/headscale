@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fatih/set"
 	"inet.af/netaddr"
+	"tailscale.com/tailcfg"
 	"tailscale.com/util/dnsname"
 )
 
@@ -29,15 +31,10 @@ import (
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
 func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) ([]dnsname.FQDN, error) {
-	base, err := dnsname.ToFQDN(baseDomain)
-	if err != nil {
-		return nil, err
-	}
-
 	// TODO(juanfont): we are not handing out IPv6 addresses yet
 	// and in fact this is Tailscale.com's range (note the fd7a:115c:a1e0: range in the fc00::/7 network)
 	ipv6base := dnsname.FQDN("0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
-	fqdns := []dnsname.FQDN{base, ipv6base}
+	fqdns := []dnsname.FQDN{ipv6base}
 
 	// Conversion to the std lib net.IPnet, a bit easier to operate
 	netRange := ipPrefix.IPNet()
@@ -70,4 +67,26 @@ func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) (
 		fqdns = append(fqdns, fqdn)
 	}
 	return fqdns, nil
+}
+
+func getMapResponseDNSConfig(dnsConfigOrig *tailcfg.DNSConfig, baseDomain string, m Machine, peers Machines) (*tailcfg.DNSConfig, error) {
+	var dnsConfig *tailcfg.DNSConfig
+	if dnsConfigOrig != nil && dnsConfigOrig.Proxied { // if MagicDNS is enabled
+		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
+		dnsConfig = dnsConfigOrig.Clone()
+		dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", m.Namespace.Name, baseDomain))
+
+		namespaceSet := set.New(set.ThreadSafe)
+		namespaceSet.Add(m.Namespace)
+		for _, p := range peers {
+			namespaceSet.Add(p.Namespace)
+		}
+		for _, namespace := range namespaceSet.List() {
+			dnsRoute := fmt.Sprintf("%s.%s", namespace.(Namespace).Name, baseDomain)
+			dnsConfig.Routes[dnsRoute] = nil
+		}
+	} else {
+		dnsConfig = dnsConfigOrig
+	}
+	return dnsConfig, nil
 }
