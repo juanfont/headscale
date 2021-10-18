@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -73,7 +74,6 @@ func LoadConfig(path string) error {
 	} else {
 		return nil
 	}
-
 }
 
 func GetDNSConfig() (*tailcfg.DNSConfig, string) {
@@ -206,14 +206,18 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
 
-		OIDCIssuer:       viper.GetString("oidc_issuer"),
-		OIDCClientID:     viper.GetString("oidc_client_id"),
-		OIDCClientSecret: viper.GetString("oidc_client_secret"),
+		OIDC: headscale.OIDCConfig{
+			Issuer:       viper.GetString("oidc.issuer"),
+			ClientID:     viper.GetString("oidc.client_id"),
+			ClientSecret: viper.GetString("oidc.client_secret"),
+		},
 
 		MaxMachineRegistrationDuration:     maxMachineRegistrationDuration,     // the maximum duration a client may request for expiry time
 		DefaultMachineRegistrationDuration: defaultMachineRegistrationDuration, // if a client does not request a specific expiry time, use this duration
 
 	}
+
+	cfg.OIDC.MatchMap = loadOIDCMatchMap()
 
 	h, err := headscale.NewHeadscale(cfg)
 	if err != nil {
@@ -290,4 +294,16 @@ func HasJsonOutputFlag() bool {
 		}
 	}
 	return false
+}
+
+// loadOIDCMatchMap is a wrapper around viper to verifies that the keys in
+// the match map is valid regex strings.
+func loadOIDCMatchMap() map[string]string {
+	strMap := viper.GetStringMapString("oidc.domain_map")
+
+	for oidcMatcher := range strMap {
+		_ = regexp.MustCompile(oidcMatcher)
+	}
+
+	return strMap
 }

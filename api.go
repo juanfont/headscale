@@ -170,7 +170,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Str("machine", m.Name).
 			Msg("Machine registration has expired. Sending a authurl to register")
 
-		if h.cfg.OIDCIssuer != "" {
+		if h.cfg.OIDC.Issuer != "" {
 			resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
 				strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 		} else {
@@ -225,7 +225,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		Str("handler", "Registration").
 		Str("machine", m.Name).
 		Msg("The node is sending us a new NodeKey, sending auth url")
-	if h.cfg.OIDCIssuer != "" {
+	if h.cfg.OIDC.Issuer != "" {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s", strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
@@ -424,7 +424,7 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 	db.Save(&m)
 
 	h.updateMachineExpiry(&m) // TODO: do we want to do different expiry times for AuthKeys?
-  
+
 	pak.Used = true
 	db.Save(&pak)
 

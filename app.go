@@ -3,15 +3,16 @@ package headscale
 import (
 	"errors"
 	"fmt"
-	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/patrickmn/go-cache"
-	"golang.org/x/oauth2"
 	"net/http"
 	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/patrickmn/go-cache"
+	"golang.org/x/oauth2"
 
 	"github.com/rs/zerolog/log"
 
@@ -57,12 +58,17 @@ type Config struct {
 
 	DNSConfig *tailcfg.DNSConfig
 
-	OIDCIssuer       string
-	OIDCClientID     string
-	OIDCClientSecret string
+	OIDC OIDCConfig
 
 	MaxMachineRegistrationDuration     time.Duration
 	DefaultMachineRegistrationDuration time.Duration
+}
+
+type OIDCConfig struct {
+	Issuer       string
+	ClientID     string
+	ClientSecret string
+	MatchMap     map[string]string
 }
 
 // Headscale represents the base app of the service
@@ -122,14 +128,14 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		return nil, err
 	}
 
-	if cfg.OIDCIssuer != "" {
+	if cfg.OIDC.Issuer != "" {
 		err = h.initOIDC()
 		if err != nil {
 			return nil, err
 		}
-  }
+	}
 
-  if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS
+	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS
 		magicDNSDomains, err := generateMagicDNSRootDomains(h.cfg.IPPrefix, h.cfg.BaseDomain)
 		if err != nil {
 			return nil, err
@@ -294,7 +300,6 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 
 			times = append(times, lastChange)
 		}
-
 	}
 
 	sort.Slice(times, func(i, j int) bool {
@@ -305,7 +310,6 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 
 	if len(times) == 0 {
 		return time.Now().UTC()
-
 	} else {
 		return times[0]
 	}
