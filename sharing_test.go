@@ -4,6 +4,36 @@ import (
 	"gopkg.in/check.v1"
 )
 
+func CreateNodeNamespace(c *check.C, namespace, node, key, IP string) (*Namespace, *Machine) {
+	n1, err := h.CreateNamespace(namespace)
+	c.Assert(err, check.IsNil)
+
+	pak1, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = h.GetMachine(n1.Name, node)
+	c.Assert(err, check.NotNil)
+
+	m1 := &Machine{
+		ID:             0,
+		MachineKey:     key,
+		NodeKey:        key,
+		DiscoKey:       key,
+		Name:           node,
+		NamespaceID:    n1.ID,
+		Registered:     true,
+		RegisterMethod: "authKey",
+		IPAddress:      IP,
+		AuthKeyID:      uint(pak1.ID),
+	}
+	h.db.Save(m1)
+
+	_, err = h.GetMachine(n1.Name, m1.Name)
+	c.Assert(err, check.IsNil)
+
+	return n1, m1
+}
+
 func (s *Suite) TestBasicSharedNodesInNamespace(c *check.C) {
 	n1, err := h.CreateNamespace("shared1")
 	c.Assert(err, check.IsNil)
@@ -123,6 +153,32 @@ func (s *Suite) TestSameNamespace(c *check.C) {
 
 	err = h.AddSharedMachineToNamespace(m1, n1)
 	c.Assert(err, check.Equals, errorSameNamespace)
+}
+
+func (s *Suite) TestUnshare(c *check.C) {
+	n1, m1 := CreateNodeNamespace(c, "shared1", "test_unshare_1", "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66", "100.64.0.1")
+	_, m2 := CreateNodeNamespace(c, "shared2", "test_unshare_2", "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863", "100.64.0.2")
+
+	p1s, err := h.getPeers(m1)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(p1s), check.Equals, 0)
+
+	err = h.AddSharedMachineToNamespace(m2, n1)
+	c.Assert(err, check.IsNil)
+
+	p1s, err = h.getShared(m1)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(p1s), check.Equals, 1)
+
+	err = h.RemoveSharedMachineFromNamespace(m2, n1)
+	c.Assert(err, check.IsNil)
+
+	p1s, err = h.getShared(m1)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(p1s), check.Equals, 0)
+
+	err = h.RemoveSharedMachineFromNamespace(m2, n1)
+	c.Assert(err, check.Equals, errorMachineNotShared)
 }
 
 func (s *Suite) TestAlreadyShared(c *check.C) {
