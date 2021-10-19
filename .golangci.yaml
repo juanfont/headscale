@@ -1,0 +1,17 @@
+---
+linters:
+  enable-all: true
+  disable:
+    - exhaustivestruct
+    - revive
+    - lll
+    - interfacer
+    - scopelint
+    - maligned
+    - golint
+    - gofmt
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - funlen
+    - exhaustivestruct
