@@ -212,6 +212,10 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	c.String(http.StatusBadRequest, "email from claim could not be mapped to a namespace")
 }
 
+// getNamespaceFromEmail passes the users email through a list of "matchers"
+// and iterates through them until it matches and returns a namespace.
+// If no match is found, an empty string will be returned.
+// TODO(kradalby): golang Maps key order is not stable, so this list is _not_ deterministic. Find a way to make the list of keys stable, preferably in the order presented in a users configuration.
 func (h *Headscale) getNamespaceFromEmail(email string) (string, bool) {
 	for match, namespace := range h.cfg.OIDC.MatchMap {
 		regex := regexp.MustCompile(match)

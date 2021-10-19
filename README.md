@@ -30,7 +30,7 @@ Headscale implements this coordination server.
 - [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [x] DNS (passing DNS servers to nodes)
 - [x] Share nodes between ~~users~~ namespaces
-- [x] SSO (via OIDC)
+- [x] Single-Sign-On (via Open ID Connect)
 - [x] MagicDNS (see `docs/`)
 
 ## Client OS support
@@ -109,13 +109,14 @@ Suggestions/PRs welcomed!
 
    ```json
    {
-   "oidc_issuer": "https://your-oidc.issuer.com/path",
-   "oidc_client_id": "your-oidc-client-id",
-   "oidc_client_secret": "your-oidc-client-secret"
+   "oidc": {
+       "issuer": "https://your-oidc.issuer.com/path",
+       "client_id": "your-oidc-client-id",
+       "client_secret": "your-oidc-client-secret",
+       "domain_map": {
+         ".*": "default-namespace"
+       }
    }
-   ```
-   
-   If `oidc_issuer` is set, headscale will attempt to send your users to the OIDC server for authentication, otherwise it will give instructions on how to authorise clients via the CLI.
 
 6. Run the server
 
@@ -237,9 +238,12 @@ The fields starting with `db_` are used for the PostgreSQL connection informatio
 
 OpenID Connect settings:
 ```
-   "oidc_issuer": "https://your-oidc.issuer.com/path",
-   "oidc_client_id": "your-oidc-client-id",
-   "oidc_client_secret": "your-oidc-client-secret"
+   oidc:
+     issuer: "https://your-oidc.issuer.com/path"
+     client_id: "your-oidc-client-id"
+     client_secret: "your-oidc-client-secret"
+     domain_map:
+       ".*": default-namespace
 ```
 
 
