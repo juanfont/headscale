@@ -271,11 +271,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		return nil, err
 	}
 
-	profile := tailcfg.UserProfile{
-		ID:          tailcfg.UserID(m.NamespaceID),
-		LoginName:   m.Namespace.Name,
-		DisplayName: m.Namespace.Name,
-	}
+	profiles := getMapResponseUserProfiles(*m, peers)
 
 	nodePeers, err := peers.toNodes(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
 	if err != nil {
@@ -286,13 +282,13 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		return nil, err
 	}
 
-	var dnsConfig *tailcfg.DNSConfig
-	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS is enabled
-		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
-		dnsConfig = h.cfg.DNSConfig.Clone()
-		dnsConfig.Domains = append(dnsConfig.Domains, fmt.Sprintf("%s.%s", m.Namespace.Name, h.cfg.BaseDomain))
-	} else {
-		dnsConfig = h.cfg.DNSConfig
+	dnsConfig, err := getMapResponseDNSConfig(h.cfg.DNSConfig, h.cfg.BaseDomain, *m, peers)
+	if err != nil {
+		log.Error().
+			Str("func", "getMapResponse").
+			Err(err).
+			Msg("Failed generate the DNSConfig")
+		return nil, err
 	}
 
 	resp := tailcfg.MapResponse{
@@ -303,10 +299,9 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		Domain:       h.cfg.BaseDomain,
 		PacketFilter: *h.aclRules,
 		DERPMap:      h.cfg.DerpMap,
-
-		// TODO(juanfont): We should send the profiles of all the peers (this own namespace + those from the shared peers)
-		UserProfiles: []tailcfg.UserProfile{profile},
+		UserProfiles: profiles,
 	}
+
 	log.Trace().
 		Str("func", "getMapResponse").
 		Str("machine", req.Hostinfo.Hostname).

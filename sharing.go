@@ -21,18 +21,45 @@ func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error
 		return errorSameNamespace
 	}
 
-	sharedMachine := SharedMachine{}
-	if err := h.db.Where("machine_id = ? AND namespace_id", m.ID, ns.ID).First(&sharedMachine).Error; err == nil {
+	sharedMachines := []SharedMachine{}
+	if err := h.db.Where("machine_id = ? AND namespace_id = ?", m.ID, ns.ID).Find(&sharedMachines).Error; err != nil {
+		return err
+	}
+	if len(sharedMachines) > 0 {
 		return errorMachineAlreadyShared
 	}
 
-	sharedMachine = SharedMachine{
+	sharedMachine := SharedMachine{
 		MachineID:   m.ID,
 		Machine:     *m,
 		NamespaceID: ns.ID,
 		Namespace:   *ns,
 	}
 	h.db.Save(&sharedMachine)
+
+	return nil
+}
+
+// RemoveSharedMachineFromNamespace removes a shared machine from a namespace
+func (h *Headscale) RemoveSharedMachineFromNamespace(m *Machine, ns *Namespace) error {
+	if m.NamespaceID == ns.ID {
+		return errorSameNamespace
+	}
+
+	sharedMachine := SharedMachine{}
+	result := h.db.Where("machine_id = ? AND namespace_id = ?", m.ID, ns.ID).Unscoped().Delete(&sharedMachine)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return errorMachineNotShared
+	}
+
+	err := h.RequestMapUpdates(ns.ID)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

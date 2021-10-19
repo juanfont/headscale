@@ -117,7 +117,7 @@ func (h *Headscale) getShared(m *Machine) (Machines, error) {
 		Msg("Finding shared peers")
 
 	sharedMachines := []SharedMachine{}
-	if err := h.db.Preload("Namespace").Preload("Machine").Where("namespace_id = ?",
+	if err := h.db.Preload("Namespace").Preload("Machine").Preload("Machine.Namespace").Where("namespace_id = ?",
 		m.NamespaceID).Find(&sharedMachines).Error; err != nil {
 		return Machines{}, err
 	}
@@ -144,7 +144,7 @@ func (h *Headscale) getSharedTo(m *Machine) (Machines, error) {
 		Msg("Finding peers in namespaces this machine is shared with")
 
 	sharedMachines := []SharedMachine{}
-	if err := h.db.Preload("Namespace").Preload("Machine").Where("machine_id = ?",
+	if err := h.db.Preload("Namespace").Preload("Machine").Preload("Machine.Namespace").Where("machine_id = ?",
 		m.ID).Find(&sharedMachines).Error; err != nil {
 		return Machines{}, err
 	}

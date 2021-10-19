@@ -256,3 +256,22 @@ func (n *Namespace) toLogin() *tailcfg.Login {
 	}
 	return &l
 }
+
+func getMapResponseUserProfiles(m Machine, peers Machines) []tailcfg.UserProfile {
+	namespaceMap := make(map[string]Namespace)
+	namespaceMap[m.Namespace.Name] = m.Namespace
+	for _, p := range peers {
+		namespaceMap[p.Namespace.Name] = p.Namespace // not worth checking if already is there
+	}
+
+	profiles := []tailcfg.UserProfile{}
+	for _, namespace := range namespaceMap {
+		profiles = append(profiles,
+			tailcfg.UserProfile{
+				ID:          tailcfg.UserID(namespace.ID),
+				LoginName:   namespace.Name,
+				DisplayName: namespace.Name,
+			})
+	}
+	return profiles
+}
