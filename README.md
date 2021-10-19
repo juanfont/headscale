@@ -50,7 +50,7 @@ Suggestions/PRs welcomed!
 
 ## Running headscale
 
-Please have a look at the documentation under (`docs/`).
+Please have a look at the documentation under [`docs/`](docs/).
 
 
 ## Disclaimer

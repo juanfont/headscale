@@ -1,9 +1,13 @@
 # Configuration reference
 
-Headscale's configuration file is named `config.json` or `config.yaml`. Headscale will look for it in `/etc/headscale`, `~/.headscale` and finally the directory from where the Headscale binary is executed.
+Headscale will look for a configuration file named `config.yaml` (or `config.json`) in the following order:
+
+- `/etc/headscale`
+- `~/.headscale`
+- current working directory
 
 ```yaml
-server_url: http://192.168.1.12:8080
+server_url: http://headscale.mydomain.net
 listen_addr: 0.0.0.0:8080
 ip_prefix: 100.64.0.0/10
 ```

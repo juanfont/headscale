@@ -19,11 +19,10 @@
      POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
    ```
 
-3. Set some stuff up (headscale Wireguard keys & the config.json file)
+3. Create a WireGuard Private key and headscale configuration
 
    ```shell
    wg genkey > private.key
-   wg pubkey < private.key > public.key  # not needed
 
    # Postgres
    cp config.json.postgres.example config.json
@@ -44,7 +43,14 @@
 
    ```shell
    touch db.sqlite
-   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale namespaces create myfirstnamespace
+   docker run \
+     -v $(pwd)/private.key:/private.key \
+     -v $(pwd)/config.json:/config.json \
+     -v $(pwd)/derp.yaml:/derp.yaml \
+     -v $(pwd)/db.sqlite:/db.sqlite \
+     -p 127.0.0.1:8080:8080 \
+     headscale/headscale:x.x.x \
+     headscale namespaces create myfirstnamespace
    ```
 
    or if your server is already running in docker:
@@ -64,7 +70,13 @@
    the db.sqlite mount is only needed if you use sqlite
 
    ```shell
-   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite -p 127.0.0.1:8080:8080 headscale/headscale:x.x.x headscale serve
+   docker run \
+     -v $(pwd)/private.key:/private.key \
+     -v $(pwd)/config.json:/config.json \
+     -v $(pwd)/derp.yaml:/derp.yaml \
+     -v $(pwd)/db.sqlite:/db.sqlite \
+     -p 127.0.0.1:8080:8080 \
+     headscale/headscale:x.x.x headscale serve
    ```
 
 6. If you used tailscale.com before in your nodes, make sure you clear the tailscald data folder
@@ -89,7 +101,12 @@
    ```
    or docker:
    ```shell
-   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v $(pwd)/derp.yaml:/derp.yaml headscale/headscale:x.x.x headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+   docker run \
+     -v $(pwd)/private.key:/private.key \
+     -v $(pwd)/config.json:/config.json \
+     -v $(pwd)/derp.yaml:/derp.yaml \
+     headscale/headscale:x.x.x \
+     headscale -n myfirstnamespace nodes register YOURMACHINEKEY
    ```
    or if your server is already running in docker:
    ```shell
@@ -107,7 +124,13 @@ Alternatively, you can use Auth Keys to register your machines:
    or docker:
 
    ```shell
-   docker run -v $(pwd)/private.key:/private.key -v $(pwd)/config.json:/config.json -v$(pwd)/derp.yaml:/derp.yaml -v $(pwd)/db.sqlite:/db.sqlite headscale/headscale:x.x.x headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+   docker run \
+     -v $(pwd)/private.key:/private.key \
+     -v $(pwd)/config.json:/config.json \
+     -v$(pwd)/derp.yaml:/derp.yaml \
+     -v $(pwd)/db.sqlite:/db.sqlite \
+     headscale/headscale:x.x.x \
+     headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
    or if your server is already running in docker:
