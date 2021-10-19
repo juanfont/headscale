@@ -13,14 +13,6 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      # Install and run golangci-lint as a separate step, it's much faster this
-      # way because this action has caching. It'll get run again in `make lint`
-      # below, but it's still much faster in the end than installing
-      # golangci-lint manually in the `Run lint` step.
-      - uses: golangci/golangci-lint-action@v2
-        with:
-          args: --timeout 5m
-
       # Setup Go
       - name: Setup Go
         uses: actions/setup-go@v2
