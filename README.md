@@ -48,6 +48,11 @@ Headscale implements this coordination server.
 Suggestions/PRs welcomed!
 
 
+## Running headscale
+
+Please have a look at the documentation under (`docs/`).
+
+
 ## Disclaimer
 
 1. We have nothing to do with Tailscale, or Tailscale Inc.
