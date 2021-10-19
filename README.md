@@ -21,7 +21,7 @@ Headscale implements this coordination server.
 - [x] Base functionality (nodes can communicate with each other)
 - [x] Node registration through the web flow
 - [x] Network changes are relayed to the nodes
-- [x] Namespace support (~equivalent to multi-user in Tailscale.com)
+- [x] Multiple namespaces support (~tailnets in Tailscale.com naming)
 - [x] Routing (advertise & accept, including exit nodes)
 - [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
 - [x] JSON-formatted output
@@ -29,7 +29,7 @@ Headscale implements this coordination server.
 - [x] Taildrop (File Sharing)
 - [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [x] DNS (passing DNS servers to nodes)
-- [x] Share nodes between ~~users~~ namespaces
+- [x] Share nodes between namespaces
 - [x] MagicDNS (see `docs/`)
 
 ## Client OS support
