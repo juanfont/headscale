@@ -31,7 +31,7 @@
    cp config.json.sqlite.example config.json
    ```
 
-4. Create a namespace (a namespace is a 'tailnet', a group of Tailscale nodes that can talk to each other)
+4. Create a namespace
 
    ```shell
    headscale namespaces create myfirstnamespace
