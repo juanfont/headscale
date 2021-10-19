@@ -24,11 +24,7 @@
    ```shell
    wg genkey > private.key
 
-   # Postgres
-   cp config.json.postgres.example config.json
-   # or
-   # SQLite
-   cp config.json.sqlite.example config.json
+   cp config.yaml.example config.yaml
    ```
 
 4. Create a namespace
