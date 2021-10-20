@@ -36,4 +36,4 @@ dns_config:
 - `domains`: Search domains to inject.
 - `magic_dns`: Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/). Only works if there is at least a nameserver defined.
 - `base_domain`: Defines the base domain to create the hostnames for MagicDNS. `base_domain` must be a FQDNs, without the trailing dot. The FQDN of the hosts will be `hostname.namespace.base_domain` (e.g., _myhost.mynamespace.example.com_).
-- `restricted_nameservers`: Also known as Split DNS (see https://tailscale.com/kb/1054/dns/), list of search domains and the DNS you want to use for them.
+- `restricted_nameservers`: Split DNS (see https://tailscale.com/kb/1054/dns/), list of search domains and the DNS to query for each one.

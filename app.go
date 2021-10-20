@@ -113,7 +113,8 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		if err != nil {
 			return nil, err
 		}
-		if h.cfg.DNSConfig.Routes == nil { // we might have routes already from Split DNS
+		// we might have routes already from Split DNS
+		if h.cfg.DNSConfig.Routes == nil { 
 			h.cfg.DNSConfig.Routes = make(map[string][]dnstype.Resolver)
 		}
 		for _, d := range magicDNSDomains {
