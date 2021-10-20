@@ -37,14 +37,14 @@ func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 		<!--
 		<h3>iOS</h3>
 		<p>
-		    <a href="/apple/ios" download="headscale_ios.mobileconfig">iOS profile</a>
+		    <a href="{{.Url}}/apple/ios" download="headscale_ios.mobileconfig">iOS profile</a>
 		</p>
 		-->
 		
 		<h3>macOS</h3>
 		<p>Headscale can be set to the default server by installing a Headscale configuration profile:</p>
 		<p>
-		    <a href="/apple/macos" download="headscale_macos.mobileconfig">macOS profile</a>
+		    <a href="{{.Url}}/apple/macos" download="headscale_macos.mobileconfig">macOS profile</a>
 		</p>
 
 		<ol>
