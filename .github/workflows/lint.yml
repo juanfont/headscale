@@ -1,31 +1,29 @@
+---
 name: CI
 
 on: [push, pull_request]
 
 jobs:
-  # The "build" workflow
-  lint:
-    # The type of runner that the job will run on
+  golangci-lint:
+    name: lint
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          version: latest
+          args: --timeout 30m
+
+  prettier-lint:
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v2
 
-      # Setup Go
-      - name: Setup Go
-        uses: actions/setup-go@v2
+      - name: Prettify code
+        uses: creyD/prettier_action@v4.0
         with:
-          go-version: "1.16.3" # The Go version to download (if necessary) and use.
-
-      # Install all the dependencies
-      - name: Install dependencies
-        run: |
-          go version
-          go install golang.org/x/lint/golint@latest
-          sudo apt update
-          sudo apt install -y make
-
-      - name: Run lint
-        run: make lint
+          prettier_options: >-
+            --check '**/*.{ts,js,md,yaml,yml,sass,css,scss,html}'
+          only_changed: false
+          dry: true
