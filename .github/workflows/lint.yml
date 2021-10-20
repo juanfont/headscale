@@ -25,6 +25,6 @@ jobs:
         uses: creyD/prettier_action@v4.0
         with:
           prettier_options: >-
-            --check '**/*.{ts,js,md,yaml,yml,sass,css,scss,html}'
+            --check **/*.{ts,js,md,yaml,yml,sass,css,scss,html}
           only_changed: false
           dry: true
