@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v2
         with:
@@ -19,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
 
       - name: Prettify code
         uses: creyD/prettier_action@v4.0
