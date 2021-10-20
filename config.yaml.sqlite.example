@@ -5,17 +5,9 @@ private_key_path: private.key
 derp_map_path: derp.yaml
 ephemeral_node_inactivity_timeout: 30m
 
-# Postgres config
-db_type: postgres
-db_host: localhost
-db_port: 5432
-db_name: headscale
-db_user: foo
-db_pass: bar
-
 # SQLite config (uncomment it if you want to use SQLite)
-# db_type: sqlite3
-# db_path: db.sqlite
+db_type: sqlite3
+db_path: db.sqlite
 
 acme_url: https://acme-v02.api.letsencrypt.org/directory
 acme_email: ''
