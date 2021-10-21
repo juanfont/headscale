@@ -15,8 +15,12 @@
 2. (Optional, you can also use SQLite) Get yourself a PostgreSQL DB running
 
    ```shell
-   docker run --name headscale -e POSTGRES_DB=headscale -e \
-     POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
+   docker run --name headscale \
+     -e POSTGRES_DB=headscale 
+     -e POSTGRES_USER=foo \
+     -e POSTGRES_PASSWORD=bar \
+     -p 5432:5432 \
+     -d postgres
    ```
 
 3. Create a WireGuard private key and headscale configuration
