@@ -1,6 +1,6 @@
 # Running headscale
 
-1. Download the headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your PATH or use the docker container
+1. Download the headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your $PATH or use the docker container
 
    ```shell
    docker pull headscale/headscale:x.x.x
@@ -19,7 +19,7 @@
      POSTGRES_USER=foo -e POSTGRES_PASSWORD=bar -p 5432:5432 -d postgres
    ```
 
-3. Create a WireGuard Private key and headscale configuration
+3. Create a WireGuard private key and headscale configuration
 
    ```shell
    wg genkey > private.key
@@ -75,7 +75,7 @@
      headscale/headscale:x.x.x headscale serve
    ```
 
-6. If you used tailscale.com before in your nodes, make sure you clear the tailscald data folder
+6. If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
 
    ```shell
    systemctl stop tailscaled
@@ -142,4 +142,4 @@ Alternatively, you can use Auth Keys to register your machines:
 
 If you create an authkey with the `--ephemeral` flag, that key will create ephemeral nodes. This implies that `--reusable` is true.
 
-Please bear in mind that all the commands from headscale support adding `-o json` or `-o json-line` to get a nicely JSON-formatted output.
+Please bear in mind that all headscale commands support adding `-o json` or `-o json-line` to get nicely JSON-formatted output.
