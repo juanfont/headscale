@@ -21,4 +21,4 @@ jobs:
           COMMIT_MESSAGE: "docs(README): update contributors"
           AVATAR_SHAPE: "round"
           PULL_REQUEST: "Update contributors"
-          BRANCH: "update-contributors
+          BRANCH: "update-contributors"
