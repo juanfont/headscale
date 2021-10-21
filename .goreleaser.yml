@@ -62,7 +62,7 @@ builds:
       - arm64
     env:
       - CGO_ENABLED=1
-      - CC=aarch64-linux-gnu-gcc-9
+      - CC=aarch64-linux-gnu-gcc
     main: ./cmd/headscale/headscale.go
     mod_timestamp: '{{ .CommitTimestamp }}'
     ldflags:
