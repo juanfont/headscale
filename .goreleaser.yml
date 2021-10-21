@@ -6,7 +6,7 @@ before:
 builds:
   - id: darwin-amd64
     main: ./cmd/headscale/headscale.go
-    mod_timestamp: '{{ .CommitTimestamp }}'
+    mod_timestamp: "{{ .CommitTimestamp }}"
     goos:
       - darwin
     goarch:
@@ -23,7 +23,7 @@ builds:
 
   - id: linux-armhf
     main: ./cmd/headscale/headscale.go
-    mod_timestamp: '{{ .CommitTimestamp }}'
+    mod_timestamp: "{{ .CommitTimestamp }}"
     goos:
       - linux
     goarch:
@@ -42,7 +42,6 @@ builds:
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
 
-
   - id: linux-amd64
     env:
       - CGO_ENABLED=1
@@ -51,7 +50,7 @@ builds:
     goarch:
       - amd64
     main: ./cmd/headscale/headscale.go
-    mod_timestamp: '{{ .CommitTimestamp }}'
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
 
@@ -64,7 +63,7 @@ builds:
       - CGO_ENABLED=1
       - CC=aarch64-linux-gnu-gcc
     main: ./cmd/headscale/headscale.go
-    mod_timestamp: '{{ .CommitTimestamp }}'
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
 
@@ -79,12 +78,12 @@ archives:
     format: binary
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
 snapshot:
   name_template: "{{ .Tag }}-next"
 changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
+      - "^docs:"
+      - "^test:"

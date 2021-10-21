@@ -41,7 +41,7 @@ func (*Suite) TestPostgresConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config.json.postgres.example"), filepath.Join(tmpDir, "config.json"))
+	err = os.Symlink(filepath.Clean(path+"/../../config.yaml.postgres.example"), filepath.Join(tmpDir, "config.yaml"))
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func (*Suite) TestSqliteConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config.json.sqlite.example"), filepath.Join(tmpDir, "config.json"))
+	err = os.Symlink(filepath.Clean(path+"/../../config.yaml.sqlite.example"), filepath.Join(tmpDir, "config.yaml"))
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config.json.sqlite.example"), filepath.Join(tmpDir, "config.json"))
+	err = os.Symlink(filepath.Clean(path+"/../../config.yaml.sqlite.example"), filepath.Join(tmpDir, "config.yaml"))
 	if err != nil {
 		c.Fatal(err)
 	}
