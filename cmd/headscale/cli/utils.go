@@ -104,6 +104,33 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			dnsConfig.Nameservers = nameservers
 			dnsConfig.Resolvers = resolvers
 		}
+
+		if viper.IsSet("dns_config.restricted_nameservers") {
+			if len(dnsConfig.Nameservers) > 0 {
+				dnsConfig.Routes = make(map[string][]dnstype.Resolver)
+				restrictedDNS := viper.GetStringMapStringSlice("dns_config.restricted_nameservers")
+				for domain, restrictedNameservers := range restrictedDNS {
+					restrictedResolvers := make([]dnstype.Resolver, len(restrictedNameservers))
+					for index, nameserverStr := range restrictedNameservers {
+						nameserver, err := netaddr.ParseIP(nameserverStr)
+						if err != nil {
+							log.Error().
+								Str("func", "getDNSConfig").
+								Err(err).
+								Msgf("Could not parse restricted nameserver IP: %s", nameserverStr)
+						}
+						restrictedResolvers[index] = dnstype.Resolver{
+							Addr: nameserver.String(),
+						}
+					}
+					dnsConfig.Routes[domain] = restrictedResolvers
+				}
+			} else {
+				log.Warn().
+					Msg("Warning: dns_config.restricted_nameservers is set, but no nameservers are configured. Ignoring restricted_nameservers.")
+			}
+		}
+
 		if viper.IsSet("dns_config.domains") {
 			dnsConfig.Domains = viper.GetStringSlice("dns_config.domains")
 		}
