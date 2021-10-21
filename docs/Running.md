@@ -1,6 +1,6 @@
 # Running headscale
 
-1. Download the Headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your PATH or use the docker container
+1. Download the headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your PATH or use the docker container
 
    ```shell
    docker pull headscale/headscale:x.x.x
