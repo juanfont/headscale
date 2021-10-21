@@ -15,7 +15,7 @@ jobs:
     - uses: actions/checkout@v2
     - uses: BobAnkh/add-contributors@master
       with:
-        CONTRIBUTOR: '### Contributors'
+        CONTRIBUTOR: '## Contributors'
         COLUMN_PER_ROW: '6'
         ACCESS_TOKEN: ${{secrets.GITHUB_TOKEN}}
         IMG_WIDTH: '100'

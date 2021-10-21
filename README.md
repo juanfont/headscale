@@ -58,10 +58,7 @@ Please have a look at the documentation under [`docs/`](docs/).
 1. We have nothing to do with Tailscale, or Tailscale Inc.
 2. The purpose of writing this was to learn how Tailscale works.
 
-## More on Tailscale
 
-- https://tailscale.com/blog/how-tailscale-works/
-- https://tailscale.com/blog/tailscale-key-management/
-- https://tailscale.com/blog/an-unlikely-database-migration/
+## Contributors
 
 
