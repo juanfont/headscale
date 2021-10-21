@@ -16,7 +16,7 @@
 
    ```shell
    docker run --name headscale \
-     -e POSTGRES_DB=headscale 
+     -e POSTGRES_DB=headscale
      -e POSTGRES_USER=foo \
      -e POSTGRES_PASSWORD=bar \
      -p 5432:5432 \

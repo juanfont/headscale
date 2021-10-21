@@ -40,6 +40,7 @@ ephemeral_node_inactivity_timeout": "30m"
 `ephemeral_node_inactivity_timeout` is the timeout after which inactive ephemeral node records will be deleted from the database. The default is 30 minutes. This value must be higher than 65 seconds (the keepalive timeout for the HTTP long poll is 60 seconds, plus a few seconds to avoid race conditions).
 
 PostgresSQL
+
 ```yaml
 db_host: localhost
 db_port: 5432
@@ -49,6 +50,7 @@ db_pass: bar
 ```
 
 SQLite
+
 ```yaml
 db_type: sqlite3
 db_path: db.sqlite
@@ -60,11 +62,9 @@ The fields starting with `db_` are used for the DB connection information.
 
 Please check [`TLS.md`](TLS.md).
 
-
 ### DNS configuration
 
 Please refer to [`DNS.md`](DNS.md).
-
 
 ### Policy ACLs
 
