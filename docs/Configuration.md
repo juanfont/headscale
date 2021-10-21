@@ -10,9 +10,10 @@ Headscale will look for a configuration file named `config.yaml` (or `config.jso
 server_url: http://headscale.mydomain.net
 listen_addr: 0.0.0.0:8080
 ip_prefix: 100.64.0.0/10
+disable_check_updates: false
 ```
 
-`server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on. `ip_prefix` is the IP prefix (range) in which IP addresses for nodes will be allocated (default 100.64.0.0/10, e.g., 192.168.4.0/24, 10.0.0.0/8)
+`server_url` is the external URL via which Headscale is reachable. `listen_addr` is the IP address and port the Headscale program should listen on. `ip_prefix` is the IP prefix (range) in which IP addresses for nodes will be allocated (default 100.64.0.0/10, e.g., 192.168.4.0/24, 10.0.0.0/8). `disable_check_updates` disables the automatic check for updates.
 
 ```yaml
 log_level: debug
