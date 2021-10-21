@@ -14,14 +14,14 @@ Everything in Tailscale is Open Source, except the GUI clients for proprietary O
 
 The control server works as an exchange point of Wireguard public keys for the nodes in the Tailscale network. It also assigns the IP addresses of the clients, creates the boundaries between each user, enables sharing machines between users, and exposes the advertised routes of your nodes.
 
-Headscale implements this coordination server.
+headscale implements this coordination server.
 
 ## Status
 
 - [x] Base functionality (nodes can communicate with each other)
 - [x] Node registration through the web flow
 - [x] Network changes are relayed to the nodes
-- [x] Multiple namespaces support (~tailnets in Tailscale.com naming)
+- [x] Namespaces support (~tailnets in Tailscale.com naming)
 - [x] Routing (advertise & accept, including exit nodes)
 - [x] Node registration via pre-auth keys (including reusable keys, and ephemeral node support)
 - [x] JSON-formatted output

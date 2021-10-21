@@ -1,12 +1,12 @@
-# DNS in Headscale
+# DNS in headscale
 
-Headscale supports Tailscale's DNS configuration and MagicDNS. Please have a look to their KB to better understand what this means:
+headscale supports Tailscale's DNS configuration and MagicDNS. Please have a look to their KB to better understand what this means:
 
 - https://tailscale.com/kb/1054/dns/
 - https://tailscale.com/kb/1081/magicdns/
 - https://tailscale.com/blog/2021-09-private-dns-with-magicdns/
 
-Long story short, you can define the DNS servers you want to use in your tailnets, activate MagicDNS (so you don't have to remember the IP addresses of your nodes), define search domains, as well as predefined hosts. Headscale will inject that settings into your nodes.
+Long story short, you can define the DNS servers you want to use in your tailnets, activate MagicDNS (so you don't have to remember the IP addresses of your nodes), define search domains, as well as predefined hosts. headscale will inject that settings into your nodes.
 
 
 ## Configuration reference
