@@ -1,6 +1,3 @@
-# This file contains some of the official Tailscale DERP servers, 
-# shamelessly taken from https://github.com/tailscale/tailscale/blob/main/net/dnsfallback/dns-fallback-servers.json
-#
 # If you plan to somehow use headscale, please deploy your own DERP infra: https://tailscale.com/kb/1118/custom-derp-servers/
 regions: 
   900:
