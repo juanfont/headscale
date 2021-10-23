@@ -82,7 +82,10 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 	now := time.Now().UTC()
 	var m Machine
-	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey.HexString()); errors.Is(
+		result.Error,
+		gorm.ErrRecordNotFound,
+	) {
 		log.Info().Str("machine", req.Hostinfo.Hostname).Msg("New machine")
 		m = Machine{
 			Expiry:               &req.Expiry,
@@ -270,7 +273,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		DNSConfig:    dnsConfig,
 		Domain:       h.cfg.BaseDomain,
 		PacketFilter: *h.aclRules,
-		DERPMap:      h.cfg.DerpMap,
+		DERPMap:      h.DERPMap,
 		UserProfiles: profiles,
 	}
 
@@ -329,7 +332,13 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapReque
 	return data, nil
 }
 
-func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, req tailcfg.RegisterRequest, m Machine) {
+func (h *Headscale) handleAuthKey(
+	c *gin.Context,
+	db *gorm.DB,
+	idKey wgkey.Key,
+	req tailcfg.RegisterRequest,
+	m Machine,
+) {
 	log.Debug().
 		Str("func", "handleAuthKey").
 		Str("machine", req.Hostinfo.Hostname).
