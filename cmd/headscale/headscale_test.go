@@ -27,7 +27,7 @@ func (s *Suite) SetUpSuite(c *check.C) {
 func (s *Suite) TearDownSuite(c *check.C) {
 }
 
-func (*Suite) TestSqliteConfigLoading(c *check.C) {
+func (*Suite) TestConfigLoading(c *check.C) {
 	tmpDir, err := ioutil.TempDir("", "headscale")
 	if err != nil {
 		c.Fatal(err)
@@ -52,7 +52,7 @@ func (*Suite) TestSqliteConfigLoading(c *check.C) {
 	// Test that config file was interpreted correctly
 	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
 	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8080")
-	c.Assert(viper.GetString("derp_map_path"), check.Equals, "derp.yaml")
+	c.Assert(viper.GetStringSlice("derp.paths")[0], check.Equals, "derp-example.yaml")
 	c.Assert(viper.GetString("db_type"), check.Equals, "sqlite3")
 	c.Assert(viper.GetString("db_path"), check.Equals, "db.sqlite")
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")

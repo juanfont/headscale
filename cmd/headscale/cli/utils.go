@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +13,6 @@ import (
 	"github.com/juanfont/headscale"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v2"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -51,21 +50,26 @@ func LoadConfig(path string) error {
 
 	// Collect any validation errors and return them all at once
 	var errorText string
-	if (viper.GetString("tls_letsencrypt_hostname") != "") && ((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
+	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
+		((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
 		errorText += "Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both\n"
 	}
 
-	if (viper.GetString("tls_letsencrypt_hostname") != "") && (viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") && (!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
+	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
+		(viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") &&
+		(!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
 		log.Warn().
 			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
-	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") && (viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
+	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") &&
+		(viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
 		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
 	}
 
-	if !strings.HasPrefix(viper.GetString("server_url"), "http://") && !strings.HasPrefix(viper.GetString("server_url"), "https://") {
+	if !strings.HasPrefix(viper.GetString("server_url"), "http://") &&
+		!strings.HasPrefix(viper.GetString("server_url"), "https://") {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
 	if errorText != "" {
@@ -73,7 +77,35 @@ func LoadConfig(path string) error {
 	} else {
 		return nil
 	}
+}
 
+func GetDERPConfig() headscale.DERPConfig {
+	urlStrs := viper.GetStringSlice("derp.urls")
+
+	urls := make([]url.URL, len(urlStrs))
+	for index, urlStr := range urlStrs {
+		urlAddr, err := url.Parse(urlStr)
+		if err != nil {
+			log.Error().
+				Str("url", urlStr).
+				Err(err).
+				Msg("Failed to parse url, ignoring...")
+		}
+
+		urls[index] = *urlAddr
+	}
+
+	paths := viper.GetStringSlice("derp.paths")
+
+	autoUpdate := viper.GetBool("derp.auto_update_enabled")
+	updateFrequency := viper.GetDuration("derp.update_frequency")
+
+	return headscale.DERPConfig{
+		URLs:            urls,
+		Paths:           paths,
+		AutoUpdate:      autoUpdate,
+		UpdateFrequency: updateFrequency,
+	}
 }
 
 func GetDNSConfig() (*tailcfg.DNSConfig, string) {
@@ -171,32 +203,29 @@ func absPath(path string) string {
 }
 
 func getHeadscaleApp() (*headscale.Headscale, error) {
-	derpPath := absPath(viper.GetString("derp_map_path"))
-	derpMap, err := loadDerpMap(derpPath)
-	if err != nil {
-		log.Error().
-			Str("path", derpPath).
-			Err(err).
-			Msg("Could not load DERP servers map file")
-	}
-
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
 	// to avoid races
 	minInactivityTimeout, _ := time.ParseDuration("65s")
 	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
-		err = fmt.Errorf("ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n", viper.GetString("ephemeral_node_inactivity_timeout"), minInactivityTimeout)
+		err := fmt.Errorf(
+			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n",
+			viper.GetString("ephemeral_node_inactivity_timeout"),
+			minInactivityTimeout,
+		)
 		return nil, err
 	}
 
 	dnsConfig, baseDomain := GetDNSConfig()
+	derpConfig := GetDERPConfig()
 
 	cfg := headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
-		DerpMap:        derpMap,
 		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
 		BaseDomain:     baseDomain,
+
+		DERP: derpConfig,
 
 		EphemeralNodeInactivityTimeout: viper.GetDuration("ephemeral_node_inactivity_timeout"),
 
@@ -241,21 +270,6 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	}
 
 	return h, nil
-}
-
-func loadDerpMap(path string) (*tailcfg.DERPMap, error) {
-	derpFile, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer derpFile.Close()
-	var derpMap tailcfg.DERPMap
-	b, err := io.ReadAll(derpFile)
-	if err != nil {
-		return nil, err
-	}
-	err = yaml.Unmarshal(b, &derpMap)
-	return &derpMap, err
 }
 
 func JsonOutput(result interface{}, errResult error, outputFormat string) {
