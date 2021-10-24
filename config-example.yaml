@@ -9,8 +9,22 @@ listen_addr: 0.0.0.0:8080
 # Path to WireGuard private key file
 private_key_path: private.key
 
-# Path to a file containing a map of DERP nodes.
-derp_map_path: derp.yaml
+derp:
+  # List of externally available DERP maps encoded in JSON
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+
+  # Locally available DERP map files encoded in YAML
+  paths:
+    - derp-example.yaml
+
+  # If enabled, a worker will be set up to periodically
+  # refresh the given sources and update the derpmap
+  # will be set up.
+  auto_update_enabled: true
+
+  # How often should we check for updates?
+  update_frequency: 24h
 
 # Disables the automatic check for updates on startup
 disable_check_updates: false
