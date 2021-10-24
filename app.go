@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -28,10 +29,11 @@ type Config struct {
 	ServerURL                      string
 	Addr                           string
 	PrivateKeyPath                 string
-	DerpMap                        *tailcfg.DERPMap
 	EphemeralNodeInactivityTimeout time.Duration
 	IPPrefix                       netaddr.IPPrefix
 	BaseDomain                     string
+
+	DERP DERPConfig
 
 	DBtype string
 	DBpath string
@@ -55,6 +57,13 @@ type Config struct {
 	DNSConfig *tailcfg.DNSConfig
 }
 
+type DERPConfig struct {
+	URLs            []url.URL
+	Paths           []string
+	AutoUpdate      bool
+	UpdateFrequency time.Duration
+}
+
 // Headscale represents the base app of the service
 type Headscale struct {
 	cfg        Config
@@ -64,6 +73,8 @@ type Headscale struct {
 	dbDebug    bool
 	publicKey  *wgkey.Key
 	privateKey *wgkey.Private
+
+	DERPMap *tailcfg.DERPMap
 
 	aclPolicy *ACLPolicy
 	aclRules  *[]tailcfg.FilterRule
@@ -114,7 +125,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 			return nil, err
 		}
 		// we might have routes already from Split DNS
-		if h.cfg.DNSConfig.Routes == nil { 
+		if h.cfg.DNSConfig.Routes == nil {
 			h.cfg.DNSConfig.Routes = make(map[string][]dnstype.Resolver)
 		}
 		for _, d := range magicDNSDomains {
@@ -153,11 +164,15 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 			return
 		}
 		for _, m := range *machines {
-			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral && time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
+			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral &&
+				time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
 				log.Info().Str("machine", m.Name).Msg("Ephemeral client removed from database")
 				err = h.db.Unscoped().Delete(m).Error
 				if err != nil {
-					log.Error().Err(err).Str("machine", m.Name).Msg("🤮 Cannot delete ephemeral machine from the database")
+					log.Error().
+						Err(err).
+						Str("machine", m.Name).
+						Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
 			}
 		}
@@ -197,6 +212,15 @@ func (h *Headscale) Serve() error {
 
 	go h.watchForKVUpdates(5000)
 	go h.expireEphemeralNodes(5000)
+
+	// Fetch an initial DERP Map before we start serving
+	h.DERPMap = GetDERPMap(h.cfg.DERP)
+
+	if h.cfg.DERP.AutoUpdate {
+		derpMapCancelChannel := make(chan struct{})
+		defer func() { derpMapCancelChannel <- struct{}{} }()
+		go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
+	}
 
 	s := &http.Server{
 		Addr:        h.cfg.Addr,
@@ -273,7 +297,6 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 
 			times = append(times, lastChange)
 		}
-
 	}
 
 	sort.Slice(times, func(i, j int) bool {
@@ -284,7 +307,6 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 
 	if len(times) == 0 {
 		return time.Now().UTC()
-
 	} else {
 		return times[0]
 	}

@@ -1,0 +1,24 @@
+name: Contributors
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  add-contributors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: BobAnkh/add-contributors@master
+        with:
+          CONTRIBUTOR: "## Contributors"
+          COLUMN_PER_ROW: "6"
+          ACCESS_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          IMG_WIDTH: "100"
+          FONT_SIZE: "14"
+          PATH: "/README.md"
+          COMMIT_MESSAGE: "docs(README): update contributors"
+          AVATAR_SHAPE: "round"
+          BRANCH: "update-contributors"
+          PULL_REQUEST: "main"
