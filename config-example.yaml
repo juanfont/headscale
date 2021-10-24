@@ -12,6 +12,8 @@ private_key_path: private.key
 # Path to a file containing a map of DERP nodes.
 derp_map_path: derp.yaml
 
+# Disables the automatic check for updates on startup
+disable_check_updates: false
 ephemeral_node_inactivity_timeout: 30m
 
 # SQLite config
