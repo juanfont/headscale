@@ -493,7 +493,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 
 		result, err := executeCommand(
 			&headscale,
-			[]string{"headscale", "nodes", "share", "--namespace", "shared", fmt.Sprint(machine.ID), "main"},
+			[]string{"headscale", "nodes", "share", fmt.Sprint(machine.ID), "main"},
 			[]string{},
 		)
 		assert.Nil(s.T(), err)
