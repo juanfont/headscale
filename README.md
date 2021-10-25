@@ -6,6 +6,8 @@ An open source, self-hosted implementation of the Tailscale coordination server.
 
 Join our [Discord](https://discord.gg/XcQxk2VHjx) server for a chat.
 
+**Note:** Always select the same GitHub tag as the released version you use to ensure you have the correct example configuration and documentation. The `main` branch might contain unreleased changes.
+
 ## Overview
 
 Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/).
