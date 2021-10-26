@@ -60,6 +60,41 @@ Please have a look at the documentation under [`docs/`](docs/).
 1. We have nothing to do with Tailscale, or Tailscale Inc.
 2. The purpose of writing this was to learn how Tailscale works.
 
+## Contributing
+
+To contribute to Headscale you would need the lastest version of [Go](golang.org) and [Buf](https://buf.build)(Protobuf generator).
+
+### Install development tools
+
+- Go
+- Buf
+- Protobuf tools:
+
+```shell 
+go install \
+    github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
+    github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2 \
+    google.golang.org/protobuf/cmd/protoc-gen-go \
+    google.golang.org/grpc/cmd/protoc-gen-go-grpc
+```
+
+Building the project requires the generation of Go code from Protobuf (in `proto/`) and it can be (re-)generated with:
+
+```shell
+make generate
+```
+
+To run the tests:
+
+```shell
+make test
+```
+
+To build the program:
+
+```shell
+make build
+```
 
 ## Contributors
 
