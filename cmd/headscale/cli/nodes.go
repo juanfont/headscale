@@ -17,9 +17,9 @@ import (
 
 func init() {
 	rootCmd.AddCommand(nodeCmd)
-	listNodesCmd.Flags().StringP("namespace", "n", "", "Namespace")
+	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
 	nodeCmd.AddCommand(listNodesCmd)
-	registerNodeCmd.Flags().StringP("namespace", "n", "", "Namespace")
+	registerNodeCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
 	err := registerNodeCmd.MarkFlagRequired("namespace")
 	if err != nil {
 		log.Fatalf(err.Error())
