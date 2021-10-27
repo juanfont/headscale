@@ -19,7 +19,6 @@ coverprofile_html:
 	go tool cover -html=coverage.out
 
 lint:
-	golint
 	golangci-lint run --timeout 5m
 
 compress: build
