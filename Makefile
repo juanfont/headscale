@@ -19,7 +19,7 @@ coverprofile_html:
 	go tool cover -html=coverage.out
 
 lint:
-	golangci-lint run --timeout 5m
+	golangci-lint run
 
 compress: build
 	upx --brute headscale
