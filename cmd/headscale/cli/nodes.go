@@ -19,14 +19,28 @@ func init() {
 	rootCmd.AddCommand(nodeCmd)
 	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
 	nodeCmd.AddCommand(listNodesCmd)
-	registerNodeCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
+
+	registerNodeCmd.Flags().StringP("namespace", "n", "", "Namespace")
 	err := registerNodeCmd.MarkFlagRequired("namespace")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
 	nodeCmd.AddCommand(registerNodeCmd)
+
 	nodeCmd.AddCommand(deleteNodeCmd)
+
+	shareMachineCmd.Flags().StringP("namespace", "n", "", "Namespace")
+	err = shareMachineCmd.MarkFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(shareMachineCmd)
+
+	unshareMachineCmd.Flags().StringP("namespace", "n", "", "Namespace")
+	err = unshareMachineCmd.MarkFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(unshareMachineCmd)
 }
 
@@ -199,6 +213,11 @@ var deleteNodeCmd = &cobra.Command{
 }
 
 func sharingWorker(cmd *cobra.Command, args []string) (*headscale.Headscale, string, *headscale.Machine, *headscale.Namespace) {
+	n, err := cmd.Flags().GetString("namespace")
+	if err != nil {
+		log.Fatalf("Error getting namespace: %s", err)
+	}
+
 	output, _ := cmd.Flags().GetString("output")
 
 	h, err := getHeadscaleApp()
@@ -206,9 +225,9 @@ func sharingWorker(cmd *cobra.Command, args []string) (*headscale.Headscale, str
 		log.Fatalf("Error initializing: %s", err)
 	}
 
-	namespace, err := h.GetNamespace(args[1])
+	namespace, err := h.GetNamespace(n)
 	if err != nil {
-		log.Fatalf("Error fetching namespace %s: %s", args[1], err)
+		log.Fatalf("Error fetching namespace %s: %s", n, err)
 	}
 
 	id, err := strconv.Atoi(args[0])
@@ -224,10 +243,10 @@ func sharingWorker(cmd *cobra.Command, args []string) (*headscale.Headscale, str
 }
 
 var shareMachineCmd = &cobra.Command{
-	Use:   "share ID namespace",
+	Use:   "share ID",
 	Short: "Shares a node from the current namespace to the specified one",
 	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 2 {
+		if len(args) < 1 {
 			return fmt.Errorf("missing parameters")
 		}
 		return nil
@@ -249,10 +268,10 @@ var shareMachineCmd = &cobra.Command{
 }
 
 var unshareMachineCmd = &cobra.Command{
-	Use:   "unshare ID namespace",
+	Use:   "unshare ID",
 	Short: "Unshares a node from the specified namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 2 {
+		if len(args) < 1 {
 			return fmt.Errorf("missing parameters")
 		}
 		return nil
