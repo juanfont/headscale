@@ -1,7 +1,7 @@
 # Calculate version
 version = $(shell ./scripts/version-at-commit.sh)
 
-build: generate
+build:
 	go build -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
 
 dev: lint test build
