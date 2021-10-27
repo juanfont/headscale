@@ -25,6 +25,3 @@ config.yaml
 .idea
 
 test_output/ 
-
-# Protobuf generated code
-gen/

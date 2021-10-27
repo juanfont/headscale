@@ -71,18 +71,17 @@ To contribute to Headscale you would need the lastest version of [Go](golang.org
 - Protobuf tools:
 
 ```shell 
-go install \
-    github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
-    github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2 \
-    google.golang.org/protobuf/cmd/protoc-gen-go \
-    google.golang.org/grpc/cmd/protoc-gen-go-grpc
+make install-protobuf-plugins
 ```
 
-Building the project requires the generation of Go code from Protobuf (in `proto/`) and it can be (re-)generated with:
+### Testing and building
+
+Some parts of the project requires the generation of Go code from Protobuf (if changes is made in `proto/`) and it must be (re-)generated with:
 
 ```shell
 make generate
 ```
+**Note**: Please check in changes from `gen/` in a separate commit to make it easier to review.
 
 To run the tests:
 
