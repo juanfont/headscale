@@ -213,7 +213,7 @@ var deleteNodeCmd = &cobra.Command{
 }
 
 func sharingWorker(cmd *cobra.Command, args []string) (*headscale.Headscale, string, *headscale.Machine, *headscale.Namespace) {
-	n, err := cmd.Flags().GetString("namespace")
+	namespaceStr, err := cmd.Flags().GetString("namespace")
 	if err != nil {
 		log.Fatalf("Error getting namespace: %s", err)
 	}
@@ -225,7 +225,7 @@ func sharingWorker(cmd *cobra.Command, args []string) (*headscale.Headscale, str
 		log.Fatalf("Error initializing: %s", err)
 	}
 
-	namespace, err := h.GetNamespace(n)
+	namespace, err := h.GetNamespace(namespaceStr)
 	if err != nil {
 		log.Fatalf("Error fetching namespace %s: %s", n, err)
 	}
