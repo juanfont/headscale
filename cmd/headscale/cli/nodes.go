@@ -121,8 +121,8 @@ var listNodesCmd = &cobra.Command{
 		}
 
 		var allMachines []headscale.Machine
-		for _, n := range namespaces {
-			machines, err := h.ListMachinesInNamespace(n.Name)
+		for _, namespace := range namespaces {
+			machines, err := h.ListMachinesInNamespace(namespace.Name)
 			if err != nil {
 				log.Fatalf("Error fetching machines: %s", err)
 			}
