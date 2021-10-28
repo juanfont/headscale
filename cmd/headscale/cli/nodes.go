@@ -25,8 +25,18 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
+	err = registerNodeCmd.MarkFlagRequired("key")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(registerNodeCmd)
 
+	deleteNodeCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	err = deleteNodeCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(deleteNodeCmd)
 
 	shareMachineCmd.Flags().StringP("namespace", "n", "", "Namespace")
@@ -34,10 +44,20 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+	shareMachineCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	err = shareMachineCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(shareMachineCmd)
 
 	unshareMachineCmd.Flags().StringP("namespace", "n", "", "Namespace")
 	err = unshareMachineCmd.MarkFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	unshareMachineCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	err = unshareMachineCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -50,14 +70,8 @@ var nodeCmd = &cobra.Command{
 }
 
 var registerNodeCmd = &cobra.Command{
-	Use:   "register machineID",
+	Use:   "register",
 	Short: "Registers a machine to your network",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		n, err := cmd.Flags().GetString("namespace")
 		if err != nil {
@@ -69,7 +83,11 @@ var registerNodeCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		m, err := h.RegisterMachine(args[0], n)
+		machineIDStr, err := cmd.Flags().GetString("key")
+		if err != nil {
+			log.Fatalf("Error getting machine ID: %s", err)
+		}
+		m, err := h.RegisterMachine(machineIDStr, n)
 		if strings.HasPrefix(o, "json") {
 			JsonOutput(m, err, o)
 			return
@@ -157,21 +175,15 @@ var listNodesCmd = &cobra.Command{
 }
 
 var deleteNodeCmd = &cobra.Command{
-	Use:   "delete ID",
+	Use:   "delete",
 	Short: "Delete a node",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		h, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatalf("Error initializing: %s", err)
 		}
-		id, err := strconv.Atoi(args[0])
+		id, err := cmd.Flags().GetInt("identifier")
 		if err != nil {
 			log.Fatalf("Error converting ID to integer: %s", err)
 		}
@@ -227,10 +239,10 @@ func sharingWorker(cmd *cobra.Command, args []string) (*headscale.Headscale, str
 
 	namespace, err := h.GetNamespace(namespaceStr)
 	if err != nil {
-		log.Fatalf("Error fetching namespace %s: %s", n, err)
+		log.Fatalf("Error fetching namespace %s: %s", namespaceStr, err)
 	}
 
-	id, err := strconv.Atoi(args[0])
+	id, err := cmd.Flags().GetInt("identifier")
 	if err != nil {
 		log.Fatalf("Error converting ID to integer: %s", err)
 	}
@@ -243,14 +255,8 @@ func sharingWorker(cmd *cobra.Command, args []string) (*headscale.Headscale, str
 }
 
 var shareMachineCmd = &cobra.Command{
-	Use:   "share ID",
+	Use:   "share",
 	Short: "Shares a node from the current namespace to the specified one",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		h, output, machine, namespace := sharingWorker(cmd, args)
 		err := h.AddSharedMachineToNamespace(machine, namespace)
@@ -268,14 +274,8 @@ var shareMachineCmd = &cobra.Command{
 }
 
 var unshareMachineCmd = &cobra.Command{
-	Use:   "unshare ID",
+	Use:   "unshare",
 	Short: "Unshares a node from the specified namespace",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		h, output, machine, namespace := sharingWorker(cmd, args)
 		err := h.RemoveSharedMachineFromNamespace(machine, namespace)
