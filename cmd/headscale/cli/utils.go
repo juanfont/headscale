@@ -281,6 +281,64 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	return h, nil
 }
 
+func getHeadscaleGRPCClient() (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
+	grpcOptions := []grpc.DialOption{
+		// TODO(kradalby): Make configurable
+		grpc.WithTimeout(5 * time.Second),
+		grpc.WithBlock(),
+	}
+
+	address := os.Getenv("HEADSCALE_ADDRESS")
+
+	// If the address is not set, we assume that we are on the server hosting headscale.
+	if address == "" {
+		log.Debug().Msgf("HEADSCALE_ADDRESS environment is not set, connecting to localhost.")
+
+		cfg := getHeadscaleConfig()
+
+		_, port, _ := net.SplitHostPort(cfg.Addr)
+
+		address = "127.0.0.1" + ":" + port
+
+		grpcOptions = append(grpcOptions, grpc.WithInsecure())
+	}
+
+	// If we are not connecting to a local server, require an API key for authentication
+	if !headscale.IsLocalhost(address) {
+		apiKey := os.Getenv("HEADSCALE_API_KEY")
+		if apiKey == "" {
+			log.Fatal().Msgf("HEADSCALE_API_KEY environment variable needs to be set.")
+		}
+		grpcOptions = append(grpcOptions,
+			grpc.WithPerRPCCredentials(tokenAuth{
+				token: apiKey,
+			}),
+		)
+
+		insecureStr := os.Getenv("HEADSCALE_INSECURE")
+		if insecureStr != "" {
+			insecure, err := strconv.ParseBool(insecureStr)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to parse HEADSCALE_INSECURE: %v", err)
+			}
+
+			if insecure {
+				grpcOptions = append(grpcOptions, grpc.WithInsecure())
+			}
+		}
+	}
+
+	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
+	conn, err := grpc.Dial(address, grpcOptions...)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("Could not connect: %v", err)
+	}
+
+	client := apiV1.NewHeadscaleServiceClient(conn)
+
+	return client, conn
+}
+
 func JsonOutput(result interface{}, errResult error, outputFormat string) {
 	var j []byte
 	var err error
