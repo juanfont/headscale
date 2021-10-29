@@ -1,0 +1,210 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "v1/headscale.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "HeadscaleService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/api/v1/machine/{machineId}": {
+      "get": {
+        "operationId": "HeadscaleService_GetMachine",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Machine"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "machineId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1Machine": {
+      "type": "object",
+      "properties": {
+        "ID": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "MachineKey": {
+          "type": "string"
+        },
+        "NodeKey": {
+          "type": "string"
+        },
+        "DiscoKey": {
+          "type": "string"
+        },
+        "IPAddress": {
+          "type": "string"
+        },
+        "Name": {
+          "type": "string"
+        },
+        "NamespaceID": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "Registered": {
+          "type": "boolean"
+        },
+        "RegisterMethod": {
+          "$ref": "#/definitions/v1RegisterMethod"
+        },
+        "AuthKeyID": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "AuthKey": {
+          "$ref": "#/definitions/v1PreAuthKey"
+        },
+        "LastSeen": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "LastSuccessfulUpdate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "Expiry": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "HostInfo": {
+          "type": "string",
+          "format": "byte"
+        },
+        "Endpoints": {
+          "type": "string",
+          "format": "byte"
+        },
+        "EnabledRoutes": {
+          "type": "string",
+          "format": "byte"
+        },
+        "CreatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "UpdatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "DeletedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "v1Namespace": {
+      "type": "object",
+      "properties": {
+        "Name": {
+          "type": "string"
+        }
+      }
+    },
+    "v1PreAuthKey": {
+      "type": "object",
+      "properties": {
+        "ID": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "Key": {
+          "type": "string"
+        },
+        "NamespaceID": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "Namespace": {
+          "$ref": "#/definitions/v1Namespace"
+        },
+        "Reusable": {
+          "type": "boolean"
+        },
+        "Ephemeral": {
+          "type": "boolean"
+        },
+        "Used": {
+          "type": "boolean"
+        },
+        "CreatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "Expiration": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "v1RegisterMethod": {
+      "type": "string",
+      "enum": [
+        "AUTH_KEY",
+        "CLI",
+        "OIDC"
+      ],
+      "default": "AUTH_KEY"
+    }
+  }
+}
