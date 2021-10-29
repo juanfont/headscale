@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -16,7 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	apiV1 "github.com/juanfont/headscale/gen/go/v1"
+	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/soheilhy/cmux"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
@@ -24,11 +25,23 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/wgkey"
+)
+
+const (
+	LOCALHOST_V4 = "127.0.0.1"
+	LOCALHOST_V6 = "[::1]"
+	AUTH_PREFIX  = "Bearer "
 )
 
 // Config contains the initial Headscale configuration.
@@ -208,6 +221,110 @@ func (h *Headscale) watchForKVUpdatesWorker() {
 	// more functions will come here in the future
 }
 
+func IsLocalhost(host string) bool {
+	if strings.Contains(host, LOCALHOST_V4) || strings.Contains(host, LOCALHOST_V6) {
+		return true
+	}
+
+	return false
+}
+
+func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler) (interface{}, error) {
+
+	// Check if the request is coming from the on-server client.
+	// This is not secure, but it is to maintain maintainability
+	// with the "legacy" database-based client
+	// It is also neede for grpc-gateway to be able to connect to
+	// the server
+	p, _ := peer.FromContext(ctx)
+
+	if IsLocalhost(p.Addr.String()) {
+		log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client connected from localhost")
+
+		return handler(ctx, req)
+	}
+
+	log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client is trying to authenticate")
+
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		log.Error().Caller().Str("client_address", p.Addr.String()).Msg("Retrieving metadata is failed")
+		return ctx, status.Errorf(codes.InvalidArgument, "Retrieving metadata is failed")
+	}
+
+	authHeader, ok := md["authorization"]
+	if !ok {
+		log.Error().Caller().Str("client_address", p.Addr.String()).Msg("Authorization token is not supplied")
+		return ctx, status.Errorf(codes.Unauthenticated, "Authorization token is not supplied")
+	}
+
+	token := authHeader[0]
+
+	if !strings.HasPrefix(token, AUTH_PREFIX) {
+		log.Error().
+			Caller().
+			Str("client_address", p.Addr.String()).
+			Msg(`missing "Bearer " prefix in "Authorization" header`)
+		return ctx, status.Error(codes.Unauthenticated, `missing "Bearer " prefix in "Authorization" header`)
+	}
+
+	// TODO(kradalby): Implement API key backend:
+	// - Table in the DB
+	// - Key name
+	// - Encrypted
+	// - Expiry
+	//
+	// Currently all other than localhost traffic is unauthorized, this is intentional to allow
+	// us to make use of gRPC for our CLI, but not having to implement any of the remote capabilities
+	// and API key auth
+	return ctx, status.Error(codes.Unauthenticated, "Authentication is not implemented yet")
+
+	//if strings.TrimPrefix(token, AUTH_PREFIX) != a.Token {
+	//	log.Error().Caller().Str("client_address", p.Addr.String()).Msg("invalid token")
+	//	return ctx, status.Error(codes.Unauthenticated, "invalid token")
+	//}
+
+	// return handler(ctx, req)
+}
+
+func (h *Headscale) httpAuthenticationMiddleware(c *gin.Context) {
+	log.Trace().
+		Caller().
+		Str("client_address", c.ClientIP()).
+		Msg("HTTP authentication invoked")
+
+	authHeader := c.GetHeader("authorization")
+
+	if !strings.HasPrefix(authHeader, AUTH_PREFIX) {
+		log.Error().
+			Caller().
+			Str("client_address", c.ClientIP()).
+			Msg(`missing "Bearer " prefix in "Authorization" header`)
+		c.AbortWithStatus(http.StatusUnauthorized)
+
+		return
+	}
+
+	c.AbortWithStatus(http.StatusUnauthorized)
+
+	// TODO(kradalby): Implement API key backend
+	// Currently all traffic is unauthorized, this is intentional to allow
+	// us to make use of gRPC for our CLI, but not having to implement any of the remote capabilities
+	// and API key auth
+	//
+	// if strings.TrimPrefix(authHeader, AUTH_PREFIX) != a.Token {
+	// 	log.Error().Caller().Str("client_address", c.ClientIP()).Msg("invalid token")
+	// 	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error", "unauthorized"})
+
+	// 	return
+	// }
+
+	// c.Next()
+}
+
 // Serve launches a GIN server with the Headscale API.
 func (h *Headscale) Serve() error {
 	var err error
@@ -226,21 +343,25 @@ func (h *Headscale) Serve() error {
 	// The two following listeners will be served on the same port below gracefully.
 	m := cmux.New(l)
 	// Match gRPC requests here
-	grpcListener := m.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
+	grpcListener := m.MatchWithWriters(
+		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
+		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc+proto"),
+	)
 	// Otherwise match regular http requests.
 	httpListener := m.Match(cmux.Any())
 
-	// Now create the grpc server with those options.
-	grpcServer := grpc.NewServer()
-
-	// TODO(kradalby): register the new server when we have authentication ready
-	// apiV1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
-
 	grpcGatewayMux := runtime.NewServeMux()
 
-	opts := []grpc.DialOption{grpc.WithInsecure()}
+	grpcDialOptions := []grpc.DialOption{grpc.WithInsecure()}
 
-	err = apiV1.RegisterHeadscaleServiceHandlerFromEndpoint(ctx, grpcGatewayMux, h.cfg.Addr, opts)
+	_, port, err := net.SplitHostPort(h.cfg.Addr)
+	if err != nil {
+		return err
+	}
+
+	// Connect to the gRPC server over localhost to skip
+	// the authentication.
+	err = apiV1.RegisterHeadscaleServiceHandlerFromEndpoint(ctx, grpcGatewayMux, LOCALHOST_V4+":"+port, grpcDialOptions)
 	if err != nil {
 		return err
 	}
@@ -258,10 +379,15 @@ func (h *Headscale) Serve() error {
 	r.GET("/apple", h.AppleMobileConfig)
 	r.GET("/apple/:platform", h.ApplePlatformConfig)
 
-	r.Any("/api/v1/*any", gin.WrapF(grpcGatewayMux.ServeHTTP))
 	r.StaticFile("/swagger/swagger.json", "gen/openapiv2/v1/headscale.swagger.json")
 
-	updateMillisecondsWait := int64(5000)
+	api := r.Group("/api")
+	api.Use(h.httpAuthenticationMiddleware)
+	{
+		api.Any("/v1/*any", gin.WrapF(grpcGatewayMux.ServeHTTP))
+	}
+
+	r.NoRoute(stdoutHandler)
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
@@ -273,6 +399,7 @@ func (h *Headscale) Serve() error {
 	}
 
 	// I HATE THIS
+	updateMillisecondsWait := int64(5000)
 	go h.watchForKVUpdates(updateMillisecondsWait)
 	go h.expireEphemeralNodes(updateMillisecondsWait)
 
@@ -287,6 +414,12 @@ func (h *Headscale) Serve() error {
 		WriteTimeout: 0,
 	}
 
+	grpcOptions := []grpc.ServerOption{
+		grpc.UnaryInterceptor(
+			h.grpcAuthenticationInterceptor,
+		),
+	}
+
 	tlsConfig, err := h.getTLSSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to set up TLS configuration")
@@ -296,7 +429,14 @@ func (h *Headscale) Serve() error {
 
 	if tlsConfig != nil {
 		httpServer.TLSConfig = tlsConfig
+
+		grpcOptions = append(grpcOptions, grpc.Creds(credentials.NewTLS(tlsConfig)))
 	}
+
+	grpcServer := grpc.NewServer(grpcOptions...)
+
+	apiV1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
+	reflection.Register(grpcServer)
 
 	g := new(errgroup.Group)
 
@@ -393,4 +533,15 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 	} else {
 		return times[0]
 	}
+}
+
+func stdoutHandler(c *gin.Context) {
+	b, _ := io.ReadAll(c.Request.Body)
+
+	log.Trace().
+		Interface("header", c.Request.Header).
+		Interface("proto", c.Request.Proto).
+		Interface("url", c.Request.URL).
+		Bytes("body", b).
+		Msg("Request did not match")
 }
