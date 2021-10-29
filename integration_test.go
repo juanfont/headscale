@@ -282,8 +282,8 @@ func (s *IntegrationTestSuite) SetupSuite() {
 			[]string{"headscale", "namespaces", "create", namespace},
 			[]string{},
 		)
-		assert.Nil(s.T(), err)
 		fmt.Println("headscale create namespace result: ", result)
+		assert.Nil(s.T(), err)
 
 		fmt.Printf("Creating pre auth key for %s\n", namespace)
 		authKey, err := executeCommand(
