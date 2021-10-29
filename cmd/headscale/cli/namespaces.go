@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
+	"time"
 
+	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -34,13 +37,21 @@ var createNamespaceCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		o, _ := cmd.Flags().GetString("output")
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
-		}
-		namespace, err := h.CreateNamespace(args[0])
+
+		client, conn := getHeadscaleGRPCClient()
+		defer conn.Close()
+
+		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		request := &apiV1.CreateNamespaceRequest{Name: args[0]}
+
+		log.Trace().Interface("request", request).Msg("Sending CreateNamespace request")
+		response, err := client.CreateNamespace(ctx, request)
 		if strings.HasPrefix(o, "json") {
-			JsonOutput(namespace, err, o)
+			JsonOutput(response.Name, err, o)
 			return
 		}
 		if err != nil {
@@ -64,7 +75,7 @@ var destroyNamespaceCmd = &cobra.Command{
 		o, _ := cmd.Flags().GetString("output")
 		h, err := getHeadscaleApp()
 		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+			log.Fatal().Err(err).Msgf("Error initializing: %s", err)
 		}
 		err = h.DestroyNamespace(args[0])
 		if strings.HasPrefix(o, "json") {
@@ -86,7 +97,7 @@ var listNamespacesCmd = &cobra.Command{
 		o, _ := cmd.Flags().GetString("output")
 		h, err := getHeadscaleApp()
 		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+			log.Fatal().Err(err).Msgf("Error initializing: %s", err)
 		}
 		namespaces, err := h.ListNamespaces()
 		if strings.HasPrefix(o, "json") {
@@ -100,11 +111,14 @@ var listNamespacesCmd = &cobra.Command{
 
 		d := pterm.TableData{{"ID", "Name", "Created"}}
 		for _, n := range *namespaces {
-			d = append(d, []string{strconv.FormatUint(uint64(n.ID), 10), n.Name, n.CreatedAt.Format("2006-01-02 15:04:05")})
+			d = append(
+				d,
+				[]string{strconv.FormatUint(uint64(n.ID), 10), n.Name, n.CreatedAt.Format("2006-01-02 15:04:05")},
+			)
 		}
 		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Err(err).Msg("")
 		}
 	},
 }
@@ -122,7 +136,7 @@ var renameNamespaceCmd = &cobra.Command{
 		o, _ := cmd.Flags().GetString("output")
 		h, err := getHeadscaleApp()
 		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+			log.Fatal().Err(err).Msgf("Error initializing: %s", err)
 		}
 		err = h.RenameNamespace(args[0], args[1])
 		if strings.HasPrefix(o, "json") {
