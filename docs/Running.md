@@ -97,7 +97,7 @@
 
 9. In the server, register your machine to a namespace with the CLI
    ```shell
-   headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+   headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
    or docker:
    ```shell
@@ -106,11 +106,11 @@
      -v $(pwd)/config.json:/config.json \
      -v $(pwd)/derp.yaml:/derp.yaml \
      headscale/headscale:x.x.x \
-     headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+     headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
    or if your server is already running in docker:
    ```shell
-   docker exec <container_name> headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+   docker exec <container_name> headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
 
 Alternatively, you can use Auth Keys to register your machines:
