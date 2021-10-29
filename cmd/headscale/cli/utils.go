@@ -282,9 +282,11 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 }
 
 func getHeadscaleGRPCClient() (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	grpcOptions := []grpc.DialOption{
 		// TODO(kradalby): Make configurable
-		grpc.WithTimeout(5 * time.Second),
 		grpc.WithBlock(),
 	}
 
@@ -329,7 +331,7 @@ func getHeadscaleGRPCClient() (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
 	}
 
 	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
-	conn, err := grpc.Dial(address, grpcOptions...)
+	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
 	if err != nil {
 		log.Fatal().Err(err).Msgf("Could not connect: %v", err)
 	}
