@@ -221,14 +221,6 @@ func (h *Headscale) watchForKVUpdatesWorker() {
 	// more functions will come here in the future
 }
 
-func IsLocalhost(host string) bool {
-	if strings.Contains(host, LOCALHOST_V4) || strings.Contains(host, LOCALHOST_V6) {
-		return true
-	}
-
-	return false
-}
-
 func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,

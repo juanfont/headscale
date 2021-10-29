@@ -156,3 +156,11 @@ func tailNodesToString(nodes []*tailcfg.Node) string {
 func tailMapResponseToString(resp tailcfg.MapResponse) string {
 	return fmt.Sprintf("{ Node: %s, Peers: %s }", resp.Node.Name, tailNodesToString(resp.Peers))
 }
+
+func IsLocalhost(host string) bool {
+	if strings.Contains(host, LOCALHOST_V4) || strings.Contains(host, LOCALHOST_V6) {
+		return true
+	}
+
+	return false
+}
