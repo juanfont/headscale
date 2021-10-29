@@ -1,18 +1,23 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale"
+	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -202,23 +207,11 @@ func absPath(path string) string {
 	return path
 }
 
-func getHeadscaleApp() (*headscale.Headscale, error) {
-	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
-	// to avoid races
-	minInactivityTimeout, _ := time.ParseDuration("65s")
-	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
-		err := fmt.Errorf(
-			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n",
-			viper.GetString("ephemeral_node_inactivity_timeout"),
-			minInactivityTimeout,
-		)
-		return nil, err
-	}
-
+func getHeadscaleConfig() headscale.Config {
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 
-	cfg := headscale.Config{
+	return headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
@@ -250,6 +243,22 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
 	}
+}
+
+func getHeadscaleApp() (*headscale.Headscale, error) {
+	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
+	// to avoid races
+	minInactivityTimeout, _ := time.ParseDuration("65s")
+	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
+		err := fmt.Errorf(
+			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n",
+			viper.GetString("ephemeral_node_inactivity_timeout"),
+			minInactivityTimeout,
+		)
+		return nil, err
+	}
+
+	cfg := getHeadscaleConfig()
 
 	h, err := headscale.NewHeadscale(cfg)
 	if err != nil {
