@@ -111,7 +111,8 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	// We have the updated key!
 	if m.NodeKey == wgkey.Key(req.NodeKey).HexString() {
 
-		// The client sends an Expiry in the past if the client is requesting a logout
+		// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
+		//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 		if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
 			log.Info().
 				Str("handler", "Registration").
@@ -178,7 +179,13 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 		}
 
-		m.RequestedExpiry = &req.Expiry // save the requested expiry time for retrieval later in the authentication flow
+		// When a client connects, it may request a specific expiry time in its
+		// RegisterRequest (https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L634)
+		m.RequestedExpiry = &req.Expiry // RequestedExpiry is used to store the clients requested expiry time since the authentication flow is broken
+		// into two steps (which cant pass arbitrary data between them easily) and needs to be
+		// retrieved again after the user has authenticated. After the authentication flow
+		// completes, RequestedExpiry is copied into Expiry.
+
 		h.db.Save(&m)
 
 		respBody, err := encode(resp, &mKey, h.privateKey)

@@ -36,7 +36,7 @@ type Machine struct {
 	LastSeen             *time.Time
 	LastSuccessfulUpdate *time.Time
 	Expiry               *time.Time
-	RequestedExpiry      *time.Time // when a client connects, it may request a specific expiry time, use this field to store it
+	RequestedExpiry      *time.Time
 
 	HostInfo      datatypes.JSON
 	Endpoints     datatypes.JSON
@@ -63,7 +63,9 @@ func (m Machine) isExpired() bool {
 }
 
 // If the Machine is expired, updateMachineExpiry updates the Machine Expiry time to the maximum allowed duration,
-// or the default duration if no Expiry time was requested by the client
+// or the default duration if no Expiry time was requested by the client. The expiry time here does not (yet) cause
+// a client to be disconnected, however they will have to re-auth the machine if they attempt to reconnect after the
+// expiry time.
 func (h *Headscale) updateMachineExpiry(m *Machine) {
 
 	if m.isExpired() {
