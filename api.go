@@ -44,7 +44,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 
 	<p>
 		<code>
-			<b>headscale -n NAMESPACE nodes register %s</b>
+			<b>headscale -n NAMESPACE nodes register -k %s</b>
 		</code>
 	</p>
 
@@ -181,10 +181,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 		// When a client connects, it may request a specific expiry time in its
 		// RegisterRequest (https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L634)
-		m.RequestedExpiry = &req.Expiry // RequestedExpiry is used to store the clients requested expiry time since the authentication flow is broken
+		// RequestedExpiry is used to store the clients requested expiry time since the authentication flow is broken
 		// into two steps (which cant pass arbitrary data between them easily) and needs to be
 		// retrieved again after the user has authenticated. After the authentication flow
 		// completes, RequestedExpiry is copied into Expiry.
+		m.RequestedExpiry = &req.Expiry
 
 		h.db.Save(&m)
 
@@ -239,7 +240,8 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), mKey.HexString())
 	}
 
-	m.RequestedExpiry = &req.Expiry                // save the requested expiry time for retrieval later in the authentication flow
+	// save the requested expiry time for retrieval later in the authentication flow
+	m.RequestedExpiry = &req.Expiry
 	m.NodeKey = wgkey.Key(req.NodeKey).HexString() // save the NodeKey
 	h.db.Save(&m)
 
@@ -305,7 +307,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		DNSConfig:    dnsConfig,
 		Domain:       h.cfg.BaseDomain,
 		PacketFilter: *h.aclRules,
-		DERPMap:      h.cfg.DerpMap,
+		DERPMap:      h.DERPMap,
 		UserProfiles: profiles,
 	}
 
@@ -364,7 +366,13 @@ func (h *Headscale) getMapKeepAliveResponse(mKey wgkey.Key, req tailcfg.MapReque
 	return data, nil
 }
 
-func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, req tailcfg.RegisterRequest, m Machine) {
+func (h *Headscale) handleAuthKey(
+	c *gin.Context,
+	db *gorm.DB,
+	idKey wgkey.Key,
+	req tailcfg.RegisterRequest,
+	m Machine,
+) {
 	log.Debug().
 		Str("func", "handleAuthKey").
 		Str("machine", req.Hostinfo.Hostname).
@@ -424,8 +432,6 @@ func (h *Headscale) handleAuthKey(c *gin.Context, db *gorm.DB, idKey wgkey.Key, 
 	m.Registered = true
 	m.RegisterMethod = "authKey"
 	db.Save(&m)
-
-	h.updateMachineExpiry(&m) // TODO: do we want to do different expiry times for AuthKeys?
 
 	pak.Used = true
 	db.Save(&pak)

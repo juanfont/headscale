@@ -16,6 +16,7 @@
 
 /headscale
 config.json
+config.yaml
 *.key
 /db.sqlite
 *.sqlite3

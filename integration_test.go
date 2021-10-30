@@ -230,7 +230,6 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		Name: "headscale",
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
-			fmt.Sprintf("%s/derp.yaml:/etc/headscale/derp.yaml", currentPath),
 		},
 		Networks: []*dockertest.Network{&network},
 		Cmd:      []string{"headscale", "serve"},
@@ -289,7 +288,16 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		fmt.Printf("Creating pre auth key for %s\n", namespace)
 		authKey, err := executeCommand(
 			&headscale,
-			[]string{"headscale", "--namespace", namespace, "preauthkeys", "create", "--reusable", "--expiration", "24h"},
+			[]string{
+				"headscale",
+				"--namespace",
+				namespace,
+				"preauthkeys",
+				"create",
+				"--reusable",
+				"--expiration",
+				"24h",
+			},
 			[]string{},
 		)
 		assert.Nil(s.T(), err)
@@ -298,7 +306,16 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 		fmt.Printf("Joining tailscale containers to headscale at %s\n", headscaleEndpoint)
 		for hostname, tailscale := range scales.tailscales {
-			command := []string{"tailscale", "up", "-login-server", headscaleEndpoint, "--authkey", strings.TrimSuffix(authKey, "\n"), "--hostname", hostname}
+			command := []string{
+				"tailscale",
+				"up",
+				"-login-server",
+				headscaleEndpoint,
+				"--authkey",
+				strings.TrimSuffix(authKey, "\n"),
+				"--hostname",
+				hostname,
+			}
 
 			fmt.Println("Join command:", command)
 			fmt.Printf("Running join command for %s\n", hostname)
@@ -476,7 +493,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 
 		result, err := executeCommand(
 			&headscale,
-			[]string{"headscale", "nodes", "share", "--namespace", "shared", fmt.Sprint(machine.ID), "main"},
+			[]string{"headscale", "nodes", "share", "--identifier", fmt.Sprint(machine.ID), "--namespace", "main"},
 			[]string{},
 		)
 		assert.Nil(s.T(), err)
@@ -661,7 +678,13 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 							fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
 						}
 
-						fmt.Printf("Pinging using Hostname (magicdns) from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
+						fmt.Printf(
+							"Pinging using Hostname (magicdns) from %s (%s) to %s (%s)\n",
+							hostname,
+							ips[hostname],
+							peername,
+							ip,
+						)
 						result, err := executeCommand(
 							&tailscale,
 							command,

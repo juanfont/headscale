@@ -43,7 +43,8 @@ func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error
 // RemoveSharedMachineFromNamespace removes a shared machine from a namespace
 func (h *Headscale) RemoveSharedMachineFromNamespace(m *Machine, ns *Namespace) error {
 	if m.NamespaceID == ns.ID {
-		return errorSameNamespace
+		// Can't unshare from primary namespace
+		return errorMachineNotShared
 	}
 
 	sharedMachine := SharedMachine{}
