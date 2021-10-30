@@ -1,7 +1,7 @@
-# Deploying Headscale on Kubernetes
+# Deploying headscale on Kubernetes
 
 This directory contains [Kustomize](https://kustomize.io) templates that deploy
-Headscale in various configurations.
+headscale in various configurations.
 
 These templates currently support Rancher k3s. Other clusters may require
 adaptation, especially around volume claims and ingress.
@@ -72,10 +72,10 @@ Usage:
 
 Available Commands:
   help        Help about any command
-  namespace   Manage the namespaces of Headscale
-  node        Manage the nodes of Headscale
-  preauthkey  Handle the preauthkeys in Headscale
-  routes      Manage the routes of Headscale
+  namespace   Manage the namespaces of headscale
+  node        Manage the nodes of headscale
+  preauthkey  Handle the preauthkeys in headscale
+  routes      Manage the routes of headscale
   serve       Launches the headscale server
   version     Print the version.
 

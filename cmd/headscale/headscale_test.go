@@ -25,10 +25,9 @@ func (s *Suite) SetUpSuite(c *check.C) {
 }
 
 func (s *Suite) TearDownSuite(c *check.C) {
-
 }
 
-func (*Suite) TestPostgresConfigLoading(c *check.C) {
+func (*Suite) TestConfigLoading(c *check.C) {
 	tmpDir, err := ioutil.TempDir("", "headscale")
 	if err != nil {
 		c.Fatal(err)
@@ -41,7 +40,7 @@ func (*Suite) TestPostgresConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config.json.postgres.example"), filepath.Join(tmpDir, "config.json"))
+	err = os.Symlink(filepath.Clean(path+"/../../config-example.yaml"), filepath.Join(tmpDir, "config.yaml"))
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -53,40 +52,7 @@ func (*Suite) TestPostgresConfigLoading(c *check.C) {
 	// Test that config file was interpreted correctly
 	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
 	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8080")
-	c.Assert(viper.GetString("derp_map_path"), check.Equals, "derp.yaml")
-	c.Assert(viper.GetString("db_type"), check.Equals, "postgres")
-	c.Assert(viper.GetString("db_port"), check.Equals, "5432")
-	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
-	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
-	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
-}
-
-func (*Suite) TestSqliteConfigLoading(c *check.C) {
-	tmpDir, err := ioutil.TempDir("", "headscale")
-	if err != nil {
-		c.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	path, err := os.Getwd()
-	if err != nil {
-		c.Fatal(err)
-	}
-
-	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config.json.sqlite.example"), filepath.Join(tmpDir, "config.json"))
-	if err != nil {
-		c.Fatal(err)
-	}
-
-	// Load example config, it should load without validation errors
-	err = cli.LoadConfig(tmpDir)
-	c.Assert(err, check.IsNil)
-
-	// Test that config file was interpreted correctly
-	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
-	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8080")
-	c.Assert(viper.GetString("derp_map_path"), check.Equals, "derp.yaml")
+	c.Assert(viper.GetStringSlice("derp.paths")[0], check.Equals, "derp-example.yaml")
 	c.Assert(viper.GetString("db_type"), check.Equals, "sqlite3")
 	c.Assert(viper.GetString("db_path"), check.Equals, "db.sqlite")
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
@@ -108,7 +74,7 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config.json.sqlite.example"), filepath.Join(tmpDir, "config.json"))
+	err = os.Symlink(filepath.Clean(path+"/../../config-example.yaml"), filepath.Join(tmpDir, "config.yaml"))
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -128,7 +94,7 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 func writeConfig(c *check.C, tmpDir string, configYaml []byte) {
 	// Populate a custom config file
 	configFile := filepath.Join(tmpDir, "config.yaml")
-	err := ioutil.WriteFile(configFile, configYaml, 0644)
+	err := ioutil.WriteFile(configFile, configYaml, 0o644)
 	if err != nil {
 		c.Fatalf("Couldn't write file %s", configFile)
 	}
@@ -139,10 +105,12 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	//defer os.RemoveAll(tmpDir)
+	// defer os.RemoveAll(tmpDir)
 	fmt.Println(tmpDir)
 
-	configYaml := []byte("---\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"\"\ntls_cert_path: \"abc.pem\"")
+	configYaml := []byte(
+		"---\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"\"\ntls_cert_path: \"abc.pem\"",
+	)
 	writeConfig(c, tmpDir, configYaml)
 
 	// Check configuration validation errors (1)
@@ -150,13 +118,23 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	c.Assert(err, check.NotNil)
 	// check.Matches can not handle multiline strings
 	tmp := strings.ReplaceAll(err.Error(), "\n", "***")
-	c.Assert(tmp, check.Matches, ".*Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both.*")
-	c.Assert(tmp, check.Matches, ".*Fatal config error: the only supported values for tls_letsencrypt_challenge_type are.*")
+	c.Assert(
+		tmp,
+		check.Matches,
+		".*Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both.*",
+	)
+	c.Assert(
+		tmp,
+		check.Matches,
+		".*Fatal config error: the only supported values for tls_letsencrypt_challenge_type are.*",
+	)
 	c.Assert(tmp, check.Matches, ".*Fatal config error: server_url must start with https:// or http://.*")
 	fmt.Println(tmp)
 
 	// Check configuration validation errors (2)
-	configYaml = []byte("---\nserver_url: \"http://127.0.0.1:8080\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"")
+	configYaml = []byte(
+		"---\nserver_url: \"http://127.0.0.1:8080\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"",
+	)
 	writeConfig(c, tmpDir, configYaml)
 	err = cli.LoadConfig(tmpDir)
 	c.Assert(err, check.IsNil)

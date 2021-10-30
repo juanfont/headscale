@@ -67,7 +67,6 @@ func (m Machine) isExpired() bool {
 // a client to be disconnected, however they will have to re-auth the machine if they attempt to reconnect after the
 // expiry time.
 func (h *Headscale) updateMachineExpiry(m *Machine) {
-
 	if m.isExpired() {
 		now := time.Now().UTC()
 		maxExpiry := now.Add(h.cfg.MaxMachineRegistrationDuration)         // calculate the maximum expiry
@@ -75,7 +74,8 @@ func (h *Headscale) updateMachineExpiry(m *Machine) {
 
 		// clamp the expiry time of the machine registration to the maximum allowed, or use the default if none supplied
 		if maxExpiry.Before(*m.RequestedExpiry) {
-			log.Debug().Msgf("Clamping registration expiry time to maximum: %v (%v)", maxExpiry, h.cfg.MaxMachineRegistrationDuration)
+			log.Debug().
+				Msgf("Clamping registration expiry time to maximum: %v (%v)", maxExpiry, h.cfg.MaxMachineRegistrationDuration)
 			m.Expiry = &maxExpiry
 		} else if m.RequestedExpiry.IsZero() {
 			log.Debug().Msgf("Using default machine registration expiry time: %v (%v)", defaultExpiry, h.cfg.DefaultMachineRegistrationDuration)
@@ -359,7 +359,11 @@ func (ms MachinesP) String() string {
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (ms Machines) toNodes(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) ([]*tailcfg.Node, error) {
+func (ms Machines) toNodes(
+	baseDomain string,
+	dnsConfig *tailcfg.DNSConfig,
+	includeRoutes bool,
+) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(ms))
 
 	for index, machine := range ms {
@@ -479,8 +483,10 @@ func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, include
 	}
 
 	n := tailcfg.Node{
-		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
-		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permanent
+		ID: tailcfg.NodeID(m.ID), // this is the actual ID
+		StableID: tailcfg.StableNodeID(
+			strconv.FormatUint(m.ID, 10),
+		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostname,
 		User:       tailcfg.UserID(m.NamespaceID),
 		Key:        tailcfg.NodeKey(nKey),
