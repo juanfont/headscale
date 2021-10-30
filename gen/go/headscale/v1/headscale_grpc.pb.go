@@ -205,5 +205,5 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "headscale/v1/rpc.proto",
+	Metadata: "headscale/v1/headscale.proto",
 }
