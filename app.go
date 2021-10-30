@@ -381,8 +381,8 @@ func (h *Headscale) Serve() error {
 	r.POST("/machine/:id", h.RegistrationHandler)
 	r.GET("/apple", h.AppleMobileConfig)
 	r.GET("/apple/:platform", h.ApplePlatformConfig)
-
-	r.StaticFile("/swagger/swagger.json", "gen/openapiv2/v1/headscale.swagger.json")
+	r.GET("/swagger", SwaggerUI)
+	r.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
 
 	api := r.Group("/api")
 	api.Use(h.httpAuthenticationMiddleware)
