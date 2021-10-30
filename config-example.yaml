@@ -64,3 +64,8 @@ dns_config:
 
   magic_dns: true
   base_domain: example.com
+
+# Unix socket used for the CLI to connect without authentication
+# Note: for local development, you probably want to change this to:
+# unix_socket: ./headscale.sock
+unix_socket: /var/run/headscale.sock

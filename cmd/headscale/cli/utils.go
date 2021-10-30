@@ -48,6 +48,8 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("dns_config", nil)
 
+	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
+
 	err := viper.ReadInConfig()
 	if err != nil {
 		return fmt.Errorf("Fatal error reading config file: %s \n", err)
@@ -242,6 +244,8 @@ func getHeadscaleConfig() headscale.Config {
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
+
+		UnixSocket: viper.GetString("unix_socket"),
 	}
 }
 
@@ -282,11 +286,11 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 }
 
 func getHeadscaleGRPCClient() (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
+	// TODO(kradalby): Make configurable
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	grpcOptions := []grpc.DialOption{
-		// TODO(kradalby): Make configurable
 		grpc.WithBlock(),
 	}
 
@@ -294,19 +298,24 @@ func getHeadscaleGRPCClient() (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
 
 	// If the address is not set, we assume that we are on the server hosting headscale.
 	if address == "" {
-		log.Debug().Msgf("HEADSCALE_ADDRESS environment is not set, connecting to localhost.")
 
 		cfg := getHeadscaleConfig()
 
-		_, port, _ := net.SplitHostPort(cfg.Addr)
+		log.Debug().
+			Str("socket", cfg.UnixSocket).
+			Msgf("HEADSCALE_ADDRESS environment is not set, connecting to unix socket.")
 
-		address = "127.0.0.1" + ":" + port
+		address = cfg.UnixSocket
 
-		grpcOptions = append(grpcOptions, grpc.WithInsecure())
-	}
-
-	// If we are not connecting to a local server, require an API key for authentication
-	if !headscale.IsLocalhost(address) {
+		grpcOptions = append(
+			grpcOptions,
+			grpc.WithInsecure(),
+			grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
+				return net.DialTimeout("unix", addr, timeout)
+			}),
+		)
+	} else {
+		// If we are not connecting to a local server, require an API key for authentication
 		apiKey := os.Getenv("HEADSCALE_API_KEY")
 		if apiKey == "" {
 			log.Fatal().Msgf("HEADSCALE_API_KEY environment variable needs to be set.")

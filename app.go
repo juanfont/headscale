@@ -39,9 +39,7 @@ import (
 )
 
 const (
-	LOCALHOST_V4 = "127.0.0.1"
-	LOCALHOST_V6 = "[::1]"
-	AUTH_PREFIX  = "Bearer "
+	AUTH_PREFIX = "Bearer "
 )
 
 // Config contains the initial Headscale configuration.
@@ -75,6 +73,8 @@ type Config struct {
 	ACMEEmail string
 
 	DNSConfig *tailcfg.DNSConfig
+
+	UnixSocket string
 }
 
 type DERPConfig struct {
@@ -233,8 +233,9 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	// the server
 	p, _ := peer.FromContext(ctx)
 
-	if IsLocalhost(p.Addr.String()) {
-		log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client connected from localhost")
+	// TODO(kradalby): Figure out what @ means (socket wise) and if it can be exploited
+	if p.Addr.String() == "@" {
+		log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client connecting over socket")
 
 		return handler(ctx, req)
 	}
@@ -326,14 +327,19 @@ func (h *Headscale) Serve() error {
 
 	defer cancel()
 
-	l, err := net.Listen("tcp", h.cfg.Addr)
+	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
+	if err != nil {
+		panic(err)
+	}
+
+	networkListener, err := net.Listen("tcp", h.cfg.Addr)
 	if err != nil {
 		panic(err)
 	}
 
 	// Create the cmux object that will multiplex 2 protocols on the same port.
 	// The two following listeners will be served on the same port below gracefully.
-	m := cmux.New(l)
+	m := cmux.New(networkListener)
 	// Match gRPC requests here
 	grpcListener := m.MatchWithWriters(
 		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
@@ -344,16 +350,23 @@ func (h *Headscale) Serve() error {
 
 	grpcGatewayMux := runtime.NewServeMux()
 
-	grpcDialOptions := []grpc.DialOption{grpc.WithInsecure()}
-
-	_, port, err := net.SplitHostPort(h.cfg.Addr)
+	// Make the grpc-gateway connect to grpc over socket
+	grpcGatewayConn, err := grpc.Dial(
+		h.cfg.UnixSocket,
+		[]grpc.DialOption{
+			grpc.WithInsecure(),
+			grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
+				return net.DialTimeout("unix", addr, timeout)
+			}),
+		}...,
+	)
 	if err != nil {
 		return err
 	}
 
 	// Connect to the gRPC server over localhost to skip
 	// the authentication.
-	err = apiV1.RegisterHeadscaleServiceHandlerFromEndpoint(ctx, grpcGatewayMux, LOCALHOST_V4+":"+port, grpcDialOptions)
+	err = apiV1.RegisterHeadscaleServiceHandler(ctx, grpcGatewayMux, grpcGatewayConn)
 	if err != nil {
 		return err
 	}
@@ -432,6 +445,7 @@ func (h *Headscale) Serve() error {
 
 	g := new(errgroup.Group)
 
+	g.Go(func() error { return grpcServer.Serve(socketListener) })
 	g.Go(func() error { return grpcServer.Serve(grpcListener) })
 	g.Go(func() error { return httpServer.Serve(httpListener) })
 	g.Go(func() error { return m.Serve() })
