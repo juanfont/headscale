@@ -355,9 +355,7 @@ func (h *Headscale) Serve() error {
 		h.cfg.UnixSocket,
 		[]grpc.DialOption{
 			grpc.WithInsecure(),
-			grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
-				return net.DialTimeout("unix", addr, timeout)
-			}),
+			grpc.WithContextDialer(GrpcSocketDialer),
 		}...,
 	)
 	if err != nil {

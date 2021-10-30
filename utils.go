@@ -6,10 +6,12 @@
 package headscale
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 
 	"golang.org/x/crypto/nacl/box"
@@ -155,4 +157,9 @@ func tailNodesToString(nodes []*tailcfg.Node) string {
 
 func tailMapResponseToString(resp tailcfg.MapResponse) string {
 	return fmt.Sprintf("{ Node: %s, Peers: %s }", resp.Node.Name, tailNodesToString(resp.Peers))
+}
+
+func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
+	var d net.Dialer
+	return d.DialContext(ctx, "unix", addr)
 }
