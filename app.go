@@ -473,6 +473,8 @@ func (h *Headscale) Serve() error {
 	g := new(errgroup.Group)
 
 	g.Go(func() error { return grpcServer.Serve(socketListener) })
+
+	// TODO(kradalby): Verify if we need the same TLS setup for gRPC as HTTP
 	g.Go(func() error { return grpcServer.Serve(grpcListener) })
 
 	if tlsConfig != nil {
