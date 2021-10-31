@@ -260,13 +260,6 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	// the server
 	p, _ := peer.FromContext(ctx)
 
-	// TODO(kradalby): Figure out what @ means (socket wise) and if it can be exploited
-	// if p.Addr.String() == "@" {
-	// 	log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client connecting over socket")
-
-	// 	return handler(ctx, req)
-	// }
-
 	log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client is trying to authenticate")
 
 	md, ok := metadata.FromIncomingContext(ctx)
