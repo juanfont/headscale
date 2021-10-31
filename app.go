@@ -261,11 +261,11 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	p, _ := peer.FromContext(ctx)
 
 	// TODO(kradalby): Figure out what @ means (socket wise) and if it can be exploited
-	if p.Addr.String() == "@" {
-		log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client connecting over socket")
+	// if p.Addr.String() == "@" {
+	// 	log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client connecting over socket")
 
-		return handler(ctx, req)
-	}
+	// 	return handler(ctx, req)
+	// }
 
 	log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client is trying to authenticate")
 
@@ -467,12 +467,17 @@ func (h *Headscale) Serve() error {
 
 	grpcServer := grpc.NewServer(grpcOptions...)
 
+	// Start the local gRPC server without TLS and without authentication
+	grpcSocket := grpc.NewServer()
+
 	apiV1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
+	apiV1.RegisterHeadscaleServiceServer(grpcSocket, newHeadscaleV1APIServer(h))
 	reflection.Register(grpcServer)
+	reflection.Register(grpcSocket)
 
 	g := new(errgroup.Group)
 
-	g.Go(func() error { return grpcServer.Serve(socketListener) })
+	g.Go(func() error { return grpcSocket.Serve(socketListener) })
 
 	// TODO(kradalby): Verify if we need the same TLS setup for gRPC as HTTP
 	g.Go(func() error { return grpcServer.Serve(grpcListener) })
