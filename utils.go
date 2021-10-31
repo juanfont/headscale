@@ -141,36 +141,32 @@ func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
 		return nil, err
 	}
 
+	ipPrefixNetworkAddress, ipPrefixBroadcastAddress := func() (netaddr.IP, netaddr.IP) {
+		ipRange := ipPrefix.Range()
+		return ipRange.From(), ipRange.To()
+	}()
+
 	// Get the first IP in our prefix
-	ip := ipPrefix.IP()
+	ip := ipPrefixNetworkAddress.Next()
 
 	for {
 		if !ipPrefix.Contains(ip) {
 			return nil, errCouldNotAllocateIP
 		}
 
-		// Some OS (including Linux) does not like when IPs ends with 0 or 255, which
-		// is typically called network or broadcast. Lets avoid them and continue
-		// to look when we get one of those traditionally reserved IPs.
-		ipRaw := ip.As4()
-		if ipRaw[3] == 0 || ipRaw[3] == 255 {
+		switch {
+		case ip.Compare(ipPrefixBroadcastAddress) == 0:
+			fallthrough
+		case containsIPs(usedIps, ip):
+			fallthrough
+		case ip.IsZero() || ip.IsLoopback():
 			ip = ip.Next()
 
 			continue
-		}
 
-		if ip.IsZero() &&
-			ip.IsLoopback() {
-			ip = ip.Next()
-
-			continue
-		}
-
-		if !containsIPs(usedIps, ip) {
+		default:
 			return &ip, nil
 		}
-
-		ip = ip.Next()
 	}
 }
 
