@@ -36,6 +36,7 @@ type Machine struct {
 	LastSeen             *time.Time
 	LastSuccessfulUpdate *time.Time
 	Expiry               *time.Time
+	RequestedExpiry      *time.Time
 
 	HostInfo      datatypes.JSON
 	Endpoints     datatypes.JSON
@@ -54,6 +55,38 @@ type (
 // For the time being this method is rather naive
 func (m Machine) isAlreadyRegistered() bool {
 	return m.Registered
+}
+
+// isExpired returns whether the machine registration has expired
+func (m Machine) isExpired() bool {
+	return time.Now().UTC().After(*m.Expiry)
+}
+
+// If the Machine is expired, updateMachineExpiry updates the Machine Expiry time to the maximum allowed duration,
+// or the default duration if no Expiry time was requested by the client. The expiry time here does not (yet) cause
+// a client to be disconnected, however they will have to re-auth the machine if they attempt to reconnect after the
+// expiry time.
+func (h *Headscale) updateMachineExpiry(m *Machine) {
+	if m.isExpired() {
+		now := time.Now().UTC()
+		maxExpiry := now.Add(h.cfg.MaxMachineRegistrationDuration)         // calculate the maximum expiry
+		defaultExpiry := now.Add(h.cfg.DefaultMachineRegistrationDuration) // calculate the default expiry
+
+		// clamp the expiry time of the machine registration to the maximum allowed, or use the default if none supplied
+		if maxExpiry.Before(*m.RequestedExpiry) {
+			log.Debug().
+				Msgf("Clamping registration expiry time to maximum: %v (%v)", maxExpiry, h.cfg.MaxMachineRegistrationDuration)
+			m.Expiry = &maxExpiry
+		} else if m.RequestedExpiry.IsZero() {
+			log.Debug().Msgf("Using default machine registration expiry time: %v (%v)", defaultExpiry, h.cfg.DefaultMachineRegistrationDuration)
+			m.Expiry = &defaultExpiry
+		} else {
+			log.Debug().Msgf("Using requested machine registration expiry time: %v", m.RequestedExpiry)
+			m.Expiry = m.RequestedExpiry
+		}
+
+		h.db.Save(&m)
+	}
 }
 
 func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
@@ -326,7 +359,11 @@ func (ms MachinesP) String() string {
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (ms Machines) toNodes(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) ([]*tailcfg.Node, error) {
+func (ms Machines) toNodes(
+	baseDomain string,
+	dnsConfig *tailcfg.DNSConfig,
+	includeRoutes bool,
+) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(ms))
 
 	for index, machine := range ms {
@@ -446,8 +483,10 @@ func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, include
 	}
 
 	n := tailcfg.Node{
-		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
-		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permanent
+		ID: tailcfg.NodeID(m.ID), // this is the actual ID
+		StableID: tailcfg.StableNodeID(
+			strconv.FormatUint(m.ID, 10),
+		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostname,
 		User:       tailcfg.UserID(m.NamespaceID),
 		Key:        tailcfg.NodeKey(nKey),
