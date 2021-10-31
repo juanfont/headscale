@@ -38,13 +38,13 @@ var createNamespaceCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		o, _ := cmd.Flags().GetString("output")
 
-		client, conn := getHeadscaleGRPCClient()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
 
 		request := &apiV1.CreateNamespaceRequest{Name: args[0]}
 

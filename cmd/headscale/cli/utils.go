@@ -316,11 +316,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	return h, nil
 }
 
-func getHeadscaleGRPCClient() (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
-	// TODO(kradalby): Make configurable
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
+func getHeadscaleGRPCClient(ctx context.Context) (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
 	grpcOptions := []grpc.DialOption{
 		grpc.WithBlock(),
 	}
