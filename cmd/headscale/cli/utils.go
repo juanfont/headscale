@@ -4,16 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v2"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -51,21 +51,26 @@ func LoadConfig(path string) error {
 
 	// Collect any validation errors and return them all at once
 	var errorText string
-	if (viper.GetString("tls_letsencrypt_hostname") != "") && ((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
+	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
+		((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
 		errorText += "Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both\n"
 	}
 
-	if (viper.GetString("tls_letsencrypt_hostname") != "") && (viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") && (!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
+	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
+		(viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") &&
+		(!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
 		log.Warn().
 			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
-	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") && (viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
+	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") &&
+		(viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
 		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
 	}
 
-	if !strings.HasPrefix(viper.GetString("server_url"), "http://") && !strings.HasPrefix(viper.GetString("server_url"), "https://") {
+	if !strings.HasPrefix(viper.GetString("server_url"), "http://") &&
+		!strings.HasPrefix(viper.GetString("server_url"), "https://") {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
 	if errorText != "" {
@@ -73,7 +78,35 @@ func LoadConfig(path string) error {
 	} else {
 		return nil
 	}
+}
 
+func GetDERPConfig() headscale.DERPConfig {
+	urlStrs := viper.GetStringSlice("derp.urls")
+
+	urls := make([]url.URL, len(urlStrs))
+	for index, urlStr := range urlStrs {
+		urlAddr, err := url.Parse(urlStr)
+		if err != nil {
+			log.Error().
+				Str("url", urlStr).
+				Err(err).
+				Msg("Failed to parse url, ignoring...")
+		}
+
+		urls[index] = *urlAddr
+	}
+
+	paths := viper.GetStringSlice("derp.paths")
+
+	autoUpdate := viper.GetBool("derp.auto_update_enabled")
+	updateFrequency := viper.GetDuration("derp.update_frequency")
+
+	return headscale.DERPConfig{
+		URLs:            urls,
+		Paths:           paths,
+		AutoUpdate:      autoUpdate,
+		UpdateFrequency: updateFrequency,
+	}
 }
 
 func GetDNSConfig() (*tailcfg.DNSConfig, string) {
@@ -171,32 +204,49 @@ func absPath(path string) string {
 }
 
 func getHeadscaleApp() (*headscale.Headscale, error) {
-	derpPath := absPath(viper.GetString("derp_map_path"))
-	derpMap, err := loadDerpMap(derpPath)
-	if err != nil {
-		log.Error().
-			Str("path", derpPath).
-			Err(err).
-			Msg("Could not load DERP servers map file")
-	}
-
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
 	// to avoid races
 	minInactivityTimeout, _ := time.ParseDuration("65s")
 	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
-		err = fmt.Errorf("ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n", viper.GetString("ephemeral_node_inactivity_timeout"), minInactivityTimeout)
+		err := fmt.Errorf(
+			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n",
+			viper.GetString("ephemeral_node_inactivity_timeout"),
+			minInactivityTimeout,
+		)
 		return nil, err
 	}
 
+	// maxMachineRegistrationDuration is the maximum time headscale will allow a client to (optionally) request for
+	// the machine key expiry time. RegisterRequests with Expiry times that are more than
+	// maxMachineRegistrationDuration in the future will be clamped to (now + maxMachineRegistrationDuration)
+	maxMachineRegistrationDuration, _ := time.ParseDuration(
+		"10h",
+	) // use 10h here because it is the length of a standard business day plus a small amount of leeway
+	if viper.GetDuration("max_machine_registration_duration") >= time.Second {
+		maxMachineRegistrationDuration = viper.GetDuration("max_machine_registration_duration")
+	}
+
+	// defaultMachineRegistrationDuration is the default time assigned to a machine registration if one is not
+	// specified by the tailscale client. It is the default amount of time a machine registration is valid for
+	// (ie the amount of time before the user has to re-authenticate when requesting a connection)
+	defaultMachineRegistrationDuration, _ := time.ParseDuration(
+		"8h",
+	) // use 8h here because it's the length of a standard business day
+	if viper.GetDuration("default_machine_registration_duration") >= time.Second {
+		defaultMachineRegistrationDuration = viper.GetDuration("default_machine_registration_duration")
+	}
+
 	dnsConfig, baseDomain := GetDNSConfig()
+	derpConfig := GetDERPConfig()
 
 	cfg := headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
-		DerpMap:        derpMap,
 		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
 		BaseDomain:     baseDomain,
+
+		DERP: derpConfig,
 
 		EphemeralNodeInactivityTimeout: viper.GetDuration("ephemeral_node_inactivity_timeout"),
 
@@ -220,7 +270,18 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
+
+		OIDC: headscale.OIDCConfig{
+			Issuer:       viper.GetString("oidc.issuer"),
+			ClientID:     viper.GetString("oidc.client_id"),
+			ClientSecret: viper.GetString("oidc.client_secret"),
+		},
+
+		MaxMachineRegistrationDuration:     maxMachineRegistrationDuration,
+		DefaultMachineRegistrationDuration: defaultMachineRegistrationDuration,
 	}
+
+	cfg.OIDC.MatchMap = loadOIDCMatchMap()
 
 	h, err := headscale.NewHeadscale(cfg)
 	if err != nil {
@@ -241,21 +302,6 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	}
 
 	return h, nil
-}
-
-func loadDerpMap(path string) (*tailcfg.DERPMap, error) {
-	derpFile, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer derpFile.Close()
-	var derpMap tailcfg.DERPMap
-	b, err := io.ReadAll(derpFile)
-	if err != nil {
-		return nil, err
-	}
-	err = yaml.Unmarshal(b, &derpMap)
-	return &derpMap, err
 }
 
 func JsonOutput(result interface{}, errResult error, outputFormat string) {
@@ -297,4 +343,16 @@ func HasJsonOutputFlag() bool {
 		}
 	}
 	return false
+}
+
+// loadOIDCMatchMap is a wrapper around viper to verifies that the keys in
+// the match map is valid regex strings.
+func loadOIDCMatchMap() map[string]string {
+	strMap := viper.GetStringMapString("oidc.domain_map")
+
+	for oidcMatcher := range strMap {
+		_ = regexp.MustCompile(oidcMatcher)
+	}
+
+	return strMap
 }

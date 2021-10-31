@@ -6,6 +6,8 @@ An open source, self-hosted implementation of the Tailscale coordination server.
 
 Join our [Discord](https://discord.gg/XcQxk2VHjx) server for a chat.
 
+**Note:** Always select the same GitHub tag as the released version you use to ensure you have the correct example configuration and documentation. The `main` branch might contain unreleased changes.
+
 ## Overview
 
 Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/).
@@ -29,6 +31,7 @@ headscale implements this coordination server.
 - [x] Taildrop (File Sharing)
 - [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [x] DNS (passing DNS servers to nodes)
+- [x] Single-Sign-On (via Open ID Connect)
 - [x] Share nodes between namespaces
 - [x] MagicDNS (see `docs/`)
 
@@ -47,7 +50,6 @@ headscale implements this coordination server.
 
 Suggestions/PRs welcomed!
 
-
 ## Running headscale
 
 Please have a look at the documentation under [`docs/`](docs/).
@@ -58,6 +60,40 @@ Please have a look at the documentation under [`docs/`](docs/).
 1. We have nothing to do with Tailscale, or Tailscale Inc.
 2. The purpose of writing this was to learn how Tailscale works.
 
+## Contributing
+
+To contribute to Headscale you would need the lastest version of [Go](golang.org) and [Buf](https://buf.build)(Protobuf generator).
+
+### Install development tools
+
+- Go
+- Buf
+- Protobuf tools:
+
+```shell 
+make install-protobuf-plugins
+```
+
+### Testing and building
+
+Some parts of the project requires the generation of Go code from Protobuf (if changes is made in `proto/`) and it must be (re-)generated with:
+
+```shell
+make generate
+```
+**Note**: Please check in changes from `gen/` in a separate commit to make it easier to review.
+
+To run the tests:
+
+```shell
+make test
+```
+
+To build the program:
+
+```shell
+make build
+```
 
 ## Contributors
 
