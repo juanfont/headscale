@@ -470,16 +470,16 @@ func (machine Machine) toNode(
 	}
 
 	addrs := []netaddr.IPPrefix{}
-	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", machine.IPAddress))
+	nodeAddr, err := netaddr.ParseIP(m.IPAddresses)
 	if err != nil {
 		log.Trace().
 			Caller().
-			Str("ip", machine.IPAddress).
-			Msgf("Failed to parse IP Prefix from IP: %s", machine.IPAddress)
-
+			Str("ip", machine.IPAddresses).
+			Msgf("Failed to parse machine IP: %s", machine.IPAddresses)
 		return nil, err
 	}
-	addrs = append(addrs, ip) // missing the ipv6 ?
+	ip := netaddr.IPPrefixFrom(nodeAddr, nodeAddr.BitLen())
+	addrs = append(addrs, ip)
 
 	allowedIPs := []netaddr.IPPrefix{}
 	allowedIPs = append(
