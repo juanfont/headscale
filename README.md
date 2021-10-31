@@ -31,6 +31,7 @@ headscale implements this coordination server.
 - [x] Taildrop (File Sharing)
 - [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [x] DNS (passing DNS servers to nodes)
+- [x] Single-Sign-On (via Open ID Connect)
 - [x] Share nodes between namespaces
 - [x] MagicDNS (see `docs/`)
 
@@ -48,7 +49,6 @@ headscale implements this coordination server.
 ## Roadmap 🤷
 
 Suggestions/PRs welcomed!
-
 
 ## Running headscale
 

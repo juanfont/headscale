@@ -15,6 +15,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/patrickmn/go-cache"
+	"golang.org/x/oauth2"
+
 	"github.com/gin-gonic/gin"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -75,6 +79,18 @@ type Config struct {
 	DNSConfig *tailcfg.DNSConfig
 
 	UnixSocket string
+
+	OIDC OIDCConfig
+
+	MaxMachineRegistrationDuration     time.Duration
+	DefaultMachineRegistrationDuration time.Duration
+}
+
+type OIDCConfig struct {
+	Issuer       string
+	ClientID     string
+	ClientSecret string
+	MatchMap     map[string]string
 }
 
 type DERPConfig struct {
@@ -100,6 +116,10 @@ type Headscale struct {
 	aclRules  *[]tailcfg.FilterRule
 
 	lastStateChange sync.Map
+
+	oidcProvider   *oidc.Provider
+	oauth2Config   *oauth2.Config
+	oidcStateCache *cache.Cache
 }
 
 // NewHeadscale returns the Headscale app.
@@ -138,6 +158,13 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	err = h.initDB()
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.OIDC.Issuer != "" {
+		err = h.initOIDC()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS
@@ -379,6 +406,8 @@ func (h *Headscale) Serve() error {
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
 	r.POST("/machine/:id", h.RegistrationHandler)
+	r.GET("/oidc/register/:mkey", h.RegisterOIDC)
+	r.GET("/oidc/callback", h.OIDCCallback)
 	r.GET("/apple", h.AppleMobileConfig)
 	r.GET("/apple/:platform", h.ApplePlatformConfig)
 	r.GET("/swagger", SwaggerUI)
