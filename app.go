@@ -474,7 +474,16 @@ func (h *Headscale) Serve() error {
 
 	g.Go(func() error { return grpcServer.Serve(socketListener) })
 	g.Go(func() error { return grpcServer.Serve(grpcListener) })
-	g.Go(func() error { return httpServer.Serve(httpListener) })
+
+	if tlsConfig != nil {
+		g.Go(func() error {
+			tlsl := tls.NewListener(httpListener, tlsConfig)
+			return httpServer.Serve(tlsl)
+		})
+	} else {
+		g.Go(func() error { return httpServer.Serve(httpListener) })
+	}
+
 	g.Go(func() error { return m.Serve() })
 
 	log.Info().Msgf("listening and serving (multiplexed HTTP and gRPC) on: %s", h.cfg.Addr)
