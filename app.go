@@ -356,7 +356,7 @@ func (h *Headscale) Serve() error {
 
 	// Handle common process-killing signals so we can gracefully shut down:
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt, os.Kill, syscall.SIGTERM)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	go func(c chan os.Signal) {
 		// Wait for a SIGINT or SIGKILL:
 		sig := <-c
