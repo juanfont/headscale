@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -351,6 +353,19 @@ func (h *Headscale) Serve() error {
 	if err != nil {
 		panic(err)
 	}
+
+	// Handle common process-killing signals so we can gracefully shut down:
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, os.Kill, syscall.SIGTERM)
+	go func(c chan os.Signal) {
+		// Wait for a SIGINT or SIGKILL:
+		sig := <-c
+		log.Printf("Caught signal %s: shutting down.", sig)
+		// Stop listening (and unlink the socket if unix type):
+		socketListener.Close()
+		// And we're done:
+		os.Exit(0)
+	}(sigc)
 
 	networkListener, err := net.Listen("tcp", h.cfg.Addr)
 	if err != nil {
