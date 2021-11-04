@@ -44,7 +44,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 
 	<p>
 		<code>
-			<b>headscale -n NAMESPACE nodes register -k %s</b>
+			<b>headscale -n NAMESPACE nodes register --key %s</b>
 		</code>
 	</p>
 
@@ -306,7 +306,7 @@ func (h *Headscale) getMapResponse(mKey wgkey.Key, req tailcfg.MapRequest, m *Ma
 		Peers:        nodePeers,
 		DNSConfig:    dnsConfig,
 		Domain:       h.cfg.BaseDomain,
-		PacketFilter: *h.aclRules,
+		PacketFilter: h.aclRules,
 		DERPMap:      h.DERPMap,
 		UserProfiles: profiles,
 	}
