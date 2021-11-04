@@ -1,0 +1,43 @@
+syntax = "proto3";
+package headscale.v1;
+option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+import "google/protobuf/timestamp.proto";
+
+message PreAuthKey {
+    string namespace                     = 1;
+    string                    id         = 2;
+    string                    key        = 3;
+    bool                      resuable   = 4;
+    bool                      ephemeral  = 5;
+    bool                      used       = 6;
+    google.protobuf.Timestamp expiration = 7;
+    google.protobuf.Timestamp created_at = 8;
+}
+
+message CreatePreAuthKeyRequest {
+    string namespace                     = 1;
+    bool                      resuable   = 2;
+    bool                      ephemeral  = 3;
+    google.protobuf.Timestamp expiration = 4;
+}
+
+message CreatePreAuthKeyResponse {
+    PreAuthKey pre_auth_key = 1;
+}
+
+message ExpirePreAuthKeyRequest {
+    string namespace = 1;
+    string key       = 2;
+}
+
+message ExpirePreAuthKeyResponse {
+}
+
+message ListPreAuthKeysRequest {
+    string namespace = 1;
+}
+
+message ListPreAuthKeysResponse {
+    repeated PreAuthKey pre_auth_keys = 1;
+}

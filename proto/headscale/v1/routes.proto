@@ -1,0 +1,25 @@
+syntax = "proto3";
+package headscale.v1;
+option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+message Routes {
+    repeated string advertised_routes = 1;
+    repeated string enabled_routes    = 2;
+}
+
+message GetMachineRouteRequest {
+    uint64 machine_id = 1;
+}
+
+message GetMachineRouteResponse {
+    Routes routes = 1;
+}
+
+message EnableMachineRoutesRequest {
+    uint64          machine_id = 1;
+    repeated string routes     = 2;
+}
+
+message EnableMachineRoutesResponse {
+    Routes routes = 1;
+}
