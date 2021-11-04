@@ -21,6 +21,9 @@ coverprofile_html:
 lint:
 	golangci-lint run --fix
 
+proto-lint:
+	cd proto/ && buf lint
+
 compress: build
 	upx --brute headscale
 

@@ -39,7 +39,7 @@ var (
 	headscale dockertest.Resource
 )
 
-var tailscaleVersions = []string{"1.14.3", "1.12.3"}
+var tailscaleVersions = []string{"1.16.2", "1.14.3", "1.12.3"}
 
 type TestNamespace struct {
 	count      int
@@ -99,26 +99,48 @@ func executeCommand(resource *dockertest.Resource, cmd []string, env []string) (
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode, err := resource.Exec(
-		cmd,
-		dockertest.ExecOptions{
-			Env:    env,
-			StdOut: &stdout,
-			StdErr: &stderr,
-		},
-	)
-	if err != nil {
-		return "", err
+	// TODO(kradalby): Make configurable
+	timeout := 10 * time.Second
+
+	type result struct {
+		exitCode int
+		err      error
 	}
 
-	if exitCode != 0 {
-		fmt.Println("Command: ", cmd)
-		fmt.Println("stdout: ", stdout.String())
-		fmt.Println("stderr: ", stderr.String())
-		return "", fmt.Errorf("command failed with: %s", stderr.String())
-	}
+	resultChan := make(chan result, 1)
 
-	return stdout.String(), nil
+	// Run your long running function in it's own goroutine and pass back it's
+	// response into our channel.
+	go func() {
+		exitCode, err := resource.Exec(
+			cmd,
+			dockertest.ExecOptions{
+				Env:    env,
+				StdOut: &stdout,
+				StdErr: &stderr,
+			},
+		)
+		resultChan <- result{exitCode, err}
+	}()
+
+	// Listen on our channel AND a timeout channel - which ever happens first.
+	select {
+	case res := <-resultChan:
+		if res.err != nil {
+			return "", res.err
+		}
+
+		if res.exitCode != 0 {
+			fmt.Println("Command: ", cmd)
+			fmt.Println("stdout: ", stdout.String())
+			fmt.Println("stderr: ", stderr.String())
+			return "", fmt.Errorf("command failed with: %s", stderr.String())
+		}
+
+		return stdout.String(), nil
+	case <-time.After(timeout):
+		return "", fmt.Errorf("command timed out after %s", timeout)
+	}
 }
 
 func saveLog(resource *dockertest.Resource, basePath string) error {
@@ -282,8 +304,8 @@ func (s *IntegrationTestSuite) SetupSuite() {
 			[]string{"headscale", "namespaces", "create", namespace},
 			[]string{},
 		)
-		assert.Nil(s.T(), err)
 		fmt.Println("headscale create namespace result: ", result)
+		assert.Nil(s.T(), err)
 
 		fmt.Printf("Creating pre auth key for %s\n", namespace)
 		authKey, err := executeCommand(
