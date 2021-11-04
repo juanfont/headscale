@@ -1,15 +1,17 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hako/durafmt"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func init() {
@@ -24,7 +26,8 @@ func init() {
 	preauthkeysCmd.AddCommand(expirePreAuthKeyCmd)
 	createPreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
 	createPreAuthKeyCmd.PersistentFlags().Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
-	createPreAuthKeyCmd.Flags().StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
+	createPreAuthKeyCmd.Flags().
+		StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
 }
 
 var preauthkeysCmd = &cobra.Command{
@@ -36,49 +39,57 @@ var listPreAuthKeys = &cobra.Command{
 	Use:   "list",
 	Short: "List the preauthkeys for this namespace",
 	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
 		n, err := cmd.Flags().GetString("namespace")
 		if err != nil {
-			log.Fatalf("Error getting namespace: %s", err)
-		}
-		o, _ := cmd.Flags().GetString("output")
-
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
-		}
-		keys, err := h.GetPreAuthKeys(n)
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(keys, err, o)
+			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
 			return
 		}
 
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		client, conn := getHeadscaleGRPCClient(ctx)
+		defer conn.Close()
+
+		request := &v1.ListPreAuthKeysRequest{
+			Namespace: n,
+		}
+
+		response, err := client.ListPreAuthKeys(ctx, request)
 		if err != nil {
-			fmt.Printf("Error getting the list of keys: %s\n", err)
+			ErrorOutput(err, fmt.Sprintf("Error getting the list of keys: %s", err), output)
+			return
+		}
+
+		if output != "" {
+			SuccessOutput(response.PreAuthKeys, "", output)
 			return
 		}
 
 		d := pterm.TableData{{"ID", "Key", "Reusable", "Ephemeral", "Used", "Expiration", "Created"}}
-		for _, k := range *keys {
+		for _, k := range response.PreAuthKeys {
 			expiration := "-"
-			if k.Expiration != nil {
-				expiration = k.Expiration.Format("2006-01-02 15:04:05")
+			if k.GetExpiration() != nil {
+				expiration = k.Expiration.AsTime().Format("2006-01-02 15:04:05")
 			}
 
 			var reusable string
-			if k.Ephemeral {
+			if k.GetEphemeral() {
 				reusable = "N/A"
 			} else {
-				reusable = fmt.Sprintf("%v", k.Reusable)
+				reusable = fmt.Sprintf("%v", k.GetResuable())
 			}
 
 			d = append(d, []string{
-				strconv.FormatUint(k.ID, 10),
-				k.Key,
+				k.GetId(),
+				k.GetKey(),
 				reusable,
-				strconv.FormatBool(k.Ephemeral),
-				fmt.Sprintf("%v", k.Used),
+				strconv.FormatBool(k.GetEphemeral()),
+				strconv.FormatBool(k.GetUsed()),
 				expiration,
-				k.CreatedAt.Format("2006-01-02 15:04:05"),
+				k.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
 			})
 
 		}
@@ -93,16 +104,14 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Creates a new preauthkey in the specified namespace",
 	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
 		n, err := cmd.Flags().GetString("namespace")
 		if err != nil {
-			log.Fatalf("Error getting namespace: %s", err)
+			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+			return
 		}
-		o, _ := cmd.Flags().GetString("output")
 
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
-		}
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 
@@ -117,16 +126,26 @@ var createPreAuthKeyCmd = &cobra.Command{
 			expiration = &exp
 		}
 
-		k, err := h.CreatePreAuthKey(n, reusable, ephemeral, expiration)
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(k, err, o)
-			return
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		client, conn := getHeadscaleGRPCClient(ctx)
+		defer conn.Close()
+
+		request := &v1.CreatePreAuthKeyRequest{
+			Namespace:  n,
+			Resuable:   reusable,
+			Ephemeral:  ephemeral,
+			Expiration: timestamppb.New(*expiration),
 		}
+
+		response, err := client.CreatePreAuthKey(ctx, request)
 		if err != nil {
-			fmt.Println(err)
+			ErrorOutput(err, fmt.Sprintf("Cannot create Pre Auth Key: %s\n", err), output)
 			return
 		}
-		fmt.Printf("%s\n", k.Key)
+
+		SuccessOutput(response.PreAuthKey, response.PreAuthKey.Key, output)
 	},
 }
 
@@ -140,35 +159,29 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
 		n, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			log.Fatalf("Error getting namespace: %s", err)
 		}
-		o, _ := cmd.Flags().GetString("output")
 
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		client, conn := getHeadscaleGRPCClient(ctx)
+		defer conn.Close()
+
+		request := &v1.ExpirePreAuthKeyRequest{
+			Namespace: n,
+			Key:       args[0],
 		}
 
-		k, err := h.GetPreAuthKey(n, args[0])
+		response, err := client.ExpirePreAuthKey(ctx, request)
 		if err != nil {
-			if strings.HasPrefix(o, "json") {
-				JsonOutput(k, err, o)
-				return
-			}
-			log.Fatalf("Error getting the key: %s", err)
-		}
-
-		err = h.MarkExpirePreAuthKey(k)
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(k, err, o)
+			ErrorOutput(err, fmt.Sprintf("Cannot expire Pre Auth Key: %s\n", err), output)
 			return
 		}
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Println("Expired")
+
+		SuccessOutput(response, "Key expired", output)
 	},
 }
