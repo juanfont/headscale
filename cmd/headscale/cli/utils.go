@@ -14,18 +14,15 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale"
-	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
+	"gopkg.in/yaml.v2"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 )
-
-type ErrorOutput struct {
-	Error string
-}
 
 func LoadConfig(path string) error {
 	viper.SetConfigName("config")
@@ -316,7 +313,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	return h, nil
 }
 
-func getHeadscaleGRPCClient(ctx context.Context) (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
+func getHeadscaleGRPCClient(ctx context.Context) (v1.HeadscaleServiceClient, *grpc.ClientConn) {
 	grpcOptions := []grpc.DialOption{
 		grpc.WithBlock(),
 	}
@@ -370,46 +367,49 @@ func getHeadscaleGRPCClient(ctx context.Context) (apiV1.HeadscaleServiceClient, 
 		log.Fatal().Err(err).Msgf("Could not connect: %v", err)
 	}
 
-	client := apiV1.NewHeadscaleServiceClient(conn)
+	client := v1.NewHeadscaleServiceClient(conn)
 
 	return client, conn
 }
 
-func JsonOutput(result interface{}, errResult error, outputFormat string) {
+func SuccessOutput(result interface{}, override string, outputFormat string) {
 	var j []byte
 	var err error
 	switch outputFormat {
 	case "json":
-		if errResult != nil {
-			j, err = json.MarshalIndent(ErrorOutput{errResult.Error()}, "", "\t")
-			if err != nil {
-				log.Fatal().Err(err)
-			}
-		} else {
-			j, err = json.MarshalIndent(result, "", "\t")
-			if err != nil {
-				log.Fatal().Err(err)
-			}
+		j, err = json.MarshalIndent(result, "", "\t")
+		if err != nil {
+			log.Fatal().Err(err)
 		}
 	case "json-line":
-		if errResult != nil {
-			j, err = json.Marshal(ErrorOutput{errResult.Error()})
-			if err != nil {
-				log.Fatal().Err(err)
-			}
-		} else {
-			j, err = json.Marshal(result)
-			if err != nil {
-				log.Fatal().Err(err)
-			}
+		j, err = json.Marshal(result)
+		if err != nil {
+			log.Fatal().Err(err)
 		}
+	case "yaml":
+		j, err = yaml.Marshal(result)
+		if err != nil {
+			log.Fatal().Err(err)
+		}
+	default:
+		fmt.Println(override)
+		return
 	}
+
 	fmt.Println(string(j))
 }
 
-func HasJsonOutputFlag() bool {
+func ErrorOutput(errResult error, override string, outputFormat string) {
+	type errOutput struct {
+		Error string `json:"error"`
+	}
+
+	SuccessOutput(errOutput{errResult.Error()}, override, outputFormat)
+}
+
+func HasMachineOutputFlag() bool {
 	for _, arg := range os.Args {
-		if arg == "json" || arg == "json-line" {
+		if arg == "json" || arg == "json-line" || arg == "yaml" {
 			return true
 		}
 	}
