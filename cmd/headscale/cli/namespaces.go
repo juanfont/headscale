@@ -3,11 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
-	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -36,7 +34,9 @@ var createNamespaceCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
+		output, _ := cmd.Flags().GetString("output")
+
+		namespaceName := args[0]
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -46,19 +46,16 @@ var createNamespaceCmd = &cobra.Command{
 
 		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
 
-		request := &apiV1.CreateNamespaceRequest{Name: args[0]}
+		request := &v1.CreateNamespaceRequest{Name: namespaceName}
 
 		log.Trace().Interface("request", request).Msg("Sending CreateNamespace request")
 		response, err := client.CreateNamespace(ctx, request)
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(response.Name, err, o)
-			return
-		}
 		if err != nil {
-			fmt.Printf("Error creating namespace: %s\n", err)
+			ErrorOutput(err, fmt.Sprintf("Cannot create namespace: %s", err), output)
 			return
 		}
-		fmt.Printf("Namespace created\n")
+
+		SuccessOutput(response.Namespace, "Namespace created", output)
 	},
 }
 
@@ -72,21 +69,25 @@ var destroyNamespaceCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		h, err := getHeadscaleApp()
+		output, _ := cmd.Flags().GetString("output")
+
+		namespaceName := args[0]
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		client, conn := getHeadscaleGRPCClient(ctx)
+		defer conn.Close()
+
+		request := &v1.DeleteNamespaceRequest{Name: namespaceName}
+
+		response, err := client.DeleteNamespace(ctx, request)
 		if err != nil {
-			log.Fatal().Err(err).Msgf("Error initializing: %s", err)
-		}
-		err = h.DestroyNamespace(args[0])
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(map[string]string{"Result": "Namespace destroyed"}, err, o)
+			ErrorOutput(err, fmt.Sprintf("Cannot destroy namespace: %s", err), output)
 			return
 		}
-		if err != nil {
-			fmt.Printf("Error destroying namespace: %s\n", err)
-			return
-		}
-		fmt.Printf("Namespace destroyed\n")
+
+		SuccessOutput(response, "Namespace destroyed", output)
 	},
 }
 
@@ -94,31 +95,42 @@ var listNamespacesCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all the namespaces",
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		h, err := getHeadscaleApp()
+		output, _ := cmd.Flags().GetString("output")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		client, conn := getHeadscaleGRPCClient(ctx)
+		defer conn.Close()
+
+		request := &v1.ListNamespacesRequest{}
+
+		response, err := client.ListNamespaces(ctx, request)
 		if err != nil {
-			log.Fatal().Err(err).Msgf("Error initializing: %s", err)
-		}
-		namespaces, err := h.ListNamespaces()
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(namespaces, err, o)
+			ErrorOutput(err, fmt.Sprintf("Cannot get namespaces: %s", err), output)
 			return
 		}
-		if err != nil {
-			fmt.Println(err)
+
+		if output != "" {
+			SuccessOutput(response.Namespaces, "", output)
 			return
 		}
 
 		d := pterm.TableData{{"ID", "Name", "Created"}}
-		for _, n := range *namespaces {
+		for _, namespace := range response.GetNamespaces() {
 			d = append(
 				d,
-				[]string{strconv.FormatUint(uint64(n.ID), 10), n.Name, n.CreatedAt.Format("2006-01-02 15:04:05")},
+				[]string{
+					namespace.GetId(),
+					namespace.GetName(),
+					namespace.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+				},
 			)
 		}
 		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 		if err != nil {
-			log.Fatal().Err(err).Msg("")
+			ErrorOutput(err, fmt.Sprintf("Failed to render pterm table: %s", err), output)
+			return
 		}
 	},
 }
@@ -133,20 +145,25 @@ var renameNamespaceCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatal().Err(err).Msgf("Error initializing: %s", err)
+		output, _ := cmd.Flags().GetString("output")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		client, conn := getHeadscaleGRPCClient(ctx)
+		defer conn.Close()
+
+		request := &v1.RenameNamespaceRequest{
+			OldName: args[0],
+			NewName: args[1],
 		}
-		err = h.RenameNamespace(args[0], args[1])
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(map[string]string{"Result": "Namespace renamed"}, err, o)
+
+		response, err := client.RenameNamespace(ctx, request)
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Cannot rename namespace: %s", err), output)
 			return
 		}
-		if err != nil {
-			fmt.Printf("Error renaming namespace: %s\n", err)
-			return
-		}
-		fmt.Printf("Namespace renamed\n")
+
+		SuccessOutput(response.Namespace, "Namespace renamed", output)
 	},
 }
