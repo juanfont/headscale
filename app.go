@@ -22,8 +22,10 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/gin-gonic/gin"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/philip-bui/grpc-zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/soheilhy/cmux"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
@@ -115,7 +117,7 @@ type Headscale struct {
 	DERPMap *tailcfg.DERPMap
 
 	aclPolicy *ACLPolicy
-	aclRules  *[]tailcfg.FilterRule
+	aclRules  []tailcfg.FilterRule
 
 	lastStateChange sync.Map
 
@@ -154,7 +156,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		dbString:   dbString,
 		privateKey: privKey,
 		publicKey:  &pubKey,
-		aclRules:   &tailcfg.FilterAllowAll, // default allowall
+		aclRules:   tailcfg.FilterAllowAll, // default allowall
 	}
 
 	err = h.initDB()
@@ -209,7 +211,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 		return
 	}
 
-	for _, ns := range *namespaces {
+	for _, ns := range namespaces {
 		machines, err := h.ListMachinesInNamespace(ns.Name)
 		if err != nil {
 			log.Error().Err(err).Str("namespace", ns.Name).Msg("Error listing machines in namespace")
@@ -217,7 +219,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 			return
 		}
 
-		for _, m := range *machines {
+		for _, m := range machines {
 			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral &&
 				time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
 				log.Info().Str("machine", m.Name).Msg("Ephemeral client removed from database")
@@ -399,7 +401,7 @@ func (h *Headscale) Serve() error {
 
 	// Connect to the gRPC server over localhost to skip
 	// the authentication.
-	err = apiV1.RegisterHeadscaleServiceHandler(ctx, grpcGatewayMux, grpcGatewayConn)
+	err = v1.RegisterHeadscaleServiceHandler(ctx, grpcGatewayMux, grpcGatewayConn)
 	if err != nil {
 		return err
 	}
@@ -456,7 +458,10 @@ func (h *Headscale) Serve() error {
 
 	grpcOptions := []grpc.ServerOption{
 		grpc.UnaryInterceptor(
-			h.grpcAuthenticationInterceptor,
+			grpc_middleware.ChainUnaryServer(
+				h.grpcAuthenticationInterceptor,
+				zerolog.NewUnaryServerInterceptor(),
+			),
 		),
 	}
 
@@ -476,10 +481,10 @@ func (h *Headscale) Serve() error {
 	grpcServer := grpc.NewServer(grpcOptions...)
 
 	// Start the local gRPC server without TLS and without authentication
-	grpcSocket := grpc.NewServer()
+	grpcSocket := grpc.NewServer(zerolog.UnaryInterceptor())
 
-	apiV1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
-	apiV1.RegisterHeadscaleServiceServer(grpcSocket, newHeadscaleV1APIServer(h))
+	v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
+	v1.RegisterHeadscaleServiceServer(grpcSocket, newHeadscaleV1APIServer(h))
 	reflection.Register(grpcServer)
 	reflection.Register(grpcSocket)
 
