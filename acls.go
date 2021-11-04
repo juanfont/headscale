@@ -15,13 +15,15 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-const errorEmptyPolicy = Error("empty policy")
-const errorInvalidAction = Error("invalid action")
-const errorInvalidUserSection = Error("invalid user section")
-const errorInvalidGroup = Error("invalid group")
-const errorInvalidTag = Error("invalid tag")
-const errorInvalidNamespace = Error("invalid namespace")
-const errorInvalidPortFormat = Error("invalid port format")
+const (
+	errorEmptyPolicy        = Error("empty policy")
+	errorInvalidAction      = Error("invalid action")
+	errorInvalidUserSection = Error("invalid user section")
+	errorInvalidGroup       = Error("invalid group")
+	errorInvalidTag         = Error("invalid tag")
+	errorInvalidNamespace   = Error("invalid namespace")
+	errorInvalidPortFormat  = Error("invalid port format")
+)
 
 // LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules
 func (h *Headscale) LoadACLPolicy(path string) error {
@@ -53,7 +55,7 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 	return nil
 }
 
-func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
+func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
 
 	for i, a := range h.aclPolicy.ACLs {
@@ -71,7 +73,7 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 					Msgf("Error parsing ACL %d, User %d", i, j)
 				return nil, err
 			}
-			srcIPs = append(srcIPs, *srcs...)
+			srcIPs = append(srcIPs, srcs...)
 		}
 		r.SrcIPs = srcIPs
 
@@ -83,7 +85,7 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 					Msgf("Error parsing ACL %d, Port %d", i, j)
 				return nil, err
 			}
-			destPorts = append(destPorts, *dests...)
+			destPorts = append(destPorts, dests...)
 		}
 
 		rules = append(rules, tailcfg.FilterRule{
@@ -92,14 +94,14 @@ func (h *Headscale) generateACLRules() (*[]tailcfg.FilterRule, error) {
 		})
 	}
 
-	return &rules, nil
+	return rules, nil
 }
 
-func (h *Headscale) generateACLPolicySrcIP(u string) (*[]string, error) {
+func (h *Headscale) generateACLPolicySrcIP(u string) ([]string, error) {
 	return h.expandAlias(u)
 }
 
-func (h *Headscale) generateACLPolicyDestPorts(d string) (*[]tailcfg.NetPortRange, error) {
+func (h *Headscale) generateACLPolicyDestPorts(d string) ([]tailcfg.NetPortRange, error) {
 	tokens := strings.Split(d, ":")
 	if len(tokens) < 2 || len(tokens) > 3 {
 		return nil, errorInvalidPortFormat
@@ -128,7 +130,7 @@ func (h *Headscale) generateACLPolicyDestPorts(d string) (*[]tailcfg.NetPortRang
 	}
 
 	dests := []tailcfg.NetPortRange{}
-	for _, d := range *expanded {
+	for _, d := range expanded {
 		for _, p := range *ports {
 			pr := tailcfg.NetPortRange{
 				IP:    d,
@@ -137,12 +139,12 @@ func (h *Headscale) generateACLPolicyDestPorts(d string) (*[]tailcfg.NetPortRang
 			dests = append(dests, pr)
 		}
 	}
-	return &dests, nil
+	return dests, nil
 }
 
-func (h *Headscale) expandAlias(s string) (*[]string, error) {
+func (h *Headscale) expandAlias(s string) ([]string, error) {
 	if s == "*" {
-		return &[]string{"*"}, nil
+		return []string{"*"}, nil
 	}
 
 	if strings.HasPrefix(s, "group:") {
@@ -155,11 +157,11 @@ func (h *Headscale) expandAlias(s string) (*[]string, error) {
 			if err != nil {
 				return nil, errorInvalidNamespace
 			}
-			for _, node := range *nodes {
+			for _, node := range nodes {
 				ips = append(ips, node.IPAddress)
 			}
 		}
-		return &ips, nil
+		return ips, nil
 	}
 
 	if strings.HasPrefix(s, "tag:") {
@@ -195,7 +197,7 @@ func (h *Headscale) expandAlias(s string) (*[]string, error) {
 				}
 			}
 		}
-		return &ips, nil
+		return ips, nil
 	}
 
 	n, err := h.GetNamespace(s)
@@ -205,24 +207,24 @@ func (h *Headscale) expandAlias(s string) (*[]string, error) {
 			return nil, err
 		}
 		ips := []string{}
-		for _, n := range *nodes {
+		for _, n := range nodes {
 			ips = append(ips, n.IPAddress)
 		}
-		return &ips, nil
+		return ips, nil
 	}
 
 	if h, ok := h.aclPolicy.Hosts[s]; ok {
-		return &[]string{h.String()}, nil
+		return []string{h.String()}, nil
 	}
 
 	ip, err := netaddr.ParseIP(s)
 	if err == nil {
-		return &[]string{ip.String()}, nil
+		return []string{ip.String()}, nil
 	}
 
 	cidr, err := netaddr.ParseIPPrefix(s)
 	if err == nil {
-		return &[]string{cidr.String()}, nil
+		return []string{cidr.String()}, nil
 	}
 
 	return nil, errorInvalidUserSection
