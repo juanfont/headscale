@@ -163,3 +163,38 @@ func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
 	var d net.Dialer
 	return d.DialContext(ctx, "unix", addr)
 }
+
+func ipPrefixToString(prefixes []netaddr.IPPrefix) []string {
+	result := make([]string, len(prefixes))
+
+	for index, prefix := range prefixes {
+		result[index] = prefix.String()
+	}
+
+	return result
+}
+
+func stringToIpPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
+	result := make([]netaddr.IPPrefix, len(prefixes))
+
+	for index, prefixStr := range prefixes {
+		prefix, err := netaddr.ParseIPPrefix(prefixStr)
+		if err != nil {
+			return []netaddr.IPPrefix{}, err
+		}
+
+		result[index] = prefix
+	}
+
+	return result, nil
+}
+
+func containsIpPrefix(prefixes []netaddr.IPPrefix, prefix netaddr.IPPrefix) bool {
+	for _, p := range prefixes {
+		if prefix == p {
+			return true
+		}
+	}
+
+	return false
+}
