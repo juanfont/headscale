@@ -38,7 +38,14 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 	if err != nil {
 		return err
 	}
-	err = hujson.Unmarshal(b, &policy)
+
+	ast, err := hujson.Parse(b)
+	if err != nil {
+		return err
+	}
+	ast.Standardize()
+	b = ast.Pack()
+	err = json.Unmarshal(b, &policy)
 	if err != nil {
 		return err
 	}

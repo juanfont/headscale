@@ -1,6 +1,7 @@
 package headscale
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/tailscale/hujson"
@@ -43,7 +44,13 @@ type ACLTest struct {
 func (h *Hosts) UnmarshalJSON(data []byte) error {
 	hosts := Hosts{}
 	hs := make(map[string]string)
-	err := hujson.Unmarshal(data, &hs)
+	ast, err := hujson.Parse(data)
+	if err != nil {
+		return err
+	}
+	ast.Standardize()
+	data = ast.Pack()
+	err = json.Unmarshal(data, &hs)
 	if err != nil {
 		return err
 	}
