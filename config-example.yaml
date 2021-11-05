@@ -1,0 +1,84 @@
+---
+# The url clients will connect to.
+# Typically this will be a domain.
+server_url: http://127.0.0.1:8080
+
+# Address to listen to / bind to on the server
+listen_addr: 0.0.0.0:8080
+
+# Path to WireGuard private key file
+private_key_path: private.key
+
+derp:
+  # List of externally available DERP maps encoded in JSON
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+
+  # Locally available DERP map files encoded in YAML
+  paths:
+    - derp-example.yaml
+
+  # If enabled, a worker will be set up to periodically
+  # refresh the given sources and update the derpmap
+  # will be set up.
+  auto_update_enabled: true
+
+  # How often should we check for updates?
+  update_frequency: 24h
+
+# Disables the automatic check for updates on startup
+disable_check_updates: false
+ephemeral_node_inactivity_timeout: 30m
+
+# SQLite config
+db_type: sqlite3
+db_path: db.sqlite
+
+# # Postgres config
+# db_type: postgres
+# db_host: localhost
+# db_port: 5432
+# db_name: headscale
+# db_user: foo
+# db_pass: bar
+
+acme_url: https://acme-v02.api.letsencrypt.org/directory
+acme_email: ""
+
+tls_letsencrypt_hostname: ""
+tls_letsencrypt_listen: ":http"
+tls_letsencrypt_cache_dir: ".cache"
+tls_letsencrypt_challenge_type: HTTP-01
+
+tls_cert_path: ""
+tls_key_path: ""
+
+# Path to a file containg ACL policies.
+acl_policy_path: ""
+
+dns_config:
+  # Upstream DNS servers
+  nameservers:
+    - 1.1.1.1
+  domains: []
+
+  magic_dns: true
+  base_domain: example.com
+
+# Unix socket used for the CLI to connect without authentication
+# Note: for local development, you probably want to change this to:
+# unix_socket: ./headscale.sock
+unix_socket: /var/run/headscale.sock
+# headscale supports experimental OpenID connect support,
+# it is still being tested and might have some bugs, please
+# help us test it.
+# OpenID Connect
+# oidc:
+#   issuer: "https://your-oidc.issuer.com/path"
+#   client_id: "your-oidc-client-id"
+#   client_secret: "your-oidc-client-secret"
+#
+#   # Domain map is used to map incomming users (by their email) to
+#   # a namespace. The key can be a string, or regex.
+#   domain_map:
+#     ".*": default-namespace

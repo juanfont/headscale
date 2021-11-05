@@ -6,6 +6,8 @@ An open source, self-hosted implementation of the Tailscale coordination server.
 
 Join our [Discord](https://discord.gg/XcQxk2VHjx) server for a chat.
 
+**Note:** Always select the same GitHub tag as the released version you use to ensure you have the correct example configuration and documentation. The `main` branch might contain unreleased changes.
+
 ## Overview
 
 Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/).
@@ -29,6 +31,7 @@ headscale implements this coordination server.
 - [x] Taildrop (File Sharing)
 - [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [x] DNS (passing DNS servers to nodes)
+- [x] Single-Sign-On (via Open ID Connect)
 - [x] Share nodes between namespaces
 - [x] MagicDNS (see `docs/`)
 
@@ -47,7 +50,6 @@ headscale implements this coordination server.
 
 Suggestions/PRs welcomed!
 
-
 ## Running headscale
 
 Please have a look at the documentation under [`docs/`](docs/).
@@ -58,6 +60,40 @@ Please have a look at the documentation under [`docs/`](docs/).
 1. We have nothing to do with Tailscale, or Tailscale Inc.
 2. The purpose of writing this was to learn how Tailscale works.
 
+## Contributing
+
+To contribute to Headscale you would need the lastest version of [Go](golang.org) and [Buf](https://buf.build)(Protobuf generator).
+
+### Install development tools
+
+- Go
+- Buf
+- Protobuf tools:
+
+```shell 
+make install-protobuf-plugins
+```
+
+### Testing and building
+
+Some parts of the project requires the generation of Go code from Protobuf (if changes is made in `proto/`) and it must be (re-)generated with:
+
+```shell
+make generate
+```
+**Note**: Please check in changes from `gen/` in a separate commit to make it easier to review.
+
+To run the tests:
+
+```shell
+make test
+```
+
+To build the program:
+
+```shell
+make build
+```
 
 ## Contributors
 
@@ -92,12 +128,21 @@ Please have a look at the documentation under [`docs/`](docs/).
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/unreality>
+            <img src=https://avatars.githubusercontent.com/u/352522?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=unreality/>
+            <br />
+            <sub style="font-size:14px"><b>unreality</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/qbit>
             <img src=https://avatars.githubusercontent.com/u/68368?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Aaron Bieber/>
             <br />
             <sub style="font-size:14px"><b>Aaron Bieber</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/ptman>
             <img src=https://avatars.githubusercontent.com/u/24669?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Paul Tötterman/>
@@ -105,8 +150,6 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Paul Tötterman</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/cmars>
             <img src=https://avatars.githubusercontent.com/u/23741?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Casey Marshall/>
@@ -142,6 +185,8 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Felix Kronlage-Dammers</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/felixonmars>
             <img src=https://avatars.githubusercontent.com/u/1006477?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Felix Yan/>
@@ -149,8 +194,6 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Felix Yan</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/shaananc>
             <img src=https://avatars.githubusercontent.com/u/2287839?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Shaanan Cohney/>
@@ -186,6 +229,8 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Tjerk Woudsma</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/zekker6>
             <img src=https://avatars.githubusercontent.com/u/1367798?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Zakhar Bessarab/>
@@ -193,8 +238,6 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Zakhar Bessarab</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/derelm>
             <img src=https://avatars.githubusercontent.com/u/465155?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=derelm/>

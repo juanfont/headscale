@@ -101,18 +101,18 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
 
 3. In the server, register your machine to a namespace with the CLI
    ```shell
-   headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+   headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
    or docker:
    ```shell
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      headscale/headscale:x.x.x \
-     headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+     headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
    or if your server is already running in docker:
    ```shell
-   docker exec <container_name> headscale -n myfirstnamespace nodes register YOURMACHINEKEY
+   docker exec <container_name> headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
 
 ### Alternative: adding node with AUTHKEY

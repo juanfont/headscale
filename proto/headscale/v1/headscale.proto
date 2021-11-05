@@ -1,0 +1,106 @@
+syntax = "proto3";
+package headscale.v1;
+option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
+
+enum RegisterMethod {
+    REGISTER_METHOD_UNSPECIFIED = 0;
+    REGISTER_METHOD_AUTH_KEY    = 1;
+    REGISTER_METHOD_CLI         = 2;
+    REGISTER_METHOD_OIDC        = 3;
+}
+
+// message PreAuthKey {
+//     uint64 id           = 1;
+//     string key          = 2;
+//     uint32 namespace_id = 3;
+//     Namespace namespace = 4;
+//     bool reusable       = 5;
+//     bool ephemeral      = 6;
+//     bool used           = 7;
+//
+//     google.protobuf.Timestamp created_at = 8;
+//     google.protobuf.Timestamp expiration = 9;
+// }
+
+message GetMachineRequest {
+    uint64 machine_id = 1;
+}
+
+message GetMachineResponse {
+    uint64 id           = 1;
+    string machine_key  = 2;
+    string node_key     = 3;
+    string disco_key    = 4;
+    string ip_address   = 5;
+    string name         = 6;
+    uint32 namespace_id = 7;
+
+    bool           registered      = 8;
+    RegisterMethod register_method = 9;
+    uint32         auth_key_id     = 10;
+    // PreAuthKey     auth_key        = 11;
+
+    google.protobuf.Timestamp last_seen              = 12;
+    google.protobuf.Timestamp last_successful_update = 13;
+    google.protobuf.Timestamp expiry                 = 14;
+
+    // bytes host_info      = 15;
+    // bytes endpoints      = 16;
+    // bytes enabled_routes = 17;
+
+    // google.protobuf.Timestamp created_at = 18;
+    // google.protobuf.Timestamp updated_at = 19;
+    // google.protobuf.Timestamp deleted_at = 20;
+}
+
+message CreateNamespaceRequest {
+    string name = 1;
+}
+
+message CreateNamespaceResponse {
+    string name = 1;
+}
+
+message DeleteNamespaceRequest {
+    string name = 1;
+}
+
+message DeleteNamespaceResponse {
+}
+
+message ListNamespacesRequest {
+}
+
+message ListNamespacesResponse {
+    repeated string namespaces = 1;
+}
+
+service HeadscaleService {
+    rpc GetMachine(GetMachineRequest) returns(GetMachineResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/machine/{machine_id}"
+        };
+    }
+
+    rpc CreateNamespace(CreateNamespaceRequest) returns(CreateNamespaceResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/namespace"
+            body : "*"
+        };
+    }
+
+    rpc DeleteNamespace(DeleteNamespaceRequest) returns(DeleteNamespaceResponse) {
+        option(google.api.http) = {
+            delete : "/api/v1/namespace"
+        };
+    }
+
+    rpc ListNamespaces(ListNamespacesRequest) returns(ListNamespacesResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/namespace"
+        };
+    }
+}

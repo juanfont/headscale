@@ -246,6 +246,17 @@ func (n *Namespace) toUser() *tailcfg.User {
 	return &u
 }
 
+func (n *Namespace) toLogin() *tailcfg.Login {
+	l := tailcfg.Login{
+		ID:            tailcfg.LoginID(n.ID),
+		LoginName:     n.Name,
+		DisplayName:   n.Name,
+		ProfilePicURL: "",
+		Domain:        "headscale.net",
+	}
+	return &l
+}
+
 func getMapResponseUserProfiles(m Machine, peers Machines) []tailcfg.UserProfile {
 	namespaceMap := make(map[string]Namespace)
 	namespaceMap[m.Namespace.Name] = m.Namespace

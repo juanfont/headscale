@@ -1,18 +1,23 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale"
+	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -42,6 +47,8 @@ func LoadConfig(path string) error {
 	viper.SetDefault("log_level", "info")
 
 	viper.SetDefault("dns_config", nil)
+
+	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -202,23 +209,31 @@ func absPath(path string) string {
 	return path
 }
 
-func getHeadscaleApp() (*headscale.Headscale, error) {
-	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
-	// to avoid races
-	minInactivityTimeout, _ := time.ParseDuration("65s")
-	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
-		err := fmt.Errorf(
-			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n",
-			viper.GetString("ephemeral_node_inactivity_timeout"),
-			minInactivityTimeout,
-		)
-		return nil, err
+func getHeadscaleConfig() headscale.Config {
+	// maxMachineRegistrationDuration is the maximum time headscale will allow a client to (optionally) request for
+	// the machine key expiry time. RegisterRequests with Expiry times that are more than
+	// maxMachineRegistrationDuration in the future will be clamped to (now + maxMachineRegistrationDuration)
+	maxMachineRegistrationDuration, _ := time.ParseDuration(
+		"10h",
+	) // use 10h here because it is the length of a standard business day plus a small amount of leeway
+	if viper.GetDuration("max_machine_registration_duration") >= time.Second {
+		maxMachineRegistrationDuration = viper.GetDuration("max_machine_registration_duration")
+	}
+
+	// defaultMachineRegistrationDuration is the default time assigned to a machine registration if one is not
+	// specified by the tailscale client. It is the default amount of time a machine registration is valid for
+	// (ie the amount of time before the user has to re-authenticate when requesting a connection)
+	defaultMachineRegistrationDuration, _ := time.ParseDuration(
+		"8h",
+	) // use 8h here because it's the length of a standard business day
+	if viper.GetDuration("default_machine_registration_duration") >= time.Second {
+		defaultMachineRegistrationDuration = viper.GetDuration("default_machine_registration_duration")
 	}
 
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 
-	cfg := headscale.Config{
+	return headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
@@ -249,7 +264,36 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
+
+		UnixSocket: viper.GetString("unix_socket"),
+
+		OIDC: headscale.OIDCConfig{
+			Issuer:       viper.GetString("oidc.issuer"),
+			ClientID:     viper.GetString("oidc.client_id"),
+			ClientSecret: viper.GetString("oidc.client_secret"),
+		},
+
+		MaxMachineRegistrationDuration:     maxMachineRegistrationDuration,
+		DefaultMachineRegistrationDuration: defaultMachineRegistrationDuration,
 	}
+}
+
+func getHeadscaleApp() (*headscale.Headscale, error) {
+	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
+	// to avoid races
+	minInactivityTimeout, _ := time.ParseDuration("65s")
+	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
+		err := fmt.Errorf(
+			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n",
+			viper.GetString("ephemeral_node_inactivity_timeout"),
+			minInactivityTimeout,
+		)
+		return nil, err
+	}
+
+	cfg := getHeadscaleConfig()
+
+	cfg.OIDC.MatchMap = loadOIDCMatchMap()
 
 	h, err := headscale.NewHeadscale(cfg)
 	if err != nil {
@@ -270,6 +314,65 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	}
 
 	return h, nil
+}
+
+func getHeadscaleGRPCClient(ctx context.Context) (apiV1.HeadscaleServiceClient, *grpc.ClientConn) {
+	grpcOptions := []grpc.DialOption{
+		grpc.WithBlock(),
+	}
+
+	address := os.Getenv("HEADSCALE_ADDRESS")
+
+	// If the address is not set, we assume that we are on the server hosting headscale.
+	if address == "" {
+
+		cfg := getHeadscaleConfig()
+
+		log.Debug().
+			Str("socket", cfg.UnixSocket).
+			Msgf("HEADSCALE_ADDRESS environment is not set, connecting to unix socket.")
+
+		address = cfg.UnixSocket
+
+		grpcOptions = append(
+			grpcOptions,
+			grpc.WithInsecure(),
+			grpc.WithContextDialer(headscale.GrpcSocketDialer),
+		)
+	} else {
+		// If we are not connecting to a local server, require an API key for authentication
+		apiKey := os.Getenv("HEADSCALE_API_KEY")
+		if apiKey == "" {
+			log.Fatal().Msgf("HEADSCALE_API_KEY environment variable needs to be set.")
+		}
+		grpcOptions = append(grpcOptions,
+			grpc.WithPerRPCCredentials(tokenAuth{
+				token: apiKey,
+			}),
+		)
+
+		insecureStr := os.Getenv("HEADSCALE_INSECURE")
+		if insecureStr != "" {
+			insecure, err := strconv.ParseBool(insecureStr)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to parse HEADSCALE_INSECURE: %v", err)
+			}
+
+			if insecure {
+				grpcOptions = append(grpcOptions, grpc.WithInsecure())
+			}
+		}
+	}
+
+	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
+	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("Could not connect: %v", err)
+	}
+
+	client := apiV1.NewHeadscaleServiceClient(conn)
+
+	return client, conn
 }
 
 func JsonOutput(result interface{}, errResult error, outputFormat string) {
@@ -311,4 +414,31 @@ func HasJsonOutputFlag() bool {
 		}
 	}
 	return false
+}
+
+type tokenAuth struct {
+	token string
+}
+
+// Return value is mapped to request headers.
+func (t tokenAuth) GetRequestMetadata(ctx context.Context, in ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + t.token,
+	}, nil
+}
+
+func (tokenAuth) RequireTransportSecurity() bool {
+	return true
+}
+
+// loadOIDCMatchMap is a wrapper around viper to verifies that the keys in
+// the match map is valid regex strings.
+func loadOIDCMatchMap() map[string]string {
+	strMap := viper.GetStringMapString("oidc.domain_map")
+
+	for oidcMatcher := range strMap {
+		_ = regexp.MustCompile(oidcMatcher)
+	}
+
+	return strMap
 }

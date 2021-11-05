@@ -86,6 +86,9 @@ func (s *Suite) TestUnshare(c *check.C) {
 
 	err = h.RemoveSharedMachineFromNamespace(m2, n1)
 	c.Assert(err, check.Equals, errorMachineNotShared)
+
+	err = h.RemoveSharedMachineFromNamespace(m1, n1)
+	c.Assert(err, check.Equals, errorMachineNotShared)
 }
 
 func (s *Suite) TestAlreadyShared(c *check.C) {
