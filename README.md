@@ -62,7 +62,7 @@ Please have a look at the documentation under [`docs/`](docs/).
 
 ## Contributing
 
-To contribute to Headscale you would need the lastest version of [Go](golang.org) and [Buf](https://buf.build)(Protobuf generator).
+To contribute to Headscale you would need the lastest version of [Go](https://golang.org) and [Buf](https://buf.build)(Protobuf generator).
 
 ### Install development tools
 
