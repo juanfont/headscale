@@ -10,7 +10,7 @@ COPY . .
 RUN go install -a -ldflags="-extldflags=-static" -tags netgo,sqlite_omit_load_extension ./cmd/headscale
 RUN test -e /go/bin/headscale
 
-FROM gcr.io/distroless/base
+FROM gcr.io/distroless/base-debian11
 
 COPY --from=build /go/bin/headscale /headscale
 ENV TZ UTC
