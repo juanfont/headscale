@@ -21,7 +21,6 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
-	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/infobloxopen/protoc-gen-gorm v1.0.1
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.13.6
@@ -59,10 +58,10 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0
-	gorm.io/datatypes v1.0.3
-	gorm.io/driver/postgres v1.2.1
-	gorm.io/driver/sqlite v1.2.3
-	gorm.io/gorm v1.22.2
+	gorm.io/datatypes v1.0.2
+	gorm.io/driver/postgres v1.1.1
+	gorm.io/driver/sqlite v1.1.5
+	gorm.io/gorm v1.21.15
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 	tailscale.com v1.14.6
 )
