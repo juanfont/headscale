@@ -58,7 +58,7 @@
      -v $(pwd)/config:/etc/headscale/ \
      -p 127.0.0.1:8080:8080 \
      headscale/headscale:x.x.x \
-     headscale namespaces create myfirstnamespace
+     /headscale namespaces create myfirstnamespace
    ```
 
    or if your server is already running in docker:
@@ -79,7 +79,8 @@
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      -p 127.0.0.1:8080:8080 \
-     headscale/headscale:x.x.x headscale serve
+     headscale/headscale:x.x.x \
+     /headscale serve
    ```
 ## Nodes configuration
 
@@ -90,7 +91,9 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
    rm -fr /var/lib/tailscale
    systemctl start tailscaled
    ```
+
 ### Adding node based on MACHINEKEY
+
 1. Add your first machine
 
    ```shell
@@ -108,11 +111,12 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      headscale/headscale:x.x.x \
-     headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
+     /headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
    or if your server is already running in docker:
    ```shell
-   docker exec <container_name> headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
+   docker exec <container_name> \
+      /headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
 
 ### Alternative: adding node with AUTHKEY
@@ -129,13 +133,14 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      headscale/headscale:x.x.x \
-     headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+     /headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
    or if your server is already running in docker:
 
    ```shell
-   docker exec <container_name> headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+   docker exec <container_name> \
+      /headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
 2. Use the authkey on your node to register it
