@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
@@ -38,10 +36,8 @@ var createNamespaceCmd = &cobra.Command{
 
 		namespaceName := args[0]
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
@@ -73,10 +69,8 @@ var destroyNamespaceCmd = &cobra.Command{
 
 		namespaceName := args[0]
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.DeleteNamespaceRequest{Name: namespaceName}
@@ -97,10 +91,8 @@ var listNamespacesCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.ListNamespacesRequest{}
@@ -147,10 +139,8 @@ var renameNamespaceCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.RenameNamespaceRequest{

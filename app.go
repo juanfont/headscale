@@ -86,6 +86,8 @@ type Config struct {
 
 	OIDC OIDCConfig
 
+	CLI CLIConfig
+
 	MaxMachineRegistrationDuration     time.Duration
 	DefaultMachineRegistrationDuration time.Duration
 }
@@ -102,6 +104,13 @@ type DERPConfig struct {
 	Paths           []string
 	AutoUpdate      bool
 	UpdateFrequency time.Duration
+}
+
+type CLIConfig struct {
+	Address  string
+	APIKey   string
+	Insecure bool
+	Timeout  time.Duration
 }
 
 // Headscale represents the base app of the service.

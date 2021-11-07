@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -80,10 +79,8 @@ var registerNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		machineKey, err := cmd.Flags().GetString("key")
@@ -118,10 +115,8 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.ListMachinesRequest{
@@ -165,10 +160,8 @@ var deleteNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		getRequest := &v1.GetMachineRequest{
@@ -225,10 +218,8 @@ func sharingWorker(
 		return "", nil, nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, client, conn, cancel := getHeadscaleCLIClient()
 	defer cancel()
-
-	client, conn := getHeadscaleGRPCClient(ctx)
 	defer conn.Close()
 
 	id, err := cmd.Flags().GetInt("identifier")
@@ -270,10 +261,8 @@ var shareMachineCmd = &cobra.Command{
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.ShareMachineRequest{
@@ -301,10 +290,8 @@ var unshareMachineCmd = &cobra.Command{
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.UnshareMachineRequest{

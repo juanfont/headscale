@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +33,9 @@ func LoadConfig(path string) error {
 		// For testing
 		viper.AddConfigPath(path)
 	}
+
+	viper.SetEnvPrefix("headscale")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
@@ -46,6 +48,9 @@ func LoadConfig(path string) error {
 	viper.SetDefault("dns_config", nil)
 
 	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
+
+	viper.SetDefault("cli.insecure", false)
+	viper.SetDefault("cli.timeout", "5s")
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -270,6 +275,13 @@ func getHeadscaleConfig() headscale.Config {
 			ClientSecret: viper.GetString("oidc.client_secret"),
 		},
 
+		CLI: headscale.CLIConfig{
+			Address:  viper.GetString("cli.address"),
+			APIKey:   viper.GetString("cli.api_key"),
+			Insecure: viper.GetBool("cli.insecure"),
+			Timeout:  viper.GetDuration("cli.timeout"),
+		},
+
 		MaxMachineRegistrationDuration:     maxMachineRegistrationDuration,
 		DefaultMachineRegistrationDuration: defaultMachineRegistrationDuration,
 	}
@@ -313,21 +325,27 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	return h, nil
 }
 
-func getHeadscaleGRPCClient(ctx context.Context) (v1.HeadscaleServiceClient, *grpc.ClientConn) {
+func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
+	cfg := getHeadscaleConfig()
+
+	log.Debug().
+		Dur("timeout", cfg.CLI.Timeout).
+		Msgf("Setting timeout")
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.CLI.Timeout)
+
 	grpcOptions := []grpc.DialOption{
 		grpc.WithBlock(),
 	}
 
-	address := os.Getenv("HEADSCALE_ADDRESS")
+	address := cfg.CLI.Address
 
 	// If the address is not set, we assume that we are on the server hosting headscale.
 	if address == "" {
 
-		cfg := getHeadscaleConfig()
-
 		log.Debug().
 			Str("socket", cfg.UnixSocket).
-			Msgf("HEADSCALE_ADDRESS environment is not set, connecting to unix socket.")
+			Msgf("HEADSCALE_CLI_ADDRESS environment is not set, connecting to unix socket.")
 
 		address = cfg.UnixSocket
 
@@ -338,9 +356,9 @@ func getHeadscaleGRPCClient(ctx context.Context) (v1.HeadscaleServiceClient, *gr
 		)
 	} else {
 		// If we are not connecting to a local server, require an API key for authentication
-		apiKey := os.Getenv("HEADSCALE_API_KEY")
+		apiKey := cfg.CLI.APIKey
 		if apiKey == "" {
-			log.Fatal().Msgf("HEADSCALE_API_KEY environment variable needs to be set.")
+			log.Fatal().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
 		}
 		grpcOptions = append(grpcOptions,
 			grpc.WithPerRPCCredentials(tokenAuth{
@@ -348,16 +366,8 @@ func getHeadscaleGRPCClient(ctx context.Context) (v1.HeadscaleServiceClient, *gr
 			}),
 		)
 
-		insecureStr := os.Getenv("HEADSCALE_INSECURE")
-		if insecureStr != "" {
-			insecure, err := strconv.ParseBool(insecureStr)
-			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to parse HEADSCALE_INSECURE: %v", err)
-			}
-
-			if insecure {
-				grpcOptions = append(grpcOptions, grpc.WithInsecure())
-			}
+		if cfg.CLI.Insecure {
+			grpcOptions = append(grpcOptions, grpc.WithInsecure())
 		}
 	}
 
@@ -369,7 +379,7 @@ func getHeadscaleGRPCClient(ctx context.Context) (v1.HeadscaleServiceClient, *gr
 
 	client := v1.NewHeadscaleServiceClient(conn)
 
-	return client, conn
+	return ctx, client, conn, cancel
 }
 
 func SuccessOutput(result interface{}, override string, outputFormat string) {

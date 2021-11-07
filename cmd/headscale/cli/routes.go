@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"strconv"
-	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
@@ -51,10 +49,8 @@ var listRoutesCmd = &cobra.Command{
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.GetMachineRouteRequest{
@@ -108,10 +104,8 @@ omit the route you do not want to enable.
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.EnableMachineRoutesRequest{

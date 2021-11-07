@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
@@ -51,10 +49,8 @@ var createNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		name, err := cmd.Flags().GetString("name")

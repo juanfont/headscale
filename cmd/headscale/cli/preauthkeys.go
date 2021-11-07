@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -47,10 +46,8 @@ var listPreAuthKeys = &cobra.Command{
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.ListPreAuthKeysRequest{
@@ -126,10 +123,8 @@ var createPreAuthKeyCmd = &cobra.Command{
 			expiration = &exp
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.CreatePreAuthKeyRequest{
@@ -165,10 +160,8 @@ var expirePreAuthKeyCmd = &cobra.Command{
 			log.Fatalf("Error getting namespace: %s", err)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
-
-		client, conn := getHeadscaleGRPCClient(ctx)
 		defer conn.Close()
 
 		request := &v1.ExpirePreAuthKeyRequest{
