@@ -350,7 +350,7 @@ func nodesToPtables(currentNamespace string, machines []*v1.Machine) (pterm.Tabl
 		}
 
 		var namespace string
-		if currentNamespace == machine.Namespace.Name {
+		if currentNamespace == "" || (currentNamespace == machine.Namespace.Name) {
 			namespace = pterm.LightMagenta(machine.Namespace.Name)
 		} else {
 			// Shared into this namespace
