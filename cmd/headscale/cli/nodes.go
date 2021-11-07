@@ -10,6 +10,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/status"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
@@ -125,7 +126,7 @@ var listNodesCmd = &cobra.Command{
 
 		response, err := client.ListMachines(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot get nodes: %s", err), output)
+			ErrorOutput(err, fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()), output)
 			return
 		}
 
@@ -170,7 +171,7 @@ var deleteNodeCmd = &cobra.Command{
 
 		getResponse, err := client.GetMachine(ctx, getRequest)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting node node: %s", err), output)
+			ErrorOutput(err, fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()), output)
 			return
 		}
 
@@ -197,7 +198,7 @@ var deleteNodeCmd = &cobra.Command{
 				return
 			}
 			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Error deleting node: %s", err), output)
+				ErrorOutput(err, fmt.Sprintf("Error deleting node: %s", status.Convert(err).Message()), output)
 				return
 			}
 			SuccessOutput(map[string]string{"Result": "Node deleted"}, "Node deleted", output)
@@ -234,7 +235,7 @@ func sharingWorker(
 
 	machineResponse, err := client.GetMachine(ctx, machineRequest)
 	if err != nil {
-		ErrorOutput(err, fmt.Sprintf("Error getting node node: %s", err), output)
+		ErrorOutput(err, fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()), output)
 		return "", nil, nil, err
 	}
 
@@ -244,7 +245,7 @@ func sharingWorker(
 
 	namespaceResponse, err := client.GetNamespace(ctx, namespaceRequest)
 	if err != nil {
-		ErrorOutput(err, fmt.Sprintf("Error getting node node: %s", err), output)
+		ErrorOutput(err, fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()), output)
 		return "", nil, nil, err
 	}
 
@@ -272,7 +273,7 @@ var shareMachineCmd = &cobra.Command{
 
 		response, err := client.ShareMachine(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error sharing node: %s", err), output)
+			ErrorOutput(err, fmt.Sprintf("Error sharing node: %s", status.Convert(err).Message()), output)
 			return
 		}
 
@@ -301,7 +302,7 @@ var unshareMachineCmd = &cobra.Command{
 
 		response, err := client.UnshareMachine(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error unsharing node: %s", err), output)
+			ErrorOutput(err, fmt.Sprintf("Error unsharing node: %s", status.Convert(err).Message()), output)
 			return
 		}
 

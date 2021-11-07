@@ -8,6 +8,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/status"
 )
 
 func init() {
@@ -59,7 +60,7 @@ var listRoutesCmd = &cobra.Command{
 
 		response, err := client.GetMachineRoute(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot get nodes: %s", err), output)
+			ErrorOutput(err, fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()), output)
 			return
 		}
 
@@ -115,7 +116,7 @@ omit the route you do not want to enable.
 
 		response, err := client.EnableMachineRoutes(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot register machine: %s\n", err), output)
+			ErrorOutput(err, fmt.Sprintf("Cannot register machine: %s\n", status.Convert(err).Message()), output)
 			return
 		}
 

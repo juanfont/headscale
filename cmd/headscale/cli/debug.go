@@ -6,6 +6,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/status"
 )
 
 func init() {
@@ -80,7 +81,7 @@ var createNodeCmd = &cobra.Command{
 
 		response, err := client.DebugCreateMachine(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot create machine: %s", err), output)
+			ErrorOutput(err, fmt.Sprintf("Cannot create machine: %s", status.Convert(err).Message()), output)
 			return
 		}
 
