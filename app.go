@@ -351,6 +351,16 @@ func (h *Headscale) httpAuthenticationMiddleware(c *gin.Context) {
 	// c.Next()
 }
 
+// ensureUnixSocketIsAbsent will check if the given path for headscales unix socket is clear
+// and will remove it if it is not.
+func (h *Headscale) ensureUnixSocketIsAbsent() error {
+	// File does not exist, all fine
+	if _, err := os.Stat(h.cfg.UnixSocket); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return os.Remove(h.cfg.UnixSocket)
+}
+
 // Serve launches a GIN server with the Headscale API.
 func (h *Headscale) Serve() error {
 	var err error
@@ -359,6 +369,11 @@ func (h *Headscale) Serve() error {
 	ctx, cancel := context.WithCancel(ctx)
 
 	defer cancel()
+
+	err = h.ensureUnixSocketIsAbsent()
+	if err != nil {
+		panic(err)
+	}
 
 	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
 	if err != nil {
