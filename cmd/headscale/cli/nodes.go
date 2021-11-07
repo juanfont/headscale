@@ -305,7 +305,7 @@ var unshareMachineCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Machine, "Node shared", output)
+		SuccessOutput(response.Machine, "Node unshared", output)
 	},
 }
 
