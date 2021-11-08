@@ -97,7 +97,7 @@ var registerNodeCmd = &cobra.Command{
 
 		response, err := client.RegisterMachine(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot register machine: %s\n", err), output)
+			ErrorOutput(err, fmt.Sprintf("Cannot register machine: %s\n", status.Convert(err).Message()), output)
 			return
 		}
 

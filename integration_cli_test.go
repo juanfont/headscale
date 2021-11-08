@@ -396,6 +396,97 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
 	assert.True(s.T(), time.Time{}.Equal(listedPreAuthKeys[0].Expiration.AsTime()))
 }
 
+func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
+	namespace, err := s.createNamespace("pre-auth-key-reus-ephm-namespace")
+	assert.Nil(s.T(), err)
+
+	preAuthReusableResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace.Name,
+			"create",
+			"--reusable=true",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var preAuthReusableKey v1.PreAuthKey
+	err = json.Unmarshal([]byte(preAuthReusableResult), &preAuthReusableKey)
+	assert.Nil(s.T(), err)
+
+	assert.True(s.T(), preAuthReusableKey.GetReusable())
+	assert.False(s.T(), preAuthReusableKey.GetEphemeral())
+
+	preAuthEphemeralResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace.Name,
+			"create",
+			"--ephemeral=true",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var preAuthEphemeralKey v1.PreAuthKey
+	err = json.Unmarshal([]byte(preAuthEphemeralResult), &preAuthEphemeralKey)
+	assert.Nil(s.T(), err)
+
+	assert.True(s.T(), preAuthEphemeralKey.GetEphemeral())
+	assert.False(s.T(), preAuthEphemeralKey.GetReusable())
+
+	// TODO(kradalby): Evaluate if we need a case to test for reusable and ephemeral
+	// preAuthReusableAndEphemeralResult, err := ExecuteCommand(
+	// 	&s.headscale,
+	// 	[]string{
+	// 		"headscale",
+	// 		"preauthkeys",
+	// 		"--namespace",
+	// 		namespace.Name,
+	// 		"create",
+	// 		"--ephemeral",
+	// 		"--reusable",
+	// 		"--output",
+	// 		"json",
+	// 	},
+	// 	[]string{},
+	// )
+	// assert.NotNil(s.T(), err)
+
+	// Test list of keys
+	listResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace.Name,
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listedPreAuthKeys []v1.PreAuthKey
+	err = json.Unmarshal([]byte(listResult), &listedPreAuthKeys)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listedPreAuthKeys, 2)
+}
+
 func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	namespace, err := s.createNamespace("machine-namespace")
 	assert.Nil(s.T(), err)

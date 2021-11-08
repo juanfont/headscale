@@ -106,7 +106,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 
 	preAuthKey, err := api.h.CreatePreAuthKey(
 		request.GetNamespace(),
-		request.GetResuable(),
+		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
 	)
@@ -155,6 +155,7 @@ func (api headscaleV1APIServer) RegisterMachine(
 	ctx context.Context,
 	request *v1.RegisterMachineRequest,
 ) (*v1.RegisterMachineResponse, error) {
+	log.Trace().Str("namespace", request.GetNamespace()).Str("machine_key", request.GetKey()).Msg("Registering machine")
 	machine, err := api.h.RegisterMachine(
 		request.GetKey(),
 		request.GetNamespace(),

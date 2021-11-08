@@ -269,6 +269,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		var preAuthKey v1.PreAuthKey
 		err = json.Unmarshal([]byte(preAuthResult), &preAuthKey)
 		assert.Nil(s.T(), err)
+		assert.True(s.T(), preAuthKey.Reusable)
 
 		headscaleEndpoint := "http://headscale:8080"
 

@@ -75,7 +75,7 @@ var listPreAuthKeys = &cobra.Command{
 			if k.GetEphemeral() {
 				reusable = "N/A"
 			} else {
-				reusable = fmt.Sprintf("%v", k.GetResuable())
+				reusable = fmt.Sprintf("%v", k.GetReusable())
 			}
 
 			d = append(d, []string{
@@ -112,9 +112,15 @@ var createPreAuthKeyCmd = &cobra.Command{
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 
+		log.Trace().
+			Bool("reusable", reusable).
+			Bool("ephemeral", ephemeral).
+			Str("namespace", namespace).
+			Msg("Preparing to create preauthkey")
+
 		request := &v1.CreatePreAuthKeyRequest{
 			Namespace: namespace,
-			Resuable:  reusable,
+			Reusable:  reusable,
 			Ephemeral: ephemeral,
 		}
 
