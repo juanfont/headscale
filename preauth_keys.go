@@ -139,14 +139,22 @@ func (h *Headscale) generateKey() (string, error) {
 }
 
 func (key *PreAuthKey) toProto() *v1.PreAuthKey {
-	return &v1.PreAuthKey{
-		Namespace:  key.Namespace.Name,
-		Id:         strconv.FormatUint(key.ID, 10),
-		Key:        key.Key,
-		Resuable:   key.Reusable,
-		Ephemeral:  key.Ephemeral,
-		Used:       key.Used,
-		Expiration: timestamppb.New(*key.Expiration),
-		CreatedAt:  timestamppb.New(*key.CreatedAt),
+	protoKey := v1.PreAuthKey{
+		Namespace: key.Namespace.Name,
+		Id:        strconv.FormatUint(key.ID, 10),
+		Key:       key.Key,
+		Ephemeral: key.Ephemeral,
+		Reusable:  key.Reusable,
+		Used:      key.Used,
 	}
+
+	if key.Expiration != nil {
+		protoKey.Expiration = timestamppb.New(*key.Expiration)
+	}
+
+	if key.CreatedAt != nil {
+		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
+	}
+
+	return &protoKey
 }
