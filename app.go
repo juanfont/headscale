@@ -26,6 +26,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/philip-bui/grpc-zerolog"
+	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/soheilhy/cmux"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
@@ -478,6 +479,12 @@ func (h *Headscale) Serve() error {
 		// keep this at unlimited and be careful to clean up connections
 		// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#aboutstreaming
 		WriteTimeout: 0,
+	}
+
+	if zl.GlobalLevel() == zl.TraceLevel {
+		zerolog.RespLog = true
+	} else {
+		zerolog.RespLog = false
 	}
 
 	grpcOptions := []grpc.ServerOption{
