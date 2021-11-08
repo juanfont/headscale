@@ -20,7 +20,6 @@ require (
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.6.0
-	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/infobloxopen/protoc-gen-gorm v1.0.1
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.13.6
