@@ -8,7 +8,7 @@ message PreAuthKey {
     string namespace                     = 1;
     string                    id         = 2;
     string                    key        = 3;
-    bool                      resuable   = 4;
+    bool                      reusable   = 4;
     bool                      ephemeral  = 5;
     bool                      used       = 6;
     google.protobuf.Timestamp expiration = 7;
@@ -17,7 +17,7 @@ message PreAuthKey {
 
 message CreatePreAuthKeyRequest {
     string namespace                     = 1;
-    bool                      resuable   = 2;
+    bool                      reusable   = 2;
     bool                      ephemeral  = 3;
     google.protobuf.Timestamp expiration = 4;
 }

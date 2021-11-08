@@ -587,7 +587,7 @@
         "namespace": {
           "type": "string"
         },
-        "resuable": {
+        "reusable": {
           "type": "boolean"
         },
         "ephemeral": {
@@ -799,7 +799,7 @@
         "key": {
           "type": "string"
         },
-        "resuable": {
+        "reusable": {
           "type": "boolean"
         },
         "ephemeral": {
