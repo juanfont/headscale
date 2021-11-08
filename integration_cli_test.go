@@ -298,6 +298,12 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 	assert.True(s.T(), listedPreAuthKeys[3].Expiration.AsTime().After(time.Now()))
 	assert.True(s.T(), listedPreAuthKeys[4].Expiration.AsTime().After(time.Now()))
 
+	assert.True(s.T(), listedPreAuthKeys[0].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
+	assert.True(s.T(), listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
+	assert.True(s.T(), listedPreAuthKeys[2].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
+	assert.True(s.T(), listedPreAuthKeys[3].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
+	assert.True(s.T(), listedPreAuthKeys[4].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
+
 	// Expire three keys
 	for i := 0; i < 3; i++ {
 		_, err := ExecuteCommand(
@@ -340,6 +346,54 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 	assert.True(s.T(), listedAfterExpirePreAuthKeys[2].Expiration.AsTime().Before(time.Now()))
 	assert.True(s.T(), listedAfterExpirePreAuthKeys[3].Expiration.AsTime().After(time.Now()))
 	assert.True(s.T(), listedAfterExpirePreAuthKeys[4].Expiration.AsTime().After(time.Now()))
+}
+
+func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
+	namespace, err := s.createNamespace("pre-auth-key-without-exp-namespace")
+	assert.Nil(s.T(), err)
+
+	preAuthResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace.Name,
+			"create",
+			"--reusable",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var preAuthKey v1.PreAuthKey
+	err = json.Unmarshal([]byte(preAuthResult), &preAuthKey)
+	assert.Nil(s.T(), err)
+
+	// Test list of keys
+	listResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace.Name,
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listedPreAuthKeys []v1.PreAuthKey
+	err = json.Unmarshal([]byte(listResult), &listedPreAuthKeys)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listedPreAuthKeys, 1)
+	assert.True(s.T(), time.Time{}.Equal(listedPreAuthKeys[0].Expiration.AsTime()))
 }
 
 func (s *IntegrationCLITestSuite) TestNodeCommand() {

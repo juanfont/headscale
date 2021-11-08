@@ -2,13 +2,12 @@ package cli
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 
-	"github.com/hako/durafmt"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -18,7 +17,7 @@ func init() {
 	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
 	err := preauthkeysCmd.MarkPersistentFlagRequired("namespace")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal().Err(err).Msg("")
 	}
 	preauthkeysCmd.AddCommand(listPreAuthKeys)
 	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
@@ -26,7 +25,7 @@ func init() {
 	createPreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
 	createPreAuthKeyCmd.PersistentFlags().Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().
-		StringP("expiration", "e", "", "Human-readable expiration of the key (30m, 24h, 365d...)")
+		DurationP("expiration", "e", 24*time.Hour, "Human-readable expiration of the key (30m, 24h, 365d...)")
 }
 
 var preauthkeysCmd = &cobra.Command{
@@ -92,7 +91,8 @@ var listPreAuthKeys = &cobra.Command{
 		}
 		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 		if err != nil {
-			log.Fatal(err)
+			ErrorOutput(err, fmt.Sprintf("Failed to render pterm table: %s", err), output)
+			return
 		}
 	},
 }
@@ -103,7 +103,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		n, err := cmd.Flags().GetString("namespace")
+		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
 			return
@@ -112,27 +112,24 @@ var createPreAuthKeyCmd = &cobra.Command{
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 
-		e, _ := cmd.Flags().GetString("expiration")
-		var expiration *time.Time
-		if e != "" {
-			duration, err := durafmt.ParseStringShort(e)
-			if err != nil {
-				log.Fatalf("Error parsing expiration: %s", err)
-			}
-			exp := time.Now().UTC().Add(duration.Duration())
-			expiration = &exp
+		request := &v1.CreatePreAuthKeyRequest{
+			Namespace: namespace,
+			Resuable:  reusable,
+			Ephemeral: ephemeral,
+		}
+
+		if cmd.Flags().Changed("expiration") {
+			duration, _ := cmd.Flags().GetDuration("expiration")
+			expiration := time.Now().UTC().Add(duration)
+
+			log.Trace().Dur("expiration", duration).Msg("expiration has been set")
+
+			request.Expiration = timestamppb.New(expiration)
 		}
 
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
 		defer conn.Close()
-
-		request := &v1.CreatePreAuthKeyRequest{
-			Namespace:  n,
-			Resuable:   reusable,
-			Ephemeral:  ephemeral,
-			Expiration: timestamppb.New(*expiration),
-		}
 
 		response, err := client.CreatePreAuthKey(ctx, request)
 		if err != nil {
@@ -155,9 +152,10 @@ var expirePreAuthKeyCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		n, err := cmd.Flags().GetString("namespace")
+		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
-			log.Fatalf("Error getting namespace: %s", err)
+			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+			return
 		}
 
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
@@ -165,7 +163,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		defer conn.Close()
 
 		request := &v1.ExpirePreAuthKeyRequest{
-			Namespace: n,
+			Namespace: namespace,
 			Key:       args[0],
 		}
 
