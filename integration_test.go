@@ -254,7 +254,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 		},
 		Networks: []*dockertest.Network{&network},
-		Cmd:      []string{"/headscale", "serve"},
+		Cmd:      []string{"headscale", "serve"},
 	}
 
 	fmt.Println("Creating headscale container")
@@ -301,7 +301,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		fmt.Printf("Creating headscale namespace: %s\n", namespace)
 		result, err := executeCommand(
 			&headscale,
-			[]string{"/headscale", "namespaces", "create", namespace},
+			[]string{"headscale", "namespaces", "create", namespace},
 			[]string{},
 		)
 		fmt.Println("headscale create namespace result: ", result)
@@ -311,7 +311,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		authKey, err := executeCommand(
 			&headscale,
 			[]string{
-				"/headscale",
+				"headscale",
 				"--namespace",
 				namespace,
 				"preauthkeys",
@@ -369,7 +369,7 @@ func (s *IntegrationTestSuite) TestListNodes() {
 		fmt.Println("Listing nodes")
 		result, err := executeCommand(
 			&headscale,
-			[]string{"/headscale", "--namespace", namespace, "nodes", "list"},
+			[]string{"headscale", "--namespace", namespace, "nodes", "list"},
 			[]string{},
 		)
 		assert.Nil(s.T(), err)
@@ -502,7 +502,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 
 	result, err := executeCommand(
 		&headscale,
-		[]string{"/headscale", "nodes", "list", "-o", "json", "--namespace", "shared"},
+		[]string{"headscale", "nodes", "list", "-o", "json", "--namespace", "shared"},
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
@@ -515,7 +515,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 
 		result, err := executeCommand(
 			&headscale,
-			[]string{"/headscale", "nodes", "share", "--identifier", fmt.Sprint(machine.ID), "--namespace", "main"},
+			[]string{"headscale", "nodes", "share", "--identifier", fmt.Sprint(machine.ID), "--namespace", "main"},
 			[]string{},
 		)
 		assert.Nil(s.T(), err)
@@ -525,7 +525,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 
 	result, err = executeCommand(
 		&headscale,
-		[]string{"/headscale", "nodes", "list", "--namespace", "main"},
+		[]string{"headscale", "nodes", "list", "--namespace", "main"},
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
