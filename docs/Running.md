@@ -21,7 +21,8 @@
    
 3. Get yourself a DB
 
-   a) Get a Postgres DB running in docker
+   a) Get a Postgres DB running in Docker:
+
    ```shell
    docker run --name headscale \
      -e POSTGRES_DB=headscale
@@ -30,7 +31,9 @@
      -p 5432:5432 \
      -d postgres
    ```
-   or b) Prepare a SQLite DB file
+
+   or b) Prepare a SQLite DB file:
+
    ```shell
    touch config/db.sqlite
    ```
@@ -51,20 +54,21 @@
    headscale namespaces create myfirstnamespace
    ```
 
-   or docker:
+   or Docker:
 
    ```shell
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      -p 127.0.0.1:8080:8080 \
      headscale/headscale:x.x.x \
-     /headscale namespaces create myfirstnamespace
+       headscale namespaces create myfirstnamespace
    ```
 
-   or if your server is already running in docker:
+   or if your server is already running in Docker:
 
    ```shell
-   docker exec <container_name> headscale namespaces create myfirstnamespace
+   docker exec <container_name> \
+     headscale namespaces create myfirstnamespace
    ```
 
 6. Run the server
@@ -73,15 +77,16 @@
    headscale serve
    ```
 
-   or docker:
+   or Docker:
 
    ```shell
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      -p 127.0.0.1:8080:8080 \
      headscale/headscale:x.x.x \
-     /headscale serve
+       headscale serve
    ```
+
 ## Nodes configuration
 
 If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
@@ -111,12 +116,13 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      headscale/headscale:x.x.x \
-     /headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
+     headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
-   or if your server is already running in docker:
+   or if your server is already running in Docker:
+
    ```shell
    docker exec <container_name> \
-      /headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
+      headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
 
 ### Alternative: adding node with AUTHKEY
@@ -133,17 +139,18 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      headscale/headscale:x.x.x \
-     /headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+     headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
-   or if your server is already running in docker:
+   or if your server is already running in Docker:
 
    ```shell
    docker exec <container_name> \
-      /headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+      headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
-2. Use the authkey on your node to register it
+2. Use the authkey on your node to register it:
+
    ```shell
    tailscale up --login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
    ```
