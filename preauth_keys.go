@@ -4,14 +4,20 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
-const errorAuthKeyNotFound = Error("AuthKey not found")
-const errorAuthKeyExpired = Error("AuthKey expired")
-const errSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
+const (
+	errorAuthKeyNotFound           = Error("AuthKey not found")
+	errorAuthKeyExpired            = Error("AuthKey expired")
+	errSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
+)
 
 // PreAuthKey describes a pre-authorization key usable in a particular namespace
 type PreAuthKey struct {
@@ -28,7 +34,12 @@ type PreAuthKey struct {
 }
 
 // CreatePreAuthKey creates a new PreAuthKey in a namespace, and returns it
-func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, ephemeral bool, expiration *time.Time) (*PreAuthKey, error) {
+func (h *Headscale) CreatePreAuthKey(
+	namespaceName string,
+	reusable bool,
+	ephemeral bool,
+	expiration *time.Time,
+) (*PreAuthKey, error) {
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
@@ -54,8 +65,8 @@ func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, epheme
 	return &k, nil
 }
 
-// GetPreAuthKeys returns the list of PreAuthKeys for a namespace
-func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) {
+// ListPreAuthKeys returns the list of PreAuthKeys for a namespace
+func (h *Headscale) ListPreAuthKeys(namespaceName string) ([]PreAuthKey, error) {
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
@@ -65,7 +76,7 @@ func (h *Headscale) GetPreAuthKeys(namespaceName string) (*[]PreAuthKey, error) 
 	if err := h.db.Preload("Namespace").Where(&PreAuthKey{NamespaceID: n.ID}).Find(&keys).Error; err != nil {
 		return nil, err
 	}
-	return &keys, nil
+	return keys, nil
 }
 
 // GetPreAuthKey returns a PreAuthKey for a given key
@@ -83,7 +94,7 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 }
 
 // MarkExpirePreAuthKey marks a PreAuthKey as expired
-func (h *Headscale) MarkExpirePreAuthKey(k *PreAuthKey) error {
+func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
 		return err
 	}
@@ -125,4 +136,25 @@ func (h *Headscale) generateKey() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+func (key *PreAuthKey) toProto() *v1.PreAuthKey {
+	protoKey := v1.PreAuthKey{
+		Namespace: key.Namespace.Name,
+		Id:        strconv.FormatUint(key.ID, 10),
+		Key:       key.Key,
+		Ephemeral: key.Ephemeral,
+		Reusable:  key.Reusable,
+		Used:      key.Used,
+	}
+
+	if key.Expiration != nil {
+		protoKey.Expiration = timestamppb.New(*key.Expiration)
+	}
+
+	if key.CreatedAt != nil {
+		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
+	}
+
+	return &protoKey
 }

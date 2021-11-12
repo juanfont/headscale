@@ -4,16 +4,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
-const errorNamespaceExists = Error("Namespace already exists")
-const errorNamespaceNotFound = Error("Namespace not found")
-const errorNamespaceNotEmpty = Error("Namespace not empty")
+const (
+	errorNamespaceExists   = Error("Namespace already exists")
+	errorNamespaceNotFound = Error("Namespace not found")
+	errorNamespaceNotEmpty = Error("Namespace not empty")
+)
 
 // Namespace is the way Headscale implements the concept of users in Tailscale
 //
@@ -54,7 +59,7 @@ func (h *Headscale) DestroyNamespace(name string) error {
 	if err != nil {
 		return err
 	}
-	if len(*m) > 0 {
+	if len(m) > 0 {
 		return errorNamespaceNotEmpty
 	}
 
@@ -104,16 +109,16 @@ func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 }
 
 // ListNamespaces gets all the existing namespaces
-func (h *Headscale) ListNamespaces() (*[]Namespace, error) {
+func (h *Headscale) ListNamespaces() ([]Namespace, error) {
 	namespaces := []Namespace{}
 	if err := h.db.Find(&namespaces).Error; err != nil {
 		return nil, err
 	}
-	return &namespaces, nil
+	return namespaces, nil
 }
 
 // ListMachinesInNamespace gets all the nodes in a given namespace
-func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
+func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
 	n, err := h.GetNamespace(name)
 	if err != nil {
 		return nil, err
@@ -123,11 +128,11 @@ func (h *Headscale) ListMachinesInNamespace(name string) (*[]Machine, error) {
 	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
 		return nil, err
 	}
-	return &machines, nil
+	return machines, nil
 }
 
 // ListSharedMachinesInNamespace returns all the machines that are shared to the specified namespace
-func (h *Headscale) ListSharedMachinesInNamespace(name string) (*[]Machine, error) {
+func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error) {
 	namespace, err := h.GetNamespace(name)
 	if err != nil {
 		return nil, err
@@ -145,7 +150,7 @@ func (h *Headscale) ListSharedMachinesInNamespace(name string) (*[]Machine, erro
 		}
 		machines = append(machines, *machine)
 	}
-	return &machines, nil
+	return machines, nil
 }
 
 // SetMachineNamespace assigns a Machine to a namespace
@@ -274,4 +279,12 @@ func getMapResponseUserProfiles(m Machine, peers Machines) []tailcfg.UserProfile
 			})
 	}
 	return profiles
+}
+
+func (n *Namespace) toProto() *v1.Namespace {
+	return &v1.Namespace{
+		Id:        strconv.FormatUint(uint64(n.ID), 10),
+		Name:      n.Name,
+		CreatedAt: timestamppb.New(n.CreatedAt),
+	}
 }

@@ -12,7 +12,7 @@ func (s *Suite) TestCreateAndDestroyNamespace(c *check.C) {
 
 	ns, err := h.ListNamespaces()
 	c.Assert(err, check.IsNil)
-	c.Assert(len(*ns), check.Equals, 1)
+	c.Assert(len(ns), check.Equals, 1)
 
 	err = h.DestroyNamespace("test")
 	c.Assert(err, check.IsNil)
@@ -55,7 +55,7 @@ func (s *Suite) TestRenameNamespace(c *check.C) {
 
 	ns, err := h.ListNamespaces()
 	c.Assert(err, check.IsNil)
-	c.Assert(len(*ns), check.Equals, 1)
+	c.Assert(len(ns), check.Equals, 1)
 
 	err = h.RenameNamespace("test", "test_renamed")
 	c.Assert(err, check.IsNil)

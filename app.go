@@ -22,8 +22,11 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/gin-gonic/gin"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	apiV1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/philip-bui/grpc-zerolog"
+	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/soheilhy/cmux"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
@@ -84,6 +87,8 @@ type Config struct {
 
 	OIDC OIDCConfig
 
+	CLI CLIConfig
+
 	MaxMachineRegistrationDuration     time.Duration
 	DefaultMachineRegistrationDuration time.Duration
 }
@@ -102,6 +107,13 @@ type DERPConfig struct {
 	UpdateFrequency time.Duration
 }
 
+type CLIConfig struct {
+	Address  string
+	APIKey   string
+	Insecure bool
+	Timeout  time.Duration
+}
+
 // Headscale represents the base app of the service.
 type Headscale struct {
 	cfg        Config
@@ -115,7 +127,7 @@ type Headscale struct {
 	DERPMap *tailcfg.DERPMap
 
 	aclPolicy *ACLPolicy
-	aclRules  *[]tailcfg.FilterRule
+	aclRules  []tailcfg.FilterRule
 
 	lastStateChange sync.Map
 
@@ -154,7 +166,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		dbString:   dbString,
 		privateKey: privKey,
 		publicKey:  &pubKey,
-		aclRules:   &tailcfg.FilterAllowAll, // default allowall
+		aclRules:   tailcfg.FilterAllowAll, // default allowall
 	}
 
 	err = h.initDB()
@@ -209,7 +221,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 		return
 	}
 
-	for _, ns := range *namespaces {
+	for _, ns := range namespaces {
 		machines, err := h.ListMachinesInNamespace(ns.Name)
 		if err != nil {
 			log.Error().Err(err).Str("namespace", ns.Name).Msg("Error listing machines in namespace")
@@ -217,7 +229,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 			return
 		}
 
-		for _, m := range *machines {
+		for _, m := range machines {
 			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral &&
 				time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
 				log.Info().Str("machine", m.Name).Msg("Ephemeral client removed from database")
@@ -340,6 +352,16 @@ func (h *Headscale) httpAuthenticationMiddleware(c *gin.Context) {
 	// c.Next()
 }
 
+// ensureUnixSocketIsAbsent will check if the given path for headscales unix socket is clear
+// and will remove it if it is not.
+func (h *Headscale) ensureUnixSocketIsAbsent() error {
+	// File does not exist, all fine
+	if _, err := os.Stat(h.cfg.UnixSocket); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return os.Remove(h.cfg.UnixSocket)
+}
+
 // Serve launches a GIN server with the Headscale API.
 func (h *Headscale) Serve() error {
 	var err error
@@ -348,6 +370,11 @@ func (h *Headscale) Serve() error {
 	ctx, cancel := context.WithCancel(ctx)
 
 	defer cancel()
+
+	err = h.ensureUnixSocketIsAbsent()
+	if err != nil {
+		panic(err)
+	}
 
 	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
 	if err != nil {
@@ -399,7 +426,7 @@ func (h *Headscale) Serve() error {
 
 	// Connect to the gRPC server over localhost to skip
 	// the authentication.
-	err = apiV1.RegisterHeadscaleServiceHandler(ctx, grpcGatewayMux, grpcGatewayConn)
+	err = v1.RegisterHeadscaleServiceHandler(ctx, grpcGatewayMux, grpcGatewayConn)
 	if err != nil {
 		return err
 	}
@@ -454,9 +481,18 @@ func (h *Headscale) Serve() error {
 		WriteTimeout: 0,
 	}
 
+	if zl.GlobalLevel() == zl.TraceLevel {
+		zerolog.RespLog = true
+	} else {
+		zerolog.RespLog = false
+	}
+
 	grpcOptions := []grpc.ServerOption{
 		grpc.UnaryInterceptor(
-			h.grpcAuthenticationInterceptor,
+			grpc_middleware.ChainUnaryServer(
+				h.grpcAuthenticationInterceptor,
+				zerolog.NewUnaryServerInterceptor(),
+			),
 		),
 	}
 
@@ -476,10 +512,10 @@ func (h *Headscale) Serve() error {
 	grpcServer := grpc.NewServer(grpcOptions...)
 
 	// Start the local gRPC server without TLS and without authentication
-	grpcSocket := grpc.NewServer()
+	grpcSocket := grpc.NewServer(zerolog.UnaryInterceptor())
 
-	apiV1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
-	apiV1.RegisterHeadscaleServiceServer(grpcSocket, newHeadscaleV1APIServer(h))
+	v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
+	v1.RegisterHeadscaleServiceServer(grpcSocket, newHeadscaleV1APIServer(h))
 	reflection.Register(grpcServer)
 	reflection.Register(grpcSocket)
 

@@ -46,24 +46,23 @@ func main() {
 		log.Fatal().Err(err)
 	}
 
+	machineOutput := cli.HasMachineOutputFlag()
+
 	logLevel := viper.GetString("log_level")
-	switch logLevel {
-	case "trace":
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-	case "debug":
+	level, err := zerolog.ParseLevel(logLevel)
+	if err != nil {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	case "info":
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	case "warn":
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-	case "error":
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-	default:
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	} else {
+		zerolog.SetGlobalLevel(level)
 	}
 
-	jsonOutput := cli.HasJsonOutputFlag()
-	if !viper.GetBool("disable_check_updates") && !jsonOutput {
+	// If the user has requested a "machine" readable format,
+	// then disable login so the output remains valid.
+	if machineOutput {
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+	}
+
+	if !viper.GetBool("disable_check_updates") && !machineOutput {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && cli.Version != "dev" {
 			githubTag := &latest.GithubTag{
 				Owner:      "juanfont",
@@ -71,8 +70,11 @@ func main() {
 			}
 			res, err := latest.Check(githubTag, cli.Version)
 			if err == nil && res.Outdated {
-				fmt.Printf("An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
-					res.Current, cli.Version)
+				fmt.Printf(
+					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
+					res.Current,
+					cli.Version,
+				)
 			}
 		}
 	}

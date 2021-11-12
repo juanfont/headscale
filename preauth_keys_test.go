@@ -24,15 +24,15 @@ func (*Suite) TestCreatePreAuthKey(c *check.C) {
 	// Make sure the Namespace association is populated
 	c.Assert(k.Namespace.Name, check.Equals, n.Name)
 
-	_, err = h.GetPreAuthKeys("bogus")
+	_, err = h.ListPreAuthKeys("bogus")
 	c.Assert(err, check.NotNil)
 
-	keys, err := h.GetPreAuthKeys(n.Name)
+	keys, err := h.ListPreAuthKeys(n.Name)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(*keys), check.Equals, 1)
+	c.Assert(len(keys), check.Equals, 1)
 
 	// Make sure the Namespace association is populated
-	c.Assert((*keys)[0].Namespace.Name, check.Equals, n.Name)
+	c.Assert((keys)[0].Namespace.Name, check.Equals, n.Name)
 }
 
 func (*Suite) TestExpiredPreAuthKey(c *check.C) {
@@ -172,7 +172,7 @@ func (*Suite) TestExpirePreauthKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(pak.Expiration, check.IsNil)
 
-	err = h.MarkExpirePreAuthKey(pak)
+	err = h.ExpirePreAuthKey(pak)
 	c.Assert(err, check.IsNil)
 	c.Assert(pak.Expiration, check.NotNil)
 

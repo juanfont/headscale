@@ -22,7 +22,7 @@ func TestHeadscale_getNamespaceFromEmail(t *testing.T) {
 		publicKey       *wgkey.Key
 		privateKey      *wgkey.Private
 		aclPolicy       *ACLPolicy
-		aclRules        *[]tailcfg.FilterRule
+		aclRules        []tailcfg.FilterRule
 		lastStateChange sync.Map
 		oidcProvider    *oidc.Provider
 		oauth2Config    *oauth2.Config

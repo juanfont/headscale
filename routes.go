@@ -3,13 +3,12 @@ package headscale
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 
-	"github.com/pterm/pterm"
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
 )
 
+// Deprecated: use machine function instead
 // GetAdvertisedNodeRoutes returns the subnet routes advertised by a node (identified by
 // namespace and node name)
 func (h *Headscale) GetAdvertisedNodeRoutes(namespace string, nodeName string) (*[]netaddr.IPPrefix, error) {
@@ -25,6 +24,7 @@ func (h *Headscale) GetAdvertisedNodeRoutes(namespace string, nodeName string) (
 	return &hostInfo.RoutableIPs, nil
 }
 
+// Deprecated: use machine function instead
 // GetEnabledNodeRoutes returns the subnet routes enabled by a node (identified by
 // namespace and node name)
 func (h *Headscale) GetEnabledNodeRoutes(namespace string, nodeName string) ([]netaddr.IPPrefix, error) {
@@ -56,6 +56,7 @@ func (h *Headscale) GetEnabledNodeRoutes(namespace string, nodeName string) ([]n
 	return routes, nil
 }
 
+// Deprecated: use machine function instead
 // IsNodeRouteEnabled checks if a certain route has been enabled
 func (h *Headscale) IsNodeRouteEnabled(namespace string, nodeName string, routeStr string) bool {
 	route, err := netaddr.ParseIPPrefix(routeStr)
@@ -76,6 +77,7 @@ func (h *Headscale) IsNodeRouteEnabled(namespace string, nodeName string, routeS
 	return false
 }
 
+// Deprecated: use EnableRoute in machine.go
 // EnableNodeRoute enables a subnet route advertised by a node (identified by
 // namespace and node name)
 func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr string) error {
@@ -128,16 +130,4 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 	}
 
 	return nil
-}
-
-// RoutesToPtables converts the list of routes to a nice table
-func (h *Headscale) RoutesToPtables(namespace string, nodeName string, availableRoutes []netaddr.IPPrefix) pterm.TableData {
-	d := pterm.TableData{{"Route", "Enabled"}}
-
-	for _, route := range availableRoutes {
-		enabled := h.IsNodeRouteEnabled(namespace, nodeName, route.String())
-
-		d = append(d, []string{route.String(), strconv.FormatBool(enabled)})
-	}
-	return d
 }
