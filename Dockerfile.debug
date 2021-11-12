@@ -1,0 +1,24 @@
+# Builder image
+FROM golang:1.17.1-bullseye AS build
+ENV GOPATH /go
+WORKDIR /go/src/headscale
+
+COPY go.mod go.sum /go/src/headscale/
+RUN go mod download
+
+COPY . .
+
+RUN go install -a -ldflags="-extldflags=-static" -tags netgo,sqlite_omit_load_extension ./cmd/headscale
+RUN test -e /go/bin/headscale
+
+# Debug image
+FROM gcr.io/distroless/base-debian11:debug
+
+COPY --from=build /go/bin/headscale /headscale
+ENV TZ UTC
+ENV PATH="/:$PATH" 
+
+# Need to reset the entrypoint or everything will run as a busybox script
+ENTRYPOINT []
+EXPOSE 8080/tcp
+CMD ["headscale"]
