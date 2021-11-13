@@ -14,9 +14,8 @@ RUN test -e /go/bin/headscale
 # Production image
 FROM gcr.io/distroless/base-debian11
 
-COPY --from=build /go/bin/headscale /headscale
+COPY --from=build /go/bin/headscale /bin/headscale
 ENV TZ UTC
-ENV PATH /
 
 EXPOSE 8080/tcp
 CMD ["headscale"]
