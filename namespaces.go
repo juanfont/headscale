@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	errorNamespaceExists   = Error("Namespace already exists")
-	errorNamespaceNotFound = Error("Namespace not found")
-	errorNamespaceNotEmpty = Error("Namespace not empty")
+	errorNamespaceExists          = Error("Namespace already exists")
+	errorNamespaceNotFound        = Error("Namespace not found")
+	errorNamespaceNotEmptyOfNodes = Error("Namespace not empty: node(s) found")
 )
 
 // Namespace is the way Headscale implements the concept of users in Tailscale
@@ -60,7 +60,15 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		return err
 	}
 	if len(m) > 0 {
-		return errorNamespaceNotEmpty
+		return errorNamespaceNotEmptyOfNodes
+	}
+
+	keys, err := h.ListPreAuthKeys(name)
+	if err != nil {
+		return err
+	}
+	for _, p := range keys {
+		h.DestroyPreAuthKey(&p)
 	}
 
 	if result := h.db.Unscoped().Delete(&n); result.Error != nil {
