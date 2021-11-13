@@ -54,7 +54,6 @@ Suggestions/PRs welcomed!
 
 Please have a look at the documentation under [`docs/`](docs/).
 
-
 ## Disclaimer
 
 1. We have nothing to do with Tailscale, or Tailscale Inc.
@@ -70,7 +69,7 @@ To contribute to Headscale you would need the lastest version of [Go](https://go
 - Buf
 - Protobuf tools:
 
-```shell 
+```shell
 make install-protobuf-plugins
 ```
 
@@ -81,6 +80,7 @@ Some parts of the project requires the generation of Go code from Protobuf (if c
 ```shell
 make generate
 ```
+
 **Note**: Please check in changes from `gen/` in a separate commit to make it easier to review.
 
 To run the tests:
@@ -261,5 +261,3 @@ make build
     </td>
 </tr>
 </table>
-
-

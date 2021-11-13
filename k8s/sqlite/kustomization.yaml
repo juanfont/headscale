@@ -1,5 +1,5 @@
 namespace: headscale
 bases:
-- ../base
+  - ../base
 resources:
-- statefulset.yaml
+  - statefulset.yaml
