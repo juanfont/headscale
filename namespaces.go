@@ -68,7 +68,10 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		return err
 	}
 	for _, p := range keys {
-		h.DestroyPreAuthKey(&p)
+		err = h.DestroyPreAuthKey(&p)
+		if err != nil {
+			return err
+		}
 	}
 
 	if result := h.db.Unscoped().Delete(&n); result.Error != nil {
