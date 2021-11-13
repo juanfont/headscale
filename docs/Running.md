@@ -158,3 +158,31 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
 If you create an authkey with the `--ephemeral` flag, that key will create ephemeral nodes. This implies that `--reusable` is true.
 
 Please bear in mind that all headscale commands support adding `-o json` or `-o json-line` to get nicely JSON-formatted output.
+
+## Debugging headscale running in Docker
+
+The `headscale/headscale` Docker container is based on a "distroless" image that does not contain a shell or any other debug tools. If you need to debug your application running in the Docker container, you can use the `-debug` variant, for example `headscale/headscale:x.x.x-debug`.
+
+### Running the debug Docker container
+
+To run the debug Docker container, use the exact same commands as above, but replace `headscale/headscale:x.x.x` with `headscale/headscale:x.x.x-debug` (`x.x.x` is the version of headscale). The two containers are compatible with each other, so you can alternate between them.
+
+### Executing commands in the debug container
+
+The default command in the debug container is to run `headscale`, which is located at `/bin/headscale` inside the container.
+
+Additionally, the debug container includes a minimalist Busybox shell.
+
+To launch a shell in the container, use:
+
+```
+docker run -it headscale/headscale:x.x.x-debug sh
+```
+
+You can also execute commands directly, such as `ls /bin` in this example:
+
+```
+docker run headscale/headscale:x.x.x-debug ls /bin
+```
+
+Using `docker exec` allows you to run commands in an existing container.
