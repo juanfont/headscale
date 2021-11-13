@@ -1,6 +1,6 @@
 ---
 run:
-  timeout: 5m
+  timeout: 10m
 
 issues:
   skip-dirs:
@@ -23,6 +23,7 @@ linters:
     - exhaustivestruct
     - tagliatelle
     - godox
+    - ireturn
 
     # We should strive to enable these:
     - testpackage
@@ -47,6 +48,8 @@ linters:
     - goconst
     - unconvert
     - exhaustive
+    - varnamelen
+    - nilnil
 
     # We might want to enable this, but it might be a lot of work
     - cyclop
