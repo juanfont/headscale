@@ -5,3 +5,49 @@ run:
 issues:
   skip-dirs:
     - gen
+linters:
+  enable-all: true
+  disable:
+    - exhaustivestruct
+    - revive
+    - lll
+    - interfacer
+    - scopelint
+    - maligned
+    - golint
+    - gofmt
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - funlen
+    - exhaustivestruct
+    - tagliatelle
+    - godox
+
+    # We should strive to enable these:
+    - testpackage
+    - stylecheck
+    - wrapcheck
+    - paralleltest
+    - noctx
+    - nlreturn
+    - ifshort
+    - gomnd
+    - goerr113
+    - errorlint
+    - forcetypeassert
+    - errname
+    - wsl
+    - unparam
+    - makezero
+    - gosec
+    - gocritic
+    - forbidigo
+    - dupl
+    - goconst
+    - unconvert
+    - exhaustive
+
+    # We might want to enable this, but it might be a lot of work
+    - cyclop
+    - nestif
