@@ -89,7 +89,10 @@ func TestIntegrationTestSuite(t *testing.T) {
 	}
 }
 
-func (s *IntegrationTestSuite) saveLog(resource *dockertest.Resource, basePath string) error {
+func (s *IntegrationTestSuite) saveLog(
+	resource *dockertest.Resource,
+	basePath string,
+) error {
 	err := os.MkdirAll(basePath, os.ModePerm)
 	if err != nil {
 		return err
@@ -118,12 +121,20 @@ func (s *IntegrationTestSuite) saveLog(resource *dockertest.Resource, basePath s
 
 	fmt.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
 
-	err = ioutil.WriteFile(path.Join(basePath, resource.Container.Name+".stdout.log"), []byte(stdout.String()), 0o644)
+	err = ioutil.WriteFile(
+		path.Join(basePath, resource.Container.Name+".stdout.log"),
+		[]byte(stdout.String()),
+		0o644,
+	)
 	if err != nil {
 		return err
 	}
 
-	err = ioutil.WriteFile(path.Join(basePath, resource.Container.Name+".stderr.log"), []byte(stdout.String()), 0o644)
+	err = ioutil.WriteFile(
+		path.Join(basePath, resource.Container.Name+".stderr.log"),
+		[]byte(stdout.String()),
+		0o644,
+	)
 	if err != nil {
 		return err
 	}
@@ -144,14 +155,27 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 			},
 		},
 	}
-	hostname := fmt.Sprintf("%s-tailscale-%s-%s", namespace, strings.Replace(version, ".", "-", -1), identifier)
+	hostname := fmt.Sprintf(
+		"%s-tailscale-%s-%s",
+		namespace,
+		strings.Replace(version, ".", "-", -1),
+		identifier,
+	)
 	tailscaleOptions := &dockertest.RunOptions{
 		Name:     hostname,
 		Networks: []*dockertest.Network{&s.network},
-		Cmd:      []string{"tailscaled", "--tun=userspace-networking", "--socks5-server=localhost:1055"},
+		Cmd: []string{
+			"tailscaled",
+			"--tun=userspace-networking",
+			"--socks5-server=localhost:1055",
+		},
 	}
 
-	pts, err := s.pool.BuildAndRunWithBuildOptions(tailscaleBuildOptions, tailscaleOptions, DockerRestartPolicy)
+	pts, err := s.pool.BuildAndRunWithBuildOptions(
+		tailscaleBuildOptions,
+		tailscaleOptions,
+		DockerRestartPolicy,
+	)
 	if err != nil {
 		log.Fatalf("Could not start resource: %s", err)
 	}
@@ -210,7 +234,11 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		for i := 0; i < scales.count; i++ {
 			version := tailscaleVersions[i%len(tailscaleVersions)]
 
-			hostname, container := s.tailscaleContainer(namespace, fmt.Sprint(i), version)
+			hostname, container := s.tailscaleContainer(
+				namespace,
+				fmt.Sprint(i),
+				version,
+			)
 			scales.tailscales[hostname] = *container
 		}
 	}
@@ -273,7 +301,10 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 		headscaleEndpoint := "http://headscale:8080"
 
-		fmt.Printf("Joining tailscale containers to headscale at %s\n", headscaleEndpoint)
+		fmt.Printf(
+			"Joining tailscale containers to headscale at %s\n",
+			headscaleEndpoint,
+		)
 		for hostname, tailscale := range scales.tailscales {
 			command := []string{
 				"tailscale",
@@ -307,7 +338,10 @@ func (s *IntegrationTestSuite) SetupSuite() {
 func (s *IntegrationTestSuite) TearDownSuite() {
 }
 
-func (s *IntegrationTestSuite) HandleStats(suiteName string, stats *suite.SuiteInformation) {
+func (s *IntegrationTestSuite) HandleStats(
+	suiteName string,
+	stats *suite.SuiteInformation,
+) {
 	s.stats = stats
 }
 
@@ -427,7 +461,13 @@ func (s *IntegrationTestSuite) TestPingAllPeers() {
 							ip.String(),
 						}
 
-						fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
+						fmt.Printf(
+							"Pinging from %s (%s) to %s (%s)\n",
+							hostname,
+							ips[hostname],
+							peername,
+							ip,
+						)
 						result, err := ExecuteCommand(
 							&tailscale,
 							command,
@@ -449,7 +489,15 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 
 	result, err := ExecuteCommand(
 		&s.headscale,
-		[]string{"headscale", "nodes", "list", "--output", "json", "--namespace", "shared"},
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+			"--namespace",
+			"shared",
+		},
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
@@ -520,7 +568,13 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 						ip.String(),
 					}
 
-					fmt.Printf("Pinging from %s (%s) to %s (%s)\n", hostname, mainIps[hostname], peername, ip)
+					fmt.Printf(
+						"Pinging from %s (%s) to %s (%s)\n",
+						hostname,
+						mainIps[hostname],
+						peername,
+						ip,
+					)
 					result, err := ExecuteCommand(
 						&tailscale,
 						command,
@@ -578,9 +632,19 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 								"PUT",
 								"--upload-file",
 								fmt.Sprintf("/tmp/file_from_%s", hostname),
-								fmt.Sprintf("%s/v0/put/file_from_%s", peerAPI, hostname),
+								fmt.Sprintf(
+									"%s/v0/put/file_from_%s",
+									peerAPI,
+									hostname,
+								),
 							}
-							fmt.Printf("Sending file from %s (%s) to %s (%s)\n", hostname, ips[hostname], peername, ip)
+							fmt.Printf(
+								"Sending file from %s (%s) to %s (%s)\n",
+								hostname,
+								ips[hostname],
+								peername,
+								ip,
+							)
 							_, err = ExecuteCommand(
 								&tailscale,
 								command,
@@ -621,7 +685,13 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 							"ls",
 							fmt.Sprintf("/tmp/file_from_%s", peername),
 						}
-						fmt.Printf("Checking file in %s (%s) from %s (%s)\n", hostname, ips[hostname], peername, ip)
+						fmt.Printf(
+							"Checking file in %s (%s) from %s (%s)\n",
+							hostname,
+							ips[hostname],
+							peername,
+							ip,
+						)
 						result, err := ExecuteCommand(
 							&tailscale,
 							command,
@@ -629,7 +699,11 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						)
 						assert.Nil(t, err)
 						fmt.Printf("Result for %s: %s\n", peername, result)
-						assert.Equal(t, result, fmt.Sprintf("/tmp/file_from_%s\n", peername))
+						assert.Equal(
+							t,
+							result,
+							fmt.Sprintf("/tmp/file_from_%s\n", peername),
+						)
 					}
 				})
 			}
@@ -699,7 +773,9 @@ func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, e
 	return ips, nil
 }
 
-func getAPIURLs(tailscales map[string]dockertest.Resource) (map[netaddr.IP]string, error) {
+func getAPIURLs(
+	tailscales map[string]dockertest.Resource,
+) (map[netaddr.IP]string, error) {
 	fts := make(map[netaddr.IP]string)
 	for _, tailscale := range tailscales {
 		command := []string{

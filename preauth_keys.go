@@ -105,7 +105,10 @@ func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 // If returns no error and a PreAuthKey, it can be used
 func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 	pak := PreAuthKey{}
-	if result := h.db.Preload("Namespace").First(&pak, "key = ?", k); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.Preload("Namespace").First(&pak, "key = ?", k); errors.Is(
+		result.Error,
+		gorm.ErrRecordNotFound,
+	) {
 		return nil, errorAuthKeyNotFound
 	}
 

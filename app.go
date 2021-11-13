@@ -152,8 +152,14 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	var dbString string
 	switch cfg.DBtype {
 	case "postgres":
-		dbString = fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable", cfg.DBhost,
-			cfg.DBport, cfg.DBname, cfg.DBuser, cfg.DBpass)
+		dbString = fmt.Sprintf(
+			"host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
+			cfg.DBhost,
+			cfg.DBport,
+			cfg.DBname,
+			cfg.DBuser,
+			cfg.DBpass,
+		)
 	case "sqlite3":
 		dbString = cfg.DBpath
 	default:
@@ -182,7 +188,10 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	}
 
 	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS
-		magicDNSDomains, err := generateMagicDNSRootDomains(h.cfg.IPPrefix, h.cfg.BaseDomain)
+		magicDNSDomains, err := generateMagicDNSRootDomains(
+			h.cfg.IPPrefix,
+			h.cfg.BaseDomain,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -224,7 +233,10 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 	for _, ns := range namespaces {
 		machines, err := h.ListMachinesInNamespace(ns.Name)
 		if err != nil {
-			log.Error().Err(err).Str("namespace", ns.Name).Msg("Error listing machines in namespace")
+			log.Error().
+				Err(err).
+				Str("namespace", ns.Name).
+				Msg("Error listing machines in namespace")
 
 			return
 		}
@@ -232,7 +244,9 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 		for _, m := range machines {
 			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral &&
 				time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
-				log.Info().Str("machine", m.Name).Msg("Ephemeral client removed from database")
+				log.Info().
+					Str("machine", m.Name).
+					Msg("Ephemeral client removed from database")
 
 				err = h.db.Unscoped().Delete(m).Error
 				if err != nil {
@@ -274,18 +288,33 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	// the server
 	p, _ := peer.FromContext(ctx)
 
-	log.Trace().Caller().Str("client_address", p.Addr.String()).Msg("Client is trying to authenticate")
+	log.Trace().
+		Caller().
+		Str("client_address", p.Addr.String()).
+		Msg("Client is trying to authenticate")
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		log.Error().Caller().Str("client_address", p.Addr.String()).Msg("Retrieving metadata is failed")
-		return ctx, status.Errorf(codes.InvalidArgument, "Retrieving metadata is failed")
+		log.Error().
+			Caller().
+			Str("client_address", p.Addr.String()).
+			Msg("Retrieving metadata is failed")
+		return ctx, status.Errorf(
+			codes.InvalidArgument,
+			"Retrieving metadata is failed",
+		)
 	}
 
 	authHeader, ok := md["authorization"]
 	if !ok {
-		log.Error().Caller().Str("client_address", p.Addr.String()).Msg("Authorization token is not supplied")
-		return ctx, status.Errorf(codes.Unauthenticated, "Authorization token is not supplied")
+		log.Error().
+			Caller().
+			Str("client_address", p.Addr.String()).
+			Msg("Authorization token is not supplied")
+		return ctx, status.Errorf(
+			codes.Unauthenticated,
+			"Authorization token is not supplied",
+		)
 	}
 
 	token := authHeader[0]
@@ -295,7 +324,10 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 			Caller().
 			Str("client_address", p.Addr.String()).
 			Msg(`missing "Bearer " prefix in "Authorization" header`)
-		return ctx, status.Error(codes.Unauthenticated, `missing "Bearer " prefix in "Authorization" header`)
+		return ctx, status.Error(
+			codes.Unauthenticated,
+			`missing "Bearer " prefix in "Authorization" header`,
+		)
 	}
 
 	// TODO(kradalby): Implement API key backend:
@@ -307,7 +339,10 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	// Currently all other than localhost traffic is unauthorized, this is intentional to allow
 	// us to make use of gRPC for our CLI, but not having to implement any of the remote capabilities
 	// and API key auth
-	return ctx, status.Error(codes.Unauthenticated, "Authentication is not implemented yet")
+	return ctx, status.Error(
+		codes.Unauthenticated,
+		"Authentication is not implemented yet",
+	)
 
 	//if strings.TrimPrefix(token, AUTH_PREFIX) != a.Token {
 	//	log.Error().Caller().Str("client_address", p.Addr.String()).Msg("invalid token")
@@ -405,7 +440,10 @@ func (h *Headscale) Serve() error {
 	// Match gRPC requests here
 	grpcListener := m.MatchWithWriters(
 		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc+proto"),
+		cmux.HTTP2MatchHeaderFieldSendSettings(
+			"content-type",
+			"application/grpc+proto",
+		),
 	)
 	// Otherwise match regular http requests.
 	httpListener := m.Match(cmux.Any())
@@ -436,7 +474,10 @@ func (h *Headscale) Serve() error {
 	p := ginprometheus.NewPrometheus("gin")
 	p.Use(r)
 
-	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"healthy": "ok"}) })
+	r.GET(
+		"/health",
+		func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"healthy": "ok"}) },
+	)
 	r.GET("/key", h.KeyHandler)
 	r.GET("/register", h.RegisterWebAPI)
 	r.POST("/machine/:id/map", h.PollNetMapHandler)
@@ -537,7 +578,8 @@ func (h *Headscale) Serve() error {
 
 	g.Go(func() error { return m.Serve() })
 
-	log.Info().Msgf("listening and serving (multiplexed HTTP and gRPC) on: %s", h.cfg.Addr)
+	log.Info().
+		Msgf("listening and serving (multiplexed HTTP and gRPC) on: %s", h.cfg.Addr)
 
 	return g.Wait()
 }
@@ -545,7 +587,8 @@ func (h *Headscale) Serve() error {
 func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
+			log.Warn().
+				Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
 		m := autocert.Manager{

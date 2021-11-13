@@ -108,7 +108,9 @@ func (h *Headscale) generateACLPolicySrcIP(u string) ([]string, error) {
 	return h.expandAlias(u)
 }
 
-func (h *Headscale) generateACLPolicyDestPorts(d string) ([]tailcfg.NetPortRange, error) {
+func (h *Headscale) generateACLPolicyDestPorts(
+	d string,
+) ([]tailcfg.NetPortRange, error) {
 	tokens := strings.Split(d, ":")
 	if len(tokens) < 2 || len(tokens) > 3 {
 		return nil, errorInvalidPortFormat

@@ -11,7 +11,10 @@ import (
 // Deprecated: use machine function instead
 // GetAdvertisedNodeRoutes returns the subnet routes advertised by a node (identified by
 // namespace and node name)
-func (h *Headscale) GetAdvertisedNodeRoutes(namespace string, nodeName string) (*[]netaddr.IPPrefix, error) {
+func (h *Headscale) GetAdvertisedNodeRoutes(
+	namespace string,
+	nodeName string,
+) (*[]netaddr.IPPrefix, error) {
 	m, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
@@ -27,7 +30,10 @@ func (h *Headscale) GetAdvertisedNodeRoutes(namespace string, nodeName string) (
 // Deprecated: use machine function instead
 // GetEnabledNodeRoutes returns the subnet routes enabled by a node (identified by
 // namespace and node name)
-func (h *Headscale) GetEnabledNodeRoutes(namespace string, nodeName string) ([]netaddr.IPPrefix, error) {
+func (h *Headscale) GetEnabledNodeRoutes(
+	namespace string,
+	nodeName string,
+) ([]netaddr.IPPrefix, error) {
 	m, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
@@ -58,7 +64,11 @@ func (h *Headscale) GetEnabledNodeRoutes(namespace string, nodeName string) ([]n
 
 // Deprecated: use machine function instead
 // IsNodeRouteEnabled checks if a certain route has been enabled
-func (h *Headscale) IsNodeRouteEnabled(namespace string, nodeName string, routeStr string) bool {
+func (h *Headscale) IsNodeRouteEnabled(
+	namespace string,
+	nodeName string,
+	routeStr string,
+) bool {
 	route, err := netaddr.ParseIPPrefix(routeStr)
 	if err != nil {
 		return false
@@ -80,7 +90,11 @@ func (h *Headscale) IsNodeRouteEnabled(namespace string, nodeName string, routeS
 // Deprecated: use EnableRoute in machine.go
 // EnableNodeRoute enables a subnet route advertised by a node (identified by
 // namespace and node name)
-func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr string) error {
+func (h *Headscale) EnableNodeRoute(
+	namespace string,
+	nodeName string,
+	routeStr string,
+) error {
 	m, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return err

@@ -22,8 +22,10 @@ func init() {
 	preauthkeysCmd.AddCommand(listPreAuthKeys)
 	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
 	preauthkeysCmd.AddCommand(expirePreAuthKeyCmd)
-	createPreAuthKeyCmd.PersistentFlags().Bool("reusable", false, "Make the preauthkey reusable")
-	createPreAuthKeyCmd.PersistentFlags().Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
+	createPreAuthKeyCmd.PersistentFlags().
+		Bool("reusable", false, "Make the preauthkey reusable")
+	createPreAuthKeyCmd.PersistentFlags().
+		Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().
 		DurationP("expiration", "e", 24*time.Hour, "Human-readable expiration of the key (30m, 24h, 365d...)")
 }
@@ -55,7 +57,11 @@ var listPreAuthKeys = &cobra.Command{
 
 		response, err := client.ListPreAuthKeys(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting the list of keys: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting the list of keys: %s", err),
+				output,
+			)
 			return
 		}
 
@@ -64,7 +70,9 @@ var listPreAuthKeys = &cobra.Command{
 			return
 		}
 
-		d := pterm.TableData{{"ID", "Key", "Reusable", "Ephemeral", "Used", "Expiration", "Created"}}
+		d := pterm.TableData{
+			{"ID", "Key", "Reusable", "Ephemeral", "Used", "Expiration", "Created"},
+		}
 		for _, k := range response.PreAuthKeys {
 			expiration := "-"
 			if k.GetExpiration() != nil {
@@ -91,7 +99,11 @@ var listPreAuthKeys = &cobra.Command{
 		}
 		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed to render pterm table: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
 			return
 		}
 	},
@@ -139,7 +151,11 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		response, err := client.CreatePreAuthKey(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot create Pre Auth Key: %s\n", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot create Pre Auth Key: %s\n", err),
+				output,
+			)
 			return
 		}
 
@@ -175,7 +191,11 @@ var expirePreAuthKeyCmd = &cobra.Command{
 
 		response, err := client.ExpirePreAuthKey(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot expire Pre Auth Key: %s\n", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot expire Pre Auth Key: %s\n", err),
+				output,
+			)
 			return
 		}
 

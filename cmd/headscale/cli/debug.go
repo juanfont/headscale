@@ -27,7 +27,8 @@ func init() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
-	createNodeCmd.Flags().StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to advertise")
+	createNodeCmd.Flags().
+		StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to advertise")
 
 	debugCmd.AddCommand(createNodeCmd)
 }
@@ -56,19 +57,31 @@ var createNodeCmd = &cobra.Command{
 
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting node from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting node from flag: %s", err),
+				output,
+			)
 			return
 		}
 
 		machineKey, err := cmd.Flags().GetString("key")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting key from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting key from flag: %s", err),
+				output,
+			)
 			return
 		}
 
 		routes, err := cmd.Flags().GetStringSlice("route")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting routes from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting routes from flag: %s", err),
+				output,
+			)
 			return
 		}
 
@@ -81,7 +94,11 @@ var createNodeCmd = &cobra.Command{
 
 		response, err := client.DebugCreateMachine(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot create machine: %s", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot create machine: %s", status.Convert(err).Message()),
+				output,
+			)
 			return
 		}
 

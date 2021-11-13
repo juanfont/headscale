@@ -73,7 +73,11 @@ func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 			Str("handler", "AppleMobileConfig").
 			Err(err).
 			Msg("Could not render Apple index template")
-		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Apple index template"))
+		c.Data(
+			http.StatusInternalServerError,
+			"text/html; charset=utf-8",
+			[]byte("Could not render Apple index template"),
+		)
 		return
 	}
 
@@ -89,7 +93,11 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Failed not create UUID")
-		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Failed to create UUID"))
+		c.Data(
+			http.StatusInternalServerError,
+			"text/html; charset=utf-8",
+			[]byte("Failed to create UUID"),
+		)
 		return
 	}
 
@@ -99,7 +107,11 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Failed not create UUID")
-		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Failed to create UUID"))
+		c.Data(
+			http.StatusInternalServerError,
+			"text/html; charset=utf-8",
+			[]byte("Failed to create UUID"),
+		)
 		return
 	}
 
@@ -117,7 +129,11 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 				Str("handler", "ApplePlatformConfig").
 				Err(err).
 				Msg("Could not render Apple macOS template")
-			c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Apple macOS template"))
+			c.Data(
+				http.StatusInternalServerError,
+				"text/html; charset=utf-8",
+				[]byte("Could not render Apple macOS template"),
+			)
 			return
 		}
 	case "ios":
@@ -126,11 +142,19 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 				Str("handler", "ApplePlatformConfig").
 				Err(err).
 				Msg("Could not render Apple iOS template")
-			c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Apple iOS template"))
+			c.Data(
+				http.StatusInternalServerError,
+				"text/html; charset=utf-8",
+				[]byte("Could not render Apple iOS template"),
+			)
 			return
 		}
 	default:
-		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte("Invalid platform, only ios and macos is supported"))
+		c.Data(
+			http.StatusOK,
+			"text/html; charset=utf-8",
+			[]byte("Invalid platform, only ios and macos is supported"),
+		)
 		return
 	}
 
@@ -146,11 +170,19 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Could not render Apple platform template")
-		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Apple platform template"))
+		c.Data(
+			http.StatusInternalServerError,
+			"text/html; charset=utf-8",
+			[]byte("Could not render Apple platform template"),
+		)
 		return
 	}
 
-	c.Data(http.StatusOK, "application/x-apple-aspen-config; charset=utf-8", content.Bytes())
+	c.Data(
+		http.StatusOK,
+		"application/x-apple-aspen-config; charset=utf-8",
+		content.Bytes(),
+	)
 }
 
 type AppleMobileConfig struct {
@@ -164,7 +196,8 @@ type AppleMobilePlatformConfig struct {
 	Url  string
 }
 
-var commonTemplate = template.Must(template.New("mobileconfig").Parse(`<?xml version="1.0" encoding="UTF-8"?>
+var commonTemplate = template.Must(
+	template.New("mobileconfig").Parse(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
@@ -187,7 +220,8 @@ var commonTemplate = template.Must(template.New("mobileconfig").Parse(`<?xml ver
     {{.Payload}}
     </array>
   </dict>
-</plist>`))
+</plist>`),
+)
 
 var iosTemplate = template.Must(template.New("iosTemplate").Parse(`
     <dict>

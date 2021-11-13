@@ -39,8 +39,11 @@ func (h *Headscale) initOIDC() error {
 			ClientID:     h.cfg.OIDC.ClientID,
 			ClientSecret: h.cfg.OIDC.ClientSecret,
 			Endpoint:     h.oidcProvider.Endpoint(),
-			RedirectURL:  fmt.Sprintf("%s/oidc/callback", strings.TrimSuffix(h.cfg.ServerURL, "/")),
-			Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+			RedirectURL: fmt.Sprintf(
+				"%s/oidc/callback",
+				strings.TrimSuffix(h.cfg.ServerURL, "/"),
+			),
+			Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
 		}
 	}
 
@@ -127,7 +130,10 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	// Extract custom claims
 	var claims IDTokenClaims
 	if err = idToken.Claims(&claims); err != nil {
-		c.String(http.StatusBadRequest, fmt.Sprintf("Failed to decode id token claims: %s", err))
+		c.String(
+			http.StatusBadRequest,
+			fmt.Sprintf("Failed to decode id token claims: %s", err),
+		)
 		return
 	}
 
@@ -135,7 +141,8 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	mKeyIf, mKeyFound := h.oidcStateCache.Get(state)
 
 	if !mKeyFound {
-		log.Error().Msg("requested machine state key expired before authorisation completed")
+		log.Error().
+			Msg("requested machine state key expired before authorisation completed")
 		c.String(http.StatusBadRequest, "state has expired")
 		return
 	}
@@ -151,7 +158,10 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	m, err := h.GetMachineByMachineKey(mKeyStr)
 	if err != nil {
 		log.Error().Msg("machine key not found in database")
-		c.String(http.StatusInternalServerError, "could not get machine info from database")
+		c.String(
+			http.StatusInternalServerError,
+			"could not get machine info from database",
+		)
 		return
 	}
 
@@ -168,15 +178,22 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 				ns, err = h.CreateNamespace(nsName)
 
 				if err != nil {
-					log.Error().Msgf("could not create new namespace '%s'", claims.Email)
-					c.String(http.StatusInternalServerError, "could not create new namespace")
+					log.Error().
+						Msgf("could not create new namespace '%s'", claims.Email)
+					c.String(
+						http.StatusInternalServerError,
+						"could not create new namespace",
+					)
 					return
 				}
 			}
 
 			ip, err := h.getAvailableIP()
 			if err != nil {
-				c.String(http.StatusInternalServerError, "could not get an IP from the pool")
+				c.String(
+					http.StatusInternalServerError,
+					"could not get an IP from the pool",
+				)
 				return
 			}
 
@@ -209,7 +226,10 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 		Str("username", claims.Username).
 		Str("machine", m.Name).
 		Msg("Email could not be mapped to a namespace")
-	c.String(http.StatusBadRequest, "email from claim could not be mapped to a namespace")
+	c.String(
+		http.StatusBadRequest,
+		"email from claim could not be mapped to a namespace",
+	)
 }
 
 // getNamespaceFromEmail passes the users email through a list of "matchers"

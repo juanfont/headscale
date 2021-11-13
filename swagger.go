@@ -53,7 +53,11 @@ func SwaggerUI(c *gin.Context) {
 			Caller().
 			Err(err).
 			Msg("Could not render Swagger")
-		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Swagger"))
+		c.Data(
+			http.StatusInternalServerError,
+			"text/html; charset=utf-8",
+			[]byte("Could not render Swagger"),
+		)
 		return
 	}
 

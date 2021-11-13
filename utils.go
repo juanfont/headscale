@@ -25,11 +25,21 @@ type Error string
 
 func (e Error) Error() string { return string(e) }
 
-func decode(msg []byte, v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) error {
+func decode(
+	msg []byte,
+	v interface{},
+	pubKey *wgkey.Key,
+	privKey *wgkey.Private,
+) error {
 	return decodeMsg(msg, v, pubKey, privKey)
 }
 
-func decodeMsg(msg []byte, v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) error {
+func decodeMsg(
+	msg []byte,
+	v interface{},
+	pubKey *wgkey.Key,
+	privKey *wgkey.Private,
+) error {
 	decrypted, err := decryptMsg(msg, pubKey, privKey)
 	if err != nil {
 		return err
@@ -156,7 +166,11 @@ func tailNodesToString(nodes []*tailcfg.Node) string {
 }
 
 func tailMapResponseToString(resp tailcfg.MapResponse) string {
-	return fmt.Sprintf("{ Node: %s, Peers: %s }", resp.Node.Name, tailNodesToString(resp.Peers))
+	return fmt.Sprintf(
+		"{ Node: %s, Peers: %s }",
+		resp.Node.Name,
+		tailNodesToString(resp.Peers),
+	)
 }
 
 func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {

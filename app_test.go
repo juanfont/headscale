@@ -17,8 +17,10 @@ var _ = check.Suite(&Suite{})
 
 type Suite struct{}
 
-var tmpDir string
-var h Headscale
+var (
+	tmpDir string
+	h      Headscale
+)
 
 func (s *Suite) SetUpTest(c *check.C) {
 	s.ResetDB(c)

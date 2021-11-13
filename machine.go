@@ -73,8 +73,12 @@ func (m Machine) isExpired() bool {
 func (h *Headscale) updateMachineExpiry(m *Machine) {
 	if m.isExpired() {
 		now := time.Now().UTC()
-		maxExpiry := now.Add(h.cfg.MaxMachineRegistrationDuration)         // calculate the maximum expiry
-		defaultExpiry := now.Add(h.cfg.DefaultMachineRegistrationDuration) // calculate the default expiry
+		maxExpiry := now.Add(
+			h.cfg.MaxMachineRegistrationDuration,
+		) // calculate the maximum expiry
+		defaultExpiry := now.Add(
+			h.cfg.DefaultMachineRegistrationDuration,
+		) // calculate the default expiry
 
 		// clamp the expiry time of the machine registration to the maximum allowed, or use the default if none supplied
 		if maxExpiry.Before(*m.RequestedExpiry) {
@@ -157,7 +161,9 @@ func (h *Headscale) getSharedTo(m *Machine) (Machines, error) {
 
 	peers := make(Machines, 0)
 	for _, sharedMachine := range sharedMachines {
-		namespaceMachines, err := h.ListMachinesInNamespace(sharedMachine.Namespace.Name)
+		namespaceMachines, err := h.ListMachinesInNamespace(
+			sharedMachine.Namespace.Name,
+		)
 		if err != nil {
 			return Machines{}, err
 		}
@@ -392,7 +398,11 @@ func (ms Machines) toNodes(
 
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS
-func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) (*tailcfg.Node, error) {
+func (m Machine) toNode(
+	baseDomain string,
+	dnsConfig *tailcfg.DNSConfig,
+	includeRoutes bool,
+) (*tailcfg.Node, error) {
 	nKey, err := wgkey.ParseHex(m.NodeKey)
 	if err != nil {
 		return nil, err
@@ -425,7 +435,10 @@ func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, include
 	addrs = append(addrs, ip) // missing the ipv6 ?
 
 	allowedIPs := []netaddr.IPPrefix{}
-	allowedIPs = append(allowedIPs, ip) // we append the node own IP, as it is required by the clients
+	allowedIPs = append(
+		allowedIPs,
+		ip,
+	) // we append the node own IP, as it is required by the clients
 
 	if includeRoutes {
 		routesStr := []string{}
@@ -571,7 +584,10 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 	}
 
 	m := Machine{}
-	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(
+		result.Error,
+		gorm.ErrRecordNotFound,
+	) {
 		return nil, errors.New("Machine not found")
 	}
 
@@ -693,7 +709,11 @@ func (h *Headscale) EnableRoutes(m *Machine, routeStrs ...string) error {
 
 	for _, newRoute := range newRoutes {
 		if !containsIpPrefix(availableRoutes, newRoute) {
-			return fmt.Errorf("route (%s) is not available on node %s", m.Name, newRoute)
+			return fmt.Errorf(
+				"route (%s) is not available on node %s",
+				m.Name,
+				newRoute,
+			)
 		}
 	}
 

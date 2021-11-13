@@ -63,7 +63,8 @@ func main() {
 	}
 
 	if !viper.GetBool("disable_check_updates") && !machineOutput {
-		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && cli.Version != "dev" {
+		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
+			cli.Version != "dev" {
 			githubTag := &latest.GithubTag{
 				Owner:      "juanfont",
 				Repository: "headscale",

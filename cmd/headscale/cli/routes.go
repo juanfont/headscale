@@ -21,7 +21,8 @@ func init() {
 	}
 	routesCmd.AddCommand(listRoutesCmd)
 
-	enableRouteCmd.Flags().StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to enable")
+	enableRouteCmd.Flags().
+		StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to enable")
 	enableRouteCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = enableRouteCmd.MarkFlagRequired("identifier")
 	if err != nil {
@@ -46,7 +47,11 @@ var listRoutesCmd = &cobra.Command{
 
 		machineId, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting machine id from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				output,
+			)
 			return
 		}
 
@@ -60,7 +65,11 @@ var listRoutesCmd = &cobra.Command{
 
 		response, err := client.GetMachineRoute(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
+				output,
+			)
 			return
 		}
 
@@ -77,7 +86,11 @@ var listRoutesCmd = &cobra.Command{
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed to render pterm table: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
 			return
 		}
 	},
@@ -95,13 +108,21 @@ omit the route you do not want to enable.
 		output, _ := cmd.Flags().GetString("output")
 		machineId, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting machine id from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				output,
+			)
 			return
 		}
 
 		routes, err := cmd.Flags().GetStringSlice("route")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting routes from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting routes from flag: %s", err),
+				output,
+			)
 			return
 		}
 
@@ -116,7 +137,14 @@ omit the route you do not want to enable.
 
 		response, err := client.EnableMachineRoutes(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot register machine: %s\n", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot register machine: %s\n",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
 			return
 		}
 
@@ -133,7 +161,11 @@ omit the route you do not want to enable.
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed to render pterm table: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
 			return
 		}
 	},

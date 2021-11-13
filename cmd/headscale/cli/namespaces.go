@@ -48,7 +48,14 @@ var createNamespaceCmd = &cobra.Command{
 		log.Trace().Interface("request", request).Msg("Sending CreateNamespace request")
 		response, err := client.CreateNamespace(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot create namespace: %s", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot create namespace: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
 			return
 		}
 
@@ -78,7 +85,14 @@ var destroyNamespaceCmd = &cobra.Command{
 
 		response, err := client.DeleteNamespace(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot destroy namespace: %s", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot destroy namespace: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
 			return
 		}
 
@@ -100,7 +114,11 @@ var listNamespacesCmd = &cobra.Command{
 
 		response, err := client.ListNamespaces(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot get namespaces: %s", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot get namespaces: %s", status.Convert(err).Message()),
+				output,
+			)
 			return
 		}
 
@@ -122,7 +140,11 @@ var listNamespacesCmd = &cobra.Command{
 		}
 		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed to render pterm table: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
 			return
 		}
 	},
@@ -151,7 +173,14 @@ var renameNamespaceCmd = &cobra.Command{
 
 		response, err := client.RenameNamespace(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot rename namespace: %s", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot rename namespace: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
 			return
 		}
 

@@ -2,9 +2,11 @@ package headscale
 
 import "gorm.io/gorm"
 
-const errorSameNamespace = Error("Destination namespace same as origin")
-const errorMachineAlreadyShared = Error("Node already shared to this namespace")
-const errorMachineNotShared = Error("Machine not shared to this namespace")
+const (
+	errorSameNamespace        = Error("Destination namespace same as origin")
+	errorMachineAlreadyShared = Error("Node already shared to this namespace")
+	errorMachineNotShared     = Error("Machine not shared to this namespace")
+)
 
 // SharedMachine is a join table to support sharing nodes between namespaces
 type SharedMachine struct {
@@ -48,7 +50,9 @@ func (h *Headscale) RemoveSharedMachineFromNamespace(m *Machine, ns *Namespace) 
 	}
 
 	sharedMachine := SharedMachine{}
-	result := h.db.Where("machine_id = ? AND namespace_id = ?", m.ID, ns.ID).Unscoped().Delete(&sharedMachine)
+	result := h.db.Where("machine_id = ? AND namespace_id = ?", m.ID, ns.ID).
+		Unscoped().
+		Delete(&sharedMachine)
 	if result.Error != nil {
 		return result.Error
 	}

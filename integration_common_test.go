@@ -12,7 +12,11 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 )
 
-func ExecuteCommand(resource *dockertest.Resource, cmd []string, env []string) (string, error) {
+func ExecuteCommand(
+	resource *dockertest.Resource,
+	cmd []string,
+	env []string,
+) (string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 

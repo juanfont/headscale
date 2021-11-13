@@ -4,7 +4,10 @@ import (
 	"gopkg.in/check.v1"
 )
 
-func CreateNodeNamespace(c *check.C, namespace, node, key, IP string) (*Namespace, *Machine) {
+func CreateNodeNamespace(
+	c *check.C,
+	namespace, node, key, IP string,
+) (*Namespace, *Machine) {
 	n1, err := h.CreateNamespace(namespace)
 	c.Assert(err, check.IsNil)
 
@@ -229,7 +232,11 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 
 	p1sAfter, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(p1sAfter), check.Equals, 2) // node1 can see node2 (shared) and node4 (same namespace)
+	c.Assert(
+		len(p1sAfter),
+		check.Equals,
+		2,
+	) // node1 can see node2 (shared) and node4 (same namespace)
 	c.Assert(p1sAfter[0].Name, check.Equals, m2.Name)
 	c.Assert(p1sAfter[1].Name, check.Equals, m4.Name)
 

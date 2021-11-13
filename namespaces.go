@@ -102,7 +102,10 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 // GetNamespace fetches a namespace by name
 func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 	n := Namespace{}
-	if result := h.db.First(&n, "name = ?", name); errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if result := h.db.First(&n, "name = ?", name); errors.Is(
+		result.Error,
+		gorm.ErrRecordNotFound,
+	) {
 		return nil, errorNamespaceNotFound
 	}
 	return &n, nil
@@ -144,7 +147,9 @@ func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error
 
 	machines := []Machine{}
 	for _, sharedMachine := range sharedMachines {
-		machine, err := h.GetMachineByID(sharedMachine.MachineID) // otherwise not everything comes filled
+		machine, err := h.GetMachineByID(
+			sharedMachine.MachineID,
+		) // otherwise not everything comes filled
 		if err != nil {
 			return nil, err
 		}
@@ -173,7 +178,10 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 
 	v, err := h.getValue("namespaces_pending_updates")
 	if err != nil || v == "" {
-		err = h.setValue("namespaces_pending_updates", fmt.Sprintf(`["%s"]`, namespace.Name))
+		err = h.setValue(
+			"namespaces_pending_updates",
+			fmt.Sprintf(`["%s"]`, namespace.Name),
+		)
 		if err != nil {
 			return err
 		}
@@ -182,7 +190,10 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 	names := []string{}
 	err = json.Unmarshal([]byte(v), &names)
 	if err != nil {
-		err = h.setValue("namespaces_pending_updates", fmt.Sprintf(`["%s"]`, namespace.Name))
+		err = h.setValue(
+			"namespaces_pending_updates",
+			fmt.Sprintf(`["%s"]`, namespace.Name),
+		)
 		if err != nil {
 			return err
 		}

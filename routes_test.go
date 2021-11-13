@@ -93,7 +93,10 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	}
 	h.db.Save(&m)
 
-	availableRoutes, err := h.GetAdvertisedNodeRoutes("test", "test_enable_route_machine")
+	availableRoutes, err := h.GetAdvertisedNodeRoutes(
+		"test",
+		"test_enable_route_machine",
+	)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(*availableRoutes), check.Equals, 2)
 

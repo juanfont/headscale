@@ -164,10 +164,18 @@ func TestHeadscale_getNamespaceFromEmail(t *testing.T) {
 			}
 			got, got1 := h.getNamespaceFromEmail(tt.args.email)
 			if got != tt.want {
-				t.Errorf("Headscale.getNamespaceFromEmail() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"Headscale.getNamespaceFromEmail() got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if got1 != tt.want1 {
-				t.Errorf("Headscale.getNamespaceFromEmail() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"Headscale.getNamespaceFromEmail() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}

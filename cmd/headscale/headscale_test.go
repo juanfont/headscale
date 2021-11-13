@@ -40,7 +40,10 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config-example.yaml"), filepath.Join(tmpDir, "config.yaml"))
+	err = os.Symlink(
+		filepath.Clean(path+"/../../config-example.yaml"),
+		filepath.Join(tmpDir, "config.yaml"),
+	)
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -74,7 +77,10 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config-example.yaml"), filepath.Join(tmpDir, "config.yaml"))
+	err = os.Symlink(
+		filepath.Clean(path+"/../../config-example.yaml"),
+		filepath.Join(tmpDir, "config.yaml"),
+	)
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -128,7 +134,11 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 		check.Matches,
 		".*Fatal config error: the only supported values for tls_letsencrypt_challenge_type are.*",
 	)
-	c.Assert(tmp, check.Matches, ".*Fatal config error: server_url must start with https:// or http://.*")
+	c.Assert(
+		tmp,
+		check.Matches,
+		".*Fatal config error: server_url must start with https:// or http://.*",
+	)
 	fmt.Println(tmp)
 
 	// Check configuration validation errors (2)

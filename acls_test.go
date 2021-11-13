@@ -22,7 +22,11 @@ func (s *Suite) TestInvalidPolicyHuson(c *check.C) {
 
 func (s *Suite) TestParseHosts(c *check.C) {
 	var hs Hosts
-	err := hs.UnmarshalJSON([]byte(`{"example-host-1": "100.100.100.100","example-host-2": "100.100.101.100/24"}`))
+	err := hs.UnmarshalJSON(
+		[]byte(
+			`{"example-host-1": "100.100.100.100","example-host-2": "100.100.101.100/24"}`,
+		),
+	)
 	c.Assert(hs, check.NotNil)
 	c.Assert(err, check.IsNil)
 }
