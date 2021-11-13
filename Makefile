@@ -30,7 +30,7 @@ lint:
 	golangci-lint run --fix --timeout 10m
 
 fmt:
-	prettier --check '**/**.{ts,js,md,yaml,yml,sass,css,scss,html}'
+	prettier --write '**/**.{ts,js,md,yaml,yml,sass,css,scss,html}'
 	golines --max-len=88 --base-formatter=gofumpt -w $(GO_SOURCES)
 	clang-format -style="{BasedOnStyle: Google, IndentWidth: 4, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true, ColumnLimit: 0}" -i $(PROTO_SOURCES)
 
