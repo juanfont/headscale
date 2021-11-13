@@ -12,7 +12,6 @@ func (s *Suite) TestWrongPath(c *check.C) {
 func (s *Suite) TestBrokenHuJson(c *check.C) {
 	err := h.LoadACLPolicy("./tests/acls/broken.hujson")
 	c.Assert(err, check.NotNil)
-
 }
 
 func (s *Suite) TestInvalidPolicyHuson(c *check.C) {
@@ -57,10 +56,10 @@ func (s *Suite) TestPortRange(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
-	c.Assert(*rules, check.HasLen, 1)
-	c.Assert((*rules)[0].DstPorts, check.HasLen, 1)
-	c.Assert((*rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(5400))
-	c.Assert((*rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(5500))
+	c.Assert(rules, check.HasLen, 1)
+	c.Assert((rules)[0].DstPorts, check.HasLen, 1)
+	c.Assert((rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(5400))
+	c.Assert((rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(5500))
 }
 
 func (s *Suite) TestPortWildcard(c *check.C) {
@@ -71,12 +70,12 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
-	c.Assert(*rules, check.HasLen, 1)
-	c.Assert((*rules)[0].DstPorts, check.HasLen, 1)
-	c.Assert((*rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert((*rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert((*rules)[0].SrcIPs, check.HasLen, 1)
-	c.Assert((*rules)[0].SrcIPs[0], check.Equals, "*")
+	c.Assert(rules, check.HasLen, 1)
+	c.Assert((rules)[0].DstPorts, check.HasLen, 1)
+	c.Assert((rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert((rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert((rules)[0].SrcIPs, check.HasLen, 1)
+	c.Assert((rules)[0].SrcIPs[0], check.Equals, "*")
 }
 
 func (s *Suite) TestPortNamespace(c *check.C) {
@@ -110,13 +109,13 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
-	c.Assert(*rules, check.HasLen, 1)
-	c.Assert((*rules)[0].DstPorts, check.HasLen, 1)
-	c.Assert((*rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert((*rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert((*rules)[0].SrcIPs, check.HasLen, 1)
-	c.Assert((*rules)[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
-	c.Assert((*rules)[0].SrcIPs[0], check.Equals, ip.String())
+	c.Assert(rules, check.HasLen, 1)
+	c.Assert((rules)[0].DstPorts, check.HasLen, 1)
+	c.Assert((rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert((rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert((rules)[0].SrcIPs, check.HasLen, 1)
+	c.Assert((rules)[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
+	c.Assert((rules)[0].SrcIPs[0], check.Equals, ip.String())
 }
 
 func (s *Suite) TestPortGroup(c *check.C) {
@@ -150,11 +149,11 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
-	c.Assert(*rules, check.HasLen, 1)
-	c.Assert((*rules)[0].DstPorts, check.HasLen, 1)
-	c.Assert((*rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert((*rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert((*rules)[0].SrcIPs, check.HasLen, 1)
-	c.Assert((*rules)[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
-	c.Assert((*rules)[0].SrcIPs[0], check.Equals, ip.String())
+	c.Assert(rules, check.HasLen, 1)
+	c.Assert((rules)[0].DstPorts, check.HasLen, 1)
+	c.Assert((rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert((rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert((rules)[0].SrcIPs, check.HasLen, 1)
+	c.Assert((rules)[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
+	c.Assert((rules)[0].SrcIPs[0], check.Equals, ip.String())
 }

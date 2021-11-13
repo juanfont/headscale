@@ -35,8 +35,20 @@ func CreateNodeNamespace(c *check.C, namespace, node, key, IP string) (*Namespac
 }
 
 func (s *Suite) TestBasicSharedNodesInNamespace(c *check.C) {
-	n1, m1 := CreateNodeNamespace(c, "shared1", "test_get_shared_nodes_1", "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66", "100.64.0.1")
-	_, m2 := CreateNodeNamespace(c, "shared2", "test_get_shared_nodes_2", "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863", "100.64.0.2")
+	n1, m1 := CreateNodeNamespace(
+		c,
+		"shared1",
+		"test_get_shared_nodes_1",
+		"686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
+		"100.64.0.1",
+	)
+	_, m2 := CreateNodeNamespace(
+		c,
+		"shared2",
+		"test_get_shared_nodes_2",
+		"dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
+		"100.64.0.2",
+	)
 
 	p1s, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
@@ -52,7 +64,13 @@ func (s *Suite) TestBasicSharedNodesInNamespace(c *check.C) {
 }
 
 func (s *Suite) TestSameNamespace(c *check.C) {
-	n1, m1 := CreateNodeNamespace(c, "shared1", "test_get_shared_nodes_1", "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66", "100.64.0.1")
+	n1, m1 := CreateNodeNamespace(
+		c,
+		"shared1",
+		"test_get_shared_nodes_1",
+		"686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
+		"100.64.0.1",
+	)
 
 	p1s, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
@@ -63,8 +81,20 @@ func (s *Suite) TestSameNamespace(c *check.C) {
 }
 
 func (s *Suite) TestUnshare(c *check.C) {
-	n1, m1 := CreateNodeNamespace(c, "shared1", "test_unshare_1", "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66", "100.64.0.1")
-	_, m2 := CreateNodeNamespace(c, "shared2", "test_unshare_2", "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863", "100.64.0.2")
+	n1, m1 := CreateNodeNamespace(
+		c,
+		"shared1",
+		"test_unshare_1",
+		"686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
+		"100.64.0.1",
+	)
+	_, m2 := CreateNodeNamespace(
+		c,
+		"shared2",
+		"test_unshare_2",
+		"dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
+		"100.64.0.2",
+	)
 
 	p1s, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
@@ -92,8 +122,20 @@ func (s *Suite) TestUnshare(c *check.C) {
 }
 
 func (s *Suite) TestAlreadyShared(c *check.C) {
-	n1, m1 := CreateNodeNamespace(c, "shared1", "test_get_shared_nodes_1", "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66", "100.64.0.1")
-	_, m2 := CreateNodeNamespace(c, "shared2", "test_get_shared_nodes_2", "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863", "100.64.0.2")
+	n1, m1 := CreateNodeNamespace(
+		c,
+		"shared1",
+		"test_get_shared_nodes_1",
+		"686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
+		"100.64.0.1",
+	)
+	_, m2 := CreateNodeNamespace(
+		c,
+		"shared2",
+		"test_get_shared_nodes_2",
+		"dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
+		"100.64.0.2",
+	)
 
 	p1s, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
@@ -106,8 +148,20 @@ func (s *Suite) TestAlreadyShared(c *check.C) {
 }
 
 func (s *Suite) TestDoNotIncludeRoutesOnShared(c *check.C) {
-	n1, m1 := CreateNodeNamespace(c, "shared1", "test_get_shared_nodes_1", "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66", "100.64.0.1")
-	_, m2 := CreateNodeNamespace(c, "shared2", "test_get_shared_nodes_2", "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863", "100.64.0.2")
+	n1, m1 := CreateNodeNamespace(
+		c,
+		"shared1",
+		"test_get_shared_nodes_1",
+		"686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
+		"100.64.0.1",
+	)
+	_, m2 := CreateNodeNamespace(
+		c,
+		"shared2",
+		"test_get_shared_nodes_2",
+		"dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
+		"100.64.0.2",
+	)
 
 	p1s, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
@@ -123,9 +177,27 @@ func (s *Suite) TestDoNotIncludeRoutesOnShared(c *check.C) {
 }
 
 func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
-	n1, m1 := CreateNodeNamespace(c, "shared1", "test_get_shared_nodes_1", "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66", "100.64.0.1")
-	_, m2 := CreateNodeNamespace(c, "shared2", "test_get_shared_nodes_2", "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863", "100.64.0.2")
-	_, m3 := CreateNodeNamespace(c, "shared3", "test_get_shared_nodes_3", "6e704bee83eb93db6fc2c417d7882964cd3f8cc87082cbb645982e34020c76c8", "100.64.0.3")
+	n1, m1 := CreateNodeNamespace(
+		c,
+		"shared1",
+		"test_get_shared_nodes_1",
+		"686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
+		"100.64.0.1",
+	)
+	_, m2 := CreateNodeNamespace(
+		c,
+		"shared2",
+		"test_get_shared_nodes_2",
+		"dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
+		"100.64.0.2",
+	)
+	_, m3 := CreateNodeNamespace(
+		c,
+		"shared3",
+		"test_get_shared_nodes_3",
+		"6e704bee83eb93db6fc2c417d7882964cd3f8cc87082cbb645982e34020c76c8",
+		"100.64.0.3",
+	)
 
 	pak4, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
@@ -172,15 +244,37 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 
 	pSharedTo, err := h.getPeers(m2)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(pSharedTo), check.Equals, 2) // node2 should see node1 (sharedTo) and node4 (sharedTo), as is shared in namespace1
+	c.Assert(
+		len(pSharedTo),
+		check.Equals,
+		2,
+	) // node2 should see node1 (sharedTo) and node4 (sharedTo), as is shared in namespace1
 	c.Assert(pSharedTo[0].Name, check.Equals, m1.Name)
 	c.Assert(pSharedTo[1].Name, check.Equals, m4.Name)
 }
 
 func (s *Suite) TestDeleteSharedMachine(c *check.C) {
-	n1, m1 := CreateNodeNamespace(c, "shared1", "test_get_shared_nodes_1", "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66", "100.64.0.1")
-	_, m2 := CreateNodeNamespace(c, "shared2", "test_get_shared_nodes_2", "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863", "100.64.0.2")
-	_, m3 := CreateNodeNamespace(c, "shared3", "test_get_shared_nodes_3", "6e704bee83eb93db6fc2c417d7882964cd3f8cc87082cbb645982e34020c76c8", "100.64.0.3")
+	n1, m1 := CreateNodeNamespace(
+		c,
+		"shared1",
+		"test_get_shared_nodes_1",
+		"686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
+		"100.64.0.1",
+	)
+	_, m2 := CreateNodeNamespace(
+		c,
+		"shared2",
+		"test_get_shared_nodes_2",
+		"dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
+		"100.64.0.2",
+	)
+	_, m3 := CreateNodeNamespace(
+		c,
+		"shared3",
+		"test_get_shared_nodes_3",
+		"6e704bee83eb93db6fc2c417d7882964cd3f8cc87082cbb645982e34020c76c8",
+		"100.64.0.3",
+	)
 
 	pak4n1, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
@@ -226,12 +320,12 @@ func (s *Suite) TestDeleteSharedMachine(c *check.C) {
 
 	sharedMachines, err := h.ListSharedMachinesInNamespace(n1.Name)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(*sharedMachines), check.Equals, 1)
+	c.Assert(len(sharedMachines), check.Equals, 1)
 
 	err = h.DeleteMachine(m2)
 	c.Assert(err, check.IsNil)
 
 	sharedMachines, err = h.ListSharedMachinesInNamespace(n1.Name)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(*sharedMachines), check.Equals, 0)
+	c.Assert(len(sharedMachines), check.Equals, 0)
 }

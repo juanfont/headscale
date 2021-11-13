@@ -144,7 +144,7 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 					Msg("Failed to fetch namespaces")
 			}
 
-			for _, namespace := range *namespaces {
+			for _, namespace := range namespaces {
 				h.setLastStateChangeToNow(namespace.Name)
 			}
 		}
