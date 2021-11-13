@@ -34,4 +34,4 @@ jobs:
       - uses: bufbuild/buf-setup-action@v0.7.0
       - uses: bufbuild/buf-lint-action@v1
         with:
-          input: 'proto'
+          input: "proto"
