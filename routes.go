@@ -10,7 +10,7 @@ import (
 
 // Deprecated: use machine function instead
 // GetAdvertisedNodeRoutes returns the subnet routes advertised by a node (identified by
-// namespace and node name)
+// namespace and node name).
 func (h *Headscale) GetAdvertisedNodeRoutes(
 	namespace string,
 	nodeName string,
@@ -29,7 +29,7 @@ func (h *Headscale) GetAdvertisedNodeRoutes(
 
 // Deprecated: use machine function instead
 // GetEnabledNodeRoutes returns the subnet routes enabled by a node (identified by
-// namespace and node name)
+// namespace and node name).
 func (h *Headscale) GetEnabledNodeRoutes(
 	namespace string,
 	nodeName string,
@@ -63,7 +63,7 @@ func (h *Headscale) GetEnabledNodeRoutes(
 }
 
 // Deprecated: use machine function instead
-// IsNodeRouteEnabled checks if a certain route has been enabled
+// IsNodeRouteEnabled checks if a certain route has been enabled.
 func (h *Headscale) IsNodeRouteEnabled(
 	namespace string,
 	nodeName string,
@@ -89,7 +89,7 @@ func (h *Headscale) IsNodeRouteEnabled(
 
 // Deprecated: use EnableRoute in machine.go
 // EnableNodeRoute enables a subnet route advertised by a node (identified by
-// namespace and node name)
+// namespace and node name).
 func (h *Headscale) EnableNodeRoute(
 	namespace string,
 	nodeName string,

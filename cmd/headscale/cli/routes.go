@@ -171,7 +171,7 @@ omit the route you do not want to enable.
 	},
 }
 
-// routesToPtables converts the list of routes to a nice table
+// routesToPtables converts the list of routes to a nice table.
 func routesToPtables(routes *v1.Routes) pterm.TableData {
 	d := pterm.TableData{{"Route", "Enabled"}}
 

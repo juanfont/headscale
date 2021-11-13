@@ -355,7 +355,6 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 
 	// If the address is not set, we assume that we are on the server hosting headscale.
 	if address == "" {
-
 		log.Debug().
 			Str("socket", cfg.UnixSocket).
 			Msgf("HEADSCALE_CLI_ADDRESS environment is not set, connecting to unix socket.")

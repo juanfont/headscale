@@ -57,7 +57,7 @@ func (h *Headscale) initOIDC() error {
 
 // RegisterOIDC redirects to the OIDC provider for authentication
 // Puts machine key in cache so the callback can retrieve it using the oidc state param
-// Listens in /oidc/register/:mKey
+// Listens in /oidc/register/:mKey.
 func (h *Headscale) RegisterOIDC(c *gin.Context) {
 	mKeyStr := c.Param("mkey")
 	if mKeyStr == "" {
@@ -88,7 +88,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 // Retrieves the mkey from the state cache and adds the machine to the users email namespace
 // TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
 // TODO: Add groups information from OIDC tokens into machine HostInfo
-// Listens in /oidc/callback
+// Listens in /oidc/callback.
 func (h *Headscale) OIDCCallback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
@@ -170,7 +170,6 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	if nsName, ok := h.getNamespaceFromEmail(claims.Email); ok {
 		// register the machine if it's new
 		if !m.Registered {
-
 			log.Debug().Msg("Registering new machine after successful callback")
 
 			ns, err := h.GetNamespace(nsName)
@@ -218,7 +217,6 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 </html>
 
 `, claims.Email)))
-
 	}
 
 	log.Error().

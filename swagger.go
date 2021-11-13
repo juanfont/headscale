@@ -6,9 +6,8 @@ import (
 	"net/http"
 	"text/template"
 
-	"github.com/rs/zerolog/log"
-
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
 //go:embed gen/openapiv2/headscale/v1/headscale.swagger.json

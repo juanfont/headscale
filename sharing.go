@@ -8,7 +8,7 @@ const (
 	errorMachineNotShared     = Error("Machine not shared to this namespace")
 )
 
-// SharedMachine is a join table to support sharing nodes between namespaces
+// SharedMachine is a join table to support sharing nodes between namespaces.
 type SharedMachine struct {
 	gorm.Model
 	MachineID   uint64
@@ -17,7 +17,7 @@ type SharedMachine struct {
 	Namespace   Namespace
 }
 
-// AddSharedMachineToNamespace adds a machine as a shared node to a namespace
+// AddSharedMachineToNamespace adds a machine as a shared node to a namespace.
 func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error {
 	if m.NamespaceID == ns.ID {
 		return errorSameNamespace
@@ -42,7 +42,7 @@ func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error
 	return nil
 }
 
-// RemoveSharedMachineFromNamespace removes a shared machine from a namespace
+// RemoveSharedMachineFromNamespace removes a shared machine from a namespace.
 func (h *Headscale) RemoveSharedMachineFromNamespace(m *Machine, ns *Namespace) error {
 	if m.NamespaceID == ns.ID {
 		// Can't unshare from primary namespace
@@ -69,7 +69,7 @@ func (h *Headscale) RemoveSharedMachineFromNamespace(m *Machine, ns *Namespace) 
 	return nil
 }
 
-// RemoveSharedMachineFromAllNamespaces removes a machine as a shared node from all namespaces
+// RemoveSharedMachineFromAllNamespaces removes a machine as a shared node from all namespaces.
 func (h *Headscale) RemoveSharedMachineFromAllNamespaces(m *Machine) error {
 	sharedMachine := SharedMachine{}
 	if result := h.db.Where("machine_id = ?", m.ID).Unscoped().Delete(&sharedMachine); result.Error != nil {

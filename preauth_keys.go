@@ -7,10 +7,9 @@ import (
 	"strconv"
 	"time"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
-
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
 const (
@@ -19,7 +18,7 @@ const (
 	errSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
 )
 
-// PreAuthKey describes a pre-authorization key usable in a particular namespace
+// PreAuthKey describes a pre-authorization key usable in a particular namespace.
 type PreAuthKey struct {
 	ID          uint64 `gorm:"primary_key"`
 	Key         string
@@ -33,7 +32,7 @@ type PreAuthKey struct {
 	Expiration *time.Time
 }
 
-// CreatePreAuthKey creates a new PreAuthKey in a namespace, and returns it
+// CreatePreAuthKey creates a new PreAuthKey in a namespace, and returns it.
 func (h *Headscale) CreatePreAuthKey(
 	namespaceName string,
 	reusable bool,
@@ -65,7 +64,7 @@ func (h *Headscale) CreatePreAuthKey(
 	return &k, nil
 }
 
-// ListPreAuthKeys returns the list of PreAuthKeys for a namespace
+// ListPreAuthKeys returns the list of PreAuthKeys for a namespace.
 func (h *Headscale) ListPreAuthKeys(namespaceName string) ([]PreAuthKey, error) {
 	n, err := h.GetNamespace(namespaceName)
 	if err != nil {
@@ -79,7 +78,7 @@ func (h *Headscale) ListPreAuthKeys(namespaceName string) ([]PreAuthKey, error) 
 	return keys, nil
 }
 
-// GetPreAuthKey returns a PreAuthKey for a given key
+// GetPreAuthKey returns a PreAuthKey for a given key.
 func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, error) {
 	pak, err := h.checkKeyValidity(key)
 	if err != nil {
@@ -93,7 +92,7 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 	return pak, nil
 }
 
-// MarkExpirePreAuthKey marks a PreAuthKey as expired
+// MarkExpirePreAuthKey marks a PreAuthKey as expired.
 func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
 		return err
@@ -102,7 +101,7 @@ func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 }
 
 // checkKeyValidity does the heavy lifting for validation of the PreAuthKey coming from a node
-// If returns no error and a PreAuthKey, it can be used
+// If returns no error and a PreAuthKey, it can be used.
 func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 	pak := PreAuthKey{}
 	if result := h.db.Preload("Namespace").First(&pak, "key = ?", k); errors.Is(

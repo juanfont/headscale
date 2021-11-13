@@ -10,9 +10,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-
 	"gopkg.in/yaml.v2"
-
 	"tailscale.com/tailcfg"
 )
 
@@ -55,7 +53,7 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 // DERPMap, it will _only_ look at the Regions, an integer.
 // If a region exists in two of the given DERPMaps, the region
 // form the _last_ DERPMap will be preserved.
-// An empty DERPMap list will result in a DERPMap with no regions
+// An empty DERPMap list will result in a DERPMap with no regions.
 func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	result := tailcfg.DERPMap{
 		OmitDefaultRegions: false,

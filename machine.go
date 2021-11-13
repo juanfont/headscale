@@ -10,10 +10,9 @@ import (
 	"time"
 
 	"github.com/fatih/set"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
@@ -21,7 +20,7 @@ import (
 	"tailscale.com/types/wgkey"
 )
 
-// Machine is a Headscale client
+// Machine is a Headscale client.
 type Machine struct {
 	ID          uint64 `gorm:"primary_key"`
 	MachineKey  string `gorm:"type:varchar(64);unique_index"`
@@ -56,12 +55,12 @@ type (
 	MachinesP []*Machine
 )
 
-// For the time being this method is rather naive
+// For the time being this method is rather naive.
 func (m Machine) isAlreadyRegistered() bool {
 	return m.Registered
 }
 
-// isExpired returns whether the machine registration has expired
+// isExpired returns whether the machine registration has expired.
 func (m Machine) isExpired() bool {
 	return time.Now().UTC().After(*m.Expiry)
 }
@@ -119,7 +118,7 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 	return machines, nil
 }
 
-// getShared fetches machines that are shared to the `Namespace` of the machine we are getting peers for
+// getShared fetches machines that are shared to the `Namespace` of the machine we are getting peers for.
 func (h *Headscale) getShared(m *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
@@ -146,7 +145,7 @@ func (h *Headscale) getShared(m *Machine) (Machines, error) {
 	return peers, nil
 }
 
-// getSharedTo fetches the machines of the namespaces this machine is shared in
+// getSharedTo fetches the machines of the namespaces this machine is shared in.
 func (h *Headscale) getSharedTo(m *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
@@ -228,7 +227,7 @@ func (h *Headscale) ListMachines() ([]Machine, error) {
 	return machines, nil
 }
 
-// GetMachine finds a Machine by name and namespace and returns the Machine struct
+// GetMachine finds a Machine by name and namespace and returns the Machine struct.
 func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) {
 	machines, err := h.ListMachinesInNamespace(namespace)
 	if err != nil {
@@ -243,7 +242,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 	return nil, fmt.Errorf("machine not found")
 }
 
-// GetMachineByID finds a Machine by ID and returns the Machine struct
+// GetMachineByID finds a Machine by ID and returns the Machine struct.
 func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	m := Machine{}
 	if result := h.db.Preload("Namespace").Find(&Machine{ID: id}).First(&m); result.Error != nil {
@@ -252,7 +251,7 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	return &m, nil
 }
 
-// GetMachineByMachineKey finds a Machine by ID and returns the Machine struct
+// GetMachineByMachineKey finds a Machine by ID and returns the Machine struct.
 func (h *Headscale) GetMachineByMachineKey(mKey string) (*Machine, error) {
 	m := Machine{}
 	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey); result.Error != nil {
@@ -270,7 +269,7 @@ func (h *Headscale) UpdateMachine(m *Machine) error {
 	return nil
 }
 
-// DeleteMachine softs deletes a Machine from the database
+// DeleteMachine softs deletes a Machine from the database.
 func (h *Headscale) DeleteMachine(m *Machine) error {
 	err := h.RemoveSharedMachineFromAllNamespaces(m)
 	if err != nil && err != errorMachineNotShared {
@@ -287,7 +286,7 @@ func (h *Headscale) DeleteMachine(m *Machine) error {
 	return h.RequestMapUpdates(namespaceID)
 }
 
-// HardDeleteMachine hard deletes a Machine from the database
+// HardDeleteMachine hard deletes a Machine from the database.
 func (h *Headscale) HardDeleteMachine(m *Machine) error {
 	err := h.RemoveSharedMachineFromAllNamespaces(m)
 	if err != nil && err != errorMachineNotShared {
@@ -302,7 +301,7 @@ func (h *Headscale) HardDeleteMachine(m *Machine) error {
 	return h.RequestMapUpdates(namespaceID)
 }
 
-// GetHostInfo returns a Hostinfo struct for the machine
+// GetHostInfo returns a Hostinfo struct for the machine.
 func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 	hostinfo := tailcfg.Hostinfo{}
 	if len(m.HostInfo) != 0 {
@@ -397,7 +396,7 @@ func (ms Machines) toNodes(
 }
 
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
-// as per the expected behaviour in the official SaaS
+// as per the expected behaviour in the official SaaS.
 func (m Machine) toNode(
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
@@ -572,7 +571,7 @@ func (m *Machine) toProto() *v1.Machine {
 	return machine
 }
 
-// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey
+// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
 func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, error) {
 	ns, err := h.GetNamespace(namespace)
 	if err != nil {

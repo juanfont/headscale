@@ -10,23 +10,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog/log"
-
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
 
 // KeyHandler provides the Headscale pub key
-// Listens in /key
+// Listens in /key.
 func (h *Headscale) KeyHandler(c *gin.Context) {
 	c.Data(200, "text/plain; charset=utf-8", []byte(h.publicKey.HexString()))
 }
 
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
-// Listens in /register
+// Listens in /register.
 func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 	mKeyStr := c.Query("key")
 	if mKeyStr == "" {
@@ -55,7 +54,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 }
 
 // RegistrationHandler handles the actual registration process of a machine
-// Endpoint /machine/:id
+// Endpoint /machine/:id.
 func (h *Headscale) RegistrationHandler(c *gin.Context) {
 	body, _ := io.ReadAll(c.Request.Body)
 	mKeyStr := c.Param("id")
@@ -111,7 +110,6 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 	// We have the updated key!
 	if m.NodeKey == wgkey.Key(req.NodeKey).HexString() {
-
 		// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 		//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 		if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {

@@ -5,14 +5,13 @@ import (
 	"net/http"
 	"text/template"
 
-	"github.com/rs/zerolog/log"
-
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 // AppleMobileConfig shows a simple message in the browser to point to the CLI
-// Listens in /register
+// Listens in /register.
 func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 	t := template.Must(template.New("apple").Parse(`
 <html>

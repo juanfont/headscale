@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-
 	"github.com/tailscale/hujson"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -25,7 +24,7 @@ const (
 	errorInvalidPortFormat  = Error("invalid port format")
 )
 
-// LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules
+// LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules.
 func (h *Headscale) LoadACLPolicy(path string) error {
 	policyFile, err := os.Open(path)
 	if err != nil {

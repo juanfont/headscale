@@ -113,7 +113,6 @@ func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
 
 		if ip.IsZero() &&
 			ip.IsLoopback() {
-
 			ip = ip.Next()
 			continue
 		}
