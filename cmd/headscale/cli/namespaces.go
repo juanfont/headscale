@@ -195,7 +195,8 @@ var renameNamespaceCmd = &cobra.Command{
 	Use:   "rename OLD_NAME NEW_NAME",
 	Short: "Renames a namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 2 {
+		expectedArguments := 2
+		if len(args) < expectedArguments {
 			return fmt.Errorf("Missing parameters")
 		}
 

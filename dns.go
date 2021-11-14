@@ -10,6 +10,10 @@ import (
 	"tailscale.com/util/dnsname"
 )
 
+const (
+	BYTE_SIZE = 8
+)
+
 // generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
 // This list of reverse DNS entries instructs the OS on what subnets and domains the Tailscale embedded DNS
 // server (listening in 100.100.100.100 udp/53) should be used for.
@@ -43,10 +47,10 @@ func generateMagicDNSRootDomains(
 	maskBits, _ := netRange.Mask.Size()
 
 	// lastOctet is the last IP byte covered by the mask
-	lastOctet := maskBits / 8
+	lastOctet := maskBits / BYTE_SIZE
 
 	// wildcardBits is the number of bits not under the mask in the lastOctet
-	wildcardBits := 8 - maskBits%8
+	wildcardBits := BYTE_SIZE - maskBits%BYTE_SIZE
 
 	// min is the value in the lastOctet byte of the IP
 	// max is basically 2^wildcardBits - i.e., the value when all the wildcardBits are set to 1

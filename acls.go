@@ -24,6 +24,14 @@ const (
 	errorInvalidPortFormat  = Error("invalid port format")
 )
 
+const (
+	PORT_RANGE_BEGIN     = 0
+	PORT_RANGE_END       = 65535
+	BASE_10              = 10
+	BIT_SIZE_16          = 16
+	EXPECTED_TOKEN_ITEMS = 2
+)
+
 // LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules.
 func (h *Headscale) LoadACLPolicy(path string) error {
 	policyFile, err := os.Open(path)
@@ -114,7 +122,7 @@ func (h *Headscale) generateACLPolicyDestPorts(
 	d string,
 ) ([]tailcfg.NetPortRange, error) {
 	tokens := strings.Split(d, ":")
-	if len(tokens) < 2 || len(tokens) > 3 {
+	if len(tokens) < EXPECTED_TOKEN_ITEMS || len(tokens) > 3 {
 		return nil, errorInvalidPortFormat
 	}
 
@@ -125,7 +133,7 @@ func (h *Headscale) generateACLPolicyDestPorts(
 	// tag:montreal-webserver:80,443
 	// tag:api-server:443
 	// example-host-1:*
-	if len(tokens) == 2 {
+	if len(tokens) == EXPECTED_TOKEN_ITEMS {
 		alias = tokens[0]
 	} else {
 		alias = fmt.Sprintf("%s:%s", tokens[0], tokens[1])
@@ -248,14 +256,16 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 
 func (h *Headscale) expandPorts(s string) (*[]tailcfg.PortRange, error) {
 	if s == "*" {
-		return &[]tailcfg.PortRange{{First: 0, Last: 65535}}, nil
+		return &[]tailcfg.PortRange{
+			{First: PORT_RANGE_BEGIN, Last: PORT_RANGE_END},
+		}, nil
 	}
 
 	ports := []tailcfg.PortRange{}
 	for _, p := range strings.Split(s, ",") {
 		rang := strings.Split(p, "-")
 		if len(rang) == 1 {
-			pi, err := strconv.ParseUint(rang[0], 10, 16)
+			pi, err := strconv.ParseUint(rang[0], BASE_10, BIT_SIZE_16)
 			if err != nil {
 				return nil, err
 			}
@@ -263,12 +273,12 @@ func (h *Headscale) expandPorts(s string) (*[]tailcfg.PortRange, error) {
 				First: uint16(pi),
 				Last:  uint16(pi),
 			})
-		} else if len(rang) == 2 {
-			start, err := strconv.ParseUint(rang[0], 10, 16)
+		} else if len(rang) == EXPECTED_TOKEN_ITEMS {
+			start, err := strconv.ParseUint(rang[0], BASE_10, BIT_SIZE_16)
 			if err != nil {
 				return nil, err
 			}
-			last, err := strconv.ParseUint(rang[1], 10, 16)
+			last, err := strconv.ParseUint(rang[1], BASE_10, BIT_SIZE_16)
 			if err != nil {
 				return nil, err
 			}

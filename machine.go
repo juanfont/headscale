@@ -523,7 +523,7 @@ func (m Machine) toNode(
 	n := tailcfg.Node{
 		ID: tailcfg.NodeID(m.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
-			strconv.FormatUint(m.ID, 10),
+			strconv.FormatUint(m.ID, BASE_10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostname,
 		User:       tailcfg.UserID(m.NamespaceID),

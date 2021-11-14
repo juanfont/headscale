@@ -7,6 +7,7 @@ import (
 	"time"
 
 	survey "github.com/AlecAivazis/survey/v2"
+	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -450,7 +451,7 @@ func nodesToPtables(
 		d = append(
 			d,
 			[]string{
-				strconv.FormatUint(machine.Id, 10),
+				strconv.FormatUint(machine.Id, headscale.BASE_10),
 				machine.Name,
 				nodeKey.ShortString(),
 				namespace,

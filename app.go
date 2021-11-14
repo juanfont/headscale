@@ -47,9 +47,11 @@ import (
 )
 
 const (
-	AUTH_PREFIX = "Bearer "
-	POSTGRESQL  = "postgresql"
-	SQLITE      = "sqlite3"
+	AUTH_PREFIX              = "Bearer "
+	POSTGRESQL               = "postgresql"
+	SQLITE                   = "sqlite3"
+	UPDATE_RATE_MILLISECONDS = 5000
+	HTTP_READ_TIMEOUT        = 30 * time.Second
 )
 
 // Config contains the initial Headscale configuration.
@@ -507,14 +509,13 @@ func (h *Headscale) Serve() error {
 	}
 
 	// I HATE THIS
-	updateMillisecondsWait := int64(5000)
-	go h.watchForKVUpdates(updateMillisecondsWait)
-	go h.expireEphemeralNodes(updateMillisecondsWait)
+	go h.watchForKVUpdates(UPDATE_RATE_MILLISECONDS)
+	go h.expireEphemeralNodes(UPDATE_RATE_MILLISECONDS)
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
 		Handler:     r,
-		ReadTimeout: 30 * time.Second,
+		ReadTimeout: HTTP_READ_TIMEOUT,
 		// Go does not handle timeouts in HTTP very well, and there is
 		// no good way to handle streaming timeouts, therefore we need to
 		// keep this at unlimited and be careful to clean up connections

@@ -15,6 +15,11 @@ import (
 	"tailscale.com/types/wgkey"
 )
 
+const (
+	KEEP_ALIVE_INTERVAL   = 60 * time.Second
+	UPDATE_CHECK_INTERVAL = 10 * time.Second
+)
+
 // PollNetMapHandler takes care of /machine/:id/map
 //
 // This is the busiest endpoint, as it keeps the HTTP long poll that updates
@@ -127,7 +132,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Str("handler", "PollNetMap").
 			Str("machine", m.Name).
 			Msg("Client is starting up. Probably interested in a DERP map")
-		c.Data(200, "application/json; charset=utf-8", data)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", data)
 
 		return
 	}
@@ -159,7 +164,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Str("handler", "PollNetMap").
 			Str("machine", m.Name).
 			Msg("Client sent endpoint update and is ok with a response without peer list")
-		c.Data(200, "application/json; charset=utf-8", data)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", data)
 
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
@@ -483,8 +488,8 @@ func (h *Headscale) scheduledPollWorker(
 	req tailcfg.MapRequest,
 	m *Machine,
 ) {
-	keepAliveTicker := time.NewTicker(60 * time.Second)
-	updateCheckerTicker := time.NewTicker(10 * time.Second)
+	keepAliveTicker := time.NewTicker(KEEP_ALIVE_INTERVAL)
+	updateCheckerTicker := time.NewTicker(UPDATE_CHECK_INTERVAL)
 
 	for {
 		select {

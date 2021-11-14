@@ -156,7 +156,7 @@ func (h *Headscale) generateKey() (string, error) {
 func (key *PreAuthKey) toProto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
 		Namespace: key.Namespace.Name,
-		Id:        strconv.FormatUint(key.ID, 10),
+		Id:        strconv.FormatUint(key.ID, BASE_10),
 		Key:       key.Key,
 		Ephemeral: key.Ephemeral,
 		Reusable:  key.Reusable,

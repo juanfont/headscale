@@ -18,10 +18,12 @@ import (
 	"tailscale.com/types/wgkey"
 )
 
+const RESERVED_RESPONSE_HEADER_SIZE = 4
+
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
 func (h *Headscale) KeyHandler(c *gin.Context) {
-	c.Data(200, "text/plain; charset=utf-8", []byte(h.publicKey.HexString()))
+	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(h.publicKey.HexString()))
 }
 
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
@@ -139,7 +141,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 				return
 			}
-			c.Data(200, "application/json; charset=utf-8", respBody)
+			c.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 
 			return
 		}
@@ -170,7 +172,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			}
 			machineRegistrations.WithLabelValues("update", "web", "success", m.Namespace.Name).
 				Inc()
-			c.Data(200, "application/json; charset=utf-8", respBody)
+			c.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 
 			return
 		}
@@ -213,7 +215,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 		}
 		machineRegistrations.WithLabelValues("new", "web", "success", m.Namespace.Name).
 			Inc()
-		c.Data(200, "application/json; charset=utf-8", respBody)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 
 		return
 	}
@@ -239,7 +241,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 			return
 		}
-		c.Data(200, "application/json; charset=utf-8", respBody)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 
 		return
 	}
@@ -275,7 +277,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 		return
 	}
-	c.Data(200, "application/json; charset=utf-8", respBody)
+	c.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 }
 
 func (h *Headscale) getMapResponse(
@@ -360,7 +362,7 @@ func (h *Headscale) getMapResponse(
 		}
 	}
 	// declare the incoming size on the first 4 bytes
-	data := make([]byte, 4)
+	data := make([]byte, RESERVED_RESPONSE_HEADER_SIZE)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
 
@@ -390,7 +392,7 @@ func (h *Headscale) getMapKeepAliveResponse(
 			return nil, err
 		}
 	}
-	data := make([]byte, 4)
+	data := make([]byte, RESERVED_RESPONSE_HEADER_SIZE)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
 
@@ -430,7 +432,7 @@ func (h *Headscale) handleAuthKey(
 
 			return
 		}
-		c.Data(401, "application/json; charset=utf-8", respBody)
+		c.Data(http.StatusUnauthorized, "application/json; charset=utf-8", respBody)
 		log.Error().
 			Str("func", "handleAuthKey").
 			Str("machine", m.Name).
@@ -490,7 +492,7 @@ func (h *Headscale) handleAuthKey(
 	}
 	machineRegistrations.WithLabelValues("new", "authkey", "success", m.Namespace.Name).
 		Inc()
-	c.Data(200, "application/json; charset=utf-8", respBody)
+	c.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 	log.Info().
 		Str("func", "handleAuthKey").
 		Str("machine", m.Name).

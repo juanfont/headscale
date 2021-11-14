@@ -12,6 +12,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const (
+	DEFAULT_PRE_AUTH_KEY_EXPIRY = 24 * time.Hour
+)
+
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
 	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
@@ -27,7 +31,7 @@ func init() {
 	createPreAuthKeyCmd.PersistentFlags().
 		Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().
-		DurationP("expiration", "e", 24*time.Hour, "Human-readable expiration of the key (30m, 24h, 365d...)")
+		DurationP("expiration", "e", DEFAULT_PRE_AUTH_KEY_EXPIRY, "Human-readable expiration of the key (30m, 24h, 365d...)")
 }
 
 var preauthkeysCmd = &cobra.Command{

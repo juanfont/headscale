@@ -17,6 +17,12 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const (
+	OIDC_STATE_CACHE_EXPIRATION       = time.Minute * 5
+	OIDC_STATE_CACHE_CLEANUP_INTERVAL = time.Minute * 10
+	RANDOM_BYTE_SIZE                  = 16
+)
+
 type IDTokenClaims struct {
 	Name     string   `json:"name,omitempty"`
 	Groups   []string `json:"groups,omitempty"`
@@ -50,7 +56,10 @@ func (h *Headscale) initOIDC() error {
 
 	// init the state cache if it hasn't been already
 	if h.oidcStateCache == nil {
-		h.oidcStateCache = cache.New(time.Minute*5, time.Minute*10)
+		h.oidcStateCache = cache.New(
+			OIDC_STATE_CACHE_EXPIRATION,
+			OIDC_STATE_CACHE_CLEANUP_INTERVAL,
+		)
 	}
 
 	return nil
@@ -67,7 +76,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 		return
 	}
 
-	b := make([]byte, 16)
+	b := make([]byte, RANDOM_BYTE_SIZE)
 	if _, err := rand.Read(b); err != nil {
 		log.Error().Msg("could not read 16 bytes from rand")
 		c.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
@@ -78,7 +87,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 	stateStr := hex.EncodeToString(b)[:32]
 
 	// place the machine key into the state cache, so it can be retrieved later
-	h.oidcStateCache.Set(stateStr, mKeyStr, time.Minute*5)
+	h.oidcStateCache.Set(stateStr, mKeyStr, OIDC_STATE_CACHE_EXPIRATION)
 
 	authUrl := h.oauth2Config.AuthCodeURL(stateStr)
 	log.Debug().Msgf("Redirecting to %s for authentication", authUrl)
