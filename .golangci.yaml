@@ -30,7 +30,6 @@ linters:
     - stylecheck
     - wrapcheck
     - paralleltest
-    - noctx
     - nlreturn
     - ifshort
     - gomnd

@@ -1,6 +1,7 @@
 package headscale
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -30,10 +31,19 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 }
 
 func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", addr.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
-	resp, err := client.Get(addr.String())
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
