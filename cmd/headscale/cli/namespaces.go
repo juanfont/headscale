@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
@@ -77,26 +78,58 @@ var destroyNamespaceCmd = &cobra.Command{
 
 		namespaceName := args[0]
 
+		request := &v1.GetNamespaceRequest{
+			Name: namespaceName,
+		}
+
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.DeleteNamespaceRequest{Name: namespaceName}
-
-		response, err := client.DeleteNamespace(ctx, request)
+		_, err := client.GetNamespace(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf(
-					"Cannot destroy namespace: %s",
-					status.Convert(err).Message(),
-				),
+				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
 				output,
 			)
 			return
 		}
 
-		SuccessOutput(response, "Namespace destroyed", output)
+		confirm := false
+		force, _ := cmd.Flags().GetBool("force")
+		if !force {
+			prompt := &survey.Confirm{
+				Message: fmt.Sprintf(
+					"Do you want to remove the namespace '%s' and any associated preauthkeys?",
+					namespaceName,
+				),
+			}
+			err := survey.AskOne(prompt, &confirm)
+			if err != nil {
+				return
+			}
+		}
+
+		if confirm || force {
+			request := &v1.DeleteNamespaceRequest{Name: namespaceName}
+
+			response, err := client.DeleteNamespace(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf(
+						"Cannot destroy namespace: %s",
+						status.Convert(err).Message(),
+					),
+					output,
+				)
+				return
+			}
+			SuccessOutput(response, "Namespace destroyed", output)
+		} else {
+			SuccessOutput(map[string]string{"Result": "Namespace not destroyed"}, "Namespace not destroyed", output)
+		}
 	},
 }
 
