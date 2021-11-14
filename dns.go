@@ -32,8 +32,7 @@ import (
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
 func generateMagicDNSRootDomains(
 	ipPrefix netaddr.IPPrefix,
-	baseDomain string,
-) ([]dnsname.FQDN, error) {
+) []dnsname.FQDN {
 	// TODO(juanfont): we are not handing out IPv6 addresses yet
 	// and in fact this is Tailscale.com's range (note the fd7a:115c:a1e0: range in the fc00::/7 network)
 	ipv6base := dnsname.FQDN("0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
@@ -70,7 +69,7 @@ func generateMagicDNSRootDomains(
 		fqdns = append(fqdns, fqdn)
 	}
 
-	return fqdns, nil
+	return fqdns
 }
 
 func getMapResponseDNSConfig(
@@ -78,7 +77,7 @@ func getMapResponseDNSConfig(
 	baseDomain string,
 	m Machine,
 	peers Machines,
-) (*tailcfg.DNSConfig, error) {
+) *tailcfg.DNSConfig {
 	var dnsConfig *tailcfg.DNSConfig
 	if dnsConfigOrig != nil && dnsConfigOrig.Proxied { // if MagicDNS is enabled
 		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
@@ -101,5 +100,5 @@ func getMapResponseDNSConfig(
 		dnsConfig = dnsConfigOrig
 	}
 
-	return dnsConfig, nil
+	return dnsConfig
 }

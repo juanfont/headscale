@@ -11,8 +11,7 @@ import (
 
 func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 	prefix := netaddr.MustParseIPPrefix("100.64.0.0/10")
-	domains, err := generateMagicDNSRootDomains(prefix, "foobar.headscale.net")
-	c.Assert(err, check.IsNil)
+	domains := generateMagicDNSRootDomains(prefix)
 
 	found := false
 	for _, domain := range domains {
@@ -47,8 +46,7 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 
 func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
 	prefix := netaddr.MustParseIPPrefix("172.16.0.0/16")
-	domains, err := generateMagicDNSRootDomains(prefix, "headscale.net")
-	c.Assert(err, check.IsNil)
+	domains := generateMagicDNSRootDomains(prefix)
 
 	found := false
 	for _, domain := range domains {
@@ -178,8 +176,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 	m1peers, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
 
-	dnsConfig, err := getMapResponseDNSConfig(&dnsConfigOrig, baseDomain, *m1, m1peers)
-	c.Assert(err, check.IsNil)
+	dnsConfig := getMapResponseDNSConfig(&dnsConfigOrig, baseDomain, *m1, m1peers)
 	c.Assert(dnsConfig, check.NotNil)
 	c.Assert(len(dnsConfig.Routes), check.Equals, 2)
 
@@ -303,8 +300,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 	m1peers, err := h.getPeers(m1)
 	c.Assert(err, check.IsNil)
 
-	dnsConfig, err := getMapResponseDNSConfig(&dnsConfigOrig, baseDomain, *m1, m1peers)
-	c.Assert(err, check.IsNil)
+	dnsConfig := getMapResponseDNSConfig(&dnsConfigOrig, baseDomain, *m1, m1peers)
 	c.Assert(dnsConfig, check.NotNil)
 	c.Assert(len(dnsConfig.Routes), check.Equals, 0)
 	c.Assert(len(dnsConfig.Domains), check.Equals, 1)

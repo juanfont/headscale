@@ -492,7 +492,7 @@ func (h *Headscale) scheduledPollWorker(
 			return
 
 		case <-keepAliveTicker.C:
-			data, err := h.getMapKeepAliveResponse(mKey, req, m)
+			data, err := h.getMapKeepAliveResponse(mKey, req)
 			if err != nil {
 				log.Error().
 					Str("func", "keepAlive").

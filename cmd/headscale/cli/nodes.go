@@ -266,7 +266,6 @@ var deleteNodeCmd = &cobra.Command{
 
 func sharingWorker(
 	cmd *cobra.Command,
-	args []string,
 ) (string, *v1.Machine, *v1.Namespace, error) {
 	output, _ := cmd.Flags().GetString("output")
 	namespaceStr, err := cmd.Flags().GetString("namespace")
@@ -324,7 +323,7 @@ var shareMachineCmd = &cobra.Command{
 	Use:   "share",
 	Short: "Shares a node from the current namespace to the specified one",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, machine, namespace, err := sharingWorker(cmd, args)
+		output, machine, namespace, err := sharingWorker(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -363,7 +362,7 @@ var unshareMachineCmd = &cobra.Command{
 	Use:   "unshare",
 	Short: "Unshares a node from the specified namespace",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, machine, namespace, err := sharingWorker(cmd, args)
+		output, machine, namespace, err := sharingWorker(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,

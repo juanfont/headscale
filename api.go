@@ -319,20 +319,12 @@ func (h *Headscale) getMapResponse(
 		return nil, err
 	}
 
-	dnsConfig, err := getMapResponseDNSConfig(
+	dnsConfig := getMapResponseDNSConfig(
 		h.cfg.DNSConfig,
 		h.cfg.BaseDomain,
 		*m,
 		peers,
 	)
-	if err != nil {
-		log.Error().
-			Str("func", "getMapResponse").
-			Err(err).
-			Msg("Failed generate the DNSConfig")
-
-		return nil, err
-	}
 
 	resp := tailcfg.MapResponse{
 		KeepAlive:    false,
@@ -378,7 +370,6 @@ func (h *Headscale) getMapResponse(
 func (h *Headscale) getMapKeepAliveResponse(
 	mKey wgkey.Key,
 	req tailcfg.MapRequest,
-	m *Machine,
 ) ([]byte, error) {
 	resp := tailcfg.MapResponse{
 		KeepAlive: true,

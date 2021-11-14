@@ -187,13 +187,9 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	}
 
 	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS
-		magicDNSDomains, err := generateMagicDNSRootDomains(
+		magicDNSDomains := generateMagicDNSRootDomains(
 			h.cfg.IPPrefix,
-			h.cfg.BaseDomain,
 		)
-		if err != nil {
-			return nil, err
-		}
 		// we might have routes already from Split DNS
 		if h.cfg.DNSConfig.Routes == nil {
 			h.cfg.DNSConfig.Routes = make(map[string][]dnstype.Resolver)

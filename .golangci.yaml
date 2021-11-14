@@ -29,21 +29,20 @@ linters:
     - testpackage
     - stylecheck
     - wrapcheck
-    - paralleltest
     - ifshort
     - gomnd
     - goerr113
     - errorlint
     - forcetypeassert
     - errname
-    - unparam
-    - makezero
     - gosec
     - gocritic
     - forbidigo
     - dupl
     - goconst
     - varnamelen
+    - makezero
+    - paralleltest
 
     # We might want to enable this, but it might be a lot of work
     - cyclop
