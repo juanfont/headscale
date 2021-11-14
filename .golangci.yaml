@@ -45,7 +45,6 @@ linters:
     - goconst
     - exhaustive
     - varnamelen
-    - nilnil
 
     # We might want to enable this, but it might be a lot of work
     - cyclop

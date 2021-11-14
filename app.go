@@ -588,6 +588,7 @@ func (h *Headscale) Serve() error {
 }
 
 func (h *Headscale) getTLSSettings() (*tls.Config, error) {
+	var err error
 	if h.cfg.TLSLetsEncryptHostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().
@@ -628,12 +629,11 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			log.Warn().Msg("Listening without TLS but ServerURL does not start with http://")
 		}
 
-		return nil, nil
+		return nil, err
 	} else {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
-		var err error
 		tlsConfig := &tls.Config{}
 		tlsConfig.ClientAuth = tls.RequireAnyClientCert
 		tlsConfig.NextProtos = []string{"http/1.1"}
