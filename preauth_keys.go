@@ -93,6 +93,16 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 	return pak, nil
 }
 
+// DestroyPreAuthKey destroys a preauthkey. Returns error if the PreAuthKey
+// does not exist.
+func (h *Headscale) DestroyPreAuthKey(pak *PreAuthKey) error {
+	if result := h.db.Unscoped().Delete(&pak); result.Error != nil {
+		return result.Error
+	}
+
+	return nil
+}
+
 // MarkExpirePreAuthKey marks a PreAuthKey as expired
 func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
