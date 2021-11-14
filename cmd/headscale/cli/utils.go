@@ -52,8 +52,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("cli.insecure", false)
 	viper.SetDefault("cli.timeout", "5s")
 
-	err := viper.ReadInConfig()
-	if err != nil {
+	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("Fatal error reading config file: %s \n", err)
 	}
 

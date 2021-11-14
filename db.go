@@ -105,8 +105,7 @@ func (h *Headscale) setValue(key string, value string) error {
 		Value: value,
 	}
 
-	_, err := h.getValue(key)
-	if err == nil {
+	if _, err := h.getValue(key); err == nil {
 		h.db.Model(&kv).Where("key = ?", key).Update("value", value)
 
 		return nil

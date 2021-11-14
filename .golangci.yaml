@@ -29,7 +29,6 @@ linters:
     - testpackage
     - stylecheck
     - wrapcheck
-    - ifshort
     - gomnd
     - goerr113
     - errorlint

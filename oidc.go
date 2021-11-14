@@ -68,8 +68,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 	}
 
 	b := make([]byte, 16)
-	_, err := rand.Read(b)
-	if err != nil {
+	if _, err := rand.Read(b); err != nil {
 		log.Error().Msg("could not read 16 bytes from rand")
 		c.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
 
