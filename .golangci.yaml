@@ -25,6 +25,9 @@ linters:
     - godox
     - ireturn
 
+    # In progress
+    - gocritic
+
     # We should strive to enable these:
     - testpackage
     - stylecheck
@@ -34,7 +37,6 @@ linters:
     - forcetypeassert
     - errname
     - gosec
-    - gocritic
     - forbidigo
     - dupl
     - varnamelen

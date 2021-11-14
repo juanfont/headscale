@@ -6,7 +6,7 @@ import (
 
 func CreateNodeNamespace(
 	c *check.C,
-	namespace, node, key, IP string,
+	namespace, node, key, ip string,
 ) (*Namespace, *Machine) {
 	n1, err := h.CreateNamespace(namespace)
 	c.Assert(err, check.IsNil)
@@ -26,7 +26,7 @@ func CreateNodeNamespace(
 		NamespaceID:    n1.ID,
 		Registered:     true,
 		RegisterMethod: "authKey",
-		IPAddress:      IP,
+		IPAddress:      ip,
 		AuthKeyID:      uint(pak1.ID),
 	}
 	h.db.Save(m1)

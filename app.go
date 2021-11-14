@@ -345,10 +345,10 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 		"Authentication is not implemented yet",
 	)
 
-	//if strings.TrimPrefix(token, AUTH_PREFIX) != a.Token {
-	//	log.Error().Caller().Str("client_address", p.Addr.String()).Msg("invalid token")
-	//	return ctx, status.Error(codes.Unauthenticated, "invalid token")
-	//}
+	// if strings.TrimPrefix(token, AUTH_PREFIX) != a.Token {
+	// 	log.Error().Caller().Str("client_address", p.Addr.String()).Msg("invalid token")
+	// 	return ctx, status.Error(codes.Unauthenticated, "invalid token")
+	// }
 
 	// return handler(ctx, req)
 }
@@ -604,12 +604,14 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			Email: h.cfg.ACMEEmail,
 		}
 
-		if h.cfg.TLSLetsEncryptChallengeType == "TLS-ALPN-01" {
+		switch h.cfg.TLSLetsEncryptChallengeType {
+		case "TLS-ALPN-01":
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
 			// must be reachable on port 443.
 			return m.TLSConfig(), nil
-		} else if h.cfg.TLSLetsEncryptChallengeType == "HTTP-01" {
+
+		case "HTTP-01":
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
@@ -620,7 +622,8 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			}()
 
 			return m.TLSConfig(), nil
-		} else {
+
+		default:
 			return nil, errors.New("unknown value for TLSLetsEncryptChallengeType")
 		}
 	} else if h.cfg.TLSCertPath == "" {

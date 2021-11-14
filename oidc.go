@@ -136,11 +136,11 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	}
 
 	// TODO: we can use userinfo at some point to grab additional information about the user (groups membership, etc)
-	//userInfo, err := oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
-	//if err != nil {
-	//	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo: %s", err))
-	//	return
-	//}
+	// userInfo, err := oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
+	// if err != nil {
+	// 	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo: %s", err))
+	// 	return
+	// }
 
 	// Extract custom claims
 	var claims IDTokenClaims

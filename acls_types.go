@@ -56,7 +56,7 @@ func (h *Hosts) UnmarshalJSON(data []byte) error {
 	}
 	for k, v := range hs {
 		if !strings.Contains(v, "/") {
-			v = v + "/32"
+			v += "/32"
 		}
 		prefix, err := netaddr.ParseIPPrefix(v)
 		if err != nil {

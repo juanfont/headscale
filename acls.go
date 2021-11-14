@@ -264,7 +264,8 @@ func (h *Headscale) expandPorts(s string) (*[]tailcfg.PortRange, error) {
 	ports := []tailcfg.PortRange{}
 	for _, p := range strings.Split(s, ",") {
 		rang := strings.Split(p, "-")
-		if len(rang) == 1 {
+		switch len(rang) {
+		case 1:
 			pi, err := strconv.ParseUint(rang[0], BASE_10, BIT_SIZE_16)
 			if err != nil {
 				return nil, err
@@ -273,7 +274,8 @@ func (h *Headscale) expandPorts(s string) (*[]tailcfg.PortRange, error) {
 				First: uint16(pi),
 				Last:  uint16(pi),
 			})
-		} else if len(rang) == EXPECTED_TOKEN_ITEMS {
+
+		case EXPECTED_TOKEN_ITEMS:
 			start, err := strconv.ParseUint(rang[0], BASE_10, BIT_SIZE_16)
 			if err != nil {
 				return nil, err
@@ -286,7 +288,8 @@ func (h *Headscale) expandPorts(s string) (*[]tailcfg.PortRange, error) {
 				First: uint16(start),
 				Last:  uint16(last),
 			})
-		} else {
+
+		default:
 			return nil, errorInvalidPortFormat
 		}
 	}
