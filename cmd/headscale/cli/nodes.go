@@ -157,14 +157,14 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
-		d, err := nodesToPtables(namespace, response.Machines)
+		tableData, err := nodesToPtables(namespace, response.Machines)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
 			return
 		}
 
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -183,7 +183,7 @@ var deleteNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		id, err := cmd.Flags().GetInt("identifier")
+		identifier, err := cmd.Flags().GetInt("identifier")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -199,7 +199,7 @@ var deleteNodeCmd = &cobra.Command{
 		defer conn.Close()
 
 		getRequest := &v1.GetMachineRequest{
-			MachineId: uint64(id),
+			MachineId: uint64(identifier),
 		}
 
 		getResponse, err := client.GetMachine(ctx, getRequest)
@@ -217,7 +217,7 @@ var deleteNodeCmd = &cobra.Command{
 		}
 
 		deleteRequest := &v1.DeleteMachineRequest{
-			MachineId: uint64(id),
+			MachineId: uint64(identifier),
 		}
 
 		confirm := false
@@ -280,7 +280,7 @@ func sharingWorker(
 	defer cancel()
 	defer conn.Close()
 
-	id, err := cmd.Flags().GetInt("identifier")
+	identifier, err := cmd.Flags().GetInt("identifier")
 	if err != nil {
 		ErrorOutput(err, fmt.Sprintf("Error converting ID to integer: %s", err), output)
 
@@ -288,7 +288,7 @@ func sharingWorker(
 	}
 
 	machineRequest := &v1.GetMachineRequest{
-		MachineId: uint64(id),
+		MachineId: uint64(identifier),
 	}
 
 	machineResponse, err := client.GetMachine(ctx, machineRequest)
@@ -402,7 +402,7 @@ func nodesToPtables(
 	currentNamespace string,
 	machines []*v1.Machine,
 ) (pterm.TableData, error) {
-	d := pterm.TableData{
+	tableData := pterm.TableData{
 		{
 			"ID",
 			"Name",
@@ -448,8 +448,8 @@ func nodesToPtables(
 			// Shared into this namespace
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
-		d = append(
-			d,
+		tableData = append(
+			tableData,
 			[]string{
 				strconv.FormatUint(machine.Id, headscale.BASE_10),
 				machine.Name,
@@ -463,5 +463,5 @@ func nodesToPtables(
 		)
 	}
 
-	return d, nil
+	return tableData, nil
 }

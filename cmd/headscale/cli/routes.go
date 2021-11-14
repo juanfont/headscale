@@ -81,14 +81,14 @@ var listRoutesCmd = &cobra.Command{
 			return
 		}
 
-		d := routesToPtables(response.Routes)
+		tableData := routesToPtables(response.Routes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
 			return
 		}
 
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -162,14 +162,14 @@ omit the route you do not want to enable.
 			return
 		}
 
-		d := routesToPtables(response.Routes)
+		tableData := routesToPtables(response.Routes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
 			return
 		}
 
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -184,15 +184,15 @@ omit the route you do not want to enable.
 
 // routesToPtables converts the list of routes to a nice table.
 func routesToPtables(routes *v1.Routes) pterm.TableData {
-	d := pterm.TableData{{"Route", "Enabled"}}
+	tableData := pterm.TableData{{"Route", "Enabled"}}
 
 	for _, route := range routes.GetAdvertisedRoutes() {
 		enabled := isStringInSlice(routes.EnabledRoutes, route)
 
-		d = append(d, []string{route, strconv.FormatBool(enabled)})
+		tableData = append(tableData, []string{route, strconv.FormatBool(enabled)})
 	}
 
-	return d
+	return tableData
 }
 
 func isStringInSlice(strs []string, s string) bool {

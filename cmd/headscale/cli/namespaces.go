@@ -167,10 +167,10 @@ var listNamespacesCmd = &cobra.Command{
 			return
 		}
 
-		d := pterm.TableData{{"ID", "Name", "Created"}}
+		tableData := pterm.TableData{{"ID", "Name", "Created"}}
 		for _, namespace := range response.GetNamespaces() {
-			d = append(
-				d,
+			tableData = append(
+				tableData,
 				[]string{
 					namespace.GetId(),
 					namespace.GetName(),
@@ -178,7 +178,7 @@ var listNamespacesCmd = &cobra.Command{
 				},
 			)
 		}
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
 			ErrorOutput(
 				err,

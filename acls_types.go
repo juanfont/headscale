@@ -41,37 +41,37 @@ type ACLTest struct {
 }
 
 // UnmarshalJSON allows to parse the Hosts directly into netaddr objects.
-func (h *Hosts) UnmarshalJSON(data []byte) error {
-	hosts := Hosts{}
-	hs := make(map[string]string)
+func (hosts *Hosts) UnmarshalJSON(data []byte) error {
+	newHosts := Hosts{}
+	hostIpPrefixMap := make(map[string]string)
 	ast, err := hujson.Parse(data)
 	if err != nil {
 		return err
 	}
 	ast.Standardize()
 	data = ast.Pack()
-	err = json.Unmarshal(data, &hs)
+	err = json.Unmarshal(data, &hostIpPrefixMap)
 	if err != nil {
 		return err
 	}
-	for k, v := range hs {
-		if !strings.Contains(v, "/") {
-			v += "/32"
+	for host, prefixStr := range hostIpPrefixMap {
+		if !strings.Contains(prefixStr, "/") {
+			prefixStr += "/32"
 		}
-		prefix, err := netaddr.ParseIPPrefix(v)
+		prefix, err := netaddr.ParseIPPrefix(prefixStr)
 		if err != nil {
 			return err
 		}
-		hosts[k] = prefix
+		newHosts[host] = prefix
 	}
-	*h = hosts
+	*hosts = newHosts
 
 	return nil
 }
 
 // IsZero is perhaps a bit naive here.
-func (p ACLPolicy) IsZero() bool {
-	if len(p.Groups) == 0 && len(p.Hosts) == 0 && len(p.ACLs) == 0 {
+func (policy ACLPolicy) IsZero() bool {
+	if len(policy.Groups) == 0 && len(policy.Hosts) == 0 && len(policy.ACLs) == 0 {
 		return true
 	}
 

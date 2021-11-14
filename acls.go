@@ -41,18 +41,18 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 	defer policyFile.Close()
 
 	var policy ACLPolicy
-	b, err := io.ReadAll(policyFile)
+	policyBytes, err := io.ReadAll(policyFile)
 	if err != nil {
 		return err
 	}
 
-	ast, err := hujson.Parse(b)
+	ast, err := hujson.Parse(policyBytes)
 	if err != nil {
 		return err
 	}
 	ast.Standardize()
-	b = ast.Pack()
-	err = json.Unmarshal(b, &policy)
+	policyBytes = ast.Pack()
+	err = json.Unmarshal(policyBytes, &policy)
 	if err != nil {
 		return err
 	}
@@ -73,32 +73,32 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
 
-	for i, a := range h.aclPolicy.ACLs {
-		if a.Action != "accept" {
+	for index, acl := range h.aclPolicy.ACLs {
+		if acl.Action != "accept" {
 			return nil, errorInvalidAction
 		}
 
-		r := tailcfg.FilterRule{}
+		filterRule := tailcfg.FilterRule{}
 
 		srcIPs := []string{}
-		for j, u := range a.Users {
-			srcs, err := h.generateACLPolicySrcIP(u)
+		for innerIndex, user := range acl.Users {
+			srcs, err := h.generateACLPolicySrcIP(user)
 			if err != nil {
 				log.Error().
-					Msgf("Error parsing ACL %d, User %d", i, j)
+					Msgf("Error parsing ACL %d, User %d", index, innerIndex)
 
 				return nil, err
 			}
 			srcIPs = append(srcIPs, srcs...)
 		}
-		r.SrcIPs = srcIPs
+		filterRule.SrcIPs = srcIPs
 
 		destPorts := []tailcfg.NetPortRange{}
-		for j, d := range a.Ports {
-			dests, err := h.generateACLPolicyDestPorts(d)
+		for innerIndex, ports := range acl.Ports {
+			dests, err := h.generateACLPolicyDestPorts(ports)
 			if err != nil {
 				log.Error().
-					Msgf("Error parsing ACL %d, Port %d", i, j)
+					Msgf("Error parsing ACL %d, Port %d", index, innerIndex)
 
 				return nil, err
 			}
@@ -162,17 +162,17 @@ func (h *Headscale) generateACLPolicyDestPorts(
 	return dests, nil
 }
 
-func (h *Headscale) expandAlias(s string) ([]string, error) {
-	if s == "*" {
+func (h *Headscale) expandAlias(alias string) ([]string, error) {
+	if alias == "*" {
 		return []string{"*"}, nil
 	}
 
-	if strings.HasPrefix(s, "group:") {
-		if _, ok := h.aclPolicy.Groups[s]; !ok {
+	if strings.HasPrefix(alias, "group:") {
+		if _, ok := h.aclPolicy.Groups[alias]; !ok {
 			return nil, errorInvalidGroup
 		}
 		ips := []string{}
-		for _, n := range h.aclPolicy.Groups[s] {
+		for _, n := range h.aclPolicy.Groups[alias] {
 			nodes, err := h.ListMachinesInNamespace(n)
 			if err != nil {
 				return nil, errorInvalidNamespace
@@ -185,8 +185,8 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 		return ips, nil
 	}
 
-	if strings.HasPrefix(s, "tag:") {
-		if _, ok := h.aclPolicy.TagOwners[s]; !ok {
+	if strings.HasPrefix(alias, "tag:") {
+		if _, ok := h.aclPolicy.TagOwners[alias]; !ok {
 			return nil, errorInvalidTag
 		}
 
@@ -197,10 +197,10 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 			return nil, err
 		}
 		ips := []string{}
-		for _, m := range machines {
+		for _, machine := range machines {
 			hostinfo := tailcfg.Hostinfo{}
-			if len(m.HostInfo) != 0 {
-				hi, err := m.HostInfo.MarshalJSON()
+			if len(machine.HostInfo) != 0 {
+				hi, err := machine.HostInfo.MarshalJSON()
 				if err != nil {
 					return nil, err
 				}
@@ -211,8 +211,8 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 
 				// FIXME: Check TagOwners allows this
 				for _, t := range hostinfo.RequestTags {
-					if s[4:] == t {
-						ips = append(ips, m.IPAddress)
+					if alias[4:] == t {
+						ips = append(ips, machine.IPAddress)
 
 						break
 					}
@@ -223,7 +223,7 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 		return ips, nil
 	}
 
-	n, err := h.GetNamespace(s)
+	n, err := h.GetNamespace(alias)
 	if err == nil {
 		nodes, err := h.ListMachinesInNamespace(n.Name)
 		if err != nil {
@@ -237,16 +237,16 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 		return ips, nil
 	}
 
-	if h, ok := h.aclPolicy.Hosts[s]; ok {
+	if h, ok := h.aclPolicy.Hosts[alias]; ok {
 		return []string{h.String()}, nil
 	}
 
-	ip, err := netaddr.ParseIP(s)
+	ip, err := netaddr.ParseIP(alias)
 	if err == nil {
 		return []string{ip.String()}, nil
 	}
 
-	cidr, err := netaddr.ParseIPPrefix(s)
+	cidr, err := netaddr.ParseIPPrefix(alias)
 	if err == nil {
 		return []string{cidr.String()}, nil
 	}
@@ -254,25 +254,25 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 	return nil, errorInvalidUserSection
 }
 
-func (h *Headscale) expandPorts(s string) (*[]tailcfg.PortRange, error) {
-	if s == "*" {
+func (h *Headscale) expandPorts(portsStr string) (*[]tailcfg.PortRange, error) {
+	if portsStr == "*" {
 		return &[]tailcfg.PortRange{
 			{First: PORT_RANGE_BEGIN, Last: PORT_RANGE_END},
 		}, nil
 	}
 
 	ports := []tailcfg.PortRange{}
-	for _, p := range strings.Split(s, ",") {
-		rang := strings.Split(p, "-")
+	for _, portStr := range strings.Split(portsStr, ",") {
+		rang := strings.Split(portStr, "-")
 		switch len(rang) {
 		case 1:
-			pi, err := strconv.ParseUint(rang[0], BASE_10, BIT_SIZE_16)
+			port, err := strconv.ParseUint(rang[0], BASE_10, BIT_SIZE_16)
 			if err != nil {
 				return nil, err
 			}
 			ports = append(ports, tailcfg.PortRange{
-				First: uint16(pi),
-				Last:  uint16(pi),
+				First: uint16(port),
+				Last:  uint16(port),
 			})
 
 		case EXPECTED_TOKEN_ITEMS:

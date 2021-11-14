@@ -233,7 +233,7 @@ func (h *Headscale) PollNetMapStream(
 ) {
 	go h.scheduledPollWorker(cancelKeepAlive, updateChan, keepAliveChan, mKey, req, m)
 
-	c.Stream(func(w io.Writer) bool {
+	c.Stream(func(writer io.Writer) bool {
 		log.Trace().
 			Str("handler", "PollNetMapStream").
 			Str("machine", m.Name).
@@ -252,7 +252,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "pollData").
 				Int("bytes", len(data)).
 				Msg("Sending data received via pollData channel")
-			_, err := w.Write(data)
+			_, err := writer.Write(data)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -305,7 +305,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "keepAlive").
 				Int("bytes", len(data)).
 				Msg("Sending keep alive message")
-			_, err := w.Write(data)
+			_, err := writer.Write(data)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -370,7 +370,7 @@ func (h *Headscale) PollNetMapStream(
 						Err(err).
 						Msg("Could not get the map update")
 				}
-				_, err = w.Write(data)
+				_, err = writer.Write(data)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").

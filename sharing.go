@@ -18,13 +18,16 @@ type SharedMachine struct {
 }
 
 // AddSharedMachineToNamespace adds a machine as a shared node to a namespace.
-func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error {
-	if m.NamespaceID == ns.ID {
+func (h *Headscale) AddSharedMachineToNamespace(
+	machine *Machine,
+	namespace *Namespace,
+) error {
+	if machine.NamespaceID == namespace.ID {
 		return errorSameNamespace
 	}
 
 	sharedMachines := []SharedMachine{}
-	if err := h.db.Where("machine_id = ? AND namespace_id = ?", m.ID, ns.ID).Find(&sharedMachines).Error; err != nil {
+	if err := h.db.Where("machine_id = ? AND namespace_id = ?", machine.ID, namespace.ID).Find(&sharedMachines).Error; err != nil {
 		return err
 	}
 	if len(sharedMachines) > 0 {
@@ -32,10 +35,10 @@ func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error
 	}
 
 	sharedMachine := SharedMachine{
-		MachineID:   m.ID,
-		Machine:     *m,
-		NamespaceID: ns.ID,
-		Namespace:   *ns,
+		MachineID:   machine.ID,
+		Machine:     *machine,
+		NamespaceID: namespace.ID,
+		Namespace:   *namespace,
 	}
 	h.db.Save(&sharedMachine)
 
@@ -43,14 +46,17 @@ func (h *Headscale) AddSharedMachineToNamespace(m *Machine, ns *Namespace) error
 }
 
 // RemoveSharedMachineFromNamespace removes a shared machine from a namespace.
-func (h *Headscale) RemoveSharedMachineFromNamespace(m *Machine, ns *Namespace) error {
-	if m.NamespaceID == ns.ID {
+func (h *Headscale) RemoveSharedMachineFromNamespace(
+	machine *Machine,
+	namespace *Namespace,
+) error {
+	if machine.NamespaceID == namespace.ID {
 		// Can't unshare from primary namespace
 		return errorMachineNotShared
 	}
 
 	sharedMachine := SharedMachine{}
-	result := h.db.Where("machine_id = ? AND namespace_id = ?", m.ID, ns.ID).
+	result := h.db.Where("machine_id = ? AND namespace_id = ?", machine.ID, namespace.ID).
 		Unscoped().
 		Delete(&sharedMachine)
 	if result.Error != nil {
@@ -61,7 +67,7 @@ func (h *Headscale) RemoveSharedMachineFromNamespace(m *Machine, ns *Namespace) 
 		return errorMachineNotShared
 	}
 
-	err := h.RequestMapUpdates(ns.ID)
+	err := h.RequestMapUpdates(namespace.ID)
 	if err != nil {
 		return err
 	}
@@ -70,9 +76,9 @@ func (h *Headscale) RemoveSharedMachineFromNamespace(m *Machine, ns *Namespace) 
 }
 
 // RemoveSharedMachineFromAllNamespaces removes a machine as a shared node from all namespaces.
-func (h *Headscale) RemoveSharedMachineFromAllNamespaces(m *Machine) error {
+func (h *Headscale) RemoveSharedMachineFromAllNamespaces(machine *Machine) error {
 	sharedMachine := SharedMachine{}
-	if result := h.db.Where("machine_id = ?", m.ID).Unscoped().Delete(&sharedMachine); result.Error != nil {
+	if result := h.db.Where("machine_id = ?", machine.ID).Unscoped().Delete(&sharedMachine); result.Error != nil {
 		return result.Error
 	}
 

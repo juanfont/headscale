@@ -45,7 +45,7 @@ var listPreAuthKeys = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		n, err := cmd.Flags().GetString("namespace")
+		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
 
@@ -57,7 +57,7 @@ var listPreAuthKeys = &cobra.Command{
 		defer conn.Close()
 
 		request := &v1.ListPreAuthKeysRequest{
-			Namespace: n,
+			Namespace: namespace,
 		}
 
 		response, err := client.ListPreAuthKeys(ctx, request)
@@ -77,34 +77,34 @@ var listPreAuthKeys = &cobra.Command{
 			return
 		}
 
-		d := pterm.TableData{
+		tableData := pterm.TableData{
 			{"ID", "Key", "Reusable", "Ephemeral", "Used", "Expiration", "Created"},
 		}
-		for _, k := range response.PreAuthKeys {
+		for _, key := range response.PreAuthKeys {
 			expiration := "-"
-			if k.GetExpiration() != nil {
-				expiration = k.Expiration.AsTime().Format("2006-01-02 15:04:05")
+			if key.GetExpiration() != nil {
+				expiration = key.Expiration.AsTime().Format("2006-01-02 15:04:05")
 			}
 
 			var reusable string
-			if k.GetEphemeral() {
+			if key.GetEphemeral() {
 				reusable = "N/A"
 			} else {
-				reusable = fmt.Sprintf("%v", k.GetReusable())
+				reusable = fmt.Sprintf("%v", key.GetReusable())
 			}
 
-			d = append(d, []string{
-				k.GetId(),
-				k.GetKey(),
+			tableData = append(tableData, []string{
+				key.GetId(),
+				key.GetKey(),
 				reusable,
-				strconv.FormatBool(k.GetEphemeral()),
-				strconv.FormatBool(k.GetUsed()),
+				strconv.FormatBool(key.GetEphemeral()),
+				strconv.FormatBool(key.GetUsed()),
 				expiration,
-				k.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+				key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
 			})
 
 		}
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
 			ErrorOutput(
 				err,

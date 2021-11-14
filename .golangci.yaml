@@ -28,6 +28,9 @@ linters:
     # In progress
     - gocritic
 
+    # TODO: approve: ok, db, id
+    - varnamelen
+
     # We should strive to enable these:
     - testpackage
     - stylecheck
@@ -39,7 +42,6 @@ linters:
     - gosec
     - forbidigo
     - dupl
-    - varnamelen
     - makezero
     - paralleltest
 

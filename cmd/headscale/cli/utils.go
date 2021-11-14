@@ -318,7 +318,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 	cfg.OIDC.MatchMap = loadOIDCMatchMap()
 
-	h, err := headscale.NewHeadscale(cfg)
+	app, err := headscale.NewHeadscale(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +327,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 	if viper.GetString("acl_policy_path") != "" {
 		aclPath := absPath(viper.GetString("acl_policy_path"))
-		err = h.LoadACLPolicy(aclPath)
+		err = app.LoadACLPolicy(aclPath)
 		if err != nil {
 			log.Error().
 				Str("path", aclPath).
@@ -336,7 +336,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		}
 	}
 
-	return h, nil
+	return app, nil
 }
 
 func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {

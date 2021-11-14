@@ -36,7 +36,7 @@ func decode(
 
 func decodeMsg(
 	msg []byte,
-	v interface{},
+	output interface{},
 	pubKey *wgkey.Key,
 	privKey *wgkey.Private,
 ) error {
@@ -45,7 +45,7 @@ func decodeMsg(
 		return err
 	}
 	// fmt.Println(string(decrypted))
-	if err := json.Unmarshal(decrypted, v); err != nil {
+	if err := json.Unmarshal(decrypted, output); err != nil {
 		return fmt.Errorf("response: %v", err)
 	}
 
@@ -78,13 +78,17 @@ func encode(v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, e
 	return encodeMsg(b, pubKey, privKey)
 }
 
-func encodeMsg(b []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, error) {
+func encodeMsg(
+	payload []byte,
+	pubKey *wgkey.Key,
+	privKey *wgkey.Private,
+) ([]byte, error) {
 	var nonce [24]byte
 	if _, err := io.ReadFull(rand.Reader, nonce[:]); err != nil {
 		panic(err)
 	}
 	pub, pri := (*[32]byte)(pubKey), (*[32]byte)(privKey)
-	msg := box.Seal(nonce[:], b, &nonce, pub, pri)
+	msg := box.Seal(nonce[:], payload, &nonce, pub, pri)
 
 	return msg, nil
 }

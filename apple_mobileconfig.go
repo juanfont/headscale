@@ -12,8 +12,8 @@ import (
 
 // AppleMobileConfig shows a simple message in the browser to point to the CLI
 // Listens in /register.
-func (h *Headscale) AppleMobileConfig(c *gin.Context) {
-	t := template.Must(template.New("apple").Parse(`
+func (h *Headscale) AppleMobileConfig(ctx *gin.Context) {
+	appleTemplate := template.Must(template.New("apple").Parse(`
 <html>
 	<body>
 		<h1>Apple configuration profiles</h1>
@@ -67,12 +67,12 @@ func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 	}
 
 	var payload bytes.Buffer
-	if err := t.Execute(&payload, config); err != nil {
+	if err := appleTemplate.Execute(&payload, config); err != nil {
 		log.Error().
 			Str("handler", "AppleMobileConfig").
 			Err(err).
 			Msg("Could not render Apple index template")
-		c.Data(
+		ctx.Data(
 			http.StatusInternalServerError,
 			"text/html; charset=utf-8",
 			[]byte("Could not render Apple index template"),
@@ -81,11 +81,11 @@ func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 		return
 	}
 
-	c.Data(http.StatusOK, "text/html; charset=utf-8", payload.Bytes())
+	ctx.Data(http.StatusOK, "text/html; charset=utf-8", payload.Bytes())
 }
 
-func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
-	platform := c.Param("platform")
+func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
+	platform := ctx.Param("platform")
 
 	id, err := uuid.NewV4()
 	if err != nil {
@@ -93,7 +93,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Failed not create UUID")
-		c.Data(
+		ctx.Data(
 			http.StatusInternalServerError,
 			"text/html; charset=utf-8",
 			[]byte("Failed to create UUID"),
@@ -108,7 +108,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Failed not create UUID")
-		c.Data(
+		ctx.Data(
 			http.StatusInternalServerError,
 			"text/html; charset=utf-8",
 			[]byte("Failed to create UUID"),
@@ -131,7 +131,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 				Str("handler", "ApplePlatformConfig").
 				Err(err).
 				Msg("Could not render Apple macOS template")
-			c.Data(
+			ctx.Data(
 				http.StatusInternalServerError,
 				"text/html; charset=utf-8",
 				[]byte("Could not render Apple macOS template"),
@@ -145,7 +145,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 				Str("handler", "ApplePlatformConfig").
 				Err(err).
 				Msg("Could not render Apple iOS template")
-			c.Data(
+			ctx.Data(
 				http.StatusInternalServerError,
 				"text/html; charset=utf-8",
 				[]byte("Could not render Apple iOS template"),
@@ -154,7 +154,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			return
 		}
 	default:
-		c.Data(
+		ctx.Data(
 			http.StatusOK,
 			"text/html; charset=utf-8",
 			[]byte("Invalid platform, only ios and macos is supported"),
@@ -175,7 +175,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Could not render Apple platform template")
-		c.Data(
+		ctx.Data(
 			http.StatusInternalServerError,
 			"text/html; charset=utf-8",
 			[]byte("Could not render Apple platform template"),
@@ -184,7 +184,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 		return
 	}
 
-	c.Data(
+	ctx.Data(
 		http.StatusOK,
 		"application/x-apple-aspen-config; charset=utf-8",
 		content.Bytes(),

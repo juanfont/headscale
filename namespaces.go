@@ -32,12 +32,12 @@ type Namespace struct {
 // CreateNamespace creates a new Namespace. Returns error if could not be created
 // or another namespace already exists.
 func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
-	n := Namespace{}
-	if err := h.db.Where("name = ?", name).First(&n).Error; err == nil {
+	namespace := Namespace{}
+	if err := h.db.Where("name = ?", name).First(&namespace).Error; err == nil {
 		return nil, errorNamespaceExists
 	}
-	n.Name = name
-	if err := h.db.Create(&n).Error; err != nil {
+	namespace.Name = name
+	if err := h.db.Create(&namespace).Error; err != nil {
 		log.Error().
 			Str("func", "CreateNamespace").
 			Err(err).
@@ -46,22 +46,22 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 		return nil, err
 	}
 
-	return &n, nil
+	return &namespace, nil
 }
 
 // DestroyNamespace destroys a Namespace. Returns error if the Namespace does
 // not exist or if there are machines associated with it.
 func (h *Headscale) DestroyNamespace(name string) error {
-	n, err := h.GetNamespace(name)
+	namespace, err := h.GetNamespace(name)
 	if err != nil {
 		return errorNamespaceNotFound
 	}
 
-	m, err := h.ListMachinesInNamespace(name)
+	machines, err := h.ListMachinesInNamespace(name)
 	if err != nil {
 		return err
 	}
-	if len(m) > 0 {
+	if len(machines) > 0 {
 		return errorNamespaceNotEmptyOfNodes
 	}
 
@@ -69,14 +69,14 @@ func (h *Headscale) DestroyNamespace(name string) error {
 	if err != nil {
 		return err
 	}
-	for _, p := range keys {
-		err = h.DestroyPreAuthKey(&p)
+	for _, key := range keys {
+		err = h.DestroyPreAuthKey(&key)
 		if err != nil {
 			return err
 		}
 	}
 
-	if result := h.db.Unscoped().Delete(&n); result.Error != nil {
+	if result := h.db.Unscoped().Delete(&namespace); result.Error != nil {
 		return result.Error
 	}
 
@@ -86,7 +86,7 @@ func (h *Headscale) DestroyNamespace(name string) error {
 // RenameNamespace renames a Namespace. Returns error if the Namespace does
 // not exist or if another Namespace exists with the new name.
 func (h *Headscale) RenameNamespace(oldName, newName string) error {
-	n, err := h.GetNamespace(oldName)
+	oldNamespace, err := h.GetNamespace(oldName)
 	if err != nil {
 		return err
 	}
@@ -98,13 +98,13 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 		return err
 	}
 
-	n.Name = newName
+	oldNamespace.Name = newName
 
-	if result := h.db.Save(&n); result.Error != nil {
+	if result := h.db.Save(&oldNamespace); result.Error != nil {
 		return result.Error
 	}
 
-	err = h.RequestMapUpdates(n.ID)
+	err = h.RequestMapUpdates(oldNamespace.ID)
 	if err != nil {
 		return err
 	}
@@ -114,15 +114,15 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 
 // GetNamespace fetches a namespace by name.
 func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
-	n := Namespace{}
-	if result := h.db.First(&n, "name = ?", name); errors.Is(
+	namespace := Namespace{}
+	if result := h.db.First(&namespace, "name = ?", name); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
 		return nil, errorNamespaceNotFound
 	}
 
-	return &n, nil
+	return &namespace, nil
 }
 
 // ListNamespaces gets all the existing namespaces.
@@ -137,13 +137,13 @@ func (h *Headscale) ListNamespaces() ([]Namespace, error) {
 
 // ListMachinesInNamespace gets all the nodes in a given namespace.
 func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
-	n, err := h.GetNamespace(name)
+	namespace, err := h.GetNamespace(name)
 	if err != nil {
 		return nil, err
 	}
 
 	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where(&Machine{NamespaceID: namespace.ID}).Find(&machines).Error; err != nil {
 		return nil, err
 	}
 
@@ -176,17 +176,18 @@ func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error
 }
 
 // SetMachineNamespace assigns a Machine to a namespace.
-func (h *Headscale) SetMachineNamespace(m *Machine, namespaceName string) error {
-	n, err := h.GetNamespace(namespaceName)
+func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) error {
+	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return err
 	}
-	m.NamespaceID = n.ID
-	h.db.Save(&m)
+	machine.NamespaceID = namespace.ID
+	h.db.Save(&machine)
 
 	return nil
 }
 
+// TODO(kradalby): Remove the need for this.
 // RequestMapUpdates signals the KV worker to update the maps for this namespace.
 func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 	namespace := Namespace{}
@@ -194,8 +195,8 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 		return err
 	}
 
-	v, err := h.getValue("namespaces_pending_updates")
-	if err != nil || v == "" {
+	namespacesPendingUpdates, err := h.getValue("namespaces_pending_updates")
+	if err != nil || namespacesPendingUpdates == "" {
 		err = h.setValue(
 			"namespaces_pending_updates",
 			fmt.Sprintf(`["%s"]`, namespace.Name),
@@ -207,7 +208,7 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 		return nil
 	}
 	names := []string{}
-	err = json.Unmarshal([]byte(v), &names)
+	err = json.Unmarshal([]byte(namespacesPendingUpdates), &names)
 	if err != nil {
 		err = h.setValue(
 			"namespaces_pending_updates",
@@ -235,16 +236,16 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 }
 
 func (h *Headscale) checkForNamespacesPendingUpdates() {
-	v, err := h.getValue("namespaces_pending_updates")
+	namespacesPendingUpdates, err := h.getValue("namespaces_pending_updates")
 	if err != nil {
 		return
 	}
-	if v == "" {
+	if namespacesPendingUpdates == "" {
 		return
 	}
 
 	namespaces := []string{}
-	err = json.Unmarshal([]byte(v), &namespaces)
+	err = json.Unmarshal([]byte(namespacesPendingUpdates), &namespaces)
 	if err != nil {
 		return
 	}
@@ -255,11 +256,11 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 			Msg("Sending updates to nodes in namespacespace")
 		h.setLastStateChangeToNow(namespace)
 	}
-	newV, err := h.getValue("namespaces_pending_updates")
+	newPendingUpdateValue, err := h.getValue("namespaces_pending_updates")
 	if err != nil {
 		return
 	}
-	if v == newV { // only clear when no changes, so we notified everybody
+	if namespacesPendingUpdates == newPendingUpdateValue { // only clear when no changes, so we notified everybody
 		err = h.setValue("namespaces_pending_updates", "")
 		if err != nil {
 			log.Error().
@@ -273,7 +274,7 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 }
 
 func (n *Namespace) toUser() *tailcfg.User {
-	u := tailcfg.User{
+	user := tailcfg.User{
 		ID:            tailcfg.UserID(n.ID),
 		LoginName:     n.Name,
 		DisplayName:   n.Name,
@@ -283,11 +284,11 @@ func (n *Namespace) toUser() *tailcfg.User {
 		Created:       time.Time{},
 	}
 
-	return &u
+	return &user
 }
 
 func (n *Namespace) toLogin() *tailcfg.Login {
-	l := tailcfg.Login{
+	login := tailcfg.Login{
 		ID:            tailcfg.LoginID(n.ID),
 		LoginName:     n.Name,
 		DisplayName:   n.Name,
@@ -295,14 +296,14 @@ func (n *Namespace) toLogin() *tailcfg.Login {
 		Domain:        "headscale.net",
 	}
 
-	return &l
+	return &login
 }
 
-func getMapResponseUserProfiles(m Machine, peers Machines) []tailcfg.UserProfile {
+func getMapResponseUserProfiles(machine Machine, peers Machines) []tailcfg.UserProfile {
 	namespaceMap := make(map[string]Namespace)
-	namespaceMap[m.Namespace.Name] = m.Namespace
-	for _, p := range peers {
-		namespaceMap[p.Namespace.Name] = p.Namespace // not worth checking if already is there
+	namespaceMap[machine.Namespace.Name] = machine.Namespace
+	for _, peer := range peers {
+		namespaceMap[peer.Namespace.Name] = peer.Namespace // not worth checking if already is there
 	}
 
 	profiles := []tailcfg.UserProfile{}

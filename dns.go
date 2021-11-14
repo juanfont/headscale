@@ -79,7 +79,7 @@ func generateMagicDNSRootDomains(
 func getMapResponseDNSConfig(
 	dnsConfigOrig *tailcfg.DNSConfig,
 	baseDomain string,
-	m Machine,
+	machine Machine,
 	peers Machines,
 ) *tailcfg.DNSConfig {
 	var dnsConfig *tailcfg.DNSConfig
@@ -88,11 +88,11 @@ func getMapResponseDNSConfig(
 		dnsConfig = dnsConfigOrig.Clone()
 		dnsConfig.Domains = append(
 			dnsConfig.Domains,
-			fmt.Sprintf("%s.%s", m.Namespace.Name, baseDomain),
+			fmt.Sprintf("%s.%s", machine.Namespace.Name, baseDomain),
 		)
 
 		namespaceSet := set.New(set.ThreadSafe)
-		namespaceSet.Add(m.Namespace)
+		namespaceSet.Add(machine.Namespace)
 		for _, p := range peers {
 			namespaceSet.Add(p.Namespace)
 		}

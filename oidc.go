@@ -68,10 +68,10 @@ func (h *Headscale) initOIDC() error {
 // RegisterOIDC redirects to the OIDC provider for authentication
 // Puts machine key in cache so the callback can retrieve it using the oidc state param
 // Listens in /oidc/register/:mKey.
-func (h *Headscale) RegisterOIDC(c *gin.Context) {
-	mKeyStr := c.Param("mkey")
+func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
+	mKeyStr := ctx.Param("mkey")
 	if mKeyStr == "" {
-		c.String(http.StatusBadRequest, "Wrong params")
+		ctx.String(http.StatusBadRequest, "Wrong params")
 
 		return
 	}
@@ -79,7 +79,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 	b := make([]byte, RANDOM_BYTE_SIZE)
 	if _, err := rand.Read(b); err != nil {
 		log.Error().Msg("could not read 16 bytes from rand")
-		c.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
+		ctx.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
 
 		return
 	}
@@ -92,7 +92,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 	authUrl := h.oauth2Config.AuthCodeURL(stateStr)
 	log.Debug().Msgf("Redirecting to %s for authentication", authUrl)
 
-	c.Redirect(http.StatusFound, authUrl)
+	ctx.Redirect(http.StatusFound, authUrl)
 }
 
 // OIDCCallback handles the callback from the OIDC endpoint
@@ -100,19 +100,19 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 // TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
 // TODO: Add groups information from OIDC tokens into machine HostInfo
 // Listens in /oidc/callback.
-func (h *Headscale) OIDCCallback(c *gin.Context) {
-	code := c.Query("code")
-	state := c.Query("state")
+func (h *Headscale) OIDCCallback(ctx *gin.Context) {
+	code := ctx.Query("code")
+	state := ctx.Query("state")
 
 	if code == "" || state == "" {
-		c.String(http.StatusBadRequest, "Wrong params")
+		ctx.String(http.StatusBadRequest, "Wrong params")
 
 		return
 	}
 
 	oauth2Token, err := h.oauth2Config.Exchange(context.Background(), code)
 	if err != nil {
-		c.String(http.StatusBadRequest, "Could not exchange code for token")
+		ctx.String(http.StatusBadRequest, "Could not exchange code for token")
 
 		return
 	}
@@ -121,7 +121,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 
 	rawIDToken, rawIDTokenOK := oauth2Token.Extra("id_token").(string)
 	if !rawIDTokenOK {
-		c.String(http.StatusBadRequest, "Could not extract ID Token")
+		ctx.String(http.StatusBadRequest, "Could not extract ID Token")
 
 		return
 	}
@@ -130,7 +130,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 
 	idToken, err := verifier.Verify(context.Background(), rawIDToken)
 	if err != nil {
-		c.String(http.StatusBadRequest, "Failed to verify id token: %s", err.Error())
+		ctx.String(http.StatusBadRequest, "Failed to verify id token: %s", err.Error())
 
 		return
 	}
@@ -145,7 +145,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	// Extract custom claims
 	var claims IDTokenClaims
 	if err = idToken.Claims(&claims); err != nil {
-		c.String(
+		ctx.String(
 			http.StatusBadRequest,
 			fmt.Sprintf("Failed to decode id token claims: %s", err),
 		)
@@ -159,7 +159,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	if !mKeyFound {
 		log.Error().
 			Msg("requested machine state key expired before authorisation completed")
-		c.String(http.StatusBadRequest, "state has expired")
+		ctx.String(http.StatusBadRequest, "state has expired")
 
 		return
 	}
@@ -167,16 +167,19 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 
 	if !mKeyOK {
 		log.Error().Msg("could not get machine key from cache")
-		c.String(http.StatusInternalServerError, "could not get machine key from cache")
+		ctx.String(
+			http.StatusInternalServerError,
+			"could not get machine key from cache",
+		)
 
 		return
 	}
 
 	// retrieve machine information
-	m, err := h.GetMachineByMachineKey(mKeyStr)
+	machine, err := h.GetMachineByMachineKey(mKeyStr)
 	if err != nil {
 		log.Error().Msg("machine key not found in database")
-		c.String(
+		ctx.String(
 			http.StatusInternalServerError,
 			"could not get machine info from database",
 		)
@@ -186,19 +189,19 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 
 	now := time.Now().UTC()
 
-	if nsName, ok := h.getNamespaceFromEmail(claims.Email); ok {
+	if namespaceName, ok := h.getNamespaceFromEmail(claims.Email); ok {
 		// register the machine if it's new
-		if !m.Registered {
+		if !machine.Registered {
 			log.Debug().Msg("Registering new machine after successful callback")
 
-			ns, err := h.GetNamespace(nsName)
+			namespace, err := h.GetNamespace(namespaceName)
 			if err != nil {
-				ns, err = h.CreateNamespace(nsName)
+				namespace, err = h.CreateNamespace(namespaceName)
 
 				if err != nil {
 					log.Error().
 						Msgf("could not create new namespace '%s'", claims.Email)
-					c.String(
+					ctx.String(
 						http.StatusInternalServerError,
 						"could not create new namespace",
 					)
@@ -209,7 +212,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 
 			ip, err := h.getAvailableIP()
 			if err != nil {
-				c.String(
+				ctx.String(
 					http.StatusInternalServerError,
 					"could not get an IP from the pool",
 				)
@@ -217,17 +220,17 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 				return
 			}
 
-			m.IPAddress = ip.String()
-			m.NamespaceID = ns.ID
-			m.Registered = true
-			m.RegisterMethod = "oidc"
-			m.LastSuccessfulUpdate = &now
-			h.db.Save(&m)
+			machine.IPAddress = ip.String()
+			machine.NamespaceID = namespace.ID
+			machine.Registered = true
+			machine.RegisterMethod = "oidc"
+			machine.LastSuccessfulUpdate = &now
+			h.db.Save(&machine)
 		}
 
-		h.updateMachineExpiry(m)
+		h.updateMachineExpiry(machine)
 
-		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
+		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
 <html>
 <body>
 <h1>headscale</h1>
@@ -243,9 +246,9 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	log.Error().
 		Str("email", claims.Email).
 		Str("username", claims.Username).
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msg("Email could not be mapped to a namespace")
-	c.String(
+	ctx.String(
 		http.StatusBadRequest,
 		"email from claim could not be mapped to a namespace",
 	)

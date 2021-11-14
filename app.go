@@ -169,7 +169,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		return nil, errors.New("unsupported DB")
 	}
 
-	h := Headscale{
+	app := Headscale{
 		cfg:        cfg,
 		dbType:     cfg.DBtype,
 		dbString:   dbString,
@@ -178,32 +178,32 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		aclRules:   tailcfg.FilterAllowAll, // default allowall
 	}
 
-	err = h.initDB()
+	err = app.initDB()
 	if err != nil {
 		return nil, err
 	}
 
 	if cfg.OIDC.Issuer != "" {
-		err = h.initOIDC()
+		err = app.initOIDC()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if h.cfg.DNSConfig != nil && h.cfg.DNSConfig.Proxied { // if MagicDNS
+	if app.cfg.DNSConfig != nil && app.cfg.DNSConfig.Proxied { // if MagicDNS
 		magicDNSDomains := generateMagicDNSRootDomains(
-			h.cfg.IPPrefix,
+			app.cfg.IPPrefix,
 		)
 		// we might have routes already from Split DNS
-		if h.cfg.DNSConfig.Routes == nil {
-			h.cfg.DNSConfig.Routes = make(map[string][]dnstype.Resolver)
+		if app.cfg.DNSConfig.Routes == nil {
+			app.cfg.DNSConfig.Routes = make(map[string][]dnstype.Resolver)
 		}
 		for _, d := range magicDNSDomains {
-			h.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
+			app.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
 	}
 
-	return &h, nil
+	return &app, nil
 }
 
 // Redirect to our TLS url.
@@ -229,35 +229,37 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 		return
 	}
 
-	for _, ns := range namespaces {
-		machines, err := h.ListMachinesInNamespace(ns.Name)
+	for _, namespace := range namespaces {
+		machines, err := h.ListMachinesInNamespace(namespace.Name)
 		if err != nil {
 			log.Error().
 				Err(err).
-				Str("namespace", ns.Name).
+				Str("namespace", namespace.Name).
 				Msg("Error listing machines in namespace")
 
 			return
 		}
 
-		for _, m := range machines {
-			if m.AuthKey != nil && m.LastSeen != nil && m.AuthKey.Ephemeral &&
-				time.Now().After(m.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
+		for _, machine := range machines {
+			if machine.AuthKey != nil && machine.LastSeen != nil &&
+				machine.AuthKey.Ephemeral &&
+				time.Now().
+					After(machine.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
 				log.Info().
-					Str("machine", m.Name).
+					Str("machine", machine.Name).
 					Msg("Ephemeral client removed from database")
 
-				err = h.db.Unscoped().Delete(m).Error
+				err = h.db.Unscoped().Delete(machine).Error
 				if err != nil {
 					log.Error().
 						Err(err).
-						Str("machine", m.Name).
+						Str("machine", machine.Name).
 						Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
 			}
 		}
 
-		h.setLastStateChangeToNow(ns.Name)
+		h.setLastStateChangeToNow(namespace.Name)
 	}
 }
 
@@ -284,18 +286,18 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	// with the "legacy" database-based client
 	// It is also neede for grpc-gateway to be able to connect to
 	// the server
-	p, _ := peer.FromContext(ctx)
+	client, _ := peer.FromContext(ctx)
 
 	log.Trace().
 		Caller().
-		Str("client_address", p.Addr.String()).
+		Str("client_address", client.Addr.String()).
 		Msg("Client is trying to authenticate")
 
-	md, ok := metadata.FromIncomingContext(ctx)
+	meta, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		log.Error().
 			Caller().
-			Str("client_address", p.Addr.String()).
+			Str("client_address", client.Addr.String()).
 			Msg("Retrieving metadata is failed")
 
 		return ctx, status.Errorf(
@@ -304,11 +306,11 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 		)
 	}
 
-	authHeader, ok := md["authorization"]
+	authHeader, ok := meta["authorization"]
 	if !ok {
 		log.Error().
 			Caller().
-			Str("client_address", p.Addr.String()).
+			Str("client_address", client.Addr.String()).
 			Msg("Authorization token is not supplied")
 
 		return ctx, status.Errorf(
@@ -322,7 +324,7 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	if !strings.HasPrefix(token, AUTH_PREFIX) {
 		log.Error().
 			Caller().
-			Str("client_address", p.Addr.String()).
+			Str("client_address", client.Addr.String()).
 			Msg(`missing "Bearer " prefix in "Authorization" header`)
 
 		return ctx, status.Error(
@@ -353,25 +355,25 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	// return handler(ctx, req)
 }
 
-func (h *Headscale) httpAuthenticationMiddleware(c *gin.Context) {
+func (h *Headscale) httpAuthenticationMiddleware(ctx *gin.Context) {
 	log.Trace().
 		Caller().
-		Str("client_address", c.ClientIP()).
+		Str("client_address", ctx.ClientIP()).
 		Msg("HTTP authentication invoked")
 
-	authHeader := c.GetHeader("authorization")
+	authHeader := ctx.GetHeader("authorization")
 
 	if !strings.HasPrefix(authHeader, AUTH_PREFIX) {
 		log.Error().
 			Caller().
-			Str("client_address", c.ClientIP()).
+			Str("client_address", ctx.ClientIP()).
 			Msg(`missing "Bearer " prefix in "Authorization" header`)
-		c.AbortWithStatus(http.StatusUnauthorized)
+		ctx.AbortWithStatus(http.StatusUnauthorized)
 
 		return
 	}
 
-	c.AbortWithStatus(http.StatusUnauthorized)
+	ctx.AbortWithStatus(http.StatusUnauthorized)
 
 	// TODO(kradalby): Implement API key backend
 	// Currently all traffic is unauthorized, this is intentional to allow
@@ -438,9 +440,9 @@ func (h *Headscale) Serve() error {
 
 	// Create the cmux object that will multiplex 2 protocols on the same port.
 	// The two following listeners will be served on the same port below gracefully.
-	m := cmux.New(networkListener)
+	networkMutex := cmux.New(networkListener)
 	// Match gRPC requests here
-	grpcListener := m.MatchWithWriters(
+	grpcListener := networkMutex.MatchWithWriters(
 		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
 		cmux.HTTP2MatchHeaderFieldSendSettings(
 			"content-type",
@@ -448,7 +450,7 @@ func (h *Headscale) Serve() error {
 		),
 	)
 	// Otherwise match regular http requests.
-	httpListener := m.Match(cmux.Any())
+	httpListener := networkMutex.Match(cmux.Any())
 
 	grpcGatewayMux := runtime.NewServeMux()
 
@@ -471,33 +473,33 @@ func (h *Headscale) Serve() error {
 		return err
 	}
 
-	r := gin.Default()
+	router := gin.Default()
 
-	p := ginprometheus.NewPrometheus("gin")
-	p.Use(r)
+	prometheus := ginprometheus.NewPrometheus("gin")
+	prometheus.Use(router)
 
-	r.GET(
+	router.GET(
 		"/health",
 		func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"healthy": "ok"}) },
 	)
-	r.GET("/key", h.KeyHandler)
-	r.GET("/register", h.RegisterWebAPI)
-	r.POST("/machine/:id/map", h.PollNetMapHandler)
-	r.POST("/machine/:id", h.RegistrationHandler)
-	r.GET("/oidc/register/:mkey", h.RegisterOIDC)
-	r.GET("/oidc/callback", h.OIDCCallback)
-	r.GET("/apple", h.AppleMobileConfig)
-	r.GET("/apple/:platform", h.ApplePlatformConfig)
-	r.GET("/swagger", SwaggerUI)
-	r.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
+	router.GET("/key", h.KeyHandler)
+	router.GET("/register", h.RegisterWebAPI)
+	router.POST("/machine/:id/map", h.PollNetMapHandler)
+	router.POST("/machine/:id", h.RegistrationHandler)
+	router.GET("/oidc/register/:mkey", h.RegisterOIDC)
+	router.GET("/oidc/callback", h.OIDCCallback)
+	router.GET("/apple", h.AppleMobileConfig)
+	router.GET("/apple/:platform", h.ApplePlatformConfig)
+	router.GET("/swagger", SwaggerUI)
+	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
 
-	api := r.Group("/api")
+	api := router.Group("/api")
 	api.Use(h.httpAuthenticationMiddleware)
 	{
 		api.Any("/v1/*any", gin.WrapF(grpcGatewayMux.ServeHTTP))
 	}
 
-	r.NoRoute(stdoutHandler)
+	router.NoRoute(stdoutHandler)
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
@@ -514,7 +516,7 @@ func (h *Headscale) Serve() error {
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
-		Handler:     r,
+		Handler:     router,
 		ReadTimeout: HTTP_READ_TIMEOUT,
 		// Go does not handle timeouts in HTTP very well, and there is
 		// no good way to handle streaming timeouts, therefore we need to
@@ -561,29 +563,29 @@ func (h *Headscale) Serve() error {
 	reflection.Register(grpcServer)
 	reflection.Register(grpcSocket)
 
-	g := new(errgroup.Group)
+	errorGroup := new(errgroup.Group)
 
-	g.Go(func() error { return grpcSocket.Serve(socketListener) })
+	errorGroup.Go(func() error { return grpcSocket.Serve(socketListener) })
 
 	// TODO(kradalby): Verify if we need the same TLS setup for gRPC as HTTP
-	g.Go(func() error { return grpcServer.Serve(grpcListener) })
+	errorGroup.Go(func() error { return grpcServer.Serve(grpcListener) })
 
 	if tlsConfig != nil {
-		g.Go(func() error {
+		errorGroup.Go(func() error {
 			tlsl := tls.NewListener(httpListener, tlsConfig)
 
 			return httpServer.Serve(tlsl)
 		})
 	} else {
-		g.Go(func() error { return httpServer.Serve(httpListener) })
+		errorGroup.Go(func() error { return httpServer.Serve(httpListener) })
 	}
 
-	g.Go(func() error { return m.Serve() })
+	errorGroup.Go(func() error { return networkMutex.Serve() })
 
 	log.Info().
 		Msgf("listening and serving (multiplexed HTTP and gRPC) on: %s", h.cfg.Addr)
 
-	return g.Wait()
+	return errorGroup.Wait()
 }
 
 func (h *Headscale) getTLSSettings() (*tls.Config, error) {
@@ -594,7 +596,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 				Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
-		m := autocert.Manager{
+		certManager := autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(h.cfg.TLSLetsEncryptHostname),
 			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
@@ -609,7 +611,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
 			// must be reachable on port 443.
-			return m.TLSConfig(), nil
+			return certManager.TLSConfig(), nil
 
 		case "HTTP-01":
 			// Configuration via autocert with HTTP-01. This requires listening on
@@ -617,11 +619,11 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// service, which can be configured to run on any other port.
 			go func() {
 				log.Fatal().
-					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, m.HTTPHandler(http.HandlerFunc(h.redirect)))).
+					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
 					Msg("failed to set up a HTTP server")
 			}()
 
-			return m.TLSConfig(), nil
+			return certManager.TLSConfig(), nil
 
 		default:
 			return nil, errors.New("unknown value for TLSLetsEncryptChallengeType")
@@ -676,13 +678,13 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 	}
 }
 
-func stdoutHandler(c *gin.Context) {
-	b, _ := io.ReadAll(c.Request.Body)
+func stdoutHandler(ctx *gin.Context) {
+	body, _ := io.ReadAll(ctx.Request.Body)
 
 	log.Trace().
-		Interface("header", c.Request.Header).
-		Interface("proto", c.Request.Proto).
-		Interface("url", c.Request.URL).
-		Bytes("body", b).
+		Interface("header", ctx.Request.Header).
+		Interface("proto", ctx.Request.Proto).
+		Interface("url", ctx.Request.URL).
+		Bytes("body", body).
 		Msg("Request did not match")
 }

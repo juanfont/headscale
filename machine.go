@@ -56,21 +56,21 @@ type (
 )
 
 // For the time being this method is rather naive.
-func (m Machine) isAlreadyRegistered() bool {
-	return m.Registered
+func (machine Machine) isAlreadyRegistered() bool {
+	return machine.Registered
 }
 
 // isExpired returns whether the machine registration has expired.
-func (m Machine) isExpired() bool {
-	return time.Now().UTC().After(*m.Expiry)
+func (machine Machine) isExpired() bool {
+	return time.Now().UTC().After(*machine.Expiry)
 }
 
 // If the Machine is expired, updateMachineExpiry updates the Machine Expiry time to the maximum allowed duration,
 // or the default duration if no Expiry time was requested by the client. The expiry time here does not (yet) cause
 // a client to be disconnected, however they will have to re-auth the machine if they attempt to reconnect after the
 // expiry time.
-func (h *Headscale) updateMachineExpiry(m *Machine) {
-	if m.isExpired() {
+func (h *Headscale) updateMachineExpiry(machine *Machine) {
+	if machine.isExpired() {
 		now := time.Now().UTC()
 		maxExpiry := now.Add(
 			h.cfg.MaxMachineRegistrationDuration,
@@ -80,31 +80,31 @@ func (h *Headscale) updateMachineExpiry(m *Machine) {
 		) // calculate the default expiry
 
 		// clamp the expiry time of the machine registration to the maximum allowed, or use the default if none supplied
-		if maxExpiry.Before(*m.RequestedExpiry) {
+		if maxExpiry.Before(*machine.RequestedExpiry) {
 			log.Debug().
 				Msgf("Clamping registration expiry time to maximum: %v (%v)", maxExpiry, h.cfg.MaxMachineRegistrationDuration)
-			m.Expiry = &maxExpiry
-		} else if m.RequestedExpiry.IsZero() {
+			machine.Expiry = &maxExpiry
+		} else if machine.RequestedExpiry.IsZero() {
 			log.Debug().Msgf("Using default machine registration expiry time: %v (%v)", defaultExpiry, h.cfg.DefaultMachineRegistrationDuration)
-			m.Expiry = &defaultExpiry
+			machine.Expiry = &defaultExpiry
 		} else {
-			log.Debug().Msgf("Using requested machine registration expiry time: %v", m.RequestedExpiry)
-			m.Expiry = m.RequestedExpiry
+			log.Debug().Msgf("Using requested machine registration expiry time: %v", machine.RequestedExpiry)
+			machine.Expiry = machine.RequestedExpiry
 		}
 
-		h.db.Save(&m)
+		h.db.Save(&machine)
 	}
 }
 
-func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
+func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msg("Finding direct peers")
 
 	machines := Machines{}
 	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
-		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
+		machine.NamespaceID, machine.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
 		return Machines{}, err
@@ -114,22 +114,22 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msgf("Found direct machines: %s", machines.String())
 
 	return machines, nil
 }
 
 // getShared fetches machines that are shared to the `Namespace` of the machine we are getting peers for.
-func (h *Headscale) getShared(m *Machine) (Machines, error) {
+func (h *Headscale) getShared(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msg("Finding shared peers")
 
 	sharedMachines := []SharedMachine{}
 	if err := h.db.Preload("Namespace").Preload("Machine").Preload("Machine.Namespace").Where("namespace_id = ?",
-		m.NamespaceID).Find(&sharedMachines).Error; err != nil {
+		machine.NamespaceID).Find(&sharedMachines).Error; err != nil {
 		return Machines{}, err
 	}
 
@@ -142,22 +142,22 @@ func (h *Headscale) getShared(m *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msgf("Found shared peers: %s", peers.String())
 
 	return peers, nil
 }
 
 // getSharedTo fetches the machines of the namespaces this machine is shared in.
-func (h *Headscale) getSharedTo(m *Machine) (Machines, error) {
+func (h *Headscale) getSharedTo(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msg("Finding peers in namespaces this machine is shared with")
 
 	sharedMachines := []SharedMachine{}
 	if err := h.db.Preload("Namespace").Preload("Machine").Preload("Machine.Namespace").Where("machine_id = ?",
-		m.ID).Find(&sharedMachines).Error; err != nil {
+		machine.ID).Find(&sharedMachines).Error; err != nil {
 		return Machines{}, err
 	}
 
@@ -176,14 +176,14 @@ func (h *Headscale) getSharedTo(m *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msgf("Found peers we are shared with: %s", peers.String())
 
 	return peers, nil
 }
 
-func (h *Headscale) getPeers(m *Machine) (Machines, error) {
-	direct, err := h.getDirectPeers(m)
+func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
+	direct, err := h.getDirectPeers(machine)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -193,7 +193,7 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 		return Machines{}, err
 	}
 
-	shared, err := h.getShared(m)
+	shared, err := h.getShared(machine)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -203,7 +203,7 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 		return Machines{}, err
 	}
 
-	sharedTo, err := h.getSharedTo(m)
+	sharedTo, err := h.getSharedTo(machine)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -220,7 +220,7 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msgf("Found total peers: %s", peers.String())
 
 	return peers, nil
@@ -262,9 +262,9 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 }
 
 // GetMachineByMachineKey finds a Machine by ID and returns the Machine struct.
-func (h *Headscale) GetMachineByMachineKey(mKey string) (*Machine, error) {
+func (h *Headscale) GetMachineByMachineKey(machineKey string) (*Machine, error) {
 	m := Machine{}
-	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey); result.Error != nil {
+	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", machineKey); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -273,8 +273,8 @@ func (h *Headscale) GetMachineByMachineKey(mKey string) (*Machine, error) {
 
 // UpdateMachine takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
-func (h *Headscale) UpdateMachine(m *Machine) error {
-	if result := h.db.Find(m).First(&m); result.Error != nil {
+func (h *Headscale) UpdateMachine(machine *Machine) error {
+	if result := h.db.Find(machine).First(&machine); result.Error != nil {
 		return result.Error
 	}
 
@@ -282,16 +282,16 @@ func (h *Headscale) UpdateMachine(m *Machine) error {
 }
 
 // DeleteMachine softs deletes a Machine from the database.
-func (h *Headscale) DeleteMachine(m *Machine) error {
-	err := h.RemoveSharedMachineFromAllNamespaces(m)
+func (h *Headscale) DeleteMachine(machine *Machine) error {
+	err := h.RemoveSharedMachineFromAllNamespaces(machine)
 	if err != nil && err != errorMachineNotShared {
 		return err
 	}
 
-	m.Registered = false
-	namespaceID := m.NamespaceID
-	h.db.Save(&m) // we mark it as unregistered, just in case
-	if err := h.db.Delete(&m).Error; err != nil {
+	machine.Registered = false
+	namespaceID := machine.NamespaceID
+	h.db.Save(&machine) // we mark it as unregistered, just in case
+	if err := h.db.Delete(&machine).Error; err != nil {
 		return err
 	}
 
@@ -299,14 +299,14 @@ func (h *Headscale) DeleteMachine(m *Machine) error {
 }
 
 // HardDeleteMachine hard deletes a Machine from the database.
-func (h *Headscale) HardDeleteMachine(m *Machine) error {
-	err := h.RemoveSharedMachineFromAllNamespaces(m)
+func (h *Headscale) HardDeleteMachine(machine *Machine) error {
+	err := h.RemoveSharedMachineFromAllNamespaces(machine)
 	if err != nil && err != errorMachineNotShared {
 		return err
 	}
 
-	namespaceID := m.NamespaceID
-	if err := h.db.Unscoped().Delete(&m).Error; err != nil {
+	namespaceID := machine.NamespaceID
+	if err := h.db.Unscoped().Delete(&machine).Error; err != nil {
 		return err
 	}
 
@@ -314,10 +314,10 @@ func (h *Headscale) HardDeleteMachine(m *Machine) error {
 }
 
 // GetHostInfo returns a Hostinfo struct for the machine.
-func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
+func (machine *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 	hostinfo := tailcfg.Hostinfo{}
-	if len(m.HostInfo) != 0 {
-		hi, err := m.HostInfo.MarshalJSON()
+	if len(machine.HostInfo) != 0 {
+		hi, err := machine.HostInfo.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -330,17 +330,17 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 	return &hostinfo, nil
 }
 
-func (h *Headscale) isOutdated(m *Machine) bool {
-	if err := h.UpdateMachine(m); err != nil {
+func (h *Headscale) isOutdated(machine *Machine) bool {
+	if err := h.UpdateMachine(machine); err != nil {
 		// It does not seem meaningful to propagate this error as the end result
 		// will have to be that the machine has to be considered outdated.
 		return true
 	}
 
-	sharedMachines, _ := h.getShared(m)
+	sharedMachines, _ := h.getShared(machine)
 
 	namespaceSet := set.New(set.ThreadSafe)
-	namespaceSet.Add(m.Namespace.Name)
+	namespaceSet.Add(machine.Namespace.Name)
 
 	// Check if any of our shared namespaces has updates that we have
 	// not propagated.
@@ -356,22 +356,22 @@ func (h *Headscale) isOutdated(m *Machine) bool {
 	lastChange := h.getLastStateChange(namespaces...)
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
-		Time("last_successful_update", *m.LastSuccessfulUpdate).
+		Str("machine", machine.Name).
+		Time("last_successful_update", *machine.LastSuccessfulUpdate).
 		Time("last_state_change", lastChange).
-		Msgf("Checking if %s is missing updates", m.Name)
+		Msgf("Checking if %s is missing updates", machine.Name)
 
-	return m.LastSuccessfulUpdate.Before(lastChange)
+	return machine.LastSuccessfulUpdate.Before(lastChange)
 }
 
-func (m Machine) String() string {
-	return m.Name
+func (machine Machine) String() string {
+	return machine.Name
 }
 
-func (ms Machines) String() string {
-	temp := make([]string, len(ms))
+func (machines Machines) String() string {
+	temp := make([]string, len(machines))
 
-	for index, machine := range ms {
+	for index, machine := range machines {
 		temp[index] = machine.Name
 	}
 
@@ -379,24 +379,24 @@ func (ms Machines) String() string {
 }
 
 // TODO(kradalby): Remove when we have generics...
-func (ms MachinesP) String() string {
-	temp := make([]string, len(ms))
+func (machines MachinesP) String() string {
+	temp := make([]string, len(machines))
 
-	for index, machine := range ms {
+	for index, machine := range machines {
 		temp[index] = machine.Name
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (ms Machines) toNodes(
+func (machines Machines) toNodes(
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
 	includeRoutes bool,
 ) ([]*tailcfg.Node, error) {
-	nodes := make([]*tailcfg.Node, len(ms))
+	nodes := make([]*tailcfg.Node, len(machines))
 
-	for index, machine := range ms {
+	for index, machine := range machines {
 		node, err := machine.toNode(baseDomain, dnsConfig, includeRoutes)
 		if err != nil {
 			return nil, err
@@ -410,23 +410,24 @@ func (ms Machines) toNodes(
 
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS.
-func (m Machine) toNode(
+func (machine Machine) toNode(
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
 	includeRoutes bool,
 ) (*tailcfg.Node, error) {
-	nKey, err := wgkey.ParseHex(m.NodeKey)
+	nodeKey, err := wgkey.ParseHex(machine.NodeKey)
 	if err != nil {
 		return nil, err
 	}
-	mKey, err := wgkey.ParseHex(m.MachineKey)
+
+	machineKey, err := wgkey.ParseHex(machine.MachineKey)
 	if err != nil {
 		return nil, err
 	}
 
 	var discoKey tailcfg.DiscoKey
-	if m.DiscoKey != "" {
-		dKey, err := wgkey.ParseHex(m.DiscoKey)
+	if machine.DiscoKey != "" {
+		dKey, err := wgkey.ParseHex(machine.DiscoKey)
 		if err != nil {
 			return nil, err
 		}
@@ -436,12 +437,12 @@ func (m Machine) toNode(
 	}
 
 	addrs := []netaddr.IPPrefix{}
-	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", m.IPAddress))
+	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", machine.IPAddress))
 	if err != nil {
 		log.Trace().
 			Caller().
-			Str("ip", m.IPAddress).
-			Msgf("Failed to parse IP Prefix from IP: %s", m.IPAddress)
+			Str("ip", machine.IPAddress).
+			Msgf("Failed to parse IP Prefix from IP: %s", machine.IPAddress)
 
 		return nil, err
 	}
@@ -455,8 +456,8 @@ func (m Machine) toNode(
 
 	if includeRoutes {
 		routesStr := []string{}
-		if len(m.EnabledRoutes) != 0 {
-			allwIps, err := m.EnabledRoutes.MarshalJSON()
+		if len(machine.EnabledRoutes) != 0 {
+			allwIps, err := machine.EnabledRoutes.MarshalJSON()
 			if err != nil {
 				return nil, err
 			}
@@ -476,8 +477,8 @@ func (m Machine) toNode(
 	}
 
 	endpoints := []string{}
-	if len(m.Endpoints) != 0 {
-		be, err := m.Endpoints.MarshalJSON()
+	if len(machine.Endpoints) != 0 {
+		be, err := machine.Endpoints.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -488,8 +489,8 @@ func (m Machine) toNode(
 	}
 
 	hostinfo := tailcfg.Hostinfo{}
-	if len(m.HostInfo) != 0 {
-		hi, err := m.HostInfo.MarshalJSON()
+	if len(machine.HostInfo) != 0 {
+		hi, err := machine.HostInfo.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -507,29 +508,34 @@ func (m Machine) toNode(
 	}
 
 	var keyExpiry time.Time
-	if m.Expiry != nil {
-		keyExpiry = *m.Expiry
+	if machine.Expiry != nil {
+		keyExpiry = *machine.Expiry
 	} else {
 		keyExpiry = time.Time{}
 	}
 
 	var hostname string
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
-		hostname = fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, baseDomain)
+		hostname = fmt.Sprintf(
+			"%s.%s.%s",
+			machine.Name,
+			machine.Namespace.Name,
+			baseDomain,
+		)
 	} else {
-		hostname = m.Name
+		hostname = machine.Name
 	}
 
 	n := tailcfg.Node{
-		ID: tailcfg.NodeID(m.ID), // this is the actual ID
+		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
-			strconv.FormatUint(m.ID, BASE_10),
+			strconv.FormatUint(machine.ID, BASE_10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostname,
-		User:       tailcfg.UserID(m.NamespaceID),
-		Key:        tailcfg.NodeKey(nKey),
+		User:       tailcfg.UserID(machine.NamespaceID),
+		Key:        tailcfg.NodeKey(nodeKey),
 		KeyExpiry:  keyExpiry,
-		Machine:    tailcfg.MachineKey(mKey),
+		Machine:    tailcfg.MachineKey(machineKey),
 		DiscoKey:   discoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
@@ -537,68 +543,73 @@ func (m Machine) toNode(
 		DERP:       derp,
 
 		Hostinfo: hostinfo,
-		Created:  m.CreatedAt,
-		LastSeen: m.LastSeen,
+		Created:  machine.CreatedAt,
+		LastSeen: machine.LastSeen,
 
 		KeepAlive:         true,
-		MachineAuthorized: m.Registered,
+		MachineAuthorized: machine.Registered,
 		Capabilities:      []string{tailcfg.CapabilityFileSharing},
 	}
 
 	return &n, nil
 }
 
-func (m *Machine) toProto() *v1.Machine {
-	machine := &v1.Machine{
-		Id:         m.ID,
-		MachineKey: m.MachineKey,
+func (machine *Machine) toProto() *v1.Machine {
+	machineProto := &v1.Machine{
+		Id:         machine.ID,
+		MachineKey: machine.MachineKey,
 
-		NodeKey:   m.NodeKey,
-		DiscoKey:  m.DiscoKey,
-		IpAddress: m.IPAddress,
-		Name:      m.Name,
-		Namespace: m.Namespace.toProto(),
+		NodeKey:   machine.NodeKey,
+		DiscoKey:  machine.DiscoKey,
+		IpAddress: machine.IPAddress,
+		Name:      machine.Name,
+		Namespace: machine.Namespace.toProto(),
 
-		Registered: m.Registered,
+		Registered: machine.Registered,
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
 
-		CreatedAt: timestamppb.New(m.CreatedAt),
+		CreatedAt: timestamppb.New(machine.CreatedAt),
 	}
 
-	if m.AuthKey != nil {
-		machine.PreAuthKey = m.AuthKey.toProto()
+	if machine.AuthKey != nil {
+		machineProto.PreAuthKey = machine.AuthKey.toProto()
 	}
 
-	if m.LastSeen != nil {
-		machine.LastSeen = timestamppb.New(*m.LastSeen)
+	if machine.LastSeen != nil {
+		machineProto.LastSeen = timestamppb.New(*machine.LastSeen)
 	}
 
-	if m.LastSuccessfulUpdate != nil {
-		machine.LastSuccessfulUpdate = timestamppb.New(*m.LastSuccessfulUpdate)
+	if machine.LastSuccessfulUpdate != nil {
+		machineProto.LastSuccessfulUpdate = timestamppb.New(
+			*machine.LastSuccessfulUpdate,
+		)
 	}
 
-	if m.Expiry != nil {
-		machine.Expiry = timestamppb.New(*m.Expiry)
+	if machine.Expiry != nil {
+		machineProto.Expiry = timestamppb.New(*machine.Expiry)
 	}
 
-	return machine
+	return machineProto
 }
 
 // RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
-func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, error) {
-	ns, err := h.GetNamespace(namespace)
+func (h *Headscale) RegisterMachine(
+	key string,
+	namespaceName string,
+) (*Machine, error) {
+	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
 	}
-	mKey, err := wgkey.ParseHex(key)
+	machineKey, err := wgkey.ParseHex(key)
 	if err != nil {
 		return nil, err
 	}
 
-	m := Machine{}
-	if result := h.db.First(&m, "machine_key = ?", mKey.HexString()); errors.Is(
+	machine := Machine{}
+	if result := h.db.First(&machine, "machine_key = ?", machineKey.HexString()); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
@@ -607,15 +618,15 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Msg("Attempting to register machine")
 
-	if m.isAlreadyRegistered() {
+	if machine.isAlreadyRegistered() {
 		err := errors.New("Machine already registered")
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", m.Name).
+			Str("machine", machine.Name).
 			Msg("Attempting to register machine")
 
 		return nil, err
@@ -626,7 +637,7 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", m.Name).
+			Str("machine", machine.Name).
 			Msg("Could not find IP for the new machine")
 
 		return nil, err
@@ -634,27 +645,27 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Str("ip", ip.String()).
 		Msg("Found IP for host")
 
-	m.IPAddress = ip.String()
-	m.NamespaceID = ns.ID
-	m.Registered = true
-	m.RegisterMethod = "cli"
-	h.db.Save(&m)
+	machine.IPAddress = ip.String()
+	machine.NamespaceID = namespace.ID
+	machine.Registered = true
+	machine.RegisterMethod = "cli"
+	h.db.Save(&machine)
 
 	log.Trace().
 		Caller().
-		Str("machine", m.Name).
+		Str("machine", machine.Name).
 		Str("ip", ip.String()).
 		Msg("Machine registered with the database")
 
-	return &m, nil
+	return &machine, nil
 }
 
-func (m *Machine) GetAdvertisedRoutes() ([]netaddr.IPPrefix, error) {
-	hostInfo, err := m.GetHostInfo()
+func (machine *Machine) GetAdvertisedRoutes() ([]netaddr.IPPrefix, error) {
+	hostInfo, err := machine.GetHostInfo()
 	if err != nil {
 		return nil, err
 	}
@@ -662,8 +673,8 @@ func (m *Machine) GetAdvertisedRoutes() ([]netaddr.IPPrefix, error) {
 	return hostInfo.RoutableIPs, nil
 }
 
-func (m *Machine) GetEnabledRoutes() ([]netaddr.IPPrefix, error) {
-	data, err := m.EnabledRoutes.MarshalJSON()
+func (machine *Machine) GetEnabledRoutes() ([]netaddr.IPPrefix, error) {
+	data, err := machine.EnabledRoutes.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
@@ -686,13 +697,13 @@ func (m *Machine) GetEnabledRoutes() ([]netaddr.IPPrefix, error) {
 	return routes, nil
 }
 
-func (m *Machine) IsRoutesEnabled(routeStr string) bool {
+func (machine *Machine) IsRoutesEnabled(routeStr string) bool {
 	route, err := netaddr.ParseIPPrefix(routeStr)
 	if err != nil {
 		return false
 	}
 
-	enabledRoutes, err := m.GetEnabledRoutes()
+	enabledRoutes, err := machine.GetEnabledRoutes()
 	if err != nil {
 		return false
 	}
@@ -708,7 +719,7 @@ func (m *Machine) IsRoutesEnabled(routeStr string) bool {
 
 // EnableNodeRoute enables new routes based on a list of new routes. It will _replace_ the
 // previous list of routes.
-func (h *Headscale) EnableRoutes(m *Machine, routeStrs ...string) error {
+func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	newRoutes := make([]netaddr.IPPrefix, len(routeStrs))
 	for index, routeStr := range routeStrs {
 		route, err := netaddr.ParseIPPrefix(routeStr)
@@ -719,7 +730,7 @@ func (h *Headscale) EnableRoutes(m *Machine, routeStrs ...string) error {
 		newRoutes[index] = route
 	}
 
-	availableRoutes, err := m.GetAdvertisedRoutes()
+	availableRoutes, err := machine.GetAdvertisedRoutes()
 	if err != nil {
 		return err
 	}
@@ -728,7 +739,7 @@ func (h *Headscale) EnableRoutes(m *Machine, routeStrs ...string) error {
 		if !containsIpPrefix(availableRoutes, newRoute) {
 			return fmt.Errorf(
 				"route (%s) is not available on node %s",
-				m.Name,
+				machine.Name,
 				newRoute,
 			)
 		}
@@ -739,10 +750,10 @@ func (h *Headscale) EnableRoutes(m *Machine, routeStrs ...string) error {
 		return err
 	}
 
-	m.EnabledRoutes = datatypes.JSON(routes)
-	h.db.Save(&m)
+	machine.EnabledRoutes = datatypes.JSON(routes)
+	h.db.Save(&machine)
 
-	err = h.RequestMapUpdates(m.NamespaceID)
+	err = h.RequestMapUpdates(machine.NamespaceID)
 	if err != nil {
 		return err
 	}
@@ -750,13 +761,13 @@ func (h *Headscale) EnableRoutes(m *Machine, routeStrs ...string) error {
 	return nil
 }
 
-func (m *Machine) RoutesToProto() (*v1.Routes, error) {
-	availableRoutes, err := m.GetAdvertisedRoutes()
+func (machine *Machine) RoutesToProto() (*v1.Routes, error) {
+	availableRoutes, err := machine.GetAdvertisedRoutes()
 	if err != nil {
 		return nil, err
 	}
 
-	enabledRoutes, err := m.GetEnabledRoutes()
+	enabledRoutes, err := machine.GetEnabledRoutes()
 	if err != nil {
 		return nil, err
 	}
