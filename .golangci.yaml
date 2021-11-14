@@ -36,7 +36,6 @@ linters:
     - errorlint
     - forcetypeassert
     - errname
-    - wsl
     - unparam
     - makezero
     - gosec
@@ -52,3 +51,4 @@ linters:
     # We might want to enable this, but it might be a lot of work
     - cyclop
     - nestif
+    - wsl # might be incompatible with gofumpt
