@@ -3,6 +3,7 @@ package headscale
 import (
 	"github.com/rs/zerolog/log"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
 )
 
 func (s *Suite) TestCreateAndDestroyNamespace(c *check.C) {
@@ -31,6 +32,19 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
+	err = h.DestroyNamespace("test")
+	c.Assert(err, check.IsNil)
+
+	result := h.db.Preload("Namespace").First(&pak, "key = ?", pak.Key)
+	// destroying a namespace also deletes all associated preauthkeys
+	c.Assert(result.Error, check.Equals, gorm.ErrRecordNotFound)
+
+	n, err = h.CreateNamespace("test")
+	c.Assert(err, check.IsNil)
+
+	pak, err = h.CreatePreAuthKey(n.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
 	m := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -45,7 +59,7 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 	h.db.Save(&m)
 
 	err = h.DestroyNamespace("test")
-	c.Assert(err, check.Equals, errorNamespaceNotEmpty)
+	c.Assert(err, check.Equals, errorNamespaceNotEmptyOfNodes)
 }
 
 func (s *Suite) TestRenameNamespace(c *check.C) {
