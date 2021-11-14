@@ -24,7 +24,7 @@ func (h *Headscale) initDB() error {
 	}
 	h.db = db
 
-	if h.dbType == "postgres" {
+	if h.dbType == POSTGRESQL {
 		db.Exec("create extension if not exists \"uuid-ossp\";")
 	}
 	err = db.AutoMigrate(&Machine{})
@@ -66,12 +66,12 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 	}
 
 	switch h.dbType {
-	case "sqlite3":
+	case SQLITE:
 		db, err = gorm.Open(sqlite.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   log,
 		})
-	case "postgres":
+	case POSTGRESQL:
 		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   log,

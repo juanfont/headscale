@@ -48,6 +48,8 @@ import (
 
 const (
 	AUTH_PREFIX = "Bearer "
+	POSTGRESQL  = "postgresql"
+	SQLITE      = "sqlite3"
 )
 
 // Config contains the initial Headscale configuration.
@@ -150,7 +152,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 
 	var dbString string
 	switch cfg.DBtype {
-	case "postgres":
+	case POSTGRESQL:
 		dbString = fmt.Sprintf(
 			"host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
 			cfg.DBhost,
@@ -159,7 +161,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 			cfg.DBuser,
 			cfg.DBpass,
 		)
-	case "sqlite3":
+	case SQLITE:
 		dbString = cfg.DBpath
 	default:
 		return nil, errors.New("unsupported DB")

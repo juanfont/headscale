@@ -39,7 +39,6 @@ linters:
     - gocritic
     - forbidigo
     - dupl
-    - goconst
     - varnamelen
     - makezero
     - paralleltest
