@@ -23,10 +23,9 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"inet.af/netaddr"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn/ipnstate"
-
-	"inet.af/netaddr"
 )
 
 var tailscaleVersions = []string{"1.16.2", "1.14.3", "1.12.3"}
@@ -180,6 +179,7 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		log.Fatalf("Could not start resource: %s", err)
 	}
 	fmt.Printf("Created %s container\n", hostname)
+
 	return hostname, pts
 }
 
@@ -248,13 +248,16 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 	if err := s.pool.Retry(func() error {
 		url := fmt.Sprintf("http://%s/health", hostEndpoint)
+
 		resp, err := http.Get(url)
 		if err != nil {
 			return err
 		}
+
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("status code not OK")
 		}
+
 		return nil
 	}); err != nil {
 		// TODO(kradalby): If we cannot access headscale, or any other fatal error during
@@ -507,7 +510,6 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 	assert.Nil(s.T(), err)
 
 	for _, machine := range machineList {
-
 		result, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -607,7 +609,6 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 			for peername, ip := range ips {
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 					if peername != hostname {
-
 						// Under normal circumstances, we should be able to send a file
 						// using `tailscale file cp` - but not in userspace networking mode
 						// So curl!
@@ -770,6 +771,7 @@ func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, e
 
 		ips[hostname] = ip
 	}
+
 	return ips, nil
 }
 
@@ -809,5 +811,6 @@ func getAPIURLs(
 			}
 		}
 	}
+
 	return fts, nil
 }

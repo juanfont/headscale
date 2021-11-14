@@ -88,6 +88,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("status code not OK")
 		}
+
 		return nil
 	}); err != nil {
 		// TODO(kradalby): If we cannot access headscale, or any other fatal error during
@@ -147,7 +148,6 @@ func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
 	namespaces := make([]*v1.Namespace, len(names))
 
 	for index, namespaceName := range names {
-
 		namespace, err := s.createNamespace(namespaceName)
 		assert.Nil(s.T(), err)
 
