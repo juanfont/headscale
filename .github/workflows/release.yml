@@ -81,18 +81,21 @@ jobs:
         with:
           fetch-depth: 0
       - name: Docker meta
-        id: meta
+        id: meta-debug
         uses: docker/metadata-action@v3
         with:
           # list of Docker images to use as base name for tags
           images: |
             ${{ secrets.DOCKERHUB_USERNAME }}/headscale
             ghcr.io/${{ github.repository_owner }}/headscale
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{version}}-debug
             type=semver,pattern={{major}}.{{minor}}-debug
             type=semver,pattern={{major}}-debug
-            type=sha-debug
+            type=raw,value=latest-debug
+            type=sha,suffix=-debug
       - name: Login to DockerHub
         uses: docker/login-action@v1
         with:
@@ -110,5 +113,6 @@ jobs:
         with:
           push: true
           context: .
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          file: Dockerfile.debug
+          tags: ${{ steps.meta-debug.outputs.tags }}
+          labels: ${{ steps.meta-debug.outputs.labels }}
