@@ -43,7 +43,6 @@ linters:
     - forbidigo
     - dupl
     - goconst
-    - exhaustive
     - varnamelen
 
     # We might want to enable this, but it might be a lot of work

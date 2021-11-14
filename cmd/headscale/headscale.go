@@ -23,6 +23,8 @@ func main() {
 		colors = true
 	case termcolor.LevelBasic:
 		colors = true
+	case termcolor.LevelNone:
+		colors = false
 	default:
 		// no color, return text as is.
 		colors = false
