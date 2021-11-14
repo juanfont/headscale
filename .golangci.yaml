@@ -43,7 +43,6 @@ linters:
     - forbidigo
     - dupl
     - goconst
-    - unconvert
     - exhaustive
     - varnamelen
     - nilnil

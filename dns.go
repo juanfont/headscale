@@ -52,7 +52,7 @@ func generateMagicDNSRootDomains(
 	// min is the value in the lastOctet byte of the IP
 	// max is basically 2^wildcardBits - i.e., the value when all the wildcardBits are set to 1
 	min := uint(netRange.IP[lastOctet])
-	max := uint((min + 1<<uint(wildcardBits)) - 1)
+	max := (min + 1<<uint(wildcardBits)) - 1
 
 	// here we generate the base domain (e.g., 100.in-addr.arpa., 16.172.in-addr.arpa., etc.)
 	rdnsSlice := []string{}
