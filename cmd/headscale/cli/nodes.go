@@ -77,6 +77,7 @@ var registerNodeCmd = &cobra.Command{
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+
 			return
 		}
 
@@ -91,6 +92,7 @@ var registerNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting machine key from flag: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -109,6 +111,7 @@ var registerNodeCmd = &cobra.Command{
 				),
 				output,
 			)
+
 			return
 		}
 
@@ -124,6 +127,7 @@ var listNodesCmd = &cobra.Command{
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+
 			return
 		}
 
@@ -142,17 +146,20 @@ var listNodesCmd = &cobra.Command{
 				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
 				output,
 			)
+
 			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.Machines, "", output)
+
 			return
 		}
 
 		d, err := nodesToPtables(namespace, response.Machines)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+
 			return
 		}
 
@@ -163,6 +170,7 @@ var listNodesCmd = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
+
 			return
 		}
 	},
@@ -181,6 +189,7 @@ var deleteNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -202,6 +211,7 @@ var deleteNodeCmd = &cobra.Command{
 				),
 				output,
 			)
+
 			return
 		}
 
@@ -228,6 +238,7 @@ var deleteNodeCmd = &cobra.Command{
 			response, err := client.DeleteMachine(ctx, deleteRequest)
 			if output != "" {
 				SuccessOutput(response, "", output)
+
 				return
 			}
 			if err != nil {
@@ -239,6 +250,7 @@ var deleteNodeCmd = &cobra.Command{
 					),
 					output,
 				)
+
 				return
 			}
 			SuccessOutput(
@@ -260,6 +272,7 @@ func sharingWorker(
 	namespaceStr, err := cmd.Flags().GetString("namespace")
 	if err != nil {
 		ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+
 		return "", nil, nil, err
 	}
 
@@ -270,6 +283,7 @@ func sharingWorker(
 	id, err := cmd.Flags().GetInt("identifier")
 	if err != nil {
 		ErrorOutput(err, fmt.Sprintf("Error converting ID to integer: %s", err), output)
+
 		return "", nil, nil, err
 	}
 
@@ -284,6 +298,7 @@ func sharingWorker(
 			fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()),
 			output,
 		)
+
 		return "", nil, nil, err
 	}
 
@@ -298,6 +313,7 @@ func sharingWorker(
 			fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()),
 			output,
 		)
+
 		return "", nil, nil, err
 	}
 
@@ -315,6 +331,7 @@ var shareMachineCmd = &cobra.Command{
 				fmt.Sprintf("Failed to fetch namespace or machine: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -334,6 +351,7 @@ var shareMachineCmd = &cobra.Command{
 				fmt.Sprintf("Error sharing node: %s", status.Convert(err).Message()),
 				output,
 			)
+
 			return
 		}
 
@@ -352,6 +370,7 @@ var unshareMachineCmd = &cobra.Command{
 				fmt.Sprintf("Failed to fetch namespace or machine: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -371,6 +390,7 @@ var unshareMachineCmd = &cobra.Command{
 				fmt.Sprintf("Error unsharing node: %s", status.Convert(err).Message()),
 				output,
 			)
+
 			return
 		}
 
@@ -442,5 +462,6 @@ func nodesToPtables(
 			},
 		)
 	}
+
 	return d, nil
 }

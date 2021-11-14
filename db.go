@@ -50,6 +50,7 @@ func (h *Headscale) initDB() error {
 	}
 
 	err = h.setValue("db_version", dbVersion)
+
 	return err
 }
 
@@ -93,6 +94,7 @@ func (h *Headscale) getValue(key string) (string, error) {
 	) {
 		return "", errors.New("not found")
 	}
+
 	return row.Value, nil
 }
 
@@ -106,9 +108,11 @@ func (h *Headscale) setValue(key string, value string) error {
 	_, err := h.getValue(key)
 	if err == nil {
 		h.db.Model(&kv).Where("key = ?", key).Update("value", value)
+
 		return nil
 	}
 
 	h.db.Create(kv)
+
 	return nil
 }

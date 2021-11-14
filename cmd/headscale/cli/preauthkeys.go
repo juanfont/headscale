@@ -44,6 +44,7 @@ var listPreAuthKeys = &cobra.Command{
 		n, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+
 			return
 		}
 
@@ -62,11 +63,13 @@ var listPreAuthKeys = &cobra.Command{
 				fmt.Sprintf("Error getting the list of keys: %s", err),
 				output,
 			)
+
 			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.PreAuthKeys, "", output)
+
 			return
 		}
 
@@ -104,6 +107,7 @@ var listPreAuthKeys = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
+
 			return
 		}
 	},
@@ -118,6 +122,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+
 			return
 		}
 
@@ -156,6 +161,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 				fmt.Sprintf("Cannot create Pre Auth Key: %s\n", err),
 				output,
 			)
+
 			return
 		}
 
@@ -170,6 +176,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		if len(args) < 1 {
 			return fmt.Errorf("missing parameters")
 		}
+
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -177,6 +184,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+
 			return
 		}
 
@@ -196,6 +204,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 				fmt.Sprintf("Cannot expire Pre Auth Key: %s\n", err),
 				output,
 			)
+
 			return
 		}
 

@@ -77,6 +77,7 @@ func (h *Headscale) AppleMobileConfig(c *gin.Context) {
 			"text/html; charset=utf-8",
 			[]byte("Could not render Apple index template"),
 		)
+
 		return
 	}
 
@@ -97,6 +98,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			"text/html; charset=utf-8",
 			[]byte("Failed to create UUID"),
 		)
+
 		return
 	}
 
@@ -111,6 +113,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			"text/html; charset=utf-8",
 			[]byte("Failed to create UUID"),
 		)
+
 		return
 	}
 
@@ -133,6 +136,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 				"text/html; charset=utf-8",
 				[]byte("Could not render Apple macOS template"),
 			)
+
 			return
 		}
 	case "ios":
@@ -146,6 +150,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 				"text/html; charset=utf-8",
 				[]byte("Could not render Apple iOS template"),
 			)
+
 			return
 		}
 	default:
@@ -154,6 +159,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			"text/html; charset=utf-8",
 			[]byte("Invalid platform, only ios and macos is supported"),
 		)
+
 		return
 	}
 
@@ -174,6 +180,7 @@ func (h *Headscale) ApplePlatformConfig(c *gin.Context) {
 			"text/html; charset=utf-8",
 			[]byte("Could not render Apple platform template"),
 		)
+
 		return
 	}
 

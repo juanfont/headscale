@@ -106,6 +106,7 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
 		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
+
 		return Machines{}, err
 	}
 
@@ -115,6 +116,7 @@ func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
 		Caller().
 		Str("machine", m.Name).
 		Msgf("Found direct machines: %s", machines.String())
+
 	return machines, nil
 }
 
@@ -142,6 +144,7 @@ func (h *Headscale) getShared(m *Machine) (Machines, error) {
 		Caller().
 		Str("machine", m.Name).
 		Msgf("Found shared peers: %s", peers.String())
+
 	return peers, nil
 }
 
@@ -175,6 +178,7 @@ func (h *Headscale) getSharedTo(m *Machine) (Machines, error) {
 		Caller().
 		Str("machine", m.Name).
 		Msgf("Found peers we are shared with: %s", peers.String())
+
 	return peers, nil
 }
 
@@ -185,6 +189,7 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 			Caller().
 			Err(err).
 			Msg("Cannot fetch peers")
+
 		return Machines{}, err
 	}
 
@@ -194,6 +199,7 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 			Caller().
 			Err(err).
 			Msg("Cannot fetch peers")
+
 		return Machines{}, err
 	}
 
@@ -203,6 +209,7 @@ func (h *Headscale) getPeers(m *Machine) (Machines, error) {
 			Caller().
 			Err(err).
 			Msg("Cannot fetch peers")
+
 		return Machines{}, err
 	}
 
@@ -224,6 +231,7 @@ func (h *Headscale) ListMachines() ([]Machine, error) {
 	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Find(&machines).Error; err != nil {
 		return nil, err
 	}
+
 	return machines, nil
 }
 
@@ -239,6 +247,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 			return &m, nil
 		}
 	}
+
 	return nil, fmt.Errorf("machine not found")
 }
 
@@ -248,6 +257,7 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	if result := h.db.Preload("Namespace").Find(&Machine{ID: id}).First(&m); result.Error != nil {
 		return nil, result.Error
 	}
+
 	return &m, nil
 }
 
@@ -257,6 +267,7 @@ func (h *Headscale) GetMachineByMachineKey(mKey string) (*Machine, error) {
 	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey); result.Error != nil {
 		return nil, result.Error
 	}
+
 	return &m, nil
 }
 
@@ -266,6 +277,7 @@ func (h *Headscale) UpdateMachine(m *Machine) error {
 	if result := h.db.Find(m).First(&m); result.Error != nil {
 		return result.Error
 	}
+
 	return nil
 }
 
@@ -314,6 +326,7 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 			return nil, err
 		}
 	}
+
 	return &hostinfo, nil
 }
 
@@ -348,6 +361,7 @@ func (h *Headscale) isOutdated(m *Machine) bool {
 		Time("last_successful_update", *m.LastSuccessfulUpdate).
 		Time("last_state_change", lastChange).
 		Msgf("Checking if %s is missing updates", m.Name)
+
 	return m.LastSuccessfulUpdate.Before(lastChange)
 }
 
@@ -429,6 +443,7 @@ func (m Machine) toNode(
 			Caller().
 			Str("ip", m.IPAddress).
 			Msgf("Failed to parse IP Prefix from IP: %s", m.IPAddress)
+
 		return nil, err
 	}
 	addrs = append(addrs, ip) // missing the ipv6 ?
@@ -530,6 +545,7 @@ func (m Machine) toNode(
 		MachineAuthorized: m.Registered,
 		Capabilities:      []string{tailcfg.CapabilityFileSharing},
 	}
+
 	return &n, nil
 }
 
@@ -613,6 +629,7 @@ func (h *Headscale) RegisterMachine(key string, namespace string) (*Machine, err
 			Err(err).
 			Str("machine", m.Name).
 			Msg("Could not find IP for the new machine")
+
 		return nil, err
 	}
 
@@ -642,6 +659,7 @@ func (m *Machine) GetAdvertisedRoutes() ([]netaddr.IPPrefix, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return hostInfo.RoutableIPs, nil
 }
 
@@ -685,6 +703,7 @@ func (m *Machine) IsRoutesEnabled(routeStr string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 

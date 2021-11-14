@@ -24,6 +24,7 @@ func (h *Headscale) GetAdvertisedNodeRoutes(
 	if err != nil {
 		return nil, err
 	}
+
 	return &hostInfo.RoutableIPs, nil
 }
 
@@ -84,6 +85,7 @@ func (h *Headscale) IsNodeRouteEnabled(
 			return true
 		}
 	}
+
 	return false
 }
 

@@ -18,6 +18,7 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 	for _, domain := range domains {
 		if domain == "64.100.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -27,6 +28,7 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 	for _, domain := range domains {
 		if domain == "100.100.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -36,6 +38,7 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 	for _, domain := range domains {
 		if domain == "127.100.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -51,6 +54,7 @@ func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
 	for _, domain := range domains {
 		if domain == "0.16.172.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -60,6 +64,7 @@ func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
 	for _, domain := range domains {
 		if domain == "255.16.172.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}

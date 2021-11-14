@@ -31,6 +31,7 @@ var createNamespaceCmd = &cobra.Command{
 		if len(args) < 1 {
 			return fmt.Errorf("Missing parameters")
 		}
+
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -57,6 +58,7 @@ var createNamespaceCmd = &cobra.Command{
 				),
 				output,
 			)
+
 			return
 		}
 
@@ -71,6 +73,7 @@ var destroyNamespaceCmd = &cobra.Command{
 		if len(args) < 1 {
 			return fmt.Errorf("Missing parameters")
 		}
+
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -93,6 +96,7 @@ var destroyNamespaceCmd = &cobra.Command{
 				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
 				output,
 			)
+
 			return
 		}
 
@@ -124,6 +128,7 @@ var destroyNamespaceCmd = &cobra.Command{
 					),
 					output,
 				)
+
 				return
 			}
 			SuccessOutput(response, "Namespace destroyed", output)
@@ -152,11 +157,13 @@ var listNamespacesCmd = &cobra.Command{
 				fmt.Sprintf("Cannot get namespaces: %s", status.Convert(err).Message()),
 				output,
 			)
+
 			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.Namespaces, "", output)
+
 			return
 		}
 
@@ -178,6 +185,7 @@ var listNamespacesCmd = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
+
 			return
 		}
 	},
@@ -190,6 +198,7 @@ var renameNamespaceCmd = &cobra.Command{
 		if len(args) < 2 {
 			return fmt.Errorf("Missing parameters")
 		}
+
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -214,6 +223,7 @@ var renameNamespaceCmd = &cobra.Command{
 				),
 				output,
 			)
+
 			return
 		}
 

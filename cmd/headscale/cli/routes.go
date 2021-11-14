@@ -52,6 +52,7 @@ var listRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Error getting machine id from flag: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -70,17 +71,20 @@ var listRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
 				output,
 			)
+
 			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.Routes, "", output)
+
 			return
 		}
 
 		d := routesToPtables(response.Routes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+
 			return
 		}
 
@@ -91,6 +95,7 @@ var listRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
+
 			return
 		}
 	},
@@ -113,6 +118,7 @@ omit the route you do not want to enable.
 				fmt.Sprintf("Error getting machine id from flag: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -123,6 +129,7 @@ omit the route you do not want to enable.
 				fmt.Sprintf("Error getting routes from flag: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -145,17 +152,20 @@ omit the route you do not want to enable.
 				),
 				output,
 			)
+
 			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.Routes, "", output)
+
 			return
 		}
 
 		d := routesToPtables(response.Routes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+
 			return
 		}
 
@@ -166,6 +176,7 @@ omit the route you do not want to enable.
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
+
 			return
 		}
 	},
@@ -180,6 +191,7 @@ func routesToPtables(routes *v1.Routes) pterm.TableData {
 
 		d = append(d, []string{route, strconv.FormatBool(enabled)})
 	}
+
 	return d
 }
 

@@ -69,6 +69,7 @@ func generateMagicDNSRootDomains(
 		}
 		fqdns = append(fqdns, fqdn)
 	}
+
 	return fqdns, nil
 }
 
@@ -99,5 +100,6 @@ func getMapResponseDNSConfig(
 	} else {
 		dnsConfig = dnsConfigOrig
 	}
+
 	return dnsConfig, nil
 }

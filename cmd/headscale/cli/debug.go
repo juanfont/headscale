@@ -48,6 +48,7 @@ var createNodeCmd = &cobra.Command{
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+
 			return
 		}
 
@@ -62,6 +63,7 @@ var createNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting node from flag: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -72,6 +74,7 @@ var createNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting key from flag: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -82,6 +85,7 @@ var createNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting routes from flag: %s", err),
 				output,
 			)
+
 			return
 		}
 
@@ -99,6 +103,7 @@ var createNodeCmd = &cobra.Command{
 				fmt.Sprintf("Cannot create machine: %s", status.Convert(err).Message()),
 				output,
 			)
+
 			return
 		}
 

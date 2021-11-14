@@ -42,8 +42,10 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 			Str("func", "CreateNamespace").
 			Err(err).
 			Msg("Could not create row")
+
 		return nil, err
 	}
+
 	return &n, nil
 }
 
@@ -119,6 +121,7 @@ func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 	) {
 		return nil, errorNamespaceNotFound
 	}
+
 	return &n, nil
 }
 
@@ -128,6 +131,7 @@ func (h *Headscale) ListNamespaces() ([]Namespace, error) {
 	if err := h.db.Find(&namespaces).Error; err != nil {
 		return nil, err
 	}
+
 	return namespaces, nil
 }
 
@@ -142,6 +146,7 @@ func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
 	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where(&Machine{NamespaceID: n.ID}).Find(&machines).Error; err != nil {
 		return nil, err
 	}
+
 	return machines, nil
 }
 
@@ -166,6 +171,7 @@ func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error
 		}
 		machines = append(machines, *machine)
 	}
+
 	return machines, nil
 }
 
@@ -177,6 +183,7 @@ func (h *Headscale) SetMachineNamespace(m *Machine, namespaceName string) error 
 	}
 	m.NamespaceID = n.ID
 	h.db.Save(&m)
+
 	return nil
 }
 
@@ -196,6 +203,7 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 		if err != nil {
 			return err
 		}
+
 		return nil
 	}
 	names := []string{}
@@ -208,6 +216,7 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 		if err != nil {
 			return err
 		}
+
 		return nil
 	}
 
@@ -218,8 +227,10 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 			Str("func", "RequestMapUpdates").
 			Err(err).
 			Msg("Could not marshal namespaces_pending_updates")
+
 		return err
 	}
+
 	return h.setValue("namespaces_pending_updates", string(data))
 }
 
@@ -255,6 +266,7 @@ func (h *Headscale) checkForNamespacesPendingUpdates() {
 				Str("func", "checkForNamespacesPendingUpdates").
 				Err(err).
 				Msg("Could not save to KV")
+
 			return
 		}
 	}
@@ -270,6 +282,7 @@ func (n *Namespace) toUser() *tailcfg.User {
 		Logins:        []tailcfg.LoginID{},
 		Created:       time.Time{},
 	}
+
 	return &u
 }
 
@@ -281,6 +294,7 @@ func (n *Namespace) toLogin() *tailcfg.Login {
 		ProfilePicURL: "",
 		Domain:        "headscale.net",
 	}
+
 	return &l
 }
 
@@ -300,6 +314,7 @@ func getMapResponseUserProfiles(m Machine, peers Machines) []tailcfg.UserProfile
 				DisplayName: namespace.Name,
 			})
 	}
+
 	return profiles
 }
 

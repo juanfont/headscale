@@ -48,6 +48,7 @@ func decodeMsg(
 	if err := json.Unmarshal(decrypted, v); err != nil {
 		return fmt.Errorf("response: %v", err)
 	}
+
 	return nil
 }
 
@@ -64,6 +65,7 @@ func decryptMsg(msg []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, 
 	if !ok {
 		return nil, fmt.Errorf("cannot decrypt response")
 	}
+
 	return decrypted, nil
 }
 
@@ -83,6 +85,7 @@ func encodeMsg(b []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, err
 	}
 	pub, pri := (*[32]byte)(pubKey), (*[32]byte)(privKey)
 	msg := box.Seal(nonce[:], b, &nonce, pub, pri)
+
 	return msg, nil
 }
 
@@ -108,12 +111,14 @@ func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
 		ipRaw := ip.As4()
 		if ipRaw[3] == 0 || ipRaw[3] == 255 {
 			ip = ip.Next()
+
 			continue
 		}
 
 		if ip.IsZero() &&
 			ip.IsLoopback() {
 			ip = ip.Next()
+
 			continue
 		}
 
@@ -174,6 +179,7 @@ func tailMapResponseToString(resp tailcfg.MapResponse) string {
 
 func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
 	var d net.Dialer
+
 	return d.DialContext(ctx, "unix", addr)
 }
 

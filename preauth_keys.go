@@ -75,6 +75,7 @@ func (h *Headscale) ListPreAuthKeys(namespaceName string) ([]PreAuthKey, error) 
 	if err := h.db.Preload("Namespace").Where(&PreAuthKey{NamespaceID: n.ID}).Find(&keys).Error; err != nil {
 		return nil, err
 	}
+
 	return keys, nil
 }
 
@@ -107,6 +108,7 @@ func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -147,6 +149,7 @@ func (h *Headscale) generateKey() (string, error) {
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
+
 	return hex.EncodeToString(bytes), nil
 }
 

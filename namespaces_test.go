@@ -199,6 +199,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	for _, up := range userProfiles {
 		if up.DisplayName == n1.Name {
 			found = true
+
 			break
 		}
 	}
@@ -208,6 +209,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	for _, up := range userProfiles {
 		if up.DisplayName == n2.Name {
 			found = true
+
 			break
 		}
 	}

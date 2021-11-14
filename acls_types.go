@@ -65,6 +65,7 @@ func (h *Hosts) UnmarshalJSON(data []byte) error {
 		hosts[k] = prefix
 	}
 	*h = hosts
+
 	return nil
 }
 
@@ -73,5 +74,6 @@ func (p ACLPolicy) IsZero() bool {
 	if len(p.Groups) == 0 && len(p.Hosts) == 0 && len(p.ACLs) == 0 {
 		return true
 	}
+
 	return false
 }

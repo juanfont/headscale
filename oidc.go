@@ -32,6 +32,7 @@ func (h *Headscale) initOIDC() error {
 
 		if err != nil {
 			log.Error().Msgf("Could not retrieve OIDC Config: %s", err.Error())
+
 			return err
 		}
 
@@ -62,6 +63,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 	mKeyStr := c.Param("mkey")
 	if mKeyStr == "" {
 		c.String(http.StatusBadRequest, "Wrong params")
+
 		return
 	}
 
@@ -70,6 +72,7 @@ func (h *Headscale) RegisterOIDC(c *gin.Context) {
 	if err != nil {
 		log.Error().Msg("could not read 16 bytes from rand")
 		c.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
+
 		return
 	}
 
@@ -95,12 +98,14 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 
 	if code == "" || state == "" {
 		c.String(http.StatusBadRequest, "Wrong params")
+
 		return
 	}
 
 	oauth2Token, err := h.oauth2Config.Exchange(context.Background(), code)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Could not exchange code for token")
+
 		return
 	}
 
@@ -109,6 +114,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	rawIDToken, rawIDTokenOK := oauth2Token.Extra("id_token").(string)
 	if !rawIDTokenOK {
 		c.String(http.StatusBadRequest, "Could not extract ID Token")
+
 		return
 	}
 
@@ -117,6 +123,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	idToken, err := verifier.Verify(context.Background(), rawIDToken)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Failed to verify id token: %s", err.Error())
+
 		return
 	}
 
@@ -134,6 +141,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 			http.StatusBadRequest,
 			fmt.Sprintf("Failed to decode id token claims: %s", err),
 		)
+
 		return
 	}
 
@@ -144,6 +152,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 		log.Error().
 			Msg("requested machine state key expired before authorisation completed")
 		c.String(http.StatusBadRequest, "state has expired")
+
 		return
 	}
 	mKeyStr, mKeyOK := mKeyIf.(string)
@@ -151,6 +160,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 	if !mKeyOK {
 		log.Error().Msg("could not get machine key from cache")
 		c.String(http.StatusInternalServerError, "could not get machine key from cache")
+
 		return
 	}
 
@@ -162,6 +172,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 			http.StatusInternalServerError,
 			"could not get machine info from database",
 		)
+
 		return
 	}
 
@@ -183,6 +194,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 						http.StatusInternalServerError,
 						"could not create new namespace",
 					)
+
 					return
 				}
 			}
@@ -193,6 +205,7 @@ func (h *Headscale) OIDCCallback(c *gin.Context) {
 					http.StatusInternalServerError,
 					"could not get an IP from the pool",
 				)
+
 				return
 			}
 

@@ -27,6 +27,7 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 		return nil, err
 	}
 	err = yaml.Unmarshal(b, &derpMap)
+
 	return &derpMap, err
 }
 
@@ -56,6 +57,7 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 
 	var derpMap tailcfg.DERPMap
 	err = json.Unmarshal(body, &derpMap)
+
 	return &derpMap, err
 }
 
@@ -94,6 +96,7 @@ func GetDERPMap(cfg DERPConfig) *tailcfg.DERPMap {
 				Str("path", path).
 				Err(err).
 				Msg("Could not load DERP map from path")
+
 			break
 		}
 
@@ -112,6 +115,7 @@ func GetDERPMap(cfg DERPConfig) *tailcfg.DERPMap {
 				Str("url", addr.String()).
 				Err(err).
 				Msg("Could not load DERP map from path")
+
 			break
 		}
 

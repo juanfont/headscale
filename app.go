@@ -297,6 +297,7 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 			Caller().
 			Str("client_address", p.Addr.String()).
 			Msg("Retrieving metadata is failed")
+
 		return ctx, status.Errorf(
 			codes.InvalidArgument,
 			"Retrieving metadata is failed",
@@ -309,6 +310,7 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 			Caller().
 			Str("client_address", p.Addr.String()).
 			Msg("Authorization token is not supplied")
+
 		return ctx, status.Errorf(
 			codes.Unauthenticated,
 			"Authorization token is not supplied",
@@ -322,6 +324,7 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 			Caller().
 			Str("client_address", p.Addr.String()).
 			Msg(`missing "Bearer " prefix in "Authorization" header`)
+
 		return ctx, status.Error(
 			codes.Unauthenticated,
 			`missing "Bearer " prefix in "Authorization" header`,
@@ -392,6 +395,7 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	if _, err := os.Stat(h.cfg.UnixSocket); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
+
 	return os.Remove(h.cfg.UnixSocket)
 }
 
@@ -568,6 +572,7 @@ func (h *Headscale) Serve() error {
 	if tlsConfig != nil {
 		g.Go(func() error {
 			tlsl := tls.NewListener(httpListener, tlsConfig)
+
 			return httpServer.Serve(tlsl)
 		})
 	} else {

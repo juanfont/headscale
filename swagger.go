@@ -57,6 +57,7 @@ func SwaggerUI(c *gin.Context) {
 			"text/html; charset=utf-8",
 			[]byte("Could not render Swagger"),
 		)
+
 		return
 	}
 

@@ -38,6 +38,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Err(err).
 			Msg("Cannot parse client key")
 		c.String(http.StatusBadRequest, "")
+
 		return
 	}
 	req := tailcfg.MapRequest{}
@@ -48,6 +49,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Err(err).
 			Msg("Cannot decode message")
 		c.String(http.StatusBadRequest, "")
+
 		return
 	}
 
@@ -58,6 +60,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 				Str("handler", "PollNetMap").
 				Msgf("Ignoring request, cannot find machine with key %s", mKey.HexString())
 			c.String(http.StatusUnauthorized, "")
+
 			return
 		}
 		log.Error().
@@ -101,6 +104,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Err(err).
 			Msg("Failed to get Map response")
 		c.String(http.StatusInternalServerError, ":(")
+
 		return
 	}
 
@@ -124,6 +128,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Str("machine", m.Name).
 			Msg("Client is starting up. Probably interested in a DERP map")
 		c.Data(200, "application/json; charset=utf-8", data)
+
 		return
 	}
 
@@ -161,6 +166,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 		updateRequestsFromNode.WithLabelValues(m.Name, m.Namespace.Name, "endpoint-update").
 			Inc()
 		go func() { updateChan <- struct{}{} }()
+
 		return
 	} else if req.OmitPeers && req.Stream {
 		log.Warn().
@@ -168,6 +174,7 @@ func (h *Headscale) PollNetMapHandler(c *gin.Context) {
 			Str("machine", m.Name).
 			Msg("Ignoring request, don't know how to handle it")
 		c.String(http.StatusBadRequest, "")
+
 		return
 	}
 
@@ -248,6 +255,7 @@ func (h *Headscale) PollNetMapStream(
 					Str("channel", "pollData").
 					Err(err).
 					Msg("Cannot write data")
+
 				return false
 			}
 			log.Trace().
@@ -282,6 +290,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "pollData").
 				Int("bytes", len(data)).
 				Msg("Machine entry in database updated successfully after sending pollData")
+
 			return true
 
 		case data := <-keepAliveChan:
@@ -299,6 +308,7 @@ func (h *Headscale) PollNetMapStream(
 					Str("channel", "keepAlive").
 					Err(err).
 					Msg("Cannot write keep alive message")
+
 				return false
 			}
 			log.Trace().
@@ -328,6 +338,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "keepAlive").
 				Int("bytes", len(data)).
 				Msg("Machine updated successfully after sending keep alive")
+
 			return true
 
 		case <-updateChan:
@@ -364,6 +375,7 @@ func (h *Headscale) PollNetMapStream(
 						Msg("Could not write the map response")
 					updateRequestsSentToNode.WithLabelValues(m.Name, m.Namespace.Name, "failed").
 						Inc()
+
 					return false
 				}
 				log.Trace().
@@ -405,6 +417,7 @@ func (h *Headscale) PollNetMapStream(
 					Time("last_state_change", h.getLastStateChange(m.Namespace.Name)).
 					Msgf("%s is up to date", m.Name)
 			}
+
 			return true
 
 		case <-c.Request.Context().Done():
@@ -485,6 +498,7 @@ func (h *Headscale) scheduledPollWorker(
 					Str("func", "keepAlive").
 					Err(err).
 					Msg("Error generating the keep alive msg")
+
 				return
 			}
 

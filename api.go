@@ -30,6 +30,7 @@ func (h *Headscale) RegisterWebAPI(c *gin.Context) {
 	mKeyStr := c.Query("key")
 	if mKeyStr == "" {
 		c.String(http.StatusBadRequest, "Wrong params")
+
 		return
 	}
 
@@ -66,6 +67,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Msg("Cannot parse machine key")
 		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		c.String(http.StatusInternalServerError, "Sad!")
+
 		return
 	}
 	req := tailcfg.RegisterRequest{}
@@ -77,6 +79,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Msg("Cannot decode message")
 		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		c.String(http.StatusInternalServerError, "Very sad!")
+
 		return
 	}
 
@@ -96,6 +99,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				Msg("Could not create row")
 			machineRegistrations.WithLabelValues("unknown", "web", "error", m.Namespace.Name).
 				Inc()
+
 			return
 		}
 		m = &newMachine
@@ -103,6 +107,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 
 	if !m.Registered && req.Auth.AuthKey != "" {
 		h.handleAuthKey(c, h.db, mKey, req, *m)
+
 		return
 	}
 
@@ -131,9 +136,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 					Err(err).
 					Msg("Cannot encode message")
 				c.String(http.StatusInternalServerError, "")
+
 				return
 			}
 			c.Data(200, "application/json; charset=utf-8", respBody)
+
 			return
 		}
 
@@ -158,11 +165,13 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				machineRegistrations.WithLabelValues("update", "web", "error", m.Namespace.Name).
 					Inc()
 				c.String(http.StatusInternalServerError, "")
+
 				return
 			}
 			machineRegistrations.WithLabelValues("update", "web", "success", m.Namespace.Name).
 				Inc()
 			c.Data(200, "application/json; charset=utf-8", respBody)
+
 			return
 		}
 
@@ -199,11 +208,13 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			machineRegistrations.WithLabelValues("new", "web", "error", m.Namespace.Name).
 				Inc()
 			c.String(http.StatusInternalServerError, "")
+
 			return
 		}
 		machineRegistrations.WithLabelValues("new", "web", "success", m.Namespace.Name).
 			Inc()
 		c.Data(200, "application/json; charset=utf-8", respBody)
+
 		return
 	}
 
@@ -225,9 +236,11 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 				Err(err).
 				Msg("Cannot encode message")
 			c.String(http.StatusInternalServerError, "Extremely sad!")
+
 			return
 		}
 		c.Data(200, "application/json; charset=utf-8", respBody)
+
 		return
 	}
 
@@ -259,6 +272,7 @@ func (h *Headscale) RegistrationHandler(c *gin.Context) {
 			Err(err).
 			Msg("Cannot encode message")
 		c.String(http.StatusInternalServerError, "")
+
 		return
 	}
 	c.Data(200, "application/json; charset=utf-8", respBody)
@@ -279,6 +293,7 @@ func (h *Headscale) getMapResponse(
 			Str("func", "getMapResponse").
 			Err(err).
 			Msg("Cannot convert to node")
+
 		return nil, err
 	}
 
@@ -288,6 +303,7 @@ func (h *Headscale) getMapResponse(
 			Str("func", "getMapResponse").
 			Err(err).
 			Msg("Cannot fetch peers")
+
 		return nil, err
 	}
 
@@ -299,6 +315,7 @@ func (h *Headscale) getMapResponse(
 			Str("func", "getMapResponse").
 			Err(err).
 			Msg("Failed to convert peers to Tailscale nodes")
+
 		return nil, err
 	}
 
@@ -313,6 +330,7 @@ func (h *Headscale) getMapResponse(
 			Str("func", "getMapResponse").
 			Err(err).
 			Msg("Failed generate the DNSConfig")
+
 		return nil, err
 	}
 
@@ -353,6 +371,7 @@ func (h *Headscale) getMapResponse(
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
+
 	return data, nil
 }
 
@@ -383,6 +402,7 @@ func (h *Headscale) getMapKeepAliveResponse(
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
+
 	return data, nil
 }
 
@@ -416,6 +436,7 @@ func (h *Headscale) handleAuthKey(
 			c.String(http.StatusInternalServerError, "")
 			machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).
 				Inc()
+
 			return
 		}
 		c.Data(401, "application/json; charset=utf-8", respBody)
@@ -425,6 +446,7 @@ func (h *Headscale) handleAuthKey(
 			Msg("Failed authentication via AuthKey")
 		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).
 			Inc()
+
 		return
 	}
 
@@ -440,6 +462,7 @@ func (h *Headscale) handleAuthKey(
 			Msg("Failed to find an available IP")
 		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).
 			Inc()
+
 		return
 	}
 	log.Info().
@@ -471,6 +494,7 @@ func (h *Headscale) handleAuthKey(
 		machineRegistrations.WithLabelValues("new", "authkey", "error", m.Namespace.Name).
 			Inc()
 		c.String(http.StatusInternalServerError, "Extremely sad!")
+
 		return
 	}
 	machineRegistrations.WithLabelValues("new", "authkey", "success", m.Namespace.Name).

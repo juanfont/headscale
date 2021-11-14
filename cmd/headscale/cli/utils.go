@@ -213,6 +213,7 @@ func absPath(path string) string {
 			path = filepath.Join(dir, path)
 		}
 	}
+
 	return path
 }
 
@@ -310,6 +311,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 			viper.GetString("ephemeral_node_inactivity_timeout"),
 			minInactivityTimeout,
 		)
+
 		return nil, err
 	}
 
@@ -415,6 +417,7 @@ func SuccessOutput(result interface{}, override string, outputFormat string) {
 		}
 	default:
 		fmt.Println(override)
+
 		return
 	}
 
@@ -435,6 +438,7 @@ func HasMachineOutputFlag() bool {
 			return true
 		}
 	}
+
 	return false
 }
 

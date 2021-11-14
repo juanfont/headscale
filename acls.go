@@ -58,6 +58,7 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 		return err
 	}
 	h.aclRules = rules
+
 	return nil
 }
 
@@ -77,6 +78,7 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 			if err != nil {
 				log.Error().
 					Msgf("Error parsing ACL %d, User %d", i, j)
+
 				return nil, err
 			}
 			srcIPs = append(srcIPs, srcs...)
@@ -89,6 +91,7 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 			if err != nil {
 				log.Error().
 					Msgf("Error parsing ACL %d, Port %d", i, j)
+
 				return nil, err
 			}
 			destPorts = append(destPorts, dests...)
@@ -147,6 +150,7 @@ func (h *Headscale) generateACLPolicyDestPorts(
 			dests = append(dests, pr)
 		}
 	}
+
 	return dests, nil
 }
 
@@ -169,6 +173,7 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 				ips = append(ips, node.IPAddress)
 			}
 		}
+
 		return ips, nil
 	}
 
@@ -200,11 +205,13 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 				for _, t := range hostinfo.RequestTags {
 					if s[4:] == t {
 						ips = append(ips, m.IPAddress)
+
 						break
 					}
 				}
 			}
 		}
+
 		return ips, nil
 	}
 
@@ -218,6 +225,7 @@ func (h *Headscale) expandAlias(s string) ([]string, error) {
 		for _, n := range nodes {
 			ips = append(ips, n.IPAddress)
 		}
+
 		return ips, nil
 	}
 
@@ -272,5 +280,6 @@ func (h *Headscale) expandPorts(s string) (*[]tailcfg.PortRange, error) {
 			return nil, errorInvalidPortFormat
 		}
 	}
+
 	return &ports, nil
 }
