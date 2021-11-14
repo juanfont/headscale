@@ -102,7 +102,7 @@ func (h *Headscale) DestroyPreAuthKey(pak *PreAuthKey) error {
 	return nil
 }
 
-// MarkExpirePreAuthKey marks a PreAuthKey as expired
+// MarkExpirePreAuthKey marks a PreAuthKey as expired.
 func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 	if err := h.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
 		return err
