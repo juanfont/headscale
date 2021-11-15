@@ -451,7 +451,7 @@ func nodesToPtables(
 		tableData = append(
 			tableData,
 			[]string{
-				strconv.FormatUint(machine.Id, headscale.BASE_10),
+				strconv.FormatUint(machine.Id, headscale.Base10),
 				machine.Name,
 				nodeKey.ShortString(),
 				namespace,

@@ -529,7 +529,7 @@ func (machine Machine) toNode(
 	node := tailcfg.Node{
 		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
-			strconv.FormatUint(machine.ID, BASE_10),
+			strconv.FormatUint(machine.ID, Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostname,
 		User:       tailcfg.UserID(machine.NamespaceID),
@@ -736,7 +736,7 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	}
 
 	for _, newRoute := range newRoutes {
-		if !containsIpPrefix(availableRoutes, newRoute) {
+		if !containsIPPrefix(availableRoutes, newRoute) {
 			return fmt.Errorf(
 				"route (%s) is not available on node %s",
 				machine.Name,

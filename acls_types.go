@@ -43,18 +43,18 @@ type ACLTest struct {
 // UnmarshalJSON allows to parse the Hosts directly into netaddr objects.
 func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 	newHosts := Hosts{}
-	hostIpPrefixMap := make(map[string]string)
+	hostIPPrefixMap := make(map[string]string)
 	ast, err := hujson.Parse(data)
 	if err != nil {
 		return err
 	}
 	ast.Standardize()
 	data = ast.Pack()
-	err = json.Unmarshal(data, &hostIpPrefixMap)
+	err = json.Unmarshal(data, &hostIPPrefixMap)
 	if err != nil {
 		return err
 	}
-	for host, prefixStr := range hostIpPrefixMap {
+	for host, prefixStr := range hostIPPrefixMap {
 		if !strings.Contains(prefixStr, "/") {
 			prefixStr += "/32"
 		}

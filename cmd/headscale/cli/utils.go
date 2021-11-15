@@ -53,7 +53,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("cli.timeout", "5s")
 
 	if err := viper.ReadInConfig(); err != nil {
-		return fmt.Errorf("Fatal error reading config file: %w", err)
+		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
 
 	// Collect any validation errors and return them all at once
@@ -306,7 +306,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	minInactivityTimeout, _ := time.ParseDuration("65s")
 	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
 		err := fmt.Errorf(
-			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n",
+			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
 			viper.GetString("ephemeral_node_inactivity_timeout"),
 			minInactivityTimeout,
 		)

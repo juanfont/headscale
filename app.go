@@ -47,11 +47,11 @@ import (
 )
 
 const (
-	AUTH_PREFIX              = "Bearer "
-	POSTGRESQL               = "postgresql"
-	SQLITE                   = "sqlite3"
-	UPDATE_RATE_MILLISECONDS = 5000
-	HTTP_READ_TIMEOUT        = 30 * time.Second
+	AuthPrefix      = "Bearer "
+	Postgres        = "postgresql"
+	Sqlite          = "sqlite3"
+	updateInterval  = 5000
+	HTTPReadTimeout = 30 * time.Second
 )
 
 // Config contains the initial Headscale configuration.
@@ -154,7 +154,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 
 	var dbString string
 	switch cfg.DBtype {
-	case POSTGRESQL:
+	case Postgres:
 		dbString = fmt.Sprintf(
 			"host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
 			cfg.DBhost,
@@ -163,7 +163,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 			cfg.DBuser,
 			cfg.DBpass,
 		)
-	case SQLITE:
+	case Sqlite:
 		dbString = cfg.DBpath
 	default:
 		return nil, errors.New("unsupported DB")
@@ -321,7 +321,7 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 
 	token := authHeader[0]
 
-	if !strings.HasPrefix(token, AUTH_PREFIX) {
+	if !strings.HasPrefix(token, AuthPrefix) {
 		log.Error().
 			Caller().
 			Str("client_address", client.Addr.String()).
@@ -363,7 +363,7 @@ func (h *Headscale) httpAuthenticationMiddleware(ctx *gin.Context) {
 
 	authHeader := ctx.GetHeader("authorization")
 
-	if !strings.HasPrefix(authHeader, AUTH_PREFIX) {
+	if !strings.HasPrefix(authHeader, AuthPrefix) {
 		log.Error().
 			Caller().
 			Str("client_address", ctx.ClientIP()).
@@ -511,13 +511,13 @@ func (h *Headscale) Serve() error {
 	}
 
 	// I HATE THIS
-	go h.watchForKVUpdates(UPDATE_RATE_MILLISECONDS)
-	go h.expireEphemeralNodes(UPDATE_RATE_MILLISECONDS)
+	go h.watchForKVUpdates(updateInterval)
+	go h.expireEphemeralNodes(updateInterval)
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
 		Handler:     router,
-		ReadTimeout: HTTP_READ_TIMEOUT,
+		ReadTimeout: HTTPReadTimeout,
 		// Go does not handle timeouts in HTTP very well, and there is
 		// no good way to handle streaming timeouts, therefore we need to
 		// keep this at unlimited and be careful to clean up connections

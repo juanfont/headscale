@@ -18,7 +18,7 @@ import (
 	"tailscale.com/types/wgkey"
 )
 
-const RESERVED_RESPONSE_HEADER_SIZE = 4
+const reservedResponseHeaderSize = 4
 
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
@@ -367,7 +367,7 @@ func (h *Headscale) getMapResponse(
 		}
 	}
 	// declare the incoming size on the first 4 bytes
-	data := make([]byte, RESERVED_RESPONSE_HEADER_SIZE)
+	data := make([]byte, reservedResponseHeaderSize)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
 
@@ -397,7 +397,7 @@ func (h *Headscale) getMapKeepAliveResponse(
 			return nil, err
 		}
 	}
-	data := make([]byte, RESERVED_RESPONSE_HEADER_SIZE)
+	data := make([]byte, reservedResponseHeaderSize)
 	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
 	data = append(data, respBody...)
 

@@ -45,7 +45,7 @@ var listRoutesCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		machineId, err := cmd.Flags().GetUint64("identifier")
+		machineID, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -61,7 +61,7 @@ var listRoutesCmd = &cobra.Command{
 		defer conn.Close()
 
 		request := &v1.GetMachineRouteRequest{
-			MachineId: machineId,
+			MachineId: machineID,
 		}
 
 		response, err := client.GetMachineRoute(ctx, request)
@@ -111,7 +111,8 @@ omit the route you do not want to enable.
 	`,
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		machineId, err := cmd.Flags().GetUint64("identifier")
+
+		machineID, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -138,7 +139,7 @@ omit the route you do not want to enable.
 		defer conn.Close()
 
 		request := &v1.EnableMachineRoutesRequest{
-			MachineId: machineId,
+			MachineId: machineID,
 			Routes:    routes,
 		}
 

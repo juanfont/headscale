@@ -29,7 +29,6 @@ linters:
     - gocritic
 
     # We should strive to enable these:
-    - stylecheck
     - wrapcheck
     - goerr113
     - forcetypeassert

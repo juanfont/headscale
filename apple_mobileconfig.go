@@ -55,7 +55,7 @@ func (h *Headscale) AppleMobileConfig(ctx *gin.Context) {
 
 		<p>Or</p>
 		<p>Use your terminal to configure the default setting for Tailscale by issuing:</p>
-		<code>defaults write io.tailscale.ipn.macos ControlURL {{.Url}}</code>
+		<code>defaults write io.tailscale.ipn.macos ControlURL {{.URL}}</code>
 
 		<p>Restart Tailscale.app and log in.</p>
 	
@@ -63,7 +63,7 @@ func (h *Headscale) AppleMobileConfig(ctx *gin.Context) {
 </html>`))
 
 	config := map[string]interface{}{
-		"Url": h.cfg.ServerURL,
+		"URL": h.cfg.ServerURL,
 	}
 
 	var payload bytes.Buffer
@@ -102,7 +102,7 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 		return
 	}
 
-	contentId, err := uuid.NewV4()
+	contentID, err := uuid.NewV4()
 	if err != nil {
 		log.Error().
 			Str("handler", "ApplePlatformConfig").
@@ -118,8 +118,8 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 	}
 
 	platformConfig := AppleMobilePlatformConfig{
-		UUID: contentId,
-		Url:  h.cfg.ServerURL,
+		UUID: contentID,
+		URL:  h.cfg.ServerURL,
 	}
 
 	var payload bytes.Buffer
@@ -165,7 +165,7 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 
 	config := AppleMobileConfig{
 		UUID:    id,
-		Url:     h.cfg.ServerURL,
+		URL:     h.cfg.ServerURL,
 		Payload: payload.String(),
 	}
 
@@ -193,13 +193,13 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 
 type AppleMobileConfig struct {
 	UUID    uuid.UUID
-	Url     string
+	URL     string
 	Payload string
 }
 
 type AppleMobilePlatformConfig struct {
 	UUID uuid.UUID
-	Url  string
+	URL  string
 }
 
 var commonTemplate = template.Must(
@@ -212,7 +212,7 @@ var commonTemplate = template.Must(
     <key>PayloadDisplayName</key>
     <string>Headscale</string>
     <key>PayloadDescription</key>
-    <string>Configure Tailscale login server to: {{.Url}}</string>
+    <string>Configure Tailscale login server to: {{.URL}}</string>
     <key>PayloadIdentifier</key>
     <string>com.github.juanfont.headscale</string>
     <key>PayloadRemovalDisallowed</key>
@@ -243,7 +243,7 @@ var iosTemplate = template.Must(template.New("iosTemplate").Parse(`
         <true/>
 
         <key>ControlURL</key>
-        <string>{{.Url}}</string>
+        <string>{{.URL}}</string>
     </dict>
 `))
 
@@ -261,6 +261,6 @@ var macosTemplate = template.Must(template.New("macosTemplate").Parse(`
         <true/>
 
         <key>ControlURL</key>
-        <string>{{.Url}}</string>
+        <string>{{.URL}}</string>
     </dict>
 `))

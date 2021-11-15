@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	OIDC_STATE_CACHE_EXPIRATION       = time.Minute * 5
-	OIDC_STATE_CACHE_CLEANUP_INTERVAL = time.Minute * 10
-	RANDOM_BYTE_SIZE                  = 16
+	oidcStateCacheExpiration      = time.Minute * 5
+	oidcStateCacheCleanupInterval = time.Minute * 10
+	randomByteSize                = 16
 )
 
 type IDTokenClaims struct {
@@ -57,8 +57,8 @@ func (h *Headscale) initOIDC() error {
 	// init the state cache if it hasn't been already
 	if h.oidcStateCache == nil {
 		h.oidcStateCache = cache.New(
-			OIDC_STATE_CACHE_EXPIRATION,
-			OIDC_STATE_CACHE_CLEANUP_INTERVAL,
+			oidcStateCacheExpiration,
+			oidcStateCacheCleanupInterval,
 		)
 	}
 
@@ -76,7 +76,7 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 		return
 	}
 
-	randomBlob := make([]byte, RANDOM_BYTE_SIZE)
+	randomBlob := make([]byte, randomByteSize)
 	if _, err := rand.Read(randomBlob); err != nil {
 		log.Error().Msg("could not read 16 bytes from rand")
 		ctx.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
@@ -87,12 +87,12 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 	stateStr := hex.EncodeToString(randomBlob)[:32]
 
 	// place the machine key into the state cache, so it can be retrieved later
-	h.oidcStateCache.Set(stateStr, mKeyStr, OIDC_STATE_CACHE_EXPIRATION)
+	h.oidcStateCache.Set(stateStr, mKeyStr, oidcStateCacheExpiration)
 
-	authUrl := h.oauth2Config.AuthCodeURL(stateStr)
-	log.Debug().Msgf("Redirecting to %s for authentication", authUrl)
+	authURL := h.oauth2Config.AuthCodeURL(stateStr)
+	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
 
-	ctx.Redirect(http.StatusFound, authUrl)
+	ctx.Redirect(http.StatusFound, authURL)
 }
 
 // OIDCCallback handles the callback from the OIDC endpoint

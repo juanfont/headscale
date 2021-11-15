@@ -197,7 +197,7 @@ func ipPrefixToString(prefixes []netaddr.IPPrefix) []string {
 	return result
 }
 
-func stringToIpPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
+func stringToIPPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
 	result := make([]netaddr.IPPrefix, len(prefixes))
 
 	for index, prefixStr := range prefixes {
@@ -212,7 +212,7 @@ func stringToIpPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
 	return result, nil
 }
 
-func containsIpPrefix(prefixes []netaddr.IPPrefix, prefix netaddr.IPPrefix) bool {
+func containsIPPrefix(prefixes []netaddr.IPPrefix, prefix netaddr.IPPrefix) bool {
 	for _, p := range prefixes {
 		if prefix == p {
 			return true

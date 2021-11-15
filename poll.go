@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	KEEP_ALIVE_INTERVAL   = 60 * time.Second
-	UPDATE_CHECK_INTERVAL = 10 * time.Second
+	keepAliveInterval   = 60 * time.Second
+	updateCheckInterval = 10 * time.Second
 )
 
 // PollNetMapHandler takes care of /machine/:id/map
@@ -495,8 +495,8 @@ func (h *Headscale) scheduledPollWorker(
 	mapRequest tailcfg.MapRequest,
 	machine *Machine,
 ) {
-	keepAliveTicker := time.NewTicker(KEEP_ALIVE_INTERVAL)
-	updateCheckerTicker := time.NewTicker(UPDATE_CHECK_INTERVAL)
+	keepAliveTicker := time.NewTicker(keepAliveInterval)
+	updateCheckerTicker := time.NewTicker(updateCheckInterval)
 
 	for {
 		select {

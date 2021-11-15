@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	BYTE_SIZE = 8
+	ByteSize = 8
 )
 
 // generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
@@ -47,10 +47,10 @@ func generateMagicDNSRootDomains(
 	maskBits, _ := netRange.Mask.Size()
 
 	// lastOctet is the last IP byte covered by the mask
-	lastOctet := maskBits / BYTE_SIZE
+	lastOctet := maskBits / ByteSize
 
 	// wildcardBits is the number of bits not under the mask in the lastOctet
-	wildcardBits := BYTE_SIZE - maskBits%BYTE_SIZE
+	wildcardBits := ByteSize - maskBits%ByteSize
 
 	// min is the value in the lastOctet byte of the IP
 	// max is basically 2^wildcardBits - i.e., the value when all the wildcardBits are set to 1

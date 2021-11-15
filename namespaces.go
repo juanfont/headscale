@@ -321,7 +321,7 @@ func getMapResponseUserProfiles(machine Machine, peers Machines) []tailcfg.UserP
 
 func (n *Namespace) toProto() *v1.Namespace {
 	return &v1.Namespace{
-		Id:        strconv.FormatUint(uint64(n.ID), BASE_10),
+		Id:        strconv.FormatUint(uint64(n.ID), Base10),
 		Name:      n.Name,
 		CreatedAt: timestamppb.New(n.CreatedAt),
 	}

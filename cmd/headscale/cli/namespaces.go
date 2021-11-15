@@ -29,7 +29,7 @@ var createNamespaceCmd = &cobra.Command{
 	Short: "Creates a new namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("Missing parameters")
+			return fmt.Errorf("missing parameters")
 		}
 
 		return nil
@@ -71,7 +71,7 @@ var destroyNamespaceCmd = &cobra.Command{
 	Short: "Destroys a namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("Missing parameters")
+			return fmt.Errorf("missing parameters")
 		}
 
 		return nil
@@ -197,7 +197,7 @@ var renameNamespaceCmd = &cobra.Command{
 	Args: func(cmd *cobra.Command, args []string) error {
 		expectedArguments := 2
 		if len(args) < expectedArguments {
-			return fmt.Errorf("Missing parameters")
+			return fmt.Errorf("missing parameters")
 		}
 
 		return nil

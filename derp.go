@@ -32,7 +32,7 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 }
 
 func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), HTTP_READ_TIMEOUT)
+	ctx, cancel := context.WithTimeout(context.Background(), HTTPReadTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", addr.String(), nil)
@@ -41,7 +41,7 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 	}
 
 	client := http.Client{
-		Timeout: HTTP_READ_TIMEOUT,
+		Timeout: HTTPReadTimeout,
 	}
 
 	resp, err := client.Do(req)

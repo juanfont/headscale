@@ -338,7 +338,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		return nil, err
 	}
 
-	routes, err := stringToIpPrefix(request.GetRoutes())
+	routes, err := stringToIPPrefix(request.GetRoutes())
 	if err != nil {
 		return nil, err
 	}
