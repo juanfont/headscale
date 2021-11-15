@@ -17,8 +17,10 @@ var _ = check.Suite(&Suite{})
 
 type Suite struct{}
 
-var tmpDir string
-var h Headscale
+var (
+	tmpDir string
+	app    Headscale
+)
 
 func (s *Suite) SetUpTest(c *check.C) {
 	s.ResetDB(c)
@@ -41,18 +43,18 @@ func (s *Suite) ResetDB(c *check.C) {
 		IPPrefix: netaddr.MustParseIPPrefix("10.27.0.0/23"),
 	}
 
-	h = Headscale{
+	app = Headscale{
 		cfg:      cfg,
 		dbType:   "sqlite3",
 		dbString: tmpDir + "/headscale_test.db",
 	}
-	err = h.initDB()
+	err = app.initDB()
 	if err != nil {
 		c.Fatal(err)
 	}
-	db, err := h.openDB()
+	db, err := app.openDB()
 	if err != nil {
 		c.Fatal(err)
 	}
-	h.db = db
+	app.db = db
 }

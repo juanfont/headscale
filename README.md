@@ -54,7 +54,6 @@ Suggestions/PRs welcomed!
 
 Please have a look at the documentation under [`docs/`](docs/).
 
-
 ## Disclaimer
 
 1. We have nothing to do with Tailscale, or Tailscale Inc.
@@ -64,13 +63,30 @@ Please have a look at the documentation under [`docs/`](docs/).
 
 To contribute to Headscale you would need the lastest version of [Go](https://golang.org) and [Buf](https://buf.build)(Protobuf generator).
 
+### Code style
+
+To ensure we have some consistency with a growing number of contributes, this project has adopted linting and style/formatting rules:
+
+The **Go** code is linted with [`golangci-lint`](https://golangci-lint.run) and
+formatted with [`golines`](https://github.com/segmentio/golines) (width 88) and
+[`gofumpt`](https://github.com/mvdan/gofumpt).
+Please configure your editor to run the tools while developing and make sure to
+run `make lint` and `make fmt` before committing any code.
+
+The **Proto** code is linted with [`buf`](https://docs.buf.build/lint/overview) and
+formatted with [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html).
+
+The **rest** (markdown, yaml, etc) is formatted with [`prettier`](https://prettier.io).
+
+Check out the `.golangci.yaml` and `Makefile` to see the specific configuration.
+
 ### Install development tools
 
 - Go
 - Buf
 - Protobuf tools:
 
-```shell 
+```shell
 make install-protobuf-plugins
 ```
 
@@ -81,6 +97,7 @@ Some parts of the project requires the generation of Go code from Protobuf (if c
 ```shell
 make generate
 ```
+
 **Note**: Please check in changes from `gen/` in a separate commit to make it easier to review.
 
 To run the tests:
@@ -261,5 +278,3 @@ make build
     </td>
 </tr>
 </table>
-
-

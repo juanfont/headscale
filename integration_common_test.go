@@ -12,12 +12,18 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 )
 
-func ExecuteCommand(resource *dockertest.Resource, cmd []string, env []string) (string, error) {
+const DOCKER_EXECUTE_TIMEOUT = 10 * time.Second
+
+func ExecuteCommand(
+	resource *dockertest.Resource,
+	cmd []string,
+	env []string,
+) (string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
 	// TODO(kradalby): Make configurable
-	timeout := 10 * time.Second
+	timeout := DOCKER_EXECUTE_TIMEOUT
 
 	type result struct {
 		exitCode int
@@ -51,11 +57,13 @@ func ExecuteCommand(resource *dockertest.Resource, cmd []string, env []string) (
 			fmt.Println("Command: ", cmd)
 			fmt.Println("stdout: ", stdout.String())
 			fmt.Println("stderr: ", stderr.String())
+
 			return "", fmt.Errorf("command failed with: %s", stderr.String())
 		}
 
 		return stdout.String(), nil
 	case <-time.After(timeout):
+
 		return "", fmt.Errorf("command timed out after %s", timeout)
 	}
 }

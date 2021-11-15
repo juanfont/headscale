@@ -1,6 +1,7 @@
 # Running headscale
 
 ## Server configuration
+
 1. Download the headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your $PATH or use the docker container
 
    ```shell
@@ -18,7 +19,7 @@
    ```shell
    mkdir config
    ```
-   
+
 3. Get yourself a DB
 
    a) Get a Postgres DB running in Docker:
@@ -33,7 +34,7 @@
    ```
 
    or b) Prepare a SQLite DB file:
-
+   
    ```shell
    touch config/db.sqlite
    ```
@@ -44,7 +45,7 @@
    wg genkey > config/private.key
 
    cp config.yaml.[sqlite|postgres].example config/config.yaml
-   
+
    cp derp-example.yaml config/derp.yaml
    ```
 
@@ -91,11 +92,11 @@
 
 If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
 
-   ```shell
-   systemctl stop tailscaled
-   rm -fr /var/lib/tailscale
-   systemctl start tailscaled
-   ```
+```shell
+systemctl stop tailscaled
+rm -fr /var/lib/tailscale
+systemctl start tailscaled
+```
 
 ### Adding node based on MACHINEKEY
 
@@ -108,16 +109,20 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
 2. Navigate to the URL returned by `tailscale up`, where you'll find your machine key.
 
 3. In the server, register your machine to a namespace with the CLI
+
    ```shell
    headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
-   or docker:
+
+   or Docker:
+  
    ```shell
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      headscale/headscale:x.x.x \
      headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
+
    or if your server is already running in Docker:
 
    ```shell
@@ -133,7 +138,7 @@ If you used tailscale.com before in your nodes, make sure you clear the tailscal
    headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
-   or docker:
+   or Docker:
 
    ```shell
    docker run \

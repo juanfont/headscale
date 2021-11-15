@@ -21,7 +21,8 @@ func init() {
 	}
 	routesCmd.AddCommand(listRoutesCmd)
 
-	enableRouteCmd.Flags().StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to enable")
+	enableRouteCmd.Flags().
+		StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to enable")
 	enableRouteCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = enableRouteCmd.MarkFlagRequired("identifier")
 	if err != nil {
@@ -44,9 +45,14 @@ var listRoutesCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		machineId, err := cmd.Flags().GetUint64("identifier")
+		machineID, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting machine id from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				output,
+			)
+
 			return
 		}
 
@@ -55,29 +61,41 @@ var listRoutesCmd = &cobra.Command{
 		defer conn.Close()
 
 		request := &v1.GetMachineRouteRequest{
-			MachineId: machineId,
+			MachineId: machineID,
 		}
 
 		response, err := client.GetMachineRoute(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
+				output,
+			)
+
 			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.Routes, "", output)
+
 			return
 		}
 
-		d := routesToPtables(response.Routes)
+		tableData := routesToPtables(response.Routes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+
 			return
 		}
 
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed to render pterm table: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
+
 			return
 		}
 	},
@@ -93,15 +111,26 @@ omit the route you do not want to enable.
 	`,
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		machineId, err := cmd.Flags().GetUint64("identifier")
+
+		machineID, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting machine id from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				output,
+			)
+
 			return
 		}
 
 		routes, err := cmd.Flags().GetStringSlice("route")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting routes from flag: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting routes from flag: %s", err),
+				output,
+			)
+
 			return
 		}
 
@@ -110,45 +139,61 @@ omit the route you do not want to enable.
 		defer conn.Close()
 
 		request := &v1.EnableMachineRoutesRequest{
-			MachineId: machineId,
+			MachineId: machineID,
 			Routes:    routes,
 		}
 
 		response, err := client.EnableMachineRoutes(ctx, request)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Cannot register machine: %s\n", status.Convert(err).Message()), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot register machine: %s\n",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
 			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.Routes, "", output)
+
 			return
 		}
 
-		d := routesToPtables(response.Routes)
+		tableData := routesToPtables(response.Routes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+
 			return
 		}
 
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed to render pterm table: %s", err), output)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
+
 			return
 		}
 	},
 }
 
-// routesToPtables converts the list of routes to a nice table
+// routesToPtables converts the list of routes to a nice table.
 func routesToPtables(routes *v1.Routes) pterm.TableData {
-	d := pterm.TableData{{"Route", "Enabled"}}
+	tableData := pterm.TableData{{"Route", "Enabled"}}
 
 	for _, route := range routes.GetAdvertisedRoutes() {
 		enabled := isStringInSlice(routes.EnabledRoutes, route)
 
-		d = append(d, []string{route, strconv.FormatBool(enabled)})
+		tableData = append(tableData, []string{route, strconv.FormatBool(enabled)})
 	}
-	return d
+
+	return tableData
 }
 
 func isStringInSlice(strs []string, s string) bool {

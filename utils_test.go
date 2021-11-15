@@ -6,7 +6,7 @@ import (
 )
 
 func (s *Suite) TestGetAvailableIp(c *check.C) {
-	ip, err := h.getAvailableIP()
+	ip, err := app.getAvailableIP()
 
 	c.Assert(err, check.IsNil)
 
@@ -16,33 +16,33 @@ func (s *Suite) TestGetAvailableIp(c *check.C) {
 }
 
 func (s *Suite) TestGetUsedIps(c *check.C) {
-	ip, err := h.getAvailableIP()
+	ip, err := app.getAvailableIP()
 	c.Assert(err, check.IsNil)
 
-	n, err := h.CreateNamespace("test_ip")
+	namespace, err := app.CreateNamespace("test_ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = h.GetMachine("test", "testmachine")
+	_, err = app.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
-	m := Machine{
+	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Name:           "testmachine",
-		NamespaceID:    n.ID,
+		NamespaceID:    namespace.ID,
 		Registered:     true,
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
 		IPAddress:      ip.String(),
 	}
-	h.db.Save(&m)
+	app.db.Save(&machine)
 
-	ips, err := h.getUsedIPs()
+	ips, err := app.getUsedIPs()
 
 	c.Assert(err, check.IsNil)
 
@@ -50,42 +50,42 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 
 	c.Assert(ips[0], check.Equals, expected)
 
-	m1, err := h.GetMachineByID(0)
+	machine1, err := app.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 
-	c.Assert(m1.IPAddress, check.Equals, expected.String())
+	c.Assert(machine1.IPAddress, check.Equals, expected.String())
 }
 
 func (s *Suite) TestGetMultiIp(c *check.C) {
-	n, err := h.CreateNamespace("test-ip-multi")
+	namespace, err := app.CreateNamespace("test-ip-multi")
 	c.Assert(err, check.IsNil)
 
-	for i := 1; i <= 350; i++ {
-		ip, err := h.getAvailableIP()
+	for index := 1; index <= 350; index++ {
+		ip, err := app.getAvailableIP()
 		c.Assert(err, check.IsNil)
 
-		pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+		pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
 		c.Assert(err, check.IsNil)
 
-		_, err = h.GetMachine("test", "testmachine")
+		_, err = app.GetMachine("test", "testmachine")
 		c.Assert(err, check.NotNil)
 
-		m := Machine{
-			ID:             uint64(i),
+		machine := Machine{
+			ID:             uint64(index),
 			MachineKey:     "foo",
 			NodeKey:        "bar",
 			DiscoKey:       "faa",
 			Name:           "testmachine",
-			NamespaceID:    n.ID,
+			NamespaceID:    namespace.ID,
 			Registered:     true,
 			RegisterMethod: "authKey",
 			AuthKeyID:      uint(pak.ID),
 			IPAddress:      ip.String(),
 		}
-		h.db.Save(&m)
+		app.db.Save(&machine)
 	}
 
-	ips, err := h.getUsedIPs()
+	ips, err := app.getUsedIPs()
 
 	c.Assert(err, check.IsNil)
 
@@ -96,59 +96,67 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(ips[300], check.Equals, netaddr.MustParseIP("10.27.1.47"))
 
 	// Check that we can read back the IPs
-	m1, err := h.GetMachineByID(1)
+	machine1, err := app.GetMachineByID(1)
 	c.Assert(err, check.IsNil)
-	c.Assert(m1.IPAddress, check.Equals, netaddr.MustParseIP("10.27.0.1").String())
+	c.Assert(
+		machine1.IPAddress,
+		check.Equals,
+		netaddr.MustParseIP("10.27.0.1").String(),
+	)
 
-	m50, err := h.GetMachineByID(50)
+	machine50, err := app.GetMachineByID(50)
 	c.Assert(err, check.IsNil)
-	c.Assert(m50.IPAddress, check.Equals, netaddr.MustParseIP("10.27.0.50").String())
+	c.Assert(
+		machine50.IPAddress,
+		check.Equals,
+		netaddr.MustParseIP("10.27.0.50").String(),
+	)
 
 	expectedNextIP := netaddr.MustParseIP("10.27.1.97")
-	nextIP, err := h.getAvailableIP()
+	nextIP, err := app.getAvailableIP()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(nextIP.String(), check.Equals, expectedNextIP.String())
 
 	// If we call get Available again, we should receive
 	// the same IP, as it has not been reserved.
-	nextIP2, err := h.getAvailableIP()
+	nextIP2, err := app.getAvailableIP()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(nextIP2.String(), check.Equals, expectedNextIP.String())
 }
 
 func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
-	ip, err := h.getAvailableIP()
+	ip, err := app.getAvailableIP()
 	c.Assert(err, check.IsNil)
 
 	expected := netaddr.MustParseIP("10.27.0.1")
 
 	c.Assert(ip.String(), check.Equals, expected.String())
 
-	n, err := h.CreateNamespace("test_ip")
+	namespace, err := app.CreateNamespace("test_ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = h.GetMachine("test", "testmachine")
+	_, err = app.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
-	m := Machine{
+	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Name:           "testmachine",
-		NamespaceID:    n.ID,
+		NamespaceID:    namespace.ID,
 		Registered:     true,
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
 	}
-	h.db.Save(&m)
+	app.db.Save(&machine)
 
-	ip2, err := h.getAvailableIP()
+	ip2, err := app.getAvailableIP()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(ip2.String(), check.Equals, expected.String())

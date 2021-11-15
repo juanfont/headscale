@@ -7,207 +7,232 @@ import (
 )
 
 func (s *Suite) TestCreateAndDestroyNamespace(c *check.C) {
-	n, err := h.CreateNamespace("test")
+	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
-	c.Assert(n.Name, check.Equals, "test")
+	c.Assert(namespace.Name, check.Equals, "test")
 
-	ns, err := h.ListNamespaces()
+	namespaces, err := app.ListNamespaces()
 	c.Assert(err, check.IsNil)
-	c.Assert(len(ns), check.Equals, 1)
+	c.Assert(len(namespaces), check.Equals, 1)
 
-	err = h.DestroyNamespace("test")
+	err = app.DestroyNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	_, err = h.GetNamespace("test")
+	_, err = app.GetNamespace("test")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
-	err := h.DestroyNamespace("test")
-	c.Assert(err, check.Equals, errorNamespaceNotFound)
+	err := app.DestroyNamespace("test")
+	c.Assert(err, check.Equals, errNamespaceNotFound)
 
-	n, err := h.CreateNamespace("test")
+	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	err = h.DestroyNamespace("test")
+	err = app.DestroyNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	result := h.db.Preload("Namespace").First(&pak, "key = ?", pak.Key)
+	result := app.db.Preload("Namespace").First(&pak, "key = ?", pak.Key)
 	// destroying a namespace also deletes all associated preauthkeys
 	c.Assert(result.Error, check.Equals, gorm.ErrRecordNotFound)
 
-	n, err = h.CreateNamespace("test")
+	namespace, err = app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err = h.CreatePreAuthKey(n.Name, false, false, nil)
+	pak, err = app.CreatePreAuthKey(namespace.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	m := Machine{
+	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Name:           "testmachine",
-		NamespaceID:    n.ID,
+		NamespaceID:    namespace.ID,
 		Registered:     true,
 		RegisterMethod: "authKey",
 		AuthKeyID:      uint(pak.ID),
 	}
-	h.db.Save(&m)
+	app.db.Save(&machine)
 
-	err = h.DestroyNamespace("test")
-	c.Assert(err, check.Equals, errorNamespaceNotEmptyOfNodes)
+	err = app.DestroyNamespace("test")
+	c.Assert(err, check.Equals, errNamespaceNotEmptyOfNodes)
 }
 
 func (s *Suite) TestRenameNamespace(c *check.C) {
-	n, err := h.CreateNamespace("test")
+	namespaceTest, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
-	c.Assert(n.Name, check.Equals, "test")
+	c.Assert(namespaceTest.Name, check.Equals, "test")
 
-	ns, err := h.ListNamespaces()
+	namespaces, err := app.ListNamespaces()
 	c.Assert(err, check.IsNil)
-	c.Assert(len(ns), check.Equals, 1)
+	c.Assert(len(namespaces), check.Equals, 1)
 
-	err = h.RenameNamespace("test", "test_renamed")
-	c.Assert(err, check.IsNil)
-
-	_, err = h.GetNamespace("test")
-	c.Assert(err, check.Equals, errorNamespaceNotFound)
-
-	_, err = h.GetNamespace("test_renamed")
+	err = app.RenameNamespace("test", "test_renamed")
 	c.Assert(err, check.IsNil)
 
-	err = h.RenameNamespace("test_does_not_exit", "test")
-	c.Assert(err, check.Equals, errorNamespaceNotFound)
+	_, err = app.GetNamespace("test")
+	c.Assert(err, check.Equals, errNamespaceNotFound)
 
-	n2, err := h.CreateNamespace("test2")
+	_, err = app.GetNamespace("test_renamed")
 	c.Assert(err, check.IsNil)
-	c.Assert(n2.Name, check.Equals, "test2")
 
-	err = h.RenameNamespace("test2", "test_renamed")
-	c.Assert(err, check.Equals, errorNamespaceExists)
+	err = app.RenameNamespace("test_does_not_exit", "test")
+	c.Assert(err, check.Equals, errNamespaceNotFound)
+
+	namespaceTest2, err := app.CreateNamespace("test2")
+	c.Assert(err, check.IsNil)
+	c.Assert(namespaceTest2.Name, check.Equals, "test2")
+
+	err = app.RenameNamespace("test2", "test_renamed")
+	c.Assert(err, check.Equals, errNamespaceExists)
 }
 
 func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
-	n1, err := h.CreateNamespace("shared1")
+	namespaceShared1, err := app.CreateNamespace("shared1")
 	c.Assert(err, check.IsNil)
 
-	n2, err := h.CreateNamespace("shared2")
+	namespaceShared2, err := app.CreateNamespace("shared2")
 	c.Assert(err, check.IsNil)
 
-	n3, err := h.CreateNamespace("shared3")
+	namespaceShared3, err := app.CreateNamespace("shared3")
 	c.Assert(err, check.IsNil)
 
-	pak1n1, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
+	preAuthKeyShared1, err := app.CreatePreAuthKey(
+		namespaceShared1.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak2n2, err := h.CreatePreAuthKey(n2.Name, false, false, nil)
+	preAuthKeyShared2, err := app.CreatePreAuthKey(
+		namespaceShared2.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak3n3, err := h.CreatePreAuthKey(n3.Name, false, false, nil)
+	preAuthKeyShared3, err := app.CreatePreAuthKey(
+		namespaceShared3.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak4n1, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
+	preAuthKey2Shared1, err := app.CreatePreAuthKey(
+		namespaceShared1.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	_, err = h.GetMachine(n1.Name, "test_get_shared_nodes_1")
+	_, err = app.GetMachine(namespaceShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
-	m1 := &Machine{
+	machineInShared1 := &Machine{
 		ID:             1,
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		DiscoKey:       "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		Name:           "test_get_shared_nodes_1",
-		NamespaceID:    n1.ID,
-		Namespace:      *n1,
+		NamespaceID:    namespaceShared1.ID,
+		Namespace:      *namespaceShared1,
 		Registered:     true,
 		RegisterMethod: "authKey",
 		IPAddress:      "100.64.0.1",
-		AuthKeyID:      uint(pak1n1.ID),
+		AuthKeyID:      uint(preAuthKeyShared1.ID),
 	}
-	h.db.Save(m1)
+	app.db.Save(machineInShared1)
 
-	_, err = h.GetMachine(n1.Name, m1.Name)
+	_, err = app.GetMachine(namespaceShared1.Name, machineInShared1.Name)
 	c.Assert(err, check.IsNil)
 
-	m2 := &Machine{
+	machineInShared2 := &Machine{
 		ID:             2,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_2",
-		NamespaceID:    n2.ID,
-		Namespace:      *n2,
+		NamespaceID:    namespaceShared2.ID,
+		Namespace:      *namespaceShared2,
 		Registered:     true,
 		RegisterMethod: "authKey",
 		IPAddress:      "100.64.0.2",
-		AuthKeyID:      uint(pak2n2.ID),
+		AuthKeyID:      uint(preAuthKeyShared2.ID),
 	}
-	h.db.Save(m2)
+	app.db.Save(machineInShared2)
 
-	_, err = h.GetMachine(n2.Name, m2.Name)
+	_, err = app.GetMachine(namespaceShared2.Name, machineInShared2.Name)
 	c.Assert(err, check.IsNil)
 
-	m3 := &Machine{
+	machineInShared3 := &Machine{
 		ID:             3,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_3",
-		NamespaceID:    n3.ID,
-		Namespace:      *n3,
+		NamespaceID:    namespaceShared3.ID,
+		Namespace:      *namespaceShared3,
 		Registered:     true,
 		RegisterMethod: "authKey",
 		IPAddress:      "100.64.0.3",
-		AuthKeyID:      uint(pak3n3.ID),
+		AuthKeyID:      uint(preAuthKeyShared3.ID),
 	}
-	h.db.Save(m3)
+	app.db.Save(machineInShared3)
 
-	_, err = h.GetMachine(n3.Name, m3.Name)
+	_, err = app.GetMachine(namespaceShared3.Name, machineInShared3.Name)
 	c.Assert(err, check.IsNil)
 
-	m4 := &Machine{
+	machine2InShared1 := &Machine{
 		ID:             4,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_4",
-		NamespaceID:    n1.ID,
-		Namespace:      *n1,
+		NamespaceID:    namespaceShared1.ID,
+		Namespace:      *namespaceShared1,
 		Registered:     true,
 		RegisterMethod: "authKey",
 		IPAddress:      "100.64.0.4",
-		AuthKeyID:      uint(pak4n1.ID),
+		AuthKeyID:      uint(preAuthKey2Shared1.ID),
 	}
-	h.db.Save(m4)
+	app.db.Save(machine2InShared1)
 
-	err = h.AddSharedMachineToNamespace(m2, n1)
+	err = app.AddSharedMachineToNamespace(machineInShared2, namespaceShared1)
 	c.Assert(err, check.IsNil)
-	m1peers, err := h.getPeers(m1)
+	peersOfMachine1InShared1, err := app.getPeers(machineInShared1)
 	c.Assert(err, check.IsNil)
 
-	userProfiles := getMapResponseUserProfiles(*m1, m1peers)
+	userProfiles := getMapResponseUserProfiles(
+		*machineInShared1,
+		peersOfMachine1InShared1,
+	)
 
 	log.Trace().Msgf("userProfiles %#v", userProfiles)
 	c.Assert(len(userProfiles), check.Equals, 2)
 
 	found := false
-	for _, up := range userProfiles {
-		if up.DisplayName == n1.Name {
+	for _, userProfiles := range userProfiles {
+		if userProfiles.DisplayName == namespaceShared1.Name {
 			found = true
+
 			break
 		}
 	}
 	c.Assert(found, check.Equals, true)
 
 	found = false
-	for _, up := range userProfiles {
-		if up.DisplayName == n2.Name {
+	for _, userProfile := range userProfiles {
+		if userProfile.DisplayName == namespaceShared2.Name {
 			found = true
+
 			break
 		}
 	}

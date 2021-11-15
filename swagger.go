@@ -6,16 +6,15 @@ import (
 	"net/http"
 	"text/template"
 
-	"github.com/rs/zerolog/log"
-
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
 //go:embed gen/openapiv2/headscale/v1/headscale.swagger.json
 var apiV1JSON []byte
 
-func SwaggerUI(c *gin.Context) {
-	t := template.Must(template.New("swagger").Parse(`
+func SwaggerUI(ctx *gin.Context) {
+	swaggerTemplate := template.Must(template.New("swagger").Parse(`
 <html>
 	<head>
 	<link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@3/swagger-ui.css">
@@ -48,18 +47,23 @@ func SwaggerUI(c *gin.Context) {
 </html>`))
 
 	var payload bytes.Buffer
-	if err := t.Execute(&payload, struct{}{}); err != nil {
+	if err := swaggerTemplate.Execute(&payload, struct{}{}); err != nil {
 		log.Error().
 			Caller().
 			Err(err).
 			Msg("Could not render Swagger")
-		c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte("Could not render Swagger"))
+		ctx.Data(
+			http.StatusInternalServerError,
+			"text/html; charset=utf-8",
+			[]byte("Could not render Swagger"),
+		)
+
 		return
 	}
 
-	c.Data(http.StatusOK, "text/html; charset=utf-8", payload.Bytes())
+	ctx.Data(http.StatusOK, "text/html; charset=utf-8", payload.Bytes())
 }
 
-func SwaggerAPIv1(c *gin.Context) {
-	c.Data(http.StatusOK, "application/json; charset=utf-8", apiV1JSON)
+func SwaggerAPIv1(ctx *gin.Context) {
+	ctx.Data(http.StatusOK, "application/json; charset=utf-8", apiV1JSON)
 }
