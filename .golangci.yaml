@@ -31,16 +31,15 @@ linters:
     # We should strive to enable these:
     - wrapcheck
     - goerr113
-    - forcetypeassert
     - dupl
     - makezero
-    - paralleltest
 
     # We might want to enable this, but it might be a lot of work
     - cyclop
     - nestif
     - wsl # might be incompatible with gofumpt
     - testpackage
+    - paralleltest
 
 linters-settings:
   varnamelen:

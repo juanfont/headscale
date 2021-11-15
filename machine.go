@@ -350,7 +350,9 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 
 	namespaces := make([]string, namespaceSet.Size())
 	for index, namespace := range namespaceSet.List() {
-		namespaces[index] = namespace.(string)
+		if name, ok := namespace.(string); ok {
+			namespaces[index] = name
+		}
 	}
 
 	lastChange := h.getLastStateChange(namespaces...)
