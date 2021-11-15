@@ -1,6 +1,7 @@
 # Running headscale
 
 ## Server configuration
+
 1. Download the headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your $PATH or use the docker container
 
    ```shell
@@ -18,10 +19,11 @@
    ```shell
    mkdir config
    ```
-   
+
 3. Get yourself a DB
 
    a) Get a Postgres DB running in docker
+
    ```shell
    docker run --name headscale \
      -e POSTGRES_DB=headscale
@@ -30,7 +32,9 @@
      -p 5432:5432 \
      -d postgres
    ```
+
    or b) Prepare a SQLite DB file
+
    ```shell
    touch config/db.sqlite
    ```
@@ -41,7 +45,7 @@
    wg genkey > config/private.key
 
    cp config.yaml.[sqlite|postgres].example config/config.yaml
-   
+
    cp derp-example.yaml config/derp.yaml
    ```
 
@@ -81,16 +85,19 @@
      -p 127.0.0.1:8080:8080 \
      headscale/headscale:x.x.x headscale serve
    ```
+
 ## Nodes configuration
 
 If you used tailscale.com before in your nodes, make sure you clear the tailscaled data folder
 
-   ```shell
-   systemctl stop tailscaled
-   rm -fr /var/lib/tailscale
-   systemctl start tailscaled
-   ```
+```shell
+systemctl stop tailscaled
+rm -fr /var/lib/tailscale
+systemctl start tailscaled
+```
+
 ### Adding node based on MACHINEKEY
+
 1. Add your first machine
 
    ```shell

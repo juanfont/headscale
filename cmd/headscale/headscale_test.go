@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -40,7 +39,10 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config-example.yaml"), filepath.Join(tmpDir, "config.yaml"))
+	err = os.Symlink(
+		filepath.Clean(path+"/../../config-example.yaml"),
+		filepath.Join(tmpDir, "config.yaml"),
+	)
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -74,7 +76,10 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 	}
 
 	// Symlink the example config file
-	err = os.Symlink(filepath.Clean(path+"/../../config-example.yaml"), filepath.Join(tmpDir, "config.yaml"))
+	err = os.Symlink(
+		filepath.Clean(path+"/../../config-example.yaml"),
+		filepath.Join(tmpDir, "config.yaml"),
+	)
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -94,7 +99,7 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 func writeConfig(c *check.C, tmpDir string, configYaml []byte) {
 	// Populate a custom config file
 	configFile := filepath.Join(tmpDir, "config.yaml")
-	err := ioutil.WriteFile(configFile, configYaml, 0o644)
+	err := ioutil.WriteFile(configFile, configYaml, 0o600)
 	if err != nil {
 		c.Fatalf("Couldn't write file %s", configFile)
 	}
@@ -106,7 +111,6 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 		c.Fatal(err)
 	}
 	// defer os.RemoveAll(tmpDir)
-	fmt.Println(tmpDir)
 
 	configYaml := []byte(
 		"---\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"\"\ntls_cert_path: \"abc.pem\"",
@@ -128,8 +132,11 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 		check.Matches,
 		".*Fatal config error: the only supported values for tls_letsencrypt_challenge_type are.*",
 	)
-	c.Assert(tmp, check.Matches, ".*Fatal config error: server_url must start with https:// or http://.*")
-	fmt.Println(tmp)
+	c.Assert(
+		tmp,
+		check.Matches,
+		".*Fatal config error: server_url must start with https:// or http://.*",
+	)
 
 	// Check configuration validation errors (2)
 	configYaml = []byte(

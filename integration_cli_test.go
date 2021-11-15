@@ -88,6 +88,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("status code not OK")
 		}
+
 		return nil
 	}); err != nil {
 		// TODO(kradalby): If we cannot access headscale, or any other fatal error during
@@ -109,7 +110,10 @@ func (s *IntegrationCLITestSuite) TearDownTest() {
 	}
 }
 
-func (s *IntegrationCLITestSuite) HandleStats(suiteName string, stats *suite.SuiteInformation) {
+func (s *IntegrationCLITestSuite) HandleStats(
+	suiteName string,
+	stats *suite.SuiteInformation,
+) {
 	s.stats = stats
 }
 
@@ -144,7 +148,6 @@ func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
 	namespaces := make([]*v1.Namespace, len(names))
 
 	for index, namespaceName := range names {
-
 		namespace, err := s.createNamespace(namespaceName)
 		assert.Nil(s.T(), err)
 
@@ -298,11 +301,26 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 	assert.True(s.T(), listedPreAuthKeys[3].Expiration.AsTime().After(time.Now()))
 	assert.True(s.T(), listedPreAuthKeys[4].Expiration.AsTime().After(time.Now()))
 
-	assert.True(s.T(), listedPreAuthKeys[0].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
-	assert.True(s.T(), listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
-	assert.True(s.T(), listedPreAuthKeys[2].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
-	assert.True(s.T(), listedPreAuthKeys[3].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
-	assert.True(s.T(), listedPreAuthKeys[4].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)))
+	assert.True(
+		s.T(),
+		listedPreAuthKeys[0].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+	assert.True(
+		s.T(),
+		listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+	assert.True(
+		s.T(),
+		listedPreAuthKeys[2].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+	assert.True(
+		s.T(),
+		listedPreAuthKeys[3].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+	assert.True(
+		s.T(),
+		listedPreAuthKeys[4].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
 
 	// Expire three keys
 	for i := 0; i < 3; i++ {
@@ -341,11 +359,26 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 	err = json.Unmarshal([]byte(listAfterExpireResult), &listedAfterExpirePreAuthKeys)
 	assert.Nil(s.T(), err)
 
-	assert.True(s.T(), listedAfterExpirePreAuthKeys[0].Expiration.AsTime().Before(time.Now()))
-	assert.True(s.T(), listedAfterExpirePreAuthKeys[1].Expiration.AsTime().Before(time.Now()))
-	assert.True(s.T(), listedAfterExpirePreAuthKeys[2].Expiration.AsTime().Before(time.Now()))
-	assert.True(s.T(), listedAfterExpirePreAuthKeys[3].Expiration.AsTime().After(time.Now()))
-	assert.True(s.T(), listedAfterExpirePreAuthKeys[4].Expiration.AsTime().After(time.Now()))
+	assert.True(
+		s.T(),
+		listedAfterExpirePreAuthKeys[0].Expiration.AsTime().Before(time.Now()),
+	)
+	assert.True(
+		s.T(),
+		listedAfterExpirePreAuthKeys[1].Expiration.AsTime().Before(time.Now()),
+	)
+	assert.True(
+		s.T(),
+		listedAfterExpirePreAuthKeys[2].Expiration.AsTime().Before(time.Now()),
+	)
+	assert.True(
+		s.T(),
+		listedAfterExpirePreAuthKeys[3].Expiration.AsTime().After(time.Now()),
+	)
+	assert.True(
+		s.T(),
+		listedAfterExpirePreAuthKeys[4].Expiration.AsTime().After(time.Now()),
+	)
 }
 
 func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
@@ -689,7 +722,10 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Nil(s.T(), err)
 
 	var listOnlySharedMachineNamespace []v1.Machine
-	err = json.Unmarshal([]byte(listOnlySharedMachineNamespaceResult), &listOnlySharedMachineNamespace)
+	err = json.Unmarshal(
+		[]byte(listOnlySharedMachineNamespaceResult),
+		&listOnlySharedMachineNamespace,
+	)
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), listOnlySharedMachineNamespace, 2)
@@ -738,7 +774,10 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Nil(s.T(), err)
 
 	var listOnlyMachineNamespaceAfterDelete []v1.Machine
-	err = json.Unmarshal([]byte(listOnlyMachineNamespaceAfterDeleteResult), &listOnlyMachineNamespaceAfterDelete)
+	err = json.Unmarshal(
+		[]byte(listOnlyMachineNamespaceAfterDeleteResult),
+		&listOnlyMachineNamespaceAfterDelete,
+	)
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), listOnlyMachineNamespaceAfterDelete, 4)
@@ -789,7 +828,10 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Nil(s.T(), err)
 
 	var listOnlyMachineNamespaceAfterShare []v1.Machine
-	err = json.Unmarshal([]byte(listOnlyMachineNamespaceAfterShareResult), &listOnlyMachineNamespaceAfterShare)
+	err = json.Unmarshal(
+		[]byte(listOnlyMachineNamespaceAfterShareResult),
+		&listOnlyMachineNamespaceAfterShare,
+	)
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), listOnlyMachineNamespaceAfterShare, 5)
@@ -846,7 +888,10 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Nil(s.T(), err)
 
 	var listOnlyMachineNamespaceAfterUnshare []v1.Machine
-	err = json.Unmarshal([]byte(listOnlyMachineNamespaceAfterUnshareResult), &listOnlyMachineNamespaceAfterUnshare)
+	err = json.Unmarshal(
+		[]byte(listOnlyMachineNamespaceAfterUnshareResult),
+		&listOnlyMachineNamespaceAfterUnshare,
+	)
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), listOnlyMachineNamespaceAfterUnshare, 4)
@@ -1010,5 +1055,9 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	assert.Contains(s.T(), string(failEnableNonAdvertisedRoute), "route (route-machine) is not available on node")
+	assert.Contains(
+		s.T(),
+		string(failEnableNonAdvertisedRoute),
+		"route (route-machine) is not available on node",
+	)
 }
