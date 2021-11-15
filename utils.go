@@ -46,7 +46,7 @@ func decodeMsg(
 	}
 	// fmt.Println(string(decrypted))
 	if err := json.Unmarshal(decrypted, output); err != nil {
-		return fmt.Errorf("response: %v", err)
+		return fmt.Errorf("response: %w", err)
 	}
 
 	return nil

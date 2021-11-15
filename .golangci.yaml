@@ -29,11 +29,9 @@ linters:
     - gocritic
 
     # We should strive to enable these:
-    - testpackage
     - stylecheck
     - wrapcheck
     - goerr113
-    - errorlint
     - forcetypeassert
     - errname
     - gosec
@@ -46,6 +44,7 @@ linters:
     - cyclop
     - nestif
     - wsl # might be incompatible with gofumpt
+    - testpackage
 
 linters-settings:
   varnamelen:

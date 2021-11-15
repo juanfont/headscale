@@ -53,7 +53,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("cli.timeout", "5s")
 
 	if err := viper.ReadInConfig(); err != nil {
-		return fmt.Errorf("Fatal error reading config file: %s \n", err)
+		return fmt.Errorf("Fatal error reading config file: %w", err)
 	}
 
 	// Collect any validation errors and return them all at once
