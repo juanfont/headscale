@@ -34,7 +34,7 @@
    ```
 
    or b) Prepare a SQLite DB file:
-   
+
    ```shell
    touch config/db.sqlite
    ```
@@ -115,7 +115,7 @@ systemctl start tailscaled
    ```
 
    or Docker:
-  
+
    ```shell
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
