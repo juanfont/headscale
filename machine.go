@@ -284,7 +284,7 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 // DeleteMachine softs deletes a Machine from the database.
 func (h *Headscale) DeleteMachine(machine *Machine) error {
 	err := h.RemoveSharedMachineFromAllNamespaces(machine)
-	if err != nil && errors.Is(err, errorMachineNotShared) {
+	if err != nil && errors.Is(err, errMachineNotShared) {
 		return err
 	}
 
@@ -301,7 +301,7 @@ func (h *Headscale) DeleteMachine(machine *Machine) error {
 // HardDeleteMachine hard deletes a Machine from the database.
 func (h *Headscale) HardDeleteMachine(machine *Machine) error {
 	err := h.RemoveSharedMachineFromAllNamespaces(machine)
-	if err != nil && errors.Is(err, errorMachineNotShared) {
+	if err != nil && errors.Is(err, errMachineNotShared) {
 		return err
 	}
 

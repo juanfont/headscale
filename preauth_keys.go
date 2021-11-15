@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	errorAuthKeyNotFound           = Error("AuthKey not found")
-	errorAuthKeyExpired            = Error("AuthKey expired")
+	errPreAuthKeyNotFound          = Error("AuthKey not found")
+	errPreAuthKeyExpired           = Error("AuthKey expired")
 	errSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
 )
 
@@ -120,11 +120,11 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
-		return nil, errorAuthKeyNotFound
+		return nil, errPreAuthKeyNotFound
 	}
 
 	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
-		return nil, errorAuthKeyExpired
+		return nil, errPreAuthKeyExpired
 	}
 
 	if pak.Reusable || pak.Ephemeral { // we don't need to check if has been used before

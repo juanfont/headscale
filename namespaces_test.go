@@ -24,7 +24,7 @@ func (s *Suite) TestCreateAndDestroyNamespace(c *check.C) {
 
 func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 	err := app.DestroyNamespace("test")
-	c.Assert(err, check.Equals, errorNamespaceNotFound)
+	c.Assert(err, check.Equals, errNamespaceNotFound)
 
 	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
@@ -59,7 +59,7 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 	app.db.Save(&machine)
 
 	err = app.DestroyNamespace("test")
-	c.Assert(err, check.Equals, errorNamespaceNotEmptyOfNodes)
+	c.Assert(err, check.Equals, errNamespaceNotEmptyOfNodes)
 }
 
 func (s *Suite) TestRenameNamespace(c *check.C) {
@@ -75,20 +75,20 @@ func (s *Suite) TestRenameNamespace(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetNamespace("test")
-	c.Assert(err, check.Equals, errorNamespaceNotFound)
+	c.Assert(err, check.Equals, errNamespaceNotFound)
 
 	_, err = app.GetNamespace("test_renamed")
 	c.Assert(err, check.IsNil)
 
 	err = app.RenameNamespace("test_does_not_exit", "test")
-	c.Assert(err, check.Equals, errorNamespaceNotFound)
+	c.Assert(err, check.Equals, errNamespaceNotFound)
 
 	namespaceTest2, err := app.CreateNamespace("test2")
 	c.Assert(err, check.IsNil)
 	c.Assert(namespaceTest2.Name, check.Equals, "test2")
 
 	err = app.RenameNamespace("test2", "test_renamed")
-	c.Assert(err, check.Equals, errorNamespaceExists)
+	c.Assert(err, check.Equals, errNamespaceExists)
 }
 
 func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {

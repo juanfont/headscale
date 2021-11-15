@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	errorNamespaceExists          = Error("Namespace already exists")
-	errorNamespaceNotFound        = Error("Namespace not found")
-	errorNamespaceNotEmptyOfNodes = Error("Namespace not empty: node(s) found")
+	errNamespaceExists          = Error("Namespace already exists")
+	errNamespaceNotFound        = Error("Namespace not found")
+	errNamespaceNotEmptyOfNodes = Error("Namespace not empty: node(s) found")
 )
 
 // Namespace is the way Headscale implements the concept of users in Tailscale
@@ -34,7 +34,7 @@ type Namespace struct {
 func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 	namespace := Namespace{}
 	if err := h.db.Where("name = ?", name).First(&namespace).Error; err == nil {
-		return nil, errorNamespaceExists
+		return nil, errNamespaceExists
 	}
 	namespace.Name = name
 	if err := h.db.Create(&namespace).Error; err != nil {
@@ -54,7 +54,7 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 func (h *Headscale) DestroyNamespace(name string) error {
 	namespace, err := h.GetNamespace(name)
 	if err != nil {
-		return errorNamespaceNotFound
+		return errNamespaceNotFound
 	}
 
 	machines, err := h.ListMachinesInNamespace(name)
@@ -62,7 +62,7 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		return err
 	}
 	if len(machines) > 0 {
-		return errorNamespaceNotEmptyOfNodes
+		return errNamespaceNotEmptyOfNodes
 	}
 
 	keys, err := h.ListPreAuthKeys(name)
@@ -92,9 +92,9 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 	}
 	_, err = h.GetNamespace(newName)
 	if err == nil {
-		return errorNamespaceExists
+		return errNamespaceExists
 	}
-	if !errors.Is(err, errorNamespaceNotFound) {
+	if !errors.Is(err, errNamespaceNotFound) {
 		return err
 	}
 
@@ -119,7 +119,7 @@ func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
-		return nil, errorNamespaceNotFound
+		return nil, errNamespaceNotFound
 	}
 
 	return &namespace, nil

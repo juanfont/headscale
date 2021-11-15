@@ -17,7 +17,7 @@ func (s *Suite) TestBrokenHuJson(c *check.C) {
 func (s *Suite) TestInvalidPolicyHuson(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/invalid.hujson")
 	c.Assert(err, check.NotNil)
-	c.Assert(err, check.Equals, errorEmptyPolicy)
+	c.Assert(err, check.Equals, errEmptyPolicy)
 }
 
 func (s *Suite) TestParseHosts(c *check.C) {

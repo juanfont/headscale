@@ -44,13 +44,13 @@ func (*Suite) TestExpiredPreAuthKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errorAuthKeyExpired)
+	c.Assert(err, check.Equals, errPreAuthKeyExpired)
 	c.Assert(key, check.IsNil)
 }
 
 func (*Suite) TestPreAuthKeyDoesNotExist(c *check.C) {
 	key, err := app.checkKeyValidity("potatoKey")
-	c.Assert(err, check.Equals, errorAuthKeyNotFound)
+	c.Assert(err, check.Equals, errPreAuthKeyNotFound)
 	c.Assert(key, check.IsNil)
 }
 
@@ -177,7 +177,7 @@ func (*Suite) TestExpirePreauthKey(c *check.C) {
 	c.Assert(pak.Expiration, check.NotNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errorAuthKeyExpired)
+	c.Assert(err, check.Equals, errPreAuthKeyExpired)
 	c.Assert(key, check.IsNil)
 }
 

@@ -15,13 +15,13 @@ import (
 )
 
 const (
-	errorEmptyPolicy        = Error("empty policy")
-	errorInvalidAction      = Error("invalid action")
-	errorInvalidUserSection = Error("invalid user section")
-	errorInvalidGroup       = Error("invalid group")
-	errorInvalidTag         = Error("invalid tag")
-	errorInvalidNamespace   = Error("invalid namespace")
-	errorInvalidPortFormat  = Error("invalid port format")
+	errEmptyPolicy        = Error("empty policy")
+	errInvalidAction      = Error("invalid action")
+	errInvalidUserSection = Error("invalid user section")
+	errInvalidGroup       = Error("invalid group")
+	errInvalidTag         = Error("invalid tag")
+	errInvalidNamespace   = Error("invalid namespace")
+	errInvalidPortFormat  = Error("invalid port format")
 )
 
 const (
@@ -57,7 +57,7 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 		return err
 	}
 	if policy.IsZero() {
-		return errorEmptyPolicy
+		return errEmptyPolicy
 	}
 
 	h.aclPolicy = &policy
@@ -75,7 +75,7 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 
 	for index, acl := range h.aclPolicy.ACLs {
 		if acl.Action != "accept" {
-			return nil, errorInvalidAction
+			return nil, errInvalidAction
 		}
 
 		filterRule := tailcfg.FilterRule{}
@@ -123,7 +123,7 @@ func (h *Headscale) generateACLPolicyDestPorts(
 ) ([]tailcfg.NetPortRange, error) {
 	tokens := strings.Split(d, ":")
 	if len(tokens) < EXPECTED_TOKEN_ITEMS || len(tokens) > 3 {
-		return nil, errorInvalidPortFormat
+		return nil, errInvalidPortFormat
 	}
 
 	var alias string
@@ -169,13 +169,13 @@ func (h *Headscale) expandAlias(alias string) ([]string, error) {
 
 	if strings.HasPrefix(alias, "group:") {
 		if _, ok := h.aclPolicy.Groups[alias]; !ok {
-			return nil, errorInvalidGroup
+			return nil, errInvalidGroup
 		}
 		ips := []string{}
 		for _, n := range h.aclPolicy.Groups[alias] {
 			nodes, err := h.ListMachinesInNamespace(n)
 			if err != nil {
-				return nil, errorInvalidNamespace
+				return nil, errInvalidNamespace
 			}
 			for _, node := range nodes {
 				ips = append(ips, node.IPAddress)
@@ -187,7 +187,7 @@ func (h *Headscale) expandAlias(alias string) ([]string, error) {
 
 	if strings.HasPrefix(alias, "tag:") {
 		if _, ok := h.aclPolicy.TagOwners[alias]; !ok {
-			return nil, errorInvalidTag
+			return nil, errInvalidTag
 		}
 
 		// This will have HORRIBLE performance.
@@ -251,7 +251,7 @@ func (h *Headscale) expandAlias(alias string) ([]string, error) {
 		return []string{cidr.String()}, nil
 	}
 
-	return nil, errorInvalidUserSection
+	return nil, errInvalidUserSection
 }
 
 func (h *Headscale) expandPorts(portsStr string) (*[]tailcfg.PortRange, error) {
@@ -290,7 +290,7 @@ func (h *Headscale) expandPorts(portsStr string) (*[]tailcfg.PortRange, error) {
 			})
 
 		default:
-			return nil, errorInvalidPortFormat
+			return nil, errInvalidPortFormat
 		}
 	}
 

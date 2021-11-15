@@ -80,7 +80,7 @@ func (s *Suite) TestSameNamespace(c *check.C) {
 	c.Assert(len(peersOfMachine1BeforeShare), check.Equals, 0)
 
 	err = app.AddSharedMachineToNamespace(machine1, namespace1)
-	c.Assert(err, check.Equals, errorSameNamespace)
+	c.Assert(err, check.Equals, errSameNamespace)
 }
 
 func (s *Suite) TestUnshare(c *check.C) {
@@ -118,10 +118,10 @@ func (s *Suite) TestUnshare(c *check.C) {
 	c.Assert(len(peersOfMachine1BeforeShare), check.Equals, 0)
 
 	err = app.RemoveSharedMachineFromNamespace(machine2, namespace1)
-	c.Assert(err, check.Equals, errorMachineNotShared)
+	c.Assert(err, check.Equals, errMachineNotShared)
 
 	err = app.RemoveSharedMachineFromNamespace(machine1, namespace1)
-	c.Assert(err, check.Equals, errorMachineNotShared)
+	c.Assert(err, check.Equals, errMachineNotShared)
 }
 
 func (s *Suite) TestAlreadyShared(c *check.C) {
@@ -147,7 +147,7 @@ func (s *Suite) TestAlreadyShared(c *check.C) {
 	err = app.AddSharedMachineToNamespace(machine2, namespace1)
 	c.Assert(err, check.IsNil)
 	err = app.AddSharedMachineToNamespace(machine2, namespace1)
-	c.Assert(err, check.Equals, errorMachineAlreadyShared)
+	c.Assert(err, check.Equals, errMachineAlreadyShared)
 }
 
 func (s *Suite) TestDoNotIncludeRoutesOnShared(c *check.C) {

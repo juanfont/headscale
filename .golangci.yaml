@@ -33,7 +33,6 @@ linters:
     - wrapcheck
     - goerr113
     - forcetypeassert
-    - errname
     - gosec
     - forbidigo
     - dupl

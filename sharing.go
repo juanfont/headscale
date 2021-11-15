@@ -3,9 +3,9 @@ package headscale
 import "gorm.io/gorm"
 
 const (
-	errorSameNamespace        = Error("Destination namespace same as origin")
-	errorMachineAlreadyShared = Error("Node already shared to this namespace")
-	errorMachineNotShared     = Error("Machine not shared to this namespace")
+	errSameNamespace        = Error("Destination namespace same as origin")
+	errMachineAlreadyShared = Error("Node already shared to this namespace")
+	errMachineNotShared     = Error("Machine not shared to this namespace")
 )
 
 // SharedMachine is a join table to support sharing nodes between namespaces.
@@ -23,7 +23,7 @@ func (h *Headscale) AddSharedMachineToNamespace(
 	namespace *Namespace,
 ) error {
 	if machine.NamespaceID == namespace.ID {
-		return errorSameNamespace
+		return errSameNamespace
 	}
 
 	sharedMachines := []SharedMachine{}
@@ -31,7 +31,7 @@ func (h *Headscale) AddSharedMachineToNamespace(
 		return err
 	}
 	if len(sharedMachines) > 0 {
-		return errorMachineAlreadyShared
+		return errMachineAlreadyShared
 	}
 
 	sharedMachine := SharedMachine{
@@ -52,7 +52,7 @@ func (h *Headscale) RemoveSharedMachineFromNamespace(
 ) error {
 	if machine.NamespaceID == namespace.ID {
 		// Can't unshare from primary namespace
-		return errorMachineNotShared
+		return errMachineNotShared
 	}
 
 	sharedMachine := SharedMachine{}
@@ -64,7 +64,7 @@ func (h *Headscale) RemoveSharedMachineFromNamespace(
 	}
 
 	if result.RowsAffected == 0 {
-		return errorMachineNotShared
+		return errMachineNotShared
 	}
 
 	err := h.RequestMapUpdates(namespace.ID)
