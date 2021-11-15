@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -112,7 +111,6 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 		c.Fatal(err)
 	}
 	// defer os.RemoveAll(tmpDir)
-	fmt.Println(tmpDir)
 
 	configYaml := []byte(
 		"---\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"\"\ntls_cert_path: \"abc.pem\"",
@@ -139,7 +137,6 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 		check.Matches,
 		".*Fatal config error: server_url must start with https:// or http://.*",
 	)
-	fmt.Println(tmp)
 
 	// Check configuration validation errors (2)
 	configYaml = []byte(

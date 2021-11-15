@@ -415,11 +415,13 @@ func SuccessOutput(result interface{}, override string, outputFormat string) {
 			log.Fatal().Err(err)
 		}
 	default:
+		//nolint
 		fmt.Println(override)
 
 		return
 	}
 
+	//nolint
 	fmt.Println(string(j))
 }
 
