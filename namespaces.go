@@ -70,7 +70,7 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		return err
 	}
 	for _, key := range keys {
-		err = h.DestroyPreAuthKey(&key)
+		err = h.DestroyPreAuthKey(key)
 		if err != nil {
 			return err
 		}

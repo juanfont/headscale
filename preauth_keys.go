@@ -95,8 +95,8 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the PreAuthKey
 // does not exist.
-func (h *Headscale) DestroyPreAuthKey(pak *PreAuthKey) error {
-	if result := h.db.Unscoped().Delete(&pak); result.Error != nil {
+func (h *Headscale) DestroyPreAuthKey(pak PreAuthKey) error {
+	if result := h.db.Unscoped().Delete(pak); result.Error != nil {
 		return result.Error
 	}
 

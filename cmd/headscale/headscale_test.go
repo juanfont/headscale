@@ -100,7 +100,7 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 func writeConfig(c *check.C, tmpDir string, configYaml []byte) {
 	// Populate a custom config file
 	configFile := filepath.Join(tmpDir, "config.yaml")
-	err := ioutil.WriteFile(configFile, configYaml, 0o644)
+	err := ioutil.WriteFile(configFile, configYaml, 0o600)
 	if err != nil {
 		c.Fatalf("Couldn't write file %s", configFile)
 	}

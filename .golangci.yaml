@@ -32,7 +32,6 @@ linters:
     - wrapcheck
     - goerr113
     - forcetypeassert
-    - gosec
     - forbidigo
     - dupl
     - makezero
