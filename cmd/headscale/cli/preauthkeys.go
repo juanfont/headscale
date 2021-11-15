@@ -178,7 +178,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 	Short: "Expire a preauthkey",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
+			return errMissingParameter
 		}
 
 		return nil

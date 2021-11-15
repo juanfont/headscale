@@ -52,6 +52,11 @@ const (
 	Sqlite          = "sqlite3"
 	updateInterval  = 5000
 	HTTPReadTimeout = 30 * time.Second
+
+	errUnsupportedDatabase                 = Error("unsupported DB")
+	errUnsupportedLetsEncryptChallengeType = Error(
+		"unknown value for Lets Encrypt challenge type",
+	)
 )
 
 // Config contains the initial Headscale configuration.
@@ -166,7 +171,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	case Sqlite:
 		dbString = cfg.DBpath
 	default:
-		return nil, errors.New("unsupported DB")
+		return nil, errUnsupportedDatabase
 	}
 
 	app := Headscale{
@@ -626,7 +631,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			return certManager.TLSConfig(), nil
 
 		default:
-			return nil, errors.New("unknown value for TLSLetsEncryptChallengeType")
+			return nil, errUnsupportedLetsEncryptChallengeType
 		}
 	} else if h.cfg.TLSCertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {

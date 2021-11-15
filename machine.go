@@ -20,6 +20,12 @@ import (
 	"tailscale.com/types/wgkey"
 )
 
+const (
+	errMachineNotFound            = Error("machine not found")
+	errMachineAlreadyRegistered   = Error("machine already registered")
+	errMachineRouteIsNotAvailable = Error("route is not available on machine")
+)
+
 // Machine is a Headscale client.
 type Machine struct {
 	ID          uint64 `gorm:"primary_key"`
@@ -248,7 +254,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 		}
 	}
 
-	return nil, fmt.Errorf("machine not found")
+	return nil, errMachineNotFound
 }
 
 // GetMachineByID finds a Machine by ID and returns the Machine struct.
@@ -615,7 +621,7 @@ func (h *Headscale) RegisterMachine(
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
-		return nil, errors.New("Machine not found")
+		return nil, errMachineNotFound
 	}
 
 	log.Trace().
@@ -624,7 +630,7 @@ func (h *Headscale) RegisterMachine(
 		Msg("Attempting to register machine")
 
 	if machine.isAlreadyRegistered() {
-		err := errors.New("Machine already registered")
+		err := errMachineAlreadyRegistered
 		log.Error().
 			Caller().
 			Err(err).
@@ -740,9 +746,9 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	for _, newRoute := range newRoutes {
 		if !containsIPPrefix(availableRoutes, newRoute) {
 			return fmt.Errorf(
-				"route (%s) is not available on node %s",
+				"route (%s) is not available on node %s: %w",
 				machine.Name,
-				newRoute,
+				newRoute, errMachineRouteIsNotAvailable,
 			)
 		}
 	}

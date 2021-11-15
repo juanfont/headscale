@@ -16,6 +16,7 @@ const (
 	errPreAuthKeyNotFound          = Error("AuthKey not found")
 	errPreAuthKeyExpired           = Error("AuthKey expired")
 	errSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
+	errNamespaceMismatch           = Error("namespace mismatch")
 )
 
 // PreAuthKey describes a pre-authorization key usable in a particular namespace.
@@ -87,7 +88,7 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 	}
 
 	if pak.Namespace.Name != namespace {
-		return nil, errors.New("Namespace mismatch")
+		return nil, errNamespaceMismatch
 	}
 
 	return pak, nil

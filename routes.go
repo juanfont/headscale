@@ -2,10 +2,13 @@ package headscale
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
+)
+
+const (
+	errRouteIsNotAvailable = Error("route is not available")
 )
 
 // Deprecated: use machine function instead
@@ -129,7 +132,7 @@ func (h *Headscale) EnableNodeRoute(
 	}
 
 	if !available {
-		return fmt.Errorf("route (%s) is not available on node %s", nodeName, routeStr)
+		return errRouteIsNotAvailable
 	}
 
 	routes, err := json.Marshal(enabledRoutes)

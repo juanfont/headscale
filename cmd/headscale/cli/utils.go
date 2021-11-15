@@ -81,6 +81,7 @@ func LoadConfig(path string) error {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
 	if errorText != "" {
+		//nolint
 		return errors.New(strings.TrimSuffix(errorText, "\n"))
 	} else {
 		return nil
@@ -305,6 +306,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	// to avoid races
 	minInactivityTimeout, _ := time.ParseDuration("65s")
 	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
+		// TODO: Find a better way to return this text
+		//nolint
 		err := fmt.Errorf(
 			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
 			viper.GetString("ephemeral_node_inactivity_timeout"),

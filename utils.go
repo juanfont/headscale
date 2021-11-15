@@ -20,6 +20,12 @@ import (
 	"tailscale.com/types/wgkey"
 )
 
+const (
+	errCannotDecryptReponse = Error("cannot decrypt response")
+	errResponseMissingNonce = Error("response missing nonce")
+	errCouldNotAllocateIP   = Error("could not find any suitable IP")
+)
+
 // Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
 type Error string
 
@@ -46,7 +52,7 @@ func decodeMsg(
 	}
 	// fmt.Println(string(decrypted))
 	if err := json.Unmarshal(decrypted, output); err != nil {
-		return fmt.Errorf("response: %w", err)
+		return err
 	}
 
 	return nil
@@ -55,7 +61,7 @@ func decodeMsg(
 func decryptMsg(msg []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, error) {
 	var nonce [24]byte
 	if len(msg) < len(nonce)+1 {
-		return nil, fmt.Errorf("response missing nonce, len=%d", len(msg))
+		return nil, errResponseMissingNonce
 	}
 	copy(nonce[:], msg)
 	msg = msg[len(nonce):]
@@ -63,7 +69,7 @@ func decryptMsg(msg []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, 
 	pub, pri := (*[32]byte)(pubKey), (*[32]byte)(privKey)
 	decrypted, ok := box.Open(nil, msg, &nonce, pub, pri)
 	if !ok {
-		return nil, fmt.Errorf("cannot decrypt response")
+		return nil, errCannotDecryptReponse
 	}
 
 	return decrypted, nil
@@ -106,7 +112,7 @@ func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
 
 	for {
 		if !ipPrefix.Contains(ip) {
-			return nil, fmt.Errorf("could not find any suitable IP in %s", ipPrefix)
+			return nil, errCouldNotAllocateIP
 		}
 
 		// Some OS (including Linux) does not like when IPs ends with 0 or 255, which
@@ -143,7 +149,7 @@ func (h *Headscale) getUsedIPs() ([]netaddr.IP, error) {
 		if addr != "" {
 			ip, err := netaddr.ParseIP(addr)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse ip from database, %w", err)
+				return nil, fmt.Errorf("failed to parse ip from database: %w", err)
 			}
 
 			ips[index] = ip

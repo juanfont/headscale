@@ -9,7 +9,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-const dbVersion = "1"
+const (
+	dbVersion        = "1"
+	errValueNotFound = Error("not found")
+)
 
 // KV is a key-value store in a psql table. For future use...
 type KV struct {
@@ -92,7 +95,7 @@ func (h *Headscale) getValue(key string) (string, error) {
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
-		return "", errors.New("not found")
+		return "", errValueNotFound
 	}
 
 	return row.Value, nil

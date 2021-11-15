@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	survey "github.com/AlecAivazis/survey/v2"
+	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
@@ -19,6 +20,10 @@ func init() {
 	namespaceCmd.AddCommand(renameNamespaceCmd)
 }
 
+const (
+	errMissingParameter = headscale.Error("missing parameters")
+)
+
 var namespaceCmd = &cobra.Command{
 	Use:   "namespaces",
 	Short: "Manage the namespaces of Headscale",
@@ -29,7 +34,7 @@ var createNamespaceCmd = &cobra.Command{
 	Short: "Creates a new namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
+			return errMissingParameter
 		}
 
 		return nil
@@ -71,7 +76,7 @@ var destroyNamespaceCmd = &cobra.Command{
 	Short: "Destroys a namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
+			return errMissingParameter
 		}
 
 		return nil
@@ -197,7 +202,7 @@ var renameNamespaceCmd = &cobra.Command{
 	Args: func(cmd *cobra.Command, args []string) error {
 		expectedArguments := 2
 		if len(args) < expectedArguments {
-			return fmt.Errorf("missing parameters")
+			return errMissingParameter
 		}
 
 		return nil

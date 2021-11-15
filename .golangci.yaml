@@ -30,7 +30,6 @@ linters:
 
     # We should strive to enable these:
     - wrapcheck
-    - goerr113
     - dupl
     - makezero
 
