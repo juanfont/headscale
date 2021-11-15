@@ -145,36 +145,36 @@ func TestHeadscale_getNamespaceFromEmail(t *testing.T) {
 		},
 	}
 	//nolint
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			h := &Headscale{
-				cfg:             tt.fields.cfg,
-				db:              tt.fields.db,
-				dbString:        tt.fields.dbString,
-				dbType:          tt.fields.dbType,
-				dbDebug:         tt.fields.dbDebug,
-				publicKey:       tt.fields.publicKey,
-				privateKey:      tt.fields.privateKey,
-				aclPolicy:       tt.fields.aclPolicy,
-				aclRules:        tt.fields.aclRules,
-				lastStateChange: tt.fields.lastStateChange,
-				oidcProvider:    tt.fields.oidcProvider,
-				oauth2Config:    tt.fields.oauth2Config,
-				oidcStateCache:  tt.fields.oidcStateCache,
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			app := &Headscale{
+				cfg:             test.fields.cfg,
+				db:              test.fields.db,
+				dbString:        test.fields.dbString,
+				dbType:          test.fields.dbType,
+				dbDebug:         test.fields.dbDebug,
+				publicKey:       test.fields.publicKey,
+				privateKey:      test.fields.privateKey,
+				aclPolicy:       test.fields.aclPolicy,
+				aclRules:        test.fields.aclRules,
+				lastStateChange: test.fields.lastStateChange,
+				oidcProvider:    test.fields.oidcProvider,
+				oauth2Config:    test.fields.oauth2Config,
+				oidcStateCache:  test.fields.oidcStateCache,
 			}
-			got, got1 := h.getNamespaceFromEmail(tt.args.email)
-			if got != tt.want {
+			got, got1 := app.getNamespaceFromEmail(test.args.email)
+			if got != test.want {
 				t.Errorf(
 					"Headscale.getNamespaceFromEmail() got = %v, want %v",
 					got,
-					tt.want,
+					test.want,
 				)
 			}
-			if got1 != tt.want1 {
+			if got1 != test.want1 {
 				t.Errorf(
 					"Headscale.getNamespaceFromEmail() got1 = %v, want %v",
 					got1,
-					tt.want1,
+					test.want1,
 				)
 			}
 		})

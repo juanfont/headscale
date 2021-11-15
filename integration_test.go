@@ -185,7 +185,7 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 
 func (s *IntegrationTestSuite) SetupSuite() {
 	var err error
-	h = Headscale{
+	app = Headscale{
 		dbType:   "sqlite3",
 		dbString: "integration_test_db.sqlite3",
 	}

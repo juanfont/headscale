@@ -7,34 +7,34 @@ import (
 )
 
 func (s *Suite) TestRegisterMachine(c *check.C) {
-	n, err := h.CreateNamespace("test")
+	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
 	now := time.Now().UTC()
 
-	m := Machine{
+	machine := Machine{
 		ID:              0,
 		MachineKey:      "8ce002a935f8c394e55e78fbbb410576575ff8ec5cfa2e627e4b807f1be15b0e",
 		NodeKey:         "bar",
 		DiscoKey:        "faa",
 		Name:            "testmachine",
-		NamespaceID:     n.ID,
+		NamespaceID:     namespace.ID,
 		IPAddress:       "10.0.0.1",
 		Expiry:          &now,
 		RequestedExpiry: &now,
 	}
-	h.db.Save(&m)
+	app.db.Save(&machine)
 
-	_, err = h.GetMachine("test", "testmachine")
+	_, err = app.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
 
-	m2, err := h.RegisterMachine(
+	machineAfterRegistering, err := app.RegisterMachine(
 		"8ce002a935f8c394e55e78fbbb410576575ff8ec5cfa2e627e4b807f1be15b0e",
-		n.Name,
+		namespace.Name,
 	)
 	c.Assert(err, check.IsNil)
-	c.Assert(m2.Registered, check.Equals, true)
+	c.Assert(machineAfterRegistering.Registered, check.Equals, true)
 
-	_, err = m2.GetHostInfo()
+	_, err = machineAfterRegistering.GetHostInfo()
 	c.Assert(err, check.IsNil)
 }
