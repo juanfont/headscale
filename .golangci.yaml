@@ -28,9 +28,6 @@ linters:
     # In progress
     - gocritic
 
-    # TODO: approve: ok, db, id
-    - varnamelen
-
     # We should strive to enable these:
     - testpackage
     - stylecheck
@@ -49,3 +46,15 @@ linters:
     - cyclop
     - nestif
     - wsl # might be incompatible with gofumpt
+
+linters-settings:
+  varnamelen:
+    ignore-type-assert-ok: true
+    ignore-map-index-ok: true
+    ignore-names:
+      - err
+      - db
+      - id
+      - ip
+      - ok
+      - c
