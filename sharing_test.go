@@ -325,7 +325,9 @@ func (s *Suite) TestDeleteSharedMachine(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(peersOfMachine3), check.Equals, 0) // node 3 is alone
 
-	sharedMachinesInNamespace1, err := app.ListSharedMachinesInNamespace(namespace1.Name)
+	sharedMachinesInNamespace1, err := app.ListSharedMachinesInNamespace(
+		namespace1.Name,
+	)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(sharedMachinesInNamespace1), check.Equals, 1)
 

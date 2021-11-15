@@ -42,7 +42,10 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	}
 	app.db.Save(&machine)
 
-	advertisedRoutes, err := app.GetAdvertisedNodeRoutes("test", "test_get_route_machine")
+	advertisedRoutes, err := app.GetAdvertisedNodeRoutes(
+		"test",
+		"test_get_route_machine",
+	)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(*advertisedRoutes), check.Equals, 1)
 
@@ -100,7 +103,10 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(*availableRoutes), check.Equals, 2)
 
-	noEnabledRoutes, err := app.GetEnabledNodeRoutes("test", "test_enable_route_machine")
+	noEnabledRoutes, err := app.GetEnabledNodeRoutes(
+		"test",
+		"test_enable_route_machine",
+	)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(noEnabledRoutes), check.Equals, 0)
 
