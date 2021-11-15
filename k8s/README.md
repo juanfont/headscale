@@ -24,6 +24,7 @@ Configure DERP servers by editing `base/site/derp.yaml` if needed.
 You'll somehow need to get `headscale:latest` into your cluster image registry.
 
 An easy way to do this with k3s:
+
 - Reconfigure k3s to use docker instead of containerd (`k3s server --docker`)
 - `docker build -t headscale:latest ..` from here
 
@@ -61,7 +62,7 @@ Use the wrapper script to remotely operate headscale to perform administrative
 tasks like creating namespaces, authkeys, etc.
 
 ```
-[c@nix-slate:~/Projects/headscale/k8s]$ ./headscale.bash 
+[c@nix-slate:~/Projects/headscale/k8s]$ ./headscale.bash
 
 headscale is an open source implementation of the Tailscale control server
 

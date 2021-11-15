@@ -9,7 +9,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-const dbVersion = "1"
+const (
+	dbVersion        = "1"
+	errValueNotFound = Error("not found")
+)
 
 // KV is a key-value store in a psql table. For future use...
 type KV struct {
@@ -24,7 +27,7 @@ func (h *Headscale) initDB() error {
 	}
 	h.db = db
 
-	if h.dbType == "postgres" {
+	if h.dbType == Postgres {
 		db.Exec("create extension if not exists \"uuid-ossp\";")
 	}
 	err = db.AutoMigrate(&Machine{})
@@ -50,6 +53,7 @@ func (h *Headscale) initDB() error {
 	}
 
 	err = h.setValue("db_version", dbVersion)
+
 	return err
 }
 
@@ -65,12 +69,12 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 	}
 
 	switch h.dbType {
-	case "sqlite3":
+	case Sqlite:
 		db, err = gorm.Open(sqlite.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   log,
 		})
-	case "postgres":
+	case Postgres:
 		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   log,
@@ -84,28 +88,33 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 	return db, nil
 }
 
-// getValue returns the value for the given key in KV
+// getValue returns the value for the given key in KV.
 func (h *Headscale) getValue(key string) (string, error) {
 	var row KV
-	if result := h.db.First(&row, "key = ?", key); errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return "", errors.New("not found")
+	if result := h.db.First(&row, "key = ?", key); errors.Is(
+		result.Error,
+		gorm.ErrRecordNotFound,
+	) {
+		return "", errValueNotFound
 	}
+
 	return row.Value, nil
 }
 
-// setValue sets value for the given key in KV
+// setValue sets value for the given key in KV.
 func (h *Headscale) setValue(key string, value string) error {
-	kv := KV{
+	keyValue := KV{
 		Key:   key,
 		Value: value,
 	}
 
-	_, err := h.getValue(key)
-	if err == nil {
-		h.db.Model(&kv).Where("key = ?", key).Update("value", value)
+	if _, err := h.getValue(key); err == nil {
+		h.db.Model(&keyValue).Where("key = ?", key).Update("value", value)
+
 		return nil
 	}
 
-	h.db.Create(kv)
+	h.db.Create(keyValue)
+
 	return nil
 }

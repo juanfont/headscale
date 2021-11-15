@@ -8,6 +8,6 @@ spec:
   selector:
     app: headscale
   ports:
-  - name: http
-    targetPort: http
-    port: 8080
+    - name: http
+      targetPort: http
+      port: 8080

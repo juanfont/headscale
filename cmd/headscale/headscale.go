@@ -23,6 +23,8 @@ func main() {
 		colors = true
 	case termcolor.LevelBasic:
 		colors = true
+	case termcolor.LevelNone:
+		colors = false
 	default:
 		// no color, return text as is.
 		colors = false
@@ -41,8 +43,7 @@ func main() {
 		NoColor:    !colors,
 	})
 
-	err := cli.LoadConfig("")
-	if err != nil {
+	if err := cli.LoadConfig(""); err != nil {
 		log.Fatal().Err(err)
 	}
 
@@ -63,13 +64,15 @@ func main() {
 	}
 
 	if !viper.GetBool("disable_check_updates") && !machineOutput {
-		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && cli.Version != "dev" {
+		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
+			cli.Version != "dev" {
 			githubTag := &latest.GithubTag{
 				Owner:      "juanfont",
 				Repository: "headscale",
 			}
 			res, err := latest.Check(githubTag, cli.Version)
 			if err == nil && res.Outdated {
+				//nolint
 				fmt.Printf(
 					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
 					res.Current,
