@@ -39,7 +39,7 @@ func (h *Headscale) CreatePreAuthKey(
 	ephemeral bool,
 	expiration *time.Time,
 ) (*PreAuthKey, error) {
-	n, err := h.GetNamespace(namespaceName)
+	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
 	}
@@ -50,29 +50,29 @@ func (h *Headscale) CreatePreAuthKey(
 		return nil, err
 	}
 
-	k := PreAuthKey{
+	key := PreAuthKey{
 		Key:         kstr,
-		NamespaceID: n.ID,
-		Namespace:   *n,
+		NamespaceID: namespace.ID,
+		Namespace:   *namespace,
 		Reusable:    reusable,
 		Ephemeral:   ephemeral,
 		CreatedAt:   &now,
 		Expiration:  expiration,
 	}
-	h.db.Save(&k)
+	h.db.Save(&key)
 
-	return &k, nil
+	return &key, nil
 }
 
 // ListPreAuthKeys returns the list of PreAuthKeys for a namespace.
 func (h *Headscale) ListPreAuthKeys(namespaceName string) ([]PreAuthKey, error) {
-	n, err := h.GetNamespace(namespaceName)
+	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
 	}
 
 	keys := []PreAuthKey{}
-	if err := h.db.Preload("Namespace").Where(&PreAuthKey{NamespaceID: n.ID}).Find(&keys).Error; err != nil {
+	if err := h.db.Preload("Namespace").Where(&PreAuthKey{NamespaceID: namespace.ID}).Find(&keys).Error; err != nil {
 		return nil, err
 	}
 

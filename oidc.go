@@ -76,15 +76,15 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 		return
 	}
 
-	b := make([]byte, RANDOM_BYTE_SIZE)
-	if _, err := rand.Read(b); err != nil {
+	randomBlob := make([]byte, RANDOM_BYTE_SIZE)
+	if _, err := rand.Read(randomBlob); err != nil {
 		log.Error().Msg("could not read 16 bytes from rand")
 		ctx.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
 
 		return
 	}
 
-	stateStr := hex.EncodeToString(b)[:32]
+	stateStr := hex.EncodeToString(randomBlob)[:32]
 
 	// place the machine key into the state cache, so it can be retrieved later
 	h.oidcStateCache.Set(stateStr, mKeyStr, OIDC_STATE_CACHE_EXPIRATION)

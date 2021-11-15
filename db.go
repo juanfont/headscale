@@ -100,18 +100,18 @@ func (h *Headscale) getValue(key string) (string, error) {
 
 // setValue sets value for the given key in KV.
 func (h *Headscale) setValue(key string, value string) error {
-	kv := KV{
+	keyValue := KV{
 		Key:   key,
 		Value: value,
 	}
 
 	if _, err := h.getValue(key); err == nil {
-		h.db.Model(&kv).Where("key = ?", key).Update("value", value)
+		h.db.Model(&keyValue).Where("key = ?", key).Update("value", value)
 
 		return nil
 	}
 
-	h.db.Create(kv)
+	h.db.Create(keyValue)
 
 	return nil
 }

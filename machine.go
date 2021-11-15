@@ -526,7 +526,7 @@ func (machine Machine) toNode(
 		hostname = machine.Name
 	}
 
-	n := tailcfg.Node{
+	node := tailcfg.Node{
 		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
 			strconv.FormatUint(machine.ID, BASE_10),
@@ -551,7 +551,7 @@ func (machine Machine) toNode(
 		Capabilities:      []string{tailcfg.CapabilityFileSharing},
 	}
 
-	return &n, nil
+	return &node, nil
 }
 
 func (machine *Machine) toProto() *v1.Machine {

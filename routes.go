@@ -15,12 +15,12 @@ func (h *Headscale) GetAdvertisedNodeRoutes(
 	namespace string,
 	nodeName string,
 ) (*[]netaddr.IPPrefix, error) {
-	m, err := h.GetMachine(namespace, nodeName)
+	machine, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	hostInfo, err := m.GetHostInfo()
+	hostInfo, err := machine.GetHostInfo()
 	if err != nil {
 		return nil, err
 	}
@@ -35,12 +35,12 @@ func (h *Headscale) GetEnabledNodeRoutes(
 	namespace string,
 	nodeName string,
 ) ([]netaddr.IPPrefix, error) {
-	m, err := h.GetMachine(namespace, nodeName)
+	machine, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := m.EnabledRoutes.MarshalJSON()
+	data, err := machine.EnabledRoutes.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (h *Headscale) EnableNodeRoute(
 	nodeName string,
 	routeStr string,
 ) error {
-	m, err := h.GetMachine(namespace, nodeName)
+	machine, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return err
 	}
@@ -137,10 +137,10 @@ func (h *Headscale) EnableNodeRoute(
 		return err
 	}
 
-	m.EnabledRoutes = datatypes.JSON(routes)
-	h.db.Save(&m)
+	machine.EnabledRoutes = datatypes.JSON(routes)
+	h.db.Save(&machine)
 
-	err = h.RequestMapUpdates(m.NamespaceID)
+	err = h.RequestMapUpdates(machine.NamespaceID)
 	if err != nil {
 		return err
 	}
