@@ -22,7 +22,7 @@
 
 3. Get yourself a DB
 
-   a) Get a Postgres DB running in docker
+   a) Get a Postgres DB running in Docker:
 
    ```shell
    docker run --name headscale \
@@ -33,7 +33,7 @@
      -d postgres
    ```
 
-   or b) Prepare a SQLite DB file
+   or b) Prepare a SQLite DB file:
 
    ```shell
    touch config/db.sqlite
@@ -55,20 +55,21 @@
    headscale namespaces create myfirstnamespace
    ```
 
-   or docker:
+   or Docker:
 
    ```shell
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      -p 127.0.0.1:8080:8080 \
      headscale/headscale:x.x.x \
-     headscale namespaces create myfirstnamespace
+       headscale namespaces create myfirstnamespace
    ```
 
-   or if your server is already running in docker:
+   or if your server is already running in Docker:
 
    ```shell
-   docker exec <container_name> headscale namespaces create myfirstnamespace
+   docker exec <container_name> \
+     headscale namespaces create myfirstnamespace
    ```
 
 6. Run the server
@@ -77,13 +78,14 @@
    headscale serve
    ```
 
-   or docker:
+   or Docker:
 
    ```shell
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      -p 127.0.0.1:8080:8080 \
-     headscale/headscale:x.x.x headscale serve
+     headscale/headscale:x.x.x \
+       headscale serve
    ```
 
 ## Nodes configuration
@@ -107,19 +109,25 @@ systemctl start tailscaled
 2. Navigate to the URL returned by `tailscale up`, where you'll find your machine key.
 
 3. In the server, register your machine to a namespace with the CLI
+
    ```shell
    headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
-   or docker:
+
+   or Docker:
+
    ```shell
    docker run \
      -v $(pwd)/config:/etc/headscale/ \
      headscale/headscale:x.x.x \
      headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
-   or if your server is already running in docker:
+
+   or if your server is already running in Docker:
+
    ```shell
-   docker exec <container_name> headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
+   docker exec <container_name> \
+      headscale -n myfirstnamespace nodes register -k YOURMACHINEKEY
    ```
 
 ### Alternative: adding node with AUTHKEY
@@ -130,7 +138,7 @@ systemctl start tailscaled
    headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
-   or docker:
+   or Docker:
 
    ```shell
    docker run \
@@ -139,13 +147,15 @@ systemctl start tailscaled
      headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
-   or if your server is already running in docker:
+   or if your server is already running in Docker:
 
    ```shell
-   docker exec <container_name> headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
+   docker exec <container_name> \
+      headscale -n myfirstnamespace preauthkeys create --reusable --expiration 24h
    ```
 
-2. Use the authkey on your node to register it
+2. Use the authkey on your node to register it:
+
    ```shell
    tailscale up --login-server YOUR_HEADSCALE_URL --authkey YOURAUTHKEY
    ```
@@ -153,3 +163,31 @@ systemctl start tailscaled
 If you create an authkey with the `--ephemeral` flag, that key will create ephemeral nodes. This implies that `--reusable` is true.
 
 Please bear in mind that all headscale commands support adding `-o json` or `-o json-line` to get nicely JSON-formatted output.
+
+## Debugging headscale running in Docker
+
+The `headscale/headscale` Docker container is based on a "distroless" image that does not contain a shell or any other debug tools. If you need to debug your application running in the Docker container, you can use the `-debug` variant, for example `headscale/headscale:x.x.x-debug`.
+
+### Running the debug Docker container
+
+To run the debug Docker container, use the exact same commands as above, but replace `headscale/headscale:x.x.x` with `headscale/headscale:x.x.x-debug` (`x.x.x` is the version of headscale). The two containers are compatible with each other, so you can alternate between them.
+
+### Executing commands in the debug container
+
+The default command in the debug container is to run `headscale`, which is located at `/bin/headscale` inside the container.
+
+Additionally, the debug container includes a minimalist Busybox shell.
+
+To launch a shell in the container, use:
+
+```
+docker run -it headscale/headscale:x.x.x-debug sh
+```
+
+You can also execute commands directly, such as `ls /bin` in this example:
+
+```
+docker run headscale/headscale:x.x.x-debug ls /bin
+```
+
+Using `docker exec` allows you to run commands in an existing container.
