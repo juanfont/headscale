@@ -112,177 +112,41 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 	}
 
 	if !machine.Registered && req.Auth.AuthKey != "" {
-		h.handleAuthKey(ctx, h.db, machineKey, req, *machine)
+		h.handleAuthKey(ctx, machineKey, req, *machine)
 
 		return
 	}
-
-	resp := tailcfg.RegisterResponse{}
 
 	// We have the updated key!
 	if machine.NodeKey == wgkey.Key(req.NodeKey).HexString() {
 		// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 		//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 		if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
-			log.Info().
-				Str("handler", "Registration").
-				Str("machine", machine.Name).
-				Msg("Client requested logout")
-
-			machine.Expiry = &req.Expiry // save the expiry so that the machine is marked as expired
-			h.db.Save(&machine)
-
-			resp.AuthURL = ""
-			resp.MachineAuthorized = false
-			resp.User = *machine.Namespace.toUser()
-			respBody, err := encode(resp, &machineKey, h.privateKey)
-			if err != nil {
-				log.Error().
-					Str("handler", "Registration").
-					Err(err).
-					Msg("Cannot encode message")
-				ctx.String(http.StatusInternalServerError, "")
-
-				return
-			}
-			ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+			h.handleMachineLogOut(ctx, machineKey, req, *machine)
 
 			return
 		}
 
 		if machine.Registered && machine.Expiry.UTC().After(now) {
-			// The machine registration is valid, respond with redirect to /map
-			log.Debug().
-				Str("handler", "Registration").
-				Str("machine", machine.Name).
-				Msg("Client is registered and we have the current NodeKey. All clear to /map")
-
-			resp.AuthURL = ""
-			resp.MachineAuthorized = true
-			resp.User = *machine.Namespace.toUser()
-			resp.Login = *machine.Namespace.toLogin()
-
-			respBody, err := encode(resp, &machineKey, h.privateKey)
-			if err != nil {
-				log.Error().
-					Str("handler", "Registration").
-					Err(err).
-					Msg("Cannot encode message")
-				machineRegistrations.WithLabelValues("update", "web", "error", machine.Namespace.Name).
-					Inc()
-				ctx.String(http.StatusInternalServerError, "")
-
-				return
-			}
-			machineRegistrations.WithLabelValues("update", "web", "success", machine.Namespace.Name).
-				Inc()
-			ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+			h.handleMachineValidRegistration(ctx, machineKey, req, *machine)
 
 			return
 		}
 
-		// The client has registered before, but has expired
-		log.Debug().
-			Str("handler", "Registration").
-			Str("machine", machine.Name).
-			Msg("Machine registration has expired. Sending a authurl to register")
-
-		if h.cfg.OIDC.Issuer != "" {
-			resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
-				strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.HexString())
-		} else {
-			resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-				strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.HexString())
-		}
-
-		// When a client connects, it may request a specific expiry time in its
-		// RegisterRequest (https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L634)
-		// RequestedExpiry is used to store the clients requested expiry time since the authentication flow is broken
-		// into two steps (which cant pass arbitrary data between them easily) and needs to be
-		// retrieved again after the user has authenticated. After the authentication flow
-		// completes, RequestedExpiry is copied into Expiry.
-		machine.RequestedExpiry = &req.Expiry
-
-		h.db.Save(&machine)
-
-		respBody, err := encode(resp, &machineKey, h.privateKey)
-		if err != nil {
-			log.Error().
-				Str("handler", "Registration").
-				Err(err).
-				Msg("Cannot encode message")
-			machineRegistrations.WithLabelValues("new", "web", "error", machine.Namespace.Name).
-				Inc()
-			ctx.String(http.StatusInternalServerError, "")
-
-			return
-		}
-		machineRegistrations.WithLabelValues("new", "web", "success", machine.Namespace.Name).
-			Inc()
-		ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+		h.handleMachineExpired(ctx, machineKey, req, *machine)
 
 		return
 	}
 
 	// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
 	if machine.NodeKey == wgkey.Key(req.OldNodeKey).HexString() &&
-		machine.Expiry.UTC().After(now) {
-		log.Debug().
-			Str("handler", "Registration").
-			Str("machine", machine.Name).
-			Msg("We have the OldNodeKey in the database. This is a key refresh")
-		machine.NodeKey = wgkey.Key(req.NodeKey).HexString()
-		h.db.Save(&machine)
-
-		resp.AuthURL = ""
-		resp.User = *machine.Namespace.toUser()
-		respBody, err := encode(resp, &machineKey, h.privateKey)
-		if err != nil {
-			log.Error().
-				Str("handler", "Registration").
-				Err(err).
-				Msg("Cannot encode message")
-			ctx.String(http.StatusInternalServerError, "Extremely sad!")
-
-			return
-		}
-		ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+		!machine.isExpired() {
+		h.handleMachineRefreshKey(ctx, machineKey, req, *machine)
 
 		return
 	}
 
-	// The machine registration is new, redirect the client to the registration URL
-	log.Debug().
-		Str("handler", "Registration").
-		Str("machine", machine.Name).
-		Msg("The node is sending us a new NodeKey, sending auth url")
-	if h.cfg.OIDC.Issuer != "" {
-		resp.AuthURL = fmt.Sprintf(
-			"%s/oidc/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			machineKey.HexString(),
-		)
-	} else {
-		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.HexString())
-	}
-
-	// save the requested expiry time for retrieval later in the authentication flow
-	machine.RequestedExpiry = &req.Expiry
-	machine.NodeKey = wgkey.Key(req.NodeKey).HexString() // save the NodeKey
-	h.db.Save(&machine)
-
-	respBody, err := encode(resp, &machineKey, h.privateKey)
-	if err != nil {
-		log.Error().
-			Str("handler", "Registration").
-			Err(err).
-			Msg("Cannot encode message")
-		ctx.String(http.StatusInternalServerError, "")
-
-		return
-	}
-	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+	h.handleMachineRegistrationNew(ctx, machineKey, req, *machine)
 }
 
 func (h *Headscale) getMapResponse(
@@ -404,9 +268,205 @@ func (h *Headscale) getMapKeepAliveResponse(
 	return data, nil
 }
 
+func (h *Headscale) handleMachineLogOut(
+	ctx *gin.Context,
+	idKey wgkey.Key,
+	reqisterRequest tailcfg.RegisterRequest,
+	machine Machine,
+) {
+	resp := tailcfg.RegisterResponse{}
+
+	log.Info().
+		Str("handler", "Registration").
+		Str("machine", machine.Name).
+		Msg("Client requested logout")
+
+	machine.Expiry = &reqisterRequest.Expiry // save the expiry so that the machine is marked as expired
+	h.db.Save(&machine)
+
+	resp.AuthURL = ""
+	resp.MachineAuthorized = false
+	resp.User = *machine.Namespace.toUser()
+	respBody, err := encode(resp, &idKey, h.privateKey)
+	if err != nil {
+		log.Error().
+			Str("handler", "Registration").
+			Err(err).
+			Msg("Cannot encode message")
+		ctx.String(http.StatusInternalServerError, "")
+
+		return
+	}
+	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	return
+}
+
+func (h *Headscale) handleMachineValidRegistration(
+	ctx *gin.Context,
+	idKey wgkey.Key,
+	reqisterRequest tailcfg.RegisterRequest,
+	machine Machine,
+) {
+	resp := tailcfg.RegisterResponse{}
+
+	// The machine registration is valid, respond with redirect to /map
+	log.Debug().
+		Str("handler", "Registration").
+		Str("machine", machine.Name).
+		Msg("Client is registered and we have the current NodeKey. All clear to /map")
+
+	resp.AuthURL = ""
+	resp.MachineAuthorized = true
+	resp.User = *machine.Namespace.toUser()
+	resp.Login = *machine.Namespace.toLogin()
+
+	respBody, err := encode(resp, &idKey, h.privateKey)
+	if err != nil {
+		log.Error().
+			Str("handler", "Registration").
+			Err(err).
+			Msg("Cannot encode message")
+		machineRegistrations.WithLabelValues("update", "web", "error", machine.Namespace.Name).
+			Inc()
+		ctx.String(http.StatusInternalServerError, "")
+
+		return
+	}
+	machineRegistrations.WithLabelValues("update", "web", "success", machine.Namespace.Name).
+		Inc()
+	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	return
+}
+
+func (h *Headscale) handleMachineExpired(
+	ctx *gin.Context,
+	idKey wgkey.Key,
+	reqisterRequest tailcfg.RegisterRequest,
+	machine Machine,
+) {
+	resp := tailcfg.RegisterResponse{}
+
+	// The client has registered before, but has expired
+	log.Debug().
+		Str("handler", "Registration").
+		Str("machine", machine.Name).
+		Msg("Machine registration has expired. Sending a authurl to register")
+
+	if h.cfg.OIDC.Issuer != "" {
+		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
+	} else {
+		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
+	}
+
+	// When a client connects, it may request a specific expiry time in its
+	// RegisterRequest (https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L634)
+	// RequestedExpiry is used to store the clients requested expiry time since the authentication flow is broken
+	// into two steps (which cant pass arbitrary data between them easily) and needs to be
+	// retrieved again after the user has authenticated. After the authentication flow
+	// completes, RequestedExpiry is copied into Expiry.
+	machine.RequestedExpiry = &reqisterRequest.Expiry
+
+	h.db.Save(&machine)
+
+	respBody, err := encode(resp, &idKey, h.privateKey)
+	if err != nil {
+		log.Error().
+			Str("handler", "Registration").
+			Err(err).
+			Msg("Cannot encode message")
+		machineRegistrations.WithLabelValues("new", "web", "error", machine.Namespace.Name).
+			Inc()
+		ctx.String(http.StatusInternalServerError, "")
+
+		return
+	}
+	machineRegistrations.WithLabelValues("new", "web", "success", machine.Namespace.Name).
+		Inc()
+	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	return
+}
+
+func (h *Headscale) handleMachineRefreshKey(
+	ctx *gin.Context,
+	idKey wgkey.Key,
+	reqisterRequest tailcfg.RegisterRequest,
+	machine Machine,
+) {
+	resp := tailcfg.RegisterResponse{}
+
+	log.Debug().
+		Str("handler", "Registration").
+		Str("machine", machine.Name).
+		Msg("We have the OldNodeKey in the database. This is a key refresh")
+	machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).HexString()
+	h.db.Save(&machine)
+
+	resp.AuthURL = ""
+	resp.User = *machine.Namespace.toUser()
+	respBody, err := encode(resp, &idKey, h.privateKey)
+	if err != nil {
+		log.Error().
+			Str("handler", "Registration").
+			Err(err).
+			Msg("Cannot encode message")
+		ctx.String(http.StatusInternalServerError, "Extremely sad!")
+
+		return
+	}
+	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	return
+}
+
+func (h *Headscale) handleMachineRegistrationNew(
+	ctx *gin.Context,
+	idKey wgkey.Key,
+	reqisterRequest tailcfg.RegisterRequest,
+	machine Machine,
+) {
+	resp := tailcfg.RegisterResponse{}
+
+	// The machine registration is new, redirect the client to the registration URL
+	log.Debug().
+		Str("handler", "Registration").
+		Str("machine", machine.Name).
+		Msg("The node is sending us a new NodeKey, sending auth url")
+	if h.cfg.OIDC.Issuer != "" {
+		resp.AuthURL = fmt.Sprintf(
+			"%s/oidc/register/%s",
+			strings.TrimSuffix(h.cfg.ServerURL, "/"),
+			idKey.HexString(),
+		)
+	} else {
+		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
+	}
+
+	// save the requested expiry time for retrieval later in the authentication flow
+	machine.RequestedExpiry = &reqisterRequest.Expiry
+	machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).HexString() // save the NodeKey
+	h.db.Save(&machine)
+
+	respBody, err := encode(resp, &idKey, h.privateKey)
+	if err != nil {
+		log.Error().
+			Str("handler", "Registration").
+			Err(err).
+			Msg("Cannot encode message")
+		ctx.String(http.StatusInternalServerError, "")
+
+		return
+	}
+	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+}
+
 func (h *Headscale) handleAuthKey(
 	ctx *gin.Context,
-	db *gorm.DB,
 	idKey wgkey.Key,
 	reqisterRequest tailcfg.RegisterRequest,
 	machine Machine,
@@ -477,10 +537,10 @@ func (h *Headscale) handleAuthKey(
 		// we update it just in case
 	machine.Registered = true
 	machine.RegisterMethod = "authKey"
-	db.Save(&machine)
+	h.db.Save(&machine)
 
 	pak.Used = true
-	db.Save(&pak)
+	h.db.Save(&pak)
 
 	resp.MachineAuthorized = true
 	resp.User = *pak.Namespace.toUser()
