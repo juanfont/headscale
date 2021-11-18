@@ -660,7 +660,7 @@ func (h *Headscale) RegisterMachine(
 	machine.IPAddress = ip.String()
 	machine.NamespaceID = namespace.ID
 	machine.Registered = true
-	machine.RegisterMethod = "cli"
+	machine.RegisterMethod = RegisterMethodCLI
 	h.db.Save(&machine)
 
 	log.Trace().

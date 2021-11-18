@@ -223,7 +223,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			machine.IPAddress = ip.String()
 			machine.NamespaceID = namespace.ID
 			machine.Registered = true
-			machine.RegisterMethod = "oidc"
+			machine.RegisterMethod = RegisterMethodOIDC
 			machine.LastSuccessfulUpdate = &now
 			h.db.Save(&machine)
 		}

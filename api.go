@@ -21,6 +21,8 @@ import (
 const (
 	reservedResponseHeaderSize = 4
 	RegisterMethodAuthKey      = "authKey"
+	RegisterMethodOIDC         = "oidc"
+	RegisterMethodCLI          = "cli"
 )
 
 // KeyHandler provides the Headscale pub key
@@ -422,8 +424,6 @@ func (h *Headscale) handleMachineRefreshKey(
 		return
 	}
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
-
-	return
 }
 
 func (h *Headscale) handleMachineRegistrationNew(
