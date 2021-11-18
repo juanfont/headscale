@@ -130,8 +130,15 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			return
 		}
 
-		if machine.Registered && machine.Expiry.UTC().After(now) {
-			h.handleMachineValidRegistration(ctx, machineKey, req, *machine)
+		// We dont care about expiry time if the method is AuthKey, as we dont set that.
+		if machine.Registered && machine.RegisterMethod == RegisterMethodAuthKey {
+			h.handleMachineValidRegistration(ctx, machineKey, *machine)
+
+			return
+		}
+
+		if machine.Registered && !machine.isExpired() {
+			h.handleMachineValidRegistration(ctx, machineKey, *machine)
 
 			return
 		}
