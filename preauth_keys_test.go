@@ -81,7 +81,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 		Name:           "testest",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(&machine)
@@ -106,7 +106,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 		Name:           "testest",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(&machine)
@@ -144,7 +144,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 		Name:           "testest",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		LastSeen:       &now,
 		AuthKeyID:      uint(pak.ID),
 	}

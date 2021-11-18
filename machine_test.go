@@ -25,7 +25,7 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(machine)
@@ -55,7 +55,7 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(&machine)
@@ -78,7 +78,7 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
 	app.db.Save(&machine)
@@ -113,7 +113,7 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 		Name:           "testmachine3",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
 	app.db.Save(&machine)
@@ -144,7 +144,7 @@ func (s *Suite) TestGetDirectPeers(c *check.C) {
 			Name:           "testmachine" + strconv.Itoa(index),
 			NamespaceID:    namespace.ID,
 			Registered:     true,
-			RegisterMethod: "authKey",
+			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 		}
 		app.db.Save(&machine)

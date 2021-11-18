@@ -18,7 +18,10 @@ import (
 	"tailscale.com/types/wgkey"
 )
 
-const reservedResponseHeaderSize = 4
+const (
+	reservedResponseHeaderSize = 4
+	RegisterMethodAuthKey      = "authKey"
+)
 
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
@@ -536,7 +539,7 @@ func (h *Headscale) handleAuthKey(
 		HexString()
 		// we update it just in case
 	machine.Registered = true
-	machine.RegisterMethod = "authKey"
+	machine.RegisterMethod = RegisterMethodAuthKey
 	h.db.Save(&machine)
 
 	pak.Used = true
