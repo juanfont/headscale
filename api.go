@@ -315,7 +315,6 @@ func (h *Headscale) handleMachineLogOut(
 func (h *Headscale) handleMachineValidRegistration(
 	ctx *gin.Context,
 	idKey wgkey.Key,
-	reqisterRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
