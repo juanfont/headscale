@@ -308,8 +308,6 @@ func (h *Headscale) handleMachineLogOut(
 		return
 	}
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
-
-	return
 }
 
 func (h *Headscale) handleMachineValidRegistration(
@@ -345,8 +343,6 @@ func (h *Headscale) handleMachineValidRegistration(
 	machineRegistrations.WithLabelValues("update", "web", "success", machine.Namespace.Name).
 		Inc()
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
-
-	return
 }
 
 func (h *Headscale) handleMachineExpired(
@@ -396,8 +392,6 @@ func (h *Headscale) handleMachineExpired(
 	machineRegistrations.WithLabelValues("new", "web", "success", machine.Namespace.Name).
 		Inc()
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
-
-	return
 }
 
 func (h *Headscale) handleMachineRefreshKey(
