@@ -228,8 +228,6 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			h.db.Save(&machine)
 		}
 
-		h.updateMachineExpiry(machine)
-
 		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
 <html>
 <body>

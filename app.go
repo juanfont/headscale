@@ -96,9 +96,6 @@ type Config struct {
 	OIDC OIDCConfig
 
 	CLI CLIConfig
-
-	MaxMachineRegistrationDuration     time.Duration
-	DefaultMachineRegistrationDuration time.Duration
 }
 
 type OIDCConfig struct {

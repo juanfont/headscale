@@ -45,7 +45,6 @@ type Machine struct {
 	LastSeen             *time.Time
 	LastSuccessfulUpdate *time.Time
 	Expiry               *time.Time
-	RequestedExpiry      *time.Time
 
 	HostInfo      datatypes.JSON
 	Endpoints     datatypes.JSON
@@ -68,38 +67,14 @@ func (machine Machine) isAlreadyRegistered() bool {
 
 // isExpired returns whether the machine registration has expired.
 func (machine Machine) isExpired() bool {
-	return time.Now().UTC().After(*machine.Expiry)
-}
-
-// If the Machine is expired, updateMachineExpiry updates the Machine Expiry time to the maximum allowed duration,
-// or the default duration if no Expiry time was requested by the client. The expiry time here does not (yet) cause
-// a client to be disconnected, however they will have to re-auth the machine if they attempt to reconnect after the
-// expiry time.
-func (h *Headscale) updateMachineExpiry(machine *Machine) {
-	if machine.isExpired() {
-		now := time.Now().UTC()
-		maxExpiry := now.Add(
-			h.cfg.MaxMachineRegistrationDuration,
-		) // calculate the maximum expiry
-		defaultExpiry := now.Add(
-			h.cfg.DefaultMachineRegistrationDuration,
-		) // calculate the default expiry
-
-		// clamp the expiry time of the machine registration to the maximum allowed, or use the default if none supplied
-		if maxExpiry.Before(*machine.RequestedExpiry) {
-			log.Debug().
-				Msgf("Clamping registration expiry time to maximum: %v (%v)", maxExpiry, h.cfg.MaxMachineRegistrationDuration)
-			machine.Expiry = &maxExpiry
-		} else if machine.RequestedExpiry.IsZero() {
-			log.Debug().Msgf("Using default machine registration expiry time: %v (%v)", defaultExpiry, h.cfg.DefaultMachineRegistrationDuration)
-			machine.Expiry = &defaultExpiry
-		} else {
-			log.Debug().Msgf("Using requested machine registration expiry time: %v", machine.RequestedExpiry)
-			machine.Expiry = machine.RequestedExpiry
-		}
-
-		h.db.Save(&machine)
+	// If Expiry is not set, the client has not indicated that
+	// it wants an expiry time, it is therefor considered
+	// to mean "not expired"
+	if machine.Expiry.IsZero() {
+		return false
 	}
+
+	return time.Now().UTC().After(*machine.Expiry)
 }
 
 func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {

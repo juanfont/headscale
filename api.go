@@ -369,13 +369,9 @@ func (h *Headscale) handleMachineExpired(
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
 	}
 
-	// When a client connects, it may request a specific expiry time in its
-	// RegisterRequest (https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L634)
-	// RequestedExpiry is used to store the clients requested expiry time since the authentication flow is broken
-	// into two steps (which cant pass arbitrary data between them easily) and needs to be
-	// retrieved again after the user has authenticated. After the authentication flow
-	// completes, RequestedExpiry is copied into Expiry.
-	machine.RequestedExpiry = &reqisterRequest.Expiry
+	if !reqisterRequest.Expiry.IsZero() {
+		machine.Expiry = &reqisterRequest.Expiry
+	}
 
 	h.db.Save(&machine)
 
@@ -450,8 +446,10 @@ func (h *Headscale) handleMachineRegistrationNew(
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
 	}
 
-	// save the requested expiry time for retrieval later in the authentication flow
-	machine.RequestedExpiry = &reqisterRequest.Expiry
+	if !reqisterRequest.Expiry.IsZero() {
+		machine.Expiry = &reqisterRequest.Expiry
+	}
+
 	machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).HexString() // save the NodeKey
 	h.db.Save(&machine)
 
