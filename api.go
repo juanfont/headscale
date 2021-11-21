@@ -126,7 +126,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
-				h.handleMachineLogOut(ctx, machineKey, req, *machine)
+				h.handleMachineLogOut(ctx, machineKey, *machine)
 
 				return
 			}
@@ -286,7 +286,6 @@ func (h *Headscale) getMapKeepAliveResponse(
 func (h *Headscale) handleMachineLogOut(
 	ctx *gin.Context,
 	idKey wgkey.Key,
-	reqisterRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
