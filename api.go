@@ -149,7 +149,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		}
 
 		// The machine has expired
-		h.handleMachineExpired(ctx, machineKey, req, *machine)
+		h.handleMachineExpired(ctx, machineKey, *machine)
 
 		return
 	}
@@ -351,7 +351,6 @@ func (h *Headscale) handleMachineValidRegistration(
 func (h *Headscale) handleMachineExpired(
 	ctx *gin.Context,
 	idKey wgkey.Key,
-	reqisterRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
