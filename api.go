@@ -370,12 +370,6 @@ func (h *Headscale) handleMachineExpired(
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
 	}
 
-	if !reqisterRequest.Expiry.IsZero() {
-		machine.Expiry = &reqisterRequest.Expiry
-	}
-
-	h.db.Save(&machine)
-
 	respBody, err := encode(resp, &idKey, h.privateKey)
 	if err != nil {
 		log.Error().
