@@ -412,6 +412,7 @@ func nodesToPtables(
 			"Ephemeral",
 			"Last seen",
 			"Online",
+			"Expired",
 		},
 	}
 
@@ -420,12 +421,19 @@ func nodesToPtables(
 		if machine.PreAuthKey != nil && machine.PreAuthKey.Ephemeral {
 			ephemeral = true
 		}
+
 		var lastSeen time.Time
 		var lastSeenTime string
 		if machine.LastSeen != nil {
 			lastSeen = machine.LastSeen.AsTime()
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
+
+		var expiry time.Time
+		if machine.Expiry != nil {
+			expiry = machine.Expiry.AsTime()
+		}
+
 		nKey, err := wgkey.ParseHex(machine.NodeKey)
 		if err != nil {
 			return nil, err
@@ -436,9 +444,21 @@ func nodesToPtables(
 		if lastSeen.After(
 			time.Now().Add(-5 * time.Minute),
 		) { // TODO: Find a better way to reliably show if online
-			online = pterm.LightGreen("true")
+			online = pterm.LightGreen("online")
 		} else {
-			online = pterm.LightRed("false")
+			online = pterm.LightRed("offline")
+		}
+
+		fmt.Printf(
+			"Machine %s, expiry: %s\n",
+			machine.Name,
+			expiry.Format("2006-01-02 15:04:05"),
+		)
+		var expired string
+		if expiry.IsZero() || expiry.After(time.Now()) {
+			expired = pterm.LightGreen("no")
+		} else {
+			expired = pterm.LightRed("yes")
 		}
 
 		var namespace string
@@ -459,6 +479,7 @@ func nodesToPtables(
 				strconv.FormatBool(ephemeral),
 				lastSeenTime,
 				online,
+				expired,
 			},
 		)
 	}
