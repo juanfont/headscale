@@ -201,6 +201,27 @@ func (api headscaleV1APIServer) DeleteMachine(
 	return &v1.DeleteMachineResponse{}, nil
 }
 
+func (api headscaleV1APIServer) ExpireMachine(
+	ctx context.Context,
+	request *v1.ExpireMachineRequest,
+) (*v1.ExpireMachineResponse, error) {
+	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	if err != nil {
+		return nil, err
+	}
+
+	api.h.ExpireMachine(
+		machine,
+	)
+
+	log.Trace().
+		Str("machine", machine.Name).
+		Time("expiry", *machine.Expiry).
+		Msg("machine expired")
+
+	return &v1.ExpireMachineResponse{Machine: machine.toProto()}, nil
+}
+
 func (api headscaleV1APIServer) ListMachines(
 	ctx context.Context,
 	request *v1.ListMachinesRequest,

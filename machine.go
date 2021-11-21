@@ -262,6 +262,14 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 	return nil
 }
 
+// ExpireMachine takes a Machine struct and sets the expire field to now.
+func (h *Headscale) ExpireMachine(machine *Machine) {
+	now := time.Now()
+	machine.Expiry = &now
+
+	h.db.Save(machine)
+}
+
 // DeleteMachine softs deletes a Machine from the database.
 func (h *Headscale) DeleteMachine(machine *Machine) error {
 	err := h.RemoveSharedMachineFromAllNamespaces(machine)

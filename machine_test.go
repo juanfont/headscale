@@ -3,6 +3,7 @@ package headscale
 import (
 	"encoding/json"
 	"strconv"
+	"time"
 
 	"gopkg.in/check.v1"
 )
@@ -163,4 +164,38 @@ func (s *Suite) TestGetDirectPeers(c *check.C) {
 	c.Assert(peersOfMachine0[0].Name, check.Equals, "testmachine2")
 	c.Assert(peersOfMachine0[5].Name, check.Equals, "testmachine7")
 	c.Assert(peersOfMachine0[8].Name, check.Equals, "testmachine10")
+}
+
+func (s *Suite) TestExpireMachine(c *check.C) {
+	namespace, err := app.CreateNamespace("test")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = app.GetMachine("test", "testmachine")
+	c.Assert(err, check.NotNil)
+
+	machine := &Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Name:           "testmachine",
+		NamespaceID:    namespace.ID,
+		Registered:     true,
+		RegisterMethod: RegisterMethodAuthKey,
+		AuthKeyID:      uint(pak.ID),
+		Expiry:         &time.Time{},
+	}
+	app.db.Save(machine)
+
+	machineFromDB, err := app.GetMachine("test", "testmachine")
+	c.Assert(err, check.IsNil)
+
+	c.Assert(machineFromDB.isExpired(), check.Equals, false)
+
+	app.ExpireMachine(machineFromDB)
+
+	c.Assert(machineFromDB.isExpired(), check.Equals, true)
 }
