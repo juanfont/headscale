@@ -449,11 +449,6 @@ func nodesToPtables(
 			online = pterm.LightRed("offline")
 		}
 
-		fmt.Printf(
-			"Machine %s, expiry: %s\n",
-			machine.Name,
-			expiry.Format("2006-01-02 15:04:05"),
-		)
 		var expired string
 		if expiry.IsZero() || expiry.After(time.Now()) {
 			expired = pterm.LightGreen("no")
