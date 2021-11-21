@@ -187,6 +187,7 @@ var listNodesCmd = &cobra.Command{
 var expireNodeCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire (log out) a machine in your network",
+	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
 	Aliases: []string{"logout"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
