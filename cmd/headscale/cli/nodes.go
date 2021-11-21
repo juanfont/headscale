@@ -191,7 +191,7 @@ var expireNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetInt("identifier")
+		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -207,7 +207,7 @@ var expireNodeCmd = &cobra.Command{
 		defer conn.Close()
 
 		request := &v1.ExpireMachineRequest{
-			MachineId: uint64(identifier),
+			MachineId: identifier,
 		}
 
 		response, err := client.ExpireMachine(ctx, request)
@@ -234,7 +234,7 @@ var deleteNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetInt("identifier")
+		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -250,7 +250,7 @@ var deleteNodeCmd = &cobra.Command{
 		defer conn.Close()
 
 		getRequest := &v1.GetMachineRequest{
-			MachineId: uint64(identifier),
+			MachineId: identifier,
 		}
 
 		getResponse, err := client.GetMachine(ctx, getRequest)
@@ -331,7 +331,7 @@ func sharingWorker(
 	defer cancel()
 	defer conn.Close()
 
-	identifier, err := cmd.Flags().GetInt("identifier")
+	identifier, err := cmd.Flags().GetUint64("identifier")
 	if err != nil {
 		ErrorOutput(err, fmt.Sprintf("Error converting ID to integer: %s", err), output)
 
@@ -339,7 +339,7 @@ func sharingWorker(
 	}
 
 	machineRequest := &v1.GetMachineRequest{
-		MachineId: uint64(identifier),
+		MachineId: identifier,
 	}
 
 	machineResponse, err := client.GetMachine(ctx, machineRequest)
