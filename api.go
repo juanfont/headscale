@@ -116,37 +116,47 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		machine = &newMachine
 	}
 
-	if !machine.Registered && req.Auth.AuthKey != "" {
+	if machine.Registered {
+		// If the NodeKey stored in headscale is the same as the key presented in a registration
+		// request, then we have a node that is either:
+		// - Trying to log out (sending a expiry in the past)
+		// - A valid, registered machine, looking for the node map
+		// - Expired machine wanting to reauthenticate
+		if machine.NodeKey == wgkey.Key(req.NodeKey).HexString() {
+			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
+			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
+			if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
+				h.handleMachineLogOut(ctx, machineKey, req, *machine)
+
+				return
+			}
+
+			// If machine is not expired, and is register, we have a already accepted this machine,
+			// let it proceed with a valid registration
+			if !machine.isExpired() {
+				h.handleMachineValidRegistration(ctx, machineKey, *machine)
+
+				return
+			}
+
+			// The machine has expired
+			h.handleMachineExpired(ctx, machineKey, req, *machine)
+
+			return
+		}
+
+		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
+		if machine.NodeKey == wgkey.Key(req.OldNodeKey).HexString() &&
+			!machine.isExpired() {
+			h.handleMachineRefreshKey(ctx, machineKey, req, *machine)
+
+			return
+		}
+	}
+
+	// If the machine has AuthKey set, handle registration via PreAuthKeys
+	if req.Auth.AuthKey != "" {
 		h.handleAuthKey(ctx, machineKey, req, *machine)
-
-		return
-	}
-
-	// We have the updated key!
-	if machine.NodeKey == wgkey.Key(req.NodeKey).HexString() {
-		// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
-		//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
-		if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
-			h.handleMachineLogOut(ctx, machineKey, req, *machine)
-
-			return
-		}
-
-		if machine.Registered && !machine.isExpired() {
-			h.handleMachineValidRegistration(ctx, machineKey, *machine)
-
-			return
-		}
-
-		h.handleMachineExpired(ctx, machineKey, req, *machine)
-
-		return
-	}
-
-	// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
-	if machine.NodeKey == wgkey.Key(req.OldNodeKey).HexString() &&
-		!machine.isExpired() {
-		h.handleMachineRefreshKey(ctx, machineKey, req, *machine)
 
 		return
 	}
@@ -286,8 +296,7 @@ func (h *Headscale) handleMachineLogOut(
 		Str("machine", machine.Name).
 		Msg("Client requested logout")
 
-	machine.Expiry = &reqisterRequest.Expiry // save the expiry so that the machine is marked as expired
-	h.db.Save(&machine)
+	h.ExpireMachine(&machine)
 
 	resp.AuthURL = ""
 	resp.MachineAuthorized = false
