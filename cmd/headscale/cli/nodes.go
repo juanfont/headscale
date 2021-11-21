@@ -33,6 +33,13 @@ func init() {
 	}
 	nodeCmd.AddCommand(registerNodeCmd)
 
+	expireNodeCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	err = expireNodeCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	nodeCmd.AddCommand(expireNodeCmd)
+
 	deleteNodeCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
 	err = deleteNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
@@ -174,6 +181,50 @@ var listNodesCmd = &cobra.Command{
 
 			return
 		}
+	},
+}
+
+var expireNodeCmd = &cobra.Command{
+	Use:     "expire",
+	Short:   "Expire (log out) a machine in your network",
+	Aliases: []string{"logout"},
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		identifier, err := cmd.Flags().GetInt("identifier")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting ID to integer: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.ExpireMachineRequest{
+			MachineId: uint64(identifier),
+		}
+
+		response, err := client.ExpireMachine(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot expire machine: %s\n",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(response.Machine, "Machine expired", output)
 	},
 }
 
