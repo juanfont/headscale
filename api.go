@@ -138,11 +138,6 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 
 				return
 			}
-
-			// The machine has expired
-			h.handleMachineExpired(ctx, machineKey, req, *machine)
-
-			return
 		}
 
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
@@ -152,6 +147,11 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 
 			return
 		}
+
+		// The machine has expired
+		h.handleMachineExpired(ctx, machineKey, req, *machine)
+
+		return
 	}
 
 	// If the machine has AuthKey set, handle registration via PreAuthKeys
