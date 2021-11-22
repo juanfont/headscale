@@ -186,7 +186,7 @@ func (h *Headscale) getMapResponse(
 		return nil, err
 	}
 
-	peers, err := h.getPeers(machine)
+	peers, err := h.getValidPeers(machine)
 	if err != nil {
 		log.Error().
 			Str("func", "getMapResponse").

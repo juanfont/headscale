@@ -207,6 +207,23 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 	return peers, nil
 }
 
+func (h *Headscale) getValidPeers(machine *Machine) (Machines, error) {
+	validPeers := make(Machines, 0)
+
+	peers, err := h.getPeers(machine)
+	if err != nil {
+		return Machines{}, err
+	}
+
+	for _, peer := range peers {
+		if peer.isRegistered() && !peer.isExpired() {
+			validPeers = append(validPeers, peer)
+		}
+	}
+
+	return validPeers, nil
+}
+
 func (h *Headscale) ListMachines() ([]Machine, error) {
 	machines := []Machine{}
 	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Find(&machines).Error; err != nil {
@@ -267,6 +284,8 @@ func (h *Headscale) ExpireMachine(machine *Machine) {
 	now := time.Now()
 	machine.Expiry = &now
 
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
 	h.db.Save(machine)
 }
 
@@ -276,6 +295,9 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 
 	machine.LastSuccessfulUpdate = &now
 	machine.Expiry = &expiry
+
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
 	h.db.Save(machine)
 }
 
