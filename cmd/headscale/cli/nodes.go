@@ -33,14 +33,14 @@ func init() {
 	}
 	nodeCmd.AddCommand(registerNodeCmd)
 
-	expireNodeCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = expireNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
 	nodeCmd.AddCommand(expireNodeCmd)
 
-	deleteNodeCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = deleteNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -52,7 +52,7 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	shareMachineCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	shareMachineCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = shareMachineCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -64,7 +64,7 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	unshareMachineCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	unshareMachineCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = unshareMachineCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -269,7 +269,7 @@ var deleteNodeCmd = &cobra.Command{
 		}
 
 		deleteRequest := &v1.DeleteMachineRequest{
-			MachineId: uint64(identifier),
+			MachineId: identifier,
 		}
 
 		confirm := false
