@@ -162,7 +162,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			Msg("Failed to decode id token claims")
 		ctx.String(
 			http.StatusBadRequest,
-			fmt.Sprintf("Failed to decode id token claims"),
+			"Failed to decode id token claims",
 		)
 
 		return
@@ -272,6 +272,8 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 </html>
 
 `, claims.Email)))
+
+		return
 	}
 
 	log.Error().
