@@ -616,6 +616,31 @@ func (h *Headscale) RegisterMachine(
 		return nil, errMachineNotFound
 	}
 
+	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
+	// This means that if a user is to slow with register a machine, it will possibly not
+	// have the correct expiry.
+	requestedTime := time.Time{}
+	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.HexString()); found {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("Expiry time found in cache, assigning to node")
+		if reqTime, ok := requestedTimeIf.(time.Time); ok {
+			requestedTime = reqTime
+		}
+	}
+
+	if machine.isRegistered() {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("machine already registered, reauthenticating")
+
+		h.RefreshMachine(&machine, requestedTime)
+
+		return &machine, nil
+	}
+
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).

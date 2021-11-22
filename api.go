@@ -19,10 +19,13 @@ import (
 )
 
 const (
-	reservedResponseHeaderSize = 4
-	RegisterMethodAuthKey      = "authKey"
-	RegisterMethodOIDC         = "oidc"
-	RegisterMethodCLI          = "cli"
+	reservedResponseHeaderSize               = 4
+	RegisterMethodAuthKey                    = "authKey"
+	RegisterMethodOIDC                       = "oidc"
+	RegisterMethodCLI                        = "cli"
+	ErrRegisterMethodCLIDoesNotSupportExpire = Error(
+		"machines registered with CLI does not support expire",
+	)
 )
 
 // KeyHandler provides the Headscale pub key
@@ -441,7 +444,16 @@ func (h *Headscale) handleMachineRegistrationNew(
 	}
 
 	if !reqisterRequest.Expiry.IsZero() {
-		machine.Expiry = &reqisterRequest.Expiry
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Time("expiry", reqisterRequest.Expiry).
+			Msg("Non-zero expiry time requested, adding to cache")
+		h.requestedExpiryCache.Set(
+			idKey.HexString(),
+			reqisterRequest.Expiry,
+			requestedExpiryCacheExpiration,
+		)
 	}
 
 	machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).HexString() // save the NodeKey

@@ -199,6 +199,14 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
+	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
+	requestedTime := time.Time{}
+	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey); found {
+		if reqTime, ok := requestedTimeIf.(time.Time); ok {
+			requestedTime = reqTime
+		}
+	}
+
 	// retrieve machine information
 	machine, err := h.GetMachineByMachineKey(machineKey)
 	if err != nil {
