@@ -61,7 +61,7 @@ type (
 )
 
 // For the time being this method is rather naive.
-func (machine Machine) isAlreadyRegistered() bool {
+func (machine Machine) isRegistered() bool {
 	return machine.Registered
 }
 
@@ -612,7 +612,7 @@ func (h *Headscale) RegisterMachine(
 		Str("machine", machine.Name).
 		Msg("Attempting to register machine")
 
-	if machine.isAlreadyRegistered() {
+	if machine.isRegistered() {
 		err := errMachineAlreadyRegistered
 		log.Error().
 			Caller().
