@@ -270,6 +270,15 @@ func (h *Headscale) ExpireMachine(machine *Machine) {
 	h.db.Save(machine)
 }
 
+// RefreshMachine takes a Machine struct and sets the expire field to now.
+func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
+	now := time.Now()
+
+	machine.LastSuccessfulUpdate = &now
+	machine.Expiry = &expiry
+	h.db.Save(machine)
+}
+
 // DeleteMachine softs deletes a Machine from the database.
 func (h *Headscale) DeleteMachine(machine *Machine) error {
 	err := h.RemoveSharedMachineFromAllNamespaces(machine)
@@ -644,6 +653,7 @@ func (h *Headscale) RegisterMachine(
 	machine.NamespaceID = namespace.ID
 	machine.Registered = true
 	machine.RegisterMethod = RegisterMethodCLI
+	machine.Expiry = &requestedTime
 	h.db.Save(&machine)
 
 	log.Trace().

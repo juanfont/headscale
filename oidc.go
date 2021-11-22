@@ -81,6 +81,11 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 		return
 	}
 
+	log.Trace().
+		Caller().
+		Str("machine_key", machineKeyStr).
+		Msg("Received oidc register call")
+
 	randomBlob := make([]byte, randomByteSize)
 	if _, err := rand.Read(randomBlob); err != nil {
 		log.Error().
@@ -124,7 +129,11 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	log.Debug().Msgf("AccessToken: %v", oauth2Token.AccessToken)
+	log.Trace().
+		Caller().
+		Str("code", code).
+		Str("state", state).
+		Msg("Got oidc callback")
 
 	rawIDToken, rawIDTokenOK := oauth2Token.Extra("id_token").(string)
 	if !rawIDTokenOK {
@@ -202,6 +211,29 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
+	if machine.isRegistered() {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("machine already registered, reauthenticating")
+
+		h.RefreshMachine(machine, requestedTime)
+
+		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
+<html>
+<body>
+<h1>headscale</h1>
+<p>
+    Reuthenticated as %s, you can now close this window.
+</p>
+</body>
+</html>
+
+`, claims.Email)))
+
+		return
+	}
+
 	now := time.Now().UTC()
 
 	if namespaceName, ok := h.getNamespaceFromEmail(claims.Email); ok {
@@ -258,6 +290,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			machine.Registered = true
 			machine.RegisterMethod = RegisterMethodOIDC
 			machine.LastSuccessfulUpdate = &now
+			machine.Expiry = &requestedTime
 			h.db.Save(&machine)
 		}
 

@@ -375,13 +375,13 @@ func (h *Headscale) handleMachineExpired(
 			Str("handler", "Registration").
 			Err(err).
 			Msg("Cannot encode message")
-		machineRegistrations.WithLabelValues("new", "web", "error", machine.Namespace.Name).
+		machineRegistrations.WithLabelValues("reauth", "web", "error", machine.Namespace.Name).
 			Inc()
 		ctx.String(http.StatusInternalServerError, "")
 
 		return
 	}
-	machineRegistrations.WithLabelValues("new", "web", "success", machine.Namespace.Name).
+	machineRegistrations.WithLabelValues("reauth", "web", "success", machine.Namespace.Name).
 		Inc()
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 }
@@ -503,36 +503,46 @@ func (h *Headscale) handleAuthKey(
 		return
 	}
 
-	log.Debug().
-		Str("func", "handleAuthKey").
-		Str("machine", machine.Name).
-		Msg("Authentication key was valid, proceeding to acquire an IP address")
-	ip, err := h.getAvailableIP()
-	if err != nil {
-		log.Error().
+	if machine.isRegistered() {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("machine already registered, reauthenticating")
+
+		h.RefreshMachine(&machine, reqisterRequest.Expiry)
+	} else {
+		log.Debug().
 			Str("func", "handleAuthKey").
 			Str("machine", machine.Name).
-			Msg("Failed to find an available IP")
-		machineRegistrations.WithLabelValues("new", "authkey", "error", machine.Namespace.Name).
-			Inc()
+			Msg("Authentication key was valid, proceeding to acquire an IP address")
+		ip, err := h.getAvailableIP()
+		if err != nil {
+			log.Error().
+				Str("func", "handleAuthKey").
+				Str("machine", machine.Name).
+				Msg("Failed to find an available IP")
+			machineRegistrations.WithLabelValues("new", "authkey", "error", machine.Namespace.Name).
+				Inc()
 
-		return
+			return
+		}
+		log.Info().
+			Str("func", "handleAuthKey").
+			Str("machine", machine.Name).
+			Str("ip", ip.String()).
+			Msgf("Assigning %s to %s", ip, machine.Name)
+
+		machine.Expiry = &reqisterRequest.Expiry
+		machine.AuthKeyID = uint(pak.ID)
+		machine.IPAddress = ip.String()
+		machine.NamespaceID = pak.NamespaceID
+		machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).
+			HexString()
+			// we update it just in case
+		machine.Registered = true
+		machine.RegisterMethod = RegisterMethodAuthKey
+		h.db.Save(&machine)
 	}
-	log.Info().
-		Str("func", "handleAuthKey").
-		Str("machine", machine.Name).
-		Str("ip", ip.String()).
-		Msgf("Assigning %s to %s", ip, machine.Name)
-
-	machine.AuthKeyID = uint(pak.ID)
-	machine.IPAddress = ip.String()
-	machine.NamespaceID = pak.NamespaceID
-	machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).
-		HexString()
-		// we update it just in case
-	machine.Registered = true
-	machine.RegisterMethod = RegisterMethodAuthKey
-	h.db.Save(&machine)
 
 	pak.Used = true
 	h.db.Save(&pak)
@@ -558,6 +568,6 @@ func (h *Headscale) handleAuthKey(
 	log.Info().
 		Str("func", "handleAuthKey").
 		Str("machine", machine.Name).
-		Str("ip", ip.String()).
+		Str("ip", machine.IPAddress).
 		Msg("Successfully authenticated via AuthKey")
 }
