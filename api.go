@@ -392,7 +392,7 @@ func (h *Headscale) handleMachineExpired(
 func (h *Headscale) handleMachineRefreshKey(
 	ctx *gin.Context,
 	idKey wgkey.Key,
-	reqisterRequest tailcfg.RegisterRequest,
+	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
@@ -401,7 +401,7 @@ func (h *Headscale) handleMachineRefreshKey(
 		Str("handler", "Registration").
 		Str("machine", machine.Name).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
-	machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).HexString()
+	machine.NodeKey = wgkey.Key(registerRequest.NodeKey).HexString()
 	h.db.Save(&machine)
 
 	resp.AuthURL = ""
@@ -422,7 +422,7 @@ func (h *Headscale) handleMachineRefreshKey(
 func (h *Headscale) handleMachineRegistrationNew(
 	ctx *gin.Context,
 	idKey wgkey.Key,
-	reqisterRequest tailcfg.RegisterRequest,
+	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
@@ -443,20 +443,20 @@ func (h *Headscale) handleMachineRegistrationNew(
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
 	}
 
-	if !reqisterRequest.Expiry.IsZero() {
+	if !registerRequest.Expiry.IsZero() {
 		log.Trace().
 			Caller().
 			Str("machine", machine.Name).
-			Time("expiry", reqisterRequest.Expiry).
+			Time("expiry", registerRequest.Expiry).
 			Msg("Non-zero expiry time requested, adding to cache")
 		h.requestedExpiryCache.Set(
 			idKey.HexString(),
-			reqisterRequest.Expiry,
+			registerRequest.Expiry,
 			requestedExpiryCacheExpiration,
 		)
 	}
 
-	machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).HexString() // save the NodeKey
+	machine.NodeKey = wgkey.Key(registerRequest.NodeKey).HexString() // save the NodeKey
 	h.db.Save(&machine)
 
 	respBody, err := encode(resp, &idKey, h.privateKey)
@@ -475,15 +475,15 @@ func (h *Headscale) handleMachineRegistrationNew(
 func (h *Headscale) handleAuthKey(
 	ctx *gin.Context,
 	idKey wgkey.Key,
-	reqisterRequest tailcfg.RegisterRequest,
+	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
 	log.Debug().
 		Str("func", "handleAuthKey").
-		Str("machine", reqisterRequest.Hostinfo.Hostname).
-		Msgf("Processing auth key for %s", reqisterRequest.Hostinfo.Hostname)
+		Str("machine", registerRequest.Hostinfo.Hostname).
+		Msgf("Processing auth key for %s", registerRequest.Hostinfo.Hostname)
 	resp := tailcfg.RegisterResponse{}
-	pak, err := h.checkKeyValidity(reqisterRequest.Auth.AuthKey)
+	pak, err := h.checkKeyValidity(registerRequest.Auth.AuthKey)
 	if err != nil {
 		log.Error().
 			Str("func", "handleAuthKey").
@@ -521,7 +521,7 @@ func (h *Headscale) handleAuthKey(
 			Str("machine", machine.Name).
 			Msg("machine already registered, reauthenticating")
 
-		h.RefreshMachine(&machine, reqisterRequest.Expiry)
+		h.RefreshMachine(&machine, registerRequest.Expiry)
 	} else {
 		log.Debug().
 			Str("func", "handleAuthKey").
@@ -544,11 +544,11 @@ func (h *Headscale) handleAuthKey(
 			Str("ip", ip.String()).
 			Msgf("Assigning %s to %s", ip, machine.Name)
 
-		machine.Expiry = &reqisterRequest.Expiry
+		machine.Expiry = &registerRequest.Expiry
 		machine.AuthKeyID = uint(pak.ID)
 		machine.IPAddress = ip.String()
 		machine.NamespaceID = pak.NamespaceID
-		machine.NodeKey = wgkey.Key(reqisterRequest.NodeKey).
+		machine.NodeKey = wgkey.Key(registerRequest.NodeKey).
 			HexString()
 			// we update it just in case
 		machine.Registered = true
