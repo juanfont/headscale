@@ -152,7 +152,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		}
 
 		// The machine has expired
-		h.handleMachineExpired(ctx, machineKey, *machine)
+		h.handleMachineExpired(ctx, machineKey, req, *machine)
 
 		return
 	}
