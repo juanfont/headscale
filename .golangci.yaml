@@ -54,4 +54,3 @@ linters-settings:
       - appendAssign
       # TODO(kradalby): Remove this
       - ifElseChain
-
