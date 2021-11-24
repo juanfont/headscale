@@ -45,7 +45,6 @@ type Machine struct {
 	LastSeen             *time.Time
 	LastSuccessfulUpdate *time.Time
 	Expiry               *time.Time
-	RequestedExpiry      *time.Time
 
 	HostInfo      datatypes.JSON
 	Endpoints     datatypes.JSON
@@ -62,44 +61,20 @@ type (
 )
 
 // For the time being this method is rather naive.
-func (machine Machine) isAlreadyRegistered() bool {
+func (machine Machine) isRegistered() bool {
 	return machine.Registered
 }
 
 // isExpired returns whether the machine registration has expired.
 func (machine Machine) isExpired() bool {
-	return time.Now().UTC().After(*machine.Expiry)
-}
-
-// If the Machine is expired, updateMachineExpiry updates the Machine Expiry time to the maximum allowed duration,
-// or the default duration if no Expiry time was requested by the client. The expiry time here does not (yet) cause
-// a client to be disconnected, however they will have to re-auth the machine if they attempt to reconnect after the
-// expiry time.
-func (h *Headscale) updateMachineExpiry(machine *Machine) {
-	if machine.isExpired() {
-		now := time.Now().UTC()
-		maxExpiry := now.Add(
-			h.cfg.MaxMachineRegistrationDuration,
-		) // calculate the maximum expiry
-		defaultExpiry := now.Add(
-			h.cfg.DefaultMachineRegistrationDuration,
-		) // calculate the default expiry
-
-		// clamp the expiry time of the machine registration to the maximum allowed, or use the default if none supplied
-		if maxExpiry.Before(*machine.RequestedExpiry) {
-			log.Debug().
-				Msgf("Clamping registration expiry time to maximum: %v (%v)", maxExpiry, h.cfg.MaxMachineRegistrationDuration)
-			machine.Expiry = &maxExpiry
-		} else if machine.RequestedExpiry.IsZero() {
-			log.Debug().Msgf("Using default machine registration expiry time: %v (%v)", defaultExpiry, h.cfg.DefaultMachineRegistrationDuration)
-			machine.Expiry = &defaultExpiry
-		} else {
-			log.Debug().Msgf("Using requested machine registration expiry time: %v", machine.RequestedExpiry)
-			machine.Expiry = machine.RequestedExpiry
-		}
-
-		h.db.Save(&machine)
+	// If Expiry is not set, the client has not indicated that
+	// it wants an expiry time, it is therefor considered
+	// to mean "not expired"
+	if machine.Expiry.IsZero() {
+		return false
 	}
+
+	return time.Now().UTC().After(*machine.Expiry)
 }
 
 func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
@@ -232,6 +207,23 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 	return peers, nil
 }
 
+func (h *Headscale) getValidPeers(machine *Machine) (Machines, error) {
+	validPeers := make(Machines, 0)
+
+	peers, err := h.getPeers(machine)
+	if err != nil {
+		return Machines{}, err
+	}
+
+	for _, peer := range peers {
+		if peer.isRegistered() && !peer.isExpired() {
+			validPeers = append(validPeers, peer)
+		}
+	}
+
+	return validPeers, nil
+}
+
 func (h *Headscale) ListMachines() ([]Machine, error) {
 	machines := []Machine{}
 	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Find(&machines).Error; err != nil {
@@ -285,6 +277,28 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 	}
 
 	return nil
+}
+
+// ExpireMachine takes a Machine struct and sets the expire field to now.
+func (h *Headscale) ExpireMachine(machine *Machine) {
+	now := time.Now()
+	machine.Expiry = &now
+
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
+	h.db.Save(machine)
+}
+
+// RefreshMachine takes a Machine struct and sets the expire field to now.
+func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
+	now := time.Now()
+
+	machine.LastSuccessfulUpdate = &now
+	machine.Expiry = &expiry
+
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
+	h.db.Save(machine)
 }
 
 // DeleteMachine softs deletes a Machine from the database.
@@ -624,12 +638,37 @@ func (h *Headscale) RegisterMachine(
 		return nil, errMachineNotFound
 	}
 
+	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
+	// This means that if a user is to slow with register a machine, it will possibly not
+	// have the correct expiry.
+	requestedTime := time.Time{}
+	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.HexString()); found {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("Expiry time found in cache, assigning to node")
+		if reqTime, ok := requestedTimeIf.(time.Time); ok {
+			requestedTime = reqTime
+		}
+	}
+
+	if machine.isRegistered() {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("machine already registered, reauthenticating")
+
+		h.RefreshMachine(&machine, requestedTime)
+
+		return &machine, nil
+	}
+
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
 		Msg("Attempting to register machine")
 
-	if machine.isAlreadyRegistered() {
+	if machine.isRegistered() {
 		err := errMachineAlreadyRegistered
 		log.Error().
 			Caller().
@@ -660,7 +699,8 @@ func (h *Headscale) RegisterMachine(
 	machine.IPAddress = ip.String()
 	machine.NamespaceID = namespace.ID
 	machine.Registered = true
-	machine.RegisterMethod = "cli"
+	machine.RegisterMethod = RegisterMethodCLI
+	machine.Expiry = &requestedTime
 	h.db.Save(&machine)
 
 	log.Trace().

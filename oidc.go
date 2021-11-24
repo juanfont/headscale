@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
+	"gorm.io/gorm"
 )
 
 const (
@@ -37,7 +39,10 @@ func (h *Headscale) initOIDC() error {
 		h.oidcProvider, err = oidc.NewProvider(context.Background(), h.cfg.OIDC.Issuer)
 
 		if err != nil {
-			log.Error().Msgf("Could not retrieve OIDC Config: %s", err.Error())
+			log.Error().
+				Err(err).
+				Caller().
+				Msgf("Could not retrieve OIDC Config: %s", err.Error())
 
 			return err
 		}
@@ -69,16 +74,23 @@ func (h *Headscale) initOIDC() error {
 // Puts machine key in cache so the callback can retrieve it using the oidc state param
 // Listens in /oidc/register/:mKey.
 func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
-	mKeyStr := ctx.Param("mkey")
-	if mKeyStr == "" {
+	machineKeyStr := ctx.Param("mkey")
+	if machineKeyStr == "" {
 		ctx.String(http.StatusBadRequest, "Wrong params")
 
 		return
 	}
 
+	log.Trace().
+		Caller().
+		Str("machine_key", machineKeyStr).
+		Msg("Received oidc register call")
+
 	randomBlob := make([]byte, randomByteSize)
 	if _, err := rand.Read(randomBlob); err != nil {
-		log.Error().Msg("could not read 16 bytes from rand")
+		log.Error().
+			Caller().
+			Msg("could not read 16 bytes from rand")
 		ctx.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
 
 		return
@@ -87,7 +99,7 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 	stateStr := hex.EncodeToString(randomBlob)[:32]
 
 	// place the machine key into the state cache, so it can be retrieved later
-	h.oidcStateCache.Set(stateStr, mKeyStr, oidcStateCacheExpiration)
+	h.oidcStateCache.Set(stateStr, machineKeyStr, oidcStateCacheExpiration)
 
 	authURL := h.oauth2Config.AuthCodeURL(stateStr)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
@@ -117,7 +129,11 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	log.Debug().Msgf("AccessToken: %v", oauth2Token.AccessToken)
+	log.Trace().
+		Caller().
+		Str("code", code).
+		Str("state", state).
+		Msg("Got oidc callback")
 
 	rawIDToken, rawIDTokenOK := oauth2Token.Extra("id_token").(string)
 	if !rawIDTokenOK {
@@ -130,7 +146,11 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 	idToken, err := verifier.Verify(context.Background(), rawIDToken)
 	if err != nil {
-		ctx.String(http.StatusBadRequest, "Failed to verify id token: %s", err.Error())
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("failed to verify id token")
+		ctx.String(http.StatusBadRequest, "Failed to verify id token")
 
 		return
 	}
@@ -138,34 +158,38 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 	// TODO: we can use userinfo at some point to grab additional information about the user (groups membership, etc)
 	// userInfo, err := oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
 	// if err != nil {
-	// 	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo: %s", err))
+	// 	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo"))
 	// 	return
 	// }
 
 	// Extract custom claims
 	var claims IDTokenClaims
 	if err = idToken.Claims(&claims); err != nil {
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("Failed to decode id token claims")
 		ctx.String(
 			http.StatusBadRequest,
-			fmt.Sprintf("Failed to decode id token claims: %s", err),
+			"Failed to decode id token claims",
 		)
 
 		return
 	}
 
 	// retrieve machinekey from state cache
-	mKeyIf, mKeyFound := h.oidcStateCache.Get(state)
+	machineKeyIf, machineKeyFound := h.oidcStateCache.Get(state)
 
-	if !mKeyFound {
+	if !machineKeyFound {
 		log.Error().
 			Msg("requested machine state key expired before authorisation completed")
 		ctx.String(http.StatusBadRequest, "state has expired")
 
 		return
 	}
-	mKeyStr, mKeyOK := mKeyIf.(string)
+	machineKey, machineKeyOK := machineKeyIf.(string)
 
-	if !mKeyOK {
+	if !machineKeyOK {
 		log.Error().Msg("could not get machine key from cache")
 		ctx.String(
 			http.StatusInternalServerError,
@@ -175,14 +199,45 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
+	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
+	requestedTime := time.Time{}
+	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey); found {
+		if reqTime, ok := requestedTimeIf.(time.Time); ok {
+			requestedTime = reqTime
+		}
+	}
+
 	// retrieve machine information
-	machine, err := h.GetMachineByMachineKey(mKeyStr)
+	machine, err := h.GetMachineByMachineKey(machineKey)
 	if err != nil {
 		log.Error().Msg("machine key not found in database")
 		ctx.String(
 			http.StatusInternalServerError,
 			"could not get machine info from database",
 		)
+
+		return
+	}
+
+	if machine.isRegistered() {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("machine already registered, reauthenticating")
+
+		h.RefreshMachine(machine, requestedTime)
+
+		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
+<html>
+<body>
+<h1>headscale</h1>
+<p>
+    Reuthenticated as %s, you can now close this window.
+</p>
+</body>
+</html>
+
+`, claims.Email)))
 
 		return
 	}
@@ -195,12 +250,14 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			log.Debug().Msg("Registering new machine after successful callback")
 
 			namespace, err := h.GetNamespace(namespaceName)
-			if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				namespace, err = h.CreateNamespace(namespaceName)
 
 				if err != nil {
 					log.Error().
-						Msgf("could not create new namespace '%s'", claims.Email)
+						Err(err).
+						Caller().
+						Msgf("could not create new namespace '%s'", namespaceName)
 					ctx.String(
 						http.StatusInternalServerError,
 						"could not create new namespace",
@@ -208,10 +265,26 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 					return
 				}
+			} else if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Str("namespace", namespaceName).
+					Msg("could not find or create namespace")
+				ctx.String(
+					http.StatusInternalServerError,
+					"could not find or create namespace",
+				)
+
+				return
 			}
 
 			ip, err := h.getAvailableIP()
 			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("could not get an IP from the pool")
 				ctx.String(
 					http.StatusInternalServerError,
 					"could not get an IP from the pool",
@@ -223,12 +296,11 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			machine.IPAddress = ip.String()
 			machine.NamespaceID = namespace.ID
 			machine.Registered = true
-			machine.RegisterMethod = "oidc"
+			machine.RegisterMethod = RegisterMethodOIDC
 			machine.LastSuccessfulUpdate = &now
+			machine.Expiry = &requestedTime
 			h.db.Save(&machine)
 		}
-
-		h.updateMachineExpiry(machine)
 
 		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
 <html>
@@ -241,9 +313,12 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 </html>
 
 `, claims.Email)))
+
+		return
 	}
 
 	log.Error().
+		Caller().
 		Str("email", claims.Email).
 		Str("username", claims.Username).
 		Str("machine", machine.Name).

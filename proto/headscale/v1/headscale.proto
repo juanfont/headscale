@@ -92,6 +92,12 @@ service HeadscaleService {
         };
     }
 
+    rpc ExpireMachine(ExpireMachineRequest) returns (ExpireMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/expire"
+        };
+    }
+
     rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse) {
         option (google.api.http) = {
             get: "/api/v1/machine"
