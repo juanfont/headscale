@@ -364,15 +364,21 @@ func (h *Headscale) handleMachineExpired(
 		Str("machine", machine.Name).
 		Msg("Machine registration has expired. Sending a authurl to register")
 
-	if h.cfg.OIDC.Issuer != "" {
-		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
-	} else {
-		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
+	if registerRequest.Auth.AuthKey != "" {
+		h.handleAuthKey(ctx, machineKey, registerRequest, machine)
+
+		return
 	}
 
-	respBody, err := encode(resp, &idKey, h.privateKey)
+	if h.cfg.OIDC.Issuer != "" {
+		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.HexString())
+	} else {
+		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.HexString())
+	}
+
+	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("handler", "Registration").
