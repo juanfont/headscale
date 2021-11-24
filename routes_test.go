@@ -36,7 +36,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		Name:           "test_get_route_machine",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       datatypes.JSON(hostinfo),
 	}
@@ -90,7 +90,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		Name:           "test_enable_route_machine",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       datatypes.JSON(hostinfo),
 	}

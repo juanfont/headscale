@@ -218,30 +218,6 @@ func absPath(path string) string {
 }
 
 func getHeadscaleConfig() headscale.Config {
-	// maxMachineRegistrationDuration is the maximum time headscale will allow a client to (optionally) request for
-	// the machine key expiry time. RegisterRequests with Expiry times that are more than
-	// maxMachineRegistrationDuration in the future will be clamped to (now + maxMachineRegistrationDuration)
-	maxMachineRegistrationDuration, _ := time.ParseDuration(
-		"10h",
-	) // use 10h here because it is the length of a standard business day plus a small amount of leeway
-	if viper.GetDuration("max_machine_registration_duration") >= time.Second {
-		maxMachineRegistrationDuration = viper.GetDuration(
-			"max_machine_registration_duration",
-		)
-	}
-
-	// defaultMachineRegistrationDuration is the default time assigned to a machine registration if one is not
-	// specified by the tailscale client. It is the default amount of time a machine registration is valid for
-	// (ie the amount of time before the user has to re-authenticate when requesting a connection)
-	defaultMachineRegistrationDuration, _ := time.ParseDuration(
-		"8h",
-	) // use 8h here because it's the length of a standard business day
-	if viper.GetDuration("default_machine_registration_duration") >= time.Second {
-		defaultMachineRegistrationDuration = viper.GetDuration(
-			"default_machine_registration_duration",
-		)
-	}
-
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 
@@ -295,9 +271,6 @@ func getHeadscaleConfig() headscale.Config {
 			Insecure: viper.GetBool("cli.insecure"),
 			Timeout:  viper.GetDuration("cli.timeout"),
 		},
-
-		MaxMachineRegistrationDuration:     maxMachineRegistrationDuration,
-		DefaultMachineRegistrationDuration: defaultMachineRegistrationDuration,
 	}
 }
 

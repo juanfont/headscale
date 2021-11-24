@@ -53,7 +53,7 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(&machine)
@@ -145,7 +145,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.1",
 		AuthKeyID:      uint(preAuthKeyShared1.ID),
 	}
@@ -163,7 +163,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		NamespaceID:    namespaceShared2.ID,
 		Namespace:      *namespaceShared2,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.2",
 		AuthKeyID:      uint(preAuthKeyShared2.ID),
 	}
@@ -181,7 +181,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		NamespaceID:    namespaceShared3.ID,
 		Namespace:      *namespaceShared3,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.3",
 		AuthKeyID:      uint(preAuthKeyShared3.ID),
 	}
@@ -199,7 +199,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.4",
 		AuthKeyID:      uint(preAuthKey2Shared1.ID),
 	}

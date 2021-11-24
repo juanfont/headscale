@@ -53,6 +53,9 @@ const (
 	updateInterval  = 5000
 	HTTPReadTimeout = 30 * time.Second
 
+	requestedExpiryCacheExpiration      = time.Minute * 5
+	requestedExpiryCacheCleanupInterval = time.Minute * 10
+
 	errUnsupportedDatabase                 = Error("unsupported DB")
 	errUnsupportedLetsEncryptChallengeType = Error(
 		"unknown value for Lets Encrypt challenge type",
@@ -96,9 +99,6 @@ type Config struct {
 	OIDC OIDCConfig
 
 	CLI CLIConfig
-
-	MaxMachineRegistrationDuration     time.Duration
-	DefaultMachineRegistrationDuration time.Duration
 }
 
 type OIDCConfig struct {
@@ -142,6 +142,8 @@ type Headscale struct {
 	oidcProvider   *oidc.Provider
 	oauth2Config   *oauth2.Config
 	oidcStateCache *cache.Cache
+
+	requestedExpiryCache *cache.Cache
 }
 
 // NewHeadscale returns the Headscale app.
@@ -174,13 +176,19 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		return nil, errUnsupportedDatabase
 	}
 
+	requestedExpiryCache := cache.New(
+		requestedExpiryCacheExpiration,
+		requestedExpiryCacheCleanupInterval,
+	)
+
 	app := Headscale{
-		cfg:        cfg,
-		dbType:     cfg.DBtype,
-		dbString:   dbString,
-		privateKey: privKey,
-		publicKey:  &pubKey,
-		aclRules:   tailcfg.FilterAllowAll, // default allowall
+		cfg:                  cfg,
+		dbType:               cfg.DBtype,
+		dbString:             dbString,
+		privateKey:           privKey,
+		publicKey:            &pubKey,
+		aclRules:             tailcfg.FilterAllowAll, // default allowall
+		requestedExpiryCache: requestedExpiryCache,
 	}
 
 	err = app.initDB()
