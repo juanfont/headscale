@@ -33,7 +33,14 @@ func init() {
 	}
 	nodeCmd.AddCommand(registerNodeCmd)
 
-	deleteNodeCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	err = expireNodeCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	nodeCmd.AddCommand(expireNodeCmd)
+
+	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = deleteNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -45,7 +52,7 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	shareMachineCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	shareMachineCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = shareMachineCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -57,7 +64,7 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	unshareMachineCmd.Flags().IntP("identifier", "i", 0, "Node identifier (ID)")
+	unshareMachineCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = unshareMachineCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -177,13 +184,58 @@ var listNodesCmd = &cobra.Command{
 	},
 }
 
+var expireNodeCmd = &cobra.Command{
+	Use:     "expire",
+	Short:   "Expire (log out) a machine in your network",
+	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
+	Aliases: []string{"logout"},
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		identifier, err := cmd.Flags().GetUint64("identifier")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting ID to integer: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.ExpireMachineRequest{
+			MachineId: identifier,
+		}
+
+		response, err := client.ExpireMachine(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot expire machine: %s\n",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(response.Machine, "Machine expired", output)
+	},
+}
+
 var deleteNodeCmd = &cobra.Command{
 	Use:   "delete",
 	Short: "Delete a node",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetInt("identifier")
+		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -199,7 +251,7 @@ var deleteNodeCmd = &cobra.Command{
 		defer conn.Close()
 
 		getRequest := &v1.GetMachineRequest{
-			MachineId: uint64(identifier),
+			MachineId: identifier,
 		}
 
 		getResponse, err := client.GetMachine(ctx, getRequest)
@@ -217,7 +269,7 @@ var deleteNodeCmd = &cobra.Command{
 		}
 
 		deleteRequest := &v1.DeleteMachineRequest{
-			MachineId: uint64(identifier),
+			MachineId: identifier,
 		}
 
 		confirm := false
@@ -280,7 +332,7 @@ func sharingWorker(
 	defer cancel()
 	defer conn.Close()
 
-	identifier, err := cmd.Flags().GetInt("identifier")
+	identifier, err := cmd.Flags().GetUint64("identifier")
 	if err != nil {
 		ErrorOutput(err, fmt.Sprintf("Error converting ID to integer: %s", err), output)
 
@@ -288,7 +340,7 @@ func sharingWorker(
 	}
 
 	machineRequest := &v1.GetMachineRequest{
-		MachineId: uint64(identifier),
+		MachineId: identifier,
 	}
 
 	machineResponse, err := client.GetMachine(ctx, machineRequest)
@@ -412,6 +464,7 @@ func nodesToPtables(
 			"Ephemeral",
 			"Last seen",
 			"Online",
+			"Expired",
 		},
 	}
 
@@ -420,12 +473,19 @@ func nodesToPtables(
 		if machine.PreAuthKey != nil && machine.PreAuthKey.Ephemeral {
 			ephemeral = true
 		}
+
 		var lastSeen time.Time
 		var lastSeenTime string
 		if machine.LastSeen != nil {
 			lastSeen = machine.LastSeen.AsTime()
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
+
+		var expiry time.Time
+		if machine.Expiry != nil {
+			expiry = machine.Expiry.AsTime()
+		}
+
 		nKey, err := wgkey.ParseHex(machine.NodeKey)
 		if err != nil {
 			return nil, err
@@ -436,9 +496,16 @@ func nodesToPtables(
 		if lastSeen.After(
 			time.Now().Add(-5 * time.Minute),
 		) { // TODO: Find a better way to reliably show if online
-			online = pterm.LightGreen("true")
+			online = pterm.LightGreen("online")
 		} else {
-			online = pterm.LightRed("false")
+			online = pterm.LightRed("offline")
+		}
+
+		var expired string
+		if expiry.IsZero() || expiry.After(time.Now()) {
+			expired = pterm.LightGreen("no")
+		} else {
+			expired = pterm.LightRed("yes")
 		}
 
 		var namespace string
@@ -459,6 +526,7 @@ func nodesToPtables(
 				strconv.FormatBool(ephemeral),
 				lastSeenTime,
 				online,
+				expired,
 			},
 		)
 	}

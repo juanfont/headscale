@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/patrickmn/go-cache"
 	"gopkg.in/check.v1"
 	"inet.af/netaddr"
 )
@@ -47,6 +48,10 @@ func (s *Suite) ResetDB(c *check.C) {
 		cfg:      cfg,
 		dbType:   "sqlite3",
 		dbString: tmpDir + "/headscale_test.db",
+		requestedExpiryCache: cache.New(
+			requestedExpiryCacheExpiration,
+			requestedExpiryCacheCleanupInterval,
+		),
 	}
 	err = app.initDB()
 	if err != nil {
