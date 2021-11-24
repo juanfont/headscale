@@ -288,7 +288,7 @@ func (h *Headscale) getMapKeepAliveResponse(
 
 func (h *Headscale) handleMachineLogOut(
 	ctx *gin.Context,
-	idKey wgkey.Key,
+	machineKey wgkey.Key,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
@@ -303,7 +303,7 @@ func (h *Headscale) handleMachineLogOut(
 	resp.AuthURL = ""
 	resp.MachineAuthorized = false
 	resp.User = *machine.Namespace.toUser()
-	respBody, err := encode(resp, &idKey, h.privateKey)
+	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("handler", "Registration").
@@ -318,7 +318,7 @@ func (h *Headscale) handleMachineLogOut(
 
 func (h *Headscale) handleMachineValidRegistration(
 	ctx *gin.Context,
-	idKey wgkey.Key,
+	machineKey wgkey.Key,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
@@ -334,7 +334,7 @@ func (h *Headscale) handleMachineValidRegistration(
 	resp.User = *machine.Namespace.toUser()
 	resp.Login = *machine.Namespace.toLogin()
 
-	respBody, err := encode(resp, &idKey, h.privateKey)
+	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("handler", "Registration").
@@ -353,7 +353,8 @@ func (h *Headscale) handleMachineValidRegistration(
 
 func (h *Headscale) handleMachineExpired(
 	ctx *gin.Context,
-	idKey wgkey.Key,
+	machineKey wgkey.Key,
+	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
@@ -397,7 +398,7 @@ func (h *Headscale) handleMachineExpired(
 
 func (h *Headscale) handleMachineRefreshKey(
 	ctx *gin.Context,
-	idKey wgkey.Key,
+	machineKey wgkey.Key,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
@@ -412,7 +413,7 @@ func (h *Headscale) handleMachineRefreshKey(
 
 	resp.AuthURL = ""
 	resp.User = *machine.Namespace.toUser()
-	respBody, err := encode(resp, &idKey, h.privateKey)
+	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("handler", "Registration").
@@ -427,7 +428,7 @@ func (h *Headscale) handleMachineRefreshKey(
 
 func (h *Headscale) handleMachineRegistrationNew(
 	ctx *gin.Context,
-	idKey wgkey.Key,
+	machineKey wgkey.Key,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
@@ -442,11 +443,11 @@ func (h *Headscale) handleMachineRegistrationNew(
 		resp.AuthURL = fmt.Sprintf(
 			"%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			idKey.HexString(),
+			machineKey.HexString(),
 		)
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), idKey.HexString())
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.HexString())
 	}
 
 	if !registerRequest.Expiry.IsZero() {
@@ -456,7 +457,7 @@ func (h *Headscale) handleMachineRegistrationNew(
 			Time("expiry", registerRequest.Expiry).
 			Msg("Non-zero expiry time requested, adding to cache")
 		h.requestedExpiryCache.Set(
-			idKey.HexString(),
+			machineKey.HexString(),
 			registerRequest.Expiry,
 			requestedExpiryCacheExpiration,
 		)
@@ -465,7 +466,7 @@ func (h *Headscale) handleMachineRegistrationNew(
 	machine.NodeKey = wgkey.Key(registerRequest.NodeKey).HexString() // save the NodeKey
 	h.db.Save(&machine)
 
-	respBody, err := encode(resp, &idKey, h.privateKey)
+	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("handler", "Registration").
@@ -480,7 +481,7 @@ func (h *Headscale) handleMachineRegistrationNew(
 
 func (h *Headscale) handleAuthKey(
 	ctx *gin.Context,
-	idKey wgkey.Key,
+	machineKey wgkey.Key,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
@@ -497,7 +498,7 @@ func (h *Headscale) handleAuthKey(
 			Err(err).
 			Msg("Failed authentication via AuthKey")
 		resp.MachineAuthorized = false
-		respBody, err := encode(resp, &idKey, h.privateKey)
+		respBody, err := encode(resp, &machineKey, h.privateKey)
 		if err != nil {
 			log.Error().
 				Str("func", "handleAuthKey").
@@ -567,7 +568,7 @@ func (h *Headscale) handleAuthKey(
 
 	resp.MachineAuthorized = true
 	resp.User = *pak.Namespace.toUser()
-	respBody, err := encode(resp, &idKey, h.privateKey)
+	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("func", "handleAuthKey").
