@@ -25,9 +25,6 @@ linters:
     - godox
     - ireturn
 
-    # In progress
-    - gocritic
-
     # We should strive to enable these:
     - wrapcheck
     - dupl
@@ -51,3 +48,10 @@ linters-settings:
       - ip
       - ok
       - c
+
+  gocritic:
+    disabled-checks:
+      - appendAssign
+      # TODO(kradalby): Remove this
+      - ifElseChain
+
