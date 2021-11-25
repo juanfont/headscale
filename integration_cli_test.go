@@ -897,6 +897,133 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Len(s.T(), listOnlyMachineNamespaceAfterUnshare, 4)
 }
 
+func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
+	namespace, err := s.createNamespace("machine-expire-namespace")
+	assert.Nil(s.T(), err)
+
+	// Randomly generated machine keys
+	machineKeys := []string{
+		"9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+	}
+	machines := make([]*v1.Machine, len(machineKeys))
+	assert.Nil(s.T(), err)
+
+	for index, machineKey := range machineKeys {
+		_, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"debug",
+				"create-node",
+				"--name",
+				fmt.Sprintf("machine-%d", index+1),
+				"--namespace",
+				namespace.Name,
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		machineResult, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"--namespace",
+				namespace.Name,
+				"register",
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		var machine v1.Machine
+		err = json.Unmarshal([]byte(machineResult), &machine)
+		assert.Nil(s.T(), err)
+
+		machines[index] = &machine
+	}
+
+	assert.Len(s.T(), machines, len(machineKeys))
+
+	listAllResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listAll []v1.Machine
+	err = json.Unmarshal([]byte(listAllResult), &listAll)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listAll, 5)
+
+	assert.True(s.T(), listAll[0].Expiry.AsTime().IsZero())
+	assert.True(s.T(), listAll[1].Expiry.AsTime().IsZero())
+	assert.True(s.T(), listAll[2].Expiry.AsTime().IsZero())
+	assert.True(s.T(), listAll[3].Expiry.AsTime().IsZero())
+	assert.True(s.T(), listAll[4].Expiry.AsTime().IsZero())
+
+	for i := 0; i < 3; i++ {
+		_, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"expire",
+				"--identifier",
+				fmt.Sprintf("%d", listAll[i].Id),
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+	}
+
+	listAllAfterExpiryResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listAllAfterExpiry []v1.Machine
+	err = json.Unmarshal([]byte(listAllAfterExpiryResult), &listAllAfterExpiry)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listAllAfterExpiry, 5)
+
+	assert.True(s.T(), listAllAfterExpiry[0].Expiry.AsTime().Before(time.Now()))
+	assert.True(s.T(), listAllAfterExpiry[1].Expiry.AsTime().Before(time.Now()))
+	assert.True(s.T(), listAllAfterExpiry[2].Expiry.AsTime().Before(time.Now()))
+	assert.True(s.T(), listAllAfterExpiry[3].Expiry.AsTime().IsZero())
+	assert.True(s.T(), listAllAfterExpiry[4].Expiry.AsTime().IsZero())
+}
+
 func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	namespace, err := s.createNamespace("routes-namespace")
 	assert.Nil(s.T(), err)

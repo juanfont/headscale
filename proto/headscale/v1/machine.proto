@@ -64,6 +64,14 @@ message DeleteMachineRequest {
 message DeleteMachineResponse {
 }
 
+message ExpireMachineRequest {
+    uint64 machine_id = 1;
+}
+
+message ExpireMachineResponse {
+    Machine machine = 1;
+}
+
 message ListMachinesRequest {
     string namespace = 1;
 }

@@ -100,7 +100,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      ip.String(),
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -142,7 +142,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      ip.String(),
 		AuthKeyID:      uint(pak.ID),
 	}

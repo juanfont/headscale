@@ -161,6 +161,37 @@
         ]
       }
     },
+    "/api/v1/machine/{machineId}/expire": {
+      "post": {
+        "operationId": "HeadscaleService_ExpireMachine",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ExpireMachineResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "machineId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/machine/{machineId}/routes": {
       "get": {
         "summary": "--- Route start ---",
@@ -646,6 +677,14 @@
       "properties": {
         "routes": {
           "$ref": "#/definitions/v1Routes"
+        }
+      }
+    },
+    "v1ExpireMachineResponse": {
+      "type": "object",
+      "properties": {
+        "machine": {
+          "$ref": "#/definitions/v1Machine"
         }
       }
     },

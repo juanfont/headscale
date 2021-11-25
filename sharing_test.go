@@ -25,7 +25,7 @@ func CreateNodeNamespace(
 		Name:           node,
 		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      ip,
 		AuthKeyID:      uint(pak1.ID),
 	}
@@ -213,7 +213,7 @@ func (s *Suite) TestComplexSharingAcrossNamespaces(c *check.C) {
 		Name:           "test_get_shared_nodes_4",
 		NamespaceID:    namespace1.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.4",
 		AuthKeyID:      uint(pak4.ID),
 	}
@@ -293,7 +293,7 @@ func (s *Suite) TestDeleteSharedMachine(c *check.C) {
 		Name:           "test_get_shared_nodes_4",
 		NamespaceID:    namespace1.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.4",
 		AuthKeyID:      uint(pak4n1.ID),
 	}
