@@ -77,6 +77,16 @@ var createNodeCmd = &cobra.Command{
 
 			return
 		}
+		if len(machineKey) != 64 {
+			err = fmt.Errorf("key '%s' too short, must be 64 hexadecimal characters", machineKey)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error: %s", err),
+				output,
+			)
+
+			return
+		}
 
 		routes, err := cmd.Flags().GetStringSlice("route")
 		if err != nil {
