@@ -44,7 +44,7 @@ func (h *Headscale) CreatePreAuthKey(
 	return h.CreatePreAuthKeyWithSubnet(namespaceName, reusable, ephemeral, expiration, "")
 }
 
-// CreatePreAuthKeyWithSubnet creates a new PreAuthKey in a namespace with a subnet, and returns it
+// CreatePreAuthKeyWithSubnet creates a new PreAuthKey in a namespace with a subnet, and returns it.
 func (h *Headscale) CreatePreAuthKeyWithSubnet(
 	namespaceName string,
 	reusable bool,

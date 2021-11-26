@@ -37,7 +37,7 @@ func init() {
 	createPreAuthKeyCmd.Flags().
 		StringP("subnet", "", "", "Subnet to assign new nodes to")
 	createPreAuthKeyCmd.Flags().
-		String("ip", "", "IP to assign a node to (only supported for non-resuable keys)")
+		String("ip", "", "IP to assign a node to (only supported for non-reusable keys)")
 }
 
 var preauthkeysCmd = &cobra.Command{
@@ -144,9 +144,9 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		if subnet != "" {
 			ipPrefix, err := netaddr.ParseIPPrefix(subnet)
-
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Error parsing subnet: %s", err), output)
+
 				return
 			}
 
@@ -158,13 +158,19 @@ var createPreAuthKeyCmd = &cobra.Command{
 			if ip != "" {
 				// Parse IP and convert to prefix
 				ipAddr, err := netaddr.ParseIP(ip)
-
 				if err != nil {
 					ErrorOutput(err, fmt.Sprintf("Error parsing IP address: %s", err), output)
+
 					return
 				}
 
-				ipPrefix := netaddr.IPPrefixFrom(ipAddr, 32)
+				ipPrefix, err := ipAddr.Prefix(ipAddr.BitLen())
+				if err != nil {
+					ErrorOutput(err, fmt.Sprintf("Error parsing IP address into prefix: %s", err), output)
+
+					return
+				}
+
 				subnet = ipPrefix.String()
 			}
 		}
