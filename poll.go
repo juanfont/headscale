@@ -9,10 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"go4.org/mem"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
 
 const (
@@ -36,7 +37,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Msg("PollNetMapHandler called")
 	body, _ := io.ReadAll(ctx.Request.Body)
 	mKeyStr := ctx.Param("id")
-	mKey, err := wgkey.ParseHex(mKeyStr)
+	mKey, err := key.ParseMachinePublicUntyped(mem.S(mKeyStr))
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -58,19 +59,19 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		return
 	}
 
-	machine, err := h.GetMachineByMachineKey(mKey.HexString())
+	machine, err := h.GetMachineByMachineKey(mKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
 				Str("handler", "PollNetMap").
-				Msgf("Ignoring request, cannot find machine with key %s", mKey.HexString())
+				Msgf("Ignoring request, cannot find machine with key %s", mKey.String())
 			ctx.String(http.StatusUnauthorized, "")
 
 			return
 		}
 		log.Error().
 			Str("handler", "PollNetMap").
-			Msgf("Failed to fetch machine from the database with Machine key: %s", mKey.HexString())
+			Msgf("Failed to fetch machine from the database with Machine key: %s", mKey.String())
 		ctx.String(http.StatusInternalServerError, "")
 	}
 	log.Trace().
@@ -82,7 +83,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	hostinfo, _ := json.Marshal(req.Hostinfo)
 	machine.Name = req.Hostinfo.Hostname
 	machine.HostInfo = datatypes.JSON(hostinfo)
-	machine.DiscoKey = wgkey.Key(req.DiscoKey).HexString()
+	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
 	now := time.Now().UTC()
 
 	// From Tailscale client:
@@ -225,7 +226,7 @@ func (h *Headscale) PollNetMapStream(
 	ctx *gin.Context,
 	machine *Machine,
 	mapRequest tailcfg.MapRequest,
-	machineKey wgkey.Key,
+	machineKey key.MachinePublic,
 	pollDataChan chan []byte,
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
@@ -491,7 +492,7 @@ func (h *Headscale) scheduledPollWorker(
 	cancelChan <-chan struct{},
 	updateChan chan<- struct{},
 	keepAliveChan chan<- []byte,
-	machineKey wgkey.Key,
+	machineKey key.MachinePublic,
 	mapRequest tailcfg.MapRequest,
 	machine *Machine,
 ) {

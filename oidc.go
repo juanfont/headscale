@@ -15,8 +15,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
+	"go4.org/mem"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
+	"tailscale.com/types/key"
 )
 
 const (
@@ -187,7 +189,17 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 		return
 	}
-	machineKey, machineKeyOK := machineKeyIf.(string)
+
+	machineKeyStr, machineKeyOK := machineKeyIf.(string)
+
+	machineKey, err := key.ParseMachinePublicUntyped(mem.S(machineKeyStr))
+	if err != nil {
+		log.Error().
+			Msg("could not parse machine public key")
+		ctx.String(http.StatusBadRequest, "could not parse public key")
+
+		return
+	}
 
 	if !machineKeyOK {
 		log.Error().Msg("could not get machine key from cache")
@@ -201,7 +213,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
 	requestedTime := time.Time{}
-	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey); found {
+	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.String()); found {
 		if reqTime, ok := requestedTimeIf.(time.Time); ok {
 			requestedTime = reqTime
 		}

@@ -11,9 +11,9 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"go4.org/mem"
 	"google.golang.org/grpc/status"
-	"tailscale.com/tailcfg"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
 
 func init() {
@@ -486,11 +486,10 @@ func nodesToPtables(
 			expiry = machine.Expiry.AsTime()
 		}
 
-		nKey, err := wgkey.ParseHex(machine.NodeKey)
+		nodeKey, err := key.ParseNodePublicUntyped(mem.S(machine.NodeKey))
 		if err != nil {
 			return nil, err
 		}
-		nodeKey := tailcfg.NodeKey(nKey)
 
 		var online string
 		if lastSeen.After(
