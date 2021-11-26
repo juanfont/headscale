@@ -193,3 +193,28 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	_, err = app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.Equals, errSingleUseAuthKeyHasBeenUsed)
 }
+
+func (*Suite) TestSubnetValidation(c *check.C) {
+	namespace, err := app.CreateNamespace("test8")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKeyWithSubnet(namespace.Name, false, false, nil, "10.1.0.0/16")
+	c.Assert(err, check.IsNil)
+	c.Assert(pak.Subnet, check.Equals, "10.1.0.0/16")
+
+	_, err = app.CreatePreAuthKeyWithSubnet(namespace.Name, false, false, nil, "100.200.30.0/24")
+	c.Assert(err, check.IsNil)
+
+	_, err = app.CreatePreAuthKeyWithSubnet(namespace.Name, false, false, nil, "10.10.10.10/32")
+	c.Assert(err, check.IsNil)
+
+	pak, err = app.CreatePreAuthKeyWithSubnet(namespace.Name, false, false, nil, "10.10.10.10")
+	c.Assert(err, check.NotNil)
+	c.Assert(pak, check.IsNil)
+
+	_, err = app.CreatePreAuthKeyWithSubnet(namespace.Name, false, false, nil, "10.notvalid.0.0")
+	c.Assert(err, check.NotNil)
+
+	_, err = app.CreatePreAuthKeyWithSubnet(namespace.Name, false, false, nil, "notvalid")
+	c.Assert(err, check.NotNil)
+}
