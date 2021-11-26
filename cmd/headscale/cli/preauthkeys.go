@@ -35,7 +35,7 @@ func init() {
 	createPreAuthKeyCmd.Flags().
 		DurationP("expiration", "e", DefaultPreAuthKeyExpiry, "Human-readable expiration of the key (30m, 24h, 365d...)")
 	createPreAuthKeyCmd.Flags().
-		StringP("subnet", "s", "", "Subnet to assign new nodes to")
+		StringP("subnet", "", "", "Subnet to assign new nodes to")
 	createPreAuthKeyCmd.Flags().
 		String("ip", "", "IP to assign a node to (only supported for non-resuable keys)")
 }
