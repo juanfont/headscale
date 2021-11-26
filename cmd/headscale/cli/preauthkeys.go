@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -11,6 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"inet.af/netaddr"
 )
 
 const (
@@ -142,15 +142,30 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		subnet, _ := cmd.Flags().GetString("subnet")
 
+		if subnet != "" {
+			ipPrefix, err := netaddr.ParseIPPrefix(subnet)
+
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Error parsing subnet: %s", err), output)
+				return
+			}
+
+			subnet = ipPrefix.String()
+		}
+
 		if !reusable && subnet == "" {
 			ip, _ := cmd.Flags().GetString("ip")
 			if ip != "" {
-				// If IP is in CIDR notation, strip the last octet
-				if strings.Contains(ip, "/") {
-					ip = strings.Split(ip, "/")[0]
+				// Parse IP and convert to prefix
+				ipAddr, err := netaddr.ParseIP(ip)
+
+				if err != nil {
+					ErrorOutput(err, fmt.Sprintf("Error parsing IP address: %s", err), output)
+					return
 				}
 
-				subnet = ip + "/32"
+				ipPrefix := netaddr.IPPrefixFrom(ipAddr, 32)
+				subnet = ipPrefix.String()
 			}
 		}
 
