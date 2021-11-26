@@ -222,11 +222,10 @@ func getHeadscaleConfig() headscale.Config {
 	derpConfig := GetDERPConfig()
 
 	return headscale.Config{
-		ServerURL:      viper.GetString("server_url"),
-		Addr:           viper.GetString("listen_addr"),
-		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
-		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
-		BaseDomain:     baseDomain,
+		ServerURL:  viper.GetString("server_url"),
+		Addr:       viper.GetString("listen_addr"),
+		IPPrefix:   netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
+		BaseDomain: baseDomain,
 
 		DERP: derpConfig,
 
