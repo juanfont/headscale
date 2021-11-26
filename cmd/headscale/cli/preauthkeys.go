@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	DefaultPreAuthKeyExpiry = 24 * time.Hour
+	DefaultPreAuthKeyExpiry = 1 * time.Hour
 )
 
 func init() {
@@ -145,14 +145,12 @@ var createPreAuthKeyCmd = &cobra.Command{
 			Ephemeral: ephemeral,
 		}
 
-		if cmd.Flags().Changed("expiration") {
-			duration, _ := cmd.Flags().GetDuration("expiration")
-			expiration := time.Now().UTC().Add(duration)
+		duration, _ := cmd.Flags().GetDuration("expiration")
+		expiration := time.Now().UTC().Add(duration)
 
-			log.Trace().Dur("expiration", duration).Msg("expiration has been set")
+		log.Trace().Dur("expiration", duration).Msg("expiration has been set")
 
-			request.Expiration = timestamppb.New(expiration)
-		}
+		request.Expiration = timestamppb.New(expiration)
 
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
