@@ -15,7 +15,6 @@ The setup is done via the `config.yaml` file, under the `dns_config` key.
 ```yaml
 server_url: http://127.0.0.1:8001
 listen_addr: 0.0.0.0:8001
-private_key_path: private.key
 dns_config:
   nameservers:
     - 1.1.1.1

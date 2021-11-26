@@ -22,12 +22,6 @@ log_level: debug
 `log_level` can be used to set the Log level for Headscale, it defaults to `debug`, and the available levels are: `trace`, `debug`, `info`, `warn` and `error`.
 
 ```yaml
-private_key_path: private.key
-```
-
-`private_key_path` is the path to the Wireguard private key. If the path is relative, it will be interpreted as relative to the directory the configuration file was read from.
-
-```yaml
 derp_map_path: derp.yaml
 ```
 

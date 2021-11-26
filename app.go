@@ -43,7 +43,7 @@ import (
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
 
 const (
@@ -66,7 +66,6 @@ const (
 type Config struct {
 	ServerURL                      string
 	Addr                           string
-	PrivateKeyPath                 string
 	EphemeralNodeInactivityTimeout time.Duration
 	IPPrefix                       netaddr.IPPrefix
 	BaseDomain                     string
@@ -129,8 +128,8 @@ type Headscale struct {
 	dbString   string
 	dbType     string
 	dbDebug    bool
-	publicKey  *wgkey.Key
-	privateKey *wgkey.Private
+	publicKey  *key.MachinePublic
+	privateKey *key.MachinePrivate
 
 	DERPMap *tailcfg.DERPMap
 
@@ -148,15 +147,7 @@ type Headscale struct {
 
 // NewHeadscale returns the Headscale app.
 func NewHeadscale(cfg Config) (*Headscale, error) {
-	content, err := os.ReadFile(cfg.PrivateKeyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	privKey, err := wgkey.ParsePrivate(string(content))
-	if err != nil {
-		return nil, err
-	}
+	privKey := key.NewMachine()
 	pubKey := privKey.Public()
 
 	var dbString string
@@ -185,13 +176,13 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		cfg:                  cfg,
 		dbType:               cfg.DBtype,
 		dbString:             dbString,
-		privateKey:           privKey,
+		privateKey:           &privKey,
 		publicKey:            &pubKey,
 		aclRules:             tailcfg.FilterAllowAll, // default allowall
 		requestedExpiryCache: requestedExpiryCache,
 	}
 
-	err = app.initDB()
+	err := app.initDB()
 	if err != nil {
 		return nil, err
 	}
