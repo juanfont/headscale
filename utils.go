@@ -20,21 +20,11 @@ import (
 
 const (
 	errCannotDecryptReponse = Error("cannot decrypt response")
-	errResponseMissingNonce = Error("response missing nonce")
 	errCouldNotAllocateIP   = Error("could not find any suitable IP")
 
 	// These constants are copied from the upstream tailscale.com/types/key
 	// library, because they are not exported.
 	// https://github.com/tailscale/tailscale/tree/main/types/key
-
-	// nodePrivateHexPrefix is the prefix used to identify a
-	// hex-encoded node private key.
-	//
-	// This prefix name is a little unfortunate, in that it comes from
-	// WireGuard's own key types, and we've used it for both key types
-	// we persist to disk (machine and node keys). But we're stuck
-	// with it for now, barring another round of tricky migration.
-	nodePrivateHexPrefix = "privkey:"
 
 	// nodePublicHexPrefix is the prefix used to identify a
 	// hex-encoded node public key.
@@ -42,14 +32,6 @@ const (
 	// This prefix is used in the control protocol, so cannot be
 	// changed.
 	nodePublicHexPrefix = "nodekey:"
-
-	// machinePrivateHexPrefix is the prefix used to identify a
-	// hex-encoded machine private key.
-	//
-	// This prefix name is a little unfortunate, in that it comes from
-	// WireGuard's own key types. Unfortunately we're stuck with it for
-	// machine keys, because we serialize them to disk with this prefix.
-	machinePrivateHexPrefix = "privkey:"
 
 	// machinePublicHexPrefix is the prefix used to identify a
 	// hex-encoded machine public key.

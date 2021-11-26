@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
-	"go4.org/mem"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 	"tailscale.com/types/key"
@@ -192,7 +191,8 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 	machineKeyStr, machineKeyOK := machineKeyIf.(string)
 
-	machineKey, err := key.ParseMachinePublicUntyped(mem.S(machineKeyStr))
+	var machineKey key.MachinePublic
+	err = machineKey.UnmarshalText([]byte(machineKeyStr))
 	if err != nil {
 		log.Error().
 			Msg("could not parse machine public key")

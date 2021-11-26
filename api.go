@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
-	"go4.org/mem"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -74,7 +73,9 @@ func (h *Headscale) RegisterWebAPI(ctx *gin.Context) {
 func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 	body, _ := io.ReadAll(ctx.Request.Body)
 	machineKeyStr := ctx.Param("id")
-	machineKey, err := key.ParseMachinePublicUntyped(mem.S(machineKeyStr))
+
+	var machineKey key.MachinePublic
+	err := machineKey.UnmarshalText([]byte(machineKeyStr))
 	if err != nil {
 		log.Error().
 			Caller().

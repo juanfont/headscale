@@ -11,7 +11,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"go4.org/mem"
 	"google.golang.org/grpc/status"
 	"tailscale.com/types/key"
 )
@@ -486,7 +485,8 @@ func nodesToPtables(
 			expiry = machine.Expiry.AsTime()
 		}
 
-		nodeKey, err := key.ParseNodePublicUntyped(mem.S(machine.NodeKey))
+		var nodeKey key.NodePublic
+		err := nodeKey.UnmarshalText([]byte(machine.NodeKey))
 		if err != nil {
 			return nil, err
 		}

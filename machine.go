@@ -12,7 +12,6 @@ import (
 	"github.com/fatih/set"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
-	"go4.org/mem"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
@@ -439,7 +438,8 @@ func (machine Machine) toNode(
 	dnsConfig *tailcfg.DNSConfig,
 	includeRoutes bool,
 ) (*tailcfg.Node, error) {
-	nodeKey, err := key.ParseNodePublicUntyped(mem.S(machine.NodeKey))
+	var nodeKey key.NodePublic
+	err := nodeKey.UnmarshalText([]byte(machine.NodeKey))
 	if err != nil {
 		log.Trace().
 			Caller().
@@ -449,19 +449,18 @@ func (machine Machine) toNode(
 		return nil, fmt.Errorf("failed to parse node public key: %w", err)
 	}
 
-	machineKey, err := key.ParseMachinePublicUntyped(mem.S(machine.MachineKey))
+	var machineKey key.MachinePublic
+	err = machineKey.UnmarshalText([]byte(machine.MachineKey))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse machine public key: %w", err)
 	}
 
 	var discoKey key.DiscoPublic
 	if machine.DiscoKey != "" {
-		dKey := key.DiscoPublic{}
-		err := dKey.UnmarshalText([]byte(discoPublicHexPrefix + machine.DiscoKey))
+		err := discoKey.UnmarshalText([]byte(discoPublicHexPrefix + machine.DiscoKey))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse disco public key: %w", err)
 		}
-		discoKey = key.DiscoPublic(dKey)
 	} else {
 		discoKey = key.DiscoPublic{}
 	}
@@ -634,7 +633,8 @@ func (h *Headscale) RegisterMachine(
 		return nil, err
 	}
 
-	machineKey, err := key.ParseMachinePublicUntyped(mem.S(machineKeyStr))
+	var machineKey key.MachinePublic
+	err = machineKey.UnmarshalText([]byte(machineKeyStr))
 	if err != nil {
 		return nil, err
 	}
