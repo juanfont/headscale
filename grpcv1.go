@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"gorm.io/datatypes"
 	"tailscale.com/tailcfg"
@@ -99,16 +99,18 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 	ctx context.Context,
 	request *v1.CreatePreAuthKeyRequest,
 ) (*v1.CreatePreAuthKeyResponse, error) {
-	var expiration time.Time
+	var expiration *time.Time
 	if request.GetExpiration() != nil {
-		expiration = request.GetExpiration().AsTime()
+		expirationTime := request.GetExpiration().AsTime()
+		expiration = &expirationTime
 	}
 
-	preAuthKey, err := api.h.CreatePreAuthKey(
+	preAuthKey, err := api.h.CreatePreAuthKeyWithSubnet(
 		request.GetNamespace(),
 		request.GetReusable(),
 		request.GetEphemeral(),
-		&expiration,
+		expiration,
+		request.GetSubnet(),
 	)
 	if err != nil {
 		return nil, err

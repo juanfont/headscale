@@ -26,21 +26,32 @@ type PreAuthKey struct {
 	NamespaceID uint
 	Namespace   Namespace
 	Reusable    bool
-	Ephemeral   bool   `gorm:"default:false"`
-	Subnet      string `gorm:"default:''"`
-	Used        bool   `gorm:"default:false"`
+	Ephemeral   bool `gorm:"default:false"`
+	Used        bool `gorm:"default:false"`
+	Subnet      string
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
 }
 
-// CreatePreAuthKey creates a new PreAuthKey in a namespace for the default subnet, and returns it
-func (h *Headscale) CreatePreAuthKey(namespaceName string, reusable bool, ephemeral bool, expiration *time.Time) (*PreAuthKey, error) {
+// CreatePreAuthKey creates a new PreAuthKey in a namespace for the default subnet, and returns it.
+func (h *Headscale) CreatePreAuthKey(
+	namespaceName string,
+	reusable bool,
+	ephemeral bool,
+	expiration *time.Time,
+) (*PreAuthKey, error) {
 	return h.CreatePreAuthKeyWithSubnet(namespaceName, reusable, ephemeral, expiration, "")
 }
 
-// CreatePreAuthKey creates a new PreAuthKey in a namespace with a subnet, and returns it
-func (h *Headscale) CreatePreAuthKeyWithSubnet(namespaceName string, reusable bool, ephemeral bool, expiration *time.Time, subnet string) (*PreAuthKey, error) {
+// CreatePreAuthKeyWithSubnet creates a new PreAuthKey in a namespace with a subnet, and returns it
+func (h *Headscale) CreatePreAuthKeyWithSubnet(
+	namespaceName string,
+	reusable bool,
+	ephemeral bool,
+	expiration *time.Time,
+	subnet string,
+) (*PreAuthKey, error) {
 	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
@@ -164,6 +175,7 @@ func (key *PreAuthKey) toProto() *v1.PreAuthKey {
 		Ephemeral: key.Ephemeral,
 		Reusable:  key.Reusable,
 		Used:      key.Used,
+		Subnet:    key.Subnet,
 	}
 
 	if key.Expiration != nil {
