@@ -20,6 +20,9 @@ test:
 test_integration:
 	go test -tags integration -timeout 30m ./...
 
+test_integration_cli:
+	go test -tags integration -v integration_cli_test.go integration_common_test.go
+
 coverprofile_func:
 	go tool cover -func=coverage.out
 
