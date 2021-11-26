@@ -13,6 +13,7 @@ message PreAuthKey {
     bool                      used       = 6;
     google.protobuf.Timestamp expiration = 7;
     google.protobuf.Timestamp created_at = 8;
+    string                    subnet     = 9;
 }
 
 message CreatePreAuthKeyRequest {
@@ -20,6 +21,7 @@ message CreatePreAuthKeyRequest {
     bool                      reusable   = 2;
     bool                      ephemeral  = 3;
     google.protobuf.Timestamp expiration = 4;
+    string                    subnet     = 5;
 }
 
 message CreatePreAuthKeyResponse {

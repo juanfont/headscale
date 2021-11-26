@@ -627,6 +627,9 @@
         "expiration": {
           "type": "string",
           "format": "date-time"
+        },
+        "subnet": {
+          "type": "string"
         }
       }
     },
@@ -854,6 +857,9 @@
         "createdAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "subnet": {
+          "type": "string"
         }
       }
     },
