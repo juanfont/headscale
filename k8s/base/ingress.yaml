@@ -6,13 +6,13 @@ metadata:
     kubernetes.io/ingress.class: traefik
 spec:
   rules:
-  - host: $(PUBLIC_HOSTNAME)
-    http:
-      paths:
-      - backend:
-          service:
-            name: headscale
-            port:
-              number: 8080
-        path: /
-        pathType: Prefix
+    - host: $(PUBLIC_HOSTNAME)
+      http:
+        paths:
+          - backend:
+              service:
+                name: headscale
+                port:
+                  number: 8080
+            path: /
+            pathType: Prefix

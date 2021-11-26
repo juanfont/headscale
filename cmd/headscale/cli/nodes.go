@@ -4,28 +4,72 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	"github.com/juanfont/headscale"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/status"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
 
 func init() {
 	rootCmd.AddCommand(nodeCmd)
-	nodeCmd.PersistentFlags().StringP("namespace", "n", "", "Namespace")
-	err := nodeCmd.MarkPersistentFlagRequired("namespace")
+	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
+	nodeCmd.AddCommand(listNodesCmd)
+
+	registerNodeCmd.Flags().StringP("namespace", "n", "", "Namespace")
+	err := registerNodeCmd.MarkFlagRequired("namespace")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	nodeCmd.AddCommand(listNodesCmd)
+	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
+	err = registerNodeCmd.MarkFlagRequired("key")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(registerNodeCmd)
+
+	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	err = expireNodeCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	nodeCmd.AddCommand(expireNodeCmd)
+
+	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	err = deleteNodeCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(deleteNodeCmd)
+
+	shareMachineCmd.Flags().StringP("namespace", "n", "", "Namespace")
+	err = shareMachineCmd.MarkFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	shareMachineCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	err = shareMachineCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	nodeCmd.AddCommand(shareMachineCmd)
+
+	unshareMachineCmd.Flags().StringP("namespace", "n", "", "Namespace")
+	err = unshareMachineCmd.MarkFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	unshareMachineCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	err = unshareMachineCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	nodeCmd.AddCommand(unshareMachineCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -34,203 +78,414 @@ var nodeCmd = &cobra.Command{
 }
 
 var registerNodeCmd = &cobra.Command{
-	Use:   "register machineID",
+	Use:   "register",
 	Short: "Registers a machine to your network",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
-		n, err := cmd.Flags().GetString("namespace")
+		output, _ := cmd.Flags().GetString("output")
+		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
-			log.Fatalf("Error getting namespace: %s", err)
-		}
-		o, _ := cmd.Flags().GetString("output")
+			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
 
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
-		}
-		m, err := h.RegisterMachine(args[0], n)
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(m, err, o)
 			return
 		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		machineKey, err := cmd.Flags().GetString("key")
 		if err != nil {
-			fmt.Printf("Cannot register machine: %s\n", err)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting machine key from flag: %s", err),
+				output,
+			)
+
 			return
 		}
-		fmt.Printf("Machine registered\n")
+
+		request := &v1.RegisterMachineRequest{
+			Key:       machineKey,
+			Namespace: namespace,
+		}
+
+		response, err := client.RegisterMachine(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot register machine: %s\n",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(response.Machine, "Machine register", output)
 	},
 }
 
 var listNodesCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List the nodes in a given namespace",
+	Short: "List nodes",
 	Run: func(cmd *cobra.Command, args []string) {
-		n, err := cmd.Flags().GetString("namespace")
+		output, _ := cmd.Flags().GetString("output")
+		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
-			log.Fatalf("Error getting namespace: %s", err)
-		}
-		o, _ := cmd.Flags().GetString("output")
+			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
 
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
-		}
-
-		namespace, err := h.GetNamespace(n)
-		if err != nil {
-			log.Fatalf("Error fetching namespace: %s", err)
-		}
-
-		machines, err := h.ListMachinesInNamespace(n)
-		if err != nil {
-			log.Fatalf("Error fetching machines: %s", err)
-		}
-
-		sharedMachines, err := h.ListSharedMachinesInNamespace(n)
-		if err != nil {
-			log.Fatalf("Error fetching shared machines: %s", err)
-		}
-
-		allMachines := append(*machines, *sharedMachines...)
-
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(allMachines, err, o)
 			return
 		}
 
-		if err != nil {
-			log.Fatalf("Error getting nodes: %s", err)
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.ListMachinesRequest{
+			Namespace: namespace,
 		}
 
-		d, err := nodesToPtables(*namespace, allMachines)
+		response, err := client.ListMachines(ctx, request)
 		if err != nil {
-			log.Fatalf("Error converting to table: %s", err)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
+				output,
+			)
+
+			return
 		}
 
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
-		if err != nil {
-			log.Fatal(err)
+		if output != "" {
+			SuccessOutput(response.Machines, "", output)
+
+			return
 		}
+
+		tableData, err := nodesToPtables(namespace, response.Machines)
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+
+			return
+		}
+
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
+
+			return
+		}
+	},
+}
+
+var expireNodeCmd = &cobra.Command{
+	Use:     "expire",
+	Short:   "Expire (log out) a machine in your network",
+	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
+	Aliases: []string{"logout"},
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		identifier, err := cmd.Flags().GetUint64("identifier")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting ID to integer: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.ExpireMachineRequest{
+			MachineId: identifier,
+		}
+
+		response, err := client.ExpireMachine(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot expire machine: %s\n",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(response.Machine, "Machine expired", output)
 	},
 }
 
 var deleteNodeCmd = &cobra.Command{
-	Use:   "delete ID",
+	Use:   "delete",
 	Short: "Delete a node",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
-		h, err := getHeadscaleApp()
+		output, _ := cmd.Flags().GetString("output")
+
+		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting ID to integer: %s", err),
+				output,
+			)
+
+			return
 		}
-		id, err := strconv.Atoi(args[0])
-		if err != nil {
-			log.Fatalf("Error converting ID to integer: %s", err)
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		getRequest := &v1.GetMachineRequest{
+			MachineId: identifier,
 		}
-		m, err := h.GetMachineByID(uint64(id))
+
+		getResponse, err := client.GetMachine(ctx, getRequest)
 		if err != nil {
-			log.Fatalf("Error getting node: %s", err)
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Error getting node node: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		deleteRequest := &v1.DeleteMachineRequest{
+			MachineId: identifier,
 		}
 
 		confirm := false
-		prompt := &survey.Confirm{
-			Message: fmt.Sprintf("Do you want to remove the node %s?", m.Name),
-		}
-		err = survey.AskOne(prompt, &confirm)
-		if err != nil {
-			return
+		force, _ := cmd.Flags().GetBool("force")
+		if !force {
+			prompt := &survey.Confirm{
+				Message: fmt.Sprintf(
+					"Do you want to remove the node %s?",
+					getResponse.GetMachine().Name,
+				),
+			}
+			err = survey.AskOne(prompt, &confirm)
+			if err != nil {
+				return
+			}
 		}
 
-		if confirm {
-			err = h.DeleteMachine(m)
-			if err != nil {
-				log.Fatalf("Error deleting node: %s", err)
+		if confirm || force {
+			response, err := client.DeleteMachine(ctx, deleteRequest)
+			if output != "" {
+				SuccessOutput(response, "", output)
+
+				return
 			}
-			fmt.Printf("Node deleted\n")
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf(
+						"Error deleting node: %s",
+						status.Convert(err).Message(),
+					),
+					output,
+				)
+
+				return
+			}
+			SuccessOutput(
+				map[string]string{"Result": "Node deleted"},
+				"Node deleted",
+				output,
+			)
 		} else {
-			fmt.Printf("Node not deleted\n")
+			SuccessOutput(map[string]string{"Result": "Node not deleted"}, "Node not deleted", output)
 		}
 	},
+}
+
+func sharingWorker(
+	cmd *cobra.Command,
+) (string, *v1.Machine, *v1.Namespace, error) {
+	output, _ := cmd.Flags().GetString("output")
+	namespaceStr, err := cmd.Flags().GetString("namespace")
+	if err != nil {
+		ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+
+		return "", nil, nil, err
+	}
+
+	ctx, client, conn, cancel := getHeadscaleCLIClient()
+	defer cancel()
+	defer conn.Close()
+
+	identifier, err := cmd.Flags().GetUint64("identifier")
+	if err != nil {
+		ErrorOutput(err, fmt.Sprintf("Error converting ID to integer: %s", err), output)
+
+		return "", nil, nil, err
+	}
+
+	machineRequest := &v1.GetMachineRequest{
+		MachineId: identifier,
+	}
+
+	machineResponse, err := client.GetMachine(ctx, machineRequest)
+	if err != nil {
+		ErrorOutput(
+			err,
+			fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()),
+			output,
+		)
+
+		return "", nil, nil, err
+	}
+
+	namespaceRequest := &v1.GetNamespaceRequest{
+		Name: namespaceStr,
+	}
+
+	namespaceResponse, err := client.GetNamespace(ctx, namespaceRequest)
+	if err != nil {
+		ErrorOutput(
+			err,
+			fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()),
+			output,
+		)
+
+		return "", nil, nil, err
+	}
+
+	return output, machineResponse.GetMachine(), namespaceResponse.GetNamespace(), nil
 }
 
 var shareMachineCmd = &cobra.Command{
-	Use:   "share ID namespace",
+	Use:   "share",
 	Short: "Shares a node from the current namespace to the specified one",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 2 {
-			return fmt.Errorf("missing parameters")
-		}
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
-		namespace, err := cmd.Flags().GetString("namespace")
+		output, machine, namespace, err := sharingWorker(cmd)
 		if err != nil {
-			log.Fatalf("Error getting namespace: %s", err)
-		}
-		output, _ := cmd.Flags().GetString("output")
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to fetch namespace or machine: %s", err),
+				output,
+			)
 
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
-		}
-
-		_, err = h.GetNamespace(namespace)
-		if err != nil {
-			log.Fatalf("Error fetching origin namespace: %s", err)
-		}
-
-		destinationNamespace, err := h.GetNamespace(args[1])
-		if err != nil {
-			log.Fatalf("Error fetching destination namespace: %s", err)
-		}
-
-		id, err := strconv.Atoi(args[0])
-		if err != nil {
-			log.Fatalf("Error converting ID to integer: %s", err)
-		}
-		machine, err := h.GetMachineByID(uint64(id))
-		if err != nil {
-			log.Fatalf("Error getting node: %s", err)
-		}
-
-		err = h.AddSharedMachineToNamespace(machine, destinationNamespace)
-		if strings.HasPrefix(output, "json") {
-			JsonOutput(map[string]string{"Result": "Node shared"}, err, output)
-			return
-		}
-		if err != nil {
-			fmt.Printf("Error sharing node: %s\n", err)
 			return
 		}
 
-		fmt.Println("Node shared!")
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.ShareMachineRequest{
+			MachineId: machine.Id,
+			Namespace: namespace.Name,
+		}
+
+		response, err := client.ShareMachine(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error sharing node: %s", status.Convert(err).Message()),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(response.Machine, "Node shared", output)
 	},
 }
 
-func nodesToPtables(currentNamespace headscale.Namespace, machines []headscale.Machine) (pterm.TableData, error) {
-	d := pterm.TableData{{"ID", "Name", "NodeKey", "Namespace", "IP address", "Ephemeral", "Last seen", "Online"}}
+var unshareMachineCmd = &cobra.Command{
+	Use:   "unshare",
+	Short: "Unshares a node from the specified namespace",
+	Run: func(cmd *cobra.Command, args []string) {
+		output, machine, namespace, err := sharingWorker(cmd)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to fetch namespace or machine: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.UnshareMachineRequest{
+			MachineId: machine.Id,
+			Namespace: namespace.Name,
+		}
+
+		response, err := client.UnshareMachine(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error unsharing node: %s", status.Convert(err).Message()),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(response.Machine, "Node unshared", output)
+	},
+}
+
+func nodesToPtables(
+	currentNamespace string,
+	machines []*v1.Machine,
+) (pterm.TableData, error) {
+	tableData := pterm.TableData{
+		{
+			"ID",
+			"Name",
+			"NodeKey",
+			"Namespace",
+			"IP address",
+			"Ephemeral",
+			"Last seen",
+			"Online",
+			"Expired",
+		},
+	}
 
 	for _, machine := range machines {
 		var ephemeral bool
-		if machine.AuthKey != nil && machine.AuthKey.Ephemeral {
+		if machine.PreAuthKey != nil && machine.PreAuthKey.Ephemeral {
 			ephemeral = true
 		}
+
 		var lastSeen time.Time
 		var lastSeenTime string
 		if machine.LastSeen != nil {
-			lastSeen = *machine.LastSeen
+			lastSeen = machine.LastSeen.AsTime()
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
+
+		var expiry time.Time
+		if machine.Expiry != nil {
+			expiry = machine.Expiry.AsTime()
+		}
+
 		nKey, err := wgkey.ParseHex(machine.NodeKey)
 		if err != nil {
 			return nil, err
@@ -238,19 +493,43 @@ func nodesToPtables(currentNamespace headscale.Namespace, machines []headscale.M
 		nodeKey := tailcfg.NodeKey(nKey)
 
 		var online string
-		if lastSeen.After(time.Now().Add(-5 * time.Minute)) { // TODO: Find a better way to reliably show if online
-			online = pterm.LightGreen("true")
+		if lastSeen.After(
+			time.Now().Add(-5 * time.Minute),
+		) { // TODO: Find a better way to reliably show if online
+			online = pterm.LightGreen("online")
 		} else {
-			online = pterm.LightRed("false")
+			online = pterm.LightRed("offline")
+		}
+
+		var expired string
+		if expiry.IsZero() || expiry.After(time.Now()) {
+			expired = pterm.LightGreen("no")
+		} else {
+			expired = pterm.LightRed("yes")
 		}
 
 		var namespace string
-		if currentNamespace.ID == machine.NamespaceID {
+		if currentNamespace == "" || (currentNamespace == machine.Namespace.Name) {
 			namespace = pterm.LightMagenta(machine.Namespace.Name)
 		} else {
+			// Shared into this namespace
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
-		d = append(d, []string{strconv.FormatUint(machine.ID, 10), machine.Name, nodeKey.ShortString(), namespace, machine.IPAddress, strconv.FormatBool(ephemeral), lastSeenTime, online})
+		tableData = append(
+			tableData,
+			[]string{
+				strconv.FormatUint(machine.Id, headscale.Base10),
+				machine.Name,
+				nodeKey.ShortString(),
+				namespace,
+				machine.IpAddress,
+				strconv.FormatBool(ephemeral),
+				lastSeenTime,
+				online,
+				expired,
+			},
+		)
 	}
-	return d, nil
+
+	return tableData, nil
 }

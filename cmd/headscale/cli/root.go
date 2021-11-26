@@ -8,7 +8,10 @@ import (
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringP("output", "o", "", "Output format. Empty for human-readable, 'json' or 'json-line'")
+	rootCmd.PersistentFlags().
+		StringP("output", "o", "", "Output format. Empty for human-readable, 'json', 'json-line' or 'yaml'")
+	rootCmd.PersistentFlags().
+		Bool("force", false, "Disable prompts and forces the execution")
 }
 
 var rootCmd = &cobra.Command{

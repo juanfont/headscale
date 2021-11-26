@@ -1,0 +1,110 @@
+syntax = "proto3";
+package headscale.v1;
+option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+import "google/protobuf/timestamp.proto";
+import "headscale/v1/namespace.proto";
+import "headscale/v1/preauthkey.proto";
+
+enum RegisterMethod {
+    REGISTER_METHOD_UNSPECIFIED = 0;
+    REGISTER_METHOD_AUTH_KEY    = 1;
+    REGISTER_METHOD_CLI         = 2;
+    REGISTER_METHOD_OIDC        = 3;
+}
+
+message Machine {
+    uint64 id           = 1;
+    string machine_key  = 2;
+    string node_key     = 3;
+    string disco_key    = 4;
+    string ip_address   = 5;
+    string name         = 6;
+    Namespace namespace = 7;
+
+    bool           registered      = 8;
+    RegisterMethod register_method = 9;
+
+    google.protobuf.Timestamp last_seen              = 10;
+    google.protobuf.Timestamp last_successful_update = 11;
+    google.protobuf.Timestamp expiry                 = 12;
+
+    PreAuthKey pre_auth_key = 13;
+
+    google.protobuf.Timestamp created_at = 14;
+    // google.protobuf.Timestamp updated_at = 14;
+    // google.protobuf.Timestamp deleted_at = 15;
+
+    // bytes host_info      = 15;
+    // bytes endpoints      = 16;
+    // bytes enabled_routes = 17;
+}
+
+message RegisterMachineRequest {
+    string namespace = 1;
+    string key       = 2;
+}
+
+message RegisterMachineResponse {
+    Machine machine = 1;
+}
+
+message GetMachineRequest {
+    uint64 machine_id = 1;
+}
+
+message GetMachineResponse {
+    Machine machine = 1;
+}
+
+message DeleteMachineRequest {
+    uint64 machine_id = 1;
+}
+
+message DeleteMachineResponse {
+}
+
+message ExpireMachineRequest {
+    uint64 machine_id = 1;
+}
+
+message ExpireMachineResponse {
+    Machine machine = 1;
+}
+
+message ListMachinesRequest {
+    string namespace = 1;
+}
+
+message ListMachinesResponse {
+    repeated Machine machines = 1;
+}
+
+message ShareMachineRequest {
+    uint64 machine_id = 1;
+    string namespace  = 2;
+}
+
+message ShareMachineResponse {
+    Machine machine = 1;
+}
+
+message UnshareMachineRequest {
+    uint64 machine_id = 1;
+    string namespace  = 2;
+}
+
+message UnshareMachineResponse {
+    Machine machine = 1;
+}
+
+message DebugCreateMachineRequest {
+    string namespace       = 1;
+    string          key    = 2;
+    string          name   = 3;
+    repeated string routes = 4;
+}
+
+message DebugCreateMachineResponse {
+    Machine machine = 1;
+}

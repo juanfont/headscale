@@ -1,7 +1,7 @@
-# Deploying Headscale on Kubernetes
+# Deploying headscale on Kubernetes
 
 This directory contains [Kustomize](https://kustomize.io) templates that deploy
-Headscale in various configurations.
+headscale in various configurations.
 
 These templates currently support Rancher k3s. Other clusters may require
 adaptation, especially around volume claims and ingress.
@@ -24,6 +24,7 @@ Configure DERP servers by editing `base/site/derp.yaml` if needed.
 You'll somehow need to get `headscale:latest` into your cluster image registry.
 
 An easy way to do this with k3s:
+
 - Reconfigure k3s to use docker instead of containerd (`k3s server --docker`)
 - `docker build -t headscale:latest ..` from here
 
@@ -61,7 +62,7 @@ Use the wrapper script to remotely operate headscale to perform administrative
 tasks like creating namespaces, authkeys, etc.
 
 ```
-[c@nix-slate:~/Projects/headscale/k8s]$ ./headscale.bash 
+[c@nix-slate:~/Projects/headscale/k8s]$ ./headscale.bash
 
 headscale is an open source implementation of the Tailscale control server
 
@@ -72,10 +73,10 @@ Usage:
 
 Available Commands:
   help        Help about any command
-  namespace   Manage the namespaces of Headscale
-  node        Manage the nodes of Headscale
-  preauthkey  Handle the preauthkeys in Headscale
-  routes      Manage the routes of Headscale
+  namespace   Manage the namespaces of headscale
+  node        Manage the nodes of headscale
+  preauthkey  Handle the preauthkeys in headscale
+  routes      Manage the routes of headscale
   serve       Launches the headscale server
   version     Print the version.
 

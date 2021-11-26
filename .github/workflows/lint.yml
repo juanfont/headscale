@@ -1,39 +1,37 @@
+---
 name: CI
 
 on: [push, pull_request]
 
 jobs:
-  # The "build" workflow
-  lint:
-    # The type of runner that the job will run on
+  golangci-lint:
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      # Install and run golangci-lint as a separate step, it's much faster this
-      # way because this action has caching. It'll get run again in `make lint`
-      # below, but it's still much faster in the end than installing
-      # golangci-lint manually in the `Run lint` step.
-      - uses: golangci/golangci-lint-action@v2
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
         with:
-          args: --timeout 5m
+          version: latest
 
-      # Setup Go
-      - name: Setup Go
-        uses: actions/setup-go@v2
+  prettier-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Prettify code
+        uses: creyD/prettier_action@v4.0
         with:
-          go-version: "1.16.3" # The Go version to download (if necessary) and use.
+          prettier_options: >-
+            --check **/*.{ts,js,md,yaml,yml,sass,css,scss,html}
+          only_changed: false
+          dry: true
 
-      # Install all the dependencies
-      - name: Install dependencies
-        run: |
-          go version
-          go install golang.org/x/lint/golint@latest
-          sudo apt update
-          sudo apt install -y make
-
-      - name: Run lint
-        run: make lint
+  proto-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: bufbuild/buf-setup-action@v0.7.0
+      - uses: bufbuild/buf-lint-action@v1
+        with:
+          input: "proto"

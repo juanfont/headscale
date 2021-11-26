@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -9,15 +10,23 @@ import (
 	"time"
 
 	"github.com/fatih/set"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
-
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/wgkey"
 )
 
-// Machine is a Headscale client
+const (
+	errMachineNotFound            = Error("machine not found")
+	errMachineAlreadyRegistered   = Error("machine already registered")
+	errMachineRouteIsNotAvailable = Error("route is not available on machine")
+)
+
+// Machine is a Headscale client.
 type Machine struct {
 	ID          uint64 `gorm:"primary_key"`
 	MachineKey  string `gorm:"type:varchar(64);unique_index"`
@@ -51,43 +60,57 @@ type (
 	MachinesP []*Machine
 )
 
-// For the time being this method is rather naive
-func (m Machine) isAlreadyRegistered() bool {
-	return m.Registered
+// For the time being this method is rather naive.
+func (machine Machine) isRegistered() bool {
+	return machine.Registered
 }
 
-func (h *Headscale) getDirectPeers(m *Machine) (Machines, error) {
+// isExpired returns whether the machine registration has expired.
+func (machine Machine) isExpired() bool {
+	// If Expiry is not set, the client has not indicated that
+	// it wants an expiry time, it is therefor considered
+	// to mean "not expired"
+	if machine.Expiry.IsZero() {
+		return false
+	}
+
+	return time.Now().UTC().After(*machine.Expiry)
+}
+
+func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
 	log.Trace().
-		Str("func", "getDirectPeers").
-		Str("machine", m.Name).
+		Caller().
+		Str("machine", machine.Name).
 		Msg("Finding direct peers")
 
 	machines := Machines{}
 	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
-		m.NamespaceID, m.MachineKey).Find(&machines).Error; err != nil {
+		machine.NamespaceID, machine.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
+
 		return Machines{}, err
 	}
 
 	sort.Slice(machines, func(i, j int) bool { return machines[i].ID < machines[j].ID })
 
 	log.Trace().
-		Str("func", "getDirectmachines").
-		Str("machine", m.Name).
+		Caller().
+		Str("machine", machine.Name).
 		Msgf("Found direct machines: %s", machines.String())
+
 	return machines, nil
 }
 
-func (h *Headscale) getShared(m *Machine) (Machines, error) {
+// getShared fetches machines that are shared to the `Namespace` of the machine we are getting peers for.
+func (h *Headscale) getShared(machine *Machine) (Machines, error) {
 	log.Trace().
-		Str("func", "getShared").
-		Str("machine", m.Name).
+		Caller().
+		Str("machine", machine.Name).
 		Msg("Finding shared peers")
 
-	// We fetch here machines that are shared to the `Namespace` of the machine we are getting peers for
 	sharedMachines := []SharedMachine{}
-	if err := h.db.Preload("Namespace").Preload("Machine").Where("namespace_id = ?",
-		m.NamespaceID).Find(&sharedMachines).Error; err != nil {
+	if err := h.db.Preload("Namespace").Preload("Machine").Preload("Machine.Namespace").Where("namespace_id = ?",
+		machine.NamespaceID).Find(&sharedMachines).Error; err != nil {
 		return Machines{}, err
 	}
 
@@ -99,110 +122,222 @@ func (h *Headscale) getShared(m *Machine) (Machines, error) {
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
 
 	log.Trace().
-		Str("func", "getShared").
-		Str("machine", m.Name).
+		Caller().
+		Str("machine", machine.Name).
 		Msgf("Found shared peers: %s", peers.String())
+
 	return peers, nil
 }
 
-func (h *Headscale) getPeers(m *Machine) (Machines, error) {
-	direct, err := h.getDirectPeers(m)
-	if err != nil {
-		log.Error().
-			Str("func", "getPeers").
-			Err(err).
-			Msg("Cannot fetch peers")
+// getSharedTo fetches the machines of the namespaces this machine is shared in.
+func (h *Headscale) getSharedTo(machine *Machine) (Machines, error) {
+	log.Trace().
+		Caller().
+		Str("machine", machine.Name).
+		Msg("Finding peers in namespaces this machine is shared with")
+
+	sharedMachines := []SharedMachine{}
+	if err := h.db.Preload("Namespace").Preload("Machine").Preload("Machine.Namespace").Where("machine_id = ?",
+		machine.ID).Find(&sharedMachines).Error; err != nil {
 		return Machines{}, err
 	}
 
-	shared, err := h.getShared(m)
+	peers := make(Machines, 0)
+	for _, sharedMachine := range sharedMachines {
+		namespaceMachines, err := h.ListMachinesInNamespace(
+			sharedMachine.Namespace.Name,
+		)
+		if err != nil {
+			return Machines{}, err
+		}
+		peers = append(peers, namespaceMachines...)
+	}
+
+	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
+
+	log.Trace().
+		Caller().
+		Str("machine", machine.Name).
+		Msgf("Found peers we are shared with: %s", peers.String())
+
+	return peers, nil
+}
+
+func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
+	direct, err := h.getDirectPeers(machine)
 	if err != nil {
 		log.Error().
-			Str("func", "getDirectPeers").
+			Caller().
 			Err(err).
 			Msg("Cannot fetch peers")
+
+		return Machines{}, err
+	}
+
+	shared, err := h.getShared(machine)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot fetch peers")
+
+		return Machines{}, err
+	}
+
+	sharedTo, err := h.getSharedTo(machine)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot fetch peers")
+
 		return Machines{}, err
 	}
 
 	peers := append(direct, shared...)
+	peers = append(peers, sharedTo...)
+
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
 
 	log.Trace().
-		Str("func", "getShared").
-		Str("machine", m.Name).
+		Caller().
+		Str("machine", machine.Name).
 		Msgf("Found total peers: %s", peers.String())
 
 	return peers, nil
 }
 
-// GetMachine finds a Machine by name and namespace and returns the Machine struct
+func (h *Headscale) getValidPeers(machine *Machine) (Machines, error) {
+	validPeers := make(Machines, 0)
+
+	peers, err := h.getPeers(machine)
+	if err != nil {
+		return Machines{}, err
+	}
+
+	for _, peer := range peers {
+		if peer.isRegistered() && !peer.isExpired() {
+			validPeers = append(validPeers, peer)
+		}
+	}
+
+	return validPeers, nil
+}
+
+func (h *Headscale) ListMachines() ([]Machine, error) {
+	machines := []Machine{}
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Find(&machines).Error; err != nil {
+		return nil, err
+	}
+
+	return machines, nil
+}
+
+// GetMachine finds a Machine by name and namespace and returns the Machine struct.
 func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) {
 	machines, err := h.ListMachinesInNamespace(namespace)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, m := range *machines {
+	for _, m := range machines {
 		if m.Name == name {
 			return &m, nil
 		}
 	}
-	return nil, fmt.Errorf("machine not found")
+
+	return nil, errMachineNotFound
 }
 
-// GetMachineByID finds a Machine by ID and returns the Machine struct
+// GetMachineByID finds a Machine by ID and returns the Machine struct.
 func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	m := Machine{}
 	if result := h.db.Preload("Namespace").Find(&Machine{ID: id}).First(&m); result.Error != nil {
 		return nil, result.Error
 	}
+
 	return &m, nil
 }
 
-// GetMachineByMachineKey finds a Machine by ID and returns the Machine struct
-func (h *Headscale) GetMachineByMachineKey(mKey string) (*Machine, error) {
+// GetMachineByMachineKey finds a Machine by ID and returns the Machine struct.
+func (h *Headscale) GetMachineByMachineKey(machineKey string) (*Machine, error) {
 	m := Machine{}
-	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", mKey); result.Error != nil {
+	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", machineKey); result.Error != nil {
 		return nil, result.Error
 	}
+
 	return &m, nil
 }
 
 // UpdateMachine takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
-func (h *Headscale) UpdateMachine(m *Machine) error {
-	if result := h.db.Find(m).First(&m); result.Error != nil {
+func (h *Headscale) UpdateMachine(machine *Machine) error {
+	if result := h.db.Find(machine).First(&machine); result.Error != nil {
 		return result.Error
 	}
+
 	return nil
 }
 
-// DeleteMachine softs deletes a Machine from the database
-func (h *Headscale) DeleteMachine(m *Machine) error {
-	m.Registered = false
-	namespaceID := m.NamespaceID
-	h.db.Save(&m) // we mark it as unregistered, just in case
-	if err := h.db.Delete(&m).Error; err != nil {
+// ExpireMachine takes a Machine struct and sets the expire field to now.
+func (h *Headscale) ExpireMachine(machine *Machine) {
+	now := time.Now()
+	machine.Expiry = &now
+
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
+	h.db.Save(machine)
+}
+
+// RefreshMachine takes a Machine struct and sets the expire field to now.
+func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
+	now := time.Now()
+
+	machine.LastSuccessfulUpdate = &now
+	machine.Expiry = &expiry
+
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
+	h.db.Save(machine)
+}
+
+// DeleteMachine softs deletes a Machine from the database.
+func (h *Headscale) DeleteMachine(machine *Machine) error {
+	err := h.RemoveSharedMachineFromAllNamespaces(machine)
+	if err != nil && errors.Is(err, errMachineNotShared) {
+		return err
+	}
+
+	machine.Registered = false
+	namespaceID := machine.NamespaceID
+	h.db.Save(&machine) // we mark it as unregistered, just in case
+	if err := h.db.Delete(&machine).Error; err != nil {
 		return err
 	}
 
 	return h.RequestMapUpdates(namespaceID)
 }
 
-// HardDeleteMachine hard deletes a Machine from the database
-func (h *Headscale) HardDeleteMachine(m *Machine) error {
-	namespaceID := m.NamespaceID
-	if err := h.db.Unscoped().Delete(&m).Error; err != nil {
+// HardDeleteMachine hard deletes a Machine from the database.
+func (h *Headscale) HardDeleteMachine(machine *Machine) error {
+	err := h.RemoveSharedMachineFromAllNamespaces(machine)
+	if err != nil && errors.Is(err, errMachineNotShared) {
 		return err
 	}
+
+	namespaceID := machine.NamespaceID
+	if err := h.db.Unscoped().Delete(&machine).Error; err != nil {
+		return err
+	}
+
 	return h.RequestMapUpdates(namespaceID)
 }
 
-// GetHostInfo returns a Hostinfo struct for the machine
-func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
+// GetHostInfo returns a Hostinfo struct for the machine.
+func (machine *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 	hostinfo := tailcfg.Hostinfo{}
-	if len(m.HostInfo) != 0 {
-		hi, err := m.HostInfo.MarshalJSON()
+	if len(machine.HostInfo) != 0 {
+		hi, err := machine.HostInfo.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -211,21 +346,21 @@ func (m *Machine) GetHostInfo() (*tailcfg.Hostinfo, error) {
 			return nil, err
 		}
 	}
+
 	return &hostinfo, nil
 }
 
-func (h *Headscale) isOutdated(m *Machine) bool {
-	err := h.UpdateMachine(m)
-	if err != nil {
+func (h *Headscale) isOutdated(machine *Machine) bool {
+	if err := h.UpdateMachine(machine); err != nil {
 		// It does not seem meaningful to propagate this error as the end result
 		// will have to be that the machine has to be considered outdated.
 		return true
 	}
 
-	sharedMachines, _ := h.getShared(m)
+	sharedMachines, _ := h.getShared(machine)
 
 	namespaceSet := set.New(set.ThreadSafe)
-	namespaceSet.Add(m.Namespace.Name)
+	namespaceSet.Add(machine.Namespace.Name)
 
 	// Check if any of our shared namespaces has updates that we have
 	// not propagated.
@@ -235,27 +370,30 @@ func (h *Headscale) isOutdated(m *Machine) bool {
 
 	namespaces := make([]string, namespaceSet.Size())
 	for index, namespace := range namespaceSet.List() {
-		namespaces[index] = namespace.(string)
+		if name, ok := namespace.(string); ok {
+			namespaces[index] = name
+		}
 	}
 
 	lastChange := h.getLastStateChange(namespaces...)
 	log.Trace().
-		Str("func", "keepAlive").
-		Str("machine", m.Name).
-		Time("last_successful_update", *m.LastSuccessfulUpdate).
+		Caller().
+		Str("machine", machine.Name).
+		Time("last_successful_update", *machine.LastSuccessfulUpdate).
 		Time("last_state_change", lastChange).
-		Msgf("Checking if %s is missing updates", m.Name)
-	return m.LastSuccessfulUpdate.Before(lastChange)
+		Msgf("Checking if %s is missing updates", machine.Name)
+
+	return machine.LastSuccessfulUpdate.Before(lastChange)
 }
 
-func (m Machine) String() string {
-	return m.Name
+func (machine Machine) String() string {
+	return machine.Name
 }
 
-func (ms Machines) String() string {
-	temp := make([]string, len(ms))
+func (machines Machines) String() string {
+	temp := make([]string, len(machines))
 
-	for index, machine := range ms {
+	for index, machine := range machines {
 		temp[index] = machine.Name
 	}
 
@@ -263,20 +401,24 @@ func (ms Machines) String() string {
 }
 
 // TODO(kradalby): Remove when we have generics...
-func (ms MachinesP) String() string {
-	temp := make([]string, len(ms))
+func (machines MachinesP) String() string {
+	temp := make([]string, len(machines))
 
-	for index, machine := range ms {
+	for index, machine := range machines {
 		temp[index] = machine.Name
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (ms Machines) toNodes(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) ([]*tailcfg.Node, error) {
-	nodes := make([]*tailcfg.Node, len(ms))
+func (machines Machines) toNodes(
+	baseDomain string,
+	dnsConfig *tailcfg.DNSConfig,
+	includeRoutes bool,
+) ([]*tailcfg.Node, error) {
+	nodes := make([]*tailcfg.Node, len(machines))
 
-	for index, machine := range ms {
+	for index, machine := range machines {
 		node, err := machine.toNode(baseDomain, dnsConfig, includeRoutes)
 		if err != nil {
 			return nil, err
@@ -289,20 +431,25 @@ func (ms Machines) toNodes(baseDomain string, dnsConfig *tailcfg.DNSConfig, incl
 }
 
 // toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
-// as per the expected behaviour in the official SaaS
-func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, includeRoutes bool) (*tailcfg.Node, error) {
-	nKey, err := wgkey.ParseHex(m.NodeKey)
+// as per the expected behaviour in the official SaaS.
+func (machine Machine) toNode(
+	baseDomain string,
+	dnsConfig *tailcfg.DNSConfig,
+	includeRoutes bool,
+) (*tailcfg.Node, error) {
+	nodeKey, err := wgkey.ParseHex(machine.NodeKey)
 	if err != nil {
 		return nil, err
 	}
-	mKey, err := wgkey.ParseHex(m.MachineKey)
+
+	machineKey, err := wgkey.ParseHex(machine.MachineKey)
 	if err != nil {
 		return nil, err
 	}
 
 	var discoKey tailcfg.DiscoKey
-	if m.DiscoKey != "" {
-		dKey, err := wgkey.ParseHex(m.DiscoKey)
+	if machine.DiscoKey != "" {
+		dKey, err := wgkey.ParseHex(machine.DiscoKey)
 		if err != nil {
 			return nil, err
 		}
@@ -312,23 +459,27 @@ func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, include
 	}
 
 	addrs := []netaddr.IPPrefix{}
-	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", m.IPAddress))
+	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", machine.IPAddress))
 	if err != nil {
 		log.Trace().
-			Str("func", "toNode").
-			Str("ip", m.IPAddress).
-			Msgf("Failed to parse IP Prefix from IP: %s", m.IPAddress)
+			Caller().
+			Str("ip", machine.IPAddress).
+			Msgf("Failed to parse IP Prefix from IP: %s", machine.IPAddress)
+
 		return nil, err
 	}
 	addrs = append(addrs, ip) // missing the ipv6 ?
 
 	allowedIPs := []netaddr.IPPrefix{}
-	allowedIPs = append(allowedIPs, ip) // we append the node own IP, as it is required by the clients
+	allowedIPs = append(
+		allowedIPs,
+		ip,
+	) // we append the node own IP, as it is required by the clients
 
 	if includeRoutes {
 		routesStr := []string{}
-		if len(m.EnabledRoutes) != 0 {
-			allwIps, err := m.EnabledRoutes.MarshalJSON()
+		if len(machine.EnabledRoutes) != 0 {
+			allwIps, err := machine.EnabledRoutes.MarshalJSON()
 			if err != nil {
 				return nil, err
 			}
@@ -348,8 +499,8 @@ func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, include
 	}
 
 	endpoints := []string{}
-	if len(m.Endpoints) != 0 {
-		be, err := m.Endpoints.MarshalJSON()
+	if len(machine.Endpoints) != 0 {
+		be, err := machine.Endpoints.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -360,8 +511,8 @@ func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, include
 	}
 
 	hostinfo := tailcfg.Hostinfo{}
-	if len(m.HostInfo) != 0 {
-		hi, err := m.HostInfo.MarshalJSON()
+	if len(machine.HostInfo) != 0 {
+		hi, err := machine.HostInfo.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -379,27 +530,34 @@ func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, include
 	}
 
 	var keyExpiry time.Time
-	if m.Expiry != nil {
-		keyExpiry = *m.Expiry
+	if machine.Expiry != nil {
+		keyExpiry = *machine.Expiry
 	} else {
 		keyExpiry = time.Time{}
 	}
 
 	var hostname string
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
-		hostname = fmt.Sprintf("%s.%s.%s", m.Name, m.Namespace.Name, baseDomain)
+		hostname = fmt.Sprintf(
+			"%s.%s.%s",
+			machine.Name,
+			machine.Namespace.Name,
+			baseDomain,
+		)
 	} else {
-		hostname = m.Name
+		hostname = machine.Name
 	}
 
-	n := tailcfg.Node{
-		ID:         tailcfg.NodeID(m.ID),                               // this is the actual ID
-		StableID:   tailcfg.StableNodeID(strconv.FormatUint(m.ID, 10)), // in headscale, unlike tailcontrol server, IDs are permanent
+	node := tailcfg.Node{
+		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
+		StableID: tailcfg.StableNodeID(
+			strconv.FormatUint(machine.ID, Base10),
+		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostname,
-		User:       tailcfg.UserID(m.NamespaceID),
-		Key:        tailcfg.NodeKey(nKey),
+		User:       tailcfg.UserID(machine.NamespaceID),
+		Key:        tailcfg.NodeKey(nodeKey),
 		KeyExpiry:  keyExpiry,
-		Machine:    tailcfg.MachineKey(mKey),
+		Machine:    tailcfg.MachineKey(machineKey),
 		DiscoKey:   discoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
@@ -407,12 +565,263 @@ func (m Machine) toNode(baseDomain string, dnsConfig *tailcfg.DNSConfig, include
 		DERP:       derp,
 
 		Hostinfo: hostinfo,
-		Created:  m.CreatedAt,
-		LastSeen: m.LastSeen,
+		Created:  machine.CreatedAt,
+		LastSeen: machine.LastSeen,
 
 		KeepAlive:         true,
-		MachineAuthorized: m.Registered,
+		MachineAuthorized: machine.Registered,
 		Capabilities:      []string{tailcfg.CapabilityFileSharing},
 	}
-	return &n, nil
+
+	return &node, nil
+}
+
+func (machine *Machine) toProto() *v1.Machine {
+	machineProto := &v1.Machine{
+		Id:         machine.ID,
+		MachineKey: machine.MachineKey,
+
+		NodeKey:   machine.NodeKey,
+		DiscoKey:  machine.DiscoKey,
+		IpAddress: machine.IPAddress,
+		Name:      machine.Name,
+		Namespace: machine.Namespace.toProto(),
+
+		Registered: machine.Registered,
+
+		// TODO(kradalby): Implement register method enum converter
+		// RegisterMethod: ,
+
+		CreatedAt: timestamppb.New(machine.CreatedAt),
+	}
+
+	if machine.AuthKey != nil {
+		machineProto.PreAuthKey = machine.AuthKey.toProto()
+	}
+
+	if machine.LastSeen != nil {
+		machineProto.LastSeen = timestamppb.New(*machine.LastSeen)
+	}
+
+	if machine.LastSuccessfulUpdate != nil {
+		machineProto.LastSuccessfulUpdate = timestamppb.New(
+			*machine.LastSuccessfulUpdate,
+		)
+	}
+
+	if machine.Expiry != nil {
+		machineProto.Expiry = timestamppb.New(*machine.Expiry)
+	}
+
+	return machineProto
+}
+
+// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
+func (h *Headscale) RegisterMachine(
+	key string,
+	namespaceName string,
+) (*Machine, error) {
+	namespace, err := h.GetNamespace(namespaceName)
+	if err != nil {
+		return nil, err
+	}
+	machineKey, err := wgkey.ParseHex(key)
+	if err != nil {
+		return nil, err
+	}
+
+	machine := Machine{}
+	if result := h.db.First(&machine, "machine_key = ?", machineKey.HexString()); errors.Is(
+		result.Error,
+		gorm.ErrRecordNotFound,
+	) {
+		return nil, errMachineNotFound
+	}
+
+	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
+	// This means that if a user is to slow with register a machine, it will possibly not
+	// have the correct expiry.
+	requestedTime := time.Time{}
+	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.HexString()); found {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("Expiry time found in cache, assigning to node")
+		if reqTime, ok := requestedTimeIf.(time.Time); ok {
+			requestedTime = reqTime
+		}
+	}
+
+	if machine.isRegistered() {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("machine already registered, reauthenticating")
+
+		h.RefreshMachine(&machine, requestedTime)
+
+		return &machine, nil
+	}
+
+	log.Trace().
+		Caller().
+		Str("machine", machine.Name).
+		Msg("Attempting to register machine")
+
+	if machine.isRegistered() {
+		err := errMachineAlreadyRegistered
+		log.Error().
+			Caller().
+			Err(err).
+			Str("machine", machine.Name).
+			Msg("Attempting to register machine")
+
+		return nil, err
+	}
+
+	ip, err := h.getAvailableIP()
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Str("machine", machine.Name).
+			Msg("Could not find IP for the new machine")
+
+		return nil, err
+	}
+
+	log.Trace().
+		Caller().
+		Str("machine", machine.Name).
+		Str("ip", ip.String()).
+		Msg("Found IP for host")
+
+	machine.IPAddress = ip.String()
+	machine.NamespaceID = namespace.ID
+	machine.Registered = true
+	machine.RegisterMethod = RegisterMethodCLI
+	machine.Expiry = &requestedTime
+	h.db.Save(&machine)
+
+	log.Trace().
+		Caller().
+		Str("machine", machine.Name).
+		Str("ip", ip.String()).
+		Msg("Machine registered with the database")
+
+	return &machine, nil
+}
+
+func (machine *Machine) GetAdvertisedRoutes() ([]netaddr.IPPrefix, error) {
+	hostInfo, err := machine.GetHostInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	return hostInfo.RoutableIPs, nil
+}
+
+func (machine *Machine) GetEnabledRoutes() ([]netaddr.IPPrefix, error) {
+	data, err := machine.EnabledRoutes.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+
+	routesStr := []string{}
+	err = json.Unmarshal(data, &routesStr)
+	if err != nil {
+		return nil, err
+	}
+
+	routes := make([]netaddr.IPPrefix, len(routesStr))
+	for index, routeStr := range routesStr {
+		route, err := netaddr.ParseIPPrefix(routeStr)
+		if err != nil {
+			return nil, err
+		}
+		routes[index] = route
+	}
+
+	return routes, nil
+}
+
+func (machine *Machine) IsRoutesEnabled(routeStr string) bool {
+	route, err := netaddr.ParseIPPrefix(routeStr)
+	if err != nil {
+		return false
+	}
+
+	enabledRoutes, err := machine.GetEnabledRoutes()
+	if err != nil {
+		return false
+	}
+
+	for _, enabledRoute := range enabledRoutes {
+		if route == enabledRoute {
+			return true
+		}
+	}
+
+	return false
+}
+
+// EnableNodeRoute enables new routes based on a list of new routes. It will _replace_ the
+// previous list of routes.
+func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
+	newRoutes := make([]netaddr.IPPrefix, len(routeStrs))
+	for index, routeStr := range routeStrs {
+		route, err := netaddr.ParseIPPrefix(routeStr)
+		if err != nil {
+			return err
+		}
+
+		newRoutes[index] = route
+	}
+
+	availableRoutes, err := machine.GetAdvertisedRoutes()
+	if err != nil {
+		return err
+	}
+
+	for _, newRoute := range newRoutes {
+		if !containsIPPrefix(availableRoutes, newRoute) {
+			return fmt.Errorf(
+				"route (%s) is not available on node %s: %w",
+				machine.Name,
+				newRoute, errMachineRouteIsNotAvailable,
+			)
+		}
+	}
+
+	routes, err := json.Marshal(newRoutes)
+	if err != nil {
+		return err
+	}
+
+	machine.EnabledRoutes = datatypes.JSON(routes)
+	h.db.Save(&machine)
+
+	err = h.RequestMapUpdates(machine.NamespaceID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (machine *Machine) RoutesToProto() (*v1.Routes, error) {
+	availableRoutes, err := machine.GetAdvertisedRoutes()
+	if err != nil {
+		return nil, err
+	}
+
+	enabledRoutes, err := machine.GetEnabledRoutes()
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.Routes{
+		AdvertisedRoutes: ipPrefixToString(availableRoutes),
+		EnabledRoutes:    ipPrefixToString(enabledRoutes),
+	}, nil
 }

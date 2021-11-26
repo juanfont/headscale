@@ -14,36 +14,36 @@ spec:
         app: postgres
     spec:
       containers:
-      - name: postgres
-        image: "postgres:13"
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: postgresql
-              key: password
-        - name: POSTGRES_USER
-          value: headscale
-        ports:
         - name: postgres
-          protocol: TCP
-          containerPort: 5432
-        livenessProbe:
-          tcpSocket:
-            port: 5432
-          initialDelaySeconds: 30
-          timeoutSeconds: 5
-          periodSeconds: 15
-        volumeMounts:
-        - name: pgdata
-          mountPath: /var/lib/postgresql/data
+          image: "postgres:13"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql
+                  key: password
+            - name: POSTGRES_USER
+              value: headscale
+          ports:
+            - name: postgres
+              protocol: TCP
+              containerPort: 5432
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 15
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
   volumeClaimTemplates:
-  - metadata:
-      name: pgdata
-    spec:
-      storageClassName: local-path
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: 1Gi
+    - metadata:
+        name: pgdata
+      spec:
+        storageClassName: local-path
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

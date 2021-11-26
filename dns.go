@@ -4,8 +4,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fatih/set"
 	"inet.af/netaddr"
+	"tailscale.com/tailcfg"
 	"tailscale.com/util/dnsname"
+)
+
+const (
+	ByteSize = 8
 )
 
 // generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
@@ -28,31 +34,28 @@ import (
 
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
-func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) ([]dnsname.FQDN, error) {
-	base, err := dnsname.ToFQDN(baseDomain)
-	if err != nil {
-		return nil, err
-	}
-
+func generateMagicDNSRootDomains(
+	ipPrefix netaddr.IPPrefix,
+) []dnsname.FQDN {
 	// TODO(juanfont): we are not handing out IPv6 addresses yet
 	// and in fact this is Tailscale.com's range (note the fd7a:115c:a1e0: range in the fc00::/7 network)
 	ipv6base := dnsname.FQDN("0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
-	fqdns := []dnsname.FQDN{base, ipv6base}
+	fqdns := []dnsname.FQDN{ipv6base}
 
 	// Conversion to the std lib net.IPnet, a bit easier to operate
 	netRange := ipPrefix.IPNet()
 	maskBits, _ := netRange.Mask.Size()
 
 	// lastOctet is the last IP byte covered by the mask
-	lastOctet := maskBits / 8
+	lastOctet := maskBits / ByteSize
 
 	// wildcardBits is the number of bits not under the mask in the lastOctet
-	wildcardBits := 8 - maskBits%8
+	wildcardBits := ByteSize - maskBits%ByteSize
 
 	// min is the value in the lastOctet byte of the IP
 	// max is basically 2^wildcardBits - i.e., the value when all the wildcardBits are set to 1
 	min := uint(netRange.IP[lastOctet])
-	max := uint((min + 1<<uint(wildcardBits)) - 1)
+	max := (min + 1<<uint(wildcardBits)) - 1
 
 	// here we generate the base domain (e.g., 100.in-addr.arpa., 16.172.in-addr.arpa., etc.)
 	rdnsSlice := []string{}
@@ -69,5 +72,37 @@ func generateMagicDNSRootDomains(ipPrefix netaddr.IPPrefix, baseDomain string) (
 		}
 		fqdns = append(fqdns, fqdn)
 	}
-	return fqdns, nil
+
+	return fqdns
+}
+
+func getMapResponseDNSConfig(
+	dnsConfigOrig *tailcfg.DNSConfig,
+	baseDomain string,
+	machine Machine,
+	peers Machines,
+) *tailcfg.DNSConfig {
+	var dnsConfig *tailcfg.DNSConfig
+	if dnsConfigOrig != nil && dnsConfigOrig.Proxied { // if MagicDNS is enabled
+		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
+		dnsConfig = dnsConfigOrig.Clone()
+		dnsConfig.Domains = append(
+			dnsConfig.Domains,
+			fmt.Sprintf("%s.%s", machine.Namespace.Name, baseDomain),
+		)
+
+		namespaceSet := set.New(set.ThreadSafe)
+		namespaceSet.Add(machine.Namespace)
+		for _, p := range peers {
+			namespaceSet.Add(p.Namespace)
+		}
+		for _, namespace := range namespaceSet.List() {
+			dnsRoute := fmt.Sprintf("%s.%s", namespace.(Namespace).Name, baseDomain)
+			dnsConfig.Routes[dnsRoute] = nil
+		}
+	} else {
+		dnsConfig = dnsConfigOrig
+	}
+
+	return dnsConfig
 }

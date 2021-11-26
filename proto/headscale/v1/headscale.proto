@@ -1,0 +1,158 @@
+syntax = "proto3";
+package headscale.v1;
+option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+import "google/api/annotations.proto";
+
+import "headscale/v1/namespace.proto";
+import "headscale/v1/preauthkey.proto";
+import "headscale/v1/machine.proto";
+import "headscale/v1/routes.proto";
+// import "headscale/v1/device.proto";
+
+service HeadscaleService {
+    // --- Namespace start ---
+    rpc GetNamespace(GetNamespaceRequest) returns (GetNamespaceResponse) {
+        option (google.api.http) = {
+            get: "/api/v1/namespace/{name}"
+        };
+    }
+
+    rpc CreateNamespace(CreateNamespaceRequest) returns (CreateNamespaceResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/namespace"
+            body: "*"
+        };
+    }
+
+    rpc RenameNamespace(RenameNamespaceRequest) returns (RenameNamespaceResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/namespace/{old_name}/rename/{new_name}"
+        };
+    }
+
+    rpc DeleteNamespace(DeleteNamespaceRequest) returns (DeleteNamespaceResponse) {
+        option (google.api.http) = {
+            delete: "/api/v1/namespace/{name}"
+        };
+    }
+
+    rpc ListNamespaces(ListNamespacesRequest) returns (ListNamespacesResponse) {
+        option (google.api.http) = {
+            get: "/api/v1/namespace"
+        };
+    }
+    // --- Namespace end ---
+
+    // --- PreAuthKeys start ---
+    rpc CreatePreAuthKey(CreatePreAuthKeyRequest) returns (CreatePreAuthKeyResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/preauthkey"
+            body: "*"
+        };
+    }
+
+    rpc ExpirePreAuthKey(ExpirePreAuthKeyRequest) returns (ExpirePreAuthKeyResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/preauthkey/expire"
+            body: "*"
+        };
+    }
+
+    rpc ListPreAuthKeys(ListPreAuthKeysRequest) returns (ListPreAuthKeysResponse) {
+        option (google.api.http) = {
+            get: "/api/v1/preauthkey"
+        };
+    }
+    // --- PreAuthKeys end ---
+
+    // --- Machine start ---
+    rpc DebugCreateMachine(DebugCreateMachineRequest) returns (DebugCreateMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/debug/machine"
+            body: "*"
+        };
+    }
+
+    rpc GetMachine(GetMachineRequest) returns (GetMachineResponse) {
+        option (google.api.http) = {
+            get: "/api/v1/machine/{machine_id}"
+        };
+    }
+
+    rpc RegisterMachine(RegisterMachineRequest) returns (RegisterMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/register"
+        };
+    }
+
+    rpc DeleteMachine(DeleteMachineRequest) returns (DeleteMachineResponse) {
+        option (google.api.http) = {
+            delete: "/api/v1/machine/{machine_id}"
+        };
+    }
+
+    rpc ExpireMachine(ExpireMachineRequest) returns (ExpireMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/expire"
+        };
+    }
+
+    rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse) {
+        option (google.api.http) = {
+            get: "/api/v1/machine"
+        };
+    }
+
+    rpc ShareMachine(ShareMachineRequest) returns (ShareMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/share/{namespace}"
+        };
+    }
+
+    rpc UnshareMachine(UnshareMachineRequest) returns (UnshareMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/unshare/{namespace}"
+        };
+    }
+    // --- Machine end ---
+
+    // --- Route start ---
+    rpc GetMachineRoute(GetMachineRouteRequest) returns (GetMachineRouteResponse) {
+        option (google.api.http) = {
+            get: "/api/v1/machine/{machine_id}/routes"
+        };
+    }
+
+    rpc EnableMachineRoutes(EnableMachineRoutesRequest) returns (EnableMachineRoutesResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/routes"
+        };
+    }
+    // --- Route end ---
+
+    // Implement Tailscale API
+    // rpc GetDevice(GetDeviceRequest) returns(GetDeviceResponse) {
+    //     option(google.api.http) = {
+    //         get : "/api/v1/device/{id}"
+    //     };
+    // }
+
+    // rpc DeleteDevice(DeleteDeviceRequest) returns(DeleteDeviceResponse) {
+    //     option(google.api.http) = {
+    //         delete : "/api/v1/device/{id}"
+    //     };
+    // }
+
+    // rpc GetDeviceRoutes(GetDeviceRoutesRequest) returns(GetDeviceRoutesResponse) {
+    //     option(google.api.http) = {
+    //         get : "/api/v1/device/{id}/routes"
+    //     };
+    // }
+
+    // rpc EnableDeviceRoutes(EnableDeviceRoutesRequest) returns(EnableDeviceRoutesResponse) {
+    //     option(google.api.http) = {
+    //         post : "/api/v1/device/{id}/routes"
+    //     };
+    // }
+}
