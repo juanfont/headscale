@@ -99,17 +99,16 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 	ctx context.Context,
 	request *v1.CreatePreAuthKeyRequest,
 ) (*v1.CreatePreAuthKeyResponse, error) {
-	var expiration *time.Time
+	var expiration time.Time
 	if request.GetExpiration() != nil {
-		expirationTime := request.GetExpiration().AsTime()
-		expiration = &expirationTime
+		expiration = request.GetExpiration().AsTime()
 	}
 
 	preAuthKey, err := api.h.CreatePreAuthKeyWithSubnet(
 		request.GetNamespace(),
 		request.GetReusable(),
 		request.GetEphemeral(),
-		expiration,
+		&expiration,
 		request.GetSubnet(),
 	)
 	if err != nil {
