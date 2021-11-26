@@ -10,6 +10,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
+	"inet.af/netaddr"
 )
 
 const (
@@ -61,6 +62,15 @@ func (h *Headscale) CreatePreAuthKeyWithSubnet(
 	kstr, err := h.generateKey()
 	if err != nil {
 		return nil, err
+	}
+
+	if subnet != "" {
+		ipPrefix, err := netaddr.ParseIPPrefix(subnet)
+		if err != nil {
+			return nil, err
+		}
+
+		subnet = ipPrefix.String()
 	}
 
 	key := PreAuthKey{

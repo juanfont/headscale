@@ -142,17 +142,6 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		subnet, _ := cmd.Flags().GetString("subnet")
 
-		if subnet != "" {
-			ipPrefix, err := netaddr.ParseIPPrefix(subnet)
-			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Error parsing subnet: %s", err), output)
-
-				return
-			}
-
-			subnet = ipPrefix.String()
-		}
-
 		if !reusable && subnet == "" {
 			ip, _ := cmd.Flags().GetString("ip")
 			if ip != "" {
