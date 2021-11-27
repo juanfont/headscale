@@ -426,7 +426,12 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), listedPreAuthKeys, 1)
-	assert.True(s.T(), time.Time{}.Equal(listedPreAuthKeys[0].Expiration.AsTime()))
+
+	assert.True(s.T(), listedPreAuthKeys[0].Expiration.AsTime().After(time.Now()))
+	assert.True(
+		s.T(),
+		listedPreAuthKeys[0].Expiration.AsTime().Before(time.Now().Add(time.Minute*70)),
+	)
 }
 
 func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
