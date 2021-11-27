@@ -75,7 +75,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 	machineKeyStr := ctx.Param("id")
 
 	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(machineKeyStr))
+	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
 	if err != nil {
 		log.Error().
 			Caller().

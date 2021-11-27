@@ -486,7 +486,9 @@ func nodesToPtables(
 		}
 
 		var nodeKey key.NodePublic
-		err := nodeKey.UnmarshalText([]byte(machine.NodeKey))
+		err := nodeKey.UnmarshalText(
+			[]byte(headscale.NodePublicKeyEnsurePrefix(machine.NodeKey)),
+		)
 		if err != nil {
 			return nil, err
 		}

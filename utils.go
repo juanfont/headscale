@@ -60,6 +60,30 @@ func DiscoPublicKeyStripPrefix(discoKey key.DiscoPublic) string {
 	return strings.TrimPrefix(discoKey.String(), discoPublicHexPrefix)
 }
 
+func MachinePublicKeyEnsurePrefix(machineKey string) string {
+	if !strings.HasPrefix(machineKey, machinePublicHexPrefix) {
+		return machinePublicHexPrefix + machineKey
+	}
+
+	return machineKey
+}
+
+func NodePublicKeyEnsurePrefix(nodeKey string) string {
+	if !strings.HasPrefix(nodeKey, nodePublicHexPrefix) {
+		return nodePublicHexPrefix + nodeKey
+	}
+
+	return nodeKey
+}
+
+func DiscoPublicKeyEnsurePrefix(discoKey string) string {
+	if !strings.HasPrefix(discoKey, discoPublicHexPrefix) {
+		return discoPublicHexPrefix + discoKey
+	}
+
+	return discoKey
+}
+
 // Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
 type Error string
 

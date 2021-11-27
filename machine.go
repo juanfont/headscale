@@ -439,7 +439,7 @@ func (machine Machine) toNode(
 	includeRoutes bool,
 ) (*tailcfg.Node, error) {
 	var nodeKey key.NodePublic
-	err := nodeKey.UnmarshalText([]byte(machine.NodeKey))
+	err := nodeKey.UnmarshalText([]byte(NodePublicKeyEnsurePrefix(machine.NodeKey)))
 	if err != nil {
 		log.Trace().
 			Caller().
@@ -450,14 +450,18 @@ func (machine Machine) toNode(
 	}
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText([]byte(machine.MachineKey))
+	err = machineKey.UnmarshalText(
+		[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse machine public key: %w", err)
 	}
 
 	var discoKey key.DiscoPublic
 	if machine.DiscoKey != "" {
-		err := discoKey.UnmarshalText([]byte(discoPublicHexPrefix + machine.DiscoKey))
+		err := discoKey.UnmarshalText(
+			[]byte(DiscoPublicKeyEnsurePrefix(machine.DiscoKey)),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse disco public key: %w", err)
 		}
@@ -634,7 +638,7 @@ func (h *Headscale) RegisterMachine(
 	}
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText([]byte(machineKeyStr))
+	err = machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
 	if err != nil {
 		return nil, err
 	}
