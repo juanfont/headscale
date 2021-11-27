@@ -48,7 +48,7 @@ import (
 
 const (
 	AuthPrefix      = "Bearer "
-	Postgres        = "postgresql"
+	Postgres        = "postgres"
 	Sqlite          = "sqlite3"
 	updateInterval  = 5000
 	HTTPReadTimeout = 30 * time.Second
