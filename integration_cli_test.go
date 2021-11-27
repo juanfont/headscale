@@ -639,7 +639,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				"--name",
 				fmt.Sprintf("shared-machine-%d", index+1),
 				"--namespace",
-				namespace.Name,
+				sharedNamespace.Name,
 				"--key",
 				machineKey,
 				"--output",
@@ -720,7 +720,6 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
-	fmt.Println("Error: ", err)
 
 	var listOnlySharedMachineNamespace []v1.Machine
 	err = json.Unmarshal(
@@ -729,8 +728,6 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	fmt.Println("List: ", listOnlySharedMachineNamespaceResult)
-	fmt.Println("List2: ", listOnlySharedMachineNamespace)
 	assert.Len(s.T(), listOnlySharedMachineNamespace, 2)
 
 	assert.Equal(s.T(), uint64(6), listOnlySharedMachineNamespace[0].Id)
