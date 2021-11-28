@@ -39,11 +39,9 @@
    touch config/db.sqlite
    ```
 
-4. Create a WireGuard private key, headscale configuration, and a DERP map file. Refer to [tailscale sample](https://raw.githubusercontent.com/tailscale/tailscale/main/net/dnsfallback/dns-fallback-servers.json) for more guidance.
+4. Create a headscale configuration, and a DERP map file. Refer to [tailscale sample](https://raw.githubusercontent.com/tailscale/tailscale/main/net/dnsfallback/dns-fallback-servers.json) for more guidance.
 
    ```shell
-   wg genkey > config/private.key
-
    cp config.yaml.[sqlite|postgres].example config/config.yaml
 
    cp derp-example.yaml config/derp.yaml
