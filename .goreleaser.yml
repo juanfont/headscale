@@ -3,6 +3,10 @@
 before:
   hooks:
     - go mod tidy
+
+release:
+  prerelease: auto
+
 builds:
   - id: darwin-amd64
     main: ./cmd/headscale/headscale.go
