@@ -19,7 +19,6 @@ func TestHeadscale_getNamespaceFromEmail(t *testing.T) {
 		dbString        string
 		dbType          string
 		dbDebug         bool
-		publicKey       *key.MachinePublic
 		privateKey      *key.MachinePrivate
 		aclPolicy       *ACLPolicy
 		aclRules        []tailcfg.FilterRule
@@ -153,7 +152,6 @@ func TestHeadscale_getNamespaceFromEmail(t *testing.T) {
 				dbString:        test.fields.dbString,
 				dbType:          test.fields.dbType,
 				dbDebug:         test.fields.dbDebug,
-				publicKey:       test.fields.publicKey,
 				privateKey:      test.fields.privateKey,
 				aclPolicy:       test.fields.aclPolicy,
 				aclRules:        test.fields.aclRules,
