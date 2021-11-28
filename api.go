@@ -127,7 +127,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		// - Trying to log out (sending a expiry in the past)
 		// - A valid, registered machine, looking for the node map
 		// - Expired machine wanting to reauthenticate
-		if machine.NodeKey == req.NodeKey.String() {
+		if machine.NodeKey == NodePublicKeyStripPrefix(req.NodeKey) {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
@@ -146,7 +146,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		}
 
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
-		if machine.NodeKey == req.OldNodeKey.String() &&
+		if machine.NodeKey == NodePublicKeyStripPrefix(req.OldNodeKey) &&
 			!machine.isExpired() {
 			h.handleMachineRefreshKey(ctx, machineKey, req, *machine)
 
