@@ -46,6 +46,9 @@ const (
 	// This prefix is used in the control protocol, so cannot be
 	// changed.
 	discoPublicHexPrefix = "discokey:"
+
+	// privateKey prefix.
+	privateHexPrefix = "privkey:"
 )
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
@@ -82,6 +85,14 @@ func DiscoPublicKeyEnsurePrefix(discoKey string) string {
 	}
 
 	return discoKey
+}
+
+func PrivateKeyEnsurePrefix(privateKey string) string {
+	if !strings.HasPrefix(privateKey, privateHexPrefix) {
+		return privateHexPrefix + privateKey
+	}
+
+	return privateKey
 }
 
 // Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors

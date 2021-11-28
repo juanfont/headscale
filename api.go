@@ -34,7 +34,7 @@ func (h *Headscale) KeyHandler(ctx *gin.Context) {
 	ctx.Data(
 		http.StatusOK,
 		"text/plain; charset=utf-8",
-		[]byte(MachinePublicKeyStripPrefix(*h.publicKey)),
+		[]byte(MachinePublicKeyStripPrefix(h.privateKey.Public())),
 	)
 }
 
