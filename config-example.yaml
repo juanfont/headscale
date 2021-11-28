@@ -6,9 +6,6 @@ server_url: http://127.0.0.1:8080
 # Address to listen to / bind to on the server
 listen_addr: 0.0.0.0:8080
 
-# Path to WireGuard private key file
-private_key_path: private.key
-
 derp:
   # List of externally available DERP maps encoded in JSON
   urls:

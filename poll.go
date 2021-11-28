@@ -12,7 +12,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
 
 const (
@@ -35,8 +35,10 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("id", ctx.Param("id")).
 		Msg("PollNetMapHandler called")
 	body, _ := io.ReadAll(ctx.Request.Body)
-	mKeyStr := ctx.Param("id")
-	mKey, err := wgkey.ParseHex(mKeyStr)
+	machineKeyStr := ctx.Param("id")
+
+	var machineKey key.MachinePublic
+	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -47,7 +49,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		return
 	}
 	req := tailcfg.MapRequest{}
-	err = decode(body, &req, &mKey, h.privateKey)
+	err = decode(body, &req, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -58,19 +60,19 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		return
 	}
 
-	machine, err := h.GetMachineByMachineKey(mKey.HexString())
+	machine, err := h.GetMachineByMachineKey(machineKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
 				Str("handler", "PollNetMap").
-				Msgf("Ignoring request, cannot find machine with key %s", mKey.HexString())
+				Msgf("Ignoring request, cannot find machine with key %s", machineKey.String())
 			ctx.String(http.StatusUnauthorized, "")
 
 			return
 		}
 		log.Error().
 			Str("handler", "PollNetMap").
-			Msgf("Failed to fetch machine from the database with Machine key: %s", mKey.HexString())
+			Msgf("Failed to fetch machine from the database with Machine key: %s", machineKey.String())
 		ctx.String(http.StatusInternalServerError, "")
 	}
 	log.Trace().
@@ -82,7 +84,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	hostinfo, _ := json.Marshal(req.Hostinfo)
 	machine.Name = req.Hostinfo.Hostname
 	machine.HostInfo = datatypes.JSON(hostinfo)
-	machine.DiscoKey = wgkey.Key(req.DiscoKey).HexString()
+	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
 	now := time.Now().UTC()
 
 	// From Tailscale client:
@@ -100,7 +102,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	}
 	h.db.Save(&machine)
 
-	data, err := h.getMapResponse(mKey, req, machine)
+	data, err := h.getMapResponse(machineKey, req, machine)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -205,7 +207,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		ctx,
 		machine,
 		req,
-		mKey,
+		machineKey,
 		pollDataChan,
 		keepAliveChan,
 		updateChan,
@@ -225,7 +227,7 @@ func (h *Headscale) PollNetMapStream(
 	ctx *gin.Context,
 	machine *Machine,
 	mapRequest tailcfg.MapRequest,
-	machineKey wgkey.Key,
+	machineKey key.MachinePublic,
 	pollDataChan chan []byte,
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
@@ -491,7 +493,7 @@ func (h *Headscale) scheduledPollWorker(
 	cancelChan <-chan struct{},
 	updateChan chan<- struct{},
 	keepAliveChan chan<- []byte,
-	machineKey wgkey.Key,
+	machineKey key.MachinePublic,
 	mapRequest tailcfg.MapRequest,
 	machine *Machine,
 ) {

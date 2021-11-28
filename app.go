@@ -43,15 +43,16 @@ import (
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
 
 const (
-	AuthPrefix      = "Bearer "
-	Postgres        = "postgres"
-	Sqlite          = "sqlite3"
-	updateInterval  = 5000
-	HTTPReadTimeout = 30 * time.Second
+	AuthPrefix         = "Bearer "
+	Postgres           = "postgres"
+	Sqlite             = "sqlite3"
+	updateInterval     = 5000
+	HTTPReadTimeout    = 30 * time.Second
+	privateKeyFileMode = 0o600
 
 	requestedExpiryCacheExpiration      = time.Minute * 5
 	requestedExpiryCacheCleanupInterval = time.Minute * 10
@@ -66,9 +67,9 @@ const (
 type Config struct {
 	ServerURL                      string
 	Addr                           string
-	PrivateKeyPath                 string
 	EphemeralNodeInactivityTimeout time.Duration
 	IPPrefix                       netaddr.IPPrefix
+	PrivateKeyPath                 string
 	BaseDomain                     string
 
 	DERP DERPConfig
@@ -129,8 +130,7 @@ type Headscale struct {
 	dbString   string
 	dbType     string
 	dbDebug    bool
-	publicKey  *wgkey.Key
-	privateKey *wgkey.Private
+	privateKey *key.MachinePrivate
 
 	DERPMap *tailcfg.DERPMap
 
@@ -148,16 +148,10 @@ type Headscale struct {
 
 // NewHeadscale returns the Headscale app.
 func NewHeadscale(cfg Config) (*Headscale, error) {
-	content, err := os.ReadFile(cfg.PrivateKeyPath)
+	privKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read or create private key: %w", err)
 	}
-
-	privKey, err := wgkey.ParsePrivate(string(content))
-	if err != nil {
-		return nil, err
-	}
-	pubKey := privKey.Public()
 
 	var dbString string
 	switch cfg.DBtype {
@@ -186,7 +180,6 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		dbType:               cfg.DBtype,
 		dbString:             dbString,
 		privateKey:           privKey,
-		publicKey:            &pubKey,
 		aclRules:             tailcfg.FilterAllowAll, // default allowall
 		requestedExpiryCache: requestedExpiryCache,
 	}
@@ -702,4 +695,47 @@ func stdoutHandler(ctx *gin.Context) {
 		Interface("url", ctx.Request.URL).
 		Bytes("body", body).
 		Msg("Request did not match")
+}
+
+func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
+	privateKey, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		log.Info().Str("path", path).Msg("No private key file at path, creating...")
+
+		machineKey := key.NewMachine()
+
+		machineKeyStr, err := machineKey.MarshalText()
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to convert private key to string for saving: %w",
+				err,
+			)
+		}
+		err = os.WriteFile(path, machineKeyStr, privateKeyFileMode)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to save private key to disk: %w",
+				err,
+			)
+		}
+
+		return &machineKey, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to read private key file: %w", err)
+	}
+
+	privateKeyEnsurePrefix := PrivateKeyEnsurePrefix(string(privateKey))
+
+	var machineKey key.MachinePrivate
+	if err = machineKey.UnmarshalText([]byte(privateKeyEnsurePrefix)); err != nil {
+		log.Info().
+			Str("path", path).
+			Msg("This might be due to a legacy (headscale pre-0.12) private key. " +
+				"If the key is in WireGuard format, delete the key and restart headscale. " +
+				"A new key will automatically be generated. All Tailscale clients will have to be restarted")
+
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	return &machineKey, nil
 }

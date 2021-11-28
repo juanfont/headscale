@@ -644,7 +644,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				"--name",
 				fmt.Sprintf("shared-machine-%d", index+1),
 				"--namespace",
-				namespace.Name,
+				sharedNamespace.Name,
 				"--key",
 				machineKey,
 				"--output",

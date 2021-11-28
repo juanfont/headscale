@@ -12,8 +12,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
-	"tailscale.com/tailcfg"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
 
 func init() {
@@ -486,11 +485,13 @@ func nodesToPtables(
 			expiry = machine.Expiry.AsTime()
 		}
 
-		nKey, err := wgkey.ParseHex(machine.NodeKey)
+		var nodeKey key.NodePublic
+		err := nodeKey.UnmarshalText(
+			[]byte(headscale.NodePublicKeyEnsurePrefix(machine.NodeKey)),
+		)
 		if err != nil {
 			return nil, err
 		}
-		nodeKey := tailcfg.NodeKey(nKey)
 
 		var online string
 		if lastSeen.After(

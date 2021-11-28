@@ -17,7 +17,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: "1.16.3" # The Go version to download (if necessary) and use.
+          go-version: "1.17.3" # The Go version to download (if necessary) and use.
 
       # Install all the dependencies
       - name: Install dependencies

@@ -224,8 +224,8 @@ func getHeadscaleConfig() headscale.Config {
 	return headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
-		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
+		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		BaseDomain:     baseDomain,
 
 		DERP: derpConfig,

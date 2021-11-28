@@ -9,7 +9,7 @@ import (
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
 
 func TestHeadscale_getNamespaceFromEmail(t *testing.T) {
@@ -19,8 +19,7 @@ func TestHeadscale_getNamespaceFromEmail(t *testing.T) {
 		dbString        string
 		dbType          string
 		dbDebug         bool
-		publicKey       *wgkey.Key
-		privateKey      *wgkey.Private
+		privateKey      *key.MachinePrivate
 		aclPolicy       *ACLPolicy
 		aclRules        []tailcfg.FilterRule
 		lastStateChange sync.Map
@@ -153,7 +152,6 @@ func TestHeadscale_getNamespaceFromEmail(t *testing.T) {
 				dbString:        test.fields.dbString,
 				dbType:          test.fields.dbType,
 				dbDebug:         test.fields.dbDebug,
-				publicKey:       test.fields.publicKey,
 				privateKey:      test.fields.privateKey,
 				aclPolicy:       test.fields.aclPolicy,
 				aclRules:        test.fields.aclRules,

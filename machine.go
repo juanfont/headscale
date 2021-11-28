@@ -14,10 +14,9 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/datatypes"
-	"gorm.io/gorm"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
 
 const (
@@ -260,9 +259,11 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 }
 
 // GetMachineByMachineKey finds a Machine by ID and returns the Machine struct.
-func (h *Headscale) GetMachineByMachineKey(machineKey string) (*Machine, error) {
+func (h *Headscale) GetMachineByMachineKey(
+	machineKey key.MachinePublic,
+) (*Machine, error) {
 	m := Machine{}
-	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", machineKey); result.Error != nil {
+	if result := h.db.Preload("Namespace").First(&m, "machine_key = ?", MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -437,25 +438,35 @@ func (machine Machine) toNode(
 	dnsConfig *tailcfg.DNSConfig,
 	includeRoutes bool,
 ) (*tailcfg.Node, error) {
-	nodeKey, err := wgkey.ParseHex(machine.NodeKey)
+	var nodeKey key.NodePublic
+	err := nodeKey.UnmarshalText([]byte(NodePublicKeyEnsurePrefix(machine.NodeKey)))
 	if err != nil {
-		return nil, err
+		log.Trace().
+			Caller().
+			Str("node_key", machine.NodeKey).
+			Msgf("Failed to parse node public key from hex")
+
+		return nil, fmt.Errorf("failed to parse node public key: %w", err)
 	}
 
-	machineKey, err := wgkey.ParseHex(machine.MachineKey)
+	var machineKey key.MachinePublic
+	err = machineKey.UnmarshalText(
+		[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse machine public key: %w", err)
 	}
 
-	var discoKey tailcfg.DiscoKey
+	var discoKey key.DiscoPublic
 	if machine.DiscoKey != "" {
-		dKey, err := wgkey.ParseHex(machine.DiscoKey)
+		err := discoKey.UnmarshalText(
+			[]byte(DiscoPublicKeyEnsurePrefix(machine.DiscoKey)),
+		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to parse disco public key: %w", err)
 		}
-		discoKey = tailcfg.DiscoKey(dKey)
 	} else {
-		discoKey = tailcfg.DiscoKey{}
+		discoKey = key.DiscoPublic{}
 	}
 
 	addrs := []netaddr.IPPrefix{}
@@ -555,9 +566,9 @@ func (machine Machine) toNode(
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:       hostname,
 		User:       tailcfg.UserID(machine.NamespaceID),
-		Key:        tailcfg.NodeKey(nodeKey),
+		Key:        nodeKey,
 		KeyExpiry:  keyExpiry,
-		Machine:    tailcfg.MachineKey(machineKey),
+		Machine:    machineKey,
 		DiscoKey:   discoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
@@ -618,31 +629,36 @@ func (machine *Machine) toProto() *v1.Machine {
 
 // RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
 func (h *Headscale) RegisterMachine(
-	key string,
+	machineKeyStr string,
 	namespaceName string,
 ) (*Machine, error) {
 	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
 	}
-	machineKey, err := wgkey.ParseHex(key)
+
+	var machineKey key.MachinePublic
+	err = machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
 	if err != nil {
 		return nil, err
 	}
 
-	machine := Machine{}
-	if result := h.db.First(&machine, "machine_key = ?", machineKey.HexString()); errors.Is(
-		result.Error,
-		gorm.ErrRecordNotFound,
-	) {
-		return nil, errMachineNotFound
+	log.Trace().
+		Caller().
+		Str("machine_key_str", machineKeyStr).
+		Str("machine_key", machineKey.String()).
+		Msg("Registering machine")
+
+	machine, err := h.GetMachineByMachineKey(machineKey)
+	if err != nil {
+		return nil, err
 	}
 
 	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
 	// This means that if a user is to slow with register a machine, it will possibly not
 	// have the correct expiry.
 	requestedTime := time.Time{}
-	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.HexString()); found {
+	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.String()); found {
 		log.Trace().
 			Caller().
 			Str("machine", machine.Name).
@@ -658,9 +674,9 @@ func (h *Headscale) RegisterMachine(
 			Str("machine", machine.Name).
 			Msg("machine already registered, reauthenticating")
 
-		h.RefreshMachine(&machine, requestedTime)
+		h.RefreshMachine(machine, requestedTime)
 
-		return &machine, nil
+		return machine, nil
 	}
 
 	log.Trace().
@@ -709,7 +725,7 @@ func (h *Headscale) RegisterMachine(
 		Str("ip", ip.String()).
 		Msg("Machine registered with the database")
 
-	return &machine, nil
+	return machine, nil
 }
 
 func (machine *Machine) GetAdvertisedRoutes() ([]netaddr.IPPrefix, error) {

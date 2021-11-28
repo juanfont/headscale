@@ -26,8 +26,6 @@ spec:
                 configMapKeyRef:
                   name: headscale-config
                   key: listen_addr
-            - name: PRIVATE_KEY_PATH
-              value: /vol/secret/private-key
             - name: DERP_MAP_PATH
               value: /vol/config/derp.yaml
             - name: EPHEMERAL_NODE_INACTIVITY_TIMEOUT
