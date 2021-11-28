@@ -9,6 +9,16 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	keyLength             = 64
+	errPreAuthKeyTooShort = Error("key too short, must be 64 hexadecimal characters")
+)
+
+// Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
+type Error string
+
+func (e Error) Error() string { return string(e) }
+
 func init() {
 	rootCmd.AddCommand(debugCmd)
 
@@ -72,6 +82,16 @@ var createNodeCmd = &cobra.Command{
 			ErrorOutput(
 				err,
 				fmt.Sprintf("Error getting key from flag: %s", err),
+				output,
+			)
+
+			return
+		}
+		if len(machineKey) != keyLength {
+			err = errPreAuthKeyTooShort
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error: %s", err),
 				output,
 			)
 
