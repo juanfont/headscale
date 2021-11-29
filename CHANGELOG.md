@@ -1,6 +1,6 @@
 # CHANGELOG
 
-**0.12.0:**
+**TBD (TBD):**
 
 **BREAKING**:
 
@@ -16,3 +16,9 @@
 - Add gRPC and API (API is currently unavailable) [#204](https://github.com/juanfont/headscale/pull/204)
 - Use gRPC between the CLI and the server [#206](https://github.com/juanfont/headscale/pull/206) [#212](https://github.com/juanfont/headscale/pull/212)
 - Add stricter linting and formatting [#223](https://github.com/juanfont/headscale/pull/223)
+
+**0.11.0 (2021-10-25):**
+
+**BREAKING**:
+
+- Make headscale fetch DERP map from URL and file [#196](https://github.com/juanfont/headscale/pull/196)
