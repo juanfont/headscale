@@ -1,6 +1,6 @@
 # CHANGELOG
 
-**Unreleased: 0.12.0:**
+**0.12.0:**
 
 **BREAKING**:
 - Upgrade to Tailscale 1.18 [#229](https://github.com/juanfont/headscale/pull/229)
