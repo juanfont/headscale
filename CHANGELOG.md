@@ -17,6 +17,10 @@
 - Use gRPC between the CLI and the server [#206](https://github.com/juanfont/headscale/pull/206) [#212](https://github.com/juanfont/headscale/pull/212)
 - Add stricter linting and formatting [#223](https://github.com/juanfont/headscale/pull/223)
 
+**Features**:
+
+- Beta OpenID Connect support [#126](https://github.com/juanfont/headscale/pull/126) [#227](https://github.com/juanfont/headscale/pull/227)
+
 **0.11.0 (2021-10-25):**
 
 **BREAKING**:
