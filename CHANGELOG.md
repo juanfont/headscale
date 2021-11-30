@@ -12,14 +12,14 @@
 
 **Changes**:
 
-- Unifi configuration example [#197](https://github.com/juanfont/headscale/pull/197)
-- Add gRPC and API (API is currently unavailable) [#204](https://github.com/juanfont/headscale/pull/204)
-- Use gRPC between the CLI and the server [#206](https://github.com/juanfont/headscale/pull/206) [#212](https://github.com/juanfont/headscale/pull/212)
+- Unify configuration example [#197](https://github.com/juanfont/headscale/pull/197)
 - Add stricter linting and formatting [#223](https://github.com/juanfont/headscale/pull/223)
 
 **Features**:
 
-- Beta OpenID Connect support [#126](https://github.com/juanfont/headscale/pull/126) [#227](https://github.com/juanfont/headscale/pull/227)
+- Add gRPC and HTTP API (HTTP API is currently disabled) [#204](https://github.com/juanfont/headscale/pull/204)
+- Use gRPC between the CLI and the server [#206](https://github.com/juanfont/headscale/pull/206), [#212](https://github.com/juanfont/headscale/pull/212)
+- Beta OpenID Connect support [#126](https://github.com/juanfont/headscale/pull/126), [#227](https://github.com/juanfont/headscale/pull/227)
 
 **0.11.0 (2021-10-25):**
 
