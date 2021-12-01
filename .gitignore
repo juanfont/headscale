@@ -17,6 +17,7 @@
 /headscale
 config.json
 config.yaml
+derp.yaml
 *.key
 /db.sqlite
 *.sqlite3

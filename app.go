@@ -418,12 +418,12 @@ func (h *Headscale) Serve() error {
 
 	err = h.ensureUnixSocketIsAbsent()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// Handle common process-killing signals so we can gracefully shut down:
@@ -441,7 +441,7 @@ func (h *Headscale) Serve() error {
 
 	networkListener, err := net.Listen("tcp", h.cfg.Addr)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// Create the cmux object that will multiplex 2 protocols on the same port.
