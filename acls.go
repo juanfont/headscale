@@ -34,6 +34,11 @@ const (
 
 // LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules.
 func (h *Headscale) LoadACLPolicy(path string) error {
+	log.Debug().
+		Str("func", "LoadACLPolicy").
+		Str("path", path).
+		Msg("Loading ACL policy from path")
+
 	policyFile, err := os.Open(path)
 	if err != nil {
 		return err
@@ -66,6 +71,8 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 		return err
 	}
 	h.aclRules = rules
+
+	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 
 	return nil
 }

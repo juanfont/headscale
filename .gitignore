@@ -18,6 +18,7 @@
 config.json
 config.yaml
 derp.yaml
+*.hujson
 *.key
 /db.sqlite
 *.sqlite3
