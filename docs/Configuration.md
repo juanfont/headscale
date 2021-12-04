@@ -28,7 +28,7 @@ derp_map_path: derp.yaml
 `derp_map_path` is the path to the [DERP](https://pkg.go.dev/tailscale.com/derp) map file. If the path is relative, it will be interpreted as relative to the directory the configuration file was read from.
 
 ```yaml
-ephemeral_node_inactivity_timeout": "30m"
+ephemeral_node_inactivity_timeout: "30m"
 ```
 
 `ephemeral_node_inactivity_timeout` is the timeout after which inactive ephemeral node records will be deleted from the database. The default is 30 minutes. This value must be higher than 65 seconds (the keepalive timeout for the HTTP long poll is 60 seconds, plus a few seconds to avoid race conditions).
