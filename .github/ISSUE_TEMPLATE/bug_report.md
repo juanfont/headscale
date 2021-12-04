@@ -1,20 +1,23 @@
 ---
-name: 'Bug report'
-about: 'Create a bug report to help us improve'
-title: ''
-labels: [ 'bug' ]
-assignees: ''
+name: "Bug report"
+about: "Create a bug report to help us improve"
+title: ""
+labels: ["bug"]
+assignees: ""
 ---
 
 **Bug description**
+
 <!-- A clear and concise description of what the bug is. Describe the expected bahavior
   and how it is currently different. If you are unsure if it is a bug, consider discussing
   it on our Discord server first. -->
 
 **To Reproduce**
+
 <!-- Steps to reproduce the behavior. -->
 
 **Context info**
+
 <!-- Please add relevant information about your system. For example:
 - Version of headscale used
 - Version of tailscale client

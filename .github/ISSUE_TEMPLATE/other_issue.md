@@ -1,20 +1,23 @@
 ---
-name: 'Other issue'
-about: 'Report a different issue'
-title: ''
-labels: [ 'bug' ]
-assignees: ''
+name: "Other issue"
+about: "Report a different issue"
+title: ""
+labels: ["bug"]
+assignees: ""
 ---
 
 <!-- If you have a question, please consider using our Discord for asking questions -->
 
 **Issue description**
+
 <!-- Please add your issue description. -->
 
 **To Reproduce**
+
 <!-- Steps to reproduce the behavior. -->
 
 **Context info**
+
 <!-- Please add relevant information about your system. For example:
 - Version of headscale used
 - Version of tailscale client
