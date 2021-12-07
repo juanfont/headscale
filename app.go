@@ -418,7 +418,7 @@ func (h *Headscale) Serve() error {
 
 	err = h.ensureUnixSocketIsAbsent()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to remove old socket file: %w", err)
 	}
 
 	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
