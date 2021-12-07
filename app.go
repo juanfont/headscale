@@ -423,7 +423,7 @@ func (h *Headscale) Serve() error {
 
 	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to set up gRPC socket: %w", err)
 	}
 
 	// Handle common process-killing signals so we can gracefully shut down:
