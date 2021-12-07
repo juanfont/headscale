@@ -54,6 +54,8 @@ tls_letsencrypt_challenge_type: HTTP-01
 tls_cert_path: ""
 tls_key_path: ""
 
+log_level: info
+
 # Path to a file containg ACL policies.
 acl_policy_path: ""
 
