@@ -441,7 +441,7 @@ func (h *Headscale) Serve() error {
 
 	networkListener, err := net.Listen("tcp", h.cfg.Addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to bind to TCP address: %w", err)
 	}
 
 	// Create the cmux object that will multiplex 2 protocols on the same port.
