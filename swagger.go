@@ -3,8 +3,8 @@ package headscale
 import (
 	"bytes"
 	_ "embed"
+	"html/template"
 	"net/http"
-	"text/template"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"

@@ -1,10 +1,12 @@
 package headscale
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"strings"
@@ -38,6 +40,28 @@ func (h *Headscale) KeyHandler(ctx *gin.Context) {
 	)
 }
 
+type registerWebAPITemplateConfig struct {
+	Key string
+}
+
+var registerWebAPITemplate = template.Must(
+	template.New("registerweb").Parse(`<html>
+	<body>
+	<h1>headscale</h1>
+	<p>
+		Run the command below in the headscale server to add this machine to your network:
+	</p>
+
+	<p>
+		<code>
+			<b>headscale -n NAMESPACE nodes register --key {{.Key}}</b>
+		</code>
+	</p>
+
+	</body>
+	</html>`),
+)
+
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
 // Listens in /register.
 func (h *Headscale) RegisterWebAPI(ctx *gin.Context) {
@@ -48,24 +72,22 @@ func (h *Headscale) RegisterWebAPI(ctx *gin.Context) {
 		return
 	}
 
-	ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
-	<html>
-	<body>
-	<h1>headscale</h1>
-	<p>
-		Run the command below in the headscale server to add this machine to your network:
-	</p>
+	var content bytes.Buffer
+	if err := registerWebAPITemplate.Execute(&content, registerWebAPITemplateConfig{
+		Key: machineKeyStr,
+	}); err != nil {
+		log.Error().
+			Str("func", "RegisterWebAPI").
+			Err(err).
+			Msg("Could not render register web API template")
+		ctx.Data(
+			http.StatusInternalServerError,
+			"text/html; charset=utf-8",
+			[]byte("Could not render register web API template"),
+		)
+	}
 
-	<p>
-		<code>
-			<b>headscale -n NAMESPACE nodes register --key %s</b>
-		</code>
-	</p>
-
-	</body>
-	</html>
-
-	`, machineKeyStr)))
+	ctx.Data(http.StatusOK, "text/html; charset=utf-8", content.Bytes())
 }
 
 // RegistrationHandler handles the actual registration process of a machine

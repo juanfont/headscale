@@ -2,8 +2,8 @@ package headscale
 
 import (
 	"bytes"
+	"html/template"
 	"net/http"
-	"text/template"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
