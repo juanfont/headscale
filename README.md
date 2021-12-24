@@ -57,7 +57,7 @@ Please have a look at the documentation under [`docs/`](docs/).
 ## Disclaimer
 
 1. We have nothing to do with Tailscale, or Tailscale Inc.
-2. The purpose of writing this was to learn how Tailscale works.
+2. The purpose of Headscale is maintaining a working, self-hosted Tailscale control panel.
 
 ## Contributing
 
