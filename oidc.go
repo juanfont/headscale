@@ -1,11 +1,13 @@
 package headscale
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"regexp"
 	"strings"
@@ -107,6 +109,22 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 
 	ctx.Redirect(http.StatusFound, authURL)
 }
+
+type oidcCallbackTemplateConfig struct {
+	User string
+	Verb string
+}
+
+var oidcCallbackTemplate = template.Must(
+	template.New("oidccallback").Parse(`<html>
+	<body>
+	<h1>headscale</h1>
+	<p>
+			{{.Verb}} as {{.User}}, you can now close this window.
+	</p>
+	</body>
+	</html>`),
+)
 
 // OIDCCallback handles the callback from the OIDC endpoint
 // Retrieves the mkey from the state cache and adds the machine to the users email namespace
@@ -239,17 +257,24 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 		h.RefreshMachine(machine, requestedTime)
 
-		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
-<html>
-<body>
-<h1>headscale</h1>
-<p>
-    Reuthenticated as %s, you can now close this window.
-</p>
-</body>
-</html>
+		var content bytes.Buffer
+		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
+			User: claims.Email,
+			Verb: "Reauthenticated",
+		}); err != nil {
+			log.Error().
+				Str("func", "OIDCCallback").
+				Str("type", "reauthenticate").
+				Err(err).
+				Msg("Could not render OIDC callback template")
+			ctx.Data(
+				http.StatusInternalServerError,
+				"text/html; charset=utf-8",
+				[]byte("Could not render OIDC callback template"),
+			)
+		}
 
-`, claims.Email)))
+		ctx.Data(http.StatusOK, "text/html; charset=utf-8", content.Bytes())
 
 		return
 	}
@@ -314,17 +339,24 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			h.db.Save(&machine)
 		}
 
-		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(`
-<html>
-<body>
-<h1>headscale</h1>
-<p>
-    Authenticated as %s, you can now close this window.
-</p>
-</body>
-</html>
+		var content bytes.Buffer
+		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
+			User: claims.Email,
+			Verb: "Authenticated",
+		}); err != nil {
+			log.Error().
+				Str("func", "OIDCCallback").
+				Str("type", "authenticate").
+				Err(err).
+				Msg("Could not render OIDC callback template")
+			ctx.Data(
+				http.StatusInternalServerError,
+				"text/html; charset=utf-8",
+				[]byte("Could not render OIDC callback template"),
+			)
+		}
 
-`, claims.Email)))
+		ctx.Data(http.StatusOK, "text/html; charset=utf-8", content.Bytes())
 
 		return
 	}
