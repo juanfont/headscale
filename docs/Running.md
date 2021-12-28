@@ -1,5 +1,7 @@
 # Running headscale
 
+**Note:** The docs are currently out of date with the new 0.12.x releases, we are working on this. The _main_ change is that `headscale` must be running before using the CLI.
+
 ## Server configuration
 
 1. Download the headscale binary https://github.com/juanfont/headscale/releases, and place it somewhere in your $PATH or use the docker container
