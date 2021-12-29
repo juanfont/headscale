@@ -119,6 +119,33 @@ func (machine Machine) isExpired() bool {
 	return time.Now().UTC().After(*machine.Expiry)
 }
 
+// Our Pineapple fork of Headscale ignores namespaces when dealing with peers
+// and instead passes ALL peers across all namespaces to each client. Access between clients
+// is then enforced with ACL policies.
+func (h *Headscale) getAllPeers(machine *Machine) (Machines, error) {
+	log.Trace().
+		Caller().
+		Str("machine", machine.Name).
+		Msg("Finding all peers")
+
+	machines := Machines{}
+	if err := h.db.Preload("Namespace").Where("machine_key <> ? AND registered",
+		machine.MachineKey).Find(&machines).Error; err != nil {
+		log.Error().Err(err).Msg("Error accessing db")
+
+		return Machines{}, err
+	}
+
+	sort.Slice(machines, func(i, j int) bool { return machines[i].ID < machines[j].ID })
+
+	log.Trace().
+		Caller().
+		Str("machine", machine.Name).
+		Msgf("Found all machines: %s", machines.String())
+
+	return machines, nil
+}
+
 func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
@@ -206,7 +233,40 @@ func (h *Headscale) getSharedTo(machine *Machine) (Machines, error) {
 }
 
 func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
-	direct, err := h.getDirectPeers(machine)
+	// direct, err := h.getDirectPeers(machine)
+	// if err != nil {
+	// 	log.Error().
+	// 		Caller().
+	// 		Err(err).
+	// 		Msg("Cannot fetch peers")
+
+	// 	return Machines{}, err
+	// }
+
+	// shared, err := h.getShared(machine)
+	// if err != nil {
+	// 	log.Error().
+	// 		Caller().
+	// 		Err(err).
+	// 		Msg("Cannot fetch peers")
+
+	// 	return Machines{}, err
+	// }
+
+	// sharedTo, err := h.getSharedTo(machine)
+	// if err != nil {
+	// 	log.Error().
+	// 		Caller().
+	// 		Err(err).
+	// 		Msg("Cannot fetch peers")
+
+	// 	return Machines{}, err
+	// }
+
+	// peers := append(direct, shared...)
+	// peers = append(peers, sharedTo...)
+
+	peers, err := h.getAllPeers(machine)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -215,29 +275,6 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 
 		return Machines{}, err
 	}
-
-	shared, err := h.getShared(machine)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot fetch peers")
-
-		return Machines{}, err
-	}
-
-	sharedTo, err := h.getSharedTo(machine)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot fetch peers")
-
-		return Machines{}, err
-	}
-
-	peers := append(direct, shared...)
-	peers = append(peers, sharedTo...)
 
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
 
@@ -597,7 +634,7 @@ func (machine Machine) toNode(
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
 			machine.Name,
-			machine.Namespace.Name,
+			strings.Replace(machine.Namespace.Name, "@", ".", -1), // Replace @ with . for valid domain for machine
 			baseDomain,
 		)
 	} else {

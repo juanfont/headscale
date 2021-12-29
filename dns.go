@@ -163,7 +163,11 @@ func getMapResponseDNSConfig(
 		dnsConfig = dnsConfigOrig.Clone()
 		dnsConfig.Domains = append(
 			dnsConfig.Domains,
-			fmt.Sprintf("%s.%s", machine.Namespace.Name, baseDomain),
+			fmt.Sprintf(
+				"%s.%s",
+				strings.Replace(machine.Namespace.Name, "@", ".", -1), // Replace @ with . for valid domain for machine
+				baseDomain,
+			),
 		)
 
 		namespaceSet := set.New(set.ThreadSafe)
