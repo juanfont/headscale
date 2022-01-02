@@ -13,8 +13,9 @@ please ask on [Discord](https://discord.gg/XcQxk2VHjx) instead of opening an Iss
 
 ### References
 
-- [TLS](tls.md)
+- [Configuration](../config-example.yaml)
 - [Glossary](glossary.md)
+- [TLS](tls.md)
 
 ## Community documentation
 
