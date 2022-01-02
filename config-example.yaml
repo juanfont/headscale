@@ -41,6 +41,7 @@ derp:
   #
   # paths:
   #   - /etc/headscale/derp-example.yaml
+  paths: []
 
   # If enabled, a worker will be set up to periodically
   # refresh the given sources and update the derpmap
