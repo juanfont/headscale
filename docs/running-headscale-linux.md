@@ -55,6 +55,8 @@ from the [headscale repository](../)
 
 This command will start `headscale` in the current terminal session.
 
+---
+
 To continue the tutorial, open a new terminal and let it run in the background.
 Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux) or [screen](https://www.gnu.org/software/screen/).
 
