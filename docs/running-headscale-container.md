@@ -6,12 +6,12 @@ it is up to date, or working.
 ## Goal
 
 This documentation has the goal of showing a user how-to set up and run `headscale` in a container.
-[Docker]() is used as the reference container implementation, but there is no reason that it should
-not work with alternatives like [Podman]().
+[Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it should
+not work with alternatives like [Podman](https://podman.io).
 
 ## Configure and run `headscale`
 
-1. Prepare a direction to hold `headscale` configuration and the [SQlite]() database:
+1. Prepare a direction to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
 ```shell
 mkdir config
@@ -68,7 +68,7 @@ Verify `headscale` is available:
 curl http://127.0.0.1:8080/metrics
 ```
 
-1. Create a namespace ([tailnet]()):
+1. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
 ```shell
 docker exec headscale -- headscale namespaces create myfirstnamespace

@@ -3,12 +3,12 @@
 ## Goal
 
 This documentation has the goal of showing a user how-to set up and run `headscale` on Linux.
-In additional to the "get up and running section", there is an optional [SystemD section]()
+In additional to the "get up and running section", there is an optional [SystemD section](#running-headscale-in-the-background-with-systemd)
 describing how to make `headscale` run properly in a server environment.
 
 ## Configure and run `headscale`
 
-1. Download the latest [`headscale` binary from GitHub's release page]():
+1. Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
 
 ```shell
 wget --output-document=/usr/local/bin/headscale \
@@ -21,7 +21,7 @@ wget --output-document=/usr/local/bin/headscale \
 chmod +x /usr/local/bin/headscale
 ```
 
-1. Prepare a direction to hold `headscale` configuration and the [SQlite]() database:
+1. Prepare a direction to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
 ```shell
 # Directory for configuration
@@ -56,9 +56,9 @@ from the [headscale repository](../)
 This command will start `headscale` in the current terminal session.
 
 To continue the tutorial, open a new terminal and let it run in the background.
-Alternatively use terminal emulators like [tmux]() or [screen]().
+Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux) or [screen](https://www.gnu.org/software/screen/).
 
-To run `headscale` in the background, please follow the steps in the [SystemD section]() before continuing.
+To run `headscale` in the background, please follow the steps in the [SystemD section](#running-headscale-in-the-background-with-systemd) before continuing.
 
 1. Verify `headscale` is running:
 
@@ -68,7 +68,7 @@ Verify `headscale` is available:
 curl http://127.0.0.1:8080/metrics
 ```
 
-1. Create a namespace ([tailnet]()):
+1. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
 ```shell
 headscale namespaces create myfirstnamespace
@@ -104,7 +104,7 @@ tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 
 ## Running `headscale` in the background with SystemD
 
-In this section it will be demonstrated how to run `headscale` as a service in the background with [SystemD]().
+In this section it will be demonstrated how to run `headscale` as a service in the background with [SystemD](https://www.freedesktop.org/wiki/Software/systemd/).
 This should work on most modern Linux distributions.
 
 1. Create a SystemD service configuration at `/etc/systemd/system/headscale.service` containing:
