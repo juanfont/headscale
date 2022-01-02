@@ -17,13 +17,13 @@ not work with alternatives like [Podman](https://podman.io).
 mkdir config
 ```
 
-1. Create an empty SQlite datebase:
+2. Create an empty SQlite datebase:
 
 ```shell
 touch config/db.sqlite
 ```
 
-1. Create a `headscale` configuration:
+3. Create a `headscale` configuration:
 
 ```shell
 touch config/config.yaml
@@ -31,7 +31,7 @@ touch config/config.yaml
 
 It is strongly recommended to copy the [example configuration](../config.yaml) from the [headscale repository](../)
 
-1. Start the headscale server:
+4. Start the headscale server:
 
 ```shell
 docker run \
@@ -48,7 +48,7 @@ docker run \
 This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
 `headscale` instance becomes available and then detach so headscale runs in the background.
 
-1. Verify `headscale` is running:
+5. Verify `headscale` is running:
 
 Follow the container logs:
 
@@ -68,7 +68,7 @@ Verify `headscale` is available:
 curl http://127.0.0.1:8080/metrics
 ```
 
-1. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+6. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
 ```shell
 docker exec headscale -- headscale namespaces create myfirstnamespace

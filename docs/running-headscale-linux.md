@@ -15,13 +15,13 @@ wget --output-document=/usr/local/bin/headscale \
    https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>
 ```
 
-1. Make `headscale` executable:
+2. Make `headscale` executable:
 
 ```shell
 chmod +x /usr/local/bin/headscale
 ```
 
-1. Prepare a direction to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
+3. Prepare a direction to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
 ```shell
 # Directory for configuration
@@ -32,13 +32,13 @@ mkdir -p /etc/headscale
 mkdir -p /var/lib/headscale
 ```
 
-1. Create an empty SQlite datebase:
+4. Create an empty SQlite datebase:
 
 ```shell
 touch /var/lib/headscale/db.sqlite
 ```
 
-1. Create a `headscale` configuration:
+5. Create a `headscale` configuration:
 
 ```shell
 touch /etc/headscale/config.yaml
@@ -47,7 +47,7 @@ touch /etc/headscale/config.yaml
 It is strongly recommended to copy and modifiy the [example configuration](../config.yaml)
 from the [headscale repository](../)
 
-1. Start the headscale server:
+6. Start the headscale server:
 
 ```shell
   headscale serve
@@ -60,7 +60,7 @@ Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux) o
 
 To run `headscale` in the background, please follow the steps in the [SystemD section](#running-headscale-in-the-background-with-systemd) before continuing.
 
-1. Verify `headscale` is running:
+7. Verify `headscale` is running:
 
 Verify `headscale` is available:
 
@@ -68,7 +68,7 @@ Verify `headscale` is available:
 curl http://127.0.0.1:8080/metrics
 ```
 
-1. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+8. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
 ```shell
 headscale namespaces create myfirstnamespace
@@ -136,26 +136,26 @@ RuntimeDirectory=headscale
 WantedBy=multi-user.target
 ```
 
-1. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a SystemD friendly path:
+2. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a SystemD friendly path:
 
 ```yaml
 unix_socket: /var/run/headscale/headscale.sock
 ```
 
-1. Reload SystemD to load the new configuration file:
+3. Reload SystemD to load the new configuration file:
 
 ```shell
 systemctl daemon-reload
 ```
 
-1. Enable and start the new `headscale` service:
+4. Enable and start the new `headscale` service:
 
 ```shell
 systemctl enable headscale
 systemctl start headscale
 ```
 
-1. Verify the headscale service:
+5. Verify the headscale service:
 
 ```shell
 systemctl status headscale
