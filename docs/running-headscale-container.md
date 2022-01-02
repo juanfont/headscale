@@ -1,6 +1,6 @@
 # Running headscale in a container
 
-**Note:** the container documentation is maintained by the \*_community_ and there is no guarentee
+**Note:** the container documentation is maintained by the _community_ and there is no guarentee
 it is up to date, or working.
 
 ## Goal
