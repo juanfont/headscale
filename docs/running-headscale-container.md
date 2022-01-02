@@ -29,7 +29,7 @@ touch config/db.sqlite
 touch config/config.yaml
 ```
 
-It is strongly recommended to copy the [example configuration](../config.yaml) from the [headscale repository](../)
+It is **strongly recommended** to copy the [example configuration](../config.yaml) from the [headscale repository](../)
 
 4. Start the headscale server:
 
