@@ -13,7 +13,6 @@ please ask on [Discord](https://discord.gg/XcQxk2VHjx) instead of opening an Iss
 
 ### References
 
-- [Configuration](configuration.md)
 - [TLS](tls.md)
 - [Glossary](glossary.md)
 
@@ -25,3 +24,18 @@ written by community members. It is _not_ verified by `headscale` developers.
 **It might be outdated and it might miss necessary steps**.
 
 - [Running headscale in container](running-headscale-container.md)
+
+## Misc
+
+### Policy ACLs
+
+Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-hosted environment.
+
+For instance, instead of referring to users when defining groups you must
+use namespaces (which are the equivalent to user/logins in Tailscale.com).
+
+Please check https://tailscale.com/kb/1018/acls/, and `./tests/acls/` in this repo for working examples.
+
+### Apple devices
+
+An endpoint with information on how to connect your Apple devices (currently macOS only) is available at `/apple` on your running instance.

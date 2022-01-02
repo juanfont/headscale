@@ -1,4 +1,10 @@
 ---
+# headscale will look for a configuration file named `config.yaml` (or `config.json`) in the following order:
+#
+# - `/etc/headscale`
+# - `~/.headscale`
+# - current working directory
+
 # The url clients will connect to.
 # Typically this will be a domain like:
 #
