@@ -24,7 +24,7 @@ written by community members. It is _not_ verified by `headscale` developers.
 
 **It might be outdated and it might miss necessary steps**.
 
-- [Running headscale in container](running-headscale-container.md)
+- [Running headscale in a container](running-headscale-container.md)
 
 ## Misc
 
