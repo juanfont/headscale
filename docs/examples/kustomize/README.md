@@ -1,5 +1,7 @@
 # Deploying headscale on Kubernetes
 
+**Note:** This is contributed by the community and not verified by the headscale authors.
+
 This directory contains [Kustomize](https://kustomize.io) templates that deploy
 headscale in various configurations.
 
@@ -66,7 +68,7 @@ tasks like creating namespaces, authkeys, etc.
 
 headscale is an open source implementation of the Tailscale control server
 
-https://gitlab.com/juanfont/headscale
+https://github.com/juanfont/headscale
 
 Usage:
   headscale [command]
