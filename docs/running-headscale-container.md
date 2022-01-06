@@ -7,31 +7,46 @@ it is up to date, or working.
 
 This documentation has the goal of showing a user how-to set up and run `headscale` in a container.
 [Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it should
-not work with alternatives like [Podman](https://podman.io).
+not work with alternatives like [Podman](https://podman.io). The Docker image can be found on Docker Hub [here](https://hub.docker.com/r/headscale/headscale).
 
 ## Configure and run `headscale`
 
-1. Prepare a direction to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
+1. Prepare a directory on the host Docker node in your directory of choice, used to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
 ```shell
-mkdir config
+mkdir ./headscale && cd ./headscale
+mkdir ./config
 ```
 
-2. Create an empty SQlite datebase:
+2. Create an empty SQlite datebase in the headscale directory:
 
 ```shell
-touch config/db.sqlite
+touch ./config/db.sqlite
 ```
 
-3. Create a `headscale` configuration:
+3. **(Strongly Recommended)** Download a copy of the [example configuration](../config-example.yaml) from the [headscale repository](https://github.com/juanfont/headscale/).
+
+Using wget:
 
 ```shell
-touch config/config.yaml
+wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
 ```
 
-It is **strongly recommended** to copy the [example configuration](../config.yaml) from the [headscale repository](../)
+Using curl:
 
-4. Start the headscale server:
+```shell
+curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
+```
+
+**(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
+
+```shell
+touch ./config/config.yaml
+```
+
+Modify the config file to your preferences before launching Docker container.
+
+4. Start the headscale server while working in the host headscale directory:
 
 ```shell
 docker run \
