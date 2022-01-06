@@ -27,11 +27,13 @@ touch ./config/db.sqlite
 3. **(Strongly Recommended)** Download a copy of the [example configuration](../config-example.yaml) from the [headscale repository](https://github.com/juanfont/headscale/).
 
 Using wget:
+
 ```shell
 wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
 ```
 
 Using curl:
+
 ```shell
 curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
 ```
