@@ -44,7 +44,7 @@ touch /var/lib/headscale/db.sqlite
 touch /etc/headscale/config.yaml
 ```
 
-It is **strongly recommended** to copy and modifiy the [example configuration](../config.yaml)
+It is **strongly recommended** to copy and modifiy the [example configuration](../config-example.yaml)
 from the [headscale repository](../)
 
 6. Start the headscale server:
