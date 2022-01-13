@@ -2,6 +2,13 @@
 
 **TBD (TBD):**
 
+**0.12.3 (2022-01-13):**
+
+**Changes**:
+
+- Added Alpine container [#270](https://github.com/juanfont/headscale/pull/270)
+- Minor updates in dependencies [#271](https://github.com/juanfont/headscale/pull/271)
+
 **0.12.2 (2022-01-11):**
 
 Happy New Year!
