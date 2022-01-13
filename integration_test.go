@@ -28,7 +28,7 @@ import (
 	"tailscale.com/ipn/ipnstate"
 )
 
-var tailscaleVersions = []string{"1.18.1", "1.16.2", "1.14.3", "1.12.3"}
+var tailscaleVersions = []string{"1.20.0", "1.18.2", "1.16.2", "1.14.3", "1.12.3"}
 
 type TestNamespace struct {
 	count      int
