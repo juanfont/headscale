@@ -10,8 +10,10 @@ import (
 )
 
 func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
-	prefix := netaddr.MustParseIPPrefix("100.64.0.0/10")
-	domains := generateMagicDNSRootDomains(prefix)
+	prefixes := []netaddr.IPPrefix{
+		netaddr.MustParseIPPrefix("100.64.0.0/10"),
+	}
+	domains := generateMagicDNSRootDomains(prefixes)
 
 	found := false
 	for _, domain := range domains {
@@ -45,8 +47,10 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 }
 
 func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
-	prefix := netaddr.MustParseIPPrefix("172.16.0.0/16")
-	domains := generateMagicDNSRootDomains(prefix)
+	prefixes := []netaddr.IPPrefix{
+		netaddr.MustParseIPPrefix("172.16.0.0/16"),
+	}
+	domains := generateMagicDNSRootDomains(prefixes)
 
 	found := false
 	for _, domain := range domains {
@@ -67,6 +71,40 @@ func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
 		}
 	}
 	c.Assert(found, check.Equals, true)
+}
+
+// Happens when netmask is a multiple of 4 bits (sounds likely).
+func (s *Suite) TestMagicDNSRootDomainsIPv6Single(c *check.C) {
+	prefixes := []netaddr.IPPrefix{
+		netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48"),
+	}
+	domains := generateMagicDNSRootDomains(prefixes)
+
+	c.Assert(len(domains), check.Equals, 1)
+	c.Assert(domains[0].WithTrailingDot(), check.Equals, "0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
+}
+
+func (s *Suite) TestMagicDNSRootDomainsIPv6SingleMultiple(c *check.C) {
+	prefixes := []netaddr.IPPrefix{
+		netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/50"),
+	}
+	domains := generateMagicDNSRootDomains(prefixes)
+
+	yieldsRoot := func(dom string) bool {
+		for _, candidate := range domains {
+			if candidate.WithTrailingDot() == dom {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	c.Assert(len(domains), check.Equals, 4)
+	c.Assert(yieldsRoot("0.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."), check.Equals, true)
+	c.Assert(yieldsRoot("1.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."), check.Equals, true)
+	c.Assert(yieldsRoot("2.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."), check.Equals, true)
+	c.Assert(yieldsRoot("3.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."), check.Equals, true)
 }
 
 func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
