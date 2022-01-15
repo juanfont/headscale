@@ -1,5 +1,5 @@
 # Builder image
-FROM golang:1.17.1-bullseye AS build
+FROM docker.io/golang:1.17.1-bullseye AS build
 ENV GOPATH /go
 WORKDIR /go/src/headscale
 

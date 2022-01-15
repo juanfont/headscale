@@ -1,5 +1,5 @@
 # Builder image
-FROM golang:1.17.1-alpine AS build
+FROM docker.io/golang:1.17.1-alpine AS build
 ENV GOPATH /go
 WORKDIR /go/src/headscale
 
@@ -13,7 +13,7 @@ RUN go install -a -ldflags="-extldflags=-static" -tags netgo,sqlite_omit_load_ex
 RUN test -e /go/bin/headscale
 
 # Production image
-FROM alpine:latest
+FROM docker.io/alpine:latest
 
 COPY --from=build /go/bin/headscale /bin/headscale
 ENV TZ UTC
