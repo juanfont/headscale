@@ -604,74 +604,52 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 	for _, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
-		apiURLs, err := getAPIURLs(scales.tailscales)
 		assert.Nil(s.T(), err)
+
+		retry := func(times int, sleepInverval time.Duration, doWork func() error) (err error) {
+			for attempts := 0; attempts < times; attempts++ {
+				err = doWork()
+				if err == nil {
+					return
+				}
+				time.Sleep(sleepInverval)
+			}
+			return
+		}
 
 		for hostname, tailscale := range scales.tailscales {
 			command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", hostname)}
 			_, err := ExecuteCommand(
 				&tailscale,
 				command,
-				[]string{"GOMAXPROCS=32"},
+				[]string{},
 			)
 			assert.Nil(s.T(), err)
-			for peername, ip := range ips {
+			for peername, _ := range ips {
+				if peername == hostname {
+					continue
+				}
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
-					if peername != hostname {
-						// Under normal circumstances, we should be able to send a file
-						// using `tailscale file cp` - but not in userspace networking mode
-						// So curl!
-						peerAPI, ok := apiURLs[ip]
-						assert.True(t, ok)
-
-						// TODO(juanfont): We still have some issues with the test infrastructure, so
-						// lets run curl multiple times until it works.
-						attempts := 0
-						var err error
-						for {
-							command := []string{
-								"curl",
-								"--retry-connrefused",
-								"--retry-delay",
-								"30",
-								"--retry",
-								"10",
-								"--connect-timeout",
-								"60",
-								"-X",
-								"PUT",
-								"--upload-file",
-								fmt.Sprintf("/tmp/file_from_%s", hostname),
-								fmt.Sprintf(
-									"%s/v0/put/file_from_%s",
-									peerAPI,
-									hostname,
-								),
-							}
-							fmt.Printf(
-								"Sending file from %s (%s) to %s (%s)\n",
-								hostname,
-								ips[hostname],
-								peername,
-								ip,
-							)
-							_, err = ExecuteCommand(
-								&tailscale,
-								command,
-								[]string{"ALL_PROXY=socks5://localhost:1055", "GOMAXPROCS=32"},
-							)
-							if err == nil {
-								break
-							} else {
-								time.Sleep(10 * time.Second)
-								attempts++
-								if attempts > 10 {
-									break
-								}
-							}
-						}
-						assert.Nil(t, err)
+					command := []string{
+						"tailscale", "file", "cp",
+						fmt.Sprintf("/tmp/file_from_%s", hostname),
+						fmt.Sprintf("%s:", peername),
 					}
+					retry(10, 1*time.Second, func() error {
+						fmt.Printf(
+							"Sending file from %s to %s\n",
+							hostname,
+							peername,
+						)
+						_, err := ExecuteCommand(
+							&tailscale,
+							command,
+							[]string{},
+							ExecuteCommandTimeout(60*time.Second),
+						)
+						return err
+					})
+					assert.Nil(t, err)
 				})
 			}
 		}
