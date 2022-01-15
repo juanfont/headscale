@@ -420,14 +420,18 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 	}
 
 	lastChange := h.getLastStateChange(namespaces...)
+	lastUpdate := machine.CreatedAt
+	if machine.LastSuccessfulUpdate != nil {
+		lastUpdate = *machine.LastSuccessfulUpdate
+	}
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
-		Time("last_successful_update", *machine.LastSuccessfulUpdate).
-		Time("last_state_change", lastChange).
+		Time("last_successful_update", lastChange).
+		Time("last_state_change", lastUpdate).
 		Msgf("Checking if %s is missing updates", machine.Name)
 
-	return machine.LastSuccessfulUpdate.Before(lastChange)
+	return lastUpdate.Before(lastChange)
 }
 
 func (machine Machine) String() string {

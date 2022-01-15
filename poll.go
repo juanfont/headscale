@@ -388,10 +388,14 @@ func (h *Headscale) PollNetMapStream(
 			updateRequestsReceivedOnChannel.WithLabelValues(machine.Name, machine.Namespace.Name).
 				Inc()
 			if h.isOutdated(machine) {
+				var lastUpdate time.Time
+				if machine.LastSuccessfulUpdate != nil {
+					lastUpdate = *machine.LastSuccessfulUpdate
+				}
 				log.Debug().
 					Str("handler", "PollNetMapStream").
 					Str("machine", machine.Name).
-					Time("last_successful_update", *machine.LastSuccessfulUpdate).
+					Time("last_successful_update", lastUpdate).
 					Time("last_state_change", h.getLastStateChange(machine.Namespace.Name)).
 					Msgf("There has been updates since the last successful update to %s", machine.Name)
 				data, err := h.getMapResponse(machineKey, mapRequest, machine)
@@ -448,10 +452,14 @@ func (h *Headscale) PollNetMapStream(
 
 				h.db.Save(&machine)
 			} else {
+				var lastUpdate time.Time
+				if machine.LastSuccessfulUpdate != nil {
+					lastUpdate = *machine.LastSuccessfulUpdate
+				}
 				log.Trace().
 					Str("handler", "PollNetMapStream").
 					Str("machine", machine.Name).
-					Time("last_successful_update", *machine.LastSuccessfulUpdate).
+					Time("last_successful_update", lastUpdate).
 					Time("last_state_change", h.getLastStateChange(machine.Namespace.Name)).
 					Msgf("%s is up to date", machine.Name)
 			}
