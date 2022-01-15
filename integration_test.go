@@ -164,9 +164,7 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		Name:     hostname,
 		Networks: []*dockertest.Network{&s.network},
 		Cmd: []string{
-			"tailscaled",
-			"--tun=userspace-networking",
-			"--socks5-server=localhost:1055",
+			"tailscaled", "--tun=tsdev",
 		},
 	}
 
@@ -174,6 +172,8 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		tailscaleBuildOptions,
 		tailscaleOptions,
 		DockerRestartPolicy,
+		DockerAllowLocalIPv6,
+		DockerAllowNetworkAdministration,
 	)
 	if err != nil {
 		log.Fatalf("Could not start resource: %s", err)
