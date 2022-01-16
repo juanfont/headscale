@@ -126,6 +126,7 @@ var oidcCallbackTemplate = template.Must(
 	</html>`),
 )
 
+// TODO: Why is the entire machine registration logic duplicated here?
 // OIDCCallback handles the callback from the OIDC endpoint
 // Retrieves the mkey from the state cache and adds the machine to the users email namespace
 // TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
@@ -316,7 +317,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 				return
 			}
 
-			ip, err := h.getAvailableIP()
+			ips, err := h.getAvailableIPs()
 			if err != nil {
 				log.Error().
 					Caller().
@@ -330,7 +331,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 				return
 			}
 
-			machine.IPAddress = ip.String()
+			machine.IPAddresses = ips
 			machine.NamespaceID = namespace.ID
 			machine.Registered = true
 			machine.RegisterMethod = RegisterMethodOIDC

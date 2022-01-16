@@ -497,6 +497,7 @@ func (h *Headscale) handleMachineRegistrationNew(
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 }
 
+// TODO: check if any locks are needed around IP allocation.
 func (h *Headscale) handleAuthKey(
 	ctx *gin.Context,
 	machineKey key.MachinePublic,
@@ -554,14 +555,14 @@ func (h *Headscale) handleAuthKey(
 		log.Debug().
 			Str("func", "handleAuthKey").
 			Str("machine", machine.Name).
-			Msg("Authentication key was valid, proceeding to acquire an IP address")
-		ip, err := h.getAvailableIP()
+			Msg("Authentication key was valid, proceeding to acquire IP addresses")
+		ips, err := h.getAvailableIPs()
 		if err != nil {
 			log.Error().
 				Caller().
 				Str("func", "handleAuthKey").
 				Str("machine", machine.Name).
-				Msg("Failed to find an available IP")
+				Msg("Failed to find an available IP address")
 			machineRegistrations.WithLabelValues("new", "authkey", "error", machine.Namespace.Name).
 				Inc()
 
@@ -570,12 +571,12 @@ func (h *Headscale) handleAuthKey(
 		log.Info().
 			Str("func", "handleAuthKey").
 			Str("machine", machine.Name).
-			Str("ip", ip.String()).
-			Msgf("Assigning %s to %s", ip, machine.Name)
+			Str("ips", strings.Join(ips.ToStringSlice(), ",")).
+			Msgf("Assigning %s to %s", strings.Join(ips.ToStringSlice(), ","), machine.Name)
 
 		machine.Expiry = &registerRequest.Expiry
 		machine.AuthKeyID = uint(pak.ID)
-		machine.IPAddress = ip.String()
+		machine.IPAddresses = ips
 		machine.NamespaceID = pak.NamespaceID
 
 		machine.NodeKey = NodePublicKeyStripPrefix(registerRequest.NodeKey)
@@ -610,6 +611,6 @@ func (h *Headscale) handleAuthKey(
 	log.Info().
 		Str("func", "handleAuthKey").
 		Str("machine", machine.Name).
-		Str("ip", machine.IPAddress).
+		Str("ips", strings.Join(machine.IPAddresses.ToStringSlice(), ", ")).
 		Msg("Successfully authenticated via AuthKey")
 }

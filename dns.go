@@ -34,14 +34,25 @@ const (
 
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
-func generateMagicDNSRootDomains(
-	ipPrefix netaddr.IPPrefix,
-) []dnsname.FQDN {
-	// TODO(juanfont): we are not handing out IPv6 addresses yet
-	// and in fact this is Tailscale.com's range (note the fd7a:115c:a1e0: range in the fc00::/7 network)
-	ipv6base := dnsname.FQDN("0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
-	fqdns := []dnsname.FQDN{ipv6base}
+func generateMagicDNSRootDomains(ipPrefixes []netaddr.IPPrefix) []dnsname.FQDN {
+	fqdns := make([]dnsname.FQDN, 0, len(ipPrefixes))
+	for _, ipPrefix := range ipPrefixes {
+		var generateDnsRoot func(netaddr.IPPrefix) []dnsname.FQDN
+		switch ipPrefix.IP().BitLen() {
+		case 32:
+			generateDnsRoot = generateIPv4DNSRootDomain
 
+		default:
+			panic(fmt.Sprintf("unsupported IP version with address length %d", ipPrefix.IP().BitLen()))
+		}
+
+		fqdns = append(fqdns, generateDnsRoot(ipPrefix)...)
+	}
+
+	return fqdns
+}
+
+func generateIPv4DNSRootDomain(ipPrefix netaddr.IPPrefix) (fqdns []dnsname.FQDN) {
 	// Conversion to the std lib net.IPnet, a bit easier to operate
 	netRange := ipPrefix.IPNet()
 	maskBits, _ := netRange.Mask.Size()
@@ -73,7 +84,7 @@ func generateMagicDNSRootDomains(
 		fqdns = append(fqdns, fqdn)
 	}
 
-	return fqdns
+	return
 }
 
 func getMapResponseDNSConfig(

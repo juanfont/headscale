@@ -61,9 +61,9 @@ func (s *Suite) TestPortRange(c *check.C) {
 	c.Assert(rules, check.NotNil)
 
 	c.Assert(rules, check.HasLen, 1)
-	c.Assert((rules)[0].DstPorts, check.HasLen, 1)
-	c.Assert((rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(5400))
-	c.Assert((rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(5500))
+	c.Assert(rules[0].DstPorts, check.HasLen, 1)
+	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(5400))
+	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(5500))
 }
 
 func (s *Suite) TestPortWildcard(c *check.C) {
@@ -75,11 +75,11 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	c.Assert(rules, check.NotNil)
 
 	c.Assert(rules, check.HasLen, 1)
-	c.Assert((rules)[0].DstPorts, check.HasLen, 1)
-	c.Assert((rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert((rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert((rules)[0].SrcIPs, check.HasLen, 1)
-	c.Assert((rules)[0].SrcIPs[0], check.Equals, "*")
+	c.Assert(rules[0].DstPorts, check.HasLen, 1)
+	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, "*")
 }
 
 func (s *Suite) TestPortNamespace(c *check.C) {
@@ -91,7 +91,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 
 	_, err = app.GetMachine("testnamespace", "testmachine")
 	c.Assert(err, check.NotNil)
-	ip, _ := app.getAvailableIP()
+	ips, _ := app.getAvailableIPs()
 	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -101,7 +101,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 		NamespaceID:    namespace.ID,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      ip.String(),
+		IPAddresses:    ips,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(&machine)
@@ -116,12 +116,13 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	c.Assert(rules, check.NotNil)
 
 	c.Assert(rules, check.HasLen, 1)
-	c.Assert((rules)[0].DstPorts, check.HasLen, 1)
-	c.Assert((rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert((rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert((rules)[0].SrcIPs, check.HasLen, 1)
-	c.Assert((rules)[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
-	c.Assert((rules)[0].SrcIPs[0], check.Equals, ip.String())
+	c.Assert(rules[0].DstPorts, check.HasLen, 1)
+	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
+	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
+	c.Assert(len(ips), check.Equals, 1)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String())
 }
 
 func (s *Suite) TestPortGroup(c *check.C) {
@@ -133,7 +134,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 
 	_, err = app.GetMachine("testnamespace", "testmachine")
 	c.Assert(err, check.NotNil)
-	ip, _ := app.getAvailableIP()
+	ips, _ := app.getAvailableIPs()
 	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -143,7 +144,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 		NamespaceID:    namespace.ID,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      ip.String(),
+		IPAddresses:    ips,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(&machine)
@@ -156,10 +157,11 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	c.Assert(rules, check.NotNil)
 
 	c.Assert(rules, check.HasLen, 1)
-	c.Assert((rules)[0].DstPorts, check.HasLen, 1)
-	c.Assert((rules)[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert((rules)[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert((rules)[0].SrcIPs, check.HasLen, 1)
-	c.Assert((rules)[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
-	c.Assert((rules)[0].SrcIPs[0], check.Equals, ip.String())
+	c.Assert(rules[0].DstPorts, check.HasLen, 1)
+	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
+	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
+	c.Assert(len(ips), check.Equals, 1)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String())
 }

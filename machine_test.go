@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gopkg.in/check.v1"
+	"inet.af/netaddr"
 )
 
 func (s *Suite) TestGetMachine(c *check.C) {
@@ -198,4 +199,23 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 	app.ExpireMachine(machineFromDB)
 
 	c.Assert(machineFromDB.isExpired(), check.Equals, true)
+}
+
+func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
+	input := MachineAddresses([]netaddr.IP{
+		netaddr.MustParseIP("192.0.2.1"),
+		netaddr.MustParseIP("2001:db8::1"),
+	})
+	serialized, err := input.Value()
+	c.Assert(err, check.IsNil)
+	c.Assert(serialized.(string), check.Equals, "192.0.2.1,2001:db8::1")
+
+	var deserialized MachineAddresses
+	err = deserialized.Scan(serialized)
+	c.Assert(err, check.IsNil)
+
+	c.Assert(len(deserialized), check.Equals, len(input))
+	for i := range deserialized {
+		c.Assert(deserialized[i], check.Equals, input[i])
+	}
 }

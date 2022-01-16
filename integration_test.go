@@ -372,70 +372,74 @@ func (s *IntegrationTestSuite) TestListNodes() {
 
 func (s *IntegrationTestSuite) TestGetIpAddresses() {
 	for _, scales := range s.namespaces {
-		ipPrefix := netaddr.MustParseIPPrefix("100.64.0.0/10")
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
 
-		for hostname := range scales.tailscales {
-			s.T().Run(hostname, func(t *testing.T) {
-				ip, ok := ips[hostname]
+		for hostname, _ := range scales.tailscales {
+			ips := ips[hostname]
+			for _, ip := range ips {
+				s.T().Run(hostname, func(t *testing.T) {
+					assert.NotNil(t, ip)
 
-				assert.True(t, ok)
-				assert.NotNil(t, ip)
+					fmt.Printf("IP for %s: %s\n", hostname, ip)
 
-				fmt.Printf("IP for %s: %s\n", hostname, ip)
-
-				// c.Assert(ip.Valid(), check.IsTrue)
-				assert.True(t, ip.Is4())
-				assert.True(t, ipPrefix.Contains(ip))
-			})
+					// c.Assert(ip.Valid(), check.IsTrue)
+					assert.True(t, ip.Is4() || ip.Is6())
+					switch {
+					case ip.Is4():
+						assert.True(t, IpPrefix4.Contains(ip))
+					case ip.Is6():
+						assert.True(t, IpPrefix6.Contains(ip))
+					}
+				})
+			}
 		}
 	}
 }
 
 // TODO(kradalby): fix this test
-// We need some way to impot ipnstate.Status from multiple go packages.
+// We need some way to import ipnstate.Status from multiple go packages.
 // Currently it will only work with 1.18.x since that is the last
 // version we have in go.mod
 // func (s *IntegrationTestSuite) TestStatus() {
-// 	for _, scales := range s.namespaces {
-// 		ips, err := getIPs(scales.tailscales)
-// 		assert.Nil(s.T(), err)
+//	for _, scales := range s.namespaces {
+//		ips, err := getIPs(scales.tailscales)
+//		assert.Nil(s.T(), err)
 //
-// 		for hostname, tailscale := range scales.tailscales {
-// 			s.T().Run(hostname, func(t *testing.T) {
-// 				command := []string{"tailscale", "status", "--json"}
+//		for hostname, tailscale := range scales.tailscales {
+//			s.T().Run(hostname, func(t *testing.T) {
+//				command := []string{"tailscale", "status", "--json"}
 //
-// 				fmt.Printf("Getting status for %s\n", hostname)
-// 				result, err := ExecuteCommand(
-// 					&tailscale,
-// 					command,
-// 					[]string{},
-// 				)
-// 				assert.Nil(t, err)
+//				fmt.Printf("Getting status for %s\n", hostname)
+//				result, err := ExecuteCommand(
+//					&tailscale,
+//					command,
+//					[]string{},
+//				)
+//				assert.Nil(t, err)
 //
-// 				var status ipnstate.Status
-// 				err = json.Unmarshal([]byte(result), &status)
-// 				assert.Nil(s.T(), err)
+//				var status ipnstate.Status
+//				err = json.Unmarshal([]byte(result), &status)
+//				assert.Nil(s.T(), err)
 //
-// 				// TODO(kradalby): Replace this check with peer length of SAME namespace
-// 				// Check if we have as many nodes in status
-// 				// as we have IPs/tailscales
-// 				// lines := strings.Split(result, "\n")
-// 				// assert.Equal(t, len(ips), len(lines)-1)
-// 				// assert.Equal(t, len(scales.tailscales), len(lines)-1)
+//				// TODO(kradalby): Replace this check with peer length of SAME namespace
+//				// Check if we have as many nodes in status
+//				// as we have IPs/tailscales
+//				// lines := strings.Split(result, "\n")
+//				// assert.Equal(t, len(ips), len(lines)-1)
+//				// assert.Equal(t, len(scales.tailscales), len(lines)-1)
 //
-// 				peerIps := getIPsfromIPNstate(status)
+//				peerIps := getIPsfromIPNstate(status)
 //
-// 				// Check that all hosts is present in all hosts status
-// 				for ipHostname, ip := range ips {
-// 					if hostname != ipHostname {
-// 						assert.Contains(t, peerIps, ip)
-// 					}
-// 				}
-// 			})
-// 		}
-// 	}
+//				// Check that all hosts is present in all hosts status
+//				for ipHostname, ip := range ips {
+//					if hostname != ipHostname {
+//						assert.Contains(t, peerIps, ip)
+//					}
+//				}
+//			})
+//		}
+//	}
 // }
 
 func getIPsfromIPNstate(status ipnstate.Status) []netaddr.IP {
@@ -448,16 +452,19 @@ func getIPsfromIPNstate(status ipnstate.Status) []netaddr.IP {
 	return ips
 }
 
-func (s *IntegrationTestSuite) TestPingAllPeers() {
+func (s *IntegrationTestSuite) TestPingAllPeersByAddress() {
 	for _, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
 
 		for hostname, tailscale := range scales.tailscales {
-			for peername, ip := range ips {
-				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+			for peername, peerIPs := range ips {
+				for i, ip := range peerIPs {
 					// We currently cant ping ourselves, so skip that.
-					if peername != hostname {
+					if peername == hostname {
+						continue
+					}
+					s.T().Run(fmt.Sprintf("%s-%s-%d", hostname, peername, i), func(t *testing.T) {
 						// We are only interested in "direct ping" which means what we
 						// might need a couple of more attempts before reaching the node.
 						command := []string{
@@ -469,9 +476,8 @@ func (s *IntegrationTestSuite) TestPingAllPeers() {
 						}
 
 						fmt.Printf(
-							"Pinging from %s (%s) to %s (%s)\n",
+							"Pinging from %s to %s (%s)\n",
 							hostname,
-							ips[hostname],
 							peername,
 							ip,
 						)
@@ -483,8 +489,8 @@ func (s *IntegrationTestSuite) TestPingAllPeers() {
 						assert.Nil(t, err)
 						fmt.Printf("Result for %s: %s\n", hostname, result)
 						assert.Contains(t, result, "pong")
-					}
-				})
+					})
+				}
 			}
 		}
 	}
@@ -553,17 +559,17 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 	// TODO(juanfont): We have to find out why do we need to wait
 	time.Sleep(100 * time.Second) // Wait for the nodes to receive updates
 
-	mainIps, err := getIPs(main.tailscales)
-	assert.Nil(s.T(), err)
-
 	sharedIps, err := getIPs(shared.tailscales)
 	assert.Nil(s.T(), err)
 
 	for hostname, tailscale := range main.tailscales {
-		for peername, ip := range sharedIps {
-			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
+		for peername, peerIPs := range sharedIps {
+			for i, ip := range peerIPs {
 				// We currently cant ping ourselves, so skip that.
-				if peername != hostname {
+				if peername == hostname {
+					continue
+				}
+				s.T().Run(fmt.Sprintf("%s-%s-%d", hostname, peername, i), func(t *testing.T) {
 					// We are only interested in "direct ping" which means what we
 					// might need a couple of more attempts before reaching the node.
 					command := []string{
@@ -575,9 +581,8 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 					}
 
 					fmt.Printf(
-						"Pinging from %s (%s) to %s (%s)\n",
+						"Pinging from %s to %s (%s)\n",
 						hostname,
-						mainIps[hostname],
 						peername,
 						ip,
 					)
@@ -589,8 +594,8 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 					assert.Nil(t, err)
 					fmt.Printf("Result for %s: %s\n", hostname, result)
 					assert.Contains(t, result, "pong")
-				}
-			})
+				})
+			}
 		}
 	}
 }
@@ -607,7 +612,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 			_, err := ExecuteCommand(
 				&tailscale,
 				command,
-				[]string{},
+				[]string{"GOMAXPROCS=32"},
 			)
 			assert.Nil(s.T(), err)
 			for peername, ip := range ips {
@@ -653,7 +658,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 							_, err = ExecuteCommand(
 								&tailscale,
 								command,
-								[]string{"ALL_PROXY=socks5://localhost:1055"},
+								[]string{"ALL_PROXY=socks5://localhost:1055", "GOMAXPROCS=32"},
 							)
 							if err == nil {
 								break
@@ -684,78 +689,125 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 			)
 			assert.Nil(s.T(), err)
 			for peername, ip := range ips {
+				if peername == hostname {
+					continue
+				}
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
-					if peername != hostname {
-						command := []string{
-							"ls",
-							fmt.Sprintf("/tmp/file_from_%s", peername),
-						}
-						fmt.Printf(
-							"Checking file in %s (%s) from %s (%s)\n",
-							hostname,
-							ips[hostname],
-							peername,
-							ip,
-						)
-						result, err := ExecuteCommand(
-							&tailscale,
-							command,
-							[]string{},
-						)
-						assert.Nil(t, err)
-						fmt.Printf("Result for %s: %s\n", peername, result)
-						assert.Equal(
-							t,
-							result,
-							fmt.Sprintf("/tmp/file_from_%s\n", peername),
-						)
+					command := []string{
+						"ls",
+						fmt.Sprintf("/tmp/file_from_%s", peername),
 					}
+					fmt.Printf(
+						"Checking file in %s (%s) from %s (%s)\n",
+						hostname,
+						ips[hostname],
+						peername,
+						ip,
+					)
+					result, err := ExecuteCommand(
+						&tailscale,
+						command,
+						[]string{},
+					)
+					assert.Nil(t, err)
+					fmt.Printf("Result for %s: %s\n", peername, result)
+					assert.Equal(
+						t,
+						fmt.Sprintf("/tmp/file_from_%s\n", peername),
+						result,
+					)
 				})
 			}
 		}
 	}
 }
 
-func (s *IntegrationTestSuite) TestMagicDNS() {
+func (s *IntegrationTestSuite) TestPingAllPeersByHostname() {
 	for namespace, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
 		for hostname, tailscale := range scales.tailscales {
-			for peername, ip := range ips {
+			for peername, _ := range ips {
+				if peername == hostname {
+					continue
+				}
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
-					if peername != hostname {
-						command := []string{
-							"tailscale", "ping",
-							"--timeout=10s",
-							"--c=20",
-							"--until-direct=true",
-							fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
-						}
-
-						fmt.Printf(
-							"Pinging using Hostname (magicdns) from %s (%s) to %s (%s)\n",
-							hostname,
-							ips[hostname],
-							peername,
-							ip,
-						)
-						result, err := ExecuteCommand(
-							&tailscale,
-							command,
-							[]string{},
-						)
-						assert.Nil(t, err)
-						fmt.Printf("Result for %s: %s\n", hostname, result)
-						assert.Contains(t, result, "pong")
+					command := []string{
+						"tailscale", "ping",
+						"--timeout=10s",
+						"--c=20",
+						"--until-direct=true",
+						fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
 					}
+
+					fmt.Printf(
+						"Pinging using Hostname from %s to %s\n",
+						hostname,
+						peername,
+					)
+					result, err := ExecuteCommand(
+						&tailscale,
+						command,
+						[]string{},
+					)
+					assert.Nil(t, err)
+					fmt.Printf("Result for %s: %s\n", hostname, result)
+					assert.Contains(t, result, "pong")
 				})
 			}
 		}
 	}
 }
 
-func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, error) {
-	ips := make(map[string]netaddr.IP)
+// TODO:
+// * With manual testing, MagicDNS does not respond to AAAA queries. Why?
+// * Tailscaled only adds a route to the IPv4 (100.100.100.100) address of the MagicDNS service,
+//   event though there is an IPv6 one (fd7a:115c:a1e0::53) as well.
+func (s *IntegrationTestSuite) TestMagicDNSv4() {
+	for namespace, scales := range s.namespaces {
+		ips, err := getIPs(scales.tailscales)
+		assert.Nil(s.T(), err)
+		for hostname, tailscale := range scales.tailscales {
+			for peername, ips := range ips {
+				if peername == hostname {
+					continue
+				}
+				s.T().Run(fmt.Sprintf("%s-%s-ipv4", hostname, peername), func(t *testing.T) {
+					command := []string{
+						"host", "-4", "-t", "A",
+						fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
+						"100.100.100.100",
+					}
+
+					fmt.Printf(
+						"Resolving name %s (IPv4) from %s over IPv4\n",
+						peername,
+						hostname,
+					)
+					result, err := ExecuteCommand(
+						&tailscale,
+						command,
+						[]string{},
+					)
+					assert.Nil(t, err)
+					fmt.Printf("Result for %s: %s\n", hostname, result)
+
+					resolved := false
+					for _, ip := range ips {
+						if strings.Contains(result, fmt.Sprintf("has address %s", ip.String())) {
+							resolved = true
+							break
+						}
+					}
+					assert.Equal(t, true, resolved)
+				})
+			}
+		}
+	}
+}
+
+func getIPs(tailscales map[string]dockertest.Resource) (map[string][]netaddr.IP, error) {
+	ips := make(map[string][]netaddr.IP)
 	for hostname, tailscale := range tailscales {
 		command := []string{"tailscale", "ip"}
 
@@ -768,12 +820,17 @@ func getIPs(tailscales map[string]dockertest.Resource) (map[string]netaddr.IP, e
 			return nil, err
 		}
 
-		ip, err := netaddr.ParseIP(strings.TrimSuffix(result, "\n"))
-		if err != nil {
-			return nil, err
+		for _, address := range strings.Split(result, "\n") {
+			address = strings.TrimSuffix(address, "\n")
+			if len(address) < 1 {
+				continue
+			}
+			ip, err := netaddr.ParseIP(address)
+			if err != nil {
+				return nil, err
+			}
+			ips[hostname] = append(ips[hostname], ip)
 		}
-
-		ips[hostname] = ip
 	}
 
 	return ips, nil

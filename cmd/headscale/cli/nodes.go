@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	survey "github.com/AlecAivazis/survey/v2"
@@ -459,7 +460,7 @@ func nodesToPtables(
 			"Name",
 			"NodeKey",
 			"Namespace",
-			"IP address",
+			"IP addresses",
 			"Ephemeral",
 			"Last seen",
 			"Online",
@@ -523,7 +524,7 @@ func nodesToPtables(
 				machine.Name,
 				nodeKey.ShortString(),
 				namespace,
-				machine.IpAddress,
+				strings.Join(machine.IpAddresses, ", "),
 				strconv.FormatBool(ephemeral),
 				lastSeenTime,
 				online,

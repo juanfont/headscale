@@ -41,7 +41,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", "HTTP-01")
 
-	viper.SetDefault("ip_prefix", "100.64.0.0/10")
+	viper.SetDefault("ip_prefixes", []string{"100.64.0.0/10"})
 
 	viper.SetDefault("log_level", "info")
 
@@ -221,10 +221,20 @@ func getHeadscaleConfig() headscale.Config {
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 
+	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
+	prefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes))
+	for i, prefixInConfig := range configuredPrefixes {
+		prefix, err := netaddr.ParseIPPrefix(prefixInConfig)
+		if err != nil {
+			panic(fmt.Errorf("failed to parse ip_prefixes[%d]: %w", i, err))
+		}
+		prefixes = append(prefixes, prefix)
+	}
+
 	return headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
-		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
+		IPPrefixes:     prefixes,
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		BaseDomain:     baseDomain,
 

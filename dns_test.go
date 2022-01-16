@@ -124,7 +124,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Namespace:      *namespaceShared1,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.1",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
 	app.db.Save(machineInShared1)
@@ -142,7 +142,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Namespace:      *namespaceShared2,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.2",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
 	app.db.Save(machineInShared2)
@@ -160,7 +160,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Namespace:      *namespaceShared3,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.3",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
 	app.db.Save(machineInShared3)
@@ -178,7 +178,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Namespace:      *namespaceShared1,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.4",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.4")},
 		AuthKeyID:      uint(PreAuthKey2InShared1.ID),
 	}
 	app.db.Save(machine2InShared1)
@@ -273,7 +273,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Namespace:      *namespaceShared1,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.1",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
 	app.db.Save(machineInShared1)
@@ -291,7 +291,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Namespace:      *namespaceShared2,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.2",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
 	app.db.Save(machineInShared2)
@@ -309,7 +309,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Namespace:      *namespaceShared3,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.3",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
 	app.db.Save(machineInShared3)
@@ -327,7 +327,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Namespace:      *namespaceShared1,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.4",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.4")},
 		AuthKeyID:      uint(preAuthKey2InShared1.ID),
 	}
 	app.db.Save(machine2InShared1)
