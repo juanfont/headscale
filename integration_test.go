@@ -719,7 +719,7 @@ func (s *IntegrationTestSuite) TestPingAllPeersByHostname() {
 					}
 
 					fmt.Printf(
-						"Pinging using Hostname from %s to %s\n",
+						"Pinging using hostname from %s to %s\n",
 						hostname,
 						peername,
 					)
@@ -737,11 +737,7 @@ func (s *IntegrationTestSuite) TestPingAllPeersByHostname() {
 	}
 }
 
-// TODO:
-// * With manual testing, MagicDNS does not respond to AAAA queries. Why?
-// * Tailscaled only adds a route to the IPv4 (100.100.100.100) address of the MagicDNS service,
-//   event though there is an IPv6 one (fd7a:115c:a1e0::53) as well.
-func (s *IntegrationTestSuite) TestMagicDNSv4() {
+func (s *IntegrationTestSuite) TestMagicDNS() {
 	for namespace, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
@@ -750,15 +746,14 @@ func (s *IntegrationTestSuite) TestMagicDNSv4() {
 				if peername == hostname {
 					continue
 				}
-				s.T().Run(fmt.Sprintf("%s-%s-ipv4", hostname, peername), func(t *testing.T) {
+				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 					command := []string{
-						"host", "-4", "-t", "A",
+						"tailscale", "ip",
 						fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
-						"100.100.100.100",
 					}
 
 					fmt.Printf(
-						"Resolving name %s (IPv4) from %s over IPv4\n",
+						"Resolving name %s from %s\n",
 						peername,
 						hostname,
 					)
@@ -770,14 +765,9 @@ func (s *IntegrationTestSuite) TestMagicDNSv4() {
 					assert.Nil(t, err)
 					fmt.Printf("Result for %s: %s\n", hostname, result)
 
-					resolved := false
 					for _, ip := range ips {
-						if strings.Contains(result, fmt.Sprintf("has address %s", ip.String())) {
-							resolved = true
-							break
-						}
+						assert.Contains(t, result, ip.String())
 					}
-					assert.Equal(t, true, resolved)
 				})
 			}
 		}
