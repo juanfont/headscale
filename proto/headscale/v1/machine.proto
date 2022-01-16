@@ -18,7 +18,7 @@ message Machine {
     string machine_key  = 2;
     string node_key     = 3;
     string disco_key    = 4;
-    string ip_address   = 5;
+    repeated string ip_addresses   = 5;
     string name         = 6;
     Namespace namespace = 7;
 
