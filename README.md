@@ -65,7 +65,7 @@ To contribute to Headscale you would need the lastest version of [Go](https://go
 
 ### Code style
 
-To ensure we have some consistency with a growing number of contributes, this project has adopted linting and style/formatting rules:
+To ensure we have some consistency with a growing number of contributions, this project has adopted linting and style/formatting rules:
 
 The **Go** code is linted with [`golangci-lint`](https://golangci-lint.run) and
 formatted with [`golines`](https://github.com/segmentio/golines) (width 88) and
@@ -76,7 +76,7 @@ run `make lint` and `make fmt` before committing any code.
 The **Proto** code is linted with [`buf`](https://docs.buf.build/lint/overview) and
 formatted with [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html).
 
-The **rest** (markdown, yaml, etc) is formatted with [`prettier`](https://prettier.io).
+The **rest** (Markdown, YAML, etc) is formatted with [`prettier`](https://prettier.io).
 
 Check out the `.golangci.yaml` and `Makefile` to see the specific configuration.
 
@@ -92,7 +92,7 @@ make install-protobuf-plugins
 
 ### Testing and building
 
-Some parts of the project requires the generation of Go code from Protobuf (if changes is made in `proto/`) and it must be (re-)generated with:
+Some parts of the project require the generation of Go code from Protobuf (if changes are made in `proto/`) and it must be (re-)generated with:
 
 ```shell
 make generate

@@ -21,7 +21,7 @@ wget --output-document=/usr/local/bin/headscale \
 chmod +x /usr/local/bin/headscale
 ```
 
-3. Prepare a direction to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
+3. Prepare a directory to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
 ```shell
 # Directory for configuration
@@ -32,7 +32,7 @@ mkdir -p /etc/headscale
 mkdir -p /var/lib/headscale
 ```
 
-4. Create an empty SQlite datebase:
+4. Create an empty SQLite database:
 
 ```shell
 touch /var/lib/headscale/db.sqlite
@@ -106,7 +106,7 @@ tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 
 ## Running `headscale` in the background with SystemD
 
-In this section it will be demonstrated how to run `headscale` as a service in the background with [SystemD](https://www.freedesktop.org/wiki/Software/systemd/).
+This section demonstrates how to run `headscale` as a service in the background with [SystemD](https://www.freedesktop.org/wiki/Software/systemd/).
 This should work on most modern Linux distributions.
 
 1. Create a SystemD service configuration at `/etc/systemd/system/headscale.service` containing:
