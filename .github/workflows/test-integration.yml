@@ -17,7 +17,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: "1.17.3"
+          go-version: "1.17"
 
       - name: Run Integration tests
         run: go test -tags integration -timeout 30m
