@@ -74,6 +74,8 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 			Str("handler", "PollNetMap").
 			Msgf("Failed to fetch machine from the database with Machine key: %s", machineKey.String())
 		ctx.String(http.StatusInternalServerError, "")
+
+		return
 	}
 	log.Trace().
 		Str("handler", "PollNetMap").
