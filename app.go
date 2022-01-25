@@ -572,7 +572,11 @@ func (h *Headscale) Serve() error {
 	if tlsConfig != nil {
 		httpServer.TLSConfig = tlsConfig
 
-		grpcOptions = append(grpcOptions, grpc.Creds(credentials.NewTLS(tlsConfig)))
+		// grpcOptions = append(grpcOptions, grpc.Creds(credentials.NewTLS(tlsConfig)))
+		grpcOptions = append(
+			grpcOptions,
+			grpc.Creds(credentials.NewServerTLSFromCert(&tlsConfig.Certificates[0])),
+		)
 	}
 
 	grpcServer := grpc.NewServer(grpcOptions...)
