@@ -14,13 +14,13 @@ enum RegisterMethod {
 }
 
 message Machine {
-    uint64 id           = 1;
-    string machine_key  = 2;
-    string node_key     = 3;
-    string disco_key    = 4;
-    repeated string ip_addresses   = 5;
-    string name         = 6;
-    Namespace namespace = 7;
+    uint64          id           = 1;
+    string          machine_key  = 2;
+    string          node_key     = 3;
+    string          disco_key    = 4;
+    repeated string ip_addresses = 5;
+    string          name         = 6;
+    Namespace namespace          = 7;
 
     bool           registered      = 8;
     RegisterMethod register_method = 9;
