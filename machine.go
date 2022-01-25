@@ -530,7 +530,9 @@ func (machine Machine) toNode(
 		addrs = append(addrs, ip)
 	}
 
-	allowedIPs := append([]netaddr.IPPrefix{}, addrs...) // we append the node own IP, as it is required by the clients
+	allowedIPs := append(
+		[]netaddr.IPPrefix{},
+		addrs...) // we append the node own IP, as it is required by the clients
 
 	if includeRoutes {
 		routesStr := []string{}
