@@ -339,26 +339,26 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 		)
 	}
 
-	// TODO(kradalby): Implement API key backend:
-	// - Table in the DB
-	// - Key name
-	// - Encrypted
-	// - Expiry
-	//
-	// Currently all other than localhost traffic is unauthorized, this is intentional to allow
-	// us to make use of gRPC for our CLI, but not having to implement any of the remote capabilities
-	// and API key auth
-	return ctx, status.Error(
-		codes.Unauthenticated,
-		"Authentication is not implemented yet",
-	)
+	valid, err := h.ValidateAPIKey(strings.TrimPrefix(token, AuthPrefix))
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Str("client_address", client.Addr.String()).
+			Msg("failed to validate token")
 
-	// if strings.TrimPrefix(token, AUTH_PREFIX) != a.Token {
-	// 	log.Error().Caller().Str("client_address", p.Addr.String()).Msg("invalid token")
-	// 	return ctx, status.Error(codes.Unauthenticated, "invalid token")
-	// }
+		return ctx, status.Error(codes.Internal, "failed to validate token")
+	}
 
-	// return handler(ctx, req)
+	if !valid {
+		log.Info().
+			Str("client_address", client.Addr.String()).
+			Msg("invalid token")
+
+		return ctx, status.Error(codes.Unauthenticated, "invalid token")
+	}
+
+	return handler(ctx, req)
 }
 
 func (h *Headscale) httpAuthenticationMiddleware(ctx *gin.Context) {
@@ -381,19 +381,30 @@ func (h *Headscale) httpAuthenticationMiddleware(ctx *gin.Context) {
 
 	ctx.AbortWithStatus(http.StatusUnauthorized)
 
-	// TODO(kradalby): Implement API key backend
-	// Currently all traffic is unauthorized, this is intentional to allow
-	// us to make use of gRPC for our CLI, but not having to implement any of the remote capabilities
-	// and API key auth
-	//
-	// if strings.TrimPrefix(authHeader, AUTH_PREFIX) != a.Token {
-	// 	log.Error().Caller().Str("client_address", c.ClientIP()).Msg("invalid token")
-	// 	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error", "unauthorized"})
+	valid, err := h.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Str("client_address", ctx.ClientIP()).
+			Msg("failed to validate token")
 
-	// 	return
-	// }
+		ctx.AbortWithStatus(http.StatusInternalServerError)
 
-	// c.Next()
+		return
+	}
+
+	if !valid {
+		log.Info().
+			Str("client_address", ctx.ClientIP()).
+			Msg("invalid token")
+
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+
+		return
+	}
+
+	ctx.Next()
 }
 
 // ensureUnixSocketIsAbsent will check if the given path for headscales unix socket is clear
@@ -630,6 +641,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// service, which can be configured to run on any other port.
 			go func() {
 				log.Fatal().
+					Caller().
 					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
 					Msg("failed to set up a HTTP server")
 			}()
