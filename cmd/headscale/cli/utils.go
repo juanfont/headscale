@@ -26,7 +26,8 @@ import (
 )
 
 const (
-	PermissionFallback = 0o700
+	PermissionFallback      = 0o700
+	HeadscaleDateTimeFormat = "2006-01-02 15:04:05"
 )
 
 func LoadConfig(path string) error {
@@ -270,7 +271,8 @@ func getHeadscaleConfig() headscale.Config {
 
 	if len(prefixes) < 1 {
 		prefixes = append(prefixes, netaddr.MustParseIPPrefix("100.64.0.0/10"))
-		log.Warn().Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
+		log.Warn().
+			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
 	return headscale.Config{
@@ -400,7 +402,7 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 		// If we are not connecting to a local server, require an API key for authentication
 		apiKey := cfg.CLI.APIKey
 		if apiKey == "" {
-			log.Fatal().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
+			log.Fatal().Caller().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
 		}
 		grpcOptions = append(grpcOptions,
 			grpc.WithPerRPCCredentials(tokenAuth{
@@ -416,7 +418,7 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
 	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
 	if err != nil {
-		log.Fatal().Err(err).Msgf("Could not connect: %v", err)
+		log.Fatal().Caller().Err(err).Msgf("Could not connect: %v", err)
 	}
 
 	client := v1.NewHeadscaleServiceClient(conn)
