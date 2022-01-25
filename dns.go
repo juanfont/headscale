@@ -51,7 +51,12 @@ func generateMagicDNSRootDomains(ipPrefixes []netaddr.IPPrefix) []dnsname.FQDN {
 			generateDNSRoot = generateIPv6DNSRootDomain
 
 		default:
-			panic(fmt.Sprintf("unsupported IP version with address length %d", ipPrefix.IP().BitLen()))
+			panic(
+				fmt.Sprintf(
+					"unsupported IP version with address length %d",
+					ipPrefix.IP().BitLen(),
+				),
+			)
 		}
 
 		fqdns = append(fqdns, generateDNSRoot(ipPrefix)...)
@@ -115,7 +120,9 @@ func generateIPv6DNSRootDomain(ipPrefix netaddr.IPPrefix) []dnsname.FQDN {
 	// function is called only once over the lifetime of a server process.
 	prefixConstantParts := []string{}
 	for i := 0; i < maskBits/nibbleLen; i++ {
-		prefixConstantParts = append([]string{string(nibbleStr[i])}, prefixConstantParts...)
+		prefixConstantParts = append(
+			[]string{string(nibbleStr[i])},
+			prefixConstantParts...)
 	}
 
 	makeDomain := func(variablePrefix ...string) (dnsname.FQDN, error) {
