@@ -4,6 +4,7 @@ package v1
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -40,6 +41,10 @@ type HeadscaleServiceClient interface {
 	// --- Route start ---
 	GetMachineRoute(ctx context.Context, in *GetMachineRouteRequest, opts ...grpc.CallOption) (*GetMachineRouteResponse, error)
 	EnableMachineRoutes(ctx context.Context, in *EnableMachineRoutesRequest, opts ...grpc.CallOption) (*EnableMachineRoutesResponse, error)
+	// --- ApiKeys start ---
+	CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error)
+	ExpireApiKey(ctx context.Context, in *ExpireApiKeyRequest, opts ...grpc.CallOption) (*ExpireApiKeyResponse, error)
+	ListApiKeys(ctx context.Context, in *ListApiKeysRequest, opts ...grpc.CallOption) (*ListApiKeysResponse, error)
 }
 
 type headscaleServiceClient struct {
@@ -212,6 +217,33 @@ func (c *headscaleServiceClient) EnableMachineRoutes(ctx context.Context, in *En
 	return out, nil
 }
 
+func (c *headscaleServiceClient) CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error) {
+	out := new(CreateApiKeyResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/CreateApiKey", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *headscaleServiceClient) ExpireApiKey(ctx context.Context, in *ExpireApiKeyRequest, opts ...grpc.CallOption) (*ExpireApiKeyResponse, error) {
+	out := new(ExpireApiKeyResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/ExpireApiKey", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *headscaleServiceClient) ListApiKeys(ctx context.Context, in *ListApiKeysRequest, opts ...grpc.CallOption) (*ListApiKeysResponse, error) {
+	out := new(ListApiKeysResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/ListApiKeys", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HeadscaleServiceServer is the server API for HeadscaleService service.
 // All implementations must embed UnimplementedHeadscaleServiceServer
 // for forward compatibility
@@ -238,6 +270,10 @@ type HeadscaleServiceServer interface {
 	// --- Route start ---
 	GetMachineRoute(context.Context, *GetMachineRouteRequest) (*GetMachineRouteResponse, error)
 	EnableMachineRoutes(context.Context, *EnableMachineRoutesRequest) (*EnableMachineRoutesResponse, error)
+	// --- ApiKeys start ---
+	CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error)
+	ExpireApiKey(context.Context, *ExpireApiKeyRequest) (*ExpireApiKeyResponse, error)
+	ListApiKeys(context.Context, *ListApiKeysRequest) (*ListApiKeysResponse, error)
 	mustEmbedUnimplementedHeadscaleServiceServer()
 }
 
@@ -298,6 +334,15 @@ func (UnimplementedHeadscaleServiceServer) GetMachineRoute(context.Context, *Get
 }
 func (UnimplementedHeadscaleServiceServer) EnableMachineRoutes(context.Context, *EnableMachineRoutesRequest) (*EnableMachineRoutesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EnableMachineRoutes not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateApiKey not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) ExpireApiKey(context.Context, *ExpireApiKeyRequest) (*ExpireApiKeyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExpireApiKey not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) ListApiKeys(context.Context, *ListApiKeysRequest) (*ListApiKeysResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListApiKeys not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) mustEmbedUnimplementedHeadscaleServiceServer() {}
 
@@ -636,6 +681,60 @@ func _HeadscaleService_EnableMachineRoutes_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_CreateApiKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateApiKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).CreateApiKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/CreateApiKey",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).CreateApiKey(ctx, req.(*CreateApiKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HeadscaleService_ExpireApiKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExpireApiKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).ExpireApiKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/ExpireApiKey",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).ExpireApiKey(ctx, req.(*ExpireApiKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HeadscaleService_ListApiKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListApiKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).ListApiKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/ListApiKeys",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).ListApiKeys(ctx, req.(*ListApiKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HeadscaleService_ServiceDesc is the grpc.ServiceDesc for HeadscaleService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -714,6 +813,18 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EnableMachineRoutes",
 			Handler:    _HeadscaleService_EnableMachineRoutes_Handler,
+		},
+		{
+			MethodName: "CreateApiKey",
+			Handler:    _HeadscaleService_CreateApiKey_Handler,
+		},
+		{
+			MethodName: "ExpireApiKey",
+			Handler:    _HeadscaleService_ExpireApiKey_Handler,
+		},
+		{
+			MethodName: "ListApiKeys",
+			Handler:    _HeadscaleService_ListApiKeys_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
