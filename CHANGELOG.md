@@ -2,7 +2,7 @@
 
 **TBD (TBD):**
 
-- Fixed issue where hosts deleted from control server may be written back to the database, as long as they are connected to the control server [#278]((https://github.com/juanfont/headscale/pull/278)
+- Fixed issue where hosts deleted from control server may be written back to the database, as long as they are connected to the control server [#278](https://github.com/juanfont/headscale/pull/278)
 )
 
 **0.12.3 (2022-01-13):**
