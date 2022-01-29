@@ -2,6 +2,11 @@
 
 **TBD (TBD):**
 
+**Changes**:
+
+- Make gRPC Unix Socket permissions configurable [#292](https://github.com/juanfont/headscale/pull/292)
+- Trim whitespace before reading Private Key from file [#289](https://github.com/juanfont/headscale/pull/289)
+
 **0.12.3 (2022-01-13):**
 
 **Changes**:
