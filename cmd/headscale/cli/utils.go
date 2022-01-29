@@ -41,8 +41,6 @@ func LoadConfig(path string) error {
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", "HTTP-01")
 
-	viper.SetDefault("ip_prefixes", []string{"100.64.0.0/10"})
-
 	viper.SetDefault("log_level", "info")
 
 	viper.SetDefault("dns_config", nil)
@@ -222,13 +220,49 @@ func getHeadscaleConfig() headscale.Config {
 	derpConfig := GetDERPConfig()
 
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
-	prefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes))
+	parsedPrefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes)+1)
+
+	legacyPrefixField := viper.GetString("ip_prefix")
+	if len(legacyPrefixField) > 0 {
+		log.
+			Warn().
+			Msgf(
+				"%s, %s",
+				"use of 'ip_prefix' for configuration is deprecated",
+				"please see 'ip_prefixes' in the shipped example.",
+			)
+		legacyPrefix, err := netaddr.ParseIPPrefix(legacyPrefixField)
+		if err != nil {
+			panic(fmt.Errorf("failed to parse ip_prefix: %w", err))
+		}
+		parsedPrefixes = append(parsedPrefixes, legacyPrefix)
+	}
+
 	for i, prefixInConfig := range configuredPrefixes {
 		prefix, err := netaddr.ParseIPPrefix(prefixInConfig)
 		if err != nil {
 			panic(fmt.Errorf("failed to parse ip_prefixes[%d]: %w", i, err))
 		}
-		prefixes = append(prefixes, prefix)
+		parsedPrefixes = append(parsedPrefixes, prefix)
+	}
+
+	prefixes := make([]netaddr.IPPrefix, 0, len(parsedPrefixes))
+	{
+		// dedup
+		normalizedPrefixes := make(map[string]int, len(parsedPrefixes))
+		for i, p := range parsedPrefixes {
+			normalizedPrefixes[p.String()] = i
+		}
+
+		// convert back to list
+		for _, i := range normalizedPrefixes {
+			prefixes = append(prefixes, parsedPrefixes[i])
+		}
+	}
+
+	if len(prefixes) < 1 {
+		prefixes = append(prefixes, netaddr.MustParseIPPrefix("100.64.0.0/10"))
+		log.Warn().Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
 	return headscale.Config{
