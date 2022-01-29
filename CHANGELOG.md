@@ -4,6 +4,8 @@
 
 **Changes**:
 
+- Make gRPC Unix Socket permissions configurable [#292](https://github.com/juanfont/headscale/pull/292)
+- Trim whitespace before reading Private Key from file [#289](https://github.com/juanfont/headscale/pull/289)
 - Add new command to generate a private key for `headscale` [#290](https://github.com/juanfont/headscale/pull/290)
 - Fixed issue where hosts deleted from control server may be written back to the database, as long as they are connected to the control server [#278](https://github.com/juanfont/headscale/pull/278)
 
