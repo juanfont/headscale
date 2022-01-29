@@ -40,7 +40,7 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", "HTTP-01")
-    viper.SetDefault("tls_client_auth_mode", "disabled")
+	viper.SetDefault("tls_client_auth_mode", "disabled")
 
 	viper.SetDefault("ip_prefix", "100.64.0.0/10")
 
@@ -82,10 +82,10 @@ func LoadConfig(path string) error {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
 
-    auth_mode := viper.GetString("tls_client_auth_mode")
-    if (auth_mode != "disabled" && auth_mode != "relaxed" && auth_mode != "enforced"){
-        errorText += "Invalid tls_client_auth_mode supplied. Accepted values: disabled, relaxed, enforced."
-    }
+	clientAuthMode := viper.GetString("tls_client_auth_mode")
+	if clientAuthMode != "disabled" && clientAuthMode != "relaxed" && clientAuthMode != "enforced" {
+		errorText += "Invalid tls_client_auth_mode supplied. Accepted values: disabled, relaxed, enforced."
+	}
 
 	if errorText != "" {
 		//nolint
@@ -256,9 +256,9 @@ func getHeadscaleConfig() headscale.Config {
 		),
 		TLSLetsEncryptChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
 
-		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
-		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
-        TLSClientAuthMode: viper.GetString("tls_client_auth_mode"),
+		TLSCertPath:       absPath(viper.GetString("tls_cert_path")),
+		TLSKeyPath:        absPath(viper.GetString("tls_key_path")),
+		TLSClientAuthMode: viper.GetString("tls_client_auth_mode"),
 
 		DNSConfig: dnsConfig,
 

@@ -87,9 +87,9 @@ type Config struct {
 	TLSLetsEncryptCacheDir      string
 	TLSLetsEncryptChallengeType string
 
-	TLSCertPath         string
-	TLSKeyPath          string
-    TLSClientAuthMode   string
+	TLSCertPath       string
+	TLSKeyPath        string
+	TLSClientAuthMode string
 
 	ACMEURL   string
 	ACMEEmail string
@@ -646,28 +646,28 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
-        var client_auth_mode tls.ClientAuthType
-        if(h.cfg.TLSClientAuthMode == "disabled"){
-            // Client cert is _not_ required.
-            client_auth_mode = tls.NoClientCert
-        }else if (h.cfg.TLSClientAuthMode == "relaxed"){
-            // Client cert required, but not verified.
-            client_auth_mode = tls.RequireAnyClientCert
-        }else if (h.cfg.TLSClientAuthMode == "enforced"){
-            // Client cert is required and verified.
-            client_auth_mode = tls.RequireAndVerifyClientCert
-        }else{
-            return nil, errors.New(
-                "Invalid tls_client_auth_mode provided: " +
-                h.cfg.TLSClientAuthMode)
-        }
+		var clientAuthMode tls.ClientAuthType
+		if h.cfg.TLSClientAuthMode == "disabled" {
+			// Client cert is _not_ required.
+			clientAuthMode = tls.NoClientCert
+		} else if h.cfg.TLSClientAuthMode == "relaxed" {
+			// Client cert required, but not verified.
+			clientAuthMode = tls.RequireAnyClientCert
+		} else if h.cfg.TLSClientAuthMode == "enforced" {
+			// Client cert is required and verified.
+			clientAuthMode = tls.RequireAndVerifyClientCert
+		} else {
+			return nil, errors.New(
+				"Invalid tls_clientAuthMode provided: " +
+					h.cfg.TLSClientAuthMode)
+		}
 
-        log.Info().Msg(fmt.Sprintf(
-            "Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
-            h.cfg.TLSClientAuthMode))
+		log.Info().Msg(fmt.Sprintf(
+			"Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
+			h.cfg.TLSClientAuthMode))
 
 		tlsConfig := &tls.Config{
-			ClientAuth:   client_auth_mode,
+			ClientAuth:   clientAuthMode,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: make([]tls.Certificate, 1),
 			MinVersion:   tls.VersionTLS12,
