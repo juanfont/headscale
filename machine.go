@@ -362,6 +362,14 @@ func (h *Headscale) DeleteMachine(machine *Machine) error {
 	return h.RequestMapUpdates(namespaceID)
 }
 
+func (h *Headscale) TouchMachine(machine *Machine) error {
+	return h.db.Updates(Machine{
+		ID:                   machine.ID,
+		LastSeen:             machine.LastSeen,
+		LastSuccessfulUpdate: machine.LastSuccessfulUpdate,
+	}).Error
+}
+
 // HardDeleteMachine hard deletes a Machine from the database.
 func (h *Headscale) HardDeleteMachine(machine *Machine) error {
 	err := h.RemoveSharedMachineFromAllNamespaces(machine)

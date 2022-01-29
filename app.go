@@ -722,7 +722,8 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 		return nil, fmt.Errorf("failed to read private key file: %w", err)
 	}
 
-	privateKeyEnsurePrefix := PrivateKeyEnsurePrefix(string(privateKey))
+	trimmedPrivateKey := strings.TrimSpace(string(privateKey))
+	privateKeyEnsurePrefix := PrivateKeyEnsurePrefix(trimmedPrivateKey)
 
 	var machineKey key.MachinePrivate
 	if err = machineKey.UnmarshalText([]byte(privateKeyEnsurePrefix)); err != nil {

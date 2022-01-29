@@ -76,6 +76,8 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 			Str("handler", "PollNetMap").
 			Msgf("Failed to fetch machine from the database with Machine key: %s", machineKey.String())
 		ctx.String(http.StatusInternalServerError, "")
+
+		return
 	}
 	log.Trace().
 		Str("handler", "PollNetMap").
@@ -102,7 +104,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		machine.Endpoints = datatypes.JSON(endpoints)
 		machine.LastSeen = &now
 	}
-	h.db.Save(&machine)
+	h.db.Updates(machine)
 
 	data, err := h.getMapResponse(machineKey, req, machine)
 	if err != nil {
@@ -313,6 +315,10 @@ func (h *Headscale) PollNetMapStream(
 					Str("channel", "pollData").
 					Err(err).
 					Msg("Cannot update machine from database")
+
+				// client has been removed from database
+				// since the stream opened, terminate connection.
+				return false
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
@@ -321,13 +327,22 @@ func (h *Headscale) PollNetMapStream(
 				Set(float64(now.Unix()))
 			machine.LastSuccessfulUpdate = &now
 
-			h.db.Save(&machine)
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Str("machine", machine.Name).
-				Str("channel", "pollData").
-				Int("bytes", len(data)).
-				Msg("Machine entry in database updated successfully after sending pollData")
+			err = h.TouchMachine(machine)
+			if err != nil {
+				log.Error().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Name).
+					Str("channel", "pollData").
+					Err(err).
+					Msg("Cannot update machine LastSuccessfulUpdate")
+			} else {
+				log.Trace().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Name).
+					Str("channel", "pollData").
+					Int("bytes", len(data)).
+					Msg("Machine entry in database updated successfully after sending pollData")
+			}
 
 			return true
 
@@ -366,16 +381,29 @@ func (h *Headscale) PollNetMapStream(
 					Str("channel", "keepAlive").
 					Err(err).
 					Msg("Cannot update machine from database")
+
+				// client has been removed from database
+				// since the stream opened, terminate connection.
+				return false
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
-			h.db.Save(&machine)
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Str("machine", machine.Name).
-				Str("channel", "keepAlive").
-				Int("bytes", len(data)).
-				Msg("Machine updated successfully after sending keep alive")
+			err = h.TouchMachine(machine)
+			if err != nil {
+				log.Error().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Name).
+					Str("channel", "keepAlive").
+					Err(err).
+					Msg("Cannot update machine LastSeen")
+			} else {
+				log.Trace().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Name).
+					Str("channel", "keepAlive").
+					Int("bytes", len(data)).
+					Msg("Machine updated successfully after sending keep alive")
+			}
 
 			return true
 
@@ -443,6 +471,10 @@ func (h *Headscale) PollNetMapStream(
 						Str("channel", "update").
 						Err(err).
 						Msg("Cannot update machine from database")
+
+					// client has been removed from database
+					// since the stream opened, terminate connection.
+					return false
 				}
 				now := time.Now().UTC()
 
@@ -450,7 +482,15 @@ func (h *Headscale) PollNetMapStream(
 					Set(float64(now.Unix()))
 				machine.LastSuccessfulUpdate = &now
 
-				h.db.Save(&machine)
+				err = h.TouchMachine(machine)
+				if err != nil {
+					log.Error().
+						Str("handler", "PollNetMapStream").
+						Str("machine", machine.Name).
+						Str("channel", "update").
+						Err(err).
+						Msg("Cannot update machine LastSuccessfulUpdate")
+				}
 			} else {
 				var lastUpdate time.Time
 				if machine.LastSuccessfulUpdate != nil {
@@ -482,10 +522,22 @@ func (h *Headscale) PollNetMapStream(
 					Str("channel", "Done").
 					Err(err).
 					Msg("Cannot update machine from database")
+
+				// client has been removed from database
+				// since the stream opened, terminate connection.
+				return false
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
-			h.db.Save(&machine)
+			err = h.TouchMachine(machine)
+			if err != nil {
+				log.Error().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Name).
+					Str("channel", "Done").
+					Err(err).
+					Msg("Cannot update machine LastSeen")
+			}
 
 			return false
 		}
