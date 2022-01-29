@@ -251,7 +251,8 @@ func getHeadscaleConfig() headscale.Config {
 		// dedup
 		normalizedPrefixes := make(map[string]int, len(parsedPrefixes))
 		for i, p := range parsedPrefixes {
-			normalizedPrefixes[p.String()] = i
+			normalized, _ := p.Range().Prefix()
+			normalizedPrefixes[normalized.String()] = i
 		}
 
 		// convert back to list
@@ -264,6 +265,8 @@ func getHeadscaleConfig() headscale.Config {
 		prefixes = append(prefixes, netaddr.MustParseIPPrefix("100.64.0.0/10"))
 		log.Warn().Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
+
+	log.Warn().Msgf("==> %v", prefixes)
 
 	return headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
