@@ -149,6 +149,7 @@ dns_config:
 # Note: for local development, you probably want to change this to:
 # unix_socket: ./headscale.sock
 unix_socket: /var/run/headscale.sock
+unix_socket_permission: "0770"
 #
 # headscale supports experimental OpenID connect support,
 # it is still being tested and might have some bugs, please

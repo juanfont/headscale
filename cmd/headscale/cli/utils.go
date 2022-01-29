@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +23,10 @@ import (
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+)
+
+const (
+	PermissionFallback = 0o700
 )
 
 func LoadConfig(path string) error {
@@ -49,6 +55,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("dns_config", nil)
 
 	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
+	viper.SetDefault("unix_socket_permission", "0o770")
 
 	viper.SetDefault("cli.insecure", false)
 	viper.SetDefault("cli.timeout", "5s")
@@ -265,7 +272,8 @@ func getHeadscaleConfig() headscale.Config {
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
 
-		UnixSocket: viper.GetString("unix_socket"),
+		UnixSocket:           viper.GetString("unix_socket"),
+		UnixSocketPermission: GetFileMode("unix_socket_permission"),
 
 		OIDC: headscale.OIDCConfig{
 			Issuer:       viper.GetString("oidc.issuer"),
@@ -455,4 +463,15 @@ func loadOIDCMatchMap() map[string]string {
 	}
 
 	return strMap
+}
+
+func GetFileMode(key string) fs.FileMode {
+	modeStr := viper.GetString(key)
+
+	mode, err := strconv.ParseUint(modeStr, headscale.Base8, headscale.BitSize64)
+	if err != nil {
+		return PermissionFallback
+	}
+
+	return fs.FileMode(mode)
 }

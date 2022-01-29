@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -60,6 +61,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
 	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
+	c.Assert(cli.GetFileMode("unix_socket_permission"), check.Equals, fs.FileMode(0o770))
 }
 
 func (*Suite) TestDNSConfigLoading(c *check.C) {
