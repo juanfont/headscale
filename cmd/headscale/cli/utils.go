@@ -266,8 +266,6 @@ func getHeadscaleConfig() headscale.Config {
 		log.Warn().Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
-	log.Warn().Msgf("==> %v", prefixes)
-
 	return headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
