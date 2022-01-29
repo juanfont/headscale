@@ -83,8 +83,8 @@ func LoadConfig(path string) error {
 	}
 
     auth_mode := viper.GetString("tls_client_auth_mode")
-    if (auth_mode != "disabled" && auth_mode != "enforced"){
-        errorText += "Invalid tls_client_auth_mode supplied. Accepted values: disabled, enforced."
+    if (auth_mode != "disabled" && auth_mode != "relaxed" && auth_mode != "enforced"){
+        errorText += "Invalid tls_client_auth_mode supplied. Accepted values: disabled, relaxed, enforced."
     }
 
 	if errorText != "" {

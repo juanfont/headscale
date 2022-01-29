@@ -646,20 +646,25 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
-        // Leaving flexibility here to support other authentication modes
-        // if desired.
         var client_auth_mode tls.ClientAuthType
-        msg := "Client authentication (mTLS) "
         if(h.cfg.TLSClientAuthMode == "disabled"){
-            log.Warn().Msg(msg + "is disabled")
+            // Client cert is _not_ required.
             client_auth_mode = tls.NoClientCert
         }else if (h.cfg.TLSClientAuthMode == "relaxed"){
-            log.Warn().Msg(msg + "is relaxed. Client certs will be required but will not be verified.")
+            // Client cert required, but not verified.
             client_auth_mode = tls.RequireAnyClientCert
-        }else{
-            log.Warn().Msg(msg + "is enforced. Disable or relax in the configuration file.")
+        }else if (h.cfg.TLSClientAuthMode == "enforced"){
+            // Client cert is required and verified.
             client_auth_mode = tls.RequireAndVerifyClientCert
+        }else{
+            return nil, errors.New(
+                "Invalid tls_client_auth_mode provided: " +
+                h.cfg.TLSClientAuthMode)
         }
+
+        log.Info().Msg(fmt.Sprintf(
+            "Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
+            h.cfg.TLSClientAuthMode))
 
 		tlsConfig := &tls.Config{
 			ClientAuth:   client_auth_mode,
