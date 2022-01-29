@@ -14,6 +14,12 @@ jobs:
         with:
           version: latest
 
+          # Only block PRs on new problems.
+          # If this is not enabled, we will end up having PRs
+          # blocked because new linters has appared and other
+          # parts of the code is affected.
+          only-new-issues: true
+
   prettier-lint:
     runs-on: ubuntu-latest
     steps:
