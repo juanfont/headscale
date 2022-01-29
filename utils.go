@@ -147,6 +147,13 @@ func (h *Headscale) getAvailableIPs() (ips MachineAddresses, err error) {
 	return
 }
 
+func GetIPPrefixEndpoints(na netaddr.IPPrefix) (network, broadcast netaddr.IP) {
+	ipRange := na.Range()
+	network = ipRange.From()
+	broadcast = ipRange.To()
+	return
+}
+
 // TODO: Is this concurrency safe?
 // What would happen if multiple hosts were to register at the same time?
 // Would we attempt to assign the same addresses to multiple nodes?
@@ -156,11 +163,7 @@ func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, erro
 		return nil, err
 	}
 
-	ipPrefixNetworkAddress, ipPrefixBroadcastAddress := func() (netaddr.IP, netaddr.IP) {
-		ipRange := ipPrefix.Range()
-
-		return ipRange.From(), ipRange.To()
-	}()
+	ipPrefixNetworkAddress, ipPrefixBroadcastAddress := GetIPPrefixEndpoints(ipPrefix)
 
 	// Get the first IP in our prefix
 	ip := ipPrefixNetworkAddress.Next()
