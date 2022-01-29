@@ -87,8 +87,9 @@ type Config struct {
 	TLSLetsEncryptCacheDir      string
 	TLSLetsEncryptChallengeType string
 
-	TLSCertPath string
-	TLSKeyPath  string
+	TLSCertPath         string
+	TLSKeyPath          string
+    TLSClientAuthMode   string
 
 	ACMEURL   string
 	ACMEEmail string
@@ -644,12 +645,29 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
+
+        // Leaving flexibility here to support other authentication modes
+        // if desired.
+        var client_auth_mode tls.ClientAuthType
+        msg := "Client authentication (mTLS) "
+        if(h.cfg.TLSClientAuthMode == "disabled"){
+            log.Warn().Msg(msg + "is disabled")
+            client_auth_mode = tls.NoClientCert
+        }else if (h.cfg.TLSClientAuthMode == "relaxed"){
+            log.Warn().Msg(msg + "is relaxed. Client certs will be required but will not be verified.")
+            client_auth_mode = tls.RequireAnyClientCert
+        }else{
+            log.Warn().Msg(msg + "is enforced. Disable or relax in the configuration file.")
+            client_auth_mode = tls.RequireAndVerifyClientCert
+        }
+
 		tlsConfig := &tls.Config{
-			ClientAuth:   tls.RequireAnyClientCert,
+			ClientAuth:   client_auth_mode,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: make([]tls.Certificate, 1),
 			MinVersion:   tls.VersionTLS12,
 		}
+
 		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 
 		return tlsConfig, err
