@@ -2,6 +2,10 @@
 
 **TBD (TBD):**
 
+**Changes**:
+
+- Add new command to generate a private key for `headscale` [#290](https://github.com/juanfont/headscale/pull/290)
+
 **0.12.3 (2022-01-13):**
 
 **Changes**:
