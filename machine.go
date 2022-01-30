@@ -1,6 +1,7 @@
 package headscale
 
 import (
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ const (
 	errMachineNotFound            = Error("machine not found")
 	errMachineAlreadyRegistered   = Error("machine already registered")
 	errMachineRouteIsNotAvailable = Error("route is not available on machine")
+	errMachineAddressesInvalid    = Error("failed to parse machine addresses")
 )
 
 // Machine is a Headscale client.
@@ -31,7 +33,7 @@ type Machine struct {
 	MachineKey  string `gorm:"type:varchar(64);unique_index"`
 	NodeKey     string
 	DiscoKey    string
-	IPAddress   string
+	IPAddresses MachineAddresses
 	Name        string
 	NamespaceID uint
 	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
@@ -62,6 +64,47 @@ type (
 // For the time being this method is rather naive.
 func (machine Machine) isRegistered() bool {
 	return machine.Registered
+}
+
+type MachineAddresses []netaddr.IP
+
+func (ma MachineAddresses) ToStringSlice() []string {
+	strSlice := make([]string, 0, len(ma))
+	for _, addr := range ma {
+		strSlice = append(strSlice, addr.String())
+	}
+
+	return strSlice
+}
+
+func (ma *MachineAddresses) Scan(destination interface{}) error {
+	switch value := destination.(type) {
+	case string:
+		addresses := strings.Split(value, ",")
+		*ma = (*ma)[:0]
+		for _, addr := range addresses {
+			if len(addr) < 1 {
+				continue
+			}
+			parsed, err := netaddr.ParseIP(addr)
+			if err != nil {
+				return err
+			}
+			*ma = append(*ma, parsed)
+		}
+
+		return nil
+
+	default:
+		return fmt.Errorf("%w: unexpected data type %T", errMachineAddressesInvalid, destination)
+	}
+}
+
+// Value return json value, implement driver.Valuer interface.
+func (ma MachineAddresses) Value() (driver.Value, error) {
+	addresses := strings.Join(ma.ToStringSlice(), ",")
+
+	return addresses, nil
 }
 
 // isExpired returns whether the machine registration has expired.
@@ -385,14 +428,18 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 	}
 
 	lastChange := h.getLastStateChange(namespaces...)
+	lastUpdate := machine.CreatedAt
+	if machine.LastSuccessfulUpdate != nil {
+		lastUpdate = *machine.LastSuccessfulUpdate
+	}
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
-		Time("last_successful_update", *machine.LastSuccessfulUpdate).
-		Time("last_state_change", lastChange).
+		Time("last_successful_update", lastChange).
+		Time("last_state_change", lastUpdate).
 		Msgf("Checking if %s is missing updates", machine.Name)
 
-	return machine.LastSuccessfulUpdate.Before(lastChange)
+	return lastUpdate.Before(lastChange)
 }
 
 func (machine Machine) String() string {
@@ -478,22 +525,12 @@ func (machine Machine) toNode(
 	}
 
 	addrs := []netaddr.IPPrefix{}
-	ip, err := netaddr.ParseIPPrefix(fmt.Sprintf("%s/32", machine.IPAddress))
-	if err != nil {
-		log.Trace().
-			Caller().
-			Str("ip", machine.IPAddress).
-			Msgf("Failed to parse IP Prefix from IP: %s", machine.IPAddress)
-
-		return nil, err
+	for _, machineAddress := range machine.IPAddresses {
+		ip := netaddr.IPPrefixFrom(machineAddress, machineAddress.BitLen())
+		addrs = append(addrs, ip)
 	}
-	addrs = append(addrs, ip) // missing the ipv6 ?
 
-	allowedIPs := []netaddr.IPPrefix{}
-	allowedIPs = append(
-		allowedIPs,
-		ip,
-	) // we append the node own IP, as it is required by the clients
+	allowedIPs := append([]netaddr.IPPrefix{}, addrs...) // we append the node own IP, as it is required by the clients
 
 	if includeRoutes {
 		routesStr := []string{}
@@ -600,11 +637,11 @@ func (machine *Machine) toProto() *v1.Machine {
 		Id:         machine.ID,
 		MachineKey: machine.MachineKey,
 
-		NodeKey:   machine.NodeKey,
-		DiscoKey:  machine.DiscoKey,
-		IpAddress: machine.IPAddress,
-		Name:      machine.Name,
-		Namespace: machine.Namespace.toProto(),
+		NodeKey:     machine.NodeKey,
+		DiscoKey:    machine.DiscoKey,
+		IpAddresses: machine.IPAddresses.ToStringSlice(),
+		Name:        machine.Name,
+		Namespace:   machine.Namespace.toProto(),
 
 		Registered: machine.Registered,
 
@@ -703,7 +740,7 @@ func (h *Headscale) RegisterMachine(
 		return nil, err
 	}
 
-	ip, err := h.getAvailableIP()
+	ips, err := h.getAvailableIPs()
 	if err != nil {
 		log.Error().
 			Caller().
@@ -717,10 +754,10 @@ func (h *Headscale) RegisterMachine(
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
-		Str("ip", ip.String()).
+		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
 		Msg("Found IP for host")
 
-	machine.IPAddress = ip.String()
+	machine.IPAddresses = ips
 	machine.NamespaceID = namespace.ID
 	machine.Registered = true
 	machine.RegisterMethod = RegisterMethodCLI
@@ -730,7 +767,7 @@ func (h *Headscale) RegisterMachine(
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
-		Str("ip", ip.String()).
+		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
 		Msg("Machine registered with the database")
 
 	return machine, nil

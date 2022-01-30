@@ -133,61 +133,78 @@ func encode(
 	return privKey.SealTo(*pubKey, b), nil
 }
 
-func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
-	ipPrefix := h.cfg.IPPrefix
+func (h *Headscale) getAvailableIPs() (ips MachineAddresses, err error) {
+	ipPrefixes := h.cfg.IPPrefixes
+	for _, ipPrefix := range ipPrefixes {
+		var ip *netaddr.IP
+		ip, err = h.getAvailableIP(ipPrefix)
+		if err != nil {
+			return
+		}
+		ips = append(ips, *ip)
+	}
 
+	return
+}
+
+func GetIPPrefixEndpoints(na netaddr.IPPrefix) (network, broadcast netaddr.IP) {
+	ipRange := na.Range()
+	network = ipRange.From()
+	broadcast = ipRange.To()
+
+	return
+}
+
+// TODO: Is this concurrency safe?
+// What would happen if multiple hosts were to register at the same time?
+// Would we attempt to assign the same addresses to multiple nodes?
+func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, error) {
 	usedIps, err := h.getUsedIPs()
 	if err != nil {
 		return nil, err
 	}
 
+	ipPrefixNetworkAddress, ipPrefixBroadcastAddress := GetIPPrefixEndpoints(ipPrefix)
+
 	// Get the first IP in our prefix
-	ip := ipPrefix.IP()
+	ip := ipPrefixNetworkAddress.Next()
 
 	for {
 		if !ipPrefix.Contains(ip) {
 			return nil, errCouldNotAllocateIP
 		}
 
-		// Some OS (including Linux) does not like when IPs ends with 0 or 255, which
-		// is typically called network or broadcast. Lets avoid them and continue
-		// to look when we get one of those traditionally reserved IPs.
-		ipRaw := ip.As4()
-		if ipRaw[3] == 0 || ipRaw[3] == 255 {
+		switch {
+		case ip.Compare(ipPrefixBroadcastAddress) == 0:
+			fallthrough
+		case containsIPs(usedIps, ip):
+			fallthrough
+		case ip.IsZero() || ip.IsLoopback():
 			ip = ip.Next()
 
 			continue
-		}
 
-		if ip.IsZero() &&
-			ip.IsLoopback() {
-			ip = ip.Next()
-
-			continue
-		}
-
-		if !containsIPs(usedIps, ip) {
+		default:
 			return &ip, nil
 		}
-
-		ip = ip.Next()
 	}
 }
 
 func (h *Headscale) getUsedIPs() ([]netaddr.IP, error) {
-	var addresses []string
-	h.db.Model(&Machine{}).Pluck("ip_address", &addresses)
+	// FIXME: This really deserves a better data model,
+	// but this was quick to get running and it should be enough
+	// to begin experimenting with a dual stack tailnet.
+	var addressesSlices []string
+	h.db.Model(&Machine{}).Pluck("ip_addresses", &addressesSlices)
 
-	ips := make([]netaddr.IP, len(addresses))
-	for index, addr := range addresses {
-		if addr != "" {
-			ip, err := netaddr.ParseIP(addr)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse ip from database: %w", err)
-			}
-
-			ips[index] = ip
+	ips := make([]netaddr.IP, 0, len(h.cfg.IPPrefixes)*len(addressesSlices))
+	for _, slice := range addressesSlices {
+		var a MachineAddresses
+		err := a.Scan(slice)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read ip from database: %w", err)
 		}
+		ips = append(ips, a...)
 	}
 
 	return ips, nil

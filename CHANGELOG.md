@@ -2,7 +2,15 @@
 
 **TBD (TBD):**
 
+**0.13.0 (2022-xx-xx):**
+
+**Features**:
+
+- Add IPv6 support to the prefix assigned to namespaces
+
 **Changes**:
+
+- `ip_prefix` is now superseded by `ip_prefixes` in the configuration [#208](https://github.com/juanfont/headscale/pull/208)
 
 **0.12.4 (2022-01-29):**
 

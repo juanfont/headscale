@@ -8,22 +8,48 @@ import (
 	"fmt"
 	"time"
 
+	"inet.af/netaddr"
+
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 )
 
 const DOCKER_EXECUTE_TIMEOUT = 10 * time.Second
 
+var IpPrefix4 = netaddr.MustParseIPPrefix("100.64.0.0/10")
+var IpPrefix6 = netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48")
+
+type ExecuteCommandConfig struct {
+	timeout time.Duration
+}
+
+type ExecuteCommandOption func(*ExecuteCommandConfig) error
+
+func ExecuteCommandTimeout(timeout time.Duration) ExecuteCommandOption {
+	return ExecuteCommandOption(func(conf *ExecuteCommandConfig) error {
+		conf.timeout = timeout
+		return nil
+	})
+}
+
 func ExecuteCommand(
 	resource *dockertest.Resource,
 	cmd []string,
 	env []string,
+	options ...ExecuteCommandOption,
 ) (string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	// TODO(kradalby): Make configurable
-	timeout := DOCKER_EXECUTE_TIMEOUT
+	execConfig := ExecuteCommandConfig{
+		timeout: DOCKER_EXECUTE_TIMEOUT,
+	}
+
+	for _, opt := range options {
+		if err := opt(&execConfig); err != nil {
+			return "", fmt.Errorf("execute-command/options: %w", err)
+		}
+	}
 
 	type result struct {
 		exitCode int
@@ -62,16 +88,33 @@ func ExecuteCommand(
 		}
 
 		return stdout.String(), nil
-	case <-time.After(timeout):
+	case <-time.After(execConfig.timeout):
 
-		return "", fmt.Errorf("command timed out after %s", timeout)
+		return "", fmt.Errorf("command timed out after %s", execConfig.timeout)
 	}
 }
 
 func DockerRestartPolicy(config *docker.HostConfig) {
-	// set AutoRemove to true so that stopped container goes away by itself
-	config.AutoRemove = true
+	// set AutoRemove to true so that stopped container goes away by itself on error *immediately*.
+	// when set to false, containers remain until the end of the integration test.
+	config.AutoRemove = false
 	config.RestartPolicy = docker.RestartPolicy{
 		Name: "no",
 	}
+}
+
+func DockerAllowLocalIPv6(config *docker.HostConfig) {
+	if config.Sysctls == nil {
+		config.Sysctls = make(map[string]string, 1)
+	}
+	config.Sysctls["net.ipv6.conf.all.disable_ipv6"] = "0"
+}
+
+func DockerAllowNetworkAdministration(config *docker.HostConfig) {
+	config.CapAdd = append(config.CapAdd, "NET_ADMIN")
+	config.Mounts = append(config.Mounts, docker.HostMount{
+		Type:   "bind",
+		Source: "/dev/net/tun",
+		Target: "/dev/net/tun",
+	})
 }

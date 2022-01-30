@@ -7,5 +7,5 @@ RUN apt-get update \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.gpg | apt-key add - \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.list | tee /etc/apt/sources.list.d/tailscale.list \
     && apt-get update \
-    && apt-get install -y tailscale=${TAILSCALE_VERSION} \
+    && apt-get install -y tailscale=${TAILSCALE_VERSION} dnsutils \
     && rm -rf /var/lib/apt/lists/*
