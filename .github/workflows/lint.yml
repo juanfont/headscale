@@ -13,6 +13,7 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v14.1
         with:
+          fetch-depth: 2
           files: |
             go.*
             **/*.go
@@ -40,6 +41,7 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v14.1
         with:
+          fetch-depth: 2
           files: |
             **/*.md
             **/*.yml
@@ -52,6 +54,7 @@ jobs:
             **/*.html
 
       - name: Prettify code
+        if: steps.changed-files.outputs.any_changed == 'true'
         uses: creyD/prettier_action@v4.0
         with:
           prettier_options: >-
