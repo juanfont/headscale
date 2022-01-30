@@ -4,6 +4,10 @@
 
 **Changes**:
 
+**0.12.4 (2022-01-29):**
+
+**Changes**:
+
 - Make gRPC Unix Socket permissions configurable [#292](https://github.com/juanfont/headscale/pull/292)
 - Trim whitespace before reading Private Key from file [#289](https://github.com/juanfont/headscale/pull/289)
 - Add new command to generate a private key for `headscale` [#290](https://github.com/juanfont/headscale/pull/290)
