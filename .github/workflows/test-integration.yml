@@ -3,21 +3,30 @@ name: CI
 on: [pull_request]
 
 jobs:
-  # The "build" workflow
   integration-test:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
 
-      # Setup Go
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v14.1
+        with:
+          files: |
+            go.*
+            **/*.go
+            integration_test/
+            config-example.yaml
+
       - name: Setup Go
+        if: steps.changed-files.outputs.any_changed == 'true'
         uses: actions/setup-go@v2
         with:
           go-version: "1.17"
 
       - name: Run Integration tests
+        if: steps.changed-files.outputs.any_changed == 'true'
         run: go test -tags integration -timeout 30m
