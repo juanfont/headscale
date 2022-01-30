@@ -9,7 +9,18 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v14.1
+        with:
+          files: |
+            go.*
+            **/*.go
+            integration_test/
+            config-example.yaml
+
       - name: golangci-lint
+        if: steps.changed-files.outputs.any_changed == 'true'
         uses: golangci/golangci-lint-action@v2
         with:
           version: latest
@@ -24,6 +35,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v14.1
+        with:
+          files: |
+            **/*.md
+            **/*.yml
+            **/*.yaml
+            **/*.ts
+            **/*.js
+            **/*.sass
+            **/*.css
+            **/*.scss
+            **/*.html
 
       - name: Prettify code
         uses: creyD/prettier_action@v4.0
