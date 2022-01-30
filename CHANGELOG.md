@@ -2,8 +2,23 @@
 
 **TBD (TBD):**
 
-- Fixed issue where hosts deleted from control server may be written back to the database, as long as they are connected to the control server [#278](https://github.com/juanfont/headscale/pull/278)
+**0.13.0 (2022-xx-xx):**
+
+**Features**:
+- Add IPv6 support to the prefix assigned to namespaces
+
+**Changes**:
 - `ip_prefix` is now superseded by `ip_prefixes` in the configuration [#208](https://github.com/juanfont/headscale/pull/208)
+
+
+**0.12.4 (2022-01-29):**
+
+**Changes**:
+
+- Make gRPC Unix Socket permissions configurable [#292](https://github.com/juanfont/headscale/pull/292)
+- Trim whitespace before reading Private Key from file [#289](https://github.com/juanfont/headscale/pull/289)
+- Add new command to generate a private key for `headscale` [#290](https://github.com/juanfont/headscale/pull/290)
+- Fixed issue where hosts deleted from control server may be written back to the database, as long as they are connected to the control server [#278](https://github.com/juanfont/headscale/pull/278)
 
 **0.12.3 (2022-01-13):**
 
