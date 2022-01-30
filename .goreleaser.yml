@@ -1,8 +1,11 @@
-# This is an example .goreleaser.yml file with some sane defaults.
-# Make sure to check the documentation at http://goreleaser.com
+---
 before:
   hooks:
-    - go mod tidy
+    - go mod tidy -compat=1.17
+
+release:
+  prerelease: auto
+
 builds:
   - id: darwin-amd64
     main: ./cmd/headscale/headscale.go
@@ -29,7 +32,7 @@ builds:
     goarch:
       - arm
     goarm:
-      - 7
+      - "7"
     env:
       - CC=arm-linux-gnueabihf-gcc
       - CXX=arm-linux-gnueabihf-g++

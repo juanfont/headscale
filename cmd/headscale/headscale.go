@@ -23,6 +23,8 @@ func main() {
 		colors = true
 	case termcolor.LevelBasic:
 		colors = true
+	case termcolor.LevelNone:
+		colors = false
 	default:
 		// no color, return text as is.
 		colors = false
@@ -41,38 +43,41 @@ func main() {
 		NoColor:    !colors,
 	})
 
-	err := cli.LoadConfig("")
-	if err != nil {
+	if err := cli.LoadConfig(""); err != nil {
 		log.Fatal().Err(err)
 	}
 
+	machineOutput := cli.HasMachineOutputFlag()
+
 	logLevel := viper.GetString("log_level")
-	switch logLevel {
-	case "trace":
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-	case "debug":
+	level, err := zerolog.ParseLevel(logLevel)
+	if err != nil {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	case "info":
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	case "warn":
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-	case "error":
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-	default:
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	} else {
+		zerolog.SetGlobalLevel(level)
 	}
 
-	jsonOutput := cli.HasJsonOutputFlag()
-	if !viper.GetBool("disable_check_updates") && !jsonOutput {
-		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && cli.Version != "dev" {
+	// If the user has requested a "machine" readable format,
+	// then disable login so the output remains valid.
+	if machineOutput {
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+	}
+
+	if !viper.GetBool("disable_check_updates") && !machineOutput {
+		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
+			cli.Version != "dev" {
 			githubTag := &latest.GithubTag{
 				Owner:      "juanfont",
 				Repository: "headscale",
 			}
 			res, err := latest.Check(githubTag, cli.Version)
 			if err == nil && res.Outdated {
-				fmt.Printf("An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
-					res.Current, cli.Version)
+				//nolint
+				fmt.Printf(
+					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
+					res.Current,
+					cli.Version,
+				)
 			}
 		}
 	}

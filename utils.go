@@ -6,72 +6,131 @@
 package headscale
 
 import (
-	"crypto/rand"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"net"
 	"strings"
 
-	"golang.org/x/crypto/nacl/box"
+	"github.com/rs/zerolog/log"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/wgkey"
+	"tailscale.com/types/key"
 )
+
+const (
+	errCannotDecryptReponse = Error("cannot decrypt response")
+	errCouldNotAllocateIP   = Error("could not find any suitable IP")
+
+	// These constants are copied from the upstream tailscale.com/types/key
+	// library, because they are not exported.
+	// https://github.com/tailscale/tailscale/tree/main/types/key
+
+	// nodePublicHexPrefix is the prefix used to identify a
+	// hex-encoded node public key.
+	//
+	// This prefix is used in the control protocol, so cannot be
+	// changed.
+	nodePublicHexPrefix = "nodekey:"
+
+	// machinePublicHexPrefix is the prefix used to identify a
+	// hex-encoded machine public key.
+	//
+	// This prefix is used in the control protocol, so cannot be
+	// changed.
+	machinePublicHexPrefix = "mkey:"
+
+	// discoPublicHexPrefix is the prefix used to identify a
+	// hex-encoded disco public key.
+	//
+	// This prefix is used in the control protocol, so cannot be
+	// changed.
+	discoPublicHexPrefix = "discokey:"
+
+	// privateKey prefix.
+	privateHexPrefix = "privkey:"
+)
+
+func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
+	return strings.TrimPrefix(machineKey.String(), machinePublicHexPrefix)
+}
+
+func NodePublicKeyStripPrefix(nodeKey key.NodePublic) string {
+	return strings.TrimPrefix(nodeKey.String(), nodePublicHexPrefix)
+}
+
+func DiscoPublicKeyStripPrefix(discoKey key.DiscoPublic) string {
+	return strings.TrimPrefix(discoKey.String(), discoPublicHexPrefix)
+}
+
+func MachinePublicKeyEnsurePrefix(machineKey string) string {
+	if !strings.HasPrefix(machineKey, machinePublicHexPrefix) {
+		return machinePublicHexPrefix + machineKey
+	}
+
+	return machineKey
+}
+
+func NodePublicKeyEnsurePrefix(nodeKey string) string {
+	if !strings.HasPrefix(nodeKey, nodePublicHexPrefix) {
+		return nodePublicHexPrefix + nodeKey
+	}
+
+	return nodeKey
+}
+
+func DiscoPublicKeyEnsurePrefix(discoKey string) string {
+	if !strings.HasPrefix(discoKey, discoPublicHexPrefix) {
+		return discoPublicHexPrefix + discoKey
+	}
+
+	return discoKey
+}
+
+func PrivateKeyEnsurePrefix(privateKey string) string {
+	if !strings.HasPrefix(privateKey, privateHexPrefix) {
+		return privateHexPrefix + privateKey
+	}
+
+	return privateKey
+}
 
 // Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
 type Error string
 
 func (e Error) Error() string { return string(e) }
 
-func decode(msg []byte, v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) error {
-	return decodeMsg(msg, v, pubKey, privKey)
-}
+func decode(
+	msg []byte,
+	output interface{},
+	pubKey *key.MachinePublic,
+	privKey *key.MachinePrivate,
+) error {
+	log.Trace().Int("length", len(msg)).Msg("Trying to decrypt")
 
-func decodeMsg(msg []byte, v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) error {
-	decrypted, err := decryptMsg(msg, pubKey, privKey)
-	if err != nil {
+	decrypted, ok := privKey.OpenFrom(*pubKey, msg)
+	if !ok {
+		return errCannotDecryptReponse
+	}
+
+	if err := json.Unmarshal(decrypted, output); err != nil {
 		return err
 	}
-	// fmt.Println(string(decrypted))
-	if err := json.Unmarshal(decrypted, v); err != nil {
-		return fmt.Errorf("response: %v", err)
-	}
+
 	return nil
 }
 
-func decryptMsg(msg []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, error) {
-	var nonce [24]byte
-	if len(msg) < len(nonce)+1 {
-		return nil, fmt.Errorf("response missing nonce, len=%d", len(msg))
-	}
-	copy(nonce[:], msg)
-	msg = msg[len(nonce):]
-
-	pub, pri := (*[32]byte)(pubKey), (*[32]byte)(privKey)
-	decrypted, ok := box.Open(nil, msg, &nonce, pub, pri)
-	if !ok {
-		return nil, fmt.Errorf("cannot decrypt response")
-	}
-	return decrypted, nil
-}
-
-func encode(v interface{}, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, error) {
+func encode(
+	v interface{},
+	pubKey *key.MachinePublic,
+	privKey *key.MachinePrivate,
+) ([]byte, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
 
-	return encodeMsg(b, pubKey, privKey)
-}
-
-func encodeMsg(b []byte, pubKey *wgkey.Key, privKey *wgkey.Private) ([]byte, error) {
-	var nonce [24]byte
-	if _, err := io.ReadFull(rand.Reader, nonce[:]); err != nil {
-		panic(err)
-	}
-	pub, pri := (*[32]byte)(pubKey), (*[32]byte)(privKey)
-	msg := box.Seal(nonce[:], b, &nonce, pub, pri)
-	return msg, nil
+	return privKey.SealTo(*pubKey, b), nil
 }
 
 func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
@@ -87,7 +146,7 @@ func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
 
 	for {
 		if !ipPrefix.Contains(ip) {
-			return nil, fmt.Errorf("could not find any suitable IP in %s", ipPrefix)
+			return nil, errCouldNotAllocateIP
 		}
 
 		// Some OS (including Linux) does not like when IPs ends with 0 or 255, which
@@ -96,13 +155,14 @@ func (h *Headscale) getAvailableIP() (*netaddr.IP, error) {
 		ipRaw := ip.As4()
 		if ipRaw[3] == 0 || ipRaw[3] == 255 {
 			ip = ip.Next()
+
 			continue
 		}
 
 		if ip.IsZero() &&
 			ip.IsLoopback() {
-
 			ip = ip.Next()
+
 			continue
 		}
 
@@ -123,7 +183,7 @@ func (h *Headscale) getUsedIPs() ([]netaddr.IP, error) {
 		if addr != "" {
 			ip, err := netaddr.ParseIP(addr)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse ip from database, %w", err)
+				return nil, fmt.Errorf("failed to parse ip from database: %w", err)
 			}
 
 			ips[index] = ip
@@ -154,5 +214,50 @@ func tailNodesToString(nodes []*tailcfg.Node) string {
 }
 
 func tailMapResponseToString(resp tailcfg.MapResponse) string {
-	return fmt.Sprintf("{ Node: %s, Peers: %s }", resp.Node.Name, tailNodesToString(resp.Peers))
+	return fmt.Sprintf(
+		"{ Node: %s, Peers: %s }",
+		resp.Node.Name,
+		tailNodesToString(resp.Peers),
+	)
+}
+
+func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
+	var d net.Dialer
+
+	return d.DialContext(ctx, "unix", addr)
+}
+
+func ipPrefixToString(prefixes []netaddr.IPPrefix) []string {
+	result := make([]string, len(prefixes))
+
+	for index, prefix := range prefixes {
+		result[index] = prefix.String()
+	}
+
+	return result
+}
+
+func stringToIPPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
+	result := make([]netaddr.IPPrefix, len(prefixes))
+
+	for index, prefixStr := range prefixes {
+		prefix, err := netaddr.ParseIPPrefix(prefixStr)
+		if err != nil {
+			return []netaddr.IPPrefix{}, err
+		}
+
+		result[index] = prefix
+	}
+
+	return result, nil
+}
+
+func containsIPPrefix(prefixes []netaddr.IPPrefix, prefix netaddr.IPPrefix) bool {
+	for _, p := range prefixes {
+		if prefix == p {
+			return true
+		}
+	}
+
+	return false
 }

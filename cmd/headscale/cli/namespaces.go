@@ -2,12 +2,14 @@ package cli
 
 import (
 	"fmt"
-	"log"
-	"strconv"
-	"strings"
 
+	survey "github.com/AlecAivazis/survey/v2"
+	"github.com/juanfont/headscale"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/status"
 )
 
 func init() {
@@ -17,6 +19,10 @@ func init() {
 	namespaceCmd.AddCommand(destroyNamespaceCmd)
 	namespaceCmd.AddCommand(renameNamespaceCmd)
 }
+
+const (
+	errMissingParameter = headscale.Error("missing parameters")
+)
 
 var namespaceCmd = &cobra.Command{
 	Use:   "namespaces",
@@ -28,26 +34,40 @@ var createNamespaceCmd = &cobra.Command{
 	Short: "Creates a new namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("Missing parameters")
+			return errMissingParameter
 		}
+
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		h, err := getHeadscaleApp()
+		output, _ := cmd.Flags().GetString("output")
+
+		namespaceName := args[0]
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
+
+		request := &v1.CreateNamespaceRequest{Name: namespaceName}
+
+		log.Trace().Interface("request", request).Msg("Sending CreateNamespace request")
+		response, err := client.CreateNamespace(ctx, request)
 		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
-		}
-		namespace, err := h.CreateNamespace(args[0])
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(namespace, err, o)
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot create namespace: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
 			return
 		}
-		if err != nil {
-			fmt.Printf("Error creating namespace: %s\n", err)
-			return
-		}
-		fmt.Printf("Namespace created\n")
+
+		SuccessOutput(response.Namespace, "Namespace created", output)
 	},
 }
 
@@ -56,26 +76,70 @@ var destroyNamespaceCmd = &cobra.Command{
 	Short: "Destroys a namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("Missing parameters")
+			return errMissingParameter
 		}
+
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+		output, _ := cmd.Flags().GetString("output")
+
+		namespaceName := args[0]
+
+		request := &v1.GetNamespaceRequest{
+			Name: namespaceName,
 		}
-		err = h.DestroyNamespace(args[0])
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(map[string]string{"Result": "Namespace destroyed"}, err, o)
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		_, err := client.GetNamespace(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
+				output,
+			)
+
 			return
 		}
-		if err != nil {
-			fmt.Printf("Error destroying namespace: %s\n", err)
-			return
+
+		confirm := false
+		force, _ := cmd.Flags().GetBool("force")
+		if !force {
+			prompt := &survey.Confirm{
+				Message: fmt.Sprintf(
+					"Do you want to remove the namespace '%s' and any associated preauthkeys?",
+					namespaceName,
+				),
+			}
+			err := survey.AskOne(prompt, &confirm)
+			if err != nil {
+				return
+			}
 		}
-		fmt.Printf("Namespace destroyed\n")
+
+		if confirm || force {
+			request := &v1.DeleteNamespaceRequest{Name: namespaceName}
+
+			response, err := client.DeleteNamespace(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf(
+						"Cannot destroy namespace: %s",
+						status.Convert(err).Message(),
+					),
+					output,
+				)
+
+				return
+			}
+			SuccessOutput(response, "Namespace destroyed", output)
+		} else {
+			SuccessOutput(map[string]string{"Result": "Namespace not destroyed"}, "Namespace not destroyed", output)
+		}
 	},
 }
 
@@ -83,28 +147,51 @@ var listNamespacesCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all the namespaces",
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		h, err := getHeadscaleApp()
+		output, _ := cmd.Flags().GetString("output")
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.ListNamespacesRequest{}
+
+		response, err := client.ListNamespaces(ctx, request)
 		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
-		}
-		namespaces, err := h.ListNamespaces()
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(namespaces, err, o)
-			return
-		}
-		if err != nil {
-			fmt.Println(err)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot get namespaces: %s", status.Convert(err).Message()),
+				output,
+			)
+
 			return
 		}
 
-		d := pterm.TableData{{"ID", "Name", "Created"}}
-		for _, n := range *namespaces {
-			d = append(d, []string{strconv.FormatUint(uint64(n.ID), 10), n.Name, n.CreatedAt.Format("2006-01-02 15:04:05")})
+		if output != "" {
+			SuccessOutput(response.Namespaces, "", output)
+
+			return
 		}
-		err = pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+
+		tableData := pterm.TableData{{"ID", "Name", "Created"}}
+		for _, namespace := range response.GetNamespaces() {
+			tableData = append(
+				tableData,
+				[]string{
+					namespace.GetId(),
+					namespace.GetName(),
+					namespace.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+				},
+			)
+		}
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
-			log.Fatal(err)
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
+
+			return
 		}
 	},
 }
@@ -113,26 +200,39 @@ var renameNamespaceCmd = &cobra.Command{
 	Use:   "rename OLD_NAME NEW_NAME",
 	Short: "Renames a namespace",
 	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 2 {
-			return fmt.Errorf("Missing parameters")
+		expectedArguments := 2
+		if len(args) < expectedArguments {
+			return errMissingParameter
 		}
+
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		h, err := getHeadscaleApp()
-		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+		output, _ := cmd.Flags().GetString("output")
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.RenameNamespaceRequest{
+			OldName: args[0],
+			NewName: args[1],
 		}
-		err = h.RenameNamespace(args[0], args[1])
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(map[string]string{"Result": "Namespace renamed"}, err, o)
+
+		response, err := client.RenameNamespace(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot rename namespace: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
 			return
 		}
-		if err != nil {
-			fmt.Printf("Error renaming namespace: %s\n", err)
-			return
-		}
-		fmt.Printf("Namespace renamed\n")
+
+		SuccessOutput(response.Namespace, "Namespace renamed", output)
 	},
 }

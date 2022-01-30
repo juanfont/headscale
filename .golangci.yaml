@@ -1,0 +1,56 @@
+---
+run:
+  timeout: 10m
+
+issues:
+  skip-dirs:
+    - gen
+linters:
+  enable-all: true
+  disable:
+    - exhaustivestruct
+    - revive
+    - lll
+    - interfacer
+    - scopelint
+    - maligned
+    - golint
+    - gofmt
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - funlen
+    - exhaustivestruct
+    - tagliatelle
+    - godox
+    - ireturn
+
+    # We should strive to enable these:
+    - wrapcheck
+    - dupl
+    - makezero
+
+    # We might want to enable this, but it might be a lot of work
+    - cyclop
+    - nestif
+    - wsl # might be incompatible with gofumpt
+    - testpackage
+    - paralleltest
+
+linters-settings:
+  varnamelen:
+    ignore-type-assert-ok: true
+    ignore-map-index-ok: true
+    ignore-names:
+      - err
+      - db
+      - id
+      - ip
+      - ok
+      - c
+
+  gocritic:
+    disabled-checks:
+      - appendAssign
+      # TODO(kradalby): Remove this
+      - ifElseChain

@@ -2,38 +2,48 @@ package headscale
 
 import (
 	"encoding/json"
-	"fmt"
-	"strconv"
 
-	"github.com/pterm/pterm"
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
 )
 
+const (
+	errRouteIsNotAvailable = Error("route is not available")
+)
+
+// Deprecated: use machine function instead
 // GetAdvertisedNodeRoutes returns the subnet routes advertised by a node (identified by
-// namespace and node name)
-func (h *Headscale) GetAdvertisedNodeRoutes(namespace string, nodeName string) (*[]netaddr.IPPrefix, error) {
-	m, err := h.GetMachine(namespace, nodeName)
+// namespace and node name).
+func (h *Headscale) GetAdvertisedNodeRoutes(
+	namespace string,
+	nodeName string,
+) (*[]netaddr.IPPrefix, error) {
+	machine, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	hostInfo, err := m.GetHostInfo()
+	hostInfo, err := machine.GetHostInfo()
 	if err != nil {
 		return nil, err
 	}
+
 	return &hostInfo.RoutableIPs, nil
 }
 
+// Deprecated: use machine function instead
 // GetEnabledNodeRoutes returns the subnet routes enabled by a node (identified by
-// namespace and node name)
-func (h *Headscale) GetEnabledNodeRoutes(namespace string, nodeName string) ([]netaddr.IPPrefix, error) {
-	m, err := h.GetMachine(namespace, nodeName)
+// namespace and node name).
+func (h *Headscale) GetEnabledNodeRoutes(
+	namespace string,
+	nodeName string,
+) ([]netaddr.IPPrefix, error) {
+	machine, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := m.EnabledRoutes.MarshalJSON()
+	data, err := machine.EnabledRoutes.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +66,13 @@ func (h *Headscale) GetEnabledNodeRoutes(namespace string, nodeName string) ([]n
 	return routes, nil
 }
 
-// IsNodeRouteEnabled checks if a certain route has been enabled
-func (h *Headscale) IsNodeRouteEnabled(namespace string, nodeName string, routeStr string) bool {
+// Deprecated: use machine function instead
+// IsNodeRouteEnabled checks if a certain route has been enabled.
+func (h *Headscale) IsNodeRouteEnabled(
+	namespace string,
+	nodeName string,
+	routeStr string,
+) bool {
 	route, err := netaddr.ParseIPPrefix(routeStr)
 	if err != nil {
 		return false
@@ -73,13 +88,19 @@ func (h *Headscale) IsNodeRouteEnabled(namespace string, nodeName string, routeS
 			return true
 		}
 	}
+
 	return false
 }
 
+// Deprecated: use EnableRoute in machine.go
 // EnableNodeRoute enables a subnet route advertised by a node (identified by
-// namespace and node name)
-func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr string) error {
-	m, err := h.GetMachine(namespace, nodeName)
+// namespace and node name).
+func (h *Headscale) EnableNodeRoute(
+	namespace string,
+	nodeName string,
+	routeStr string,
+) error {
+	machine, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return err
 	}
@@ -111,7 +132,7 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 	}
 
 	if !available {
-		return fmt.Errorf("route (%s) is not available on node %s", nodeName, routeStr)
+		return errRouteIsNotAvailable
 	}
 
 	routes, err := json.Marshal(enabledRoutes)
@@ -119,25 +140,13 @@ func (h *Headscale) EnableNodeRoute(namespace string, nodeName string, routeStr 
 		return err
 	}
 
-	m.EnabledRoutes = datatypes.JSON(routes)
-	h.db.Save(&m)
+	machine.EnabledRoutes = datatypes.JSON(routes)
+	h.db.Save(&machine)
 
-	err = h.RequestMapUpdates(m.NamespaceID)
+	err = h.RequestMapUpdates(machine.NamespaceID)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-// RoutesToPtables converts the list of routes to a nice table
-func (h *Headscale) RoutesToPtables(namespace string, nodeName string, availableRoutes []netaddr.IPPrefix) pterm.TableData {
-	d := pterm.TableData{{"Route", "Enabled"}}
-
-	for _, route := range availableRoutes {
-		enabled := h.IsNodeRouteEnabled(namespace, nodeName, route.String())
-
-		d = append(d, []string{route.String(), strconv.FormatBool(enabled)})
-	}
-	return d
 }

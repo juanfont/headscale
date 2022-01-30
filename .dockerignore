@@ -15,3 +15,4 @@ README.md
 LICENSE
 .vscode
 
+*.sock

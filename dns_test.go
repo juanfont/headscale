@@ -11,13 +11,13 @@ import (
 
 func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 	prefix := netaddr.MustParseIPPrefix("100.64.0.0/10")
-	domains, err := generateMagicDNSRootDomains(prefix, "foobar.headscale.net")
-	c.Assert(err, check.IsNil)
+	domains := generateMagicDNSRootDomains(prefix)
 
 	found := false
 	for _, domain := range domains {
 		if domain == "64.100.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -27,6 +27,7 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 	for _, domain := range domains {
 		if domain == "100.100.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -36,6 +37,7 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 	for _, domain := range domains {
 		if domain == "127.100.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -44,13 +46,13 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 
 func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
 	prefix := netaddr.MustParseIPPrefix("172.16.0.0/16")
-	domains, err := generateMagicDNSRootDomains(prefix, "headscale.net")
-	c.Assert(err, check.IsNil)
+	domains := generateMagicDNSRootDomains(prefix)
 
 	found := false
 	for _, domain := range domains {
 		if domain == "0.16.172.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -60,6 +62,7 @@ func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
 	for _, domain := range domains {
 		if domain == "255.16.172.in-addr.arpa." {
 			found = true
+
 			break
 		}
 	}
@@ -67,100 +70,120 @@ func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
 }
 
 func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
-	n1, err := h.CreateNamespace("shared1")
+	namespaceShared1, err := app.CreateNamespace("shared1")
 	c.Assert(err, check.IsNil)
 
-	n2, err := h.CreateNamespace("shared2")
+	namespaceShared2, err := app.CreateNamespace("shared2")
 	c.Assert(err, check.IsNil)
 
-	n3, err := h.CreateNamespace("shared3")
+	namespaceShared3, err := app.CreateNamespace("shared3")
 	c.Assert(err, check.IsNil)
 
-	pak1n1, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
+	preAuthKeyInShared1, err := app.CreatePreAuthKey(
+		namespaceShared1.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak2n2, err := h.CreatePreAuthKey(n2.Name, false, false, nil)
+	preAuthKeyInShared2, err := app.CreatePreAuthKey(
+		namespaceShared2.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak3n3, err := h.CreatePreAuthKey(n3.Name, false, false, nil)
+	preAuthKeyInShared3, err := app.CreatePreAuthKey(
+		namespaceShared3.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak4n1, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
+	PreAuthKey2InShared1, err := app.CreatePreAuthKey(
+		namespaceShared1.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	_, err = h.GetMachine(n1.Name, "test_get_shared_nodes_1")
+	_, err = app.GetMachine(namespaceShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
-	m1 := &Machine{
+	machineInShared1 := &Machine{
 		ID:             1,
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		DiscoKey:       "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		Name:           "test_get_shared_nodes_1",
-		NamespaceID:    n1.ID,
-		Namespace:      *n1,
+		NamespaceID:    namespaceShared1.ID,
+		Namespace:      *namespaceShared1,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.1",
-		AuthKeyID:      uint(pak1n1.ID),
+		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
-	h.db.Save(m1)
+	app.db.Save(machineInShared1)
 
-	_, err = h.GetMachine(n1.Name, m1.Name)
+	_, err = app.GetMachine(namespaceShared1.Name, machineInShared1.Name)
 	c.Assert(err, check.IsNil)
 
-	m2 := &Machine{
+	machineInShared2 := &Machine{
 		ID:             2,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_2",
-		NamespaceID:    n2.ID,
-		Namespace:      *n2,
+		NamespaceID:    namespaceShared2.ID,
+		Namespace:      *namespaceShared2,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.2",
-		AuthKeyID:      uint(pak2n2.ID),
+		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
-	h.db.Save(m2)
+	app.db.Save(machineInShared2)
 
-	_, err = h.GetMachine(n2.Name, m2.Name)
+	_, err = app.GetMachine(namespaceShared2.Name, machineInShared2.Name)
 	c.Assert(err, check.IsNil)
 
-	m3 := &Machine{
+	machineInShared3 := &Machine{
 		ID:             3,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_3",
-		NamespaceID:    n3.ID,
-		Namespace:      *n3,
+		NamespaceID:    namespaceShared3.ID,
+		Namespace:      *namespaceShared3,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.3",
-		AuthKeyID:      uint(pak3n3.ID),
+		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
-	h.db.Save(m3)
+	app.db.Save(machineInShared3)
 
-	_, err = h.GetMachine(n3.Name, m3.Name)
+	_, err = app.GetMachine(namespaceShared3.Name, machineInShared3.Name)
 	c.Assert(err, check.IsNil)
 
-	m4 := &Machine{
+	machine2InShared1 := &Machine{
 		ID:             4,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_4",
-		NamespaceID:    n1.ID,
-		Namespace:      *n1,
+		NamespaceID:    namespaceShared1.ID,
+		Namespace:      *namespaceShared1,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.4",
-		AuthKeyID:      uint(pak4n1.ID),
+		AuthKeyID:      uint(PreAuthKey2InShared1.ID),
 	}
-	h.db.Save(m4)
+	app.db.Save(machine2InShared1)
 
-	err = h.AddSharedMachineToNamespace(m2, n1)
+	err = app.AddSharedMachineToNamespace(machineInShared2, namespaceShared1)
 	c.Assert(err, check.IsNil)
 
 	baseDomain := "foobar.headscale.net"
@@ -170,122 +193,146 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Proxied: true,
 	}
 
-	m1peers, err := h.getPeers(m1)
+	peersOfMachineInShared1, err := app.getPeers(machineInShared1)
 	c.Assert(err, check.IsNil)
 
-	dnsConfig, err := getMapResponseDNSConfig(&dnsConfigOrig, baseDomain, *m1, m1peers)
-	c.Assert(err, check.IsNil)
+	dnsConfig := getMapResponseDNSConfig(
+		&dnsConfigOrig,
+		baseDomain,
+		*machineInShared1,
+		peersOfMachineInShared1,
+	)
 	c.Assert(dnsConfig, check.NotNil)
 	c.Assert(len(dnsConfig.Routes), check.Equals, 2)
 
-	routeN1 := fmt.Sprintf("%s.%s", n1.Name, baseDomain)
-	_, ok := dnsConfig.Routes[routeN1]
+	domainRouteShared1 := fmt.Sprintf("%s.%s", namespaceShared1.Name, baseDomain)
+	_, ok := dnsConfig.Routes[domainRouteShared1]
 	c.Assert(ok, check.Equals, true)
 
-	routeN2 := fmt.Sprintf("%s.%s", n2.Name, baseDomain)
-	_, ok = dnsConfig.Routes[routeN2]
+	domainRouteShared2 := fmt.Sprintf("%s.%s", namespaceShared2.Name, baseDomain)
+	_, ok = dnsConfig.Routes[domainRouteShared2]
 	c.Assert(ok, check.Equals, true)
 
-	routeN3 := fmt.Sprintf("%s.%s", n3.Name, baseDomain)
-	_, ok = dnsConfig.Routes[routeN3]
+	domainRouteShared3 := fmt.Sprintf("%s.%s", namespaceShared3.Name, baseDomain)
+	_, ok = dnsConfig.Routes[domainRouteShared3]
 	c.Assert(ok, check.Equals, false)
 }
 
 func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
-	n1, err := h.CreateNamespace("shared1")
+	namespaceShared1, err := app.CreateNamespace("shared1")
 	c.Assert(err, check.IsNil)
 
-	n2, err := h.CreateNamespace("shared2")
+	namespaceShared2, err := app.CreateNamespace("shared2")
 	c.Assert(err, check.IsNil)
 
-	n3, err := h.CreateNamespace("shared3")
+	namespaceShared3, err := app.CreateNamespace("shared3")
 	c.Assert(err, check.IsNil)
 
-	pak1n1, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
+	preAuthKeyInShared1, err := app.CreatePreAuthKey(
+		namespaceShared1.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak2n2, err := h.CreatePreAuthKey(n2.Name, false, false, nil)
+	preAuthKeyInShared2, err := app.CreatePreAuthKey(
+		namespaceShared2.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak3n3, err := h.CreatePreAuthKey(n3.Name, false, false, nil)
+	preAuthKeyInShared3, err := app.CreatePreAuthKey(
+		namespaceShared3.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	pak4n1, err := h.CreatePreAuthKey(n1.Name, false, false, nil)
+	preAuthKey2InShared1, err := app.CreatePreAuthKey(
+		namespaceShared1.Name,
+		false,
+		false,
+		nil,
+	)
 	c.Assert(err, check.IsNil)
 
-	_, err = h.GetMachine(n1.Name, "test_get_shared_nodes_1")
+	_, err = app.GetMachine(namespaceShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
-	m1 := &Machine{
+	machineInShared1 := &Machine{
 		ID:             1,
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		DiscoKey:       "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		Name:           "test_get_shared_nodes_1",
-		NamespaceID:    n1.ID,
-		Namespace:      *n1,
+		NamespaceID:    namespaceShared1.ID,
+		Namespace:      *namespaceShared1,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.1",
-		AuthKeyID:      uint(pak1n1.ID),
+		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
-	h.db.Save(m1)
+	app.db.Save(machineInShared1)
 
-	_, err = h.GetMachine(n1.Name, m1.Name)
+	_, err = app.GetMachine(namespaceShared1.Name, machineInShared1.Name)
 	c.Assert(err, check.IsNil)
 
-	m2 := &Machine{
+	machineInShared2 := &Machine{
 		ID:             2,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_2",
-		NamespaceID:    n2.ID,
-		Namespace:      *n2,
+		NamespaceID:    namespaceShared2.ID,
+		Namespace:      *namespaceShared2,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.2",
-		AuthKeyID:      uint(pak2n2.ID),
+		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
-	h.db.Save(m2)
+	app.db.Save(machineInShared2)
 
-	_, err = h.GetMachine(n2.Name, m2.Name)
+	_, err = app.GetMachine(namespaceShared2.Name, machineInShared2.Name)
 	c.Assert(err, check.IsNil)
 
-	m3 := &Machine{
+	machineInShared3 := &Machine{
 		ID:             3,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_3",
-		NamespaceID:    n3.ID,
-		Namespace:      *n3,
+		NamespaceID:    namespaceShared3.ID,
+		Namespace:      *namespaceShared3,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.3",
-		AuthKeyID:      uint(pak3n3.ID),
+		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
-	h.db.Save(m3)
+	app.db.Save(machineInShared3)
 
-	_, err = h.GetMachine(n3.Name, m3.Name)
+	_, err = app.GetMachine(namespaceShared3.Name, machineInShared3.Name)
 	c.Assert(err, check.IsNil)
 
-	m4 := &Machine{
+	machine2InShared1 := &Machine{
 		ID:             4,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		Name:           "test_get_shared_nodes_4",
-		NamespaceID:    n1.ID,
-		Namespace:      *n1,
+		NamespaceID:    namespaceShared1.ID,
+		Namespace:      *namespaceShared1,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		IPAddress:      "100.64.0.4",
-		AuthKeyID:      uint(pak4n1.ID),
+		AuthKeyID:      uint(preAuthKey2InShared1.ID),
 	}
-	h.db.Save(m4)
+	app.db.Save(machine2InShared1)
 
-	err = h.AddSharedMachineToNamespace(m2, n1)
+	err = app.AddSharedMachineToNamespace(machineInShared2, namespaceShared1)
 	c.Assert(err, check.IsNil)
 
 	baseDomain := "foobar.headscale.net"
@@ -295,11 +342,15 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Proxied: false,
 	}
 
-	m1peers, err := h.getPeers(m1)
+	peersOfMachine1Shared1, err := app.getPeers(machineInShared1)
 	c.Assert(err, check.IsNil)
 
-	dnsConfig, err := getMapResponseDNSConfig(&dnsConfigOrig, baseDomain, *m1, m1peers)
-	c.Assert(err, check.IsNil)
+	dnsConfig := getMapResponseDNSConfig(
+		&dnsConfigOrig,
+		baseDomain,
+		*machineInShared1,
+		peersOfMachine1Shared1,
+	)
 	c.Assert(dnsConfig, check.NotNil)
 	c.Assert(len(dnsConfig.Routes), check.Equals, 0)
 	c.Assert(len(dnsConfig.Domains), check.Equals, 1)

@@ -1,0 +1,50 @@
+syntax = "proto3";
+package headscale.v1;
+option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+import "google/protobuf/timestamp.proto";
+
+message Namespace {
+    string                    id         = 1;
+    string                    name       = 2;
+    google.protobuf.Timestamp created_at = 3;
+}
+
+message GetNamespaceRequest {
+    string name = 1;
+}
+
+message GetNamespaceResponse {
+    Namespace namespace = 1;
+}
+
+message CreateNamespaceRequest {
+    string name = 1;
+}
+
+message CreateNamespaceResponse {
+    Namespace namespace = 1;
+}
+
+message RenameNamespaceRequest {
+    string old_name = 1;
+    string new_name = 2;
+}
+
+message RenameNamespaceResponse {
+    Namespace namespace = 1;
+}
+
+message DeleteNamespaceRequest {
+    string name = 1;
+}
+
+message DeleteNamespaceResponse {
+}
+
+message ListNamespacesRequest {
+}
+
+message ListNamespacesResponse {
+    repeated Namespace namespaces = 1;
+}

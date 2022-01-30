@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/spf13/cobra"
 )
 
@@ -18,11 +15,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version.",
 	Long:  "The version of headscale.",
 	Run: func(cmd *cobra.Command, args []string) {
-		o, _ := cmd.Flags().GetString("output")
-		if strings.HasPrefix(o, "json") {
-			JsonOutput(map[string]string{"version": Version}, nil, o)
-			return
-		}
-		fmt.Println(Version)
+		output, _ := cmd.Flags().GetString("output")
+		SuccessOutput(map[string]string{"version": Version}, Version, output)
 	},
 }

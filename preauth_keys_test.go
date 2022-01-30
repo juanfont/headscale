@@ -7,189 +7,189 @@ import (
 )
 
 func (*Suite) TestCreatePreAuthKey(c *check.C) {
-	_, err := h.CreatePreAuthKey("bogus", true, false, nil)
+	_, err := app.CreatePreAuthKey("bogus", true, false, nil)
 
 	c.Assert(err, check.NotNil)
 
-	n, err := h.CreateNamespace("test")
+	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	k, err := h.CreatePreAuthKey(n.Name, true, false, nil)
+	key, err := app.CreatePreAuthKey(namespace.Name, true, false, nil)
 	c.Assert(err, check.IsNil)
 
 	// Did we get a valid key?
-	c.Assert(k.Key, check.NotNil)
-	c.Assert(len(k.Key), check.Equals, 48)
+	c.Assert(key.Key, check.NotNil)
+	c.Assert(len(key.Key), check.Equals, 48)
 
 	// Make sure the Namespace association is populated
-	c.Assert(k.Namespace.Name, check.Equals, n.Name)
+	c.Assert(key.Namespace.Name, check.Equals, namespace.Name)
 
-	_, err = h.GetPreAuthKeys("bogus")
+	_, err = app.ListPreAuthKeys("bogus")
 	c.Assert(err, check.NotNil)
 
-	keys, err := h.GetPreAuthKeys(n.Name)
+	keys, err := app.ListPreAuthKeys(namespace.Name)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(*keys), check.Equals, 1)
+	c.Assert(len(keys), check.Equals, 1)
 
 	// Make sure the Namespace association is populated
-	c.Assert((*keys)[0].Namespace.Name, check.Equals, n.Name)
+	c.Assert((keys)[0].Namespace.Name, check.Equals, namespace.Name)
 }
 
 func (*Suite) TestExpiredPreAuthKey(c *check.C) {
-	n, err := h.CreateNamespace("test2")
+	namespace, err := app.CreateNamespace("test2")
 	c.Assert(err, check.IsNil)
 
 	now := time.Now()
-	pak, err := h.CreatePreAuthKey(n.Name, true, false, &now)
+	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, &now)
 	c.Assert(err, check.IsNil)
 
-	p, err := h.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errorAuthKeyExpired)
-	c.Assert(p, check.IsNil)
+	key, err := app.checkKeyValidity(pak.Key)
+	c.Assert(err, check.Equals, errPreAuthKeyExpired)
+	c.Assert(key, check.IsNil)
 }
 
 func (*Suite) TestPreAuthKeyDoesNotExist(c *check.C) {
-	p, err := h.checkKeyValidity("potatoKey")
-	c.Assert(err, check.Equals, errorAuthKeyNotFound)
-	c.Assert(p, check.IsNil)
+	key, err := app.checkKeyValidity("potatoKey")
+	c.Assert(err, check.Equals, errPreAuthKeyNotFound)
+	c.Assert(key, check.IsNil)
 }
 
 func (*Suite) TestValidateKeyOk(c *check.C) {
-	n, err := h.CreateNamespace("test3")
+	namespace, err := app.CreateNamespace("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, true, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil)
 	c.Assert(err, check.IsNil)
 
-	p, err := h.checkKeyValidity(pak.Key)
+	key, err := app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.IsNil)
-	c.Assert(p.ID, check.Equals, pak.ID)
+	c.Assert(key.ID, check.Equals, pak.ID)
 }
 
 func (*Suite) TestAlreadyUsedKey(c *check.C) {
-	n, err := h.CreateNamespace("test4")
+	namespace, err := app.CreateNamespace("test4")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	m := Machine{
+	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Name:           "testest",
-		NamespaceID:    n.ID,
+		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	h.db.Save(&m)
+	app.db.Save(&machine)
 
-	p, err := h.checkKeyValidity(pak.Key)
+	key, err := app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.Equals, errSingleUseAuthKeyHasBeenUsed)
-	c.Assert(p, check.IsNil)
+	c.Assert(key, check.IsNil)
 }
 
 func (*Suite) TestReusableBeingUsedKey(c *check.C) {
-	n, err := h.CreateNamespace("test5")
+	namespace, err := app.CreateNamespace("test5")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, true, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil)
 	c.Assert(err, check.IsNil)
 
-	m := Machine{
+	machine := Machine{
 		ID:             1,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Name:           "testest",
-		NamespaceID:    n.ID,
+		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	h.db.Save(&m)
+	app.db.Save(&machine)
 
-	p, err := h.checkKeyValidity(pak.Key)
+	key, err := app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.IsNil)
-	c.Assert(p.ID, check.Equals, pak.ID)
+	c.Assert(key.ID, check.Equals, pak.ID)
 }
 
 func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
-	n, err := h.CreateNamespace("test6")
+	namespace, err := app.CreateNamespace("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 
-	p, err := h.checkKeyValidity(pak.Key)
+	key, err := app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.IsNil)
-	c.Assert(p.ID, check.Equals, pak.ID)
+	c.Assert(key.ID, check.Equals, pak.ID)
 }
 
 func (*Suite) TestEphemeralKey(c *check.C) {
-	n, err := h.CreateNamespace("test7")
+	namespace, err := app.CreateNamespace("test7")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, true, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, true, nil)
 	c.Assert(err, check.IsNil)
 
 	now := time.Now()
-	m := Machine{
+	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Name:           "testest",
-		NamespaceID:    n.ID,
+		NamespaceID:    namespace.ID,
 		Registered:     true,
-		RegisterMethod: "authKey",
+		RegisterMethod: RegisterMethodAuthKey,
 		LastSeen:       &now,
 		AuthKeyID:      uint(pak.ID),
 	}
-	h.db.Save(&m)
+	app.db.Save(&machine)
 
-	_, err = h.checkKeyValidity(pak.Key)
+	_, err = app.checkKeyValidity(pak.Key)
 	// Ephemeral keys are by definition reusable
 	c.Assert(err, check.IsNil)
 
-	_, err = h.GetMachine("test7", "testest")
+	_, err = app.GetMachine("test7", "testest")
 	c.Assert(err, check.IsNil)
 
-	h.expireEphemeralNodesWorker()
+	app.expireEphemeralNodesWorker()
 
 	// The machine record should have been deleted
-	_, err = h.GetMachine("test7", "testest")
+	_, err = app.GetMachine("test7", "testest")
 	c.Assert(err, check.NotNil)
 }
 
 func (*Suite) TestExpirePreauthKey(c *check.C) {
-	n, err := h.CreateNamespace("test3")
+	namespace, err := app.CreateNamespace("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, true, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil)
 	c.Assert(err, check.IsNil)
 	c.Assert(pak.Expiration, check.IsNil)
 
-	err = h.MarkExpirePreAuthKey(pak)
+	err = app.ExpirePreAuthKey(pak)
 	c.Assert(err, check.IsNil)
 	c.Assert(pak.Expiration, check.NotNil)
 
-	p, err := h.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errorAuthKeyExpired)
-	c.Assert(p, check.IsNil)
+	key, err := app.checkKeyValidity(pak.Key)
+	c.Assert(err, check.Equals, errPreAuthKeyExpired)
+	c.Assert(key, check.IsNil)
 }
 
 func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
-	n, err := h.CreateNamespace("test6")
+	namespace, err := app.CreateNamespace("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := h.CreatePreAuthKey(n.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
 	c.Assert(err, check.IsNil)
 	pak.Used = true
-	h.db.Save(&pak)
+	app.db.Save(&pak)
 
-	_, err = h.checkKeyValidity(pak.Key)
+	_, err = app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.Equals, errSingleUseAuthKeyHasBeenUsed)
 }

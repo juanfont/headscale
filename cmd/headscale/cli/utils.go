@@ -1,26 +1,33 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
+	"gopkg.in/yaml.v2"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 )
 
-type ErrorOutput struct {
-	Error string
-}
+const (
+	PermissionFallback = 0o700
+)
 
 func LoadConfig(path string) error {
 	viper.SetConfigName("config")
@@ -32,6 +39,9 @@ func LoadConfig(path string) error {
 		// For testing
 		viper.AddConfigPath(path)
 	}
+
+	viper.SetEnvPrefix("headscale")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
@@ -43,9 +53,14 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("dns_config", nil)
 
-	err := viper.ReadInConfig()
-	if err != nil {
-		return fmt.Errorf("Fatal error reading config file: %s \n", err)
+	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
+	viper.SetDefault("unix_socket_permission", "0o770")
+
+	viper.SetDefault("cli.insecure", false)
+	viper.SetDefault("cli.timeout", "5s")
+
+	if err := viper.ReadInConfig(); err != nil {
+		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
 
 	// Collect any validation errors and return them all at once
@@ -73,6 +88,7 @@ func LoadConfig(path string) error {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
 	if errorText != "" {
+		//nolint
 		return errors.New(strings.TrimSuffix(errorText, "\n"))
 	} else {
 		return nil
@@ -140,9 +156,14 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 		if viper.IsSet("dns_config.restricted_nameservers") {
 			if len(dnsConfig.Nameservers) > 0 {
 				dnsConfig.Routes = make(map[string][]dnstype.Resolver)
-				restrictedDNS := viper.GetStringMapStringSlice("dns_config.restricted_nameservers")
+				restrictedDNS := viper.GetStringMapStringSlice(
+					"dns_config.restricted_nameservers",
+				)
 				for domain, restrictedNameservers := range restrictedDNS {
-					restrictedResolvers := make([]dnstype.Resolver, len(restrictedNameservers))
+					restrictedResolvers := make(
+						[]dnstype.Resolver,
+						len(restrictedNameservers),
+					)
 					for index, nameserverStr := range restrictedNameservers {
 						nameserver, err := netaddr.ParseIP(nameserverStr)
 						if err != nil {
@@ -199,35 +220,26 @@ func absPath(path string) string {
 			path = filepath.Join(dir, path)
 		}
 	}
+
 	return path
 }
 
-func getHeadscaleApp() (*headscale.Headscale, error) {
-	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
-	// to avoid races
-	minInactivityTimeout, _ := time.ParseDuration("65s")
-	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
-		err := fmt.Errorf(
-			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s\n",
-			viper.GetString("ephemeral_node_inactivity_timeout"),
-			minInactivityTimeout,
-		)
-		return nil, err
-	}
-
+func getHeadscaleConfig() headscale.Config {
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 
-	cfg := headscale.Config{
+	return headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
-		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		IPPrefix:       netaddr.MustParseIPPrefix(viper.GetString("ip_prefix")),
+		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		BaseDomain:     baseDomain,
 
 		DERP: derpConfig,
 
-		EphemeralNodeInactivityTimeout: viper.GetDuration("ephemeral_node_inactivity_timeout"),
+		EphemeralNodeInactivityTimeout: viper.GetDuration(
+			"ephemeral_node_inactivity_timeout",
+		),
 
 		DBtype: viper.GetString("db_type"),
 		DBpath: absPath(viper.GetString("db_path")),
@@ -237,9 +249,11 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		DBuser: viper.GetString("db_user"),
 		DBpass: viper.GetString("db_pass"),
 
-		TLSLetsEncryptHostname:      viper.GetString("tls_letsencrypt_hostname"),
-		TLSLetsEncryptListen:        viper.GetString("tls_letsencrypt_listen"),
-		TLSLetsEncryptCacheDir:      absPath(viper.GetString("tls_letsencrypt_cache_dir")),
+		TLSLetsEncryptHostname: viper.GetString("tls_letsencrypt_hostname"),
+		TLSLetsEncryptListen:   viper.GetString("tls_letsencrypt_listen"),
+		TLSLetsEncryptCacheDir: absPath(
+			viper.GetString("tls_letsencrypt_cache_dir"),
+		),
 		TLSLetsEncryptChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
 
 		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
@@ -249,9 +263,46 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
+
+		UnixSocket:           viper.GetString("unix_socket"),
+		UnixSocketPermission: GetFileMode("unix_socket_permission"),
+
+		OIDC: headscale.OIDCConfig{
+			Issuer:       viper.GetString("oidc.issuer"),
+			ClientID:     viper.GetString("oidc.client_id"),
+			ClientSecret: viper.GetString("oidc.client_secret"),
+		},
+
+		CLI: headscale.CLIConfig{
+			Address:  viper.GetString("cli.address"),
+			APIKey:   viper.GetString("cli.api_key"),
+			Insecure: viper.GetBool("cli.insecure"),
+			Timeout:  viper.GetDuration("cli.timeout"),
+		},
+	}
+}
+
+func getHeadscaleApp() (*headscale.Headscale, error) {
+	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
+	// to avoid races
+	minInactivityTimeout, _ := time.ParseDuration("65s")
+	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
+		// TODO: Find a better way to return this text
+		//nolint
+		err := fmt.Errorf(
+			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
+			viper.GetString("ephemeral_node_inactivity_timeout"),
+			minInactivityTimeout,
+		)
+
+		return nil, err
 	}
 
-	h, err := headscale.NewHeadscale(cfg)
+	cfg := getHeadscaleConfig()
+
+	cfg.OIDC.MatchMap = loadOIDCMatchMap()
+
+	app, err := headscale.NewHeadscale(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +311,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 	if viper.GetString("acl_policy_path") != "" {
 		aclPath := absPath(viper.GetString("acl_policy_path"))
-		err = h.LoadACLPolicy(aclPath)
+		err = app.LoadACLPolicy(aclPath)
 		if err != nil {
 			log.Error().
 				Str("path", aclPath).
@@ -269,46 +320,150 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		}
 	}
 
-	return h, nil
+	return app, nil
 }
 
-func JsonOutput(result interface{}, errResult error, outputFormat string) {
+func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
+	cfg := getHeadscaleConfig()
+
+	log.Debug().
+		Dur("timeout", cfg.CLI.Timeout).
+		Msgf("Setting timeout")
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.CLI.Timeout)
+
+	grpcOptions := []grpc.DialOption{
+		grpc.WithBlock(),
+	}
+
+	address := cfg.CLI.Address
+
+	// If the address is not set, we assume that we are on the server hosting headscale.
+	if address == "" {
+		log.Debug().
+			Str("socket", cfg.UnixSocket).
+			Msgf("HEADSCALE_CLI_ADDRESS environment is not set, connecting to unix socket.")
+
+		address = cfg.UnixSocket
+
+		grpcOptions = append(
+			grpcOptions,
+			grpc.WithInsecure(),
+			grpc.WithContextDialer(headscale.GrpcSocketDialer),
+		)
+	} else {
+		// If we are not connecting to a local server, require an API key for authentication
+		apiKey := cfg.CLI.APIKey
+		if apiKey == "" {
+			log.Fatal().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
+		}
+		grpcOptions = append(grpcOptions,
+			grpc.WithPerRPCCredentials(tokenAuth{
+				token: apiKey,
+			}),
+		)
+
+		if cfg.CLI.Insecure {
+			grpcOptions = append(grpcOptions, grpc.WithInsecure())
+		}
+	}
+
+	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
+	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("Could not connect: %v", err)
+	}
+
+	client := v1.NewHeadscaleServiceClient(conn)
+
+	return ctx, client, conn, cancel
+}
+
+func SuccessOutput(result interface{}, override string, outputFormat string) {
 	var j []byte
 	var err error
 	switch outputFormat {
 	case "json":
-		if errResult != nil {
-			j, err = json.MarshalIndent(ErrorOutput{errResult.Error()}, "", "\t")
-			if err != nil {
-				log.Fatal().Err(err)
-			}
-		} else {
-			j, err = json.MarshalIndent(result, "", "\t")
-			if err != nil {
-				log.Fatal().Err(err)
-			}
+		j, err = json.MarshalIndent(result, "", "\t")
+		if err != nil {
+			log.Fatal().Err(err)
 		}
 	case "json-line":
-		if errResult != nil {
-			j, err = json.Marshal(ErrorOutput{errResult.Error()})
-			if err != nil {
-				log.Fatal().Err(err)
-			}
-		} else {
-			j, err = json.Marshal(result)
-			if err != nil {
-				log.Fatal().Err(err)
-			}
+		j, err = json.Marshal(result)
+		if err != nil {
+			log.Fatal().Err(err)
 		}
+	case "yaml":
+		j, err = yaml.Marshal(result)
+		if err != nil {
+			log.Fatal().Err(err)
+		}
+	default:
+		//nolint
+		fmt.Println(override)
+
+		return
 	}
+
+	//nolint
 	fmt.Println(string(j))
 }
 
-func HasJsonOutputFlag() bool {
+func ErrorOutput(errResult error, override string, outputFormat string) {
+	type errOutput struct {
+		Error string `json:"error"`
+	}
+
+	SuccessOutput(errOutput{errResult.Error()}, override, outputFormat)
+}
+
+func HasMachineOutputFlag() bool {
 	for _, arg := range os.Args {
-		if arg == "json" || arg == "json-line" {
+		if arg == "json" || arg == "json-line" || arg == "yaml" {
 			return true
 		}
 	}
+
 	return false
+}
+
+type tokenAuth struct {
+	token string
+}
+
+// Return value is mapped to request headers.
+func (t tokenAuth) GetRequestMetadata(
+	ctx context.Context,
+	in ...string,
+) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + t.token,
+	}, nil
+}
+
+func (tokenAuth) RequireTransportSecurity() bool {
+	return true
+}
+
+// loadOIDCMatchMap is a wrapper around viper to verifies that the keys in
+// the match map is valid regex strings.
+func loadOIDCMatchMap() map[string]string {
+	strMap := viper.GetStringMapString("oidc.domain_map")
+
+	for oidcMatcher := range strMap {
+		_ = regexp.MustCompile(oidcMatcher)
+	}
+
+	return strMap
+}
+
+func GetFileMode(key string) fs.FileMode {
+	modeStr := viper.GetString(key)
+
+	mode, err := strconv.ParseUint(modeStr, headscale.Base8, headscale.BitSize64)
+	if err != nil {
+		return PermissionFallback
+	}
+
+	return fs.FileMode(mode)
 }

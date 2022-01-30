@@ -6,6 +6,8 @@ An open source, self-hosted implementation of the Tailscale coordination server.
 
 Join our [Discord](https://discord.gg/XcQxk2VHjx) server for a chat.
 
+**Note:** Always select the same GitHub tag as the released version you use to ensure you have the correct example configuration and documentation. The `main` branch might contain unreleased changes.
+
 ## Overview
 
 Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/).
@@ -29,6 +31,7 @@ headscale implements this coordination server.
 - [x] Taildrop (File Sharing)
 - [x] Support for alternative IP ranges in the tailnets (default Tailscale's 100.64.0.0/10)
 - [x] DNS (passing DNS servers to nodes)
+- [x] Single-Sign-On (via Open ID Connect)
 - [x] Share nodes between namespaces
 - [x] MagicDNS (see `docs/`)
 
@@ -47,17 +50,67 @@ headscale implements this coordination server.
 
 Suggestions/PRs welcomed!
 
-
 ## Running headscale
 
 Please have a look at the documentation under [`docs/`](docs/).
 
-
 ## Disclaimer
 
 1. We have nothing to do with Tailscale, or Tailscale Inc.
-2. The purpose of writing this was to learn how Tailscale works.
+2. The purpose of Headscale is maintaining a working, self-hosted Tailscale control panel.
 
+## Contributing
+
+To contribute to Headscale you would need the lastest version of [Go](https://golang.org) and [Buf](https://buf.build)(Protobuf generator).
+
+### Code style
+
+To ensure we have some consistency with a growing number of contributions, this project has adopted linting and style/formatting rules:
+
+The **Go** code is linted with [`golangci-lint`](https://golangci-lint.run) and
+formatted with [`golines`](https://github.com/segmentio/golines) (width 88) and
+[`gofumpt`](https://github.com/mvdan/gofumpt).
+Please configure your editor to run the tools while developing and make sure to
+run `make lint` and `make fmt` before committing any code.
+
+The **Proto** code is linted with [`buf`](https://docs.buf.build/lint/overview) and
+formatted with [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html).
+
+The **rest** (Markdown, YAML, etc) is formatted with [`prettier`](https://prettier.io).
+
+Check out the `.golangci.yaml` and `Makefile` to see the specific configuration.
+
+### Install development tools
+
+- Go
+- Buf
+- Protobuf tools:
+
+```shell
+make install-protobuf-plugins
+```
+
+### Testing and building
+
+Some parts of the project require the generation of Go code from Protobuf (if changes are made in `proto/`) and it must be (re-)generated with:
+
+```shell
+make generate
+```
+
+**Note**: Please check in changes from `gen/` in a separate commit to make it easier to review.
+
+To run the tests:
+
+```shell
+make test
+```
+
+To build the program:
+
+```shell
+make build
+```
 
 ## Contributors
 
@@ -92,12 +145,21 @@ Please have a look at the documentation under [`docs/`](docs/).
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/unreality>
+            <img src=https://avatars.githubusercontent.com/u/352522?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=unreality/>
+            <br />
+            <sub style="font-size:14px"><b>unreality</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/qbit>
             <img src=https://avatars.githubusercontent.com/u/68368?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Aaron Bieber/>
             <br />
             <sub style="font-size:14px"><b>Aaron Bieber</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/ptman>
             <img src=https://avatars.githubusercontent.com/u/24669?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Paul Tötterman/>
@@ -105,8 +167,6 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Paul Tötterman</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/cmars>
             <img src=https://avatars.githubusercontent.com/u/23741?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Casey Marshall/>
@@ -142,6 +202,8 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Felix Kronlage-Dammers</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/felixonmars>
             <img src=https://avatars.githubusercontent.com/u/1006477?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Felix Yan/>
@@ -149,8 +211,6 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Felix Yan</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/shaananc>
             <img src=https://avatars.githubusercontent.com/u/2287839?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Shaanan Cohney/>
@@ -186,6 +246,8 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Tjerk Woudsma</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/zekker6>
             <img src=https://avatars.githubusercontent.com/u/1367798?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Zakhar Bessarab/>
@@ -193,8 +255,6 @@ Please have a look at the documentation under [`docs/`](docs/).
             <sub style="font-size:14px"><b>Zakhar Bessarab</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/derelm>
             <img src=https://avatars.githubusercontent.com/u/465155?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=derelm/>
@@ -218,5 +278,3 @@ Please have a look at the documentation under [`docs/`](docs/).
     </td>
 </tr>
 </table>
-
-

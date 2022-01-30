@@ -1,6 +1,7 @@
 package headscale
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -10,9 +11,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-
 	"gopkg.in/yaml.v2"
-
 	"tailscale.com/tailcfg"
 )
 
@@ -28,14 +27,24 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 		return nil, err
 	}
 	err = yaml.Unmarshal(b, &derpMap)
+
 	return &derpMap, err
 }
 
 func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
-	client := http.Client{
-		Timeout: 10 * time.Second,
+	ctx, cancel := context.WithTimeout(context.Background(), HTTPReadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", addr.String(), nil)
+	if err != nil {
+		return nil, err
 	}
-	resp, err := client.Get(addr.String())
+
+	client := http.Client{
+		Timeout: HTTPReadTimeout,
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +57,7 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 
 	var derpMap tailcfg.DERPMap
 	err = json.Unmarshal(body, &derpMap)
+
 	return &derpMap, err
 }
 
@@ -55,7 +65,7 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 // DERPMap, it will _only_ look at the Regions, an integer.
 // If a region exists in two of the given DERPMaps, the region
 // form the _last_ DERPMap will be preserved.
-// An empty DERPMap list will result in a DERPMap with no regions
+// An empty DERPMap list will result in a DERPMap with no regions.
 func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	result := tailcfg.DERPMap{
 		OmitDefaultRegions: false,
@@ -86,6 +96,7 @@ func GetDERPMap(cfg DERPConfig) *tailcfg.DERPMap {
 				Str("path", path).
 				Err(err).
 				Msg("Could not load DERP map from path")
+
 			break
 		}
 
@@ -104,6 +115,7 @@ func GetDERPMap(cfg DERPConfig) *tailcfg.DERPMap {
 				Str("url", addr.String()).
 				Err(err).
 				Msg("Could not load DERP map from path")
+
 			break
 		}
 
@@ -144,7 +156,7 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 					Msg("Failed to fetch namespaces")
 			}
 
-			for _, namespace := range *namespaces {
+			for _, namespace := range namespaces {
 				h.setLastStateChangeToNow(namespace.Name)
 			}
 		}
