@@ -8,12 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
 
       - name: Get changed files
         id: changed-files
         uses: tj-actions/changed-files@v14.1
         with:
-          fetch-depth: 2
           files: |
             go.*
             **/*.go
@@ -36,12 +37,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
 
       - name: Get changed files
         id: changed-files
         uses: tj-actions/changed-files@v14.1
         with:
-          fetch-depth: 2
           files: |
             **/*.md
             **/*.yml
