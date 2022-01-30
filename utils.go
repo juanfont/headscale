@@ -151,6 +151,7 @@ func GetIPPrefixEndpoints(na netaddr.IPPrefix) (network, broadcast netaddr.IP) {
 	ipRange := na.Range()
 	network = ipRange.From()
 	broadcast = ipRange.To()
+
 	return
 }
 

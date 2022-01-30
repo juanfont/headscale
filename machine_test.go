@@ -208,7 +208,9 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 	})
 	serialized, err := input.Value()
 	c.Assert(err, check.IsNil)
-	c.Assert(serialized.(string), check.Equals, "192.0.2.1,2001:db8::1")
+	if serial, ok := serialized.(string); ok {
+		c.Assert(serial, check.Equals, "192.0.2.1,2001:db8::1")
+	}
 
 	var deserialized MachineAddresses
 	err = deserialized.Scan(serialized)
