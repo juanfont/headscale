@@ -37,14 +37,12 @@ using TLS certificates. The capability can be configured by by applying one of
 the following values to the `tls_client_auth_mode` setting in the configuration
 file.
 
-| Value | Behavior |
-| ----- | -------- |
-| `disabled` | Disable mTLS (default). |
-| `relaxed` | A client certificate is required, but it is not verified. |
+| Value      | Behavior                                                   |
+| ---------- | ---------------------------------------------------------- |
+| `disabled` | Disable mTLS (default).                                    |
+| `relaxed`  | A client certificate is required, but it is not verified.  |
 | `enforced` | Requires clients to supply a certificate that is verified. |
-
 
 ```yaml
 tls_client_auth_mode: ""
 ```
-

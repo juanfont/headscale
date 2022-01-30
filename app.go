@@ -61,6 +61,10 @@ const (
 	errUnsupportedLetsEncryptChallengeType = Error(
 		"unknown value for Lets Encrypt challenge type",
 	)
+
+	DisabledClientAuth = "disabled"
+	RelaxedClientAuth  = "relaxed"
+	EnforcedClientAuth = "enforced"
 )
 
 // Config contains the initial Headscale configuration.
@@ -647,19 +651,19 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		}
 
 		var clientAuthMode tls.ClientAuthType
-		if h.cfg.TLSClientAuthMode == "disabled" {
+		switch h.cfg.TLSClientAuthMode {
+		case DisabledClientAuth:
 			// Client cert is _not_ required.
 			clientAuthMode = tls.NoClientCert
-		} else if h.cfg.TLSClientAuthMode == "relaxed" {
-			// Client cert required, but not verified.
+		case RelaxedClientAuth:
+			// Client cert required, but _not verified_.
 			clientAuthMode = tls.RequireAnyClientCert
-		} else if h.cfg.TLSClientAuthMode == "enforced" {
-			// Client cert is required and verified.
+		case EnforcedClientAuth:
+			// Client cert is _required and verified_.
 			clientAuthMode = tls.RequireAndVerifyClientCert
-		} else {
-			return nil, errors.New(
-				"Invalid tls_clientAuthMode provided: " +
-					h.cfg.TLSClientAuthMode)
+		default:
+			return nil, Error("Invalid tls_client_auth_mode provided: " +
+				h.cfg.TLSClientAuthMode)
 		}
 
 		log.Info().Msg(fmt.Sprintf(
