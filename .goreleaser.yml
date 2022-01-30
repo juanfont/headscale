@@ -2,7 +2,7 @@
 # Make sure to check the documentation at http://goreleaser.com
 before:
   hooks:
-    - go mod tidy
+    - go mod tidy -compat=1.17
 
 release:
   prerelease: auto
