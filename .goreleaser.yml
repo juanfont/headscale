@@ -32,7 +32,7 @@ builds:
     goarch:
       - arm
     goarm:
-      - 7
+      - "7"
     env:
       - CC=arm-linux-gnueabihf-gcc
       - CXX=arm-linux-gnueabihf-g++
