@@ -63,3 +63,25 @@ func (s *Suite) ResetDB(c *check.C) {
 	}
 	app.db = db
 }
+
+// Enusre an error is returned when an invalid auth mode
+// is supplied.
+func (s *Suite) TestInvalidClientAuthMode(c *check.C){
+    app.cfg.TLSClientAuthMode = "invalid"
+    _, err := app.GetClientAuthMode()
+    c.Assert(err, check.NotNil)
+}
+
+// Ensure that all client auth modes return a nil error
+func (s *Suite) TestAuthModes(c *check.C){
+
+    var modes = []string{"disabled", "relaxed", "enforced"}
+
+    for _, v := range modes {
+        app.cfg.TLSClientAuthMode = v
+        _, err := app.GetClientAuthMode()
+        c.Assert(err, check.IsNil)
+    }
+
+}
+

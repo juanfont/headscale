@@ -650,21 +650,11 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
-		var clientAuthMode tls.ClientAuthType
-		switch h.cfg.TLSClientAuthMode {
-		case DisabledClientAuth:
-			// Client cert is _not_ required.
-			clientAuthMode = tls.NoClientCert
-		case RelaxedClientAuth:
-			// Client cert required, but _not verified_.
-			clientAuthMode = tls.RequireAnyClientCert
-		case EnforcedClientAuth:
-			// Client cert is _required and verified_.
-			clientAuthMode = tls.RequireAndVerifyClientCert
-		default:
-			return nil, Error("Invalid tls_client_auth_mode provided: " +
-				h.cfg.TLSClientAuthMode)
-		}
+        clientAuthMode, err := h.GetClientAuthMode()
+
+        if err != nil {
+            return nil, err
+        }
 
 		log.Info().Msg(fmt.Sprintf(
 			"Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
@@ -681,6 +671,27 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 
 		return tlsConfig, err
 	}
+}
+
+// Look up the TLS constant relative to user-supplied TLS client
+// authentication mode.
+func (h *Headscale) GetClientAuthMode() (tls.ClientAuthType, error) {
+
+		switch h.cfg.TLSClientAuthMode {
+		case DisabledClientAuth:
+			// Client cert is _not_ required.
+			return tls.NoClientCert, nil
+		case RelaxedClientAuth:
+			// Client cert required, but _not verified_.
+			return tls.RequireAnyClientCert, nil
+		case EnforcedClientAuth:
+			// Client cert is _required and verified_.
+			return tls.RequireAndVerifyClientCert, nil
+		default:
+			return tls.NoClientCert, Error("Invalid tls_client_auth_mode provided: " +
+				h.cfg.TLSClientAuthMode)
+		}
+
 }
 
 func (h *Headscale) setLastStateChangeToNow(namespace string) {
