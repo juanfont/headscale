@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -100,7 +101,8 @@ type Config struct {
 
 	DNSConfig *tailcfg.DNSConfig
 
-	UnixSocket string
+	UnixSocket           string
+	UnixSocketPermission fs.FileMode
 
 	OIDC OIDCConfig
 
@@ -429,6 +431,11 @@ func (h *Headscale) Serve() error {
 	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
 	if err != nil {
 		return fmt.Errorf("failed to set up gRPC socket: %w", err)
+	}
+
+	// Change socket permissions
+	if err := os.Chmod(h.cfg.UnixSocket, h.cfg.UnixSocketPermission); err != nil {
+		return fmt.Errorf("failed change permission of gRPC socket: %w", err)
 	}
 
 	// Handle common process-killing signals so we can gracefully shut down:

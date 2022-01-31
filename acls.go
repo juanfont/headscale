@@ -25,8 +25,11 @@ const (
 )
 
 const (
+	Base8              = 8
 	Base10             = 10
 	BitSize16          = 16
+	BitSize32          = 32
+	BitSize64          = 64
 	portRangeBegin     = 0
 	portRangeEnd       = 65535
 	expectedTokenItems = 2
