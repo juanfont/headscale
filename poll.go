@@ -1,8 +1,10 @@
 package headscale
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -154,14 +156,33 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("id", ctx.Param("id")).
 		Str("machine", machine.Name).
 		Msg("Loading or creating update channel")
-	updateChan := make(chan struct{})
 
-	pollDataChan := make(chan []byte)
+	// TODO: could probably remove all that duplication once generics land.
+	closeChanWithLog := func(channel interface{}, name string) {
+		log.Trace().
+			Str("handler", "PollNetMap").
+			Str("machine", machine.Name).
+			Str("channel", "Done").
+			Msg(fmt.Sprintf("Closing %s channel", name))
+
+		switch c := channel.(type) {
+		case (chan struct{}):
+			close(c)
+
+		case (chan []byte):
+			close(c)
+		}
+	}
+
+	const chanSize = 8
+	updateChan := make(chan struct{}, chanSize)
+	defer closeChanWithLog(updateChan, "updateChan")
+
+	pollDataChan := make(chan []byte, chanSize)
+	defer closeChanWithLog(pollDataChan, "pollDataChan")
 
 	keepAliveChan := make(chan []byte)
-
-	cancelKeepAlive := make(chan struct{})
-	defer close(cancelKeepAlive)
+	defer closeChanWithLog(keepAliveChan, "keepAliveChan")
 
 	if req.OmitPeers && !req.Stream {
 		log.Info().
@@ -174,7 +195,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		// even tho the comments in the tailscale code dont explicitly say so.
 		updateRequestsFromNode.WithLabelValues(machine.Name, machine.Namespace.Name, "endpoint-update").
 			Inc()
-		go func() { updateChan <- struct{}{} }()
+		updateChan <- struct{}{}
 
 		return
 	} else if req.OmitPeers && req.Stream {
@@ -195,7 +216,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("machine", machine.Name).
 		Msg("Sending initial map")
-	go func() { pollDataChan <- data }()
+	pollDataChan <- data
 
 	log.Info().
 		Str("handler", "PollNetMap").
@@ -203,7 +224,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Msg("Notifying peers")
 	updateRequestsFromNode.WithLabelValues(machine.Name, machine.Namespace.Name, "full-update").
 		Inc()
-	go func() { updateChan <- struct{}{} }()
+	updateChan <- struct{}{}
 
 	h.PollNetMapStream(
 		ctx,
@@ -213,7 +234,6 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		pollDataChan,
 		keepAliveChan,
 		updateChan,
-		cancelKeepAlive,
 	)
 	log.Trace().
 		Str("handler", "PollNetMap").
@@ -233,16 +253,20 @@ func (h *Headscale) PollNetMapStream(
 	pollDataChan chan []byte,
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
-	cancelKeepAlive chan struct{},
 ) {
-	go h.scheduledPollWorker(
-		cancelKeepAlive,
-		updateChan,
-		keepAliveChan,
-		machineKey,
-		mapRequest,
-		machine,
-	)
+	{
+		ctx, cancel := context.WithCancel(ctx.Request.Context())
+		defer cancel()
+
+		go h.scheduledPollWorker(
+			ctx,
+			updateChan,
+			keepAliveChan,
+			machineKey,
+			mapRequest,
+			machine,
+		)
+	}
 
 	ctx.Stream(func(writer io.Writer) bool {
 		log.Trace().
@@ -392,10 +416,14 @@ func (h *Headscale) PollNetMapStream(
 			updateRequestsReceivedOnChannel.WithLabelValues(machine.Name, machine.Namespace.Name).
 				Inc()
 			if h.isOutdated(machine) {
+				var lastUpdate time.Time
+				if machine.LastSuccessfulUpdate != nil {
+					lastUpdate = *machine.LastSuccessfulUpdate
+				}
 				log.Debug().
 					Str("handler", "PollNetMapStream").
 					Str("machine", machine.Name).
-					Time("last_successful_update", *machine.LastSuccessfulUpdate).
+					Time("last_successful_update", lastUpdate).
 					Time("last_state_change", h.getLastStateChange(machine.Namespace.Name)).
 					Msgf("There has been updates since the last successful update to %s", machine.Name)
 				data, err := h.getMapResponse(machineKey, mapRequest, machine)
@@ -464,10 +492,14 @@ func (h *Headscale) PollNetMapStream(
 						Msg("Cannot update machine LastSuccessfulUpdate")
 				}
 			} else {
+				var lastUpdate time.Time
+				if machine.LastSuccessfulUpdate != nil {
+					lastUpdate = *machine.LastSuccessfulUpdate
+				}
 				log.Trace().
 					Str("handler", "PollNetMapStream").
 					Str("machine", machine.Name).
-					Time("last_successful_update", *machine.LastSuccessfulUpdate).
+					Time("last_successful_update", lastUpdate).
 					Time("last_state_change", h.getLastStateChange(machine.Namespace.Name)).
 					Msgf("%s is up to date", machine.Name)
 			}
@@ -507,42 +539,13 @@ func (h *Headscale) PollNetMapStream(
 					Msg("Cannot update machine LastSeen")
 			}
 
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Str("machine", machine.Name).
-				Str("channel", "Done").
-				Msg("Cancelling keepAlive channel")
-			cancelKeepAlive <- struct{}{}
-
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Str("machine", machine.Name).
-				Str("channel", "Done").
-				Msg("Closing update channel")
-			// h.closeUpdateChannel(m)
-			close(updateChan)
-
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Str("machine", machine.Name).
-				Str("channel", "Done").
-				Msg("Closing pollData channel")
-			close(pollDataChan)
-
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Str("machine", machine.Name).
-				Str("channel", "Done").
-				Msg("Closing keepAliveChan channel")
-			close(keepAliveChan)
-
 			return false
 		}
 	})
 }
 
 func (h *Headscale) scheduledPollWorker(
-	cancelChan <-chan struct{},
+	ctx context.Context,
 	updateChan chan<- struct{},
 	keepAliveChan chan<- []byte,
 	machineKey key.MachinePublic,
@@ -554,7 +557,7 @@ func (h *Headscale) scheduledPollWorker(
 
 	for {
 		select {
-		case <-cancelChan:
+		case <-ctx.Done():
 			return
 
 		case <-keepAliveTicker.C:

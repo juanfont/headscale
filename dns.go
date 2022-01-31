@@ -14,6 +14,11 @@ const (
 	ByteSize = 8
 )
 
+const (
+	ipv4AddressLength = 32
+	ipv6AddressLength = 128
+)
+
 // generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
 // This list of reverse DNS entries instructs the OS on what subnets and domains the Tailscale embedded DNS
 // server (listening in 100.100.100.100 udp/53) should be used for.
@@ -34,14 +39,28 @@ const (
 
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
-func generateMagicDNSRootDomains(
-	ipPrefix netaddr.IPPrefix,
-) []dnsname.FQDN {
-	// TODO(juanfont): we are not handing out IPv6 addresses yet
-	// and in fact this is Tailscale.com's range (note the fd7a:115c:a1e0: range in the fc00::/7 network)
-	ipv6base := dnsname.FQDN("0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
-	fqdns := []dnsname.FQDN{ipv6base}
+func generateMagicDNSRootDomains(ipPrefixes []netaddr.IPPrefix) []dnsname.FQDN {
+	fqdns := make([]dnsname.FQDN, 0, len(ipPrefixes))
+	for _, ipPrefix := range ipPrefixes {
+		var generateDNSRoot func(netaddr.IPPrefix) []dnsname.FQDN
+		switch ipPrefix.IP().BitLen() {
+		case ipv4AddressLength:
+			generateDNSRoot = generateIPv4DNSRootDomain
 
+		case ipv6AddressLength:
+			generateDNSRoot = generateIPv6DNSRootDomain
+
+		default:
+			panic(fmt.Sprintf("unsupported IP version with address length %d", ipPrefix.IP().BitLen()))
+		}
+
+		fqdns = append(fqdns, generateDNSRoot(ipPrefix)...)
+	}
+
+	return fqdns
+}
+
+func generateIPv4DNSRootDomain(ipPrefix netaddr.IPPrefix) []dnsname.FQDN {
 	// Conversion to the std lib net.IPnet, a bit easier to operate
 	netRange := ipPrefix.IPNet()
 	maskBits, _ := netRange.Mask.Size()
@@ -65,12 +84,61 @@ func generateMagicDNSRootDomains(
 	rdnsSlice = append(rdnsSlice, "in-addr.arpa.")
 	rdnsBase := strings.Join(rdnsSlice, ".")
 
+	fqdns := make([]dnsname.FQDN, 0, max-min+1)
 	for i := min; i <= max; i++ {
 		fqdn, err := dnsname.ToFQDN(fmt.Sprintf("%d.%s", i, rdnsBase))
 		if err != nil {
 			continue
 		}
 		fqdns = append(fqdns, fqdn)
+	}
+
+	return fqdns
+}
+
+func generateIPv6DNSRootDomain(ipPrefix netaddr.IPPrefix) []dnsname.FQDN {
+	const nibbleLen = 4
+
+	maskBits, _ := ipPrefix.IPNet().Mask.Size()
+	expanded := ipPrefix.IP().StringExpanded()
+	nibbleStr := strings.Map(func(r rune) rune {
+		if r == ':' {
+			return -1
+		}
+
+		return r
+	}, expanded)
+
+	// TODO?: that does not look the most efficient implementation,
+	// but the inputs are not so long as to cause problems,
+	// and from what I can see, the generateMagicDNSRootDomains
+	// function is called only once over the lifetime of a server process.
+	prefixConstantParts := []string{}
+	for i := 0; i < maskBits/nibbleLen; i++ {
+		prefixConstantParts = append([]string{string(nibbleStr[i])}, prefixConstantParts...)
+	}
+
+	makeDomain := func(variablePrefix ...string) (dnsname.FQDN, error) {
+		prefix := strings.Join(append(variablePrefix, prefixConstantParts...), ".")
+
+		return dnsname.ToFQDN(fmt.Sprintf("%s.ip6.arpa", prefix))
+	}
+
+	var fqdns []dnsname.FQDN
+	if maskBits%4 == 0 {
+		dom, _ := makeDomain()
+		fqdns = append(fqdns, dom)
+	} else {
+		domCount := 1 << (maskBits % nibbleLen)
+		fqdns = make([]dnsname.FQDN, 0, domCount)
+		for i := 0; i < domCount; i++ {
+			varNibble := fmt.Sprintf("%x", i)
+			dom, err := makeDomain(varNibble)
+			if err != nil {
+				continue
+			}
+			fqdns = append(fqdns, dom)
+		}
 	}
 
 	return fqdns
