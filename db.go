@@ -28,20 +28,26 @@ func (h *Headscale) initDB() error {
 	h.db = db
 
 	if h.dbType == Postgres {
-		db.Exec("create extension if not exists \"uuid-ossp\";")
+		db.Exec(`create extension if not exists "uuid-ossp";`)
 	}
+
+	_ = db.Migrator().RenameColumn(&Machine{}, "ip_address", "ip_addresses")
+
 	err = db.AutoMigrate(&Machine{})
 	if err != nil {
 		return err
 	}
+
 	err = db.AutoMigrate(&KV{})
 	if err != nil {
 		return err
 	}
+
 	err = db.AutoMigrate(&Namespace{})
 	if err != nil {
 		return err
 	}
+
 	err = db.AutoMigrate(&PreAuthKey{})
 	if err != nil {
 		return err

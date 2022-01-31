@@ -4,6 +4,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
+	"inet.af/netaddr"
 )
 
 func (s *Suite) TestCreateAndDestroyNamespace(c *check.C) {
@@ -146,7 +147,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		Namespace:      *namespaceShared1,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.1",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyShared1.ID),
 	}
 	app.db.Save(machineInShared1)
@@ -164,7 +165,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		Namespace:      *namespaceShared2,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.2",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyShared2.ID),
 	}
 	app.db.Save(machineInShared2)
@@ -182,7 +183,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		Namespace:      *namespaceShared3,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.3",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyShared3.ID),
 	}
 	app.db.Save(machineInShared3)
@@ -200,7 +201,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		Namespace:      *namespaceShared1,
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddress:      "100.64.0.4",
+		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.4")},
 		AuthKeyID:      uint(preAuthKey2Shared1.ID),
 	}
 	app.db.Save(machine2InShared1)

@@ -775,8 +775,11 @@
         "discoKey": {
           "type": "string"
         },
-        "ipAddress": {
-          "type": "string"
+        "ipAddresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "name": {
           "type": "string"
