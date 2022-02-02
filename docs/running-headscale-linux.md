@@ -139,9 +139,11 @@ WantedBy=multi-user.target
 ```
 
 Note that when running as the headscale user ensure that, either you add your current user to the headscale group:
+
 ```shell
 usermod -a -G headscale current_user
 ```
+
 or run all headscale commands as the headscale user:
 
 ```shell
