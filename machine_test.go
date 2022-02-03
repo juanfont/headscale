@@ -1,6 +1,7 @@
 package headscale
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -152,6 +153,89 @@ func (s *Suite) TestGetDirectPeers(c *check.C) {
 	c.Assert(peersOfMachine0[0].Name, check.Equals, "testmachine2")
 	c.Assert(peersOfMachine0[5].Name, check.Equals, "testmachine7")
 	c.Assert(peersOfMachine0[8].Name, check.Equals, "testmachine10")
+}
+
+func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
+	type base struct {
+		namespace *Namespace
+		key       *PreAuthKey
+	}
+
+	var stor []base
+
+	for _, name := range []string{"test", "admin"} {
+		namespace, err := app.CreateNamespace(name)
+		c.Assert(err, check.IsNil)
+		pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+		c.Assert(err, check.IsNil)
+		stor = append(stor, base{namespace, pak})
+
+	}
+
+	_, err := app.GetMachineByID(0)
+	c.Assert(err, check.NotNil)
+
+	for index := 0; index <= 10; index++ {
+		machine := Machine{
+			ID:             uint64(index),
+			MachineKey:     "foo" + strconv.Itoa(index),
+			NodeKey:        "bar" + strconv.Itoa(index),
+			DiscoKey:       "faa" + strconv.Itoa(index),
+			IPAddress:      fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1)),
+			Name:           "testmachine" + strconv.Itoa(index),
+			NamespaceID:    stor[index%2].namespace.ID,
+			Registered:     true,
+			RegisterMethod: RegisterMethodAuthKey,
+			AuthKeyID:      uint(stor[index%2].key.ID),
+		}
+		app.db.Save(&machine)
+	}
+
+	app.aclPolicy = &ACLPolicy{
+		Groups: map[string][]string{
+			"group:test": {"admin"},
+		},
+		Hosts:     map[string]netaddr.IPPrefix{},
+		TagOwners: map[string][]string{},
+		ACLs: []ACL{
+			{Action: "accept", Users: []string{"admin"}, Ports: []string{"*:*"}},
+			{Action: "accept", Users: []string{"test"}, Ports: []string{"test:*"}},
+		},
+		Tests: []ACLTest{},
+	}
+
+	rules, err := app.generateACLRules()
+	c.Assert(err, check.IsNil)
+	app.aclRules = rules
+
+	adminMachine, err := app.GetMachineByID(1)
+	c.Logf("Machine(%v), namespace: %v", adminMachine.Name, adminMachine.Namespace)
+	c.Assert(err, check.IsNil)
+
+	testMachine, err := app.GetMachineByID(2)
+	c.Logf("Machine(%v), namespace: %v", testMachine.Name, testMachine.Namespace)
+	c.Assert(err, check.IsNil)
+
+	_, err = testMachine.GetHostInfo()
+	c.Assert(err, check.IsNil)
+
+	peersOfTestMachine, err := app.getFilteredByACLPeers(testMachine)
+	c.Assert(err, check.IsNil)
+
+	peersOfAdminMachine, err := app.getFilteredByACLPeers(adminMachine)
+	c.Assert(err, check.IsNil)
+
+	c.Log(peersOfTestMachine)
+	c.Assert(len(peersOfTestMachine), check.Equals, 4)
+	c.Assert(peersOfTestMachine[0].Name, check.Equals, "testmachine4")
+	c.Assert(peersOfTestMachine[1].Name, check.Equals, "testmachine6")
+	c.Assert(peersOfTestMachine[3].Name, check.Equals, "testmachine10")
+
+	c.Log(peersOfAdminMachine)
+	c.Assert(len(peersOfAdminMachine), check.Equals, 9)
+	c.Assert(peersOfAdminMachine[0].Name, check.Equals, "testmachine2")
+	c.Assert(peersOfAdminMachine[2].Name, check.Equals, "testmachine4")
+	c.Assert(peersOfAdminMachine[5].Name, check.Equals, "testmachine7")
 }
 
 func (s *Suite) TestExpireMachine(c *check.C) {

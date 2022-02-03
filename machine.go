@@ -119,14 +119,21 @@ func (machine Machine) isExpired() bool {
 	return time.Now().UTC().After(*machine.Expiry)
 }
 
-// Our Pineapple fork of Headscale ignores namespaces when dealing with peers
-// and instead passes ALL peers across all namespaces to each client. Access between clients
-// is then enforced with ACL policies.
-func (h *Headscale) getAllPeers(machine *Machine) (Machines, error) {
+func containsAddresses(inputs []string, addrs MachineAddresses) bool {
+	for _, addr := range addrs.ToStringSlice() {
+		if containsString(inputs, addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// getFilteredByACLPeerss should return the list of peers authorized to be accessed from machine.
+func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
-		Msg("Finding all peers")
+		Msg("Finding peers filtered by ACLs")
 
 	machines := Machines{}
 	if err := h.db.Preload("Namespace").Where("machine_key <> ? AND registered",
@@ -135,15 +142,50 @@ func (h *Headscale) getAllPeers(machine *Machine) (Machines, error) {
 
 		return Machines{}, err
 	}
+	mMachines := make(map[uint64]Machine)
 
-	sort.Slice(machines, func(i, j int) bool { return machines[i].ID < machines[j].ID })
+	// Aclfilter peers here. We are itering through machines in all namespaces and search through the computed aclRules
+	// for match between rule SrcIPs and DstPorts. If the rule is a match we allow the machine to be viewable.
+
+	// FIXME: On official control plane if a rule allow user A to talk to user B but NO rule allows user B to talk to
+	// user A. The behaviour is the following
+	//
+	// On official tailscale control plane:
+	//   on first `tailscale status`` on node A we can see node B. The `tailscale status` command on node B doesn't show node A
+	//   We can successfully establish a communication from A to B. When it's done, if we run the `tailscale status` command
+	//   on node B again we can now see node A. It's not possible to establish a communication from node B to node A.
+	// On this implementation of the feature
+	//   on any `tailscale status` command on node A we can see node B. The `tailscale status` command on node B DOES show A.
+	//
+	// I couldn't find a way to not clutter the output of `tailscale status` with all nodes that we could be talking to.
+	// In order to do this we would need to be able to identify that node A want to talk to node B but that Node B doesn't know
+	// how to talk to node A and then add the peering resource.
+
+	for _, m := range machines {
+		for _, rule := range h.aclRules {
+			var dst []string
+			for _, d := range rule.DstPorts {
+				dst = append(dst, d.IP)
+			}
+			if (containsAddresses(rule.SrcIPs, machine.IPAddresses) && (containsAddresses(dst, m.IPAddresses) || containsString(dst, "*"))) ||
+				(containsAddresses(rule.SrcIPs, m.IPAddresses) && containsAddresses(dst, machine.IPAddresses)) {
+				mMachines[m.ID] = m
+			}
+		}
+	}
+
+	var authorizedMachines Machines
+	for _, m := range mMachines {
+		authorizedMachines = append(authorizedMachines, m)
+	}
+	sort.Slice(authorizedMachines, func(i, j int) bool { return authorizedMachines[i].ID < authorizedMachines[j].ID })
 
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
-		Msgf("Found all machines: %s", machines.String())
+		Msgf("Found some machines: %s", machines.String())
 
-	return machines, nil
+	return authorizedMachines, nil
 }
 
 func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
@@ -233,47 +275,52 @@ func (h *Headscale) getSharedTo(machine *Machine) (Machines, error) {
 }
 
 func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
-	// direct, err := h.getDirectPeers(machine)
-	// if err != nil {
-	// 	log.Error().
-	// 		Caller().
-	// 		Err(err).
-	// 		Msg("Cannot fetch peers")
+	var peers Machines
+	var err error
+	// If ACLs rules are defined, filter visible host list with the ACLs
+	// else use the classic namespace scope
+	if h.aclPolicy != nil {
+		peers, err = h.getFilteredByACLPeers(machine)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Cannot fetch peers")
 
-	// 	return Machines{}, err
-	// }
+			return Machines{}, err
+		}
+	} else {
+		direct, err := h.getDirectPeers(machine)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Cannot fetch peers")
 
-	// shared, err := h.getShared(machine)
-	// if err != nil {
-	// 	log.Error().
-	// 		Caller().
-	// 		Err(err).
-	// 		Msg("Cannot fetch peers")
+			return Machines{}, err
+		}
 
-	// 	return Machines{}, err
-	// }
+		shared, err := h.getShared(machine)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Cannot fetch peers")
 
-	// sharedTo, err := h.getSharedTo(machine)
-	// if err != nil {
-	// 	log.Error().
-	// 		Caller().
-	// 		Err(err).
-	// 		Msg("Cannot fetch peers")
+			return Machines{}, err
+		}
 
-	// 	return Machines{}, err
-	// }
+		sharedTo, err := h.getSharedTo(machine)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Cannot fetch peers")
 
-	// peers := append(direct, shared...)
-	// peers = append(peers, sharedTo...)
-
-	peers, err := h.getAllPeers(machine)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot fetch peers")
-
-		return Machines{}, err
+			return Machines{}, err
+		}
+		peers = append(direct, shared...)
+		peers = append(peers, sharedTo...)
 	}
 
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
