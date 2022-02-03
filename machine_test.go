@@ -204,9 +204,8 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		Tests: []ACLTest{},
 	}
 
-	rules, err := app.generateACLRules()
+	err = app.UpdateACLRules()
 	c.Assert(err, check.IsNil)
-	app.aclRules = rules
 
 	adminMachine, err := app.GetMachineByID(1)
 	c.Logf("Machine(%v), namespace: %v", adminMachine.Name, adminMachine.Namespace)

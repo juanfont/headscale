@@ -69,14 +69,16 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 	}
 
 	h.aclPolicy = &policy
+	return h.UpdateACLRules()
+}
+
+func (h *Headscale) UpdateACLRules() error {
 	rules, err := h.generateACLRules()
 	if err != nil {
 		return err
 	}
-	h.aclRules = rules
-
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
-
+	h.aclRules = rules
 	return nil
 }
 
