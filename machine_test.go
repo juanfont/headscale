@@ -181,7 +181,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 			MachineKey:     "foo" + strconv.Itoa(index),
 			NodeKey:        "bar" + strconv.Itoa(index),
 			DiscoKey:       "faa" + strconv.Itoa(index),
-			IPAddress:      fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1)),
+			IPAddresses:    MachineAddresses{netaddr.MustParseIP(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1)))},
 			Name:           "testmachine" + strconv.Itoa(index),
 			NamespaceID:    stor[index%2].namespace.ID,
 			Registered:     true,

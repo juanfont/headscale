@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -90,8 +91,6 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 			return nil, errInvalidAction
 		}
 
-		filterRule := tailcfg.FilterRule{}
-
 		srcIPs := []string{}
 		for innerIndex, user := range acl.Users {
 			srcs, err := h.generateACLPolicySrcIP(user)
@@ -103,7 +102,6 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 			}
 			srcIPs = append(srcIPs, srcs...)
 		}
-		filterRule.SrcIPs = srcIPs
 
 		destPorts := []tailcfg.NetPortRange{}
 		for innerIndex, ports := range acl.Ports {
@@ -174,17 +172,23 @@ func (h *Headscale) generateACLPolicyDestPorts(
 	return dests, nil
 }
 
+// expandalias has an input of either
+// - a namespace
+// - a group
+// - a tag
+// and transform these in IPAddresses
 func (h *Headscale) expandAlias(alias string) ([]string, error) {
 	if alias == "*" {
 		return []string{"*"}, nil
 	}
 
 	if strings.HasPrefix(alias, "group:") {
-		if _, ok := h.aclPolicy.Groups[alias]; !ok {
-			return nil, errInvalidGroup
+		namespaces, err := h.expandGroup(alias)
+		if err != nil {
+			return nil, err
 		}
 		ips := []string{}
-		for _, n := range h.aclPolicy.Groups[alias] {
+		for _, n := range namespaces {
 			nodes, err := h.ListMachinesInNamespace(n)
 			if err != nil {
 				return nil, errInvalidNamespace
@@ -198,40 +202,35 @@ func (h *Headscale) expandAlias(alias string) ([]string, error) {
 	}
 
 	if strings.HasPrefix(alias, "tag:") {
-		if _, ok := h.aclPolicy.TagOwners[alias]; !ok {
-			return nil, errInvalidTag
-		}
-
-		// This will have HORRIBLE performance.
-		// We need to change the data model to better store tags
-		machines := []Machine{}
-		if err := h.db.Where("registered").Find(&machines).Error; err != nil {
+		var ips []string
+		owners, err := h.expandTagOwners(alias)
+		if err != nil {
 			return nil, err
 		}
-		ips := []string{}
-		for _, machine := range machines {
-			hostinfo := tailcfg.Hostinfo{}
-			if len(machine.HostInfo) != 0 {
-				hi, err := machine.HostInfo.MarshalJSON()
+		for _, namespace := range owners {
+			machines, err := h.ListMachinesInNamespace(namespace)
+			if err != nil {
+				if errors.Is(err, errNamespaceNotFound) {
+					continue
+				} else {
+					return nil, err
+				}
+			}
+			for _, machine := range machines {
+				if len(machine.HostInfo) == 0 {
+					continue
+				}
+				hi, err := machine.GetHostInfo()
 				if err != nil {
 					return nil, err
 				}
-				err = json.Unmarshal(hi, &hostinfo)
-				if err != nil {
-					return nil, err
-				}
-
-				// FIXME: Check TagOwners allows this
-				for _, t := range hostinfo.RequestTags {
-					if alias[4:] == t {
+				for _, t := range hi.RequestTags {
+					if alias == t {
 						ips = append(ips, machine.IPAddresses.ToStringSlice()...)
-
-						break
 					}
 				}
 			}
 		}
-
 		return ips, nil
 	}
 
@@ -264,6 +263,43 @@ func (h *Headscale) expandAlias(alias string) ([]string, error) {
 	}
 
 	return nil, errInvalidUserSection
+}
+
+// expandTagOwners will return a list of namespace. An owner can be either a namespace or a group
+// a group cannot be composed of groups
+func (h *Headscale) expandTagOwners(owner string) ([]string, error) {
+	var owners []string
+	ows, ok := h.aclPolicy.TagOwners[owner]
+	if !ok {
+		return []string{}, fmt.Errorf("%w. %v isn't owned by a TagOwner. Please add one first. https://tailscale.com/kb/1018/acls/#tag-owners", errInvalidTag, owner)
+	}
+	for _, ow := range ows {
+		if strings.HasPrefix(ow, "group:") {
+			gs, err := h.expandGroup(ow)
+			if err != nil {
+				return []string{}, err
+			}
+			owners = append(owners, gs...)
+		} else {
+			owners = append(owners, ow)
+		}
+	}
+	return owners, nil
+}
+
+// expandGroup will return the list of namespace inside the group
+// after some validation
+func (h *Headscale) expandGroup(group string) ([]string, error) {
+	gs, ok := h.aclPolicy.Groups[group]
+	if !ok {
+		return []string{}, fmt.Errorf("group %v isn't registered. %w", group, errInvalidGroup)
+	}
+	for _, g := range gs {
+		if strings.HasPrefix(g, "group:") {
+			return []string{}, fmt.Errorf("%w. A group cannot be composed of groups. https://tailscale.com/kb/1018/acls/#groups", errInvalidGroup)
+		}
+	}
+	return gs, nil
 }
 
 func (h *Headscale) expandPorts(portsStr string) (*[]tailcfg.PortRange, error) {
