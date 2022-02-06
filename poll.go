@@ -91,6 +91,12 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
 	now := time.Now().UTC()
 
+	// update ACLRules with peer informations (to update server tags if necessary)
+	err = h.UpdateACLRules()
+	if err != nil {
+		log.Error().Caller().Str("func", "handleAuthKey").Str("machine", machine.Name).Err(err)
+	}
+
 	// From Tailscale client:
 	//
 	// ReadOnly is whether the client just wants to fetch the MapResponse,
