@@ -119,6 +119,19 @@ func (machine Machine) isExpired() bool {
 	return time.Now().UTC().After(*machine.Expiry)
 }
 
+func (h *Headscale) ListAllMachines() ([]Machine, error) {
+	machines := []Machine{}
+	if err := h.db.Preload("AuthKey").
+		Preload("AuthKey.Namespace").
+		Preload("Namespace").
+		Where("registered").
+		Find(&machines).Error; err != nil {
+		return nil, err
+	}
+
+	return machines, nil
+}
+
 func containsAddresses(inputs []string, addrs MachineAddresses) bool {
 	for _, addr := range addrs.ToStringSlice() {
 		if containsString(inputs, addr) {

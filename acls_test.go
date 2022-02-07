@@ -2,10 +2,13 @@ package headscale
 
 import (
 	"errors"
+	"reflect"
+	"testing"
 
 	"gopkg.in/check.v1"
 	"gorm.io/datatypes"
 	"inet.af/netaddr"
+	"tailscale.com/tailcfg"
 )
 
 func (s *Suite) TestWrongPath(c *check.C) {
@@ -267,9 +270,16 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 	}
 	err = app.UpdateACLRules()
 	c.Assert(err, check.IsNil)
-	c.Logf("Rules: %v", app.aclRules)
 	c.Assert(app.aclRules, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 0)
+	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
+	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.2")
+	c.Assert(app.aclRules[0].DstPorts, check.HasLen, 2)
+	c.Assert(app.aclRules[0].DstPorts[0].Ports.First, check.Equals, uint16(80))
+	c.Assert(app.aclRules[0].DstPorts[0].Ports.Last, check.Equals, uint16(80))
+	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].DstPorts[1].Ports.First, check.Equals, uint16(443))
+	c.Assert(app.aclRules[0].DstPorts[1].Ports.Last, check.Equals, uint16(443))
+	c.Assert(app.aclRules[0].DstPorts[1].IP, check.Equals, "100.64.0.1")
 }
 
 func (s *Suite) TestPortRange(c *check.C) {
@@ -384,4 +394,511 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
 	c.Assert(len(ips), check.Equals, 1)
 	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String())
+}
+
+func Test_expandGroup(t *testing.T) {
+	type args struct {
+		aclPolicy ACLPolicy
+		group     string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "simple test",
+			args: args{
+				aclPolicy: ACLPolicy{
+					Groups: Groups{"group:test": []string{"g1", "foo", "test"}, "group:foo": []string{"foo", "test"}},
+				},
+				group: "group:test",
+			},
+			want:    []string{"g1", "foo", "test"},
+			wantErr: false,
+		},
+		{
+			name: "InexistantGroup",
+			args: args{
+				aclPolicy: ACLPolicy{
+					Groups: Groups{"group:test": []string{"g1", "foo", "test"}, "group:foo": []string{"foo", "test"}},
+				},
+				group: "group:bar",
+			},
+			want:    []string{},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := expandGroup(tt.args.aclPolicy, tt.args.group)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("expandGroup() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("expandGroup() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_expandTagOwners(t *testing.T) {
+	type args struct {
+		aclPolicy ACLPolicy
+		tag       string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "simple tag",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{"tag:test": []string{"namespace1"}},
+				},
+				tag: "tag:test",
+			},
+			want:    []string{"namespace1"},
+			wantErr: false,
+		},
+		{
+			name: "tag and group",
+			args: args{
+				aclPolicy: ACLPolicy{
+					Groups:    Groups{"group:foo": []string{"n1", "bar"}},
+					TagOwners: TagOwners{"tag:test": []string{"group:foo"}},
+				},
+				tag: "tag:test",
+			},
+			want:    []string{"n1", "bar"},
+			wantErr: false,
+		},
+		{
+			name: "namespace and group",
+			args: args{
+				aclPolicy: ACLPolicy{
+					Groups:    Groups{"group:foo": []string{"n1", "bar"}},
+					TagOwners: TagOwners{"tag:test": []string{"group:foo", "home"}},
+				},
+				tag: "tag:test",
+			},
+			want:    []string{"n1", "bar", "home"},
+			wantErr: false,
+		},
+		{
+			name: "invalid tag",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{"tag:foo": []string{"group:foo", "home"}},
+				},
+				tag: "tag:test",
+			},
+			want:    []string{},
+			wantErr: true,
+		},
+		{
+			name: "invalid group",
+			args: args{
+				aclPolicy: ACLPolicy{
+					Groups:    Groups{"group:bar": []string{"n1", "foo"}},
+					TagOwners: TagOwners{"tag:test": []string{"group:foo", "home"}},
+				},
+				tag: "tag:test",
+			},
+			want:    []string{},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := expandTagOwners(tt.args.aclPolicy, tt.args.tag)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("expandTagOwners() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("expandTagOwners() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_expandPorts(t *testing.T) {
+	type args struct {
+		portsStr string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *[]tailcfg.PortRange
+		wantErr bool
+	}{
+		{
+			name: "wildcard",
+			args: args{portsStr: "*"},
+			want: &[]tailcfg.PortRange{
+				{First: portRangeBegin, Last: portRangeEnd},
+			},
+			wantErr: false,
+		},
+		{
+			name: "two ports",
+			args: args{portsStr: "80,443"},
+			want: &[]tailcfg.PortRange{
+				{First: 80, Last: 80},
+				{First: 443, Last: 443},
+			},
+			wantErr: false,
+		},
+		{
+			name: "a range and a port",
+			args: args{portsStr: "80-1024,443"},
+			want: &[]tailcfg.PortRange{
+				{First: 80, Last: 1024},
+				{First: 443, Last: 443},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "out of bounds",
+			args:    args{portsStr: "854038"},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "wrong port",
+			args:    args{portsStr: "85a38"},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "wrong port in first",
+			args:    args{portsStr: "a-80"},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "wrong port in last",
+			args:    args{portsStr: "80-85a38"},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "wrong port format",
+			args:    args{portsStr: "80-85a38-3"},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := expandPorts(tt.args.portsStr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("expandPorts() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("expandPorts() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_listMachinesInNamespace(t *testing.T) {
+	type args struct {
+		machines  []Machine
+		namespace string
+	}
+	tests := []struct {
+		name string
+		args args
+		want []Machine
+	}{
+		{
+			name: "1 machine in namespace",
+			args: args{
+				machines: []Machine{
+					{Namespace: Namespace{Name: "test"}},
+				},
+				namespace: "test",
+			},
+			want: []Machine{
+				{Namespace: Namespace{Name: "test"}},
+			},
+		},
+		{
+			name: "3 machines, 2 in namespace",
+			args: args{
+				machines: []Machine{
+					{ID: 1, Namespace: Namespace{Name: "test"}},
+					{ID: 2, Namespace: Namespace{Name: "foo"}},
+					{ID: 3, Namespace: Namespace{Name: "foo"}},
+				},
+				namespace: "foo",
+			},
+			want: []Machine{
+				{ID: 2, Namespace: Namespace{Name: "foo"}},
+				{ID: 3, Namespace: Namespace{Name: "foo"}},
+			},
+		},
+		{
+			name: "5 machines, 0 in namespace",
+			args: args{
+				machines: []Machine{
+					{ID: 1, Namespace: Namespace{Name: "test"}},
+					{ID: 2, Namespace: Namespace{Name: "foo"}},
+					{ID: 3, Namespace: Namespace{Name: "foo"}},
+					{ID: 4, Namespace: Namespace{Name: "foo"}},
+					{ID: 5, Namespace: Namespace{Name: "foo"}},
+				},
+				namespace: "bar",
+			},
+			want: []Machine{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := listMachinesInNamespace(tt.args.machines, tt.args.namespace); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("listMachinesInNamespace() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_expandAlias(t *testing.T) {
+	type args struct {
+		machines  []Machine
+		aclPolicy ACLPolicy
+		alias     string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "wildcard",
+			args: args{
+				alias: "*",
+				machines: []Machine{
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.78.84.227")}},
+				},
+				aclPolicy: ACLPolicy{},
+			},
+			want:    []string{"*"},
+			wantErr: false,
+		},
+		{
+			name: "simple group",
+			args: args{
+				alias: "group:foo",
+				machines: []Machine{
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "test"}},
+				},
+				aclPolicy: ACLPolicy{
+					Groups: Groups{"group:foo": []string{"foo", "bar"}},
+				},
+			},
+			want:    []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
+			wantErr: false,
+		},
+		{
+			name: "wrong group",
+			args: args{
+				alias: "group:test",
+				machines: []Machine{
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "test"}},
+				},
+				aclPolicy: ACLPolicy{
+					Groups: Groups{"group:foo": []string{"foo", "bar"}},
+				},
+			},
+			want:    []string{},
+			wantErr: true,
+		},
+		{
+			name: "simple ipaddress",
+			args: args{
+				alias:     "10.0.0.3",
+				machines:  []Machine{},
+				aclPolicy: ACLPolicy{},
+			},
+			want:    []string{"10.0.0.3"},
+			wantErr: false,
+		},
+		{
+			name: "private network",
+			args: args{
+				alias:    "homeNetwork",
+				machines: []Machine{},
+				aclPolicy: ACLPolicy{
+					Hosts: Hosts{"homeNetwork": netaddr.MustParseIPPrefix("192.168.1.0/24")},
+				},
+			},
+			want:    []string{"192.168.1.0/24"},
+			wantErr: false,
+		},
+		{
+			name: "simple host",
+			args: args{
+				alias:     "10.0.0.1",
+				machines:  []Machine{},
+				aclPolicy: ACLPolicy{},
+			},
+			want:    []string{"10.0.0.1"},
+			wantErr: false,
+		},
+		{
+			name: "simple CIDR",
+			args: args{
+				alias:     "10.0.0.0/16",
+				machines:  []Machine{},
+				aclPolicy: ACLPolicy{},
+			},
+			want:    []string{"10.0.0.0/16"},
+			wantErr: false,
+		},
+		{
+			name: "simple tag",
+			args: args{
+				alias: "tag:test",
+				machines: []Machine{
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+				},
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{"tag:test": []string{"foo"}},
+				},
+			},
+			want:    []string{"100.64.0.1", "100.64.0.2"},
+			wantErr: false,
+		},
+		{
+			name: "No tag defined",
+			args: args{
+				alias: "tag:foo",
+				machines: []Machine{
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "test"}},
+				},
+				aclPolicy: ACLPolicy{
+					Groups:    Groups{"group:foo": []string{"foo", "bar"}},
+					TagOwners: TagOwners{"tag:test": []string{"group:foo"}},
+				},
+			},
+			want:    []string{},
+			wantErr: true,
+		},
+		{
+			name: "list host in namespace without correctly tagged servers",
+			args: args{
+				alias: "foo",
+				machines: []Machine{
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+				},
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{"tag:test": []string{"foo"}},
+				},
+			},
+			want:    []string{"100.64.0.4"},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := expandAlias(tt.args.machines, tt.args.aclPolicy, tt.args.alias)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("expandAlias() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("expandAlias() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
+	type args struct {
+		aclPolicy ACLPolicy
+		nodes     []Machine
+		namespace string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []Machine
+		wantErr bool
+	}{
+		{
+			name: "exclude nodes with valid tags",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{"tag:test": []string{"foo"}},
+				},
+				nodes: []Machine{
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+				},
+				namespace: "foo",
+			},
+			want: []Machine{
+				{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "all nodes have invalid tags, don't exclude them",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{"tag:foo": []string{"foo"}},
+				},
+				nodes: []Machine{
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+				},
+				namespace: "foo",
+			},
+			want: []Machine{
+				{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+				{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
+				{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := excludeCorrectlyTaggedNodes(tt.args.aclPolicy, tt.args.nodes, tt.args.namespace)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("excludeCorrectlyTaggedNodes() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("excludeCorrectlyTaggedNodes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
