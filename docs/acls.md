@@ -147,6 +147,11 @@ need to add the following ACLs
         // users can access their own devices
         {"action":"accept", "users":["dev1-computer"], "ports":["dev1-phone:*"]},
         {"action":"accept", "users":["dev1-phone"], "ports":["dev1-computer:*"]},
+
+        // internal namespace communications should still be allowed within the namespace
+        {"action":"accept", "users":["dev"], "ports":["dev:*"]},
+        {"action":"accept", "users":["prod"], "ports":["prod:*"]},
+        {"action":"accept", "users":["internal"], "ports":["internal:*"]},
     ]
 }
 ```
@@ -262,6 +267,10 @@ Here are the ACL's to implement the same permissions as above:
             "tag:prod-app-servers:80,443",
             ]
         },
+
+        // servers should be able to talk to database. Database should not be able to initiate connections to server
+        {"action":"accept", "users":["tag:dev-app-servers"], "ports":["tag:dev-databases:5432"]},
+        {"action":"accept", "users":["tag:prod-app-servers"], "ports":["tag:prod-databases:5432"]},
 
         // interns have access to dev-app-servers only in reading mode
         {"action":"accept", "users":["group:intern"], "ports":["tag:dev-app-servers:80,443"]},
