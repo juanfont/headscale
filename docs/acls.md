@@ -49,7 +49,231 @@ What could be improved would be to peer different headscale installation and all
 
 [1]: https://tailscale.com/kb/1068/acl-tags/
 
+## Example
 
-## Get the better of both worlds
+Let's build an example use case for a small business (It may be the place where
+ACL's are the most useful).
 
-If the current behavior has a lot of use cases we could maybe have a flag to trigger one behavior or the other. Or enabling the ACL's behavior if an ACL file is defined.
+We have a small company with a boss, an admin, two developper and an intern.
+
+The boss should have access to all servers but not to the users hosts. Admin
+should also have access to all hosts except that their permissions should be
+limited to maintaining the hosts (for example purposes). The developers can do
+anything they want on dev hosts, but only watch on productions hosts. Intern
+can only interact with the development servers.
+
+Each user have at least a device connected to the network and we have some
+servers.
+
+- database.prod
+- database.dev
+- app-server1.prod
+- app-server1.dev
+- billing.internal
+
+### Current headscale implementation
+
+Let's create some namespaces
+
+```bash
+headscale namespaces create prod
+headscale namespaces create dev
+headscale namespaces create internal
+headscale namespaces create users
+
+headscale nodes register -n users boss-computer
+headscale nodes register -n users admin1-computer
+headscale nodes register -n users dev1-computer
+headscale nodes register -n users dev1-phone
+headscale nodes register -n users dev2-computer
+headscale nodes register -n users intern1-computer
+
+headscale nodes register -n prod database
+headscale nodes register -n prod app-server1
+
+headscale nodes register -n dev database
+headscale nodes register -n dev app-server1
+
+headscale nodes register -n internal billing
+
+headscale nodes list
+ID  | Name              | Namespace | IP address
+1   | boss-computer     | users     | 100.64.0.1
+2   | admin1-computer   | users     | 100.64.0.2
+3   | dev1-computer     | users     | 100.64.0.3
+4   | dev1-phone        | users     | 100.64.0.4
+5   | dev2-computer     | users     | 100.64.0.5
+6   | intern1-computer  | users     | 100.64.0.6
+7   | database          | prod      | 100.64.0.7
+8   | app-server1       | prod      | 100.64.0.8
+9   | database          | dev       | 100.64.0.9
+10  | app-server1       | dev       | 100.64.0.10
+11  | internal          | internal  | 100.64.0.11
+```
+
+In order to only allow the communications related to our description above we
+need to add the following ACLs
+
+```json
+{
+    "hosts":{
+        "boss-computer": "100.64.0.1",
+        "admin1-computer": "100.64.0.2",
+        "dev1-computer": "100.64.0.3",
+        "dev1-phone": "100.64.0.4",
+        "dev2-computer": "100.64.0.5",
+        "intern1-computer": "100.64.0.6",
+        "prod-app-server1": "100.64.0.8",
+    },
+    "groups":{
+        "group:dev": ["dev1-computer", "dev1-phone", "dev2-computer"],
+        "group:admin": ["admin1-computer"],
+        "group:boss": ["boss-computer"],
+        "group:intern": ["intern1-computer"],
+    },
+    "acls":[
+        // boss have access to all servers but no users hosts
+        {"action":"accept", "users":["group:boss"], "ports":["prod:*","dev:*","internal:*"]},
+
+        // admin have access to adminstration port (lets only consider port 22 here)
+        {"action":"accept", "users":["group:admin"], "ports":["prod:22","dev:22","internal:22"]},
+
+        // dev can do anything on dev servers and check access on prod servers
+        {"action":"accept", "users":["group:dev"], "ports":["dev:*","prod-app-server1:80,443"]},
+
+        // interns only have access to port 80 and 443 on dev servers (lame internship)
+        {"action":"accept", "users":["group:intern"], "ports":["dev:80,443"]},
+
+        // users can access their own devices
+        {"action":"accept", "users":["dev1-computer"], "ports":["dev1-phone:*"]},
+        {"action":"accept", "users":["dev1-phone"], "ports":["dev1-computer:*"]},
+    ]
+}
+```
+
+Since communications between namespace isn't possible we also have to share the
+devices between the namespaces.
+
+```bash
+
+// add boss host to prod, dev and internal network
+headscale nodes share -i 1 -n prod
+headscale nodes share -i 1 -n dev
+headscale nodes share -i 1 -n internal
+
+// add admin computer to prod, dev and internal network
+headscale nodes share -i 2 -n prod
+headscale nodes share -i 2 -n dev
+headscale nodes share -i 2 -n internal
+
+// add all dev to prod and dev network
+headscale nodes share -i 3 -n dev
+headscale nodes share -i 4 -n dev
+headscale nodes share -i 3 -n prod
+headscale nodes share -i 4 -n prod
+headscale nodes share -i 5 -n dev
+headscale nodes share -i 5 -n prod
+
+headscale nodes share -i 6 -n dev
+```
+
+This fake network have not been tested but it should work. Operating it could
+be quite tedious if the company grows. Each time a new user join we have to add
+it to a group, and share it to the correct namespaces. If the user want
+multiple devices we have to allow communication to each of them one by one. If
+business conduct a change in the organisations we may have to rewrite all acls
+and reorganise all namespaces.
+
+If we add servers in production we should also update the ACLs to allow dev access to certain category of them (only app servers for example).
+
+### example based on the proposition in this document
+
+Let's create the namespaces
+
+```bash
+headscale namespaces create boss
+headscale namespaces create admin1
+headscale namespaces create dev1
+headscale namespaces create dev2
+headscale namespaces create intern1
+```
+
+We don't need to create namespaces for the servers because the servers will be
+tagged. When registering the servers we will need to add the flag
+`--advertised-tags=tag:<tag1>,tag:<tag2>`, and the user (namespace) that is
+registering the server should be allowed to do it. Since anyone can add tags to
+a server they can register, the check of the tags is done on headscale server
+and only valid tags are applied. A tag is valid if the namespace that is
+registering it is allowed to do it.
+
+Here are the ACL's to implement the same permissions as above:
+
+```json
+{
+    // groups are simpler and only list the namespaces name
+    "groups": {
+        "group:boss": ["boss"],
+        "group:dev": ["dev1","dev2"],
+        "group:admin": ["admin1"],
+        "group:intern": ["intern1"],
+    },
+    "tagOwners": {
+        // the administrators can add servers in production
+        "tag:prod-databases": ["group:admin"],
+        "tag:prod-app-servers": ["group:admin"],
+
+        // the boss can tag any server as internal
+        "tag:internal": ["group:boss"],
+
+        // dev can add servers for dev purposes as well as admins
+        "tag:dev-databases": ["group:admin","group:dev"],
+        "tag:dev-app-servers": ["group:admin", "group:dev"],
+
+        // interns cannot add servers
+    },
+    "acls": [
+        // boss have access to all servers
+        {"action":"accept",
+         "users":["group:boss"],
+         "ports":[
+            "tag:prod-databases:*",
+            "tag:prod-app-servers:*",
+            "tag:internal:*",
+            "tag:dev-databases:*",
+            "tag:dev-app-servers:*",
+            ]
+        },
+
+        // admin have only access to administrative ports of the servers
+        {"action":"accept",
+         "users":["group:admin"],
+         "ports":[
+            "tag:prod-databases:22",
+            "tag:prod-app-servers:22",
+            "tag:internal:22",
+            "tag:dev-databases:22",
+            "tag:dev-app-servers:22",
+            ]
+        },
+
+        {"action":"accept", "users":["group:dev"], "ports":[
+            "tag:dev-databases:*",
+            "tag:dev-app-servers:*",
+            "tag:prod-app-servers:80,443",
+            ]
+        },
+
+        // interns have access to dev-app-servers only in reading mode
+        {"action":"accept", "users":["group:intern"], "ports":["tag:dev-app-servers:80,443"]},
+
+        // we still have to allow internal namespaces communications since nothing guarantees that each user have their own namespaces. This could be talked over.
+        {"action":"accept", "users":["boss"], "ports":["boss:*"]},
+        {"action":"accept", "users":["dev1"], "ports":["dev1:*"]},
+        {"action":"accept", "users":["dev2"], "ports":["dev2:*"]},
+        {"action":"accept", "users":["admin1"], "ports":["admin1:*"]},
+        {"action":"accept", "users":["intern1"], "ports":["intern1:*"]},
+    ]
+}
+```
+
+With this implementation, the sharing step is not necessary. Maintenance cost of the ACL file is lower and less tedious (no need to map hostname and IP's into it).
