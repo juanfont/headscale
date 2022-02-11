@@ -11,6 +11,7 @@
 **Changes**:
 
 - `ip_prefix` is now superseded by `ip_prefixes` in the configuration [#208](https://github.com/juanfont/headscale/pull/208)
+- Upgrade `tailscale` (1.20.4) and other dependencies to latest [#314](https://github.com/juanfont/headscale/pull/314)
 
 **0.12.4 (2022-01-29):**
 
