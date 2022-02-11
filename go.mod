@@ -40,7 +40,7 @@ require (
 	gorm.io/driver/sqlite v1.1.5
 	gorm.io/gorm v1.21.15
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
-	tailscale.com v1.20.3
+	tailscale.com v1.20.4
 )
 
 require (

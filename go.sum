@@ -1411,3 +1411,5 @@ sigs.k8s.io/yaml v1.1.0/go.mod h1:UJmg0vDUVViEyp3mgSv9WPwZCDxu4rQW1olrI1uml+o=
 sourcegraph.com/sourcegraph/appdash v0.0.0-20190731080439-ebfcffb1b5c0/go.mod h1:hI742Nqp5OhwiqlzhgfbWU4mW4yO10fP+LoT9WOswdU=
 tailscale.com v1.20.3 h1:C3g2AgmQaOi0YT5dAal9mslugPXMxwj0EXY7YfL2QrA=
 tailscale.com v1.20.3/go.mod h1:kjVy3ji2OH5lZhPLIIRacoY3CN4Bo3Yyb2mtoM8nfJ4=
+tailscale.com v1.20.4 h1:7cl/Q2Sbo2Jb2dX7zA+Exbbl7DT5UGZ4iGhQ2xj23X0=
+tailscale.com v1.20.4/go.mod h1:kjVy3ji2OH5lZhPLIIRacoY3CN4Bo3Yyb2mtoM8nfJ4=
