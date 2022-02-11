@@ -42,7 +42,7 @@ headscale implements this coordination server.
 | Linux   | Yes                                                                                                               |
 | OpenBSD | Yes                                                                                                               |
 | macOS   | Yes (see `/apple` on your headscale for more information)                                                         |
-| Windows | Yes                                                                                                               |
+| Windows | Yes [docs](./docs/windows-client.md)                                                                              |
 | Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
 | iOS     | Not yet                                                                                                           |
 
