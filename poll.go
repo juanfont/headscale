@@ -193,7 +193,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
-		updateRequestsFromNode.WithLabelValues(machine.Name, machine.Namespace.Name, "endpoint-update").
+		updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Name, "endpoint-update").
 			Inc()
 		updateChan <- struct{}{}
 
@@ -222,7 +222,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("handler", "PollNetMap").
 		Str("machine", machine.Name).
 		Msg("Notifying peers")
-	updateRequestsFromNode.WithLabelValues(machine.Name, machine.Namespace.Name, "full-update").
+	updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Name, "full-update").
 		Inc()
 	updateChan <- struct{}{}
 
@@ -413,7 +413,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("machine", machine.Name).
 				Str("channel", "update").
 				Msg("Received a request for update")
-			updateRequestsReceivedOnChannel.WithLabelValues(machine.Name, machine.Namespace.Name).
+			updateRequestsReceivedOnChannel.WithLabelValues(machine.Namespace.Name, machine.Name).
 				Inc()
 			if h.isOutdated(machine) {
 				var lastUpdate time.Time
@@ -443,7 +443,7 @@ func (h *Headscale) PollNetMapStream(
 						Str("channel", "update").
 						Err(err).
 						Msg("Could not write the map response")
-					updateRequestsSentToNode.WithLabelValues(machine.Name, machine.Namespace.Name, "failed").
+					updateRequestsSentToNode.WithLabelValues(machine.Namespace.Name, machine.Name, "failed").
 						Inc()
 
 					return false
@@ -453,7 +453,7 @@ func (h *Headscale) PollNetMapStream(
 					Str("machine", machine.Name).
 					Str("channel", "update").
 					Msg("Updated Map has been sent")
-				updateRequestsSentToNode.WithLabelValues(machine.Name, machine.Namespace.Name, "success").
+				updateRequestsSentToNode.WithLabelValues(machine.Namespace.Name, machine.Name, "success").
 					Inc()
 
 				// Keep track of the last successful update,
@@ -582,7 +582,7 @@ func (h *Headscale) scheduledPollWorker(
 				Str("func", "scheduledPollWorker").
 				Str("machine", machine.Name).
 				Msg("Sending update request")
-			updateRequestsFromNode.WithLabelValues(machine.Name, machine.Namespace.Name, "scheduled-update").
+			updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Name, "scheduled-update").
 				Inc()
 			updateChan <- struct{}{}
 		}
