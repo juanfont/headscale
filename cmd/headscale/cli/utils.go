@@ -19,6 +19,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/yaml.v2"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -398,7 +400,7 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 
 		grpcOptions = append(
 			grpcOptions,
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithContextDialer(headscale.GrpcSocketDialer),
 		)
 	} else {
@@ -414,7 +416,13 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 		)
 
 		if cfg.CLI.Insecure {
-			grpcOptions = append(grpcOptions, grpc.WithInsecure())
+			grpcOptions = append(grpcOptions,
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
+		} else {
+			grpcOptions = append(grpcOptions,
+				grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
+			)
 		}
 	}
 
@@ -492,7 +500,7 @@ func (t tokenAuth) GetRequestMetadata(
 }
 
 func (tokenAuth) RequireTransportSecurity() bool {
-	return true
+	return false
 }
 
 // loadOIDCMatchMap is a wrapper around viper to verifies that the keys in
