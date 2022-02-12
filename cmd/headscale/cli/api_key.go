@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	// 90 days
-	DefaultApiKeyExpiry = 90 * 24 * time.Hour
+	// 90 days.
+	DefaultAPIKeyExpiry = 90 * 24 * time.Hour
 )
 
 func init() {
@@ -23,7 +23,7 @@ func init() {
 	apiKeysCmd.AddCommand(listAPIKeys)
 
 	createAPIKeyCmd.Flags().
-		DurationP("expiration", "e", DefaultApiKeyExpiry, "Human-readable expiration of the key (30m, 24h, 365d...)")
+		DurationP("expiration", "e", DefaultAPIKeyExpiry, "Human-readable expiration of the key (30m, 24h, 365d...)")
 
 	apiKeysCmd.AddCommand(createAPIKeyCmd)
 
@@ -104,8 +104,8 @@ var createAPIKeyCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Creates a new Api key",
 	Long: `
-Creates a new Api key, the Api key is only visible on creation 
-and cannot be retrieved again. 
+Creates a new Api key, the Api key is only visible on creation
+and cannot be retrieved again.
 If you loose a key, create a new one and revoke (expire) the old one.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")

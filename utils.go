@@ -286,14 +286,14 @@ func containsIPPrefix(prefixes []netaddr.IPPrefix, prefix netaddr.IPPrefix) bool
 // number generator fails to function correctly, in which
 // case the caller should not continue.
 func GenerateRandomBytes(n int) ([]byte, error) {
-	b := make([]byte, n)
-	_, err := rand.Read(b)
+	bytes := make([]byte, n)
+
 	// Note that err == nil only if we read len(b) bytes.
-	if err != nil {
+	if _, err := rand.Read(bytes); err != nil {
 		return nil, err
 	}
 
-	return b, nil
+	return bytes, nil
 }
 
 // GenerateRandomStringURLSafe returns a URL-safe, base64 encoded
@@ -303,5 +303,6 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 // case the caller should not continue.
 func GenerateRandomStringURLSafe(n int) (string, error) {
 	b, err := GenerateRandomBytes(n)
+
 	return base64.RawURLEncoding.EncodeToString(b), err
 }
