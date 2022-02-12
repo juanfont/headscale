@@ -5,7 +5,7 @@
 - A workstation to run `headscale` (could be Linux, macOS, other supported platforms)
 - A `headscale` server (version `0.13.0` or newer)
 - Access to create API keys (local access to the `headscale` server)
-- `headscale` _must_ be served over TLS/HTTPS
+- `headscale` _must_ be served over TLS/HTTPS with a _trusted_ certificate
   - Remote access does _not_ support unencrypted traffic.
 - Port `50443` must be open in the firewall (or port overriden by `grpc_listen_addr` option)
 
