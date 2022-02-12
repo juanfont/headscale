@@ -67,11 +67,6 @@ func (h *Headscale) RemoveSharedMachineFromNamespace(
 		return errMachineNotShared
 	}
 
-	err := h.RequestMapUpdates(namespace.ID)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
