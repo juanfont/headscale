@@ -27,12 +27,9 @@ import (
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/soheilhy/cmux"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -71,6 +68,7 @@ const (
 type Config struct {
 	ServerURL                      string
 	Addr                           string
+	GRPCAddr                       string
 	EphemeralNodeInactivityTimeout time.Duration
 	IPPrefixes                     []netaddr.IPPrefix
 	PrivateKeyPath                 string
@@ -518,8 +516,6 @@ func (h *Headscale) Serve() error {
 
 	defer cancel()
 
-	var networkListener net.Listener
-
 	tlsConfig, err := h.getTLSSettings()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to set up TLS configuration")
@@ -527,35 +523,22 @@ func (h *Headscale) Serve() error {
 		return err
 	}
 
-	// if tlsConfig != nil {
-	// 	httpServer.TLSConfig = tlsConfig
+	// var httpListener net.Listener
 	//
-	// 	grpcOptions = append(grpcOptions, grpc.Creds(credentials.NewTLS(tlsConfig)))
+	// if tlsConfig != nil {
+	// 	httpListener, err = tls.Listen("tcp", h.cfg.Addr, tlsConfig)
+	// } else {
+	// 	httpListener, err = net.Listen("tcp", h.cfg.Addr)
 	// }
+	// if err != nil {
+	// 	return fmt.Errorf("failed to bind to TCP address: %w", err)
+	// }
+	//
 
-	if tlsConfig != nil {
-		networkListener, err = tls.Listen("tcp", h.cfg.Addr, tlsConfig)
-	} else {
-		networkListener, err = net.Listen("tcp", h.cfg.Addr)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to bind to TCP address: %w", err)
-	}
-
-	// Create the cmux object that will multiplex 2 protocols on the same port.
-	// The two following listeners will be served on the same port below gracefully.
-	networkMutex := cmux.New(networkListener)
-
-	// Match gRPC requests here
-	grpcListener := networkMutex.MatchWithWriters(
-		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
-		cmux.HTTP2MatchHeaderFieldSendSettings(
-			"content-type",
-			"application/grpc+proto",
-		),
-	)
-	// Otherwise match regular http requests.
-	httpListener := networkMutex.Match(cmux.Any())
+	//
+	//
+	// gRPC setup
+	//
 
 	grpcGatewayMux := runtime.NewServeMux()
 
@@ -578,21 +561,6 @@ func (h *Headscale) Serve() error {
 		return err
 	}
 
-	router := h.createRouter(grpcGatewayMux)
-
-	h2s := &http2.Server{}
-
-	httpServer := &http.Server{
-		Addr:        h.cfg.Addr,
-		Handler:     h2c.NewHandler(router, h2s),
-		ReadTimeout: HTTPReadTimeout,
-		// Go does not handle timeouts in HTTP very well, and there is
-		// no good way to handle streaming timeouts, therefore we need to
-		// keep this at unlimited and be careful to clean up connections
-		// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#aboutstreaming
-		WriteTimeout: 0,
-	}
-
 	grpcOptions := []grpc.ServerOption{
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
@@ -612,22 +580,43 @@ func (h *Headscale) Serve() error {
 	reflection.Register(grpcServer)
 	reflection.Register(grpcSocket)
 
+	var grpcListener net.Listener
+	if tlsConfig != nil {
+		grpcListener, err = tls.Listen("tcp", h.cfg.GRPCAddr, tlsConfig)
+	} else {
+		grpcListener, err = net.Listen("tcp", h.cfg.GRPCAddr)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to bind to TCP address: %w", err)
+	}
+
+	//
+	//
+	// HTTP setup
+	//
+
+	router := h.createRouter(grpcGatewayMux)
+
+	httpServer := &http.Server{
+		Addr:        h.cfg.Addr,
+		Handler:     router,
+		ReadTimeout: HTTPReadTimeout,
+		// Go does not handle timeouts in HTTP very well, and there is
+		// no good way to handle streaming timeouts, therefore we need to
+		// keep this at unlimited and be careful to clean up connections
+		// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#aboutstreaming
+		WriteTimeout: 0,
+	}
+
+	if tlsConfig != nil {
+		httpServer.TLSConfig = tlsConfig
+	}
+
 	errorGroup := new(errgroup.Group)
 
 	errorGroup.Go(func() error { return grpcSocket.Serve(socketListener) })
 	errorGroup.Go(func() error { return grpcServer.Serve(grpcListener) })
-	errorGroup.Go(func() error { return httpServer.Serve(httpListener) })
-	errorGroup.Go(func() error { return networkMutex.Serve() })
-
-	// if tlsConfig != nil {
-	// 	errorGroup.Go(func() error {
-	// 		tlsl := tls.NewListener(httpListener, tlsConfig)
-	//
-	// 		return httpServer.Serve(tlsl)
-	// 	})
-	// } else {
-	// 	errorGroup.Go(func() error { return httpServer.Serve(httpListener) })
-	// }
+	errorGroup.Go(func() error { return httpServer.ListenAndServe() })
 
 	log.Info().
 		Msgf("listening and serving (multiplexed HTTP and gRPC) on: %s", h.cfg.Addr)
