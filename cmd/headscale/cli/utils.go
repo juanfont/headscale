@@ -55,6 +55,8 @@ func LoadConfig(path string) error {
 	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
 
+	viper.SetDefault("grpc_listen_addr", ":50443")
+
 	viper.SetDefault("cli.insecure", false)
 	viper.SetDefault("cli.timeout", "5s")
 
@@ -278,6 +280,7 @@ func getHeadscaleConfig() headscale.Config {
 	return headscale.Config{
 		ServerURL:      viper.GetString("server_url"),
 		Addr:           viper.GetString("listen_addr"),
+		GRPCAddr:       viper.GetString("grpc_listen_addr"),
 		IPPrefixes:     prefixes,
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		BaseDomain:     baseDomain,
