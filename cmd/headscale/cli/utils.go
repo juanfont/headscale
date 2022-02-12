@@ -438,21 +438,21 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 }
 
 func SuccessOutput(result interface{}, override string, outputFormat string) {
-	var j []byte
+	var jsonBytes []byte
 	var err error
 	switch outputFormat {
 	case "json":
-		j, err = json.MarshalIndent(result, "", "\t")
+		jsonBytes, err = json.MarshalIndent(result, "", "\t")
 		if err != nil {
 			log.Fatal().Err(err)
 		}
 	case "json-line":
-		j, err = json.Marshal(result)
+		jsonBytes, err = json.Marshal(result)
 		if err != nil {
 			log.Fatal().Err(err)
 		}
 	case "yaml":
-		j, err = yaml.Marshal(result)
+		jsonBytes, err = yaml.Marshal(result)
 		if err != nil {
 			log.Fatal().Err(err)
 		}
@@ -464,7 +464,7 @@ func SuccessOutput(result interface{}, override string, outputFormat string) {
 	}
 
 	//nolint
-	fmt.Println(string(j))
+	fmt.Println(string(jsonBytes))
 }
 
 func ErrorOutput(errResult error, override string, outputFormat string) {
