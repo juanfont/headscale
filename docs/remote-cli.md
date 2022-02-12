@@ -7,6 +7,7 @@
 - Access to create API keys (local access to the `headscale` server)
 - `headscale` _must_ be served over TLS/HTTPS
   - Remote access does _not_ support unencrypted traffic.
+- Port `50443` must be open in the firewall (or port overriden by `grpc_listen_addr` option)
 
 ## Goal
 
@@ -53,8 +54,15 @@ chmod +x /usr/local/bin/headscale
 4. Configure the CLI through Environment Variables
 
 ```shell
-export HEADSCALE_CLI_ADDRESS="<HEADSCALE ADDRESS>"
+export HEADSCALE_CLI_ADDRESS="<HEADSCALE ADDRESS>:<PORT>"
 export HEADSCALE_CLI_API_KEY="<API KEY FROM PREVIOUS STAGE>"
+```
+
+for example:
+
+```shell
+export HEADSCALE_CLI_ADDRESS="headscale.example.com:50443"
+export HEADSCALE_CLI_API_KEY="abcde12345"
 ```
 
 This will tell the `headscale` binary to connect to a remote instance, instead of looking
