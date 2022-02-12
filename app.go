@@ -608,15 +608,22 @@ func (h *Headscale) Serve() error {
 		WriteTimeout: 0,
 	}
 
+	var httpListener net.Listener
 	if tlsConfig != nil {
 		httpServer.TLSConfig = tlsConfig
+		httpListener, err = tls.Listen("tcp", h.cfg.Addr, tlsConfig)
+	} else {
+		httpListener, err = net.Listen("tcp", h.cfg.Addr)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to bind to TCP address: %w", err)
 	}
 
 	errorGroup := new(errgroup.Group)
 
 	errorGroup.Go(func() error { return grpcSocket.Serve(socketListener) })
 	errorGroup.Go(func() error { return grpcServer.Serve(grpcListener) })
-	errorGroup.Go(func() error { return httpServer.ListenAndServe() })
+	errorGroup.Go(func() error { return httpServer.Serve(httpListener) })
 
 	log.Info().
 		Msgf("listening and serving (multiplexed HTTP and gRPC) on: %s", h.cfg.Addr)
