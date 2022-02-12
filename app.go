@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
@@ -518,7 +519,7 @@ func (h *Headscale) Serve() error {
 	grpcGatewayConn, err := grpc.Dial(
 		h.cfg.UnixSocket,
 		[]grpc.DialOption{
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithContextDialer(GrpcSocketDialer),
 		}...,
 	)
@@ -557,6 +558,13 @@ func (h *Headscale) Serve() error {
 	//
 	// gRPC setup
 	//
+
+	// We are sadly not able to run gRPC and HTTPS (2.0) on the same
+	// port because the connection mux does not support matching them
+	// since they are so similar. There is multiple issues open and we
+	// can revisit this if changes:
+	// https://github.com/soheilhy/cmux/issues/68
+	// https://github.com/soheilhy/cmux/issues/91
 
 	// If TLS has been enabled, set up the remote gRPC server
 	if tlsConfig != nil {
