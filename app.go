@@ -31,10 +31,13 @@ import (
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+
 	// "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
@@ -577,9 +580,11 @@ func (h *Headscale) Serve() error {
 
 	router := h.createRouter(grpcGatewayMux)
 
+	h2s := &http2.Server{}
+
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
-		Handler:     router,
+		Handler:     h2c.NewHandler(router, h2s),
 		ReadTimeout: HTTPReadTimeout,
 		// Go does not handle timeouts in HTTP very well, and there is
 		// no good way to handle streaming timeouts, therefore we need to
