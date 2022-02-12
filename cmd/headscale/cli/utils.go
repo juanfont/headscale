@@ -59,7 +59,6 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("grpc_listen_addr", ":50443")
 
-	viper.SetDefault("cli.insecure", false)
 	viper.SetDefault("cli.timeout", "5s")
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -326,10 +325,9 @@ func getHeadscaleConfig() headscale.Config {
 		},
 
 		CLI: headscale.CLIConfig{
-			Address:  viper.GetString("cli.address"),
-			APIKey:   viper.GetString("cli.api_key"),
-			Insecure: viper.GetBool("cli.insecure"),
-			Timeout:  viper.GetDuration("cli.timeout"),
+			Address: viper.GetString("cli.address"),
+			APIKey:  viper.GetString("cli.api_key"),
+			Timeout: viper.GetDuration("cli.timeout"),
 		},
 	}
 }
@@ -413,17 +411,8 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 			grpc.WithPerRPCCredentials(tokenAuth{
 				token: apiKey,
 			}),
+			grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
 		)
-
-		if cfg.CLI.Insecure {
-			grpcOptions = append(grpcOptions,
-				grpc.WithTransportCredentials(insecure.NewCredentials()),
-			)
-		} else {
-			grpcOptions = append(grpcOptions,
-				grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
-			)
-		}
 	}
 
 	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
@@ -500,7 +489,7 @@ func (t tokenAuth) GetRequestMetadata(
 }
 
 func (tokenAuth) RequireTransportSecurity() bool {
-	return false
+	return true
 }
 
 // loadOIDCMatchMap is a wrapper around viper to verifies that the keys in

@@ -119,10 +119,9 @@ type DERPConfig struct {
 }
 
 type CLIConfig struct {
-	Address  string
-	APIKey   string
-	Insecure bool
-	Timeout  time.Duration
+	Address string
+	APIKey  string
+	Timeout time.Duration
 }
 
 // Headscale represents the base app of the service.

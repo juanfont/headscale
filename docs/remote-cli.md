@@ -88,5 +88,5 @@ Checklist:
 
 - Make sure you have the _same_ `headscale` version on your server and workstation
 - Make sure you use version `0.13.0` or newer.
-- Verify that your TLS certificate is valid
-  - If it is not valid, set the environment variable `HEADSCALE_CLI_INSECURE=true` to allow insecure certs.
+- Verify that your TLS certificate is valid and trusted
+  - If you do not have access to a trusted certificate (e.g. from Let's Encrypt), add your self signed certificate to the trust store of your OS.
