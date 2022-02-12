@@ -235,44 +235,6 @@ func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
 	return h.setValue("namespaces_pending_updates", string(data))
 }
 
-func (h *Headscale) checkForNamespacesPendingUpdates() {
-	namespacesPendingUpdates, err := h.getValue("namespaces_pending_updates")
-	if err != nil {
-		return
-	}
-	if namespacesPendingUpdates == "" {
-		return
-	}
-
-	namespaces := []string{}
-	err = json.Unmarshal([]byte(namespacesPendingUpdates), &namespaces)
-	if err != nil {
-		return
-	}
-	for _, namespace := range namespaces {
-		log.Trace().
-			Str("func", "RequestMapUpdates").
-			Str("machine", namespace).
-			Msg("Sending updates to nodes in namespacespace")
-		h.setLastStateChangeToNow(namespace)
-	}
-	newPendingUpdateValue, err := h.getValue("namespaces_pending_updates")
-	if err != nil {
-		return
-	}
-	if namespacesPendingUpdates == newPendingUpdateValue { // only clear when no changes, so we notified everybody
-		err = h.setValue("namespaces_pending_updates", "")
-		if err != nil {
-			log.Error().
-				Str("func", "checkForNamespacesPendingUpdates").
-				Err(err).
-				Msg("Could not save to KV")
-
-			return
-		}
-	}
-}
-
 func (n *Namespace) toUser() *tailcfg.User {
 	user := tailcfg.User{
 		ID:            tailcfg.UserID(n.ID),

@@ -1,7 +1,6 @@
 package headscale
 
 import (
-	"encoding/json"
 	"strconv"
 	"time"
 
@@ -88,18 +87,6 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 	err = app.DeleteMachine(&machine)
 	c.Assert(err, check.IsNil)
 
-	namespacesPendingUpdates, err := app.getValue("namespaces_pending_updates")
-	c.Assert(err, check.IsNil)
-
-	names := []string{}
-	err = json.Unmarshal([]byte(namespacesPendingUpdates), &names)
-	c.Assert(err, check.IsNil)
-	c.Assert(names, check.DeepEquals, []string{namespace.Name})
-
-	app.checkForNamespacesPendingUpdates()
-
-	namespacesPendingUpdates, _ = app.getValue("namespaces_pending_updates")
-	c.Assert(namespacesPendingUpdates, check.Equals, "")
 	_, err = app.GetMachine(namespace.Name, "testmachine")
 	c.Assert(err, check.NotNil)
 }
