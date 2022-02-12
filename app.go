@@ -589,6 +589,9 @@ func (h *Headscale) Serve() error {
 		}
 
 		errorGroup.Go(func() error { return grpcServer.Serve(grpcListener) })
+
+		log.Info().
+			Msgf("listening and serving gRPC on: %s", h.cfg.GRPCAddr)
 	} else {
 		log.Info().Msg("TLS is not configured, not enabling remote gRPC")
 	}
@@ -625,7 +628,7 @@ func (h *Headscale) Serve() error {
 	errorGroup.Go(func() error { return httpServer.Serve(httpListener) })
 
 	log.Info().
-		Msgf("listening and serving (multiplexed HTTP and gRPC) on: %s", h.cfg.Addr)
+		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
 	return errorGroup.Wait()
 }
