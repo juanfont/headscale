@@ -11,7 +11,24 @@ public-proto=http
 contact-email=headscale@example.com
 EOF
 )
-[ ! -e base/site/derp.yaml ] && cp ../derp.yaml base/site/derp.yaml
+[ ! -e base/site/derp.yaml ] && (
+    cat >base/site/derp.yaml <<EOF
+regions:
+  900:
+    regionid: 900
+    regioncode: custom
+    regionname: My Region
+    nodes:
+      - name: 900a
+        regionid: 900
+        hostname: myderp.mydomain.no
+        ipv4: 123.123.123.123
+        ipv6: "2604:a880:400:d1::828:b001"
+        stunport: 0
+        stunonly: false
+        derptestport: 0
+EOF
+)
 
 umask 077
 mkdir -p base/secrets/
