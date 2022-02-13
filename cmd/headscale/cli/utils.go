@@ -418,13 +418,15 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 
 		if cfg.CLI.Insecure {
 			tlsConfig := &tls.Config{
+				// turn of gosec as we are intentionally setting
+				// insecure.
+				//nolint:gosec
 				InsecureSkipVerify: true,
 			}
 
 			grpcOptions = append(grpcOptions,
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			)
-
 		} else {
 			grpcOptions = append(grpcOptions,
 				grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
