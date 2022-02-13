@@ -59,6 +59,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("unix_socket_permission", "0o770")
 
 	viper.SetDefault("grpc_listen_addr", ":50443")
+	viper.SetDefault("grpc_allow_insecure", false)
 
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
@@ -281,9 +282,11 @@ func getHeadscaleConfig() headscale.Config {
 	}
 
 	return headscale.Config{
-		ServerURL:      viper.GetString("server_url"),
-		Addr:           viper.GetString("listen_addr"),
-		GRPCAddr:       viper.GetString("grpc_listen_addr"),
+		ServerURL:         viper.GetString("server_url"),
+		Addr:              viper.GetString("listen_addr"),
+		GRPCAddr:          viper.GetString("grpc_listen_addr"),
+		GRPCAllowInsecure: viper.GetBool("grpc_allow_insecure"),
+
 		IPPrefixes:     prefixes,
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		BaseDomain:     baseDomain,

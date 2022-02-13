@@ -69,6 +69,7 @@ type Config struct {
 	ServerURL                      string
 	Addr                           string
 	GRPCAddr                       string
+	GRPCAllowInsecure              bool
 	EphemeralNodeInactivityTimeout time.Duration
 	IPPrefixes                     []netaddr.IPPrefix
 	PrivateKeyPath                 string
@@ -567,8 +568,7 @@ func (h *Headscale) Serve() error {
 	// https://github.com/soheilhy/cmux/issues/68
 	// https://github.com/soheilhy/cmux/issues/91
 
-	// If TLS has been enabled, set up the remote gRPC server
-	if tlsConfig != nil {
+	if tlsConfig != nil || h.cfg.GRPCAllowInsecure {
 		log.Info().Msgf("Enabling remote gRPC at %s", h.cfg.GRPCAddr)
 
 		grpcOptions := []grpc.ServerOption{
@@ -578,7 +578,14 @@ func (h *Headscale) Serve() error {
 					zerolog.NewUnaryServerInterceptor(),
 				),
 			),
-			grpc.Creds(credentials.NewTLS(tlsConfig)),
+		}
+
+		if tlsConfig != nil {
+			grpcOptions = append(grpcOptions,
+				grpc.Creds(credentials.NewTLS(tlsConfig)),
+			)
+		} else {
+			log.Warn().Msg("gRPC is running without security")
 		}
 
 		grpcServer := grpc.NewServer(grpcOptions...)
@@ -586,12 +593,7 @@ func (h *Headscale) Serve() error {
 		v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
 		reflection.Register(grpcServer)
 
-		var grpcListener net.Listener
-		// if tlsConfig != nil {
-		// 	grpcListener, err = tls.Listen("tcp", h.cfg.GRPCAddr, tlsConfig)
-		// } else {
-		grpcListener, err = net.Listen("tcp", h.cfg.GRPCAddr)
-		// }
+		grpcListener, err := net.Listen("tcp", h.cfg.GRPCAddr)
 		if err != nil {
 			return fmt.Errorf("failed to bind to TCP address: %w", err)
 		}
@@ -600,8 +602,6 @@ func (h *Headscale) Serve() error {
 
 		log.Info().
 			Msgf("listening and serving gRPC on: %s", h.cfg.GRPCAddr)
-	} else {
-		log.Info().Msg("TLS is not configured, not enabling remote gRPC")
 	}
 
 	//

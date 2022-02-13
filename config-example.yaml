@@ -23,6 +23,12 @@ listen_addr: 0.0.0.0:8080
 # valid certificates.
 grpc_listen_addr: 0.0.0.0:50443
 
+# Allow the gRPC admin interface to run in INSECURE
+# mode. This is not recommended as the traffic will
+# be unencrypted. Only enable if you know what you
+# are doing.
+grpc_allow_insecure: false
+
 # Private key used encrypt the traffic between headscale
 # and Tailscale clients.
 # The private key file which will be
