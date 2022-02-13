@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -eux
-cd $(dirname $0)
+cd "$(dirname "$0")"
 
 umask 022
 mkdir -p base/site/
