@@ -30,6 +30,9 @@ regions:
 EOF
 )
 
+wg_version=$(wg --version || (echo "wg command not found. Please install wireguard and try again" && exit 1))
+echo "Using wireguard version: $wg_version"
+
 umask 077
 mkdir -p base/secrets/
 [ ! -e base/secrets/private-key ] && (
