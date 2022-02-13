@@ -82,6 +82,13 @@ headscale nodes list
 You should now be able to see a list of your nodes from your workstation, and you can
 now control the `headscale` server from your workstation.
 
+## Behind a proxy
+
+It is possible to run the gRPC remote endpoint behind a reverse proxy, like Nginx, and have it run on the _same_ port as `headscale`.
+
+While this is _not a supported_ feature, an example on how this can be set up on
+[NixOS is shown here](https://github.com/kradalby/dotfiles/blob/4489cdbb19cddfbfae82cd70448a38fde5a76711/machines/headscale.oracldn/headscale.nix#L61-L91).
+
 ## Troubleshooting
 
 Checklist:
