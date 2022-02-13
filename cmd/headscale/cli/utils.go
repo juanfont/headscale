@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("grpc_listen_addr", ":50443")
 
 	viper.SetDefault("cli.timeout", "5s")
+	viper.SetDefault("cli.insecure", false)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("fatal error reading config file: %w", err)
@@ -325,9 +327,10 @@ func getHeadscaleConfig() headscale.Config {
 		},
 
 		CLI: headscale.CLIConfig{
-			Address: viper.GetString("cli.address"),
-			APIKey:  viper.GetString("cli.api_key"),
-			Timeout: viper.GetDuration("cli.timeout"),
+			Address:  viper.GetString("cli.address"),
+			APIKey:   viper.GetString("cli.api_key"),
+			Timeout:  viper.GetDuration("cli.timeout"),
+			Insecure: viper.GetBool("cli.insecure"),
 		},
 	}
 }
@@ -411,8 +414,22 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 			grpc.WithPerRPCCredentials(tokenAuth{
 				token: apiKey,
 			}),
-			grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
 		)
+
+		if cfg.CLI.Insecure {
+			tlsConfig := &tls.Config{
+				InsecureSkipVerify: true,
+			}
+
+			grpcOptions = append(grpcOptions,
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			)
+
+		} else {
+			grpcOptions = append(grpcOptions,
+				grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
+			)
+		}
 	}
 
 	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
