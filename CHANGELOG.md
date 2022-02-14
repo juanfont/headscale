@@ -3,8 +3,8 @@
 **TBD (TBD):**
 
 **BREAKING**:
-- ACLs have been rewritten and the behavior is different from before. It's now more aligned to tailscale's view of the feature. Namespaces are viewed as users and can communicate with each others. Tags should now work correctly and adding a host to Headscale should now reload the rules. The documentation have a [fictional example](docs/acls.md) that should cover some use cases of the ACLs features.
 
+- ACLs have been rewritten and the behavior is different from before. It's now more aligned to tailscale's view of the feature. Namespaces are viewed as users and can communicate with each others. Tags should now work correctly and adding a host to Headscale should now reload the rules. The documentation have a [fictional example](docs/acls.md) that should cover some use cases of the ACLs features.
 
 **0.13.0 (2022-xx-xx):**
 

@@ -192,7 +192,10 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 	for _, m := range mMachines {
 		authorizedMachines = append(authorizedMachines, m)
 	}
-	sort.Slice(authorizedMachines, func(i, j int) bool { return authorizedMachines[i].ID < authorizedMachines[j].ID })
+	sort.Slice(
+		authorizedMachines,
+		func(i, j int) bool { return authorizedMachines[i].ID < authorizedMachines[j].ID },
+	)
 
 	log.Trace().
 		Caller().
@@ -695,7 +698,11 @@ func (machine Machine) toNode(
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
 			machine.Name,
-			strings.ReplaceAll(machine.Namespace.Name, "@", "."), // Replace @ with . for valid domain for machine
+			strings.ReplaceAll(
+				machine.Namespace.Name,
+				"@",
+				".",
+			), // Replace @ with . for valid domain for machine
 			baseDomain,
 		)
 	} else {

@@ -129,7 +129,11 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 	return rules, nil
 }
 
-func (h *Headscale) generateACLPolicySrcIP(machines []Machine, aclPolicy ACLPolicy, u string) ([]string, error) {
+func (h *Headscale) generateACLPolicySrcIP(
+	machines []Machine,
+	aclPolicy ACLPolicy,
+	u string,
+) ([]string, error) {
 	return expandAlias(machines, aclPolicy, u)
 }
 
@@ -184,7 +188,11 @@ func (h *Headscale) generateACLPolicyDestPorts(
 // - a group
 // - a tag
 // and transform these in IPAddresses.
-func expandAlias(machines []Machine, aclPolicy ACLPolicy, alias string) ([]string, error) {
+func expandAlias(
+	machines []Machine,
+	aclPolicy ACLPolicy,
+	alias string,
+) ([]string, error) {
 	ips := []string{}
 	if alias == "*" {
 		return []string{"*"}, nil
@@ -267,7 +275,11 @@ func expandAlias(machines []Machine, aclPolicy ACLPolicy, alias string) ([]strin
 // excludeCorrectlyTaggedNodes will remove from the list of input nodes the ones
 // that are correctly tagged since they should not be listed as being in the namespace
 // we assume in this function that we only have nodes from 1 namespace.
-func excludeCorrectlyTaggedNodes(aclPolicy ACLPolicy, nodes []Machine, namespace string) ([]Machine, error) {
+func excludeCorrectlyTaggedNodes(
+	aclPolicy ACLPolicy,
+	nodes []Machine,
+	namespace string,
+) ([]Machine, error) {
 	out := []Machine{}
 	tags := []string{}
 	for tag, ns := range aclPolicy.TagOwners {
@@ -362,7 +374,11 @@ func expandTagOwners(aclPolicy ACLPolicy, tag string) ([]string, error) {
 	var owners []string
 	ows, ok := aclPolicy.TagOwners[tag]
 	if !ok {
-		return []string{}, fmt.Errorf("%w. %v isn't owned by a TagOwner. Please add one first. https://tailscale.com/kb/1018/acls/#tag-owners", errInvalidTag, tag)
+		return []string{}, fmt.Errorf(
+			"%w. %v isn't owned by a TagOwner. Please add one first. https://tailscale.com/kb/1018/acls/#tag-owners",
+			errInvalidTag,
+			tag,
+		)
 	}
 	for _, owner := range ows {
 		if strings.HasPrefix(owner, "group:") {
@@ -384,11 +400,18 @@ func expandTagOwners(aclPolicy ACLPolicy, tag string) ([]string, error) {
 func expandGroup(aclPolicy ACLPolicy, group string) ([]string, error) {
 	groups, ok := aclPolicy.Groups[group]
 	if !ok {
-		return []string{}, fmt.Errorf("group %v isn't registered. %w", group, errInvalidGroup)
+		return []string{}, fmt.Errorf(
+			"group %v isn't registered. %w",
+			group,
+			errInvalidGroup,
+		)
 	}
 	for _, g := range groups {
 		if strings.HasPrefix(g, "group:") {
-			return []string{}, fmt.Errorf("%w. A group cannot be composed of groups. https://tailscale.com/kb/1018/acls/#groups", errInvalidGroup)
+			return []string{}, fmt.Errorf(
+				"%w. A group cannot be composed of groups. https://tailscale.com/kb/1018/acls/#groups",
+				errInvalidGroup,
+			)
 		}
 	}
 

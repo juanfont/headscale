@@ -72,7 +72,10 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
 	// this ACL is wrong because the group in users sections doesn't exist
 	app.aclPolicy = &ACLPolicy{
-		Groups: Groups{"group:test": []string{"foo"}, "group:error": []string{"foo", "group:test"}},
+		Groups: Groups{
+			"group:test":  []string{"foo"},
+			"group:error": []string{"foo", "group:test"},
+		},
 		ACLs: []ACL{
 			{Action: "accept", Users: []string{"group:error"}, Ports: []string{"*:*"}},
 		},
@@ -104,7 +107,9 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 
 	_, err = app.GetMachine("foo", "testmachine")
 	c.Assert(err, check.NotNil)
-	hostInfo := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")
+	hostInfo := []byte(
+		"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+	)
 	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -146,7 +151,9 @@ func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 
 	_, err = app.GetMachine("foo", "testmachine")
 	c.Assert(err, check.NotNil)
-	hostInfo := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")
+	hostInfo := []byte(
+		"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+	)
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "foo",
@@ -188,7 +195,9 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 
 	_, err = app.GetMachine("foo", "testmachine")
 	c.Assert(err, check.NotNil)
-	hostInfo := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:foo\"]}")
+	hostInfo := []byte(
+		"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:foo\"]}",
+	)
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "foo",
@@ -229,7 +238,9 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 
 	_, err = app.GetMachine("foo", "webserver")
 	c.Assert(err, check.NotNil)
-	hostInfo := []byte("{\"OS\":\"centos\",\"Hostname\":\"webserver\",\"RequestTags\":[\"tag:webapp\"]}")
+	hostInfo := []byte(
+		"{\"OS\":\"centos\",\"Hostname\":\"webserver\",\"RequestTags\":[\"tag:webapp\"]}",
+	)
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "foo",
@@ -265,7 +276,11 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 	app.aclPolicy = &ACLPolicy{
 		TagOwners: TagOwners{"tag:webapp": []string{"foo"}},
 		ACLs: []ACL{
-			{Action: "accept", Users: []string{"foo"}, Ports: []string{"tag:webapp:80,443"}},
+			{
+				Action: "accept",
+				Users:  []string{"foo"},
+				Ports:  []string{"tag:webapp:80,443"},
+			},
 		},
 	}
 	err = app.UpdateACLRules()
@@ -411,7 +426,10 @@ func Test_expandGroup(t *testing.T) {
 			name: "simple test",
 			args: args{
 				aclPolicy: ACLPolicy{
-					Groups: Groups{"group:test": []string{"g1", "foo", "test"}, "group:foo": []string{"foo", "test"}},
+					Groups: Groups{
+						"group:test": []string{"g1", "foo", "test"},
+						"group:foo":  []string{"foo", "test"},
+					},
 				},
 				group: "group:test",
 			},
@@ -422,7 +440,10 @@ func Test_expandGroup(t *testing.T) {
 			name: "InexistantGroup",
 			args: args{
 				aclPolicy: ACLPolicy{
-					Groups: Groups{"group:test": []string{"g1", "foo", "test"}, "group:foo": []string{"foo", "test"}},
+					Groups: Groups{
+						"group:test": []string{"g1", "foo", "test"},
+						"group:foo":  []string{"foo", "test"},
+					},
 				},
 				group: "group:bar",
 			},
@@ -666,7 +687,10 @@ func Test_listMachinesInNamespace(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := listMachinesInNamespace(tt.args.machines, tt.args.namespace); !reflect.DeepEqual(got, tt.want) {
+			if got := listMachinesInNamespace(tt.args.machines, tt.args.namespace); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("listMachinesInNamespace() = %v, want %v", got, tt.want)
 			}
 		})
@@ -691,7 +715,11 @@ func Test_expandAlias(t *testing.T) {
 				alias: "*",
 				machines: []Machine{
 					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.78.84.227")}},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.78.84.227"),
+						},
+					},
 				},
 				aclPolicy: ACLPolicy{},
 			},
@@ -703,10 +731,30 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "group:foo",
 				machines: []Machine{
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "test"}},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "bar"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "test"},
+					},
 				},
 				aclPolicy: ACLPolicy{
 					Groups: Groups{"group:foo": []string{"foo", "bar"}},
@@ -720,10 +768,30 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "group:test",
 				machines: []Machine{
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "test"}},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "bar"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "test"},
+					},
 				},
 				aclPolicy: ACLPolicy{
 					Groups: Groups{"group:foo": []string{"foo", "bar"}},
@@ -748,7 +816,9 @@ func Test_expandAlias(t *testing.T) {
 				alias:    "homeNetwork",
 				machines: []Machine{},
 				aclPolicy: ACLPolicy{
-					Hosts: Hosts{"homeNetwork": netaddr.MustParseIPPrefix("192.168.1.0/24")},
+					Hosts: Hosts{
+						"homeNetwork": netaddr.MustParseIPPrefix("192.168.1.0/24"),
+					},
 				},
 			},
 			want:    []string{"192.168.1.0/24"},
@@ -779,10 +849,36 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "tag:test",
 				machines: []Machine{
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "foo"},
+						HostInfo: []byte(
+							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+						),
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "foo"},
+						HostInfo: []byte(
+							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+						),
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "bar"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
 				},
 				aclPolicy: ACLPolicy{
 					TagOwners: TagOwners{"tag:test": []string{"foo"}},
@@ -796,10 +892,30 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "tag:foo",
 				machines: []Machine{
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "test"}},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "bar"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "test"},
+					},
 				},
 				aclPolicy: ACLPolicy{
 					Groups:    Groups{"group:foo": []string{"foo", "bar"}},
@@ -814,10 +930,36 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "foo",
 				machines: []Machine{
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")}, Namespace: Namespace{Name: "bar"}},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "foo"},
+						HostInfo: []byte(
+							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+						),
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "foo"},
+						HostInfo: []byte(
+							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+						),
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "bar"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
 				},
 				aclPolicy: ACLPolicy{
 					TagOwners: TagOwners{"tag:test": []string{"foo"}},
@@ -829,7 +971,11 @@ func Test_expandAlias(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := expandAlias(test.args.machines, test.args.aclPolicy, test.args.alias)
+			got, err := expandAlias(
+				test.args.machines,
+				test.args.aclPolicy,
+				test.args.alias,
+			)
 			if (err != nil) != test.wantErr {
 				t.Errorf("expandAlias() error = %v, wantErr %v", err, test.wantErr)
 
@@ -861,14 +1007,38 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					TagOwners: TagOwners{"tag:test": []string{"foo"}},
 				},
 				nodes: []Machine{
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "foo"},
+						HostInfo: []byte(
+							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+						),
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "foo"},
+						HostInfo: []byte(
+							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+						),
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
 				},
 				namespace: "foo",
 			},
 			want: []Machine{
-				{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+				{
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")},
+					Namespace:   Namespace{Name: "foo"},
+				},
 			},
 			wantErr: false,
 		},
@@ -879,25 +1049,69 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					TagOwners: TagOwners{"tag:foo": []string{"foo"}},
 				},
 				nodes: []Machine{
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "foo"},
+						HostInfo: []byte(
+							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+						),
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "foo"},
+						HostInfo: []byte(
+							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+						),
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "foo"},
+					},
 				},
 				namespace: "foo",
 			},
 			want: []Machine{
-				{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-				{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")}, Namespace: Namespace{Name: "foo"}, HostInfo: []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")},
-				{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")}, Namespace: Namespace{Name: "foo"}},
+				{
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
+					Namespace:   Namespace{Name: "foo"},
+					HostInfo: []byte(
+						"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+					),
+				},
+				{
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					Namespace:   Namespace{Name: "foo"},
+					HostInfo: []byte(
+						"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}",
+					),
+				},
+				{
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")},
+					Namespace:   Namespace{Name: "foo"},
+				},
 			},
 			wantErr: false,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := excludeCorrectlyTaggedNodes(test.args.aclPolicy, test.args.nodes, test.args.namespace)
+			got, err := excludeCorrectlyTaggedNodes(
+				test.args.aclPolicy,
+				test.args.nodes,
+				test.args.namespace,
+			)
 			if (err != nil) != test.wantErr {
-				t.Errorf("excludeCorrectlyTaggedNodes() error = %v, wantErr %v", err, test.wantErr)
+				t.Errorf(
+					"excludeCorrectlyTaggedNodes() error = %v, wantErr %v",
+					err,
+					test.wantErr,
+				)
 
 				return
 			}

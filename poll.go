@@ -97,7 +97,11 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	// update ACLRules with peer informations (to update server tags if necessary)
 	err = h.UpdateACLRules()
 	if err != nil {
-		log.Error().Caller().Str("func", "handleAuthKey").Str("machine", machine.Name).Err(err)
+		log.Error().
+			Caller().
+			Str("func", "handleAuthKey").
+			Str("machine", machine.Name).
+			Err(err)
 	}
 
 	// From Tailscale client:
