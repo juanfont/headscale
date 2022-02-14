@@ -2,8 +2,8 @@
 name: Renovate
 on:
   schedule:
-    - cron: '* * 5,20 * *' #Every 5th and 20th of the month
-  workflow_dispatch: 
+    - cron: "* * 5,20 * *" # Every 5th and 20th of the month
+  workflow_dispatch:
 jobs:
   renovate:
     runs-on: ubuntu-latest
@@ -22,5 +22,5 @@ jobs:
         uses: renovatebot/github-action@v31.81.2
         with:
           configurationFile: .github/renovate.json
-          token: 'x-access-token:${{ steps.get_token.outputs.app_token }}'
+          token: "x-access-token:${{ steps.get_token.outputs.app_token }}"
           onboarding: false
