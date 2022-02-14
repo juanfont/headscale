@@ -353,13 +353,12 @@ func (h *Headscale) DeleteMachine(machine *Machine) error {
 	}
 
 	machine.Registered = false
-	namespaceID := machine.NamespaceID
 	h.db.Save(&machine) // we mark it as unregistered, just in case
 	if err := h.db.Delete(&machine).Error; err != nil {
 		return err
 	}
 
-	return h.RequestMapUpdates(namespaceID)
+	return nil
 }
 
 func (h *Headscale) TouchMachine(machine *Machine) error {
@@ -377,12 +376,11 @@ func (h *Headscale) HardDeleteMachine(machine *Machine) error {
 		return err
 	}
 
-	namespaceID := machine.NamespaceID
 	if err := h.db.Unscoped().Delete(&machine).Error; err != nil {
 		return err
 	}
 
-	return h.RequestMapUpdates(namespaceID)
+	return nil
 }
 
 // GetHostInfo returns a Hostinfo struct for the machine.
@@ -530,7 +528,9 @@ func (machine Machine) toNode(
 		addrs = append(addrs, ip)
 	}
 
-	allowedIPs := append([]netaddr.IPPrefix{}, addrs...) // we append the node own IP, as it is required by the clients
+	allowedIPs := append(
+		[]netaddr.IPPrefix{},
+		addrs...) // we append the node own IP, as it is required by the clients
 
 	if includeRoutes {
 		routesStr := []string{}
@@ -861,11 +861,6 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 
 	machine.EnabledRoutes = datatypes.JSON(routes)
 	h.db.Save(&machine)
-
-	err = h.RequestMapUpdates(machine.NamespaceID)
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
