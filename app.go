@@ -271,20 +271,6 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 	}
 }
 
-// WatchForKVUpdates checks the KV DB table for requests to perform tailnet upgrades
-// This is a way to communitate the CLI with the headscale server.
-func (h *Headscale) watchForKVUpdates(milliSeconds int64) {
-	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
-	for range ticker.C {
-		h.watchForKVUpdatesWorker()
-	}
-}
-
-func (h *Headscale) watchForKVUpdatesWorker() {
-	h.checkForNamespacesPendingUpdates()
-	// more functions will come here in the future
-}
-
 func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
@@ -465,8 +451,6 @@ func (h *Headscale) Serve() error {
 		go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
 	}
 
-	// I HATE THIS
-	go h.watchForKVUpdates(updateInterval)
 	go h.expireEphemeralNodes(updateInterval)
 
 	if zl.GlobalLevel() == zl.TraceLevel {
