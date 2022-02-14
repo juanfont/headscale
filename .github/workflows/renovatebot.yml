@@ -19,8 +19,9 @@ jobs:
         uses: actions/checkout@v2.0.0
 
       - name: Self-hosted Renovate
-        uses: renovatebot/github-action@v31.81.2
+        uses: renovatebot/github-action@v31.81.3
         with:
           configurationFile: .github/renovate.json
           token: "x-access-token:${{ steps.get_token.outputs.app_token }}"
-          onboarding: false
+        # env:
+        #  LOG_LEVEL: "debug"
