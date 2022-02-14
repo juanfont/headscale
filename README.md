@@ -18,6 +18,12 @@ The control server works as an exchange point of Wireguard public keys for the n
 
 headscale implements this coordination server.
 
+## Support
+
+If you like `headscale` and find it useful, there is sponsorship and donation buttons available in the repo.
+
+If you would like to sponsor features, bugs or prioritisation, reach out to one of the maintainers.
+
 ## Status
 
 - [x] Base functionality (nodes can communicate with each other)
