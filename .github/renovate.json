@@ -1,0 +1,7 @@
+{
+  "extends": ["config:base"]",
+  "baseBranches": ["main"],
+  "branchPrefix": "renovateaction",
+  "extends": ["config:base", ":rebaseStalePrs"],
+  "enabledManagers": ["dockerfile", "go", "github-actions"]
+}
