@@ -138,6 +138,7 @@ func containsAddresses(inputs []string, addrs MachineAddresses) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -174,20 +175,20 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 	// In order to do this we would need to be able to identify that node A want to talk to node B but that Node B doesn't know
 	// how to talk to node A and then add the peering resource.
 
-	for _, m := range machines {
+	for _, mchn := range machines {
 		for _, rule := range h.aclRules {
 			var dst []string
 			for _, d := range rule.DstPorts {
 				dst = append(dst, d.IP)
 			}
-			if (containsAddresses(rule.SrcIPs, machine.IPAddresses) && (containsAddresses(dst, m.IPAddresses) || containsString(dst, "*"))) ||
-				(containsAddresses(rule.SrcIPs, m.IPAddresses) && containsAddresses(dst, machine.IPAddresses)) {
-				mMachines[m.ID] = m
+			if (containsAddresses(rule.SrcIPs, machine.IPAddresses) && (containsAddresses(dst, mchn.IPAddresses) || containsString(dst, "*"))) ||
+				(containsAddresses(rule.SrcIPs, mchn.IPAddresses) && containsAddresses(dst, machine.IPAddresses)) {
+				mMachines[mchn.ID] = mchn
 			}
 		}
 	}
 
-	var authorizedMachines Machines
+	authorizedMachines := make([]Machine, 0, len(mMachines))
 	for _, m := range mMachines {
 		authorizedMachines = append(authorizedMachines, m)
 	}
@@ -694,7 +695,7 @@ func (machine Machine) toNode(
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
 			machine.Name,
-			strings.Replace(machine.Namespace.Name, "@", ".", -1), // Replace @ with . for valid domain for machine
+			strings.ReplaceAll(machine.Namespace.Name, "@", "."), // Replace @ with . for valid domain for machine
 			baseDomain,
 		)
 	} else {

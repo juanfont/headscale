@@ -165,7 +165,7 @@ func getMapResponseDNSConfig(
 			dnsConfig.Domains,
 			fmt.Sprintf(
 				"%s.%s",
-				strings.Replace(machine.Namespace.Name, "@", ".", -1), // Replace @ with . for valid domain for machine
+				strings.ReplaceAll(machine.Namespace.Name, "@", "."), // Replace @ with . for valid domain for machine
 				baseDomain,
 			),
 		)
@@ -176,7 +176,7 @@ func getMapResponseDNSConfig(
 			namespaceSet.Add(p.Namespace)
 		}
 		for _, namespace := range namespaceSet.List() {
-			dnsRoute := fmt.Sprintf("%s.%s", namespace.(Namespace).Name, baseDomain)
+			var dnsRoute string = fmt.Sprintf("%v.%v", namespace.(Namespace).Name, baseDomain)
 			dnsConfig.Routes[dnsRoute] = nil
 		}
 	} else {

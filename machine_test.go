@@ -161,7 +161,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		key       *PreAuthKey
 	}
 
-	var stor []base
+	stor := make([]base, 0)
 
 	for _, name := range []string{"test", "admin"} {
 		namespace, err := app.CreateNamespace(name)
@@ -169,7 +169,6 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
 		c.Assert(err, check.IsNil)
 		stor = append(stor, base{namespace, pak})
-
 	}
 
 	_, err := app.GetMachineByID(0)

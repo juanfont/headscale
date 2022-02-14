@@ -94,7 +94,7 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 
 // this test should validate that we can expand a group in a TagOWner section and
 // match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
-// the tag is matched in the Users section
+// the tag is matched in the Users section.
 func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 	namespace, err := app.CreateNamespace("foo")
 	c.Assert(err, check.IsNil)
@@ -104,7 +104,7 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 
 	_, err = app.GetMachine("foo", "testmachine")
 	c.Assert(err, check.NotNil)
-	b := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")
+	hostInfo := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")
 	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -116,7 +116,7 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(b),
+		HostInfo:       datatypes.JSON(hostInfo),
 	}
 	app.db.Save(&machine)
 
@@ -136,7 +136,7 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 
 // this test should validate that we can expand a group in a TagOWner section and
 // match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
-// the tag is matched in the Ports section
+// the tag is matched in the Ports section.
 func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 	namespace, err := app.CreateNamespace("foo")
 	c.Assert(err, check.IsNil)
@@ -146,7 +146,7 @@ func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 
 	_, err = app.GetMachine("foo", "testmachine")
 	c.Assert(err, check.NotNil)
-	b := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")
+	hostInfo := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:test\"]}")
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "foo",
@@ -158,7 +158,7 @@ func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(b),
+		HostInfo:       datatypes.JSON(hostInfo),
 	}
 	app.db.Save(&machine)
 
@@ -178,7 +178,7 @@ func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 
 // need a test with:
 // tag on a host that isn't owned by a tag owners. So the namespace
-// of the host should be valid
+// of the host should be valid.
 func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 	namespace, err := app.CreateNamespace("foo")
 	c.Assert(err, check.IsNil)
@@ -188,7 +188,7 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 
 	_, err = app.GetMachine("foo", "testmachine")
 	c.Assert(err, check.NotNil)
-	b := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:foo\"]}")
+	hostInfo := []byte("{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:foo\"]}")
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "foo",
@@ -200,7 +200,7 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(b),
+		HostInfo:       datatypes.JSON(hostInfo),
 	}
 	app.db.Save(&machine)
 
@@ -229,7 +229,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 
 	_, err = app.GetMachine("foo", "webserver")
 	c.Assert(err, check.NotNil)
-	b := []byte("{\"OS\":\"centos\",\"Hostname\":\"webserver\",\"RequestTags\":[\"tag:webapp\"]}")
+	hostInfo := []byte("{\"OS\":\"centos\",\"Hostname\":\"webserver\",\"RequestTags\":[\"tag:webapp\"]}")
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "foo",
@@ -241,11 +241,11 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(b),
+		HostInfo:       datatypes.JSON(hostInfo),
 	}
 	app.db.Save(&machine)
 	_, err = app.GetMachine("foo", "user")
-	b = []byte("{\"OS\":\"debian\",\"Hostname\":\"user\"}")
+	hostInfo = []byte("{\"OS\":\"debian\",\"Hostname\":\"user\"}")
 	c.Assert(err, check.NotNil)
 	machine = Machine{
 		ID:             2,
@@ -258,7 +258,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(b),
+		HostInfo:       datatypes.JSON(hostInfo),
 	}
 	app.db.Save(&machine)
 
@@ -430,15 +430,16 @@ func Test_expandGroup(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := expandGroup(tt.args.aclPolicy, tt.args.group)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("expandGroup() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := expandGroup(test.args.aclPolicy, test.args.group)
+			if (err != nil) != test.wantErr {
+				t.Errorf("expandGroup() error = %v, wantErr %v", err, test.wantErr)
+
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("expandGroup() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("expandGroup() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -514,15 +515,16 @@ func Test_expandTagOwners(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := expandTagOwners(tt.args.aclPolicy, tt.args.tag)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("expandTagOwners() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := expandTagOwners(test.args.aclPolicy, test.args.tag)
+			if (err != nil) != test.wantErr {
+				t.Errorf("expandTagOwners() error = %v, wantErr %v", err, test.wantErr)
+
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("expandTagOwners() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("expandTagOwners() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -595,15 +597,16 @@ func Test_expandPorts(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := expandPorts(tt.args.portsStr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("expandPorts() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := expandPorts(test.args.portsStr)
+			if (err != nil) != test.wantErr {
+				t.Errorf("expandPorts() error = %v, wantErr %v", err, test.wantErr)
+
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("expandPorts() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("expandPorts() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -824,15 +827,16 @@ func Test_expandAlias(t *testing.T) {
 			wantErr: false,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := expandAlias(tt.args.machines, tt.args.aclPolicy, tt.args.alias)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("expandAlias() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := expandAlias(test.args.machines, test.args.aclPolicy, test.args.alias)
+			if (err != nil) != test.wantErr {
+				t.Errorf("expandAlias() error = %v, wantErr %v", err, test.wantErr)
+
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("expandAlias() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("expandAlias() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -889,15 +893,16 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 			wantErr: false,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := excludeCorrectlyTaggedNodes(tt.args.aclPolicy, tt.args.nodes, tt.args.namespace)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("excludeCorrectlyTaggedNodes() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := excludeCorrectlyTaggedNodes(test.args.aclPolicy, test.args.nodes, test.args.namespace)
+			if (err != nil) != test.wantErr {
+				t.Errorf("excludeCorrectlyTaggedNodes() error = %v, wantErr %v", err, test.wantErr)
+
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("excludeCorrectlyTaggedNodes() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("excludeCorrectlyTaggedNodes() = %v, want %v", got, test.want)
 			}
 		})
 	}
