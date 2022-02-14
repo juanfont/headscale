@@ -8,8 +8,10 @@ This documentation has the goal of showing how a user can use the official Windo
 
 To make the Windows client behave as expected and to run well with `headscale`, two registry keys **must** be set:
 
-- `HKLM:\SOFTWARE\Tailscale IPN\UnattendedMode` must be set to `always` to allow Tailscale to run properly in the background
-- `HKLM:\SOFTWARE\Tailscale IPN\LoginURL` must be set to `<YOUR HEADSCALE URL>` to ensure Tailscale contacts the correct control server.
+- `HKLM:\SOFTWARE\Tailscale IPN\UnattendedMode` must be set to `always` as a `string` type, to allow Tailscale to run properly in the background
+- `HKLM:\SOFTWARE\Tailscale IPN\LoginURL` must be set to `<YOUR HEADSCALE URL>` as a `string` type, to ensure Tailscale contacts the correct control server.
+
+![windows-registry](./images/windows-registry.png)
 
 The Tailscale Windows client has been observed to reset its configuration on logout/reboot and these two keys [resolves that issue](https://github.com/tailscale/tailscale/issues/2798).
 
@@ -37,6 +39,12 @@ in your `headscale` output, turn on `DEBUG` logging and look for:
 2022-02-11T00:59:29Z DBG Machine registration has expired. Sending a authurl to register machine=redacted
 ```
 
-This typically means that the register keys above was not set appropriatly.
+This typically means that the registry keys above was not set appropriately.
 
-Ensure they are set correctly, delete Tailscale APP_DATA folder and try to connect again.
+To reset and try again, it is important to do the following:
+
+1. Ensure the registry keys from the previous guide is correctly set.
+2. Shut down the Tailscale service (or the client running in the tray)
+3. Delete Tailscale Application data folder, located at `C:\Users\<USERNAME>\AppData\Local\Tailscale` and try to connect again.
+4. Ensure the Windows node is deleted from headscale (to ensure fresh setup)
+5. Start Tailscale on the windows machine and retry the login.
