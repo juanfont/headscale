@@ -685,13 +685,13 @@ func Test_listMachinesInNamespace(t *testing.T) {
 			want: []Machine{},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := listMachinesInNamespace(tt.args.machines, tt.args.namespace); !reflect.DeepEqual(
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := listMachinesInNamespace(test.args.machines, test.args.namespace); !reflect.DeepEqual(
 				got,
-				tt.want,
+				test.want,
 			) {
-				t.Errorf("listMachinesInNamespace() = %v, want %v", got, tt.want)
+				t.Errorf("listMachinesInNamespace() = %v, want %v", got, test.want)
 			}
 		})
 	}

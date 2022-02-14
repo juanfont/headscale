@@ -218,6 +218,7 @@ func containsString(ss []string, s string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
