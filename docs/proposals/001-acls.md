@@ -43,9 +43,12 @@ For personal users the default behavior could either allow all communications be
 
 For businesses and organisations, viewing a headscale instance a single tailnet would allow users (namespace) to talk to each other with the ACLs. As described in tailscale's documentation [[1]], a server should be tagged and personnal devices should be tied to a user. Translated in headscale's terms each user can have multiple devices and all those devices should be in the same namespace. The servers should be tagged and used as such.
 
-This implementation would render useless the sharing feature that is currently implemented since an ACL could do the same.
+This implementation would render useless the sharing feature that is currently
+implemented since an ACL could do the same. Simplifying to only one user
+interface to do one thing is easier and less confusing for the users.
 
-What could be improved would be to peer different headscale installation and allow `sharing`. This would raises issues about compatible network IPs range.
+As a sidenote, users would like to write ACLs as YAML. We should offer users
+the ability to rules in either format (HuJSON or YAML).
 
 [1]: https://tailscale.com/kb/1068/acl-tags/
 
