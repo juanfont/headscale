@@ -81,7 +81,11 @@ func (s *Suite) TestMagicDNSRootDomainsIPv6Single(c *check.C) {
 	domains := generateMagicDNSRootDomains(prefixes)
 
 	c.Assert(len(domains), check.Equals, 1)
-	c.Assert(domains[0].WithTrailingDot(), check.Equals, "0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.")
+	c.Assert(
+		domains[0].WithTrailingDot(),
+		check.Equals,
+		"0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.",
+	)
 }
 
 func (s *Suite) TestMagicDNSRootDomainsIPv6SingleMultiple(c *check.C) {

@@ -7,6 +7,9 @@
 **Features**:
 
 - Add IPv6 support to the prefix assigned to namespaces
+- Add API Key support
+  - Enable remote control of `headscale` via CLI [docs](docs/remote-cli.md)
+  - Enable HTTP API (beta, subject to change)
 
 **Changes**:
 
