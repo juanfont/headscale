@@ -72,6 +72,12 @@ This implementation would render useless the sharing feature that is currently
 implemented since an ACL could do the same. Simplifying to only one user
 interface to do one thing is easier and less confusing for the users.
 
+To better suit the ACLs in this proposition, it's advised to consider that each
+namespaces belong to one person. This person can have multiple devices, they
+will all be considered as the same user in the ACLs. OIDC feature wouldn't need
+to map people to namespace, just create a namespace if the person isn't
+registered yet.
+
 As a sidenote, users would like to write ACLs as YAML. We should offer users
 the ability to rules in either format (HuJSON or YAML).
 
