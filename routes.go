@@ -143,10 +143,5 @@ func (h *Headscale) EnableNodeRoute(
 	machine.EnabledRoutes = datatypes.JSON(routes)
 	h.db.Save(&machine)
 
-	err = h.RequestMapUpdates(machine.NamespaceID)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
