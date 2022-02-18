@@ -10,7 +10,7 @@ Join our [Discord](https://discord.gg/XcQxk2VHjx) server for a chat.
 
 ## Overview
 
-Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/).
+Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using [NAT traversal](https://tailscale.com/blog/how-nat-traversal-works/).
 
 Everything in Tailscale is Open Source, except the GUI clients for proprietary OS (Windows and macOS/iOS), and the 'coordination/control server'.
 
@@ -52,7 +52,7 @@ If you would like to sponsor features, bugs or prioritisation, reach out to one 
 | Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
 | iOS     | Not yet                                                                                                           |
 
-## Roadmap 🤷
+## Roadmap
 
 Suggestions/PRs welcomed!
 
