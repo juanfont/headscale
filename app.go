@@ -94,7 +94,7 @@ type Config struct {
 
 	TLSCertPath       string
 	TLSKeyPath        string
-	TLSClientAuthMode string
+	TLSClientAuthMode tls.ClientAuthType
 
 	ACMEURL   string
 	ACMEEmail string
@@ -151,6 +151,27 @@ type Headscale struct {
 	oidcStateCache *cache.Cache
 
 	requestedExpiryCache *cache.Cache
+}
+
+// Look up the TLS constant relative to user-supplied TLS client
+// authentication mode. If an unknown mode is supplied, the default
+// value, tls.RequireAnyClientCert, is returned. The returned boolean
+// indicates if the supplied mode was valid.
+func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
+	switch mode {
+	case DisabledClientAuth:
+		// Client cert is _not_ required.
+		return tls.NoClientCert, true
+	case RelaxedClientAuth:
+		// Client cert required, but _not verified_.
+		return tls.RequireAnyClientCert, true
+	case EnforcedClientAuth:
+		// Client cert is _required and verified_.
+		return tls.RequireAndVerifyClientCert, true
+	default:
+        // Return the default when an unknown value is supplied.
+		return tls.RequireAnyClientCert, false
+	}
 }
 
 // NewHeadscale returns the Headscale app.
@@ -655,17 +676,12 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
-		clientAuthMode, err := h.GetClientAuthMode()
-		if err != nil {
-			return nil, err
-		}
-
 		log.Info().Msg(fmt.Sprintf(
 			"Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
 			h.cfg.TLSClientAuthMode))
 
 		tlsConfig := &tls.Config{
-			ClientAuth:   clientAuthMode,
+			ClientAuth:   h.cfg.TLSClientAuthMode,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: make([]tls.Certificate, 1),
 			MinVersion:   tls.VersionTLS12,
@@ -674,25 +690,6 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 
 		return tlsConfig, err
-	}
-}
-
-// Look up the TLS constant relative to user-supplied TLS client
-// authentication mode.
-func (h *Headscale) GetClientAuthMode() (tls.ClientAuthType, error) {
-	switch h.cfg.TLSClientAuthMode {
-	case DisabledClientAuth:
-		// Client cert is _not_ required.
-		return tls.NoClientCert, nil
-	case RelaxedClientAuth:
-		// Client cert required, but _not verified_.
-		return tls.RequireAnyClientCert, nil
-	case EnforcedClientAuth:
-		// Client cert is _required and verified_.
-		return tls.RequireAndVerifyClientCert, nil
-	default:
-		return tls.NoClientCert, Error("Invalid tls_client_auth_mode provided: " +
-			h.cfg.TLSClientAuthMode)
 	}
 }
 

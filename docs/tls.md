@@ -33,7 +33,7 @@ tls_key_path: ""
 ### Configuring Mutual TLS Authentication (mTLS)
 
 mTLS is a method by which an HTTPS server authenticates clients, e.g. Tailscale,
-using TLS certificates. The capability can be configured by by applying one of
+using TLS certificates. The capability can be configured by applying one of
 the following values to the `tls_client_auth_mode` setting in the configuration
 file.
 

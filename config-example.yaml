@@ -97,7 +97,7 @@ tls_letsencrypt_hostname: ""
 # - disabled: client authentication disabled
 # - relaxed: client certificate is required but not verified
 # - enforced: client certificate is required and verified
-tls_client_auth_mode: disabled
+tls_client_auth_mode: relaxed
 
 # Path to store certificates and metadata needed by
 # letsencrypt
