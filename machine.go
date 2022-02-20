@@ -142,16 +142,6 @@ func containsAddresses(inputs []string, addrs MachineAddresses) bool {
 	return false
 }
 
-// matchSourceAndDestinationWithRule will check if source is authorized to communicate with destination through
-// the given rule.
-func matchSourceAndDestinationWithRule(rule tailcfg.FilterRule, source Machine, destination Machine) bool {
-	var dst []string
-	for _, d := range rule.DstPorts {
-		dst = append(dst, d.IP)
-	}
-	return (containsAddresses(rule.SrcIPs, source.IPAddresses) && containsAddresses(dst, destination.IPAddresses)) || containsString(dst, "*")
-}
-
 // getFilteredByACLPeerss should return the list of peers authorized to be accessed from machine.
 func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 	log.Trace().
@@ -159,9 +149,10 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 		Str("machine", machine.Name).
 		Msg("Finding peers filtered by ACLs")
 
-	machines, err := h.ListAllMachines()
-	if err != nil {
-		log.Error().Err(err).Msg("Error retrieving list of machines")
+	machines := Machines{}
+	if err := h.db.Preload("Namespace").Where("machine_key <> ? AND registered",
+		machine.MachineKey).Find(&machines).Error; err != nil {
+		log.Error().Err(err).Msg("Error accessing db")
 		return Machines{}, err
 	}
 	peers := make(map[uint64]Machine)
@@ -185,7 +176,13 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 
 	for _, peer := range machines {
 		for _, rule := range h.aclRules {
-			if matchSourceAndDestinationWithRule(rule, *machine, peer) || matchSourceAndDestinationWithRule(rule, peer, *machine) {
+			var dst []string
+			for _, d := range rule.DstPorts {
+				dst = append(dst, d.IP)
+			}
+			if (containsAddresses(rule.SrcIPs, machine.IPAddresses) && (containsAddresses(dst, peer.IPAddresses) || containsString(dst, "*"))) || (
+			// open return path
+			containsAddresses(rule.SrcIPs, peer.IPAddresses) && containsAddresses(dst, machine.IPAddresses)) {
 				peers[peer.ID] = peer
 			}
 		}
