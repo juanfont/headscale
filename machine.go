@@ -188,13 +188,13 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 		}
 	}
 
-	authorizedMachines := make([]Machine, 0, len(peers))
+	authorizedPeers := make([]Machine, 0, len(peers))
 	for _, m := range peers {
-		authorizedMachines = append(authorizedMachines, m)
+		authorizedPeers = append(authorizedPeers, m)
 	}
 	sort.Slice(
-		authorizedMachines,
-		func(i, j int) bool { return authorizedMachines[i].ID < authorizedMachines[j].ID },
+		authorizedPeers,
+		func(i, j int) bool { return authorizedPeers[i].ID < authorizedPeers[j].ID },
 	)
 
 	log.Trace().
@@ -202,7 +202,7 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 		Str("machine", machine.Name).
 		Msgf("Found some machines: %v", machines)
 
-	return authorizedMachines, nil
+	return authorizedPeers, nil
 }
 
 func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
