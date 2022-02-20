@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/yaml.v2"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -26,7 +29,8 @@ import (
 )
 
 const (
-	PermissionFallback = 0o700
+	PermissionFallback      = 0o700
+	HeadscaleDateTimeFormat = "2006-01-02 15:04:05"
 )
 
 func LoadConfig(path string) error {
@@ -56,8 +60,11 @@ func LoadConfig(path string) error {
 	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
 
-	viper.SetDefault("cli.insecure", false)
+	viper.SetDefault("grpc_listen_addr", ":50443")
+	viper.SetDefault("grpc_allow_insecure", false)
+
 	viper.SetDefault("cli.timeout", "5s")
+	viper.SetDefault("cli.insecure", false)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("fatal error reading config file: %w", err)
@@ -284,14 +291,18 @@ func getHeadscaleConfig() headscale.Config {
 
 	if len(prefixes) < 1 {
 		prefixes = append(prefixes, netaddr.MustParseIPPrefix("100.64.0.0/10"))
-		log.Warn().Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
+		log.Warn().
+			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
     tlsClientAuthMode, _ := headscale.LookupTLSClientAuthMode(viper.GetString("tls_client_auth_mode"))
 
 	return headscale.Config{
-		ServerURL:      viper.GetString("server_url"),
-		Addr:           viper.GetString("listen_addr"),
+		ServerURL:         viper.GetString("server_url"),
+		Addr:              viper.GetString("listen_addr"),
+		GRPCAddr:          viper.GetString("grpc_listen_addr"),
+		GRPCAllowInsecure: viper.GetBool("grpc_allow_insecure"),
+
 		IPPrefixes:     prefixes,
 		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
 		BaseDomain:     baseDomain,
@@ -338,8 +349,8 @@ func getHeadscaleConfig() headscale.Config {
 		CLI: headscale.CLIConfig{
 			Address:  viper.GetString("cli.address"),
 			APIKey:   viper.GetString("cli.api_key"),
-			Insecure: viper.GetBool("cli.insecure"),
 			Timeout:  viper.GetDuration("cli.timeout"),
+			Insecure: viper.GetBool("cli.insecure"),
 		},
 	}
 }
@@ -410,14 +421,14 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 
 		grpcOptions = append(
 			grpcOptions,
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithContextDialer(headscale.GrpcSocketDialer),
 		)
 	} else {
 		// If we are not connecting to a local server, require an API key for authentication
 		apiKey := cfg.CLI.APIKey
 		if apiKey == "" {
-			log.Fatal().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
+			log.Fatal().Caller().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
 		}
 		grpcOptions = append(grpcOptions,
 			grpc.WithPerRPCCredentials(tokenAuth{
@@ -426,14 +437,27 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 		)
 
 		if cfg.CLI.Insecure {
-			grpcOptions = append(grpcOptions, grpc.WithInsecure())
+			tlsConfig := &tls.Config{
+				// turn of gosec as we are intentionally setting
+				// insecure.
+				//nolint:gosec
+				InsecureSkipVerify: true,
+			}
+
+			grpcOptions = append(grpcOptions,
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			)
+		} else {
+			grpcOptions = append(grpcOptions,
+				grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
+			)
 		}
 	}
 
 	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
 	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
 	if err != nil {
-		log.Fatal().Err(err).Msgf("Could not connect: %v", err)
+		log.Fatal().Caller().Err(err).Msgf("Could not connect: %v", err)
 	}
 
 	client := v1.NewHeadscaleServiceClient(conn)
@@ -442,21 +466,21 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 }
 
 func SuccessOutput(result interface{}, override string, outputFormat string) {
-	var j []byte
+	var jsonBytes []byte
 	var err error
 	switch outputFormat {
 	case "json":
-		j, err = json.MarshalIndent(result, "", "\t")
+		jsonBytes, err = json.MarshalIndent(result, "", "\t")
 		if err != nil {
 			log.Fatal().Err(err)
 		}
 	case "json-line":
-		j, err = json.Marshal(result)
+		jsonBytes, err = json.Marshal(result)
 		if err != nil {
 			log.Fatal().Err(err)
 		}
 	case "yaml":
-		j, err = yaml.Marshal(result)
+		jsonBytes, err = yaml.Marshal(result)
 		if err != nil {
 			log.Fatal().Err(err)
 		}
@@ -468,7 +492,7 @@ func SuccessOutput(result interface{}, override string, outputFormat string) {
 	}
 
 	//nolint
-	fmt.Println(string(j))
+	fmt.Println(string(jsonBytes))
 }
 
 func ErrorOutput(errResult error, override string, outputFormat string) {

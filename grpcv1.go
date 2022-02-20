@@ -349,6 +349,62 @@ func (api headscaleV1APIServer) EnableMachineRoutes(
 	}, nil
 }
 
+func (api headscaleV1APIServer) CreateApiKey(
+	ctx context.Context,
+	request *v1.CreateApiKeyRequest,
+) (*v1.CreateApiKeyResponse, error) {
+	var expiration time.Time
+	if request.GetExpiration() != nil {
+		expiration = request.GetExpiration().AsTime()
+	}
+
+	apiKey, _, err := api.h.CreateAPIKey(
+		&expiration,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.CreateApiKeyResponse{ApiKey: apiKey}, nil
+}
+
+func (api headscaleV1APIServer) ExpireApiKey(
+	ctx context.Context,
+	request *v1.ExpireApiKeyRequest,
+) (*v1.ExpireApiKeyResponse, error) {
+	var apiKey *APIKey
+	var err error
+
+	apiKey, err = api.h.GetAPIKey(request.Prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	err = api.h.ExpireAPIKey(apiKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.ExpireApiKeyResponse{}, nil
+}
+
+func (api headscaleV1APIServer) ListApiKeys(
+	ctx context.Context,
+	request *v1.ListApiKeysRequest,
+) (*v1.ListApiKeysResponse, error) {
+	apiKeys, err := api.h.ListAPIKeys()
+	if err != nil {
+		return nil, err
+	}
+
+	response := make([]*v1.ApiKey, len(apiKeys))
+	for index, key := range apiKeys {
+		response[index] = key.toProto()
+	}
+
+	return &v1.ListApiKeysResponse{ApiKeys: response}, nil
+}
+
 // The following service calls are for testing and debugging
 func (api headscaleV1APIServer) DebugCreateMachine(
 	ctx context.Context,

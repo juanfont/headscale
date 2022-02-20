@@ -44,7 +44,7 @@ func main() {
 	})
 
 	if err := cli.LoadConfig(""); err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Caller().Err(err)
 	}
 
 	machineOutput := cli.HasMachineOutputFlag()

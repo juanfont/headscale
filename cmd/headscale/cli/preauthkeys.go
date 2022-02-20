@@ -83,7 +83,7 @@ var listPreAuthKeys = &cobra.Command{
 		for _, key := range response.PreAuthKeys {
 			expiration := "-"
 			if key.GetExpiration() != nil {
-				expiration = key.Expiration.AsTime().Format("2006-01-02 15:04:05")
+				expiration = ColourTime(key.Expiration.AsTime())
 			}
 
 			var reusable string

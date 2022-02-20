@@ -10,6 +10,8 @@ please ask on [Discord](https://discord.gg/XcQxk2VHjx) instead of opening an Iss
 ### How-to
 
 - [Running headscale on Linux](running-headscale-linux.md)
+- [Control headscale remotely](remote-cli.md)
+- [Using a Windows client with headscale](windows-client.md)
 
 ### References
 

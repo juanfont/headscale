@@ -10,13 +10,19 @@ Join our [Discord](https://discord.gg/XcQxk2VHjx) server for a chat.
 
 ## Overview
 
-Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using all kinds of [NAT traversal sorcery](https://tailscale.com/blog/how-nat-traversal-works/).
+Tailscale is [a modern VPN](https://tailscale.com/) built on top of [Wireguard](https://www.wireguard.com/). It [works like an overlay network](https://tailscale.com/blog/how-tailscale-works/) between the computers of your networks - using [NAT traversal](https://tailscale.com/blog/how-nat-traversal-works/).
 
 Everything in Tailscale is Open Source, except the GUI clients for proprietary OS (Windows and macOS/iOS), and the 'coordination/control server'.
 
 The control server works as an exchange point of Wireguard public keys for the nodes in the Tailscale network. It also assigns the IP addresses of the clients, creates the boundaries between each user, enables sharing machines between users, and exposes the advertised routes of your nodes.
 
 headscale implements this coordination server.
+
+## Support
+
+If you like `headscale` and find it useful, there is sponsorship and donation buttons available in the repo.
+
+If you would like to sponsor features, bugs or prioritisation, reach out to one of the maintainers.
 
 ## Status
 
@@ -42,11 +48,11 @@ headscale implements this coordination server.
 | Linux   | Yes                                                                                                               |
 | OpenBSD | Yes                                                                                                               |
 | macOS   | Yes (see `/apple` on your headscale for more information)                                                         |
-| Windows | Yes                                                                                                               |
+| Windows | Yes [docs](./docs/windows-client.md)                                                                              |
 | Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
 | iOS     | Not yet                                                                                                           |
 
-## Roadmap 🤷
+## Roadmap
 
 Suggestions/PRs welcomed!
 
@@ -117,17 +123,17 @@ make build
 <table>
 <tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
-        <a href=https://github.com/juanfont>
-            <img src=https://avatars.githubusercontent.com/u/181059?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Juan Font/>
-            <br />
-            <sub style="font-size:14px"><b>Juan Font</b></sub>
-        </a>
-    </td>
-    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/kradalby>
             <img src=https://avatars.githubusercontent.com/u/98431?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Kristoffer Dalby/>
             <br />
             <sub style="font-size:14px"><b>Kristoffer Dalby</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/juanfont>
+            <img src=https://avatars.githubusercontent.com/u/181059?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Juan Font/>
+            <br />
+            <sub style="font-size:14px"><b>Juan Font</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -145,10 +151,26 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/ItalyPaleAle>
+            <img src=https://avatars.githubusercontent.com/u/43508?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Alessandro (Ale) Segala/>
+            <br />
+            <sub style="font-size:14px"><b>Alessandro (Ale) Segala</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/unreality>
             <img src=https://avatars.githubusercontent.com/u/352522?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=unreality/>
             <br />
             <sub style="font-size:14px"><b>unreality</b></sub>
+        </a>
+    </td>
+</tr>
+<tr>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/negbie>
+            <img src=https://avatars.githubusercontent.com/u/20154956?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Eugen Biegler/>
+            <br />
+            <sub style="font-size:14px"><b>Eugen Biegler</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -158,8 +180,27 @@ make build
             <sub style="font-size:14px"><b>Aaron Bieber</b></sub>
         </a>
     </td>
-</tr>
-<tr>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/fdelucchijr>
+            <img src=https://avatars.githubusercontent.com/u/69133647?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Fernando De Lucchi/>
+            <br />
+            <sub style="font-size:14px"><b>Fernando De Lucchi</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/hdhoang>
+            <img src=https://avatars.githubusercontent.com/u/12537?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Hoàng Đức Hiếu/>
+            <br />
+            <sub style="font-size:14px"><b>Hoàng Đức Hiếu</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/dragetd>
+            <img src=https://avatars.githubusercontent.com/u/3639577?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Michael G./>
+            <br />
+            <sub style="font-size:14px"><b>Michael G.</b></sub>
+        </a>
+    </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/ptman>
             <img src=https://avatars.githubusercontent.com/u/24669?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Paul Tötterman/>
@@ -167,6 +208,8 @@ make build
             <sub style="font-size:14px"><b>Paul Tötterman</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/cmars>
             <img src=https://avatars.githubusercontent.com/u/23741?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Casey Marshall/>
@@ -182,10 +225,47 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/majst01>
+            <img src=https://avatars.githubusercontent.com/u/410110?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Stefan Majer/>
+            <br />
+            <sub style="font-size:14px"><b>Stefan Majer</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/lachy-2849>
+            <img src=https://avatars.githubusercontent.com/u/98844035?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=lachy-2849/>
+            <br />
+            <sub style="font-size:14px"><b>lachy-2849</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/t56k>
             <img src=https://avatars.githubusercontent.com/u/12165422?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=thomas/>
             <br />
             <sub style="font-size:14px"><b>thomas</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/aberoham>
+            <img src=https://avatars.githubusercontent.com/u/586805?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Abraham Ingersoll/>
+            <br />
+            <sub style="font-size:14px"><b>Abraham Ingersoll</b></sub>
+        </a>
+    </td>
+</tr>
+<tr>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/restanrm>
+            <img src=https://avatars.githubusercontent.com/u/4344371?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Adrien Raffin-Caboisse/>
+            <br />
+            <sub style="font-size:14px"><b>Adrien Raffin-Caboisse</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/artemklevtsov>
+            <img src=https://avatars.githubusercontent.com/u/603798?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Artem Klevtsov/>
+            <br />
+            <sub style="font-size:14px"><b>Artem Klevtsov</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -196,14 +276,19 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/stensonb>
+            <img src=https://avatars.githubusercontent.com/u/933389?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Bryan Stenson/>
+            <br />
+            <sub style="font-size:14px"><b>Bryan Stenson</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/fkr>
             <img src=https://avatars.githubusercontent.com/u/51063?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Felix Kronlage-Dammers/>
             <br />
             <sub style="font-size:14px"><b>Felix Kronlage-Dammers</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/felixonmars>
             <img src=https://avatars.githubusercontent.com/u/1006477?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Felix Yan/>
@@ -211,11 +296,57 @@ make build
             <sub style="font-size:14px"><b>Felix Yan</b></sub>
         </a>
     </td>
+</tr>
+<tr>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/JJGadgets>
+            <img src=https://avatars.githubusercontent.com/u/5709019?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=JJGadgets/>
+            <br />
+            <sub style="font-size:14px"><b>JJGadgets</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/jimt>
+            <img src=https://avatars.githubusercontent.com/u/180326?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Jim Tittsler/>
+            <br />
+            <sub style="font-size:14px"><b>Jim Tittsler</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/piec>
+            <img src=https://avatars.githubusercontent.com/u/781471?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Pierre Carru/>
+            <br />
+            <sub style="font-size:14px"><b>Pierre Carru</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/rcursaru>
+            <img src=https://avatars.githubusercontent.com/u/16259641?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=rcursaru/>
+            <br />
+            <sub style="font-size:14px"><b>rcursaru</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/ryanfowler>
+            <img src=https://avatars.githubusercontent.com/u/2668821?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Ryan Fowler/>
+            <br />
+            <sub style="font-size:14px"><b>Ryan Fowler</b></sub>
+        </a>
+    </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/shaananc>
             <img src=https://avatars.githubusercontent.com/u/2287839?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Shaanan Cohney/>
             <br />
             <sub style="font-size:14px"><b>Shaanan Cohney</b></sub>
+        </a>
+    </td>
+</tr>
+<tr>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/m-tanner-dev0>
+            <img src=https://avatars.githubusercontent.com/u/97977342?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Tanner/>
+            <br />
+            <sub style="font-size:14px"><b>Tanner</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -246,13 +377,20 @@ make build
             <sub style="font-size:14px"><b>Tjerk Woudsma</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/zekker6>
             <img src=https://avatars.githubusercontent.com/u/1367798?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Zakhar Bessarab/>
             <br />
             <sub style="font-size:14px"><b>Zakhar Bessarab</b></sub>
+        </a>
+    </td>
+</tr>
+<tr>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/Bpazy>
+            <img src=https://avatars.githubusercontent.com/u/9838749?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=ZiYuan/>
+            <br />
+            <sub style="font-size:14px"><b>ZiYuan</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -263,12 +401,35 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/e-zk>
+            <img src=https://avatars.githubusercontent.com/u/58356365?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=e-zk/>
+            <br />
+            <sub style="font-size:14px"><b>e-zk</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/ignoramous>
             <img src=https://avatars.githubusercontent.com/u/852289?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=ignoramous/>
             <br />
             <sub style="font-size:14px"><b>ignoramous</b></sub>
         </a>
     </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/lion24>
+            <img src=https://avatars.githubusercontent.com/u/1382102?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=lion24/>
+            <br />
+            <sub style="font-size:14px"><b>lion24</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/Wakeful-Cloud>
+            <img src=https://avatars.githubusercontent.com/u/38930607?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Wakeful-Cloud/>
+            <br />
+            <sub style="font-size:14px"><b>Wakeful-Cloud</b></sub>
+        </a>
+    </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/xpzouying>
             <img src=https://avatars.githubusercontent.com/u/3946563?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=zy/>

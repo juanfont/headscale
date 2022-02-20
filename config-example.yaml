@@ -16,6 +16,19 @@ server_url: http://127.0.0.1:8080
 #
 listen_addr: 0.0.0.0:8080
 
+# Address to listen for gRPC.
+# gRPC is used for controlling a headscale server
+# remotely with the CLI
+# Note: Remote access _only_ works if you have
+# valid certificates.
+grpc_listen_addr: 0.0.0.0:50443
+
+# Allow the gRPC admin interface to run in INSECURE
+# mode. This is not recommended as the traffic will
+# be unencrypted. Only enable if you know what you
+# are doing.
+grpc_allow_insecure: false
+
 # Private key used encrypt the traffic between headscale
 # and Tailscale clients.
 # The private key file which will be

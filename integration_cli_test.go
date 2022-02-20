@@ -1193,3 +1193,148 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 		"route (route-machine) is not available on node",
 	)
 }
+
+func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
+	count := 5
+
+	keys := make([]string, count)
+
+	for i := 0; i < count; i++ {
+		apiResult, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"apikeys",
+				"create",
+				"--expiration",
+				"24h",
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+		assert.NotEmpty(s.T(), apiResult)
+
+		// var apiKey v1.ApiKey
+		// err = json.Unmarshal([]byte(apiResult), &apiKey)
+		// assert.Nil(s.T(), err)
+
+		keys[i] = apiResult
+	}
+
+	assert.Len(s.T(), keys, 5)
+
+	// Test list of keys
+	listResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"apikeys",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listedApiKeys []v1.ApiKey
+	err = json.Unmarshal([]byte(listResult), &listedApiKeys)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listedApiKeys, 5)
+
+	assert.Equal(s.T(), uint64(1), listedApiKeys[0].Id)
+	assert.Equal(s.T(), uint64(2), listedApiKeys[1].Id)
+	assert.Equal(s.T(), uint64(3), listedApiKeys[2].Id)
+	assert.Equal(s.T(), uint64(4), listedApiKeys[3].Id)
+	assert.Equal(s.T(), uint64(5), listedApiKeys[4].Id)
+
+	assert.NotEmpty(s.T(), listedApiKeys[0].Prefix)
+	assert.NotEmpty(s.T(), listedApiKeys[1].Prefix)
+	assert.NotEmpty(s.T(), listedApiKeys[2].Prefix)
+	assert.NotEmpty(s.T(), listedApiKeys[3].Prefix)
+	assert.NotEmpty(s.T(), listedApiKeys[4].Prefix)
+
+	assert.True(s.T(), listedApiKeys[0].Expiration.AsTime().After(time.Now()))
+	assert.True(s.T(), listedApiKeys[1].Expiration.AsTime().After(time.Now()))
+	assert.True(s.T(), listedApiKeys[2].Expiration.AsTime().After(time.Now()))
+	assert.True(s.T(), listedApiKeys[3].Expiration.AsTime().After(time.Now()))
+	assert.True(s.T(), listedApiKeys[4].Expiration.AsTime().After(time.Now()))
+
+	assert.True(
+		s.T(),
+		listedApiKeys[0].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+	assert.True(
+		s.T(),
+		listedApiKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+	assert.True(
+		s.T(),
+		listedApiKeys[2].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+	assert.True(
+		s.T(),
+		listedApiKeys[3].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+	assert.True(
+		s.T(),
+		listedApiKeys[4].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+	)
+
+	expiredPrefixes := make(map[string]bool)
+
+	// Expire three keys
+	for i := 0; i < 3; i++ {
+		_, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"apikeys",
+				"expire",
+				"--prefix",
+				listedApiKeys[i].Prefix,
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		expiredPrefixes[listedApiKeys[i].Prefix] = true
+	}
+
+	// Test list pre auth keys after expire
+	listAfterExpireResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"apikeys",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listedAfterExpireApiKeys []v1.ApiKey
+	err = json.Unmarshal([]byte(listAfterExpireResult), &listedAfterExpireApiKeys)
+	assert.Nil(s.T(), err)
+
+	for index := range listedAfterExpireApiKeys {
+		if _, ok := expiredPrefixes[listedAfterExpireApiKeys[index].Prefix]; ok {
+			// Expired
+			assert.True(
+				s.T(),
+				listedAfterExpireApiKeys[index].Expiration.AsTime().Before(time.Now()),
+			)
+		} else {
+			// Not expired
+			assert.False(
+				s.T(),
+				listedAfterExpireApiKeys[index].Expiration.AsTime().Before(time.Now()),
+			)
+		}
+	}
+}

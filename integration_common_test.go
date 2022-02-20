@@ -8,16 +8,17 @@ import (
 	"fmt"
 	"time"
 
-	"inet.af/netaddr"
-
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"inet.af/netaddr"
 )
 
 const DOCKER_EXECUTE_TIMEOUT = 10 * time.Second
 
-var IpPrefix4 = netaddr.MustParseIPPrefix("100.64.0.0/10")
-var IpPrefix6 = netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48")
+var (
+	IpPrefix4 = netaddr.MustParseIPPrefix("100.64.0.0/10")
+	IpPrefix6 = netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48")
+)
 
 type ExecuteCommandConfig struct {
 	timeout time.Duration

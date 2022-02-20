@@ -1,9 +1,7 @@
 package headscale
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -104,11 +102,6 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 		return result.Error
 	}
 
-	err = h.RequestMapUpdates(oldNamespace.ID)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -185,92 +178,6 @@ func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) 
 	h.db.Save(&machine)
 
 	return nil
-}
-
-// TODO(kradalby): Remove the need for this.
-// RequestMapUpdates signals the KV worker to update the maps for this namespace.
-func (h *Headscale) RequestMapUpdates(namespaceID uint) error {
-	namespace := Namespace{}
-	if err := h.db.First(&namespace, namespaceID).Error; err != nil {
-		return err
-	}
-
-	namespacesPendingUpdates, err := h.getValue("namespaces_pending_updates")
-	if err != nil || namespacesPendingUpdates == "" {
-		err = h.setValue(
-			"namespaces_pending_updates",
-			fmt.Sprintf(`["%s"]`, namespace.Name),
-		)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}
-	names := []string{}
-	err = json.Unmarshal([]byte(namespacesPendingUpdates), &names)
-	if err != nil {
-		err = h.setValue(
-			"namespaces_pending_updates",
-			fmt.Sprintf(`["%s"]`, namespace.Name),
-		)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	names = append(names, namespace.Name)
-	data, err := json.Marshal(names)
-	if err != nil {
-		log.Error().
-			Str("func", "RequestMapUpdates").
-			Err(err).
-			Msg("Could not marshal namespaces_pending_updates")
-
-		return err
-	}
-
-	return h.setValue("namespaces_pending_updates", string(data))
-}
-
-func (h *Headscale) checkForNamespacesPendingUpdates() {
-	namespacesPendingUpdates, err := h.getValue("namespaces_pending_updates")
-	if err != nil {
-		return
-	}
-	if namespacesPendingUpdates == "" {
-		return
-	}
-
-	namespaces := []string{}
-	err = json.Unmarshal([]byte(namespacesPendingUpdates), &namespaces)
-	if err != nil {
-		return
-	}
-	for _, namespace := range namespaces {
-		log.Trace().
-			Str("func", "RequestMapUpdates").
-			Str("machine", namespace).
-			Msg("Sending updates to nodes in namespacespace")
-		h.setLastStateChangeToNow(namespace)
-	}
-	newPendingUpdateValue, err := h.getValue("namespaces_pending_updates")
-	if err != nil {
-		return
-	}
-	if namespacesPendingUpdates == newPendingUpdateValue { // only clear when no changes, so we notified everybody
-		err = h.setValue("namespaces_pending_updates", "")
-		if err != nil {
-			log.Error().
-				Str("func", "checkForNamespacesPendingUpdates").
-				Err(err).
-				Msg("Could not save to KV")
-
-			return
-		}
-	}
 }
 
 func (n *Namespace) toUser() *tailcfg.User {
