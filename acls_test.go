@@ -687,7 +687,7 @@ func Test_listMachinesInNamespace(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := listMachinesInNamespace(test.args.machines, test.args.namespace); !reflect.DeepEqual(
+			if got := filterMachinesByNamespace(test.args.machines, test.args.namespace); !reflect.DeepEqual(
 				got,
 				test.want,
 			) {

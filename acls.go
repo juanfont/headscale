@@ -204,7 +204,7 @@ func expandAlias(
 			return ips, err
 		}
 		for _, n := range namespaces {
-			nodes := listMachinesInNamespace(machines, n)
+			nodes := filterMachinesByNamespace(machines, n)
 			for _, node := range nodes {
 				ips = append(ips, node.IPAddresses.ToStringSlice()...)
 			}
@@ -219,7 +219,7 @@ func expandAlias(
 			return ips, err
 		}
 		for _, namespace := range owners {
-			machines := listMachinesInNamespace(machines, namespace)
+			machines := filterMachinesByNamespace(machines, namespace)
 			for _, machine := range machines {
 				if len(machine.HostInfo) == 0 {
 					continue
@@ -240,7 +240,7 @@ func expandAlias(
 	}
 
 	// if alias is a namespace
-	nodes := listMachinesInNamespace(machines, alias)
+	nodes := filterMachinesByNamespace(machines, alias)
 	nodes, err := excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias)
 	if err != nil {
 		return ips, err
@@ -357,7 +357,7 @@ func expandPorts(portsStr string) (*[]tailcfg.PortRange, error) {
 	return &ports, nil
 }
 
-func listMachinesInNamespace(machines []Machine, namespace string) []Machine {
+func filterMachinesByNamespace(machines []Machine, namespace string) []Machine {
 	out := []Machine{}
 	for _, machine := range machines {
 		if machine.Namespace.Name == namespace {
