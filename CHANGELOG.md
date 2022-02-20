@@ -2,9 +2,24 @@
 
 **TBD (TBD):**
 
+**0.14.0 (2022-xx-xx):**
+
+**UPCOMING BREAKING**:
+From the **next** version (`0.15.0`), all machines will be able to communicate regardless of 
+if they are in the same namespace. This means that the behaviour currently limited to ACLs 
+will become default. From version `0.15.0`, all limitation of communications must be done 
+with ACLs.
+
+This is a part of aligning `headscale`'s behaviour with Tailscale's upstream behaviour.
+
 **BREAKING**:
 
-- ACLs have been rewritten and the behavior is different from before. It's now more aligned to tailscale's view of the feature. Namespaces are viewed as users and can communicate with each others. Tags should now work correctly and adding a host to Headscale should now reload the rules. The documentation have a [fictional example](docs/acls.md) that should cover some use cases of the ACLs features.
+- ACLs have been rewritten to align with the bevaviour Tailscale Control Panel provides. **NOTE:** This is only active if you use ACLs
+  - Namespaces are now treated as Users
+  - All machines can communicate with all machines by default
+  - Tags should now work correctly and adding a host to Headscale should now reload the rules. 
+  - The documentation have a [fictional example](docs/acls.md) that should cover some use cases of the ACLs features
+
 
 **0.13.0 (2022-xx-xx):**
 
