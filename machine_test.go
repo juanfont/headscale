@@ -219,10 +219,13 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	_, err = testMachine.GetHostInfo()
 	c.Assert(err, check.IsNil)
 
-	peersOfTestMachine, err := app.getFilteredByACLPeers(testMachine)
+	machines, err := app.ListAllMachines()
 	c.Assert(err, check.IsNil)
 
-	peersOfAdminMachine, err := app.getFilteredByACLPeers(adminMachine)
+	peersOfTestMachine, err := getFilteredByACLPeers(machines, app.aclRules, testMachine)
+	c.Assert(err, check.IsNil)
+
+	peersOfAdminMachine, err := getFilteredByACLPeers(machines, app.aclRules, adminMachine)
 	c.Assert(err, check.IsNil)
 
 	c.Log(peersOfTestMachine)

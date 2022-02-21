@@ -148,19 +148,13 @@ func matchSourceAndDestinationWithRule(ruleSources []string, ruleDestinations []
 }
 
 // getFilteredByACLPeerss should return the list of peers authorized to be accessed from machine.
-func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
+func getFilteredByACLPeers(machines []Machine, rules []tailcfg.FilterRule, machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
 		Msg("Finding peers filtered by ACLs")
 
-	machines, err := h.ListAllMachines()
-	if err != nil {
-		log.Error().Err(err).Msg("Error retrieving list of machines")
-		return Machines{}, err
-	}
 	peers := make(map[uint64]Machine)
-
 	// Aclfilter peers here. We are itering through machines in all namespaces and search through the computed aclRules
 	// for match between rule SrcIPs and DstPorts. If the rule is a match we allow the machine to be viewable.
 
@@ -182,7 +176,7 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 		if peer.ID == machine.ID {
 			continue
 		}
-		for _, rule := range h.aclRules {
+		for _, rule := range rules {
 			var dst []string
 			for _, d := range rule.DstPorts {
 				dst = append(dst, d.IP)
@@ -301,10 +295,17 @@ func (h *Headscale) getSharedTo(machine *Machine) (Machines, error) {
 func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 	var peers Machines
 	var err error
+
 	// If ACLs rules are defined, filter visible host list with the ACLs
 	// else use the classic namespace scope
 	if h.aclPolicy != nil {
-		peers, err = h.getFilteredByACLPeers(machine)
+		var machines []Machine
+		machines, err = h.ListAllMachines()
+		if err != nil {
+			log.Error().Err(err).Msg("Error retrieving list of machines")
+			return Machines{}, err
+		}
+		peers, err = getFilteredByACLPeers(machines, h.aclRules, machine)
 		if err != nil {
 			log.Error().
 				Caller().
