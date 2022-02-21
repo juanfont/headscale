@@ -85,12 +85,26 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("machine", machine.Name).
 		Msg("Found machine in database")
 
-	hostinfo, _ := json.Marshal(req.Hostinfo)
+	hostinfo, err := json.Marshal(req.Hostinfo)
+	if err != nil {
+		return
+	}
 	machine.Name = req.Hostinfo.Hostname
 	machine.HostInfo = datatypes.JSON(hostinfo)
 	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
 	now := time.Now().UTC()
 
+	// update ACLRules with peer informations (to update server tags if necessary)
+	if h.aclPolicy != nil {
+		err = h.UpdateACLRules()
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "handleAuthKey").
+				Str("machine", machine.Name).
+				Err(err)
+		}
+	}
 	// From Tailscale client:
 	//
 	// ReadOnly is whether the client just wants to fetch the MapResponse,
@@ -100,7 +114,17 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	// The intended use is for clients to discover the DERP map at start-up
 	// before their first real endpoint update.
 	if !req.ReadOnly {
-		endpoints, _ := json.Marshal(req.Endpoints)
+		endpoints, err := json.Marshal(req.Endpoints)
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "PollNetMapHandler").
+				Err(err).
+				Msg("Failed to mashal requested endpoints for the client")
+			ctx.String(http.StatusInternalServerError, ":(")
+
+			return
+		}
 		machine.Endpoints = datatypes.JSON(endpoints)
 		machine.LastSeen = &now
 	}

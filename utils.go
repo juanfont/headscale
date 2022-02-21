@@ -212,6 +212,16 @@ func (h *Headscale) getUsedIPs() ([]netaddr.IP, error) {
 	return ips, nil
 }
 
+func containsString(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+
+	return false
+}
+
 func containsIPs(ips []netaddr.IP, ip netaddr.IP) bool {
 	for _, v := range ips {
 		if v == ip {
