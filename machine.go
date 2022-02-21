@@ -197,8 +197,18 @@ func getFilteredByACLPeers(
 				machine.IPAddresses.ToStringSlice(),
 				peer.IPAddresses.ToStringSlice(),
 			) || // match source and destination
-				matchSourceAndDestinationWithRule(rule.SrcIPs, dst, machine.IPAddresses.ToStringSlice(), []string{"*"}) || // match source and all destination
-				matchSourceAndDestinationWithRule(rule.SrcIPs, dst, peer.IPAddresses.ToStringSlice(), machine.IPAddresses.ToStringSlice()) { // match return path
+				matchSourceAndDestinationWithRule(
+					rule.SrcIPs,
+					dst,
+					machine.IPAddresses.ToStringSlice(),
+					[]string{"*"},
+				) || // match source and all destination
+				matchSourceAndDestinationWithRule(
+					rule.SrcIPs,
+					dst,
+					peer.IPAddresses.ToStringSlice(),
+					machine.IPAddresses.ToStringSlice(),
+				) { // match return path
 				peers[peer.ID] = peer
 			}
 		}
