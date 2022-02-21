@@ -132,14 +132,19 @@ func (h *Headscale) ListAllMachines() ([]Machine, error) {
 	return machines, nil
 }
 
-func containsAddresses(inputs []string, addrs MachineAddresses) bool {
-	for _, addr := range addrs.ToStringSlice() {
+func containsAddresses(inputs []string, addrs []string) bool {
+	for _, addr := range addrs {
 		if containsString(inputs, addr) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// matchSourceAndDestinationWithRule
+func matchSourceAndDestinationWithRule(ruleSources []string, ruleDestinations []string, source []string, destination []string) bool {
+	return containsAddresses(ruleSources, source) && containsAddresses(ruleDestinations, destination)
 }
 
 // getFilteredByACLPeerss should return the list of peers authorized to be accessed from machine.
@@ -180,9 +185,9 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 			for _, d := range rule.DstPorts {
 				dst = append(dst, d.IP)
 			}
-			if (containsAddresses(rule.SrcIPs, machine.IPAddresses) && (containsAddresses(dst, peer.IPAddresses) || containsString(dst, "*"))) || (
-			// open return path
-			containsAddresses(rule.SrcIPs, peer.IPAddresses) && containsAddresses(dst, machine.IPAddresses)) {
+			if matchSourceAndDestinationWithRule(rule.SrcIPs, dst, machine.IPAddresses.ToStringSlice(), peer.IPAddresses.ToStringSlice()) || // match source and destination
+				matchSourceAndDestinationWithRule(rule.SrcIPs, dst, machine.IPAddresses.ToStringSlice(), []string{"*"}) || // match source and all destination
+				matchSourceAndDestinationWithRule(rule.SrcIPs, dst, peer.IPAddresses.ToStringSlice(), machine.IPAddresses.ToStringSlice()) { // match return path
 				peers[peer.ID] = peer
 			}
 		}
