@@ -14,6 +14,7 @@ dns_config:
 db_path: /tmp/integration_test_db.sqlite3
 private_key_path: private.key
 listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 127.0.0.1:8081
 server_url: http://headscale:8080
 
 derp:
