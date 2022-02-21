@@ -232,15 +232,6 @@ func (api headscaleV1APIServer) ListMachines(
 			return nil, err
 		}
 
-		sharedMachines, err := api.h.ListSharedMachinesInNamespace(
-			request.GetNamespace(),
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		machines = append(machines, sharedMachines...)
-
 		response := make([]*v1.Machine, len(machines))
 		for index, machine := range machines {
 			response[index] = machine.toProto()
