@@ -39,6 +39,14 @@ use namespaces (which are the equivalent to user/logins in Tailscale.com).
 
 Please check https://tailscale.com/kb/1018/acls/, and `./tests/acls/` in this repo for working examples.
 
+When using ACL's the Namespace borders are no longer applied. All machines
+whichever the Namespace have the ability to communicate with other hosts as
+long as the ACL's permits this exchange.
+
+The [ACLs](acls.md) document should help understand a fictional case of setting
+up ACLs in a small company. All concepts presented in this document could be
+applied outside of business oriented usage.
+
 ### Apple devices
 
 An endpoint with information on how to connect your Apple devices (currently macOS only) is available at `/apple` on your running instance.
