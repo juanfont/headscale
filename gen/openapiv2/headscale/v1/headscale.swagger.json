@@ -181,6 +181,20 @@
             }
           }
         },
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
         "tags": [
           "HeadscaleService"
         ]
@@ -331,80 +345,16 @@
             "required": true,
             "type": "string",
             "format": "uint64"
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      }
-    },
-    "/api/v1/machine/{machineId}/share/{namespace}": {
-      "post": {
-        "operationId": "HeadscaleService_ShareMachine",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ShareMachineResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "machineId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "uint64"
           },
           {
-            "name": "namespace",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      }
-    },
-    "/api/v1/machine/{machineId}/unshare/{namespace}": {
-      "post": {
-        "operationId": "HeadscaleService_UnshareMachine",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1UnshareMachineResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "machineId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "uint64"
-          },
-          {
-            "name": "namespace",
-            "in": "path",
-            "required": true,
-            "type": "string"
+            "name": "routes",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
           }
         ],
         "tags": [
@@ -1048,22 +998,6 @@
           "items": {
             "type": "string"
           }
-        }
-      }
-    },
-    "v1ShareMachineResponse": {
-      "type": "object",
-      "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
-        }
-      }
-    },
-    "v1UnshareMachineResponse": {
-      "type": "object",
-      "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
         }
       }
     }
