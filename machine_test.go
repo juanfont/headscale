@@ -225,11 +225,8 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	machines, err := app.ListAllMachines()
 	c.Assert(err, check.IsNil)
 
-	peersOfTestMachine, err := getFilteredByACLPeers(machines, app.aclRules, testMachine)
-	c.Assert(err, check.IsNil)
-
-	peersOfAdminMachine, err := getFilteredByACLPeers(machines, app.aclRules, adminMachine)
-	c.Assert(err, check.IsNil)
+	peersOfTestMachine := getFilteredByACLPeers(machines, app.aclRules, testMachine)
+	peersOfAdminMachine := getFilteredByACLPeers(machines, app.aclRules, adminMachine)
 
 	c.Log(peersOfTestMachine)
 	c.Assert(len(peersOfTestMachine), check.Equals, 4)
@@ -306,10 +303,9 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		machine  *Machine
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    Machines
-		wantErr bool
+		name string
+		args args
+		want Machines
 	}{
 		{
 			name: "all hosts can talk to each other",
@@ -332,7 +328,8 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
-					{SrcIPs: []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
+					{
+						SrcIPs: []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "*"},
 						},
@@ -356,7 +353,6 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					Namespace:   Namespace{Name: "mickael"},
 				},
 			},
-			wantErr: false,
 		},
 		{
 			name: "One host can talk to another, but not all hosts",
@@ -379,7 +375,8 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
-					{SrcIPs: []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
+					{
+						SrcIPs: []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.64.0.2"},
 						},
@@ -398,7 +395,6 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					Namespace:   Namespace{Name: "marc"},
 				},
 			},
-			wantErr: false,
 		},
 		{
 			name: "host cannot directly talk to destination, but return path is authorized",
@@ -421,7 +417,8 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
-					{SrcIPs: []string{"100.64.0.3"},
+					{
+						SrcIPs: []string{"100.64.0.3"},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.64.0.2"},
 						},
@@ -440,26 +437,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					Namespace:   Namespace{Name: "mickael"},
 				},
 			},
-			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getFilteredByACLPeers(tt.args.machines, tt.args.rules, tt.args.machine)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("getFilteredByACLPeers() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			got := getFilteredByACLPeers(tt.args.machines, tt.args.rules, tt.args.machine)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getFilteredByACLPeers() = %v, want %v", got, tt.want)
 			}
 		})
 	}
-}
-
-var getFilteredByACLPeersTestRules = []tailcfg.FilterRule{
-	{
-		SrcIPs:   []string{"100.64.0.1"},
-		DstPorts: []tailcfg.NetPortRange{{IP: "*"}},
-	},
 }

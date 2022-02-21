@@ -142,13 +142,13 @@ func containsAddresses(inputs []string, addrs []string) bool {
 	return false
 }
 
-// matchSourceAndDestinationWithRule
+// matchSourceAndDestinationWithRule.
 func matchSourceAndDestinationWithRule(ruleSources []string, ruleDestinations []string, source []string, destination []string) bool {
 	return containsAddresses(ruleSources, source) && containsAddresses(ruleDestinations, destination)
 }
 
 // getFilteredByACLPeerss should return the list of peers authorized to be accessed from machine.
-func getFilteredByACLPeers(machines []Machine, rules []tailcfg.FilterRule, machine *Machine) (Machines, error) {
+func getFilteredByACLPeers(machines []Machine, rules []tailcfg.FilterRule, machine *Machine) Machines {
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
@@ -203,7 +203,7 @@ func getFilteredByACLPeers(machines []Machine, rules []tailcfg.FilterRule, machi
 		Str("machine", machine.Name).
 		Msgf("Found some machines: %v", machines)
 
-	return authorizedPeers, nil
+	return authorizedPeers
 }
 
 func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
@@ -303,17 +303,10 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 		machines, err = h.ListAllMachines()
 		if err != nil {
 			log.Error().Err(err).Msg("Error retrieving list of machines")
-			return Machines{}, err
-		}
-		peers, err = getFilteredByACLPeers(machines, h.aclRules, machine)
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Cannot fetch peers")
 
 			return Machines{}, err
 		}
+		peers = getFilteredByACLPeers(machines, h.aclRules, machine)
 	} else {
 		direct, err := h.getDirectPeers(machine)
 		if err != nil {
