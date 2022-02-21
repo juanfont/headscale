@@ -171,7 +171,7 @@ func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
 		// Client cert is _required and verified_.
 		return tls.RequireAndVerifyClientCert, true
 	default:
-        // Return the default when an unknown value is supplied.
+		// Return the default when an unknown value is supplied.
 		return tls.RequireAnyClientCert, false
 	}
 }

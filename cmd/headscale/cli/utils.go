@@ -34,7 +34,6 @@ const (
 )
 
 func LoadConfig(path string) error {
-
 	viper.SetConfigName("config")
 	if path == "" {
 		viper.AddConfigPath("/etc/headscale/")
@@ -98,12 +97,12 @@ func LoadConfig(path string) error {
 	_, authModeValid := headscale.LookupTLSClientAuthMode(viper.GetString("tls_client_auth_mode"))
 
 	if !authModeValid {
-        errorText += fmt.Sprintf(
-            "Invalid tls_client_auth_mode supplied: %s. Accepted values: %s, %s, %s.",
-            viper.GetString("tls_client_auth_mode"),
-            headscale.DisabledClientAuth,
-            headscale.RelaxedClientAuth,
-            headscale.EnforcedClientAuth)
+		errorText += fmt.Sprintf(
+			"Invalid tls_client_auth_mode supplied: %s. Accepted values: %s, %s, %s.",
+			viper.GetString("tls_client_auth_mode"),
+			headscale.DisabledClientAuth,
+			headscale.RelaxedClientAuth,
+			headscale.EnforcedClientAuth)
 	}
 
 	if errorText != "" {
@@ -295,7 +294,9 @@ func getHeadscaleConfig() headscale.Config {
 			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
-    tlsClientAuthMode, _ := headscale.LookupTLSClientAuthMode(viper.GetString("tls_client_auth_mode"))
+	tlsClientAuthMode, _ := headscale.LookupTLSClientAuthMode(
+		viper.GetString("tls_client_auth_mode"),
+	)
 
 	return headscale.Config{
 		ServerURL:         viper.GetString("server_url"),
