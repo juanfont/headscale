@@ -312,19 +312,25 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			args: args{
 				machines: []Machine{ // list of all machines in the database
 					{
-						ID:          1,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
-						Namespace:   Namespace{Name: "joe"},
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
 					},
 					{
-						ID:          2,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
-						Namespace:   Namespace{Name: "marc"},
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
 					},
 					{
-						ID:          3,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")},
-						Namespace:   Namespace{Name: "mickael"},
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -359,19 +365,25 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			args: args{
 				machines: []Machine{ // list of all machines in the database
 					{
-						ID:          1,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
-						Namespace:   Namespace{Name: "joe"},
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
 					},
 					{
-						ID:          2,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
-						Namespace:   Namespace{Name: "marc"},
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
 					},
 					{
-						ID:          3,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")},
-						Namespace:   Namespace{Name: "mickael"},
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -401,19 +413,25 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			args: args{
 				machines: []Machine{ // list of all machines in the database
 					{
-						ID:          1,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
-						Namespace:   Namespace{Name: "joe"},
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
 					},
 					{
-						ID:          2,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
-						Namespace:   Namespace{Name: "marc"},
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
 					},
 					{
-						ID:          3,
-						IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")},
-						Namespace:   Namespace{Name: "mickael"},
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -441,7 +459,11 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getFilteredByACLPeers(tt.args.machines, tt.args.rules, tt.args.machine)
+			got := getFilteredByACLPeers(
+				tt.args.machines,
+				tt.args.rules,
+				tt.args.machine,
+			)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getFilteredByACLPeers() = %v, want %v", got, tt.want)
 			}

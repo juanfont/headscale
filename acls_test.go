@@ -919,8 +919,10 @@ func Test_expandAlias(t *testing.T) {
 					},
 				},
 				aclPolicy: ACLPolicy{
-					Groups:    Groups{"group:accountant": []string{"joe", "marc"}},
-					TagOwners: TagOwners{"tag:accountant-webserver": []string{"group:accountant"}},
+					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
+					TagOwners: TagOwners{
+						"tag:accountant-webserver": []string{"group:accountant"},
+					},
 				},
 			},
 			want:    []string{},
