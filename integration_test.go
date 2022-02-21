@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,6 +45,8 @@ type IntegrationTestSuite struct {
 	headscale dockertest.Resource
 
 	namespaces map[string]TestNamespace
+
+	joinWaitGroup sync.WaitGroup
 }
 
 func TestIntegrationTestSuite(t *testing.T) {
@@ -118,7 +121,7 @@ func (s *IntegrationTestSuite) saveLog(
 		return err
 	}
 
-	fmt.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
+	log.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
 
 	err = ioutil.WriteFile(
 		path.Join(basePath, resource.Container.Name+".stdout.log"),
@@ -139,6 +142,34 @@ func (s *IntegrationTestSuite) saveLog(
 	}
 
 	return nil
+}
+
+func (s *IntegrationTestSuite) Join(
+	endpoint, key, hostname string,
+	tailscale dockertest.Resource,
+) {
+	defer s.joinWaitGroup.Done()
+
+	command := []string{
+		"tailscale",
+		"up",
+		"-login-server",
+		endpoint,
+		"--authkey",
+		key,
+		"--hostname",
+		hostname,
+	}
+
+	log.Println("Join command:", command)
+	log.Printf("Running join command for %s\n", hostname)
+	_, err := ExecuteCommand(
+		&tailscale,
+		command,
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+	log.Printf("%s joined\n", hostname)
 }
 
 func (s *IntegrationTestSuite) tailscaleContainer(
@@ -178,7 +209,7 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 	if err != nil {
 		log.Fatalf("Could not start resource: %s", err)
 	}
-	fmt.Printf("Created %s container\n", hostname)
+	log.Printf("Created %s container\n", hostname)
 
 	return hostname, pts
 }
@@ -221,15 +252,15 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		Cmd:      []string{"headscale", "serve"},
 	}
 
-	fmt.Println("Creating headscale container")
+	log.Println("Creating headscale container")
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
 		log.Fatalf("Could not start resource: %s", err)
 	}
-	fmt.Println("Created headscale container")
+	log.Println("Created headscale container")
 
-	fmt.Println("Creating tailscale containers")
+	log.Println("Creating tailscale containers")
 	for namespace, scales := range s.namespaces {
 		for i := 0; i < scales.count; i++ {
 			version := tailscaleVersions[i%len(tailscaleVersions)]
@@ -243,7 +274,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		}
 	}
 
-	fmt.Println("Waiting for headscale to be ready")
+	log.Println("Waiting for headscale to be ready")
 	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8080/tcp"))
 
 	if err := s.pool.Retry(func() error {
@@ -266,19 +297,19 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		// https://github.com/stretchr/testify/issues/849
 		return // fmt.Errorf("Could not connect to headscale: %s", err)
 	}
-	fmt.Println("headscale container is ready")
+	log.Println("headscale container is ready")
 
 	for namespace, scales := range s.namespaces {
-		fmt.Printf("Creating headscale namespace: %s\n", namespace)
+		log.Printf("Creating headscale namespace: %s\n", namespace)
 		result, err := ExecuteCommand(
 			&s.headscale,
 			[]string{"headscale", "namespaces", "create", namespace},
 			[]string{},
 		)
-		fmt.Println("headscale create namespace result: ", result)
+		log.Println("headscale create namespace result: ", result)
 		assert.Nil(s.T(), err)
 
-		fmt.Printf("Creating pre auth key for %s\n", namespace)
+		log.Printf("Creating pre auth key for %s\n", namespace)
 		preAuthResult, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -304,33 +335,16 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 		headscaleEndpoint := "http://headscale:8080"
 
-		fmt.Printf(
+		log.Printf(
 			"Joining tailscale containers to headscale at %s\n",
 			headscaleEndpoint,
 		)
 		for hostname, tailscale := range scales.tailscales {
-			command := []string{
-				"tailscale",
-				"up",
-				"-login-server",
-				headscaleEndpoint,
-				"--authkey",
-				preAuthKey.Key,
-				"--hostname",
-				hostname,
-			}
-
-			fmt.Println("Join command:", command)
-			fmt.Printf("Running join command for %s\n", hostname)
-			result, err := ExecuteCommand(
-				&tailscale,
-				command,
-				[]string{},
-			)
-			fmt.Println("tailscale result: ", result)
-			assert.Nil(s.T(), err)
-			fmt.Printf("%s joined\n", hostname)
+			s.joinWaitGroup.Add(1)
+			go s.Join(headscaleEndpoint, preAuthKey.Key, hostname, tailscale)
 		}
+
+		s.joinWaitGroup.Wait()
 	}
 
 	// The nodes need a bit of time to get their updated maps from headscale
@@ -350,7 +364,7 @@ func (s *IntegrationTestSuite) HandleStats(
 
 func (s *IntegrationTestSuite) TestListNodes() {
 	for namespace, scales := range s.namespaces {
-		fmt.Println("Listing nodes")
+		log.Println("Listing nodes")
 		result, err := ExecuteCommand(
 			&s.headscale,
 			[]string{"headscale", "--namespace", namespace, "nodes", "list"},
@@ -358,7 +372,7 @@ func (s *IntegrationTestSuite) TestListNodes() {
 		)
 		assert.Nil(s.T(), err)
 
-		fmt.Printf("List nodes: \n%s\n", result)
+		log.Printf("List nodes: \n%s\n", result)
 
 		// Chck that the correct count of host is present in node list
 		lines := strings.Split(result, "\n")
@@ -381,7 +395,7 @@ func (s *IntegrationTestSuite) TestGetIpAddresses() {
 				s.T().Run(hostname, func(t *testing.T) {
 					assert.NotNil(t, ip)
 
-					fmt.Printf("IP for %s: %s\n", hostname, ip)
+					log.Printf("IP for %s: %s\n", hostname, ip)
 
 					// c.Assert(ip.Valid(), check.IsTrue)
 					assert.True(t, ip.Is4() || ip.Is6())
@@ -410,7 +424,7 @@ func (s *IntegrationTestSuite) TestGetIpAddresses() {
 //			s.T().Run(hostname, func(t *testing.T) {
 //				command := []string{"tailscale", "status", "--json"}
 //
-//				fmt.Printf("Getting status for %s\n", hostname)
+//				log.Printf("Getting status for %s\n", hostname)
 //				result, err := ExecuteCommand(
 //					&tailscale,
 //					command,
@@ -476,7 +490,7 @@ func (s *IntegrationTestSuite) TestPingAllPeersByAddress() {
 								ip.String(),
 							}
 
-							fmt.Printf(
+							log.Printf(
 								"Pinging from %s to %s (%s)\n",
 								hostname,
 								peername,
@@ -488,7 +502,7 @@ func (s *IntegrationTestSuite) TestPingAllPeersByAddress() {
 								[]string{},
 							)
 							assert.Nil(t, err)
-							fmt.Printf("Result for %s: %s\n", hostname, result)
+							log.Printf("Result for %s: %s\n", hostname, result)
 							assert.Contains(t, result, "pong")
 						})
 				}
@@ -534,7 +548,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 		)
 		assert.Nil(s.T(), err)
 
-		fmt.Println("Shared node with result: ", result)
+		log.Println("Shared node with result: ", result)
 	}
 
 	result, err = ExecuteCommand(
@@ -543,7 +557,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
-	fmt.Println("Nodelist after sharing", result)
+	log.Println("Nodelist after sharing", result)
 
 	// Chck that the correct count of host is present in node list
 	lines := strings.Split(result, "\n")
@@ -582,7 +596,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 							ip.String(),
 						}
 
-						fmt.Printf(
+						log.Printf(
 							"Pinging from %s to %s (%s)\n",
 							hostname,
 							peername,
@@ -594,7 +608,7 @@ func (s *IntegrationTestSuite) TestSharedNodes() {
 							[]string{},
 						)
 						assert.Nil(t, err)
-						fmt.Printf("Result for %s: %s\n", hostname, result)
+						log.Printf("Result for %s: %s\n", hostname, result)
 						assert.Contains(t, result, "pong")
 					})
 			}
@@ -616,6 +630,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 				}
 				time.Sleep(sleepInverval)
 			}
+
 			return
 		}
 
@@ -638,7 +653,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						fmt.Sprintf("%s:", peername),
 					}
 					retry(10, 1*time.Second, func() error {
-						fmt.Printf(
+						log.Printf(
 							"Sending file from %s to %s\n",
 							hostname,
 							peername,
@@ -677,7 +692,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						"ls",
 						fmt.Sprintf("/tmp/file_from_%s", peername),
 					}
-					fmt.Printf(
+					log.Printf(
 						"Checking file in %s (%s) from %s (%s)\n",
 						hostname,
 						ips[hostname],
@@ -690,7 +705,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						[]string{},
 					)
 					assert.Nil(t, err)
-					fmt.Printf("Result for %s: %s\n", peername, result)
+					log.Printf("Result for %s: %s\n", peername, result)
 					assert.Equal(
 						t,
 						fmt.Sprintf("/tmp/file_from_%s\n", peername),
@@ -720,7 +735,7 @@ func (s *IntegrationTestSuite) TestPingAllPeersByHostname() {
 						fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
 					}
 
-					fmt.Printf(
+					log.Printf(
 						"Pinging using hostname from %s to %s\n",
 						hostname,
 						peername,
@@ -731,7 +746,7 @@ func (s *IntegrationTestSuite) TestPingAllPeersByHostname() {
 						[]string{},
 					)
 					assert.Nil(t, err)
-					fmt.Printf("Result for %s: %s\n", hostname, result)
+					log.Printf("Result for %s: %s\n", hostname, result)
 					assert.Contains(t, result, "pong")
 				})
 			}
@@ -754,7 +769,7 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 						fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
 					}
 
-					fmt.Printf(
+					log.Printf(
 						"Resolving name %s from %s\n",
 						peername,
 						hostname,
@@ -765,7 +780,7 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 						[]string{},
 					)
 					assert.Nil(t, err)
-					fmt.Printf("Result for %s: %s\n", hostname, result)
+					log.Printf("Result for %s: %s\n", hostname, result)
 
 					for _, ip := range ips {
 						assert.Contains(t, result, ip.String())
