@@ -59,7 +59,7 @@ func (s *Suite) TestBasicRule(c *check.C) {
 	c.Assert(rules, check.NotNil)
 }
 
-# TODO(kradalby): Make tests values safe, independent and descriptive.
+// TODO(kradalby): Make tests values safe, independent and descriptive.
 func (s *Suite) TestInvalidAction(c *check.C) {
 	app.aclPolicy = &ACLPolicy{
 		ACLs: []ACL{
