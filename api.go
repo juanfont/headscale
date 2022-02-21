@@ -261,7 +261,16 @@ func (h *Headscale) getMapResponse(
 
 	var respBody []byte
 	if req.Compress == "zstd" {
-		src, _ := json.Marshal(resp)
+		src, err := json.Marshal(resp)
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "getMapResponse").
+				Err(err).
+				Msg("Failed to marshal response for the client")
+
+			return nil, err
+		}
 
 		encoder, _ := zstd.NewWriter(nil)
 		srcCompressed := encoder.EncodeAll(src, nil)
@@ -290,7 +299,16 @@ func (h *Headscale) getMapKeepAliveResponse(
 	var respBody []byte
 	var err error
 	if mapRequest.Compress == "zstd" {
-		src, _ := json.Marshal(mapResponse)
+		src, err := json.Marshal(mapResponse)
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "getMapKeepAliveResponse").
+				Err(err).
+				Msg("Failed to marshal keepalive response for the client")
+
+			return nil, err
+		}
 		encoder, _ := zstd.NewWriter(nil)
 		srcCompressed := encoder.EncodeAll(src, nil)
 		respBody = h.privateKey.SealTo(machineKey, srcCompressed)
