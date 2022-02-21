@@ -20,8 +20,7 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
   - Tags should now work correctly and adding a host to Headscale should now reload the rules. 
   - The documentation have a [fictional example](docs/acls.md) that should cover some use cases of the ACLs features
 
-
-**0.13.0 (2022-xx-xx):**
+**0.13.0 (2022-02-18):**
 
 **Features**:
 
