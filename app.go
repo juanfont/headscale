@@ -631,21 +631,21 @@ func (h *Headscale) Serve() error {
 
 	promRouter := h.createPrometheusRouter()
 
-	promHttpServer := &http.Server{
+	promHTTPServer := &http.Server{
 		Addr:         h.cfg.MetricsAddr,
 		Handler:      promRouter,
 		ReadTimeout:  HTTPReadTimeout,
 		WriteTimeout: 0,
 	}
 
-	var promHttpListener net.Listener
-	promHttpListener, err = net.Listen("tcp", h.cfg.MetricsAddr)
+	var promHTTPListener net.Listener
+	promHTTPListener, err = net.Listen("tcp", h.cfg.MetricsAddr)
 
 	if err != nil {
 		return fmt.Errorf("failed to bind to TCP address: %w", err)
 	}
 
-	errorGroup.Go(func() error { return promHttpServer.Serve(promHttpListener) })
+	errorGroup.Go(func() error { return promHTTPServer.Serve(promHTTPListener) })
 
 	log.Info().
 		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
