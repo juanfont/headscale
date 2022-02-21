@@ -154,10 +154,9 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 		Str("machine", machine.Name).
 		Msg("Finding peers filtered by ACLs")
 
-	machines := Machines{}
-	if err := h.db.Preload("Namespace").Where("machine_key <> ? AND registered",
-		machine.MachineKey).Find(&machines).Error; err != nil {
-		log.Error().Err(err).Msg("Error accessing db")
+	machines, err := h.ListAllMachines()
+	if err != nil {
+		log.Error().Err(err).Msg("Error retrieving list of machines")
 		return Machines{}, err
 	}
 	peers := make(map[uint64]Machine)
@@ -180,6 +179,9 @@ func (h *Headscale) getFilteredByACLPeers(machine *Machine) (Machines, error) {
 	// how to talk to node A and then add the peering resource.
 
 	for _, peer := range machines {
+		if peer.ID == machine.ID {
+			continue
+		}
 		for _, rule := range h.aclRules {
 			var dst []string
 			for _, d := range rule.DstPorts {
