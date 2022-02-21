@@ -262,50 +262,6 @@ func (api headscaleV1APIServer) ListMachines(
 	return &v1.ListMachinesResponse{Machines: response}, nil
 }
 
-func (api headscaleV1APIServer) ShareMachine(
-	ctx context.Context,
-	request *v1.ShareMachineRequest,
-) (*v1.ShareMachineResponse, error) {
-	destinationNamespace, err := api.h.GetNamespace(request.GetNamespace())
-	if err != nil {
-		return nil, err
-	}
-
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
-	if err != nil {
-		return nil, err
-	}
-
-	err = api.h.AddSharedMachineToNamespace(machine, destinationNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	return &v1.ShareMachineResponse{Machine: machine.toProto()}, nil
-}
-
-func (api headscaleV1APIServer) UnshareMachine(
-	ctx context.Context,
-	request *v1.UnshareMachineRequest,
-) (*v1.UnshareMachineResponse, error) {
-	destinationNamespace, err := api.h.GetNamespace(request.GetNamespace())
-	if err != nil {
-		return nil, err
-	}
-
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
-	if err != nil {
-		return nil, err
-	}
-
-	err = api.h.RemoveSharedMachineFromNamespace(machine, destinationNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	return &v1.UnshareMachineResponse{Machine: machine.toProto()}, nil
-}
-
 func (api headscaleV1APIServer) GetMachineRoute(
 	ctx context.Context,
 	request *v1.GetMachineRouteRequest,
