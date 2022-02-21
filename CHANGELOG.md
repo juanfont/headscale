@@ -2,6 +2,8 @@
 
 **TBD (TBD):**
 
+- Add support for configurable mTLS [docs](docs/tls.md#configuring-mutual-tls-authentication-mtls)
+
 **0.13.0 (2022-02-18):**
 
 **Features**:
