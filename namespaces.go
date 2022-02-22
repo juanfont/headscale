@@ -2,7 +2,10 @@ package headscale
 
 import (
 	"errors"
+	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -16,7 +19,10 @@ const (
 	errNamespaceExists          = Error("Namespace already exists")
 	errNamespaceNotFound        = Error("Namespace not found")
 	errNamespaceNotEmptyOfNodes = Error("Namespace not empty: node(s) found")
+	errInvalidNamespaceName     = Error("Invalid namespace name")
 )
+
+var normalizeNamespaceRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 // Namespace is the way Headscale implements the concept of users in Tailscale
 //
@@ -30,7 +36,12 @@ type Namespace struct {
 // CreateNamespace creates a new Namespace. Returns error if could not be created
 // or another namespace already exists.
 func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
+	var err error
 	namespace := Namespace{}
+	name, err = NormalizeNamespaceName(name)
+	if err != nil {
+		return nil, err
+	}
 	if err := h.db.Where("name = ?", name).First(&namespace).Error; err == nil {
 		return nil, errNamespaceExists
 	}
@@ -50,6 +61,10 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 // DestroyNamespace destroys a Namespace. Returns error if the Namespace does
 // not exist or if there are machines associated with it.
 func (h *Headscale) DestroyNamespace(name string) error {
+	name, err := NormalizeNamespaceName(name)
+	if err != nil {
+		return err
+	}
 	namespace, err := h.GetNamespace(name)
 	if err != nil {
 		return errNamespaceNotFound
@@ -84,7 +99,12 @@ func (h *Headscale) DestroyNamespace(name string) error {
 // RenameNamespace renames a Namespace. Returns error if the Namespace does
 // not exist or if another Namespace exists with the new name.
 func (h *Headscale) RenameNamespace(oldName, newName string) error {
+	var err error
 	oldNamespace, err := h.GetNamespace(oldName)
+	if err != nil {
+		return err
+	}
+	newName, err = NormalizeNamespaceName(newName)
 	if err != nil {
 		return err
 	}
@@ -108,6 +128,10 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 // GetNamespace fetches a namespace by name.
 func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 	namespace := Namespace{}
+	name, err := NormalizeNamespaceName(name)
+	if err != nil {
+		return nil, err
+	}
 	if result := h.db.First(&namespace, "name = ?", name); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
@@ -130,6 +154,10 @@ func (h *Headscale) ListNamespaces() ([]Namespace, error) {
 
 // ListMachinesInNamespace gets all the nodes in a given namespace.
 func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
+	name, err := NormalizeNamespaceName(name)
+	if err != nil {
+		return nil, err
+	}
 	namespace, err := h.GetNamespace(name)
 	if err != nil {
 		return nil, err
@@ -145,6 +173,10 @@ func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
 
 // ListSharedMachinesInNamespace returns all the machines that are shared to the specified namespace.
 func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error) {
+	name, err := NormalizeNamespaceName(name)
+	if err != nil {
+		return nil, err
+	}
 	namespace, err := h.GetNamespace(name)
 	if err != nil {
 		return nil, err
@@ -170,6 +202,10 @@ func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error
 
 // SetMachineNamespace assigns a Machine to a namespace.
 func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) error {
+	namespaceName, err := NormalizeNamespaceName(namespaceName)
+	if err != nil {
+		return err
+	}
 	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return err
@@ -232,4 +268,25 @@ func (n *Namespace) toProto() *v1.Namespace {
 		Name:      n.Name,
 		CreatedAt: timestamppb.New(n.CreatedAt),
 	}
+}
+
+// NormalizeNamespaceName will replace forbidden chars in namespace
+// it can also return an error if the namespace doesn't respect RFC 952 and 1123
+func NormalizeNamespaceName(name string) (string, error) {
+	name = strings.ToLower(name)
+	name = strings.ReplaceAll(name, "@", ".")
+	name = strings.ReplaceAll(name, "'", "")
+	name = normalizeNamespaceRegex.ReplaceAllString(name, "-")
+
+	for _, elt := range strings.Split(name, ".") {
+		if len(elt) > 63 {
+			return "", fmt.Errorf(
+				"label %v is more than 63 chars: %w",
+				elt,
+				errInvalidNamespaceName,
+			)
+		}
+	}
+
+	return name, nil
 }

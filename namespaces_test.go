@@ -1,6 +1,8 @@
 package headscale
 
 import (
+	"testing"
+
 	"github.com/rs/zerolog/log"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
@@ -238,4 +240,63 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		}
 	}
 	c.Assert(found, check.Equals, true)
+}
+
+func TestNormalizeNamespaceName(t *testing.T) {
+	type args struct {
+		name string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "normalize simple name",
+			args:    args{name: "normalize-simple.name"},
+			want:    "normalize-simple.name",
+			wantErr: false,
+		},
+		{
+			name:    "normalize an email",
+			args:    args{name: "foo.bar@example.com"},
+			want:    "foo.bar.example.com",
+			wantErr: false,
+		},
+		{
+			name:    "normalize complex email",
+			args:    args{name: "foo.bar+complex-email@example.com"},
+			want:    "foo.bar-complex-email.example.com",
+			wantErr: false,
+		},
+		{
+			name:    "namespace name with space",
+			args:    args{name: "name space"},
+			want:    "name-space",
+			wantErr: false,
+		},
+		{
+			name:    "namespace with quote",
+			args:    args{name: "Jamie's iPhone 5"},
+			want:    "jamies-iphone-5",
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeNamespaceName(tt.args.name)
+			if (err != nil) != tt.wantErr {
+				t.Errorf(
+					"NormalizeNamespaceName() error = %v, wantErr %v",
+					err,
+					tt.wantErr,
+				)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("NormalizeNamespaceName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

@@ -724,11 +724,7 @@ func (machine Machine) toNode(
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
 			machine.Name,
-			strings.ReplaceAll(
-				machine.Namespace.Name,
-				"@",
-				".",
-			), // Replace @ with . for valid domain for machine
+			machine.Namespace.Name,
 			baseDomain,
 		)
 	} else {
