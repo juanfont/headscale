@@ -85,6 +85,9 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   log,
 		})
+
+		sqlDB, _ := db.DB()
+		sqlDB.SetMaxOpenConns(1)
 	case Postgres:
 		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
