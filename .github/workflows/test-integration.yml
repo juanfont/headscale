@@ -31,6 +31,7 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: nick-invision/retry@v2
         with:
+          timeout_minutes: 100
           max_attempts: 5
           retry_on: error
           command: go test -tags integration -timeout 20m
