@@ -288,6 +288,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			http.StatusInternalServerError,
 			"couldn't normalize email",
 		)
+
 		return
 	}
 	// register the machine if it's new
@@ -365,6 +366,4 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 	}
 
 	ctx.Data(http.StatusOK, "text/html; charset=utf-8", content.Bytes())
-
-	return
 }

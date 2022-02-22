@@ -292,6 +292,7 @@ func TestNormalizeNamespaceName(t *testing.T) {
 					err,
 					tt.wantErr,
 				)
+
 				return
 			}
 			if got != tt.want {

@@ -22,6 +22,11 @@ const (
 	errInvalidNamespaceName     = Error("Invalid namespace name")
 )
 
+const (
+	// value related to RFC 1123 and 952.
+	labelHostnameLength = 63
+)
+
 var normalizeNamespaceRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 // Namespace is the way Headscale implements the concept of users in Tailscale
@@ -271,7 +276,7 @@ func (n *Namespace) toProto() *v1.Namespace {
 }
 
 // NormalizeNamespaceName will replace forbidden chars in namespace
-// it can also return an error if the namespace doesn't respect RFC 952 and 1123
+// it can also return an error if the namespace doesn't respect RFC 952 and 1123.
 func NormalizeNamespaceName(name string) (string, error) {
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, "@", ".")
@@ -279,7 +284,7 @@ func NormalizeNamespaceName(name string) (string, error) {
 	name = normalizeNamespaceRegex.ReplaceAllString(name, "-")
 
 	for _, elt := range strings.Split(name, ".") {
-		if len(elt) > 63 {
+		if len(elt) > labelHostnameLength {
 			return "", fmt.Errorf(
 				"label %v is more than 63 chars: %w",
 				elt,
