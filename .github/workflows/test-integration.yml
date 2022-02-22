@@ -29,4 +29,8 @@ jobs:
 
       - name: Run Integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: go test -tags integration -timeout 30m
+        uses: nick-invision/retry@v2
+        with:
+          max_attempts: 5
+          retry_on: error
+          command: go test -tags integration -timeout 20m
