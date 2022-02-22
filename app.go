@@ -110,7 +110,6 @@ type OIDCConfig struct {
 	Issuer       string
 	ClientID     string
 	ClientSecret string
-	MatchMap     map[string]string
 }
 
 type DERPConfig struct {

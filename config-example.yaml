@@ -180,7 +180,3 @@ unix_socket_permission: "0770"
 #   client_id: "your-oidc-client-id"
 #   client_secret: "your-oidc-client-secret"
 #
-#   # Domain map is used to map incomming users (by their email) to
-#   # a namespace. The key can be a string, or regex.
-#   domain_map:
-#     ".*": default-namespace

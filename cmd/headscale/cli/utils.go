@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -356,8 +355,6 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 	cfg := getHeadscaleConfig()
 
-	cfg.OIDC.MatchMap = loadOIDCMatchMap()
-
 	app, err := headscale.NewHeadscale(cfg)
 	if err != nil {
 		return nil, err
@@ -512,18 +509,6 @@ func (t tokenAuth) GetRequestMetadata(
 
 func (tokenAuth) RequireTransportSecurity() bool {
 	return true
-}
-
-// loadOIDCMatchMap is a wrapper around viper to verifies that the keys in
-// the match map is valid regex strings.
-func loadOIDCMatchMap() map[string]string {
-	strMap := viper.GetStringMapString("oidc.domain_map")
-
-	for oidcMatcher := range strMap {
-		_ = regexp.MustCompile(oidcMatcher)
-	}
-
-	return strMap
 }
 
 func GetFileMode(key string) fs.FileMode {
