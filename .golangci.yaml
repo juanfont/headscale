@@ -48,6 +48,7 @@ linters-settings:
       - ip
       - ok
       - c
+      - tt
 
   gocritic:
     disabled-checks:
