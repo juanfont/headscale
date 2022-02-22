@@ -28,6 +28,7 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
 - Add API Key support
   - Enable remote control of `headscale` via CLI [docs](docs/remote-cli.md)
   - Enable HTTP API (beta, subject to change)
+- OIDC login will map user to an associated namespace.
 
 **Changes**:
 
@@ -35,6 +36,7 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
 - Upgrade `tailscale` (1.20.4) and other dependencies to latest [#314](https://github.com/juanfont/headscale/pull/314)
 - fix swapped machine<->namespace labels in `/metrics` [#312](https://github.com/juanfont/headscale/pull/312)
 - remove key-value based update mechanism for namespace changes [#316](https://github.com/juanfont/headscale/pull/316)
+- removal of the `oidc.domain_map` configuration parameter
 
 **0.12.4 (2022-01-29):**
 
