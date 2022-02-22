@@ -47,6 +47,7 @@ If you would like to sponsor features, bugs or prioritisation, reach out to one 
 | ------- | ----------------------------------------------------------------------------------------------------------------- |
 | Linux   | Yes                                                                                                               |
 | OpenBSD | Yes                                                                                                               |
+| FreeBSD | Yes                                                                                                               |
 | macOS   | Yes (see `/apple` on your headscale for more information)                                                         |
 | Windows | Yes [docs](./docs/windows-client.md)                                                                              |
 | Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
