@@ -107,9 +107,10 @@ type Config struct {
 }
 
 type OIDCConfig struct {
-	Issuer       string
-	ClientID     string
-	ClientSecret string
+	Issuer           string
+	ClientID         string
+	ClientSecret     string
+	StripEmaildomain bool
 }
 
 type DERPConfig struct {

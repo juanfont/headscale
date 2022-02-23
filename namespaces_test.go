@@ -244,7 +244,8 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 
 func TestNormalizeNamespaceName(t *testing.T) {
 	type args struct {
-		name string
+		name             string
+		stripEmailDomain bool
 	}
 	tests := []struct {
 		name    string
@@ -253,39 +254,63 @@ func TestNormalizeNamespaceName(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "normalize simple name",
-			args:    args{name: "normalize-simple.name"},
+			name: "normalize simple name",
+			args: args{
+				name:             "normalize-simple.name",
+				stripEmailDomain: false,
+			},
 			want:    "normalize-simple.name",
 			wantErr: false,
 		},
 		{
-			name:    "normalize an email",
-			args:    args{name: "foo.bar@example.com"},
+			name: "normalize an email",
+			args: args{
+				name:             "foo.bar@example.com",
+				stripEmailDomain: false,
+			},
 			want:    "foo.bar.example.com",
 			wantErr: false,
 		},
 		{
-			name:    "normalize complex email",
-			args:    args{name: "foo.bar+complex-email@example.com"},
+			name: "normalize an email domain should be removed",
+			args: args{
+				name:             "foo.bar@example.com",
+				stripEmailDomain: true,
+			},
+			want:    "foo.bar",
+			wantErr: false,
+		},
+		{
+			name: "normalize complex email",
+			args: args{
+				name:             "foo.bar+complex-email@example.com",
+				stripEmailDomain: false,
+			},
 			want:    "foo.bar-complex-email.example.com",
 			wantErr: false,
 		},
 		{
-			name:    "namespace name with space",
-			args:    args{name: "name space"},
+			name: "namespace name with space",
+			args: args{
+				name:             "name space",
+				stripEmailDomain: false,
+			},
 			want:    "name-space",
 			wantErr: false,
 		},
 		{
-			name:    "namespace with quote",
-			args:    args{name: "Jamie's iPhone 5"},
+			name: "namespace with quote",
+			args: args{
+				name:             "Jamie's iPhone 5",
+				stripEmailDomain: false,
+			},
 			want:    "jamies-iphone-5",
 			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NormalizeNamespaceName(tt.args.name)
+			got, err := NormalizeNamespaceName(tt.args.name, tt.args.stripEmailDomain)
 			if (err != nil) != tt.wantErr {
 				t.Errorf(
 					"NormalizeNamespaceName() error = %v, wantErr %v",

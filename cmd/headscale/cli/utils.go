@@ -63,6 +63,8 @@ func LoadConfig(path string) error {
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
 
+	viper.SetDefault("oidc.strip_email_domain", true)
+
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
@@ -323,9 +325,10 @@ func getHeadscaleConfig() headscale.Config {
 		UnixSocketPermission: GetFileMode("unix_socket_permission"),
 
 		OIDC: headscale.OIDCConfig{
-			Issuer:       viper.GetString("oidc.issuer"),
-			ClientID:     viper.GetString("oidc.client_id"),
-			ClientSecret: viper.GetString("oidc.client_secret"),
+			Issuer:           viper.GetString("oidc.issuer"),
+			ClientID:         viper.GetString("oidc.client_id"),
+			ClientSecret:     viper.GetString("oidc.client_secret"),
+			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 		},
 
 		CLI: headscale.CLIConfig{

@@ -268,10 +268,15 @@ func (n *Namespace) toProto() *v1.Namespace {
 
 // NormalizeNamespaceName will replace forbidden chars in namespace
 // it can also return an error if the namespace doesn't respect RFC 952 and 1123.
-func NormalizeNamespaceName(name string) (string, error) {
+func NormalizeNamespaceName(name string, stripEmailDomain bool) (string, error) {
 	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, "@", ".")
 	name = strings.ReplaceAll(name, "'", "")
+	if stripEmailDomain {
+		idx := strings.Index(name, "@")
+		name = name[:idx]
+	} else {
+		name = strings.ReplaceAll(name, "@", ".")
+	}
 	name = invalidCharsInNamespaceRegex.ReplaceAllString(name, "-")
 
 	for _, elt := range strings.Split(name, ".") {

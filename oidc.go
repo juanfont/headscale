@@ -281,7 +281,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 	now := time.Now().UTC()
 
-	namespaceName, err := NormalizeNamespaceName(claims.Email)
+	namespaceName, err := NormalizeNamespaceName(claims.Email, h.cfg.OIDC.StripEmaildomain)
 	if err != nil {
 		log.Error().Err(err).Caller().Msgf("couldn't normalize email")
 		ctx.String(
