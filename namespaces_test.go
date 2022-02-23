@@ -83,7 +83,7 @@ func (s *Suite) TestRenameNamespace(c *check.C) {
 	_, err = app.GetNamespace("test-renamed")
 	c.Assert(err, check.IsNil)
 
-	err = app.RenameNamespace("test_does_not_exit", "test")
+	err = app.RenameNamespace("test-does-not-exit", "test")
 	c.Assert(err, check.Equals, errNamespaceNotFound)
 
 	namespaceTest2, err := app.CreateNamespace("test2")
