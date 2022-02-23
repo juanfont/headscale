@@ -20,7 +20,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	ips, err := app.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
-	namespace, err := app.CreateNamespace("test_ip")
+	namespace, err := app.CreateNamespace("test-ip")
 	c.Assert(err, check.IsNil)
 
 	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
@@ -142,7 +142,7 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 	c.Assert(len(ips), check.Equals, 1)
 	c.Assert(ips[0].String(), check.Equals, expected.String())
 
-	namespace, err := app.CreateNamespace("test_ip")
+	namespace, err := app.CreateNamespace("test-ip")
 	c.Assert(err, check.IsNil)
 
 	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
