@@ -172,21 +172,6 @@ func getFilteredByACLPeers(
 	peers := make(map[uint64]Machine)
 	// Aclfilter peers here. We are itering through machines in all namespaces and search through the computed aclRules
 	// for match between rule SrcIPs and DstPorts. If the rule is a match we allow the machine to be viewable.
-
-	// FIXME: On official control plane if a rule allow user A to talk to user B but NO rule allows user B to talk to
-	// user A. The behaviour is the following
-	//
-	// On official tailscale control plane:
-	//   on first `tailscale status`` on node A we can see node B. The `tailscale status` command on node B doesn't show node A
-	//   We can successfully establish a communication from A to B. When it's done, if we run the `tailscale status` command
-	//   on node B again we can now see node A. It's not possible to establish a communication from node B to node A.
-	// On this implementation of the feature
-	//   on any `tailscale status` command on node A we can see node B. The `tailscale status` command on node B DOES show A.
-	//
-	// I couldn't find a way to not clutter the output of `tailscale status` with all nodes that we could be talking to.
-	// In order to do this we would need to be able to identify that node A want to talk to node B but that Node B doesn't know
-	// how to talk to node A and then add the peering resource.
-
 	for _, peer := range machines {
 		if peer.ID == machine.ID {
 			continue
