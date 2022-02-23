@@ -25,6 +25,11 @@ const (
 	errMachineAlreadyRegistered   = Error("machine already registered")
 	errMachineRouteIsNotAvailable = Error("route is not available on machine")
 	errMachineAddressesInvalid    = Error("failed to parse machine addresses")
+	errHostnameTooLong            = Error("Hostname too long")
+)
+
+const (
+	maxHostnameLength = 255
 )
 
 // Machine is a Headscale client.
@@ -727,6 +732,13 @@ func (machine Machine) toNode(
 			machine.Namespace.Name,
 			baseDomain,
 		)
+		if len(hostname) > maxHostnameLength {
+			return nil, fmt.Errorf(
+				"hostname %q is too long it cannot except 255 ASCII chars: %w",
+				hostname,
+				errHostnameTooLong,
+			)
+		}
 	} else {
 		hostname = machine.Name
 	}
