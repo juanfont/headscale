@@ -41,12 +41,11 @@ type Namespace struct {
 // CreateNamespace creates a new Namespace. Returns error if could not be created
 // or another namespace already exists.
 func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
-	var err error
-	namespace := Namespace{}
-	name, err = NormalizeNamespaceName(name)
+	err := CheckNamespaceName(name)
 	if err != nil {
 		return nil, err
 	}
+	namespace := Namespace{}
 	if err := h.db.Where("name = ?", name).First(&namespace).Error; err == nil {
 		return nil, errNamespaceExists
 	}
@@ -66,7 +65,7 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 // DestroyNamespace destroys a Namespace. Returns error if the Namespace does
 // not exist or if there are machines associated with it.
 func (h *Headscale) DestroyNamespace(name string) error {
-	name, err := NormalizeNamespaceName(name)
+	err := CheckNamespaceName(name)
 	if err != nil {
 		return err
 	}
@@ -109,7 +108,7 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	newName, err = NormalizeNamespaceName(newName)
+	err = CheckNamespaceName(newName)
 	if err != nil {
 		return err
 	}
@@ -132,11 +131,11 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 
 // GetNamespace fetches a namespace by name.
 func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
-	namespace := Namespace{}
-	name, err := NormalizeNamespaceName(name)
+	err := CheckNamespaceName(name)
 	if err != nil {
 		return nil, err
 	}
+	namespace := Namespace{}
 	if result := h.db.First(&namespace, "name = ?", name); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
@@ -159,7 +158,7 @@ func (h *Headscale) ListNamespaces() ([]Namespace, error) {
 
 // ListMachinesInNamespace gets all the nodes in a given namespace.
 func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
-	name, err := NormalizeNamespaceName(name)
+	err := CheckNamespaceName(name)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +177,7 @@ func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
 
 // ListSharedMachinesInNamespace returns all the machines that are shared to the specified namespace.
 func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error) {
-	name, err := NormalizeNamespaceName(name)
+	err := CheckNamespaceName(name)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +206,7 @@ func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error
 
 // SetMachineNamespace assigns a Machine to a namespace.
 func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) error {
-	namespaceName, err := NormalizeNamespaceName(namespaceName)
+	err := CheckNamespaceName(namespaceName)
 	if err != nil {
 		return err
 	}
