@@ -65,10 +65,6 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 // DestroyNamespace destroys a Namespace. Returns error if the Namespace does
 // not exist or if there are machines associated with it.
 func (h *Headscale) DestroyNamespace(name string) error {
-	err := CheckNamespaceName(name)
-	if err != nil {
-		return err
-	}
 	namespace, err := h.GetNamespace(name)
 	if err != nil {
 		return errNamespaceNotFound
@@ -131,10 +127,6 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 
 // GetNamespace fetches a namespace by name.
 func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
-	err := CheckNamespaceName(name)
-	if err != nil {
-		return nil, err
-	}
 	namespace := Namespace{}
 	if result := h.db.First(&namespace, "name = ?", name); errors.Is(
 		result.Error,
