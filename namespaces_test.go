@@ -74,13 +74,13 @@ func (s *Suite) TestRenameNamespace(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(namespaces), check.Equals, 1)
 
-	err = app.RenameNamespace("test", "test_renamed")
+	err = app.RenameNamespace("test", "test-renamed")
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetNamespace("test")
 	c.Assert(err, check.Equals, errNamespaceNotFound)
 
-	_, err = app.GetNamespace("test_renamed")
+	_, err = app.GetNamespace("test-renamed")
 	c.Assert(err, check.IsNil)
 
 	err = app.RenameNamespace("test_does_not_exit", "test")
@@ -90,7 +90,7 @@ func (s *Suite) TestRenameNamespace(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(namespaceTest2.Name, check.Equals, "test2")
 
-	err = app.RenameNamespace("test2", "test_renamed")
+	err = app.RenameNamespace("test2", "test-renamed")
 	c.Assert(err, check.Equals, errNamespaceExists)
 }
 
@@ -297,6 +297,52 @@ func TestNormalizeNamespaceName(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("NormalizeNamespaceName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckNamespaceName(t *testing.T) {
+	type args struct {
+		name string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name:    "valid: namespace",
+			args:    args{name: "valid-namespace"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid: capitalized namespace",
+			args:    args{name: "Invalid-CapItaLIzed-namespace"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid: email as namespace",
+			args:    args{name: "foo.bar@example.com"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid: chars in namespace name",
+			args:    args{name: "super-namespace+name"},
+			wantErr: true,
+		},
+		{
+			name: "invalid: too long name for namespace",
+			args: args{
+				name: "super-long-namespace-name-that-should-be-a-little-more-than-63-chars",
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := CheckNamespaceName(tt.args.name); (err != nil) != tt.wantErr {
+				t.Errorf("CheckNamespaceName() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

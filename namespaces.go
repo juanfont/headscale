@@ -27,7 +27,7 @@ const (
 	labelHostnameLength = 63
 )
 
-var normalizeNamespaceRegex = regexp.MustCompile("[^a-z0-9-.]+")
+var invalidCharsInNamespaceRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 // Namespace is the way Headscale implements the concept of users in Tailscale
 //
@@ -281,7 +281,7 @@ func NormalizeNamespaceName(name string) (string, error) {
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, "@", ".")
 	name = strings.ReplaceAll(name, "'", "")
-	name = normalizeNamespaceRegex.ReplaceAllString(name, "-")
+	name = invalidCharsInNamespaceRegex.ReplaceAllString(name, "-")
 
 	for _, elt := range strings.Split(name, ".") {
 		if len(elt) > labelHostnameLength {
@@ -294,4 +294,30 @@ func NormalizeNamespaceName(name string) (string, error) {
 	}
 
 	return name, nil
+}
+
+func CheckNamespaceName(name string) error {
+	if len(name) > labelHostnameLength {
+		return fmt.Errorf(
+			"Namespace must not be over 63 chars. %v doesn't comply with this rule: %w",
+			name,
+			errInvalidNamespaceName,
+		)
+	}
+	if strings.ToLower(name) != name {
+		return fmt.Errorf(
+			"Namespace name should be lowercase. %v doesn't comply with this rule: %w",
+			name,
+			errInvalidNamespaceName,
+		)
+	}
+	if invalidCharsInNamespaceRegex.MatchString(name) {
+		return fmt.Errorf(
+			"Namespace name should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
+			name,
+			errInvalidNamespaceName,
+		)
+	}
+
+	return nil
 }
