@@ -271,9 +271,9 @@ func (n *Namespace) toProto() *v1.Namespace {
 func NormalizeNamespaceName(name string, stripEmailDomain bool) (string, error) {
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, "'", "")
-	if stripEmailDomain {
-		idx := strings.Index(name, "@")
-		name = name[:idx]
+	atIdx := strings.Index(name, "@")
+	if stripEmailDomain && atIdx > 0 {
+		name = name[:atIdx]
 	} else {
 		name = strings.ReplaceAll(name, "@", ".")
 	}

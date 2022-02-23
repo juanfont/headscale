@@ -281,6 +281,15 @@ func TestNormalizeNamespaceName(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "strip enabled no email passed as argument",
+			args: args{
+				name:             "not-email-and-strip-enabled",
+				stripEmailDomain: true,
+			},
+			want:    "not-email-and-strip-enabled",
+			wantErr: false,
+		},
+		{
 			name: "normalize complex email",
 			args: args{
 				name:             "foo.bar+complex-email@example.com",
