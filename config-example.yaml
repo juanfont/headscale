@@ -105,6 +105,13 @@ acme_email: ""
 # Domain name to request a TLS certificate for:
 tls_letsencrypt_hostname: ""
 
+# Client (Tailscale/Browser) authentication mode (mTLS)
+# Acceptable values:
+# - disabled: client authentication disabled
+# - relaxed: client certificate is required but not verified
+# - enforced: client certificate is required and verified
+tls_client_auth_mode: relaxed
+
 # Path to store certificates and metadata needed by
 # letsencrypt
 tls_letsencrypt_cache_dir: /var/lib/headscale/cache
