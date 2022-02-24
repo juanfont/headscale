@@ -20,6 +20,10 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
   - Tags should now work correctly and adding a host to Headscale should now reload the rules.
   - The documentation have a [fictional example](docs/acls.md) that should cover some use cases of the ACLs features
 
+**Changes**:
+
+- Remove dependency on CGO (switch from CGO SQLite to pure Go) [#346](https://github.com/juanfont/headscale/pull/346)
+
 **0.13.0 (2022-02-18):**
 
 **Features**:
