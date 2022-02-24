@@ -22,7 +22,11 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
 
 **Features**:
 
-- Add support for configurable mTLS [docs](docs/tls.md#configuring-mutual-tls-authentication-mtls)
+- Add support for configurable mTLS [docs](docs/tls.md#configuring-mutual-tls-authentication-mtls) [#297](https://github.com/juanfont/headscale/pull/297)
+
+**Changes**:
+
+- Remove dependency on CGO (switch from CGO SQLite to pure Go) [#346](https://github.com/juanfont/headscale/pull/346)
 
 **0.13.0 (2022-02-18):**
 
