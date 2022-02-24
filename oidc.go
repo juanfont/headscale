@@ -317,6 +317,8 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 				return
 			}
 
+			h.ipAllocationMutex.Lock()
+
 			ips, err := h.getAvailableIPs()
 			if err != nil {
 				log.Error().
@@ -338,6 +340,8 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			machine.LastSuccessfulUpdate = &now
 			machine.Expiry = &requestedTime
 			h.db.Save(&machine)
+
+			h.ipAllocationMutex.Unlock()
 		}
 
 		var content bytes.Buffer

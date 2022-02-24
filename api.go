@@ -574,6 +574,9 @@ func (h *Headscale) handleAuthKey(
 			Str("func", "handleAuthKey").
 			Str("machine", machine.Name).
 			Msg("Authentication key was valid, proceeding to acquire IP addresses")
+
+		h.ipAllocationMutex.Lock()
+
 		ips, err := h.getAvailableIPs()
 		if err != nil {
 			log.Error().
@@ -602,6 +605,8 @@ func (h *Headscale) handleAuthKey(
 		machine.Registered = true
 		machine.RegisterMethod = RegisterMethodAuthKey
 		h.db.Save(&machine)
+
+		h.ipAllocationMutex.Unlock()
 	}
 
 	pak.Used = true
