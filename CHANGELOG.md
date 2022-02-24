@@ -2,6 +2,28 @@
 
 **TBD (TBD):**
 
+**0.14.0 (2022-xx-xx):**
+
+**UPCOMING BREAKING**:
+From the **next** version (`0.15.0`), all machines will be able to communicate regardless of
+if they are in the same namespace. This means that the behaviour currently limited to ACLs
+will become default. From version `0.15.0`, all limitation of communications must be done
+with ACLs.
+
+This is a part of aligning `headscale`'s behaviour with Tailscale's upstream behaviour.
+
+**BREAKING**:
+
+- ACLs have been rewritten to align with the bevaviour Tailscale Control Panel provides. **NOTE:** This is only active if you use ACLs
+  - Namespaces are now treated as Users
+  - All machines can communicate with all machines by default
+  - Tags should now work correctly and adding a host to Headscale should now reload the rules.
+  - The documentation have a [fictional example](docs/acls.md) that should cover some use cases of the ACLs features
+
+**Changes**:
+
+- Remove dependency on CGO (switch from CGO SQLite to pure Go) [#346](https://github.com/juanfont/headscale/pull/346)
+
 **0.13.0 (2022-02-18):**
 
 **Features**:
