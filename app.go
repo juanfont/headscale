@@ -62,6 +62,10 @@ const (
 	errUnsupportedLetsEncryptChallengeType = Error(
 		"unknown value for Lets Encrypt challenge type",
 	)
+
+	DisabledClientAuth = "disabled"
+	RelaxedClientAuth  = "relaxed"
+	EnforcedClientAuth = "enforced"
 )
 
 // Config contains the initial Headscale configuration.
@@ -91,8 +95,9 @@ type Config struct {
 	TLSLetsEncryptCacheDir      string
 	TLSLetsEncryptChallengeType string
 
-	TLSCertPath string
-	TLSKeyPath  string
+	TLSCertPath       string
+	TLSKeyPath        string
+	TLSClientAuthMode tls.ClientAuthType
 
 	ACMEURL   string
 	ACMEEmail string
@@ -149,6 +154,27 @@ type Headscale struct {
 	oidcStateCache *cache.Cache
 
 	requestedExpiryCache *cache.Cache
+}
+
+// Look up the TLS constant relative to user-supplied TLS client
+// authentication mode. If an unknown mode is supplied, the default
+// value, tls.RequireAnyClientCert, is returned. The returned boolean
+// indicates if the supplied mode was valid.
+func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
+	switch mode {
+	case DisabledClientAuth:
+		// Client cert is _not_ required.
+		return tls.NoClientCert, true
+	case RelaxedClientAuth:
+		// Client cert required, but _not verified_.
+		return tls.RequireAnyClientCert, true
+	case EnforcedClientAuth:
+		// Client cert is _required and verified_.
+		return tls.RequireAndVerifyClientCert, true
+	default:
+		// Return the default when an unknown value is supplied.
+		return tls.RequireAnyClientCert, false
+	}
 }
 
 // NewHeadscale returns the Headscale app.
@@ -704,12 +730,18 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
+
+		log.Info().Msg(fmt.Sprintf(
+			"Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
+			h.cfg.TLSClientAuthMode))
+
 		tlsConfig := &tls.Config{
-			ClientAuth:   tls.RequireAnyClientCert,
+			ClientAuth:   h.cfg.TLSClientAuthMode,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: make([]tls.Certificate, 1),
 			MinVersion:   tls.VersionTLS12,
 		}
+
 		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 
 		return tlsConfig, err
