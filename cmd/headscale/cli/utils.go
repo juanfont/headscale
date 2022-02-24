@@ -49,6 +49,7 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", "HTTP-01")
+	viper.SetDefault("tls_client_auth_mode", "relaxed")
 
 	viper.SetDefault("log_level", "info")
 
@@ -93,6 +94,20 @@ func LoadConfig(path string) error {
 		!strings.HasPrefix(viper.GetString("server_url"), "https://") {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
+
+	_, authModeValid := headscale.LookupTLSClientAuthMode(
+		viper.GetString("tls_client_auth_mode"),
+	)
+
+	if !authModeValid {
+		errorText += fmt.Sprintf(
+			"Invalid tls_client_auth_mode supplied: %s. Accepted values: %s, %s, %s.",
+			viper.GetString("tls_client_auth_mode"),
+			headscale.DisabledClientAuth,
+			headscale.RelaxedClientAuth,
+			headscale.EnforcedClientAuth)
+	}
+
 	if errorText != "" {
 		//nolint
 		return errors.New(strings.TrimSuffix(errorText, "\n"))
@@ -282,6 +297,10 @@ func getHeadscaleConfig() headscale.Config {
 			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
+	tlsClientAuthMode, _ := headscale.LookupTLSClientAuthMode(
+		viper.GetString("tls_client_auth_mode"),
+	)
+
 	return headscale.Config{
 		ServerURL:         viper.GetString("server_url"),
 		Addr:              viper.GetString("listen_addr"),
@@ -313,8 +332,9 @@ func getHeadscaleConfig() headscale.Config {
 		),
 		TLSLetsEncryptChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
 
-		TLSCertPath: absPath(viper.GetString("tls_cert_path")),
-		TLSKeyPath:  absPath(viper.GetString("tls_key_path")),
+		TLSCertPath:       absPath(viper.GetString("tls_cert_path")),
+		TLSKeyPath:        absPath(viper.GetString("tls_key_path")),
+		TLSClientAuthMode: tlsClientAuthMode,
 
 		DNSConfig: dnsConfig,
 
