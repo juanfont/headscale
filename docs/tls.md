@@ -35,7 +35,7 @@ tls_key_path: ""
 mTLS is a method by which an HTTPS server authenticates clients, e.g. Tailscale, using TLS certificates. This can be configured by applying one of the following values to the `tls_client_auth_mode` setting in the configuration file.
 
 | Value               | Behavior                                                   |
-| ------------------- | -----------------------------------------------------------|
+| ------------------- | ---------------------------------------------------------- |
 | `disabled`          | Disable mTLS.                                              |
 | `relaxed` (default) | A client certificate is required, but it is not verified.  |
 | `enforced`          | Requires clients to supply a certificate that is verified. |

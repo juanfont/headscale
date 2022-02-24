@@ -94,7 +94,9 @@ func LoadConfig(path string) error {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
 
-	_, authModeValid := headscale.LookupTLSClientAuthMode(viper.GetString("tls_client_auth_mode"))
+	_, authModeValid := headscale.LookupTLSClientAuthMode(
+		viper.GetString("tls_client_auth_mode"),
+	)
 
 	if !authModeValid {
 		errorText += fmt.Sprintf(
