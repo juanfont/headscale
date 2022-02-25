@@ -112,10 +112,10 @@ type Config struct {
 }
 
 type OIDCConfig struct {
-	Issuer       string
-	ClientID     string
-	ClientSecret string
-	MatchMap     map[string]string
+	Issuer           string
+	ClientID         string
+	ClientSecret     string
+	StripEmaildomain bool
 }
 
 type DERPConfig struct {

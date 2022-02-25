@@ -1,6 +1,8 @@
 package headscale
 
 import (
+	"testing"
+
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
@@ -71,23 +73,23 @@ func (s *Suite) TestRenameNamespace(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(namespaces), check.Equals, 1)
 
-	err = app.RenameNamespace("test", "test_renamed")
+	err = app.RenameNamespace("test", "test-renamed")
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetNamespace("test")
 	c.Assert(err, check.Equals, errNamespaceNotFound)
 
-	_, err = app.GetNamespace("test_renamed")
+	_, err = app.GetNamespace("test-renamed")
 	c.Assert(err, check.IsNil)
 
-	err = app.RenameNamespace("test_does_not_exit", "test")
+	err = app.RenameNamespace("test-does-not-exit", "test")
 	c.Assert(err, check.Equals, errNamespaceNotFound)
 
 	namespaceTest2, err := app.CreateNamespace("test2")
 	c.Assert(err, check.IsNil)
 	c.Assert(namespaceTest2.Name, check.Equals, "test2")
 
-	err = app.RenameNamespace("test2", "test_renamed")
+	err = app.RenameNamespace("test2", "test-renamed")
 	c.Assert(err, check.Equals, errNamespaceExists)
 }
 
@@ -234,4 +236,144 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		}
 	}
 	c.Assert(found, check.Equals, true)
+}
+
+func TestNormalizeNamespaceName(t *testing.T) {
+	type args struct {
+		name             string
+		stripEmailDomain bool
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "normalize simple name",
+			args: args{
+				name:             "normalize-simple.name",
+				stripEmailDomain: false,
+			},
+			want:    "normalize-simple.name",
+			wantErr: false,
+		},
+		{
+			name: "normalize an email",
+			args: args{
+				name:             "foo.bar@example.com",
+				stripEmailDomain: false,
+			},
+			want:    "foo.bar.example.com",
+			wantErr: false,
+		},
+		{
+			name: "normalize an email domain should be removed",
+			args: args{
+				name:             "foo.bar@example.com",
+				stripEmailDomain: true,
+			},
+			want:    "foo.bar",
+			wantErr: false,
+		},
+		{
+			name: "strip enabled no email passed as argument",
+			args: args{
+				name:             "not-email-and-strip-enabled",
+				stripEmailDomain: true,
+			},
+			want:    "not-email-and-strip-enabled",
+			wantErr: false,
+		},
+		{
+			name: "normalize complex email",
+			args: args{
+				name:             "foo.bar+complex-email@example.com",
+				stripEmailDomain: false,
+			},
+			want:    "foo.bar-complex-email.example.com",
+			wantErr: false,
+		},
+		{
+			name: "namespace name with space",
+			args: args{
+				name:             "name space",
+				stripEmailDomain: false,
+			},
+			want:    "name-space",
+			wantErr: false,
+		},
+		{
+			name: "namespace with quote",
+			args: args{
+				name:             "Jamie's iPhone 5",
+				stripEmailDomain: false,
+			},
+			want:    "jamies-iphone-5",
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeNamespaceName(tt.args.name, tt.args.stripEmailDomain)
+			if (err != nil) != tt.wantErr {
+				t.Errorf(
+					"NormalizeNamespaceName() error = %v, wantErr %v",
+					err,
+					tt.wantErr,
+				)
+
+				return
+			}
+			if got != tt.want {
+				t.Errorf("NormalizeNamespaceName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckNamespaceName(t *testing.T) {
+	type args struct {
+		name string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name:    "valid: namespace",
+			args:    args{name: "valid-namespace"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid: capitalized namespace",
+			args:    args{name: "Invalid-CapItaLIzed-namespace"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid: email as namespace",
+			args:    args{name: "foo.bar@example.com"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid: chars in namespace name",
+			args:    args{name: "super-namespace+name"},
+			wantErr: true,
+		},
+		{
+			name: "invalid: too long name for namespace",
+			args: args{
+				name: "super-long-namespace-name-that-should-be-a-little-more-than-63-chars",
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := CheckNamespaceName(tt.args.name); (err != nil) != tt.wantErr {
+				t.Errorf("CheckNamespaceName() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }

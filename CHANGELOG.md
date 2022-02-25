@@ -45,6 +45,10 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
 - Add API Key support
   - Enable remote control of `headscale` via CLI [docs](docs/remote-cli.md)
   - Enable HTTP API (beta, subject to change)
+- OpenID Connect users will be mapped per namespaces
+  - Each user will get its own namespace, created if it does not exist
+  - `oidc.domain_map` option has been removed
+  - `strip_email_domain` option has been added (see [config-example.yaml](./config_example.yaml))
 
 **Changes**:
 
