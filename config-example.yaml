@@ -20,7 +20,7 @@ listen_addr: 0.0.0.0:8080
 # to keep this endpoint private to your internal
 # network
 #
-metrics_listen_addr: 127.0.0.1:8081
+metrics_listen_addr: 127.0.0.1:9915
 
 # Address to listen for gRPC.
 # gRPC is used for controlling a headscale server
