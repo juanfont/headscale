@@ -153,6 +153,8 @@ type Headscale struct {
 	oidcStateCache *cache.Cache
 
 	requestedExpiryCache *cache.Cache
+
+	ipAllocationMutex sync.Mutex
 }
 
 // Look up the TLS constant relative to user-supplied TLS client
