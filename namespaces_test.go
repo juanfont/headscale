@@ -1,7 +1,6 @@
 package headscale
 
 import (
-	"github.com/rs/zerolog/log"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
@@ -206,36 +205,35 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	}
 	app.db.Save(machine2InShared1)
 
-	err = app.AddSharedMachineToNamespace(machineInShared2, namespaceShared1)
-	c.Assert(err, check.IsNil)
-	peersOfMachine1InShared1, err := app.getPeers(machineInShared1)
-	c.Assert(err, check.IsNil)
+	// TODO: Remove comment out when we have all nodes available to every node
+	// peersOfMachine1InShared1, err := app.getPeers(machineInShared1)
+	// c.Assert(err, check.IsNil)
 
-	userProfiles := getMapResponseUserProfiles(
-		*machineInShared1,
-		peersOfMachine1InShared1,
-	)
-
-	log.Trace().Msgf("userProfiles %#v", userProfiles)
-	c.Assert(len(userProfiles), check.Equals, 2)
-
-	found := false
-	for _, userProfiles := range userProfiles {
-		if userProfiles.DisplayName == namespaceShared1.Name {
-			found = true
-
-			break
-		}
-	}
-	c.Assert(found, check.Equals, true)
-
-	found = false
-	for _, userProfile := range userProfiles {
-		if userProfile.DisplayName == namespaceShared2.Name {
-			found = true
-
-			break
-		}
-	}
-	c.Assert(found, check.Equals, true)
+	// userProfiles := getMapResponseUserProfiles(
+	// 	*machineInShared1,
+	// 	peersOfMachine1InShared1,
+	// )
+	//
+	// log.Trace().Msgf("userProfiles %#v", userProfiles)
+	// c.Assert(len(userProfiles), check.Equals, 2)
+	//
+	// found := false
+	// for _, userProfiles := range userProfiles {
+	// 	if userProfiles.DisplayName == namespaceShared1.Name {
+	// 		found = true
+	//
+	// 		break
+	// 	}
+	// }
+	// c.Assert(found, check.Equals, true)
+	//
+	// found = false
+	// for _, userProfile := range userProfiles {
+	// 	if userProfile.DisplayName == namespaceShared2.Name {
+	// 		found = true
+	//
+	// 		break
+	// 	}
+	// }
+	// c.Assert(found, check.Equals, true)
 }
