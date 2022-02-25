@@ -225,9 +225,6 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 	}
 	app.db.Save(machine2InShared1)
 
-	err = app.AddSharedMachineToNamespace(machineInShared2, namespaceShared1)
-	c.Assert(err, check.IsNil)
-
 	baseDomain := "foobar.headscale.net"
 	dnsConfigOrig := tailcfg.DNSConfig{
 		Routes:  make(map[string][]dnstype.Resolver),
@@ -245,7 +242,8 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		peersOfMachineInShared1,
 	)
 	c.Assert(dnsConfig, check.NotNil)
-	c.Assert(len(dnsConfig.Routes), check.Equals, 2)
+
+	c.Assert(len(dnsConfig.Routes), check.Equals, 3)
 
 	domainRouteShared1 := fmt.Sprintf("%s.%s", namespaceShared1.Name, baseDomain)
 	_, ok := dnsConfig.Routes[domainRouteShared1]
@@ -257,7 +255,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 
 	domainRouteShared3 := fmt.Sprintf("%s.%s", namespaceShared3.Name, baseDomain)
 	_, ok = dnsConfig.Routes[domainRouteShared3]
-	c.Assert(ok, check.Equals, false)
+	c.Assert(ok, check.Equals, true)
 }
 
 func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
@@ -373,9 +371,6 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		AuthKeyID:      uint(preAuthKey2InShared1.ID),
 	}
 	app.db.Save(machine2InShared1)
-
-	err = app.AddSharedMachineToNamespace(machineInShared2, namespaceShared1)
-	c.Assert(err, check.IsNil)
 
 	baseDomain := "foobar.headscale.net"
 	dnsConfigOrig := tailcfg.DNSConfig{

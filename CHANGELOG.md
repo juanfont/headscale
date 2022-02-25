@@ -1,8 +1,17 @@
 # CHANGELOG
 
-**TBD (TBD):**
+**0.15.0 (2022-xx-xx):**
 
-**0.14.0 (2022-xx-xx):**
+**BREAKING**:
+
+- Boundaries between Namespaces has been removed and all nodes can communicate by default [#357](https://github.com/juanfont/headscale/pull/357)
+  - To limit access between nodes, use [ACLs](./docs/acls.md).
+
+**Changes**:
+
+- Fix a bug were the same IP could be assigned to multiple hosts if joined in quick succession [#346](https://github.com/juanfont/headscale/pull/346)
+
+**0.14.0 (2022-02-24):**
 
 **UPCOMING BREAKING**:
 From the **next** version (`0.15.0`), all machines will be able to communicate regardless of

@@ -3,7 +3,6 @@ package headscale
 import (
 	"testing"
 
-	"github.com/rs/zerolog/log"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
@@ -208,8 +207,6 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	}
 	app.db.Save(machine2InShared1)
 
-	err = app.AddSharedMachineToNamespace(machineInShared2, namespaceShared1)
-	c.Assert(err, check.IsNil)
 	peersOfMachine1InShared1, err := app.getPeers(machineInShared1)
 	c.Assert(err, check.IsNil)
 
@@ -218,8 +215,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		peersOfMachine1InShared1,
 	)
 
-	log.Trace().Msgf("userProfiles %#v", userProfiles)
-	c.Assert(len(userProfiles), check.Equals, 2)
+	c.Assert(len(userProfiles), check.Equals, 3)
 
 	found := false
 	for _, userProfiles := range userProfiles {
