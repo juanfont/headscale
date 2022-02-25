@@ -90,7 +90,7 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 		return nil, errEmptyPolicy
 	}
 
-	machines, err := h.ListAllMachines()
+	machines, err := h.ListMachines()
 	if err != nil {
 		return nil, err
 	}
