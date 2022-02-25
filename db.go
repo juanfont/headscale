@@ -2,9 +2,10 @@ package headscale
 
 import (
 	"errors"
+	"time"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -53,10 +54,7 @@ func (h *Headscale) initDB() error {
 		return err
 	}
 
-	err = db.AutoMigrate(&SharedMachine{})
-	if err != nil {
-		return err
-	}
+	_ = db.Migrator().DropTable("shared_machines")
 
 	err = db.AutoMigrate(&APIKey{})
 	if err != nil {
@@ -81,10 +79,24 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 
 	switch h.dbType {
 	case Sqlite:
-		db, err = gorm.Open(sqlite.Open(h.dbString), &gorm.Config{
-			DisableForeignKeyConstraintWhenMigrating: true,
-			Logger:                                   log,
-		})
+		db, err = gorm.Open(
+			sqlite.Open(h.dbString+"?_synchronous=1&_journal_mode=WAL"),
+			&gorm.Config{
+				DisableForeignKeyConstraintWhenMigrating: true,
+				Logger:                                   log,
+			},
+		)
+
+		db.Exec("PRAGMA foreign_keys=ON")
+
+		// The pure Go SQLite library does not handle locking in
+		// the same way as the C based one and we cant use the gorm
+		// connection pool as of 2022/02/23.
+		sqlDB, _ := db.DB()
+		sqlDB.SetMaxIdleConns(1)
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetConnMaxIdleTime(time.Hour)
+
 	case Postgres:
 		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,

@@ -105,6 +105,13 @@ acme_email: ""
 # Domain name to request a TLS certificate for:
 tls_letsencrypt_hostname: ""
 
+# Client (Tailscale/Browser) authentication mode (mTLS)
+# Acceptable values:
+# - disabled: client authentication disabled
+# - relaxed: client certificate is required but not verified
+# - enforced: client certificate is required and verified
+tls_client_auth_mode: relaxed
+
 # Path to store certificates and metadata needed by
 # letsencrypt
 tls_letsencrypt_cache_dir: /var/lib/headscale/cache
@@ -180,7 +187,9 @@ unix_socket_permission: "0770"
 #   client_id: "your-oidc-client-id"
 #   client_secret: "your-oidc-client-secret"
 #
-#   # Domain map is used to map incomming users (by their email) to
-#   # a namespace. The key can be a string, or regex.
-#   domain_map:
-#     ".*": default-namespace
+#   If `strip_email_domain` is set to `true`, the domain part of the username email address will be removed.
+#   This will transform `first-name.last-name@example.com` to the namespace `first-name.last-name`
+#   If `strip_email_domain` is set to `false` the domain part will NOT be removed resulting to the following
+#   namespace: `first-name.last-name.example.com`
+#
+#   strip_email_domain: true

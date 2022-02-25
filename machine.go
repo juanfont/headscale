@@ -3,7 +3,6 @@ package headscale
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -25,6 +24,11 @@ const (
 	errMachineAlreadyRegistered   = Error("machine already registered")
 	errMachineRouteIsNotAvailable = Error("route is not available on machine")
 	errMachineAddressesInvalid    = Error("failed to parse machine addresses")
+	errHostnameTooLong            = Error("Hostname too long")
+)
+
+const (
+	maxHostnameLength = 255
 )
 
 // Machine is a Headscale client.
@@ -119,19 +123,6 @@ func (machine Machine) isExpired() bool {
 	return time.Now().UTC().After(*machine.Expiry)
 }
 
-func (h *Headscale) ListAllMachines() ([]Machine, error) {
-	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").
-		Preload("AuthKey.Namespace").
-		Preload("Namespace").
-		Where("registered").
-		Find(&machines).Error; err != nil {
-		return nil, err
-	}
-
-	return machines, nil
-}
-
 func containsAddresses(inputs []string, addrs []string) bool {
 	for _, addr := range addrs {
 		if containsString(inputs, addr) {
@@ -216,15 +207,15 @@ func getFilteredByACLPeers(
 	return authorizedPeers
 }
 
-func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
+func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
-		machine.NamespaceID, machine.MachineKey).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ? AND registered",
+		machine.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
 		return Machines{}, err
@@ -235,71 +226,9 @@ func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
-		Msgf("Found direct machines: %s", machines.String())
+		Msgf("Found peers: %s", machines.String())
 
 	return machines, nil
-}
-
-// getShared fetches machines that are shared to the `Namespace` of the machine we are getting peers for.
-func (h *Headscale) getShared(machine *Machine) (Machines, error) {
-	log.Trace().
-		Caller().
-		Str("machine", machine.Name).
-		Msg("Finding shared peers")
-
-	sharedMachines := []SharedMachine{}
-	if err := h.db.Preload("Namespace").Preload("Machine").Preload("Machine.Namespace").Where("namespace_id = ?",
-		machine.NamespaceID).Find(&sharedMachines).Error; err != nil {
-		return Machines{}, err
-	}
-
-	peers := make(Machines, 0)
-	for _, sharedMachine := range sharedMachines {
-		peers = append(peers, sharedMachine.Machine)
-	}
-
-	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
-
-	log.Trace().
-		Caller().
-		Str("machine", machine.Name).
-		Msgf("Found shared peers: %s", peers.String())
-
-	return peers, nil
-}
-
-// getSharedTo fetches the machines of the namespaces this machine is shared in.
-func (h *Headscale) getSharedTo(machine *Machine) (Machines, error) {
-	log.Trace().
-		Caller().
-		Str("machine", machine.Name).
-		Msg("Finding peers in namespaces this machine is shared with")
-
-	sharedMachines := []SharedMachine{}
-	if err := h.db.Preload("Namespace").Preload("Machine").Preload("Machine.Namespace").Where("machine_id = ?",
-		machine.ID).Find(&sharedMachines).Error; err != nil {
-		return Machines{}, err
-	}
-
-	peers := make(Machines, 0)
-	for _, sharedMachine := range sharedMachines {
-		namespaceMachines, err := h.ListMachinesInNamespace(
-			sharedMachine.Namespace.Name,
-		)
-		if err != nil {
-			return Machines{}, err
-		}
-		peers = append(peers, namespaceMachines...)
-	}
-
-	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
-
-	log.Trace().
-		Caller().
-		Str("machine", machine.Name).
-		Msgf("Found peers we are shared with: %s", peers.String())
-
-	return peers, nil
 }
 
 func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
@@ -310,7 +239,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 	// else use the classic namespace scope
 	if h.aclPolicy != nil {
 		var machines []Machine
-		machines, err = h.ListAllMachines()
+		machines, err = h.ListMachines()
 		if err != nil {
 			log.Error().Err(err).Msg("Error retrieving list of machines")
 
@@ -318,7 +247,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 		}
 		peers = getFilteredByACLPeers(machines, h.aclRules, machine)
 	} else {
-		direct, err := h.getDirectPeers(machine)
+		peers, err = h.ListPeers(machine)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -327,28 +256,6 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 
 			return Machines{}, err
 		}
-
-		shared, err := h.getShared(machine)
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Cannot fetch peers")
-
-			return Machines{}, err
-		}
-
-		sharedTo, err := h.getSharedTo(machine)
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Cannot fetch peers")
-
-			return Machines{}, err
-		}
-		peers = append(direct, shared...)
-		peers = append(peers, sharedTo...)
 	}
 
 	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
@@ -459,11 +366,6 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 
 // DeleteMachine softs deletes a Machine from the database.
 func (h *Headscale) DeleteMachine(machine *Machine) error {
-	err := h.RemoveSharedMachineFromAllNamespaces(machine)
-	if err != nil && errors.Is(err, errMachineNotShared) {
-		return err
-	}
-
 	machine.Registered = false
 	h.db.Save(&machine) // we mark it as unregistered, just in case
 	if err := h.db.Delete(&machine).Error; err != nil {
@@ -483,11 +385,6 @@ func (h *Headscale) TouchMachine(machine *Machine) error {
 
 // HardDeleteMachine hard deletes a Machine from the database.
 func (h *Headscale) HardDeleteMachine(machine *Machine) error {
-	err := h.RemoveSharedMachineFromAllNamespaces(machine)
-	if err != nil && errors.Is(err, errMachineNotShared) {
-		return err
-	}
-
 	if err := h.db.Unscoped().Delete(&machine).Error; err != nil {
 		return err
 	}
@@ -519,16 +416,8 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 		return true
 	}
 
-	sharedMachines, _ := h.getShared(machine)
-
 	namespaceSet := set.New(set.ThreadSafe)
 	namespaceSet.Add(machine.Namespace.Name)
-
-	// Check if any of our shared namespaces has updates that we have
-	// not propagated.
-	for _, sharedMachine := range sharedMachines {
-		namespaceSet.Add(sharedMachine.Namespace.Name)
-	}
 
 	namespaces := make([]string, namespaceSet.Size())
 	for index, namespace := range namespaceSet.List() {
@@ -644,6 +533,8 @@ func (machine Machine) toNode(
 		[]netaddr.IPPrefix{},
 		addrs...) // we append the node own IP, as it is required by the clients
 
+	// TODO(kradalby): Needs investigation, We probably dont need this condition
+	// now that we dont have shared nodes
 	if includeRoutes {
 		routesStr := []string{}
 		if len(machine.EnabledRoutes) != 0 {
@@ -709,13 +600,16 @@ func (machine Machine) toNode(
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
 			machine.Name,
-			strings.ReplaceAll(
-				machine.Namespace.Name,
-				"@",
-				".",
-			), // Replace @ with . for valid domain for machine
+			machine.Namespace.Name,
 			baseDomain,
 		)
+		if len(hostname) > maxHostnameLength {
+			return nil, fmt.Errorf(
+				"hostname %q is too long it cannot except 255 ASCII chars: %w",
+				hostname,
+				errHostnameTooLong,
+			)
+		}
 	} else {
 		hostname = machine.Name
 	}
@@ -855,6 +749,9 @@ func (h *Headscale) RegisterMachine(
 
 		return nil, err
 	}
+
+	h.ipAllocationMutex.Lock()
+	defer h.ipAllocationMutex.Unlock()
 
 	ips, err := h.getAvailableIPs()
 	if err != nil {

@@ -2,7 +2,10 @@ package headscale
 
 import (
 	"errors"
+	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -16,7 +19,15 @@ const (
 	errNamespaceExists          = Error("Namespace already exists")
 	errNamespaceNotFound        = Error("Namespace not found")
 	errNamespaceNotEmptyOfNodes = Error("Namespace not empty: node(s) found")
+	errInvalidNamespaceName     = Error("Invalid namespace name")
 )
+
+const (
+	// value related to RFC 1123 and 952.
+	labelHostnameLength = 63
+)
+
+var invalidCharsInNamespaceRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 // Namespace is the way Headscale implements the concept of users in Tailscale
 //
@@ -30,6 +41,10 @@ type Namespace struct {
 // CreateNamespace creates a new Namespace. Returns error if could not be created
 // or another namespace already exists.
 func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
+	err := CheckNamespaceName(name)
+	if err != nil {
+		return nil, err
+	}
 	namespace := Namespace{}
 	if err := h.db.Where("name = ?", name).First(&namespace).Error; err == nil {
 		return nil, errNamespaceExists
@@ -84,7 +99,12 @@ func (h *Headscale) DestroyNamespace(name string) error {
 // RenameNamespace renames a Namespace. Returns error if the Namespace does
 // not exist or if another Namespace exists with the new name.
 func (h *Headscale) RenameNamespace(oldName, newName string) error {
+	var err error
 	oldNamespace, err := h.GetNamespace(oldName)
+	if err != nil {
+		return err
+	}
+	err = CheckNamespaceName(newName)
 	if err != nil {
 		return err
 	}
@@ -130,6 +150,10 @@ func (h *Headscale) ListNamespaces() ([]Namespace, error) {
 
 // ListMachinesInNamespace gets all the nodes in a given namespace.
 func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
+	err := CheckNamespaceName(name)
+	if err != nil {
+		return nil, err
+	}
 	namespace, err := h.GetNamespace(name)
 	if err != nil {
 		return nil, err
@@ -143,33 +167,12 @@ func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
 	return machines, nil
 }
 
-// ListSharedMachinesInNamespace returns all the machines that are shared to the specified namespace.
-func (h *Headscale) ListSharedMachinesInNamespace(name string) ([]Machine, error) {
-	namespace, err := h.GetNamespace(name)
-	if err != nil {
-		return nil, err
-	}
-	sharedMachines := []SharedMachine{}
-	if err := h.db.Preload("Namespace").Where(&SharedMachine{NamespaceID: namespace.ID}).Find(&sharedMachines).Error; err != nil {
-		return nil, err
-	}
-
-	machines := []Machine{}
-	for _, sharedMachine := range sharedMachines {
-		machine, err := h.GetMachineByID(
-			sharedMachine.MachineID,
-		) // otherwise not everything comes filled
-		if err != nil {
-			return nil, err
-		}
-		machines = append(machines, *machine)
-	}
-
-	return machines, nil
-}
-
 // SetMachineNamespace assigns a Machine to a namespace.
 func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) error {
+	err := CheckNamespaceName(namespaceName)
+	if err != nil {
+		return err
+	}
 	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return err
@@ -232,4 +235,56 @@ func (n *Namespace) toProto() *v1.Namespace {
 		Name:      n.Name,
 		CreatedAt: timestamppb.New(n.CreatedAt),
 	}
+}
+
+// NormalizeNamespaceName will replace forbidden chars in namespace
+// it can also return an error if the namespace doesn't respect RFC 952 and 1123.
+func NormalizeNamespaceName(name string, stripEmailDomain bool) (string, error) {
+	name = strings.ToLower(name)
+	name = strings.ReplaceAll(name, "'", "")
+	atIdx := strings.Index(name, "@")
+	if stripEmailDomain && atIdx > 0 {
+		name = name[:atIdx]
+	} else {
+		name = strings.ReplaceAll(name, "@", ".")
+	}
+	name = invalidCharsInNamespaceRegex.ReplaceAllString(name, "-")
+
+	for _, elt := range strings.Split(name, ".") {
+		if len(elt) > labelHostnameLength {
+			return "", fmt.Errorf(
+				"label %v is more than 63 chars: %w",
+				elt,
+				errInvalidNamespaceName,
+			)
+		}
+	}
+
+	return name, nil
+}
+
+func CheckNamespaceName(name string) error {
+	if len(name) > labelHostnameLength {
+		return fmt.Errorf(
+			"Namespace must not be over 63 chars. %v doesn't comply with this rule: %w",
+			name,
+			errInvalidNamespaceName,
+		)
+	}
+	if strings.ToLower(name) != name {
+		return fmt.Errorf(
+			"Namespace name should be lowercase. %v doesn't comply with this rule: %w",
+			name,
+			errInvalidNamespaceName,
+		)
+	}
+	if invalidCharsInNamespaceRegex.MatchString(name) {
+		return fmt.Errorf(
+			"Namespace name should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
+			name,
+			errInvalidNamespaceName,
+		)
+	}
+
+	return nil
 }

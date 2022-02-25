@@ -10,7 +10,7 @@ PROTO_SOURCES = $(call rwildcard,,*.proto)
 
 
 build:
-	go build -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
+	GGO_ENABLED=0 go build -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
 
 dev: lint test build
 
@@ -18,7 +18,7 @@ test:
 	@go test -coverprofile=coverage.out ./...
 
 test_integration:
-	go test -tags integration -timeout 30m -count=1 ./...
+	go test -failfast -tags integration -timeout 30m -count=1 ./...
 
 test_integration_cli:
 	go test -tags integration -v integration_cli_test.go integration_common_test.go

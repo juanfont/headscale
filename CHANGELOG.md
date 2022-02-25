@@ -1,8 +1,17 @@
 # CHANGELOG
 
-**TBD (TBD):**
+**0.15.0 (2022-xx-xx):**
 
-**0.14.0 (2022-xx-xx):**
+**BREAKING**:
+
+- Boundaries between Namespaces has been removed and all nodes can communicate by default [#357](https://github.com/juanfont/headscale/pull/357)
+  - To limit access between nodes, use [ACLs](./docs/acls.md).
+
+**Changes**:
+
+- Fix a bug were the same IP could be assigned to multiple hosts if joined in quick succession [#346](https://github.com/juanfont/headscale/pull/346)
+
+**0.14.0 (2022-02-24):**
 
 **UPCOMING BREAKING**:
 From the **next** version (`0.15.0`), all machines will be able to communicate regardless of
@@ -20,6 +29,14 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
   - Tags should now work correctly and adding a host to Headscale should now reload the rules.
   - The documentation have a [fictional example](docs/acls.md) that should cover some use cases of the ACLs features
 
+**Features**:
+
+- Add support for configurable mTLS [docs](docs/tls.md#configuring-mutual-tls-authentication-mtls) [#297](https://github.com/juanfont/headscale/pull/297)
+
+**Changes**:
+
+- Remove dependency on CGO (switch from CGO SQLite to pure Go) [#346](https://github.com/juanfont/headscale/pull/346)
+
 **0.13.0 (2022-02-18):**
 
 **Features**:
@@ -28,6 +45,10 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
 - Add API Key support
   - Enable remote control of `headscale` via CLI [docs](docs/remote-cli.md)
   - Enable HTTP API (beta, subject to change)
+- OpenID Connect users will be mapped per namespaces
+  - Each user will get its own namespace, created if it does not exist
+  - `oidc.domain_map` option has been removed
+  - `strip_email_domain` option has been added (see [config-example.yaml](./config_example.yaml))
 
 **Changes**:
 
