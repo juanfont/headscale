@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"sort"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -190,7 +189,7 @@ func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, erro
 	}
 }
 
-func (h *Headscale) getUsedIPs() (netaddr.IPSet, error) {
+func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 	// FIXME: This really deserves a better data model,
 	// but this was quick to get running and it should be enough
 	// to begin experimenting with a dual stack tailnet.
@@ -206,7 +205,7 @@ func (h *Headscale) getUsedIPs() (netaddr.IPSet, error) {
 		var machineAddresses MachineAddresses
 		err := machineAddresses.Scan(slice)
 		if err != nil {
-			return netaddr.IPSet{}, fmt.Errorf(
+			return &netaddr.IPSet{}, fmt.Errorf(
 				"failed to read ip from database: %w",
 				err,
 			)
@@ -221,7 +220,15 @@ func (h *Headscale) getUsedIPs() (netaddr.IPSet, error) {
 		Interface("addresses", ips).
 		Msg("Parsed ip addresses that has been allocated from databases")
 
-	return netaddr.IPSet{}, nil
+	ipSet, err := ips.IPSet()
+	if err != nil {
+		return &netaddr.IPSet{}, fmt.Errorf(
+			"failed to build IP Set: %w",
+			err,
+		)
+	}
+
+	return ipSet, nil
 }
 
 func containsString(ss []string, s string) bool {
