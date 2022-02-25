@@ -1,6 +1,8 @@
 package headscale
 
 import (
+	"fmt"
+
 	"gopkg.in/check.v1"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -241,20 +243,19 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 	)
 	c.Assert(dnsConfig, check.NotNil)
 
-	// TODO: Remove comment out when we have all nodes available to every node
-	// c.Assert(len(dnsConfig.Routes), check.Equals, 2)
+	c.Assert(len(dnsConfig.Routes), check.Equals, 3)
 
-	// domainRouteShared1 := fmt.Sprintf("%s.%s", namespaceShared1.Name, baseDomain)
-	// _, ok := dnsConfig.Routes[domainRouteShared1]
-	// c.Assert(ok, check.Equals, true)
-	//
-	// domainRouteShared2 := fmt.Sprintf("%s.%s", namespaceShared2.Name, baseDomain)
-	// _, ok = dnsConfig.Routes[domainRouteShared2]
-	// c.Assert(ok, check.Equals, true)
-	//
-	// domainRouteShared3 := fmt.Sprintf("%s.%s", namespaceShared3.Name, baseDomain)
-	// _, ok = dnsConfig.Routes[domainRouteShared3]
-	// c.Assert(ok, check.Equals, false)
+	domainRouteShared1 := fmt.Sprintf("%s.%s", namespaceShared1.Name, baseDomain)
+	_, ok := dnsConfig.Routes[domainRouteShared1]
+	c.Assert(ok, check.Equals, true)
+
+	domainRouteShared2 := fmt.Sprintf("%s.%s", namespaceShared2.Name, baseDomain)
+	_, ok = dnsConfig.Routes[domainRouteShared2]
+	c.Assert(ok, check.Equals, true)
+
+	domainRouteShared3 := fmt.Sprintf("%s.%s", namespaceShared3.Name, baseDomain)
+	_, ok = dnsConfig.Routes[domainRouteShared3]
+	c.Assert(ok, check.Equals, true)
 }
 
 func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {

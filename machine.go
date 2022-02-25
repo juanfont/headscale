@@ -118,19 +118,6 @@ func (machine Machine) isExpired() bool {
 	return time.Now().UTC().After(*machine.Expiry)
 }
 
-func (h *Headscale) ListAllMachines() ([]Machine, error) {
-	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").
-		Preload("AuthKey.Namespace").
-		Preload("Namespace").
-		Where("registered").
-		Find(&machines).Error; err != nil {
-		return nil, err
-	}
-
-	return machines, nil
-}
-
 func containsAddresses(inputs []string, addrs []string) bool {
 	for _, addr := range addrs {
 		if containsString(inputs, addr) {
@@ -215,15 +202,15 @@ func getFilteredByACLPeers(
 	return authorizedPeers
 }
 
-func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
+func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Preload("Namespace").Where("namespace_id = ? AND machine_key <> ? AND registered",
-		machine.NamespaceID, machine.MachineKey).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ? AND registered",
+		machine.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
 		return Machines{}, err
@@ -234,7 +221,7 @@ func (h *Headscale) getDirectPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
-		Msgf("Found direct machines: %s", machines.String())
+		Msgf("Found peers: %s", machines.String())
 
 	return machines, nil
 }
@@ -247,7 +234,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 	// else use the classic namespace scope
 	if h.aclPolicy != nil {
 		var machines []Machine
-		machines, err = h.ListAllMachines()
+		machines, err = h.ListMachines()
 		if err != nil {
 			log.Error().Err(err).Msg("Error retrieving list of machines")
 
@@ -255,7 +242,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 		}
 		peers = getFilteredByACLPeers(machines, h.aclRules, machine)
 	} else {
-		peers, err = h.getDirectPeers(machine)
+		peers, err = h.ListPeers(machine)
 		if err != nil {
 			log.Error().
 				Caller().

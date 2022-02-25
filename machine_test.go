@@ -118,7 +118,7 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 	c.Assert(err, check.NotNil)
 }
 
-func (s *Suite) TestGetDirectPeers(c *check.C) {
+func (s *Suite) TestListPeers(c *check.C) {
 	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
@@ -149,7 +149,7 @@ func (s *Suite) TestGetDirectPeers(c *check.C) {
 	_, err = machine0ByID.GetHostInfo()
 	c.Assert(err, check.IsNil)
 
-	peersOfMachine0, err := app.getDirectPeers(machine0ByID)
+	peersOfMachine0, err := app.ListPeers(machine0ByID)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(peersOfMachine0), check.Equals, 9)
@@ -222,7 +222,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	_, err = testMachine.GetHostInfo()
 	c.Assert(err, check.IsNil)
 
-	machines, err := app.ListAllMachines()
+	machines, err := app.ListMachines()
 	c.Assert(err, check.IsNil)
 
 	peersOfTestMachine := getFilteredByACLPeers(machines, app.aclRules, testMachine)
