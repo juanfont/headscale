@@ -53,11 +53,11 @@ func TestIntegrationTestSuite(t *testing.T) {
 	s := new(IntegrationTestSuite)
 
 	s.namespaces = map[string]TestNamespace{
-		"main": {
-			count:      20,
+		"thisspace": {
+			count:      15,
 			tailscales: make(map[string]dockertest.Resource),
 		},
-		"shared": {
+		"otherspace": {
 			count:      5,
 			tailscales: make(map[string]dockertest.Resource),
 		},
@@ -466,6 +466,7 @@ func getIPsfromIPNstate(status ipnstate.Status) []netaddr.IP {
 	return ips
 }
 
+// TODO: Adopt test for cross communication between namespaces
 func (s *IntegrationTestSuite) TestPingAllPeersByAddress() {
 	for _, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
@@ -506,111 +507,6 @@ func (s *IntegrationTestSuite) TestPingAllPeersByAddress() {
 							assert.Contains(t, result, "pong")
 						})
 				}
-			}
-		}
-	}
-}
-
-func (s *IntegrationTestSuite) TestSharedNodes() {
-	main := s.namespaces["main"]
-	shared := s.namespaces["shared"]
-
-	result, err := ExecuteCommand(
-		&s.headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--output",
-			"json",
-			"--namespace",
-			"shared",
-		},
-		[]string{},
-	)
-	assert.Nil(s.T(), err)
-
-	var machineList []v1.Machine
-	err = json.Unmarshal([]byte(result), &machineList)
-	assert.Nil(s.T(), err)
-
-	for _, machine := range machineList {
-		result, err := ExecuteCommand(
-			&s.headscale,
-			[]string{
-				"headscale",
-				"nodes",
-				"share",
-				"--identifier", fmt.Sprint(machine.Id),
-				"--namespace", "main",
-			},
-			[]string{},
-		)
-		assert.Nil(s.T(), err)
-
-		log.Println("Shared node with result: ", result)
-	}
-
-	result, err = ExecuteCommand(
-		&s.headscale,
-		[]string{"headscale", "nodes", "list", "--namespace", "main"},
-		[]string{},
-	)
-	assert.Nil(s.T(), err)
-	log.Println("Nodelist after sharing", result)
-
-	// Chck that the correct count of host is present in node list
-	lines := strings.Split(result, "\n")
-	assert.Equal(s.T(), len(main.tailscales)+len(shared.tailscales), len(lines)-2)
-
-	for hostname := range main.tailscales {
-		assert.Contains(s.T(), result, hostname)
-	}
-
-	for hostname := range shared.tailscales {
-		assert.Contains(s.T(), result, hostname)
-	}
-
-	// TODO(juanfont): We have to find out why do we need to wait
-	time.Sleep(100 * time.Second) // Wait for the nodes to receive updates
-
-	sharedIps, err := getIPs(shared.tailscales)
-	assert.Nil(s.T(), err)
-
-	for hostname, tailscale := range main.tailscales {
-		for peername, peerIPs := range sharedIps {
-			for i, ip := range peerIPs {
-				// We currently cant ping ourselves, so skip that.
-				if peername == hostname {
-					continue
-				}
-				s.T().
-					Run(fmt.Sprintf("%s-%s-%d", hostname, peername, i), func(t *testing.T) {
-						// We are only interested in "direct ping" which means what we
-						// might need a couple of more attempts before reaching the node.
-						command := []string{
-							"tailscale", "ping",
-							"--timeout=15s",
-							"--c=20",
-							"--until-direct=true",
-							ip.String(),
-						}
-
-						log.Printf(
-							"Pinging from %s to %s (%s)\n",
-							hostname,
-							peername,
-							ip,
-						)
-						result, err := ExecuteCommand(
-							&tailscale,
-							command,
-							[]string{},
-						)
-						assert.Nil(t, err)
-						log.Printf("Result for %s: %s\n", hostname, result)
-						assert.Contains(t, result, "pong")
-					})
 			}
 		}
 	}
