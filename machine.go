@@ -755,6 +755,9 @@ func (h *Headscale) RegisterMachine(
 		return nil, err
 	}
 
+	h.ipAllocationMutex.Lock()
+	defer h.ipAllocationMutex.Unlock()
+
 	ips, err := h.getAvailableIPs()
 	if err != nil {
 		log.Error().
