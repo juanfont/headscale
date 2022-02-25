@@ -72,6 +72,7 @@ const (
 type Config struct {
 	ServerURL                      string
 	Addr                           string
+	MetricsEnabled                 bool
 	MetricsAddr                    string
 	GRPCAddr                       string
 	GRPCAllowInsecure              bool
@@ -655,26 +656,28 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
-	promRouter := h.createPrometheusRouter()
+	if h.cfg.MetricsEnabled {
+		promRouter := h.createPrometheusRouter()
 
-	promHTTPServer := &http.Server{
-		Addr:         h.cfg.MetricsAddr,
-		Handler:      promRouter,
-		ReadTimeout:  HTTPReadTimeout,
-		WriteTimeout: 0,
+		promHTTPServer := &http.Server{
+			Addr:         h.cfg.MetricsAddr,
+			Handler:      promRouter,
+			ReadTimeout:  HTTPReadTimeout,
+			WriteTimeout: 0,
+		}
+
+		var promHTTPListener net.Listener
+		promHTTPListener, err = net.Listen("tcp", h.cfg.MetricsAddr)
+
+		if err != nil {
+			return fmt.Errorf("failed to bind to TCP address: %w", err)
+		}
+
+		errorGroup.Go(func() error { return promHTTPServer.Serve(promHTTPListener) })
+
+		log.Info().
+			Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
 	}
-
-	var promHTTPListener net.Listener
-	promHTTPListener, err = net.Listen("tcp", h.cfg.MetricsAddr)
-
-	if err != nil {
-		return fmt.Errorf("failed to bind to TCP address: %w", err)
-	}
-
-	errorGroup.Go(func() error { return promHTTPServer.Serve(promHTTPListener) })
-
-	log.Info().
-		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
 
 	return errorGroup.Wait()
 }

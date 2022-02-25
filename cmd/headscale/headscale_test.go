@@ -56,6 +56,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
 	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8080")
 	c.Assert(viper.GetString("metrics_listen_addr"), check.Equals, "127.0.0.1:9915")
+	c.Assert(viper.GetString("metrics_enabled"), check.Equals, "true")
 	c.Assert(viper.GetString("db_type"), check.Equals, "sqlite3")
 	c.Assert(viper.GetString("db_path"), check.Equals, "/var/lib/headscale/db.sqlite")
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
