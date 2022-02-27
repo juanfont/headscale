@@ -44,8 +44,10 @@ type Machine struct {
 
 	Registered     bool // temp
 	RegisterMethod string
-	AuthKeyID      uint
-	AuthKey        *PreAuthKey
+
+	// TODO(kradalby): This seems like irrelevant information?
+	AuthKeyID uint
+	AuthKey   *PreAuthKey
 
 	LastSeen             *time.Time
 	LastSuccessfulUpdate *time.Time
@@ -686,6 +688,13 @@ func (machine *Machine) toProto() *v1.Machine {
 func (h *Headscale) RegisterMachine(
 	machineKeyStr string,
 	namespaceName string,
+	registrationMethod string,
+
+	// Optionals
+	expiry *time.Time,
+	authKey *PreAuthKey,
+	nodePublicKey *string,
+	lastSeen *time.Time,
 ) (*Machine, error) {
 	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
@@ -709,27 +718,13 @@ func (h *Headscale) RegisterMachine(
 		return nil, err
 	}
 
-	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
-	// This means that if a user is to slow with register a machine, it will possibly not
-	// have the correct expiry.
-	requestedTime := time.Time{}
-	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.String()); found {
-		log.Trace().
-			Caller().
-			Str("machine", machine.Name).
-			Msg("Expiry time found in cache, assigning to node")
-		if reqTime, ok := requestedTimeIf.(time.Time); ok {
-			requestedTime = reqTime
-		}
-	}
-
 	if machine.isRegistered() {
 		log.Trace().
 			Caller().
 			Str("machine", machine.Name).
 			Msg("machine already registered, reauthenticating")
 
-		h.RefreshMachine(machine, requestedTime)
+		h.RefreshMachine(machine, *expiry)
 
 		return machine, nil
 	}
@@ -738,17 +733,6 @@ func (h *Headscale) RegisterMachine(
 		Caller().
 		Str("machine", machine.Name).
 		Msg("Attempting to register machine")
-
-	if machine.isRegistered() {
-		err := errMachineAlreadyRegistered
-		log.Error().
-			Caller().
-			Err(err).
-			Str("machine", machine.Name).
-			Msg("Attempting to register machine")
-
-		return nil, err
-	}
 
 	h.ipAllocationMutex.Lock()
 	defer h.ipAllocationMutex.Unlock()
@@ -764,17 +748,36 @@ func (h *Headscale) RegisterMachine(
 		return nil, err
 	}
 
-	log.Trace().
-		Caller().
-		Str("machine", machine.Name).
-		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
-		Msg("Found IP for host")
-
 	machine.IPAddresses = ips
+
+	if expiry != nil {
+		machine.Expiry = expiry
+	}
+
+	if authKey != nil {
+		machine.AuthKeyID = uint(authKey.ID)
+	}
+
+	if nodePublicKey != nil {
+		machine.NodeKey = *nodePublicKey
+	}
+
+	if lastSeen != nil {
+		machine.LastSeen = lastSeen
+	}
+
 	machine.NamespaceID = namespace.ID
+
+	// TODO(kradalby): This field is uneccessary metadata,
+	// move it to tags instead of having a column.
+	machine.RegisterMethod = registrationMethod
+
+	// TODO(kradalby): Registered is a very frustrating value
+	// to keep up to date, and it makes is have to care if a
+	// machine is registered, authenticated and expired.
+	// Let us simplify the model, a machine is _only_ saved if
+	// it is registered.
 	machine.Registered = true
-	machine.RegisterMethod = RegisterMethodCLI
-	machine.Expiry = &requestedTime
 	h.db.Save(&machine)
 
 	log.Trace().
