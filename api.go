@@ -22,7 +22,7 @@ import (
 
 const (
 	reservedResponseHeaderSize               = 4
-	RegisterMethodAuthKey                    = "authKey"
+	RegisterMethodAuthKey                    = RegisterMethodAuthKey
 	RegisterMethodOIDC                       = "oidc"
 	RegisterMethodCLI                        = "cli"
 	ErrRegisterMethodCLIDoesNotSupportExpire = Error(
@@ -545,7 +545,7 @@ func (h *Headscale) handleAuthKey(
 				Err(err).
 				Msg("Cannot encode message")
 			ctx.String(http.StatusInternalServerError, "")
-			machineRegistrations.WithLabelValues("new", "authkey", "error", machine.Namespace.Name).
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", machine.Namespace.Name).
 				Inc()
 
 			return
@@ -556,7 +556,7 @@ func (h *Headscale) handleAuthKey(
 			Str("func", "handleAuthKey").
 			Str("machine", machine.Name).
 			Msg("Failed authentication via AuthKey")
-		machineRegistrations.WithLabelValues("new", "authkey", "error", machine.Namespace.Name).
+		machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", machine.Namespace.Name).
 			Inc()
 
 		return
@@ -575,38 +575,31 @@ func (h *Headscale) handleAuthKey(
 			Str("machine", machine.Name).
 			Msg("Authentication key was valid, proceeding to acquire IP addresses")
 
-		h.ipAllocationMutex.Lock()
+		nodeKey := NodePublicKeyStripPrefix(registerRequest.NodeKey)
+		now := time.Now().UTC()
 
-		ips, err := h.getAvailableIPs()
+		_, err = h.RegisterMachine(
+			machine.Name,
+			machine.Namespace.Name,
+			RegisterMethodAuthKey,
+			&registerRequest.Expiry,
+			pak,
+			&nodeKey,
+			&now,
+		)
 		if err != nil {
 			log.Error().
 				Caller().
-				Str("func", "handleAuthKey").
-				Str("machine", machine.Name).
-				Msg("Failed to find an available IP address")
-			machineRegistrations.WithLabelValues("new", "authkey", "error", machine.Namespace.Name).
-				Inc()
+				Err(err).
+				Msg("could not register machine")
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", machine.Namespace.Name).Inc()
+			ctx.String(
+				http.StatusInternalServerError,
+				"could not register machine",
+			)
 
 			return
 		}
-		log.Info().
-			Str("func", "handleAuthKey").
-			Str("machine", machine.Name).
-			Str("ips", strings.Join(ips.ToStringSlice(), ",")).
-			Msgf("Assigning %s to %s", strings.Join(ips.ToStringSlice(), ","), machine.Name)
-
-		machine.Expiry = &registerRequest.Expiry
-		machine.AuthKeyID = uint(pak.ID)
-		machine.IPAddresses = ips
-		machine.NamespaceID = pak.NamespaceID
-
-		machine.NodeKey = NodePublicKeyStripPrefix(registerRequest.NodeKey)
-		// we update it just in case
-		machine.Registered = true
-		machine.RegisterMethod = RegisterMethodAuthKey
-		h.db.Save(&machine)
-
-		h.ipAllocationMutex.Unlock()
 	}
 
 	pak.Used = true
@@ -622,13 +615,13 @@ func (h *Headscale) handleAuthKey(
 			Str("machine", machine.Name).
 			Err(err).
 			Msg("Cannot encode message")
-		machineRegistrations.WithLabelValues("new", "authkey", "error", machine.Namespace.Name).
+		machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", machine.Namespace.Name).
 			Inc()
 		ctx.String(http.StatusInternalServerError, "Extremely sad!")
 
 		return
 	}
-	machineRegistrations.WithLabelValues("new", "authkey", "success", machine.Namespace.Name).
+	machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "success", machine.Namespace.Name).
 		Inc()
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 	log.Info().
