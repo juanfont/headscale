@@ -53,6 +53,8 @@ type Machine struct {
 	LastSuccessfulUpdate *time.Time
 	Expiry               *time.Time
 
+	// TODO(kradalby): Figure out a way to use tailcfg datatypes
+	// here and have gorm serialise them.
 	HostInfo      datatypes.JSON
 	Endpoints     datatypes.JSON
 	EnabledRoutes datatypes.JSON
