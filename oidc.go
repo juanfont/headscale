@@ -328,27 +328,28 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			return
 		}
 
-		ips, err := h.getAvailableIPs()
+		_, err = h.RegisterMachine(
+			machineKeyStr,
+			namespace.Name,
+			RegisterMethodOIDC,
+			&requestedTime,
+			nil,
+			nil,
+			&now,
+		)
 		if err != nil {
 			log.Error().
 				Caller().
 				Err(err).
-				Msg("could not get an IP from the pool")
+				Msg("could not register machine")
 			ctx.String(
 				http.StatusInternalServerError,
-				"could not get an IP from the pool",
+				"could not register machine",
 			)
 
 			return
 		}
 
-		machine.IPAddresses = ips
-		machine.NamespaceID = namespace.ID
-		machine.Registered = true
-		machine.RegisterMethod = RegisterMethodOIDC
-		machine.LastSuccessfulUpdate = &now
-		machine.Expiry = &requestedTime
-		h.db.Save(&machine)
 	}
 
 	var content bytes.Buffer
