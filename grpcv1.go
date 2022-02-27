@@ -159,9 +159,27 @@ func (api headscaleV1APIServer) RegisterMachine(
 		Str("namespace", request.GetNamespace()).
 		Str("machine_key", request.GetKey()).
 		Msg("Registering machine")
+
+	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
+	// This means that if a user is to slow with register a machine, it will possibly not
+	// have the correct expiry.
+	requestedTime := time.Time{}
+	if requestedTimeIf, found := api.h.requestedExpiryCache.Get(request.GetKey()); found {
+		log.Trace().
+			Caller().
+			Str("machine", request.Key).
+			Msg("Expiry time found in cache, assigning to node")
+		if reqTime, ok := requestedTimeIf.(time.Time); ok {
+			requestedTime = reqTime
+		}
+	}
+
 	machine, err := api.h.RegisterMachine(
 		request.GetKey(),
 		request.GetNamespace(),
+		RegisterMethodCLI,
+		&requestedTime,
+		nil, nil, nil,
 	)
 	if err != nil {
 		return nil, err
