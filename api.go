@@ -22,7 +22,7 @@ import (
 
 const (
 	reservedResponseHeaderSize               = 4
-	RegisterMethodAuthKey                    = RegisterMethodAuthKey
+	RegisterMethodAuthKey                    = "authkey"
 	RegisterMethodOIDC                       = "oidc"
 	RegisterMethodCLI                        = "cli"
 	ErrRegisterMethodCLIDoesNotSupportExpire = Error(
