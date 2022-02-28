@@ -114,10 +114,10 @@ type Config struct {
 }
 
 type OIDCConfig struct {
-	Issuer       string
-	ClientID     string
-	ClientSecret string
-	MatchMap     map[string]string
+	Issuer           string
+	ClientID         string
+	ClientSecret     string
+	StripEmaildomain bool
 }
 
 type DERPConfig struct {
@@ -155,6 +155,8 @@ type Headscale struct {
 	oidcStateCache *cache.Cache
 
 	requestedExpiryCache *cache.Cache
+
+	ipAllocationMutex sync.Mutex
 }
 
 // Look up the TLS constant relative to user-supplied TLS client

@@ -29,4 +29,4 @@ jobs:
 
       - name: Run Integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: go test -tags integration -timeout 30m
+        run: make test_integration

@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +63,8 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
+
+	viper.SetDefault("oidc.strip_email_domain", true)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("fatal error reading config file: %w", err)
@@ -346,9 +347,10 @@ func getHeadscaleConfig() headscale.Config {
 		UnixSocketPermission: GetFileMode("unix_socket_permission"),
 
 		OIDC: headscale.OIDCConfig{
-			Issuer:       viper.GetString("oidc.issuer"),
-			ClientID:     viper.GetString("oidc.client_id"),
-			ClientSecret: viper.GetString("oidc.client_secret"),
+			Issuer:           viper.GetString("oidc.issuer"),
+			ClientID:         viper.GetString("oidc.client_id"),
+			ClientSecret:     viper.GetString("oidc.client_secret"),
+			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 		},
 
 		CLI: headscale.CLIConfig{
@@ -377,8 +379,6 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	}
 
 	cfg := getHeadscaleConfig()
-
-	cfg.OIDC.MatchMap = loadOIDCMatchMap()
 
 	app, err := headscale.NewHeadscale(cfg)
 	if err != nil {
@@ -534,18 +534,6 @@ func (t tokenAuth) GetRequestMetadata(
 
 func (tokenAuth) RequireTransportSecurity() bool {
 	return true
-}
-
-// loadOIDCMatchMap is a wrapper around viper to verifies that the keys in
-// the match map is valid regex strings.
-func loadOIDCMatchMap() map[string]string {
-	strMap := viper.GetStringMapString("oidc.domain_map")
-
-	for oidcMatcher := range strMap {
-		_ = regexp.MustCompile(oidcMatcher)
-	}
-
-	return strMap
 }
 
 func GetFileMode(key string) fs.FileMode {
