@@ -140,17 +140,25 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		// We create the machine and then keep it around until a callback
 		// happens
 		newMachine := Machine{
-			Expiry:     &time.Time{},
 			MachineKey: machineKeyStr,
 			Name:       req.Hostinfo.Hostname,
 			NodeKey:    NodePublicKeyStripPrefix(req.NodeKey),
 			LastSeen:   &now,
 		}
 
+		if !req.Expiry.IsZero() {
+			log.Trace().
+				Caller().
+				Str("machine", req.Hostinfo.Hostname).
+				Time("expiry", req.Expiry).
+				Msg("Non-zero expiry time requested")
+			newMachine.Expiry = &req.Expiry
+		}
+
 		h.registrationCache.Set(
 			machineKeyStr,
 			newMachine,
-			requestedExpiryCacheExpiration,
+			registerCacheExpiration,
 		)
 
 		h.handleMachineRegistrationNew(ctx, machineKey, req)
@@ -488,19 +496,6 @@ func (h *Headscale) handleMachineRegistrationNew(
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), MachinePublicKeyStripPrefix(machineKey))
-	}
-
-	if !registerRequest.Expiry.IsZero() {
-		log.Trace().
-			Caller().
-			Str("machine", registerRequest.Hostinfo.Hostname).
-			Time("expiry", registerRequest.Expiry).
-			Msg("Non-zero expiry time requested, adding to cache")
-		h.requestedExpiryCache.Set(
-			machineKey.String(),
-			registerRequest.Expiry,
-			requestedExpiryCacheExpiration,
-		)
 	}
 
 	respBody, err := encode(resp, &machineKey, h.privateKey)

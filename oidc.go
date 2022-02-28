@@ -10,20 +10,16 @@ import (
 	"html/template"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
-	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 	"tailscale.com/types/key"
 )
 
 const (
-	oidcStateCacheExpiration      = time.Minute * 5
-	oidcStateCacheCleanupInterval = time.Minute * 10
-	randomByteSize                = 16
+	randomByteSize = 16
 )
 
 type IDTokenClaims struct {
@@ -60,14 +56,6 @@ func (h *Headscale) initOIDC() error {
 		}
 	}
 
-	// init the state cache if it hasn't been already
-	if h.oidcStateCache == nil {
-		h.oidcStateCache = cache.New(
-			oidcStateCacheExpiration,
-			oidcStateCacheCleanupInterval,
-		)
-	}
-
 	return nil
 }
 
@@ -100,7 +88,7 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 	stateStr := hex.EncodeToString(randomBlob)[:32]
 
 	// place the machine key into the state cache, so it can be retrieved later
-	h.oidcStateCache.Set(stateStr, machineKeyStr, oidcStateCacheExpiration)
+	h.registrationCache.Set(stateStr, machineKeyStr, registerCacheExpiration)
 
 	authURL := h.oauth2Config.AuthCodeURL(stateStr)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
@@ -196,7 +184,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 	}
 
 	// retrieve machinekey from state cache
-	machineKeyIf, machineKeyFound := h.oidcStateCache.Get(state)
+	machineKeyIf, machineKeyFound := h.registrationCache.Get(state)
 
 	if !machineKeyFound {
 		log.Error().
@@ -228,14 +216,6 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
-	requestedTime := time.Time{}
-	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.String()); found {
-		if reqTime, ok := requestedTimeIf.(time.Time); ok {
-			requestedTime = reqTime
-		}
-	}
-
 	// retrieve machine information
 	machine, err := h.GetMachineByMachineKey(machineKey)
 	if err != nil {
@@ -254,7 +234,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			Str("machine", machine.Name).
 			Msg("machine already registered, reauthenticating")
 
-		h.RefreshMachine(machine, requestedTime)
+		h.RefreshMachine(machine, *machine.Expiry)
 
 		var content bytes.Buffer
 		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
@@ -329,7 +309,6 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		machineKeyStr,
 		namespace.Name,
 		RegisterMethodOIDC,
-		&requestedTime,
 	)
 	if err != nil {
 		log.Error().

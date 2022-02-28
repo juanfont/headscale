@@ -683,7 +683,6 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 	machineKeyStr string,
 	namespaceName string,
 	registrationMethod string,
-	expiry *time.Time,
 ) (*Machine, error) {
 	if machineInterface, ok := h.registrationCache.Get(machineKeyStr); ok {
 		if registrationMachine, ok := machineInterface.(Machine); ok {
@@ -697,7 +696,6 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 
 			registrationMachine.NamespaceID = namespace.ID
 			registrationMachine.RegisterMethod = registrationMethod
-			registrationMachine.Expiry = expiry
 
 			machine, err := h.RegisterMachine(
 				registrationMachine,
