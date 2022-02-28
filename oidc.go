@@ -112,7 +112,6 @@ var oidcCallbackTemplate = template.Must(
 	</html>`),
 )
 
-// TODO: Why is the entire machine registration logic duplicated here?
 // OIDCCallback handles the callback from the OIDC endpoint
 // Retrieves the mkey from the state cache and adds the machine to the users email namespace
 // TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
