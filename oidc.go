@@ -248,7 +248,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	if machine.isRegistered() {
+	if machine != nil {
 		log.Trace().
 			Caller().
 			Str("machine", machine.Name).
@@ -291,58 +291,57 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 		return
 	}
+
 	// register the machine if it's new
-	if !machine.Registered {
-		log.Debug().Msg("Registering new machine after successful callback")
+	log.Debug().Msg("Registering new machine after successful callback")
 
-		namespace, err := h.GetNamespace(namespaceName)
-		if errors.Is(err, errNamespaceNotFound) {
-			namespace, err = h.CreateNamespace(namespaceName)
+	namespace, err := h.GetNamespace(namespaceName)
+	if errors.Is(err, errNamespaceNotFound) {
+		namespace, err = h.CreateNamespace(namespaceName)
 
-			if err != nil {
-				log.Error().
-					Err(err).
-					Caller().
-					Msgf("could not create new namespace '%s'", namespaceName)
-				ctx.String(
-					http.StatusInternalServerError,
-					"could not create new namespace",
-				)
-
-				return
-			}
-		} else if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Str("namespace", namespaceName).
-				Msg("could not find or create namespace")
-			ctx.String(
-				http.StatusInternalServerError,
-				"could not find or create namespace",
-			)
-
-			return
-		}
-
-		_, err = h.RegisterMachineFromAuthCallback(
-			machineKeyStr,
-			namespace.Name,
-			RegisterMethodOIDC,
-			&requestedTime,
-		)
 		if err != nil {
 			log.Error().
-				Caller().
 				Err(err).
-				Msg("could not register machine")
+				Caller().
+				Msgf("could not create new namespace '%s'", namespaceName)
 			ctx.String(
 				http.StatusInternalServerError,
-				"could not register machine",
+				"could not create new namespace",
 			)
 
 			return
 		}
+	} else if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Str("namespace", namespaceName).
+			Msg("could not find or create namespace")
+		ctx.String(
+			http.StatusInternalServerError,
+			"could not find or create namespace",
+		)
+
+		return
+	}
+
+	_, err = h.RegisterMachineFromAuthCallback(
+		machineKeyStr,
+		namespace.Name,
+		RegisterMethodOIDC,
+		&requestedTime,
+	)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("could not register machine")
+		ctx.String(
+			http.StatusInternalServerError,
+			"could not register machine",
+		)
+
+		return
 	}
 
 	var content bytes.Buffer

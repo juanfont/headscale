@@ -72,11 +72,6 @@ type (
 	MachinesP []*Machine
 )
 
-// For the time being this method is rather naive.
-func (machine Machine) isRegistered() bool {
-	return machine.Registered
-}
-
 type MachineAddresses []netaddr.IP
 
 func (ma MachineAddresses) ToStringSlice() []string {
@@ -221,7 +216,7 @@ func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ? AND registered",
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ?",
 		machine.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
@@ -284,7 +279,7 @@ func (h *Headscale) getValidPeers(machine *Machine) (Machines, error) {
 	}
 
 	for _, peer := range peers {
-		if peer.isRegistered() && !peer.isExpired() {
+		if !peer.isExpired() {
 			validPeers = append(validPeers, peer)
 		}
 	}
@@ -373,8 +368,6 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 
 // DeleteMachine softs deletes a Machine from the database.
 func (h *Headscale) DeleteMachine(machine *Machine) error {
-	machine.Registered = false
-	h.db.Save(&machine) // we mark it as unregistered, just in case
 	if err := h.db.Delete(&machine).Error; err != nil {
 		return err
 	}
@@ -642,7 +635,7 @@ func (machine Machine) toNode(
 		LastSeen: machine.LastSeen,
 
 		KeepAlive:         true,
-		MachineAuthorized: machine.Registered,
+		MachineAuthorized: !machine.isExpired(),
 		Capabilities:      []string{tailcfg.CapabilityFileSharing},
 	}
 
@@ -659,8 +652,6 @@ func (machine *Machine) toProto() *v1.Machine {
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Name,
 		Namespace:   machine.Namespace.toProto(),
-
-		Registered: machine.Registered,
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
@@ -738,7 +729,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 		[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
 	)
 	machineFromDatabase, _ := h.GetMachineByMachineKey(machineKey)
-	if machine.isRegistered() {
+	if machineFromDatabase != nil {
 		log.Trace().
 			Caller().
 			Str("machine", machine.Name).
@@ -773,13 +764,6 @@ func (h *Headscale) RegisterMachine(machine Machine,
 	// TODO(kradalby): This field is uneccessary metadata,
 	// move it to tags instead of having a column.
 	// machine.RegisterMethod = registrationMethod
-
-	// TODO(kradalby): Registered is a very frustrating value
-	// to keep up to date, and it makes is have to care if a
-	// machine is registered, authenticated and expired.
-	// Let us simplify the model, a machine is _only_ saved if
-	// it is registered.
-	machine.Registered = true
 
 	h.db.Save(&machine)
 
