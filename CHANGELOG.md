@@ -10,6 +10,8 @@
 **Changes**:
 
 - Fix a bug were the same IP could be assigned to multiple hosts if joined in quick succession [#346](https://github.com/juanfont/headscale/pull/346)
+- Simplify the code behind registration of machines [#366](https://github.com/juanfont/headscale/pull/366)
+  - Nodes are now only written to database if they are registrated successfully
 
 **0.14.0 (2022-02-24):**
 
