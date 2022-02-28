@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -33,6 +34,38 @@ func (h *Headscale) initDB() error {
 	}
 
 	_ = db.Migrator().RenameColumn(&Machine{}, "ip_address", "ip_addresses")
+
+	// If the Machine table has a column for registered,
+	// find all occourences of "false" and drop them. Then
+	// remove the column.
+	if db.Migrator().HasColumn(&Machine{}, "registered") {
+		log.Info().
+			Msg(`Database has legacy "registered" column in machine, removing...`)
+
+		machines := Machines{}
+		if err := h.db.Not("registered").Find(&machines).Error; err != nil {
+			log.Error().Err(err).Msg("Error accessing db")
+		}
+
+		for _, machine := range machines {
+			log.Info().
+				Str("machine", machine.Name).
+				Str("machine_key", machine.MachineKey).
+				Msg("Deleting unregistered machine")
+			if err := h.db.Delete(&Machine{}, machine.ID).Error; err != nil {
+				log.Error().
+					Err(err).
+					Str("machine", machine.Name).
+					Str("machine_key", machine.MachineKey).
+					Msg("Error deleting unregistered machine")
+			}
+		}
+
+		err := db.Migrator().DropColumn(&Machine{}, "registered")
+		if err != nil {
+			log.Error().Err(err).Msg("Error dropping registered column")
+		}
+	}
 
 	err = db.AutoMigrate(&Machine{})
 	if err != nil {

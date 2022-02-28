@@ -45,7 +45,6 @@ type Machine struct {
 	NamespaceID uint
 	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
 
-	Registered     bool // temp
 	RegisterMethod string
 
 	// TODO(kradalby): This seems like irrelevant information?
