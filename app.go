@@ -202,7 +202,6 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	}
 
 	registrationCache := cache.New(
-		// TODO(kradalby): Add unified cache expiry config options
 		registerCacheExpiration,
 		registerCacheCleanup,
 	)
