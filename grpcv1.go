@@ -174,12 +174,11 @@ func (api headscaleV1APIServer) RegisterMachine(
 		}
 	}
 
-	machine, err := api.h.RegisterMachine(
+	machine, err := api.h.RegisterMachineFromAuthCallback(
 		request.GetKey(),
 		request.GetNamespace(),
 		RegisterMethodCLI,
 		&requestedTime,
-		nil, nil, nil,
 	)
 	if err != nil {
 		return nil, err

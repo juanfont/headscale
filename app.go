@@ -154,6 +154,8 @@ type Headscale struct {
 
 	requestedExpiryCache *cache.Cache
 
+	registrationCache *cache.Cache
+
 	ipAllocationMutex sync.Mutex
 }
 
@@ -207,6 +209,12 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		requestedExpiryCacheCleanupInterval,
 	)
 
+	registrationCache := cache.New(
+		// TODO(kradalby): Add unified cache expiry config options
+		requestedExpiryCacheExpiration,
+		requestedExpiryCacheCleanupInterval,
+	)
+
 	app := Headscale{
 		cfg:                  cfg,
 		dbType:               cfg.DBtype,
@@ -214,6 +222,7 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		privateKey:           privKey,
 		aclRules:             tailcfg.FilterAllowAll, // default allowall
 		requestedExpiryCache: requestedExpiryCache,
+		registrationCache:    registrationCache,
 	}
 
 	err = app.initDB()

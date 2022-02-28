@@ -20,11 +20,15 @@ import (
 )
 
 const (
-	errMachineNotFound            = Error("machine not found")
-	errMachineAlreadyRegistered   = Error("machine already registered")
-	errMachineRouteIsNotAvailable = Error("route is not available on machine")
-	errMachineAddressesInvalid    = Error("failed to parse machine addresses")
-	errHostnameTooLong            = Error("Hostname too long")
+	errMachineNotFound                  = Error("machine not found")
+	errMachineAlreadyRegistered         = Error("machine already registered")
+	errMachineRouteIsNotAvailable       = Error("route is not available on machine")
+	errMachineAddressesInvalid          = Error("failed to parse machine addresses")
+	errMachineNotFoundRegistrationCache = Error(
+		"machine not found in registration cache",
+	)
+	errCouldNotConvertMachineInterface = Error("failed to convert machine interface")
+	errHostnameTooLong                 = Error("Hostname too long")
 )
 
 const (
@@ -686,14 +690,44 @@ func (machine *Machine) toProto() *v1.Machine {
 	return machineProto
 }
 
-// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
-func (h *Headscale) RegisterMachine(
+func (h *Headscale) RegisterMachineFromAuthCallback(
 	machineKeyStr string,
 	namespaceName string,
 	registrationMethod string,
+	expiry *time.Time,
+) (*Machine, error) {
+	if machineInterface, ok := h.registrationCache.Get(machineKeyStr); ok {
+		if registrationMachine, ok := machineInterface.(Machine); ok {
+			machine, err := h.RegisterMachine(
+				registrationMachine.Name,
+				machineKeyStr,
+				namespaceName,
+				registrationMethod,
+				expiry,
+				nil,
+				&registrationMachine.NodeKey,
+				registrationMachine.LastSeen,
+			)
+
+			return machine, err
+
+		} else {
+			return nil, errCouldNotConvertMachineInterface
+		}
+	}
+
+	return nil, errMachineNotFoundRegistrationCache
+}
+
+// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
+func (h *Headscale) RegisterMachine(
+	machineName string,
+	machineKeyStr string,
+	namespaceName string,
+	registrationMethod string,
+	expiry *time.Time,
 
 	// Optionals
-	expiry *time.Time,
 	authKey *PreAuthKey,
 	nodePublicKey *string,
 	lastSeen *time.Time,
@@ -768,6 +802,7 @@ func (h *Headscale) RegisterMachine(
 		machine.LastSeen = lastSeen
 	}
 
+	machine.Name = machineName
 	machine.NamespaceID = namespace.ID
 
 	// TODO(kradalby): This field is uneccessary metadata,
@@ -780,6 +815,7 @@ func (h *Headscale) RegisterMachine(
 	// Let us simplify the model, a machine is _only_ saved if
 	// it is registered.
 	machine.Registered = true
+
 	h.db.Save(&machine)
 
 	log.Trace().

@@ -279,8 +279,6 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	now := time.Now().UTC()
-
 	namespaceName, err := NormalizeNamespaceName(
 		claims.Email,
 		h.cfg.OIDC.StripEmaildomain,
@@ -328,14 +326,11 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			return
 		}
 
-		_, err = h.RegisterMachine(
+		_, err = h.RegisterMachineFromAuthCallback(
 			machineKeyStr,
 			namespace.Name,
 			RegisterMethodOIDC,
 			&requestedTime,
-			nil,
-			nil,
-			&now,
 		)
 		if err != nil {
 			log.Error().

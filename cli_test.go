@@ -30,6 +30,7 @@ func (s *Suite) TestRegisterMachine(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	machineAfterRegistering, err := app.RegisterMachine(
+		"testmachine",
 		machine.MachineKey,
 		namespace.Name,
 		RegisterMethodCLI,
