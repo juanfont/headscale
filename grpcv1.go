@@ -415,11 +415,11 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		HostInfo: datatypes.JSON(hostinfoJson),
 	}
 
-	// log.Trace().Caller().Interface("machine", newMachine).Msg("")
-
-	if err := api.h.db.Create(&newMachine).Error; err != nil {
-		return nil, err
-	}
+	api.h.registrationCache.Set(
+		request.GetKey(),
+		newMachine,
+		requestedExpiryCacheExpiration,
+	)
 
 	return &v1.DebugCreateMachineResponse{Machine: newMachine.toProto()}, nil
 }

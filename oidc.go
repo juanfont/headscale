@@ -344,7 +344,6 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 			return
 		}
-
 	}
 
 	var content bytes.Buffer

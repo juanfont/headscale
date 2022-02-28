@@ -154,6 +154,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		)
 
 		h.handleMachineRegistrationNew(ctx, machineKey, req)
+
 		return
 	}
 
@@ -573,15 +574,19 @@ func (h *Headscale) handleAuthKey(
 	nodeKey := NodePublicKeyStripPrefix(registerRequest.NodeKey)
 	now := time.Now().UTC()
 
+	machineToRegister := Machine{
+		Name:           registerRequest.Hostinfo.Hostname,
+		NamespaceID:    pak.Namespace.ID,
+		MachineKey:     machineKeyStr,
+		RegisterMethod: RegisterMethodAuthKey,
+		Expiry:         &registerRequest.Expiry,
+		NodeKey:        nodeKey,
+		LastSeen:       &now,
+		AuthKeyID:      uint(pak.ID),
+	}
+
 	machine, err := h.RegisterMachine(
-		registerRequest.Hostinfo.Hostname,
-		machineKeyStr,
-		pak.Namespace.Name,
-		RegisterMethodAuthKey,
-		&registerRequest.Expiry,
-		pak,
-		&nodeKey,
-		&now,
+		machineToRegister,
 	)
 	if err != nil {
 		log.Error().
