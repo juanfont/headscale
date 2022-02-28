@@ -22,16 +22,16 @@ message Machine {
     string          name         = 6;
     Namespace namespace          = 7;
 
-    bool           registered      = 8;
-    RegisterMethod register_method = 9;
 
-    google.protobuf.Timestamp last_seen              = 10;
-    google.protobuf.Timestamp last_successful_update = 11;
-    google.protobuf.Timestamp expiry                 = 12;
+    google.protobuf.Timestamp last_seen              = 8;
+    google.protobuf.Timestamp last_successful_update = 9;
+    google.protobuf.Timestamp expiry                 = 10;
 
-    PreAuthKey pre_auth_key = 13;
+    PreAuthKey pre_auth_key = 11;
 
-    google.protobuf.Timestamp created_at = 14;
+    google.protobuf.Timestamp created_at = 12;
+
+    RegisterMethod register_method = 13;
     // google.protobuf.Timestamp updated_at = 14;
     // google.protobuf.Timestamp deleted_at = 15;
 
