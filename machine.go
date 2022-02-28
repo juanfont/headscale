@@ -718,25 +718,6 @@ func (h *Headscale) RegisterMachine(machine Machine,
 		Str("machine_key", machine.MachineKey).
 		Msg("Registering machine")
 
-	// If the machine is already in the database, it is seeking
-	// reauthentication, and by reaching this step, has been authenticated
-	// and need to have an updated expiry.
-	var machineKey key.MachinePublic
-	_ = machineKey.UnmarshalText(
-		[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
-	)
-	machineFromDatabase, _ := h.GetMachineByMachineKey(machineKey)
-	if machineFromDatabase != nil {
-		log.Trace().
-			Caller().
-			Str("machine", machine.Name).
-			Msg("machine already registered, reauthenticating")
-
-		h.RefreshMachine(machineFromDatabase, *machine.Expiry)
-
-		return machineFromDatabase, nil
-	}
-
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
@@ -757,10 +738,6 @@ func (h *Headscale) RegisterMachine(machine Machine,
 	}
 
 	machine.IPAddresses = ips
-
-	// TODO(kradalby): This field is uneccessary metadata,
-	// move it to tags instead of having a column.
-	// machine.RegisterMethod = registrationMethod
 
 	h.db.Save(&machine)
 

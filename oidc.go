@@ -215,7 +215,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	// retrieve machine information
+	// retrieve machine information if it exist
 	machine, err := h.GetMachineByMachineKey(machineKey)
 	if err != nil {
 		log.Error().Msg("machine key not found in database")
