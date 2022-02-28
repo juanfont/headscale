@@ -304,7 +304,6 @@ func getHeadscaleConfig() headscale.Config {
 	return headscale.Config{
 		ServerURL:         viper.GetString("server_url"),
 		Addr:              viper.GetString("listen_addr"),
-		MetricsEnabled:    viper.GetBool("metrics_enabled"),
 		MetricsAddr:       viper.GetString("metrics_listen_addr"),
 		GRPCAddr:          viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure: viper.GetBool("grpc_allow_insecure"),
