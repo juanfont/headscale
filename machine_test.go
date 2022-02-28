@@ -29,7 +29,6 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -59,7 +58,6 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -82,7 +80,6 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
@@ -105,7 +102,6 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine3",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
@@ -136,7 +132,6 @@ func (s *Suite) TestListPeers(c *check.C) {
 			DiscoKey:       "faa" + strconv.Itoa(index),
 			Name:           "testmachine" + strconv.Itoa(index),
 			NamespaceID:    namespace.ID,
-			Registered:     true,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 		}
@@ -188,7 +183,6 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 			},
 			Name:           "testmachine" + strconv.Itoa(index),
 			NamespaceID:    stor[index%2].namespace.ID,
-			Registered:     true,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(stor[index%2].key.ID),
 		}
@@ -258,7 +252,6 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		Expiry:         &time.Time{},
