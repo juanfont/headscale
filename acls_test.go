@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"gopkg.in/check.v1"
-	"gorm.io/datatypes"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
@@ -108,9 +107,12 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 
 	_, err = app.GetMachine("user1", "testmachine")
 	c.Assert(err, check.NotNil)
-	hostInfo := []byte(
-		"{\"OS\":\"centos\",\"Hostname\":\"testmachine\",\"RequestTags\":[\"tag:test\"]}",
-	)
+	hostInfo := tailcfg.Hostinfo{
+		OS:          "centos",
+		Hostname:    "testmachine",
+		RequestTags: []string{"tag:test"},
+	}
+
 	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
@@ -122,7 +124,7 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(hostInfo),
+		HostInfo:       HostInfo(hostInfo),
 	}
 	app.db.Save(&machine)
 
@@ -152,9 +154,12 @@ func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 
 	_, err = app.GetMachine("user1", "testmachine")
 	c.Assert(err, check.NotNil)
-	hostInfo := []byte(
-		"{\"OS\":\"centos\",\"Hostname\":\"testmachine\",\"RequestTags\":[\"tag:test\"]}",
-	)
+	hostInfo := tailcfg.Hostinfo{
+		OS:          "centos",
+		Hostname:    "testmachine",
+		RequestTags: []string{"tag:test"},
+	}
+
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "12345",
@@ -166,7 +171,7 @@ func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(hostInfo),
+		HostInfo:       HostInfo(hostInfo),
 	}
 	app.db.Save(&machine)
 
@@ -196,9 +201,12 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 
 	_, err = app.GetMachine("user1", "testmachine")
 	c.Assert(err, check.NotNil)
-	hostInfo := []byte(
-		"{\"OS\":\"centos\",\"Hostname\":\"testmachine\",\"RequestTags\":[\"tag:foo\"]}",
-	)
+	hostInfo := tailcfg.Hostinfo{
+		OS:          "centos",
+		Hostname:    "testmachine",
+		RequestTags: []string{"tag:foo"},
+	}
+
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "12345",
@@ -210,7 +218,7 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(hostInfo),
+		HostInfo:       HostInfo(hostInfo),
 	}
 	app.db.Save(&machine)
 
@@ -239,9 +247,12 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 
 	_, err = app.GetMachine("user1", "webserver")
 	c.Assert(err, check.NotNil)
-	hostInfo := []byte(
-		"{\"OS\":\"centos\",\"Hostname\":\"webserver\",\"RequestTags\":[\"tag:webapp\"]}",
-	)
+	hostInfo := tailcfg.Hostinfo{
+		OS:          "centos",
+		Hostname:    "webserver",
+		RequestTags: []string{"tag:webapp"},
+	}
+
 	machine := Machine{
 		ID:             1,
 		MachineKey:     "12345",
@@ -253,11 +264,14 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(hostInfo),
+		HostInfo:       HostInfo(hostInfo),
 	}
 	app.db.Save(&machine)
 	_, err = app.GetMachine("user1", "user")
-	hostInfo = []byte("{\"OS\":\"debian\",\"Hostname\":\"user\"}")
+	hostInfo2 := tailcfg.Hostinfo{
+		OS:       "debian",
+		Hostname: "Hostname",
+	}
 	c.Assert(err, check.NotNil)
 	machine = Machine{
 		ID:             2,
@@ -270,7 +284,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(hostInfo),
+		HostInfo:       HostInfo(hostInfo2),
 	}
 	app.db.Save(&machine)
 
@@ -872,18 +886,22 @@ func Test_expandAlias(t *testing.T) {
 							netaddr.MustParseIP("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
-						HostInfo: []byte(
-							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:hr-webserver\"]}",
-						),
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:hr-webserver"},
+						},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netaddr.MustParseIP("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
-						HostInfo: []byte(
-							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:hr-webserver\"]}",
-						),
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:hr-webserver"},
+						},
 					},
 					{
 						IPAddresses: MachineAddresses{
@@ -955,18 +973,22 @@ func Test_expandAlias(t *testing.T) {
 							netaddr.MustParseIP("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
-						HostInfo: []byte(
-							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:accountant-webserver\"]}",
-						),
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:accountant-webserver"},
+						},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netaddr.MustParseIP("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
-						HostInfo: []byte(
-							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:accountant-webserver\"]}",
-						),
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:accountant-webserver"},
+						},
 					},
 					{
 						IPAddresses: MachineAddresses{
@@ -1032,18 +1054,22 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netaddr.MustParseIP("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
-						HostInfo: []byte(
-							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:accountant-webserver\"]}",
-						),
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:accountant-webserver"},
+						},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netaddr.MustParseIP("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
-						HostInfo: []byte(
-							"{\"OS\":\"centos\",\"Hostname\":\"foo\",\"RequestTags\":[\"tag:accountant-webserver\"]}",
-						),
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:accountant-webserver"},
+						},
 					},
 					{
 						IPAddresses: MachineAddresses{
@@ -1074,18 +1100,22 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netaddr.MustParseIP("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
-						HostInfo: []byte(
-							"{\"OS\":\"centos\",\"Hostname\":\"hr-web1\",\"RequestTags\":[\"tag:hr-webserver\"]}",
-						),
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "hr-web1",
+							RequestTags: []string{"tag:hr-webserver"},
+						},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netaddr.MustParseIP("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
-						HostInfo: []byte(
-							"{\"OS\":\"centos\",\"Hostname\":\"hr-web2\",\"RequestTags\":[\"tag:hr-webserver\"]}",
-						),
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "hr-web2",
+							RequestTags: []string{"tag:hr-webserver"},
+						},
 					},
 					{
 						IPAddresses: MachineAddresses{
@@ -1102,18 +1132,22 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						netaddr.MustParseIP("100.64.0.1"),
 					},
 					Namespace: Namespace{Name: "joe"},
-					HostInfo: []byte(
-						"{\"OS\":\"centos\",\"Hostname\":\"hr-web1\",\"RequestTags\":[\"tag:hr-webserver\"]}",
-					),
+					HostInfo: HostInfo{
+						OS:          "centos",
+						Hostname:    "hr-web1",
+						RequestTags: []string{"tag:hr-webserver"},
+					},
 				},
 				{
 					IPAddresses: MachineAddresses{
 						netaddr.MustParseIP("100.64.0.2"),
 					},
 					Namespace: Namespace{Name: "joe"},
-					HostInfo: []byte(
-						"{\"OS\":\"centos\",\"Hostname\":\"hr-web2\",\"RequestTags\":[\"tag:hr-webserver\"]}",
-					),
+					HostInfo: HostInfo{
+						OS:          "centos",
+						Hostname:    "hr-web2",
+						RequestTags: []string{"tag:hr-webserver"},
+					},
 				},
 				{
 					IPAddresses: MachineAddresses{

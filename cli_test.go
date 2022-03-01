@@ -35,7 +35,4 @@ func (s *Suite) TestRegisterMachine(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 	c.Assert(machineAfterRegistering.Registered, check.Equals, true)
-
-	_, err = machineAfterRegistering.GetHostInfo()
-	c.Assert(err, check.IsNil)
 }

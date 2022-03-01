@@ -1,10 +1,7 @@
 package headscale
 
 import (
-	"encoding/json"
-
 	"gopkg.in/check.v1"
-	"gorm.io/datatypes"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
@@ -25,8 +22,6 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	hostInfo := tailcfg.Hostinfo{
 		RoutableIPs: []netaddr.IPPrefix{route},
 	}
-	hostinfo, err := json.Marshal(hostInfo)
-	c.Assert(err, check.IsNil)
 
 	machine := Machine{
 		ID:             0,
@@ -38,7 +33,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(hostinfo),
+		HostInfo:       HostInfo(hostInfo),
 	}
 	app.db.Save(&machine)
 
@@ -79,8 +74,6 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	hostInfo := tailcfg.Hostinfo{
 		RoutableIPs: []netaddr.IPPrefix{route, route2},
 	}
-	hostinfo, err := json.Marshal(hostInfo)
-	c.Assert(err, check.IsNil)
 
 	machine := Machine{
 		ID:             0,
@@ -92,7 +85,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       datatypes.JSON(hostinfo),
+		HostInfo:       HostInfo(hostInfo),
 	}
 	app.db.Save(&machine)
 
