@@ -630,7 +630,7 @@ func (machine Machine) toNode(
 		Endpoints:  endpoints,
 		DERP:       derp,
 
-		Hostinfo: hostinfo,
+		Hostinfo: hostinfo.View(),
 		Created:  machine.CreatedAt,
 		LastSeen: machine.LastSeen,
 
