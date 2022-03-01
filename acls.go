@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
+	"gopkg.in/yaml.v3"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
@@ -53,16 +55,36 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 		return err
 	}
 
-	ast, err := hujson.Parse(policyBytes)
-	if err != nil {
-		return err
+	switch filepath.Ext(path) {
+	case ".yml", ".yaml":
+		log.Debug().
+			Str("path", path).
+			Bytes("file", policyBytes).
+			Msg("Loading ACLs from YAML")
+
+		err := yaml.Unmarshal(policyBytes, &policy)
+		if err != nil {
+			return err
+		}
+
+		log.Trace().
+			Interface("policy", policy).
+			Msg("Loaded policy from YAML")
+
+	default:
+		ast, err := hujson.Parse(policyBytes)
+		if err != nil {
+			return err
+		}
+
+		ast.Standardize()
+		policyBytes = ast.Pack()
+		err = json.Unmarshal(policyBytes, &policy)
+		if err != nil {
+			return err
+		}
 	}
-	ast.Standardize()
-	policyBytes = ast.Pack()
-	err = json.Unmarshal(policyBytes, &policy)
-	if err != nil {
-		return err
-	}
+
 	if policy.IsZero() {
 		return errEmptyPolicy
 	}

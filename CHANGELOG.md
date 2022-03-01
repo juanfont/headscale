@@ -9,6 +9,10 @@
 - Boundaries between Namespaces has been removed and all nodes can communicate by default [#357](https://github.com/juanfont/headscale/pull/357)
   - To limit access between nodes, use [ACLs](./docs/acls.md).
 
+### Features
+
+- Add support for writing ACL files with YAML [#359](https://github.com/juanfont/headscale/pull/359)
+
 ### Changes
 
 - Fix a bug were the same IP could be assigned to multiple hosts if joined in quick succession [#346](https://github.com/juanfont/headscale/pull/346)
