@@ -10,6 +10,7 @@
 **Features**:
 
 - Add support for writing ACL files with YAML [#359](https://github.com/juanfont/headscale/pull/359)
+- Users can now use emails in ACL's groups [#372](https://github.com/juanfont/headscale/issues/372)
 
 **Changes**:
 
