@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"html/template"
 	"net/http"
+	textTemplate "text/template"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
@@ -30,7 +31,7 @@ func (h *Headscale) AppleMobileConfig(ctx *gin.Context) {
 		<p><code>curl {{.Url}}/apple/ios</code></p>
 		-->
 		<p><code>curl {{.Url}}/apple/macos</code></p>
-		
+
 		<h2>Profiles</h2>
 
 		<!--
@@ -39,7 +40,7 @@ func (h *Headscale) AppleMobileConfig(ctx *gin.Context) {
 		    <a href="/apple/ios" download="headscale_ios.mobileconfig">iOS profile</a>
 		</p>
 		-->
-		
+
 		<h3>macOS</h3>
 		<p>Headscale can be set to the default server by installing a Headscale configuration profile:</p>
 		<p>
@@ -58,7 +59,7 @@ func (h *Headscale) AppleMobileConfig(ctx *gin.Context) {
 		<code>defaults write io.tailscale.ipn.macos ControlURL {{.URL}}</code>
 
 		<p>Restart Tailscale.app and log in.</p>
-	
+
 	</body>
 </html>`))
 
@@ -202,8 +203,8 @@ type AppleMobilePlatformConfig struct {
 	URL  string
 }
 
-var commonTemplate = template.Must(
-	template.New("mobileconfig").Parse(`<?xml version="1.0" encoding="UTF-8"?>
+var commonTemplate = textTemplate.Must(
+	textTemplate.New("mobileconfig").Parse(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
@@ -229,7 +230,7 @@ var commonTemplate = template.Must(
 </plist>`),
 )
 
-var iosTemplate = template.Must(template.New("iosTemplate").Parse(`
+var iosTemplate = textTemplate.Must(textTemplate.New("iosTemplate").Parse(`
     <dict>
         <key>PayloadType</key>
         <string>io.tailscale.ipn.ios</string>
