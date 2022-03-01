@@ -3,12 +3,10 @@ package headscale
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
-	"gorm.io/datatypes"
 	"tailscale.com/tailcfg"
 )
 
@@ -262,13 +260,8 @@ func (api headscaleV1APIServer) GetMachineRoute(
 		return nil, err
 	}
 
-	routes, err := machine.RoutesToProto()
-	if err != nil {
-		return nil, err
-	}
-
 	return &v1.GetMachineRouteResponse{
-		Routes: routes,
+		Routes: machine.RoutesToProto(),
 	}, nil
 }
 
@@ -286,13 +279,8 @@ func (api headscaleV1APIServer) EnableMachineRoutes(
 		return nil, err
 	}
 
-	routes, err := machine.RoutesToProto()
-	if err != nil {
-		return nil, err
-	}
-
 	return &v1.EnableMachineRoutesResponse{
-		Routes: routes,
+		Routes: machine.RoutesToProto(),
 	}, nil
 }
 
@@ -379,13 +367,6 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		Hostname:    "DebugTestMachine",
 	}
 
-	log.Trace().Caller().Interface("hostinfo", hostinfo).Msg("")
-
-	hostinfoJson, err := json.Marshal(hostinfo)
-	if err != nil {
-		return nil, err
-	}
-
 	newMachine := Machine{
 		MachineKey: request.GetKey(),
 		Name:       request.GetName(),
@@ -395,7 +376,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		LastSeen:             &time.Time{},
 		LastSuccessfulUpdate: &time.Time{},
 
-		HostInfo: datatypes.JSON(hostinfoJson),
+		HostInfo: HostInfo(hostinfo),
 	}
 
 	// log.Trace().Caller().Interface("machine", newMachine).Msg("")

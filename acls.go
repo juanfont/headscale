@@ -247,13 +247,7 @@ func expandAlias(
 		for _, namespace := range owners {
 			machines := filterMachinesByNamespace(machines, namespace)
 			for _, machine := range machines {
-				if len(machine.HostInfo) == 0 {
-					continue
-				}
-				hi, err := machine.GetHostInfo()
-				if err != nil {
-					return ips, err
-				}
+				hi := machine.GetHostInfo()
 				for _, t := range hi.RequestTags {
 					if alias == t {
 						ips = append(ips, machine.IPAddresses.ToStringSlice()...)
@@ -315,15 +309,8 @@ func excludeCorrectlyTaggedNodes(
 	}
 	// for each machine if tag is in tags list, don't append it.
 	for _, machine := range nodes {
-		if len(machine.HostInfo) == 0 {
-			out = append(out, machine)
+		hi := machine.GetHostInfo()
 
-			continue
-		}
-		hi, err := machine.GetHostInfo()
-		if err != nil {
-			return out, err
-		}
 		found := false
 		for _, t := range hi.RequestTags {
 			if containsString(tags, t) {
