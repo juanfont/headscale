@@ -196,10 +196,6 @@ func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 	var addressesSlices []string
 	h.db.Model(&Machine{}).Pluck("ip_addresses", &addressesSlices)
 
-	log.Trace().
-		Strs("addresses", addressesSlices).
-		Msg("Got allocated ip addresses from databases")
-
 	var ips netaddr.IPSetBuilder
 	for _, slice := range addressesSlices {
 		var machineAddresses MachineAddresses
@@ -215,10 +211,6 @@ func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 			ips.Add(ip)
 		}
 	}
-
-	log.Trace().
-		Interface("addresses", ips).
-		Msg("Parsed ip addresses that has been allocated from databases")
 
 	ipSet, err := ips.IPSet()
 	if err != nil {

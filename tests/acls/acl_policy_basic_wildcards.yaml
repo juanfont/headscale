@@ -1,0 +1,10 @@
+---
+Hosts:
+  host-1: 100.100.100.100/32
+  subnet-1: 100.100.101.100/24
+ACLs:
+  - Action: accept
+    Users:
+      - "*"
+    Ports:
+      - host-1:*

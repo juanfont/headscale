@@ -328,6 +328,22 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	c.Assert(rules[0].SrcIPs[0], check.Equals, "*")
 }
 
+func (s *Suite) TestPortWildcardYAML(c *check.C) {
+	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.yaml")
+	c.Assert(err, check.IsNil)
+
+	rules, err := app.generateACLRules()
+	c.Assert(err, check.IsNil)
+	c.Assert(rules, check.NotNil)
+
+	c.Assert(rules, check.HasLen, 1)
+	c.Assert(rules[0].DstPorts, check.HasLen, 1)
+	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, "*")
+}
+
 func (s *Suite) TestPortNamespace(c *check.C) {
 	namespace, err := app.CreateNamespace("testnamespace")
 	c.Assert(err, check.IsNil)
