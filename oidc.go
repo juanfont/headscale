@@ -218,6 +218,9 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 	}
 
 	// retrieve machine information if it exist
+	// The error is not important, because if it does not
+	// exist, then this is a new machine and we will move
+	// on to registration.
 	machine, _ := h.GetMachineByMachineKey(machineKey)
 
 	if machine != nil {
