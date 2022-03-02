@@ -35,13 +35,15 @@ func init() {
 }
 
 var preauthkeysCmd = &cobra.Command{
-	Use:   "preauthkeys",
-	Short: "Handle the preauthkeys in Headscale",
+	Use:     "preauthkeys",
+	Short:   "Handle the preauthkeys in Headscale",
+	Aliases: []string{"preauthkey", "authkey", "pre"},
 }
 
 var listPreAuthKeys = &cobra.Command{
-	Use:   "list",
-	Short: "List the preauthkeys for this namespace",
+	Use:     "list",
+	Short:   "List the preauthkeys for this namespace",
+	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -118,8 +120,9 @@ var listPreAuthKeys = &cobra.Command{
 }
 
 var createPreAuthKeyCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Creates a new preauthkey in the specified namespace",
+	Use:     "create",
+	Short:   "Creates a new preauthkey in the specified namespace",
+	Aliases: []string{"c", "new"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -172,8 +175,9 @@ var createPreAuthKeyCmd = &cobra.Command{
 }
 
 var expirePreAuthKeyCmd = &cobra.Command{
-	Use:   "expire KEY",
-	Short: "Expire a preauthkey",
+	Use:     "expire KEY",
+	Short:   "Expire a preauthkey",
+	Aliases: []string{"revoke", "exp", "e"},
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errMissingParameter
