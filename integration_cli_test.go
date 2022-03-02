@@ -621,12 +621,6 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Equal(s.T(), "machine-4", listAll[3].Name)
 	assert.Equal(s.T(), "machine-5", listAll[4].Name)
 
-	assert.True(s.T(), listAll[0].Registered)
-	assert.True(s.T(), listAll[1].Registered)
-	assert.True(s.T(), listAll[2].Registered)
-	assert.True(s.T(), listAll[3].Registered)
-	assert.True(s.T(), listAll[4].Registered)
-
 	otherNamespaceMachineKeys := []string{
 		"b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
 		"dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
@@ -710,9 +704,6 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Equal(s.T(), "otherNamespace-machine-1", listAllWithotherNamespace[5].Name)
 	assert.Equal(s.T(), "otherNamespace-machine-2", listAllWithotherNamespace[6].Name)
 
-	assert.True(s.T(), listAllWithotherNamespace[5].Registered)
-	assert.True(s.T(), listAllWithotherNamespace[6].Registered)
-
 	// Test list all nodes after added otherNamespace
 	listOnlyotherNamespaceMachineNamespaceResult, err := ExecuteCommand(
 		&s.headscale,
@@ -751,9 +742,6 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		"otherNamespace-machine-2",
 		listOnlyotherNamespaceMachineNamespace[1].Name,
 	)
-
-	assert.True(s.T(), listOnlyotherNamespaceMachineNamespace[0].Registered)
-	assert.True(s.T(), listOnlyotherNamespaceMachineNamespace[1].Registered)
 
 	// Delete a machines
 	_, err = ExecuteCommand(
@@ -979,7 +967,6 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 
 	assert.Equal(s.T(), uint64(1), machine.Id)
 	assert.Equal(s.T(), "route-machine", machine.Name)
-	assert.True(s.T(), machine.Registered)
 
 	listAllResult, err := ExecuteCommand(
 		&s.headscale,
