@@ -117,7 +117,7 @@ func (machine Machine) isExpired() bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefor considered
 	// to mean "not expired"
-	if machine.Expiry.IsZero() {
+	if machine.Expiry == nil || machine.Expiry.IsZero() {
 		return false
 	}
 

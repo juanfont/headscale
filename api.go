@@ -144,6 +144,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			Name:       req.Hostinfo.Hostname,
 			NodeKey:    NodePublicKeyStripPrefix(req.NodeKey),
 			LastSeen:   &now,
+			Expiry:     &time.Time{},
 		}
 
 		if !req.Expiry.IsZero() {
