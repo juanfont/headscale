@@ -49,8 +49,9 @@ func init() {
 }
 
 var nodeCmd = &cobra.Command{
-	Use:   "nodes",
-	Short: "Manage the nodes of Headscale",
+	Use:     "nodes",
+	Short:   "Manage the nodes of Headscale",
+	Aliases: []string{"node", "machine", "machines"},
 }
 
 var registerNodeCmd = &cobra.Command{
@@ -104,8 +105,9 @@ var registerNodeCmd = &cobra.Command{
 }
 
 var listNodesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List nodes",
+	Use:     "list",
+	Short:   "List nodes",
+	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		namespace, err := cmd.Flags().GetString("namespace")
@@ -164,7 +166,7 @@ var expireNodeCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire (log out) a machine in your network",
 	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
-	Aliases: []string{"logout"},
+	Aliases: []string{"logout", "exp", "e"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -206,8 +208,9 @@ var expireNodeCmd = &cobra.Command{
 }
 
 var deleteNodeCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a node",
+	Use:     "delete",
+	Short:   "Delete a node",
+	Aliases: []string{"del"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 

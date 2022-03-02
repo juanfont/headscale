@@ -253,13 +253,7 @@ func expandAlias(
 		for _, namespace := range owners {
 			machines := filterMachinesByNamespace(machines, namespace)
 			for _, machine := range machines {
-				if len(machine.HostInfo) == 0 {
-					continue
-				}
-				hi, err := machine.GetHostInfo()
-				if err != nil {
-					return ips, err
-				}
+				hi := machine.GetHostInfo()
 				for _, t := range hi.RequestTags {
 					if alias == t {
 						ips = append(ips, machine.IPAddresses.ToStringSlice()...)
@@ -273,10 +267,8 @@ func expandAlias(
 
 	// if alias is a namespace
 	nodes := filterMachinesByNamespace(machines, alias)
-	nodes, err := excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias)
-	if err != nil {
-		return ips, err
-	}
+	nodes = excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias)
+
 	for _, n := range nodes {
 		ips = append(ips, n.IPAddresses.ToStringSlice()...)
 	}
@@ -311,7 +303,7 @@ func excludeCorrectlyTaggedNodes(
 	aclPolicy ACLPolicy,
 	nodes []Machine,
 	namespace string,
-) ([]Machine, error) {
+) []Machine {
 	out := []Machine{}
 	tags := []string{}
 	for tag, ns := range aclPolicy.TagOwners {
@@ -321,15 +313,8 @@ func excludeCorrectlyTaggedNodes(
 	}
 	// for each machine if tag is in tags list, don't append it.
 	for _, machine := range nodes {
-		if len(machine.HostInfo) == 0 {
-			out = append(out, machine)
+		hi := machine.GetHostInfo()
 
-			continue
-		}
-		hi, err := machine.GetHostInfo()
-		if err != nil {
-			return out, err
-		}
 		found := false
 		for _, t := range hi.RequestTags {
 			if containsString(tags, t) {
@@ -343,7 +328,7 @@ func excludeCorrectlyTaggedNodes(
 		}
 	}
 
-	return out, nil
+	return out
 }
 
 func expandPorts(portsStr string) (*[]tailcfg.PortRange, error) {
