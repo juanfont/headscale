@@ -193,10 +193,12 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	machineKeyStr, machineKeyOK := machineKeyIf.(string)
+	machineKeyFromCache, machineKeyOK := machineKeyIf.(string)
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
+	err = machineKey.UnmarshalText(
+		[]byte(MachinePublicKeyEnsurePrefix(machineKeyFromCache)),
+	)
 	if err != nil {
 		log.Error().
 			Msg("could not parse machine public key")
@@ -294,6 +296,8 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 		return
 	}
+
+	machineKeyStr := MachinePublicKeyStripPrefix(machineKey)
 
 	_, err = h.RegisterMachineFromAuthCallback(
 		machineKeyStr,
