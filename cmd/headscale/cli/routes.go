@@ -35,13 +35,15 @@ func init() {
 }
 
 var routesCmd = &cobra.Command{
-	Use:   "routes",
-	Short: "Manage the routes of Headscale",
+	Use:     "routes",
+	Short:   "Manage the routes of Headscale",
+	Aliases: []string{"r", "route"},
 }
 
 var listRoutesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List routes advertised and enabled by a given node",
+	Use:     "list",
+	Short:   "List routes advertised and enabled by a given node",
+	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 

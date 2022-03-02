@@ -13,8 +13,9 @@ func init() {
 }
 
 var generateCmd = &cobra.Command{
-	Use:   "generate",
-	Short: "Generate commands",
+	Use:     "generate",
+	Short:   "Generate commands",
+	Aliases: []string{"gen"},
 }
 
 var generatePrivateKeyCmd = &cobra.Command{
