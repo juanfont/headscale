@@ -138,7 +138,8 @@ tls_key_path: ""
 log_level: info
 
 # Path to a file containg ACL policies.
-# Recommended path: /etc/headscale/acl.hujson
+# ACLs can be defined as YAML or HUJSON.
+# https://tailscale.com/kb/1018/acls/
 acl_policy_path: ""
 
 ## DNS

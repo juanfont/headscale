@@ -29,16 +29,12 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(machine)
 
-	machineFromDB, err := app.GetMachine("test", "testmachine")
-	c.Assert(err, check.IsNil)
-
-	_, err = machineFromDB.GetHostInfo()
+	_, err = app.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
 }
 
@@ -59,16 +55,12 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(&machine)
 
-	machineByID, err := app.GetMachineByID(0)
-	c.Assert(err, check.IsNil)
-
-	_, err = machineByID.GetHostInfo()
+	_, err = app.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 }
 
@@ -82,7 +74,6 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
@@ -105,7 +96,6 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine3",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
@@ -136,7 +126,6 @@ func (s *Suite) TestListPeers(c *check.C) {
 			DiscoKey:       "faa" + strconv.Itoa(index),
 			Name:           "testmachine" + strconv.Itoa(index),
 			NamespaceID:    namespace.ID,
-			Registered:     true,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 		}
@@ -144,9 +133,6 @@ func (s *Suite) TestListPeers(c *check.C) {
 	}
 
 	machine0ByID, err := app.GetMachineByID(0)
-	c.Assert(err, check.IsNil)
-
-	_, err = machine0ByID.GetHostInfo()
 	c.Assert(err, check.IsNil)
 
 	peersOfMachine0, err := app.ListPeers(machine0ByID)
@@ -188,7 +174,6 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 			},
 			Name:           "testmachine" + strconv.Itoa(index),
 			NamespaceID:    stor[index%2].namespace.ID,
-			Registered:     true,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(stor[index%2].key.ID),
 		}
@@ -217,9 +202,6 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 
 	testMachine, err := app.GetMachineByID(2)
 	c.Logf("Machine(%v), namespace: %v", testMachine.Name, testMachine.Namespace)
-	c.Assert(err, check.IsNil)
-
-	_, err = testMachine.GetHostInfo()
 	c.Assert(err, check.IsNil)
 
 	machines, err := app.ListMachines()
@@ -258,7 +240,6 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		Expiry:         &time.Time{},
@@ -296,6 +277,7 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 	}
 }
 
+// nolint
 func Test_getFilteredByACLPeers(t *testing.T) {
 	type args struct {
 		machines []Machine
@@ -443,7 +425,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					},
 				},
 				machine: &Machine{ // current machine
-					ID:          1,
+					ID:          2,
 					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
 					Namespace:   Namespace{Name: "marc"},
 				},
@@ -455,6 +437,208 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					Namespace:   Namespace{Name: "mickael"},
 				},
 			},
+		},
+		{
+			name: "rules allows all hosts to reach one destination",
+			args: args{
+				machines: []Machine{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.2"},
+						},
+					},
+				},
+				machine: &Machine{ // current machine
+					ID: 1,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.1"),
+					},
+					Namespace: Namespace{Name: "joe"},
+				},
+			},
+			want: Machines{
+				{
+					ID: 2,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.2"),
+					},
+					Namespace: Namespace{Name: "marc"},
+				},
+			},
+		},
+		{
+			name: "rules allows all hosts to reach one destination, destination can reach all hosts",
+			args: args{
+				machines: []Machine{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.2"},
+						},
+					},
+				},
+				machine: &Machine{ // current machine
+					ID: 2,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.2"),
+					},
+					Namespace: Namespace{Name: "marc"},
+				},
+			},
+			want: Machines{
+				{
+					ID: 1,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.1"),
+					},
+					Namespace: Namespace{Name: "joe"},
+				},
+				{
+					ID: 3,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.3"),
+					},
+					Namespace: Namespace{Name: "mickael"},
+				},
+			},
+		},
+		{
+			name: "rule allows all hosts to reach all destinations",
+			args: args{
+				machines: []Machine{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*"},
+						},
+					},
+				},
+				machine: &Machine{ // current machine
+					ID:          2,
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					Namespace:   Namespace{Name: "marc"},
+				},
+			},
+			want: Machines{
+				{
+					ID: 1,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.1"),
+					},
+					Namespace: Namespace{Name: "joe"},
+				},
+				{
+					ID:          3,
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")},
+					Namespace:   Namespace{Name: "mickael"},
+				},
+			},
+		},
+		{
+			name: "without rule all communications are forbidden",
+			args: args{
+				machines: []Machine{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+				},
+				machine: &Machine{ // current machine
+					ID:          2,
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					Namespace:   Namespace{Name: "marc"},
+				},
+			},
+			want: Machines{},
 		},
 	}
 	for _, tt := range tests {

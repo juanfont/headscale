@@ -10,21 +10,16 @@ import (
 	"html/template"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
-	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
-	"gorm.io/gorm"
 	"tailscale.com/types/key"
 )
 
 const (
-	oidcStateCacheExpiration      = time.Minute * 5
-	oidcStateCacheCleanupInterval = time.Minute * 10
-	randomByteSize                = 16
+	randomByteSize = 16
 )
 
 type IDTokenClaims struct {
@@ -61,14 +56,6 @@ func (h *Headscale) initOIDC() error {
 		}
 	}
 
-	// init the state cache if it hasn't been already
-	if h.oidcStateCache == nil {
-		h.oidcStateCache = cache.New(
-			oidcStateCacheExpiration,
-			oidcStateCacheCleanupInterval,
-		)
-	}
-
 	return nil
 }
 
@@ -101,7 +88,7 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 	stateStr := hex.EncodeToString(randomBlob)[:32]
 
 	// place the machine key into the state cache, so it can be retrieved later
-	h.oidcStateCache.Set(stateStr, machineKeyStr, oidcStateCacheExpiration)
+	h.registrationCache.Set(stateStr, machineKeyStr, registerCacheExpiration)
 
 	authURL := h.oauth2Config.AuthCodeURL(stateStr)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
@@ -125,7 +112,6 @@ var oidcCallbackTemplate = template.Must(
 	</html>`),
 )
 
-// TODO: Why is the entire machine registration logic duplicated here?
 // OIDCCallback handles the callback from the OIDC endpoint
 // Retrieves the mkey from the state cache and adds the machine to the users email namespace
 // TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
@@ -197,7 +183,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 	}
 
 	// retrieve machinekey from state cache
-	machineKeyIf, machineKeyFound := h.oidcStateCache.Get(state)
+	machineKeyIf, machineKeyFound := h.registrationCache.Get(state)
 
 	if !machineKeyFound {
 		log.Error().
@@ -207,10 +193,12 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	machineKeyStr, machineKeyOK := machineKeyIf.(string)
+	machineKeyFromCache, machineKeyOK := machineKeyIf.(string)
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
+	err = machineKey.UnmarshalText(
+		[]byte(MachinePublicKeyEnsurePrefix(machineKeyFromCache)),
+	)
 	if err != nil {
 		log.Error().
 			Msg("could not parse machine public key")
@@ -229,33 +217,19 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
-	requestedTime := time.Time{}
-	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.String()); found {
-		if reqTime, ok := requestedTimeIf.(time.Time); ok {
-			requestedTime = reqTime
-		}
-	}
+	// retrieve machine information if it exist
+	// The error is not important, because if it does not
+	// exist, then this is a new machine and we will move
+	// on to registration.
+	machine, _ := h.GetMachineByMachineKey(machineKey)
 
-	// retrieve machine information
-	machine, err := h.GetMachineByMachineKey(machineKey)
-	if err != nil {
-		log.Error().Msg("machine key not found in database")
-		ctx.String(
-			http.StatusInternalServerError,
-			"could not get machine info from database",
-		)
-
-		return
-	}
-
-	if machine.isRegistered() {
+	if machine != nil {
 		log.Trace().
 			Caller().
 			Str("machine", machine.Name).
 			Msg("machine already registered, reauthenticating")
 
-		h.RefreshMachine(machine, requestedTime)
+		h.RefreshMachine(machine, *machine.Expiry)
 
 		var content bytes.Buffer
 		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
@@ -279,8 +253,6 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	now := time.Now().UTC()
-
 	namespaceName, err := NormalizeNamespaceName(
 		claims.Email,
 		h.cfg.OIDC.StripEmaildomain,
@@ -294,61 +266,58 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 		return
 	}
+
 	// register the machine if it's new
-	if !machine.Registered {
-		log.Debug().Msg("Registering new machine after successful callback")
+	log.Debug().Msg("Registering new machine after successful callback")
 
-		namespace, err := h.GetNamespace(namespaceName)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			namespace, err = h.CreateNamespace(namespaceName)
+	namespace, err := h.GetNamespace(namespaceName)
+	if errors.Is(err, errNamespaceNotFound) {
+		namespace, err = h.CreateNamespace(namespaceName)
 
-			if err != nil {
-				log.Error().
-					Err(err).
-					Caller().
-					Msgf("could not create new namespace '%s'", namespaceName)
-				ctx.String(
-					http.StatusInternalServerError,
-					"could not create new namespace",
-				)
-
-				return
-			}
-		} else if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Str("namespace", namespaceName).
-				Msg("could not find or create namespace")
-			ctx.String(
-				http.StatusInternalServerError,
-				"could not find or create namespace",
-			)
-
-			return
-		}
-
-		ips, err := h.getAvailableIPs()
 		if err != nil {
 			log.Error().
-				Caller().
 				Err(err).
-				Msg("could not get an IP from the pool")
+				Caller().
+				Msgf("could not create new namespace '%s'", namespaceName)
 			ctx.String(
 				http.StatusInternalServerError,
-				"could not get an IP from the pool",
+				"could not create new namespace",
 			)
 
 			return
 		}
+	} else if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Str("namespace", namespaceName).
+			Msg("could not find or create namespace")
+		ctx.String(
+			http.StatusInternalServerError,
+			"could not find or create namespace",
+		)
 
-		machine.IPAddresses = ips
-		machine.NamespaceID = namespace.ID
-		machine.Registered = true
-		machine.RegisterMethod = RegisterMethodOIDC
-		machine.LastSuccessfulUpdate = &now
-		machine.Expiry = &requestedTime
-		h.db.Save(&machine)
+		return
+	}
+
+	machineKeyStr := MachinePublicKeyStripPrefix(machineKey)
+
+	_, err = h.RegisterMachineFromAuthCallback(
+		machineKeyStr,
+		namespace.Name,
+		RegisterMethodOIDC,
+	)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("could not register machine")
+		ctx.String(
+			http.StatusInternalServerError,
+			"could not register machine",
+		)
+
+		return
 	}
 
 	var content bytes.Buffer

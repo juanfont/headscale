@@ -55,8 +55,8 @@ const (
 	HTTPReadTimeout    = 30 * time.Second
 	privateKeyFileMode = 0o600
 
-	requestedExpiryCacheExpiration      = time.Minute * 5
-	requestedExpiryCacheCleanupInterval = time.Minute * 10
+	registerCacheExpiration = time.Minute * 15
+	registerCacheCleanup    = time.Minute * 20
 
 	errUnsupportedDatabase                 = Error("unsupported DB")
 	errUnsupportedLetsEncryptChallengeType = Error(
@@ -149,11 +149,10 @@ type Headscale struct {
 
 	lastStateChange sync.Map
 
-	oidcProvider   *oidc.Provider
-	oauth2Config   *oauth2.Config
-	oidcStateCache *cache.Cache
+	oidcProvider *oidc.Provider
+	oauth2Config *oauth2.Config
 
-	requestedExpiryCache *cache.Cache
+	registrationCache *cache.Cache
 
 	ipAllocationMutex sync.Mutex
 }
@@ -203,18 +202,18 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		return nil, errUnsupportedDatabase
 	}
 
-	requestedExpiryCache := cache.New(
-		requestedExpiryCacheExpiration,
-		requestedExpiryCacheCleanupInterval,
+	registrationCache := cache.New(
+		registerCacheExpiration,
+		registerCacheCleanup,
 	)
 
 	app := Headscale{
-		cfg:                  cfg,
-		dbType:               cfg.DBtype,
-		dbString:             dbString,
-		privateKey:           privKey,
-		aclRules:             tailcfg.FilterAllowAll, // default allowall
-		requestedExpiryCache: requestedExpiryCache,
+		cfg:               cfg,
+		dbType:            cfg.DBtype,
+		dbString:          dbString,
+		privateKey:        privKey,
+		aclRules:          tailcfg.FilterAllowAll, // default allowall
+		registrationCache: registrationCache,
 	}
 
 	err = app.initDB()

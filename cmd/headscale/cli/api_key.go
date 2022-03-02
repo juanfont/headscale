@@ -36,13 +36,15 @@ func init() {
 }
 
 var apiKeysCmd = &cobra.Command{
-	Use:   "apikeys",
-	Short: "Handle the Api keys in Headscale",
+	Use:     "apikeys",
+	Short:   "Handle the Api keys in Headscale",
+	Aliases: []string{"apikey", "api"},
 }
 
 var listAPIKeys = &cobra.Command{
-	Use:   "list",
-	Short: "List the Api keys for headscale",
+	Use:     "list",
+	Short:   "List the Api keys for headscale",
+	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -107,6 +109,7 @@ var createAPIKeyCmd = &cobra.Command{
 Creates a new Api key, the Api key is only visible on creation
 and cannot be retrieved again.
 If you loose a key, create a new one and revoke (expire) the old one.`,
+	Aliases: []string{"c", "new"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -144,7 +147,7 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 var expireAPIKeyCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire an ApiKey",
-	Aliases: []string{"revoke"},
+	Aliases: []string{"revoke", "exp", "e"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
