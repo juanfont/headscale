@@ -267,10 +267,8 @@ func expandAlias(
 
 	// if alias is a namespace
 	nodes := filterMachinesByNamespace(machines, alias)
-	nodes, err := excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias)
-	if err != nil {
-		return ips, err
-	}
+	nodes = excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias)
+
 	for _, n := range nodes {
 		ips = append(ips, n.IPAddresses.ToStringSlice()...)
 	}
@@ -305,7 +303,7 @@ func excludeCorrectlyTaggedNodes(
 	aclPolicy ACLPolicy,
 	nodes []Machine,
 	namespace string,
-) ([]Machine, error) {
+) []Machine {
 	out := []Machine{}
 	tags := []string{}
 	for tag, ns := range aclPolicy.TagOwners {
@@ -330,7 +328,7 @@ func excludeCorrectlyTaggedNodes(
 		}
 	}
 
-	return out, nil
+	return out
 }
 
 func expandPorts(portsStr string) (*[]tailcfg.PortRange, error) {

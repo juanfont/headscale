@@ -1142,7 +1142,6 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					Namespace:   Namespace{Name: "joe"},
 				},
 			},
-			wantErr: false,
 		},
 		{
 			name: "all nodes have invalid tags, don't exclude them",
@@ -1212,25 +1211,15 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					Namespace: Namespace{Name: "joe"},
 				},
 			},
-			wantErr: false,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := excludeCorrectlyTaggedNodes(
+			got := excludeCorrectlyTaggedNodes(
 				test.args.aclPolicy,
 				test.args.nodes,
 				test.args.namespace,
 			)
-			if (err != nil) != test.wantErr {
-				t.Errorf(
-					"excludeCorrectlyTaggedNodes() error = %v, wantErr %v",
-					err,
-					test.wantErr,
-				)
-
-				return
-			}
 			if !reflect.DeepEqual(got, test.want) {
 				t.Errorf("excludeCorrectlyTaggedNodes() = %v, want %v", got, test.want)
 			}
