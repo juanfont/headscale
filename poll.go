@@ -2,7 +2,6 @@ package headscale
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -85,12 +83,8 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("machine", machine.Name).
 		Msg("Found machine in database")
 
-	hostinfo, err := json.Marshal(req.Hostinfo)
-	if err != nil {
-		return
-	}
 	machine.Name = req.Hostinfo.Hostname
-	machine.HostInfo = datatypes.JSON(hostinfo)
+	machine.HostInfo = HostInfo(*req.Hostinfo)
 	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
 	now := time.Now().UTC()
 
@@ -114,18 +108,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	// The intended use is for clients to discover the DERP map at start-up
 	// before their first real endpoint update.
 	if !req.ReadOnly {
-		endpoints, err := json.Marshal(req.Endpoints)
-		if err != nil {
-			log.Error().
-				Caller().
-				Str("func", "PollNetMapHandler").
-				Err(err).
-				Msg("Failed to mashal requested endpoints for the client")
-			ctx.String(http.StatusInternalServerError, ":(")
-
-			return
-		}
-		machine.Endpoints = datatypes.JSON(endpoints)
+		machine.Endpoints = req.Endpoints
 		machine.LastSeen = &now
 	}
 	h.db.Updates(machine)
