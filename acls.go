@@ -230,6 +230,10 @@ func expandAlias(
 		return []string{"*"}, nil
 	}
 
+	log.Debug().
+		Str("alias", alias).
+		Msg("Expanding")
+
 	if strings.HasPrefix(alias, "group:") {
 		namespaces, err := expandGroup(aclPolicy, alias, stripEmailDomain)
 		if err != nil {
@@ -293,7 +297,9 @@ func expandAlias(
 		return []string{cidr.String()}, nil
 	}
 
-	return ips, errInvalidUserSection
+	log.Warn().Msgf("No IPs found with the alias %v", alias)
+
+	return ips, nil
 }
 
 // excludeCorrectlyTaggedNodes will remove from the list of input nodes the ones
