@@ -25,6 +25,11 @@ spec:
                 configMapKeyRef:
                   name: headscale-config
                   key: listen_addr
+            - name: METRICS_LISTEN_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: headscale-config
+                  key: metrics_listen_addr
             - name: DERP_MAP_PATH
               value: /vol/config/derp.yaml
             - name: EPHEMERAL_NODE_INACTIVITY_TIMEOUT
