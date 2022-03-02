@@ -113,6 +113,12 @@ func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 	return nil
 }
 
+// UsePreAuthKey marks a PreAuthKey as used.
+func (h *Headscale) UsePreAuthKey(k *PreAuthKey) {
+	k.Used = true
+	h.db.Save(k)
+}
+
 // checkKeyValidity does the heavy lifting for validation of the PreAuthKey coming from a node
 // If returns no error and a PreAuthKey, it can be used.
 func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {

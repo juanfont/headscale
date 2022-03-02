@@ -29,6 +29,7 @@ linters:
     - wrapcheck
     - dupl
     - makezero
+    - maintidx
 
     # We might want to enable this, but it might be a lot of work
     - cyclop

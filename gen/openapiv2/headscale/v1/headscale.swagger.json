@@ -885,12 +885,6 @@
         "namespace": {
           "$ref": "#/definitions/v1Namespace"
         },
-        "registered": {
-          "type": "boolean"
-        },
-        "registerMethod": {
-          "$ref": "#/definitions/v1RegisterMethod"
-        },
         "lastSeen": {
           "type": "string",
           "format": "date-time"
@@ -909,6 +903,9 @@
         "createdAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "registerMethod": {
+          "$ref": "#/definitions/v1RegisterMethod"
         }
       }
     },
