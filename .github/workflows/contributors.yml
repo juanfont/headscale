@@ -17,6 +17,10 @@ jobs:
         run: git push origin --delete update-contributors
       - name: Create up-to-date contributors branch
         run: git checkout -B update-contributors
+      - name: Push empty contributors branch
+        run: git push origin update-contributors
+      - name: Switch back to main
+        run: git checkout main
       - uses: BobAnkh/add-contributors@v0.2.2
         with:
           CONTRIBUTOR: "## Contributors"
