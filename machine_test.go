@@ -289,6 +289,7 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 	}
 }
 
+// nolint
 func Test_getFilteredByACLPeers(t *testing.T) {
 	type args struct {
 		machines []Machine
@@ -436,7 +437,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					},
 				},
 				machine: &Machine{ // current machine
-					ID:          1,
+					ID:          2,
 					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
 					Namespace:   Namespace{Name: "marc"},
 				},
@@ -448,6 +449,208 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					Namespace:   Namespace{Name: "mickael"},
 				},
 			},
+		},
+		{
+			name: "rules allows all hosts to reach one destination",
+			args: args{
+				machines: []Machine{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.2"},
+						},
+					},
+				},
+				machine: &Machine{ // current machine
+					ID: 1,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.1"),
+					},
+					Namespace: Namespace{Name: "joe"},
+				},
+			},
+			want: Machines{
+				{
+					ID: 2,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.2"),
+					},
+					Namespace: Namespace{Name: "marc"},
+				},
+			},
+		},
+		{
+			name: "rules allows all hosts to reach one destination, destination can reach all hosts",
+			args: args{
+				machines: []Machine{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.2"},
+						},
+					},
+				},
+				machine: &Machine{ // current machine
+					ID: 2,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.2"),
+					},
+					Namespace: Namespace{Name: "marc"},
+				},
+			},
+			want: Machines{
+				{
+					ID: 1,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.1"),
+					},
+					Namespace: Namespace{Name: "joe"},
+				},
+				{
+					ID: 3,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.3"),
+					},
+					Namespace: Namespace{Name: "mickael"},
+				},
+			},
+		},
+		{
+			name: "rule allows all hosts to reach all destinations",
+			args: args{
+				machines: []Machine{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*"},
+						},
+					},
+				},
+				machine: &Machine{ // current machine
+					ID:          2,
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					Namespace:   Namespace{Name: "marc"},
+				},
+			},
+			want: Machines{
+				{
+					ID: 1,
+					IPAddresses: MachineAddresses{
+						netaddr.MustParseIP("100.64.0.1"),
+					},
+					Namespace: Namespace{Name: "joe"},
+				},
+				{
+					ID:          3,
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")},
+					Namespace:   Namespace{Name: "mickael"},
+				},
+			},
+		},
+		{
+			name: "without rule all communications are forbidden",
+			args: args{
+				machines: []Machine{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+				},
+				machine: &Machine{ // current machine
+					ID:          2,
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					Namespace:   Namespace{Name: "marc"},
+				},
+			},
+			want: Machines{},
 		},
 	}
 	for _, tt := range tests {
