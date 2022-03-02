@@ -34,10 +34,7 @@ func (s *Suite) TestGetMachine(c *check.C) {
 	}
 	app.db.Save(machine)
 
-	machineFromDB, err := app.GetMachine("test", "testmachine")
-	c.Assert(err, check.IsNil)
-
-	_, err = machineFromDB.GetHostInfo()
+	_, err = app.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
 }
 
@@ -63,10 +60,7 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 	}
 	app.db.Save(&machine)
 
-	machineByID, err := app.GetMachineByID(0)
-	c.Assert(err, check.IsNil)
-
-	_, err = machineByID.GetHostInfo()
+	_, err = app.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 }
 
@@ -141,9 +135,6 @@ func (s *Suite) TestListPeers(c *check.C) {
 	machine0ByID, err := app.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 
-	_, err = machine0ByID.GetHostInfo()
-	c.Assert(err, check.IsNil)
-
 	peersOfMachine0, err := app.ListPeers(machine0ByID)
 	c.Assert(err, check.IsNil)
 
@@ -211,9 +202,6 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 
 	testMachine, err := app.GetMachineByID(2)
 	c.Logf("Machine(%v), namespace: %v", testMachine.Name, testMachine.Namespace)
-	c.Assert(err, check.IsNil)
-
-	_, err = testMachine.GetHostInfo()
 	c.Assert(err, check.IsNil)
 
 	machines, err := app.ListMachines()
