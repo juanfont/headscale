@@ -157,9 +157,11 @@ func (api headscaleV1APIServer) RegisterMachine(
 		Str("namespace", request.GetNamespace()).
 		Str("machine_key", request.GetKey()).
 		Msg("Registering machine")
-	machine, err := api.h.RegisterMachine(
+
+	machine, err := api.h.RegisterMachineFromAuthCallback(
 		request.GetKey(),
 		request.GetNamespace(),
+		RegisterMethodCLI,
 	)
 	if err != nil {
 		return nil, err
@@ -379,11 +381,11 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		HostInfo: HostInfo(hostinfo),
 	}
 
-	// log.Trace().Caller().Interface("machine", newMachine).Msg("")
-
-	if err := api.h.db.Create(&newMachine).Error; err != nil {
-		return nil, err
-	}
+	api.h.registrationCache.Set(
+		request.GetKey(),
+		newMachine,
+		registerCacheExpiration,
+	)
 
 	return &v1.DebugCreateMachineResponse{Machine: newMachine.toProto()}, nil
 }

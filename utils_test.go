@@ -36,7 +36,6 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		IPAddresses:    ips,
@@ -85,7 +84,6 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 			DiscoKey:       "faa",
 			Name:           "testmachine",
 			NamespaceID:    namespace.ID,
-			Registered:     true,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 			IPAddresses:    ips,
@@ -176,7 +174,6 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 		DiscoKey:       "faa",
 		Name:           "testmachine",
 		NamespaceID:    namespace.ID,
-		Registered:     true,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}

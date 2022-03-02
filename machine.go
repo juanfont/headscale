@@ -18,11 +18,14 @@ import (
 )
 
 const (
-	errMachineNotFound            = Error("machine not found")
-	errMachineAlreadyRegistered   = Error("machine already registered")
-	errMachineRouteIsNotAvailable = Error("route is not available on machine")
-	errMachineAddressesInvalid    = Error("failed to parse machine addresses")
-	errHostnameTooLong            = Error("Hostname too long")
+	errMachineNotFound                  = Error("machine not found")
+	errMachineRouteIsNotAvailable       = Error("route is not available on machine")
+	errMachineAddressesInvalid          = Error("failed to parse machine addresses")
+	errMachineNotFoundRegistrationCache = Error(
+		"machine not found in registration cache",
+	)
+	errCouldNotConvertMachineInterface = Error("failed to convert machine interface")
+	errHostnameTooLong                 = Error("Hostname too long")
 )
 
 const (
@@ -40,10 +43,11 @@ type Machine struct {
 	NamespaceID uint
 	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
 
-	Registered     bool // temp
 	RegisterMethod string
-	AuthKeyID      uint
-	AuthKey        *PreAuthKey
+
+	// TODO(kradalby): This seems like irrelevant information?
+	AuthKeyID uint
+	AuthKey   *PreAuthKey
 
 	LastSeen             *time.Time
 	LastSuccessfulUpdate *time.Time
@@ -62,11 +66,6 @@ type (
 	Machines  []Machine
 	MachinesP []*Machine
 )
-
-// For the time being this method is rather naive.
-func (machine Machine) isRegistered() bool {
-	return machine.Registered
-}
 
 type MachineAddresses []netaddr.IP
 
@@ -114,7 +113,7 @@ func (machine Machine) isExpired() bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefor considered
 	// to mean "not expired"
-	if machine.Expiry.IsZero() {
+	if machine.Expiry == nil || machine.Expiry.IsZero() {
 		return false
 	}
 
@@ -174,15 +173,33 @@ func getFilteredByACLPeers(
 				matchSourceAndDestinationWithRule(
 					rule.SrcIPs,
 					dst,
+					peer.IPAddresses.ToStringSlice(),
+					machine.IPAddresses.ToStringSlice(),
+				) || // match return path
+				matchSourceAndDestinationWithRule(
+					rule.SrcIPs,
+					dst,
 					machine.IPAddresses.ToStringSlice(),
 					[]string{"*"},
 				) || // match source and all destination
 				matchSourceAndDestinationWithRule(
 					rule.SrcIPs,
 					dst,
+					[]string{"*"},
+					[]string{"*"},
+				) || // match source and all destination
+				matchSourceAndDestinationWithRule(
+					rule.SrcIPs,
+					dst,
+					[]string{"*"},
 					peer.IPAddresses.ToStringSlice(),
+				) || // match source and all destination
+				matchSourceAndDestinationWithRule(
+					rule.SrcIPs,
+					dst,
+					[]string{"*"},
 					machine.IPAddresses.ToStringSlice(),
-				) { // match return path
+				) { // match all sources and source
 				peers[peer.ID] = peer
 			}
 		}
@@ -212,7 +229,7 @@ func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ? AND registered",
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ?",
 		machine.MachineKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
@@ -275,7 +292,7 @@ func (h *Headscale) getValidPeers(machine *Machine) (Machines, error) {
 	}
 
 	for _, peer := range peers {
-		if peer.isRegistered() && !peer.isExpired() {
+		if !peer.isExpired() {
 			validPeers = append(validPeers, peer)
 		}
 	}
@@ -364,8 +381,6 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 
 // DeleteMachine softs deletes a Machine from the database.
 func (h *Headscale) DeleteMachine(machine *Machine) error {
-	machine.Registered = false
-	h.db.Save(&machine) // we mark it as unregistered, just in case
 	if err := h.db.Delete(&machine).Error; err != nil {
 		return err
 	}
@@ -581,7 +596,7 @@ func (machine Machine) toNode(
 		LastSeen: machine.LastSeen,
 
 		KeepAlive:         true,
-		MachineAuthorized: machine.Registered,
+		MachineAuthorized: !machine.isExpired(),
 		Capabilities:      []string{tailcfg.CapabilityFileSharing},
 	}
 
@@ -598,8 +613,6 @@ func (machine *Machine) toProto() *v1.Machine {
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Name,
 		Namespace:   machine.Namespace.toProto(),
-
-		Registered: machine.Registered,
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
@@ -628,73 +641,49 @@ func (machine *Machine) toProto() *v1.Machine {
 	return machineProto
 }
 
-// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
-func (h *Headscale) RegisterMachine(
+func (h *Headscale) RegisterMachineFromAuthCallback(
 	machineKeyStr string,
 	namespaceName string,
+	registrationMethod string,
 ) (*Machine, error) {
-	namespace, err := h.GetNamespace(namespaceName)
-	if err != nil {
-		return nil, err
-	}
+	if machineInterface, ok := h.registrationCache.Get(machineKeyStr); ok {
+		if registrationMachine, ok := machineInterface.(Machine); ok {
+			namespace, err := h.GetNamespace(namespaceName)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to find namespace in register machine from auth callback, %w",
+					err,
+				)
+			}
 
-	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
-	if err != nil {
-		return nil, err
-	}
+			registrationMachine.NamespaceID = namespace.ID
+			registrationMachine.RegisterMethod = registrationMethod
 
-	log.Trace().
-		Caller().
-		Str("machine_key_str", machineKeyStr).
-		Str("machine_key", machineKey.String()).
-		Msg("Registering machine")
+			machine, err := h.RegisterMachine(
+				registrationMachine,
+			)
 
-	machine, err := h.GetMachineByMachineKey(machineKey)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(kradalby): Currently, if it fails to find a requested expiry, non will be set
-	// This means that if a user is to slow with register a machine, it will possibly not
-	// have the correct expiry.
-	requestedTime := time.Time{}
-	if requestedTimeIf, found := h.requestedExpiryCache.Get(machineKey.String()); found {
-		log.Trace().
-			Caller().
-			Str("machine", machine.Name).
-			Msg("Expiry time found in cache, assigning to node")
-		if reqTime, ok := requestedTimeIf.(time.Time); ok {
-			requestedTime = reqTime
+			return machine, err
+		} else {
+			return nil, errCouldNotConvertMachineInterface
 		}
 	}
 
-	if machine.isRegistered() {
-		log.Trace().
-			Caller().
-			Str("machine", machine.Name).
-			Msg("machine already registered, reauthenticating")
+	return nil, errMachineNotFoundRegistrationCache
+}
 
-		h.RefreshMachine(machine, requestedTime)
-
-		return machine, nil
-	}
+// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
+func (h *Headscale) RegisterMachine(machine Machine,
+) (*Machine, error) {
+	log.Trace().
+		Caller().
+		Str("machine_key", machine.MachineKey).
+		Msg("Registering machine")
 
 	log.Trace().
 		Caller().
 		Str("machine", machine.Name).
 		Msg("Attempting to register machine")
-
-	if machine.isRegistered() {
-		err := errMachineAlreadyRegistered
-		log.Error().
-			Caller().
-			Err(err).
-			Str("machine", machine.Name).
-			Msg("Attempting to register machine")
-
-		return nil, err
-	}
 
 	h.ipAllocationMutex.Lock()
 	defer h.ipAllocationMutex.Unlock()
@@ -710,17 +699,8 @@ func (h *Headscale) RegisterMachine(
 		return nil, err
 	}
 
-	log.Trace().
-		Caller().
-		Str("machine", machine.Name).
-		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
-		Msg("Found IP for host")
-
 	machine.IPAddresses = ips
-	machine.NamespaceID = namespace.ID
-	machine.Registered = true
-	machine.RegisterMethod = RegisterMethodCLI
-	machine.Expiry = &requestedTime
+
 	h.db.Save(&machine)
 
 	log.Trace().
@@ -729,7 +709,7 @@ func (h *Headscale) RegisterMachine(
 		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
 		Msg("Machine registered with the database")
 
-	return machine, nil
+	return &machine, nil
 }
 
 func (machine *Machine) GetAdvertisedRoutes() []netaddr.IPPrefix {
