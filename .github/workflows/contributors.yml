@@ -10,6 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Delete upstream contributor branch
+        # Allow continue on failure to account for when the
+        # upstream branch is deleted or does not exist.
+        continue-on-error: true
+        run: git push origin --delete update-contributors
+      - name: Create up-to-date contributors branch
+        run: git checkout -B update-contributors
       - uses: BobAnkh/add-contributors@v0.2.2
         with:
           CONTRIBUTOR: "## Contributors"
