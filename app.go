@@ -119,6 +119,7 @@ type OIDCConfig struct {
 }
 
 type DERPConfig struct {
+	EmbeddedDERP    bool
 	URLs            []url.URL
 	Paths           []string
 	AutoUpdate      bool
@@ -141,7 +142,8 @@ type Headscale struct {
 	dbDebug    bool
 	privateKey *key.MachinePrivate
 
-	DERPMap *tailcfg.DERPMap
+	DERPMap            *tailcfg.DERPMap
+	EmbeddedDerpServer *EmbeddedDerpServer
 
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
@@ -235,6 +237,38 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		}
 		for _, d := range magicDNSDomains {
 			app.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
+		}
+	}
+
+	if cfg.DERP.EmbeddedDERP {
+		embeddedDerpServer, err := app.NewEmbeddedDerpServer()
+		if err != nil {
+			return nil, err
+		}
+		app.EmbeddedDerpServer = embeddedDerpServer
+
+		// If we are using the embedded DERP, there is no reason to use Tailscale's DERP infrastructure
+		serverURL, err := url.Parse(app.cfg.ServerURL)
+		if err != nil {
+			return nil, err
+		}
+		app.DERPMap = &tailcfg.DERPMap{
+			Regions: map[int]*tailcfg.DERPRegion{
+				1: {
+					RegionID:   1,
+					RegionCode: "headscale",
+					RegionName: "Headscale Embedded DERP",
+					Avoid:      false,
+					Nodes: []*tailcfg.DERPNode{
+						{
+							Name:     "1a",
+							RegionID: 1,
+							HostName: serverURL.Host,
+						},
+					},
+				},
+			},
+			OmitDefaultRegions: false,
 		}
 	}
 
@@ -454,6 +488,12 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.GET("/swagger", SwaggerUI)
 	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
 
+	if h.cfg.DERP.EmbeddedDERP {
+		router.Any("/derp", h.EmbeddedDerpHandler)
+		router.Any("/derp/probe", h.EmbeddedDerpProbeHandler)
+		router.Any("/bootstrap-dns", h.EmbeddedDerpBootstrapDNSHandler)
+	}
+
 	api := router.Group("/api")
 	api.Use(h.httpAuthenticationMiddleware)
 	{
@@ -469,13 +509,17 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 func (h *Headscale) Serve() error {
 	var err error
 
-	// Fetch an initial DERP Map before we start serving
-	h.DERPMap = GetDERPMap(h.cfg.DERP)
+	if h.cfg.DERP.EmbeddedDERP {
+		go h.ServeSTUN()
+	} else {
+		// Fetch an initial DERP Map before we start serving
+		h.DERPMap = GetDERPMap(h.cfg.DERP)
 
-	if h.cfg.DERP.AutoUpdate {
-		derpMapCancelChannel := make(chan struct{})
-		defer func() { derpMapCancelChannel <- struct{}{} }()
-		go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
+		if h.cfg.DERP.AutoUpdate {
+			derpMapCancelChannel := make(chan struct{})
+			defer func() { derpMapCancelChannel <- struct{}{} }()
+			go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
+		}
 	}
 
 	go h.expireEphemeralNodes(updateInterval)

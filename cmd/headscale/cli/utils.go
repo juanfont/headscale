@@ -117,6 +117,12 @@ func LoadConfig(path string) error {
 }
 
 func GetDERPConfig() headscale.DERPConfig {
+	if viper.GetBool("derp.embedded_derp") {
+		return headscale.DERPConfig{
+			EmbeddedDERP: true,
+		}
+	}
+
 	urlStrs := viper.GetStringSlice("derp.urls")
 
 	urls := make([]url.URL, len(urlStrs))
