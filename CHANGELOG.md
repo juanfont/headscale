@@ -8,6 +8,10 @@
 
 - Boundaries between Namespaces has been removed and all nodes can communicate by default [#357](https://github.com/juanfont/headscale/pull/357)
   - To limit access between nodes, use [ACLs](./docs/acls.md).
+- `/metrics` is now a configurable host:port endpoint: [#344](https://github.com/juanfont/headscale/pull/344). You must update your `config.yaml` file to include:
+  ```yaml
+  metrics_listen_addr: 127.0.0.1:9090
+  ```
 
 ### Features
 

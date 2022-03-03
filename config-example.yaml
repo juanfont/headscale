@@ -16,6 +16,12 @@ server_url: http://127.0.0.1:8080
 #
 listen_addr: 0.0.0.0:8080
 
+# Address to listen to /metrics, you may want
+# to keep this endpoint private to your internal
+# network
+#
+metrics_listen_addr: 127.0.0.1:9090
+
 # Address to listen for gRPC.
 # gRPC is used for controlling a headscale server
 # remotely with the CLI
