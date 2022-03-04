@@ -11,8 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// WindowsConfigMessage shows a simple message in the browser for how to
-// configure the Windows tailscale client.
+// WindowsConfigMessage shows a simple message in the browser for how to configure the Windows Tailscale client.
 func (h *Headscale) WindowsConfigMessage(ctx *gin.Context) {
 	winTemplate := template.Must(template.New("windows").Parse(`
 <html>
@@ -76,8 +75,7 @@ REG ADD "HKLM\Software\Tailscale IPN" /v LoginURL /t REG_SZ /d "{{.URL}}"</code>
 	ctx.Data(http.StatusOK, "text/html; charset=utf-8", payload.Bytes())
 }
 
-// WindowsRegConfig generates and serves the .reg file
-// pre-configured to the headscale server address
+// WindowsRegConfig generates and serves a .reg file configured with the Headscale server address.
 func (h *Headscale) WindowsRegConfig(ctx *gin.Context) {
 	config := WindowsRegistryConfig{
 		URL: h.cfg.ServerURL,
@@ -105,8 +103,7 @@ func (h *Headscale) WindowsRegConfig(ctx *gin.Context) {
 	)
 }
 
-// AppleConfigMessage shows a simple message in the browser to point the user
-// to the iOS/MacOS profile and instructions for how to install it
+// AppleConfigMessage shows a simple message in the browser to point the user to the iOS/MacOS profile and instructions for how to install it.
 func (h *Headscale) AppleConfigMessage(ctx *gin.Context) {
 	appleTemplate := template.Must(template.New("apple").Parse(`
 <html>
