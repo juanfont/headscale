@@ -458,6 +458,8 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.GET("/oidc/callback", h.OIDCCallback)
 	router.GET("/apple", h.AppleConfigMessage)
 	router.GET("/apple/:platform", h.ApplePlatformConfig)
+	router.GET("/windows", h.WindowsConfigMessage)
+	router.GET("/windows/tailscale.reg", h.WindowsRegConfig)
 	router.GET("/swagger", SwaggerUI)
 	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
 
