@@ -11,26 +11,27 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// AppleMobileConfig shows a simple message in the browser to point to the CLI
-// Listens in /register.
-func (h *Headscale) AppleMobileConfig(ctx *gin.Context) {
+// AppleConfigMessage shows a simple message in the browser to point the user
+// to the iOS/MacOS profile and instructions for how to install it
+func (h *Headscale) AppleConfigMessage(ctx *gin.Context) {
 	appleTemplate := template.Must(template.New("apple").Parse(`
 <html>
 	<body>
-		<h1>Apple configuration profiles</h1>
+		<h1>headscale</h1>
+		<h2>Apple configuration profiles</h2>
 		<p>
 		    This page provides <a href="https://support.apple.com/guide/mdm/mdm-overview-mdmbf9e668/web">configuration profiles</a> for the official Tailscale clients for <a href="https://apps.apple.com/us/app/tailscale/id1470499037?ls=1">iOS</a> and <a href="https://apps.apple.com/ca/app/tailscale/id1475387142?mt=12">macOS</a>.
 		</p>
 		<p>
-		    The profiles will configure Tailscale.app to use {{.Url}} as its control server.
+		    The profiles will configure Tailscale.app to use <code>{{.URL}}</code> as its control server.
 		</p>
 
 		<h3>Caution</h3>
-		<p>You should always inspect the profile before installing it:</p>
+		<p>You should always download and inspect the profile before installing it:</p>
 		<!--
-		<p><code>curl {{.Url}}/apple/ios</code></p>
+		<pre><code>curl {{.URL}}/apple/ios</code></pre>
 		-->
-		<p><code>curl {{.Url}}/apple/macos</code></p>
+		<pre><code>curl {{.URL}}/apple/macos</code></pre>
 
 		<h2>Profiles</h2>
 
