@@ -6,6 +6,7 @@ package headscale
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ory/dockertest/v3"
@@ -125,4 +126,36 @@ func DockerAllowNetworkAdministration(config *docker.HostConfig) {
 		Source: "/dev/net/tun",
 		Target: "/dev/net/tun",
 	})
+}
+
+func getIPs(
+	tailscales map[string]dockertest.Resource,
+) (map[string][]netaddr.IP, error) {
+	ips := make(map[string][]netaddr.IP)
+	for hostname, tailscale := range tailscales {
+		command := []string{"tailscale", "ip"}
+
+		result, err := ExecuteCommand(
+			&tailscale,
+			command,
+			[]string{},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, address := range strings.Split(result, "\n") {
+			address = strings.TrimSuffix(address, "\n")
+			if len(address) < 1 {
+				continue
+			}
+			ip, err := netaddr.ParseIP(address)
+			if err != nil {
+				return nil, err
+			}
+			ips[hostname] = append(ips[hostname], ip)
+		}
+	}
+
+	return ips, nil
 }

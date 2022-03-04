@@ -680,38 +680,6 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 	}
 }
 
-func getIPs(
-	tailscales map[string]dockertest.Resource,
-) (map[string][]netaddr.IP, error) {
-	ips := make(map[string][]netaddr.IP)
-	for hostname, tailscale := range tailscales {
-		command := []string{"tailscale", "ip"}
-
-		result, err := ExecuteCommand(
-			&tailscale,
-			command,
-			[]string{},
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, address := range strings.Split(result, "\n") {
-			address = strings.TrimSuffix(address, "\n")
-			if len(address) < 1 {
-				continue
-			}
-			ip, err := netaddr.ParseIP(address)
-			if err != nil {
-				return nil, err
-			}
-			ips[hostname] = append(ips[hostname], ip)
-		}
-	}
-
-	return ips, nil
-}
-
 func getAPIURLs(
 	tailscales map[string]dockertest.Resource,
 ) (map[netaddr.IP]string, error) {
