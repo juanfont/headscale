@@ -144,7 +144,7 @@ type Headscale struct {
 	privateKey *key.MachinePrivate
 
 	DERPMap            *tailcfg.DERPMap
-	EmbeddedDerpServer *EmbeddedDerpServer
+	EmbeddedDERPServer *EmbeddedDERPServer
 
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
@@ -242,11 +242,11 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 	}
 
 	if cfg.DERP.EmbeddedDERP {
-		embeddedDerpServer, err := app.NewEmbeddedDerpServer()
+		embeddedDERPServer, err := app.NewEmbeddedDERPServer()
 		if err != nil {
 			return nil, err
 		}
-		app.EmbeddedDerpServer = embeddedDerpServer
+		app.EmbeddedDERPServer = embeddedDERPServer
 
 		// If we are using the embedded DERP, there is no reason to use Tailscale's DERP infrastructure
 		serverURL, err := url.Parse(app.cfg.ServerURL)
@@ -496,9 +496,9 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
 
 	if h.cfg.DERP.EmbeddedDERP {
-		router.Any("/derp", h.EmbeddedDerpHandler)
-		router.Any("/derp/probe", h.EmbeddedDerpProbeHandler)
-		router.Any("/bootstrap-dns", h.EmbeddedDerpBootstrapDNSHandler)
+		router.Any("/derp", h.EmbeddedDERPHandler)
+		router.Any("/derp/probe", h.EmbeddedDERPProbeHandler)
+		router.Any("/bootstrap-dns", h.EmbeddedDERPBootstrapDNSHandler)
 	}
 
 	api := router.Group("/api")

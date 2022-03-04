@@ -28,17 +28,17 @@ var (
 	bootstrapDNS = "derp.tailscale.com"
 )
 
-type EmbeddedDerpServer struct {
-	tailscaleDerp *derp.Server
+type EmbeddedDERPServer struct {
+	tailscaleDERP *derp.Server
 }
 
-func (h *Headscale) NewEmbeddedDerpServer() (*EmbeddedDerpServer, error) {
+func (h *Headscale) NewEmbeddedDERPServer() (*EmbeddedDERPServer, error) {
 	s := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
-	return &EmbeddedDerpServer{s}, nil
+	return &EmbeddedDERPServer{s}, nil
 
 }
 
-func (h *Headscale) EmbeddedDerpHandler(ctx *gin.Context) {
+func (h *Headscale) EmbeddedDERPHandler(ctx *gin.Context) {
 	up := strings.ToLower(ctx.Request.Header.Get("Upgrade"))
 	if up != "websocket" && up != "derp" {
 		if up != "" {
@@ -75,12 +75,12 @@ func (h *Headscale) EmbeddedDerpHandler(ctx *gin.Context) {
 			pubKey.UntypedHexString())
 	}
 
-	h.EmbeddedDerpServer.tailscaleDerp.Accept(netConn, conn, netConn.RemoteAddr().String())
+	h.EmbeddedDERPServer.tailscaleDERP.Accept(netConn, conn, netConn.RemoteAddr().String())
 }
 
-// EmbeddedDerpProbeHandler is the endpoint that js/wasm clients hit to measure
+// EmbeddedDERPProbeHandler is the endpoint that js/wasm clients hit to measure
 // DERP latency, since they can't do UDP STUN queries.
-func (h *Headscale) EmbeddedDerpProbeHandler(ctx *gin.Context) {
+func (h *Headscale) EmbeddedDERPProbeHandler(ctx *gin.Context) {
 	switch ctx.Request.Method {
 	case "HEAD", "GET":
 		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")
@@ -89,7 +89,7 @@ func (h *Headscale) EmbeddedDerpProbeHandler(ctx *gin.Context) {
 	}
 }
 
-func (h *Headscale) EmbeddedDerpBootstrapDNSHandler(ctx *gin.Context) {
+func (h *Headscale) EmbeddedDERPBootstrapDNSHandler(ctx *gin.Context) {
 	ctx.Header("Content-Type", "application/json")
 	j, _ := dnsCache.Load().([]byte)
 	// Bootstrap DNS requests occur cross-regions,
