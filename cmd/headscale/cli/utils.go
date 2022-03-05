@@ -118,7 +118,6 @@ func LoadConfig(path string) error {
 
 func GetDERPConfig() headscale.DERPConfig {
 	enabled := viper.GetBool("derp.server.enabled")
-	insecure := viper.GetBool("derp.server.insecure")
 
 	urlStrs := viper.GetStringSlice("derp.urls")
 
@@ -142,7 +141,6 @@ func GetDERPConfig() headscale.DERPConfig {
 
 	return headscale.DERPConfig{
 		ServerEnabled:   enabled,
-		ServerInsecure:  insecure,
 		URLs:            urls,
 		Paths:           paths,
 		AutoUpdate:      autoUpdate,

@@ -122,7 +122,6 @@ type OIDCConfig struct {
 
 type DERPConfig struct {
 	ServerEnabled   bool
-	ServerInsecure  bool
 	URLs            []url.URL
 	Paths           []string
 	AutoUpdate      bool
@@ -280,11 +279,10 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 					Avoid:      false,
 					Nodes: []*tailcfg.DERPNode{
 						{
-							Name:             "999a",
-							RegionID:         999,
-							HostName:         host,
-							DERPPort:         port,
-							InsecureForTests: cfg.DERP.ServerInsecure,
+							Name:     "999a",
+							RegionID: 999,
+							HostName: host,
+							DERPPort: port,
 						},
 					},
 				},
@@ -516,9 +514,9 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
 
 	if h.cfg.DERP.ServerEnabled {
-		router.Any("/derp", h.EmbeddedDERPHandler)
-		router.Any("/derp/probe", h.EmbeddedDERPProbeHandler)
-		router.Any("/bootstrap-dns", h.EmbeddedDERPBootstrapDNSHandler)
+		router.Any("/derp", h.DERPHandler)
+		router.Any("/derp/probe", h.DERPProbeHandler)
+		router.Any("/bootstrap-dns", h.DERPBootstrapDNSHandler)
 	}
 
 	api := router.Group("/api")

@@ -57,11 +57,8 @@ ip_prefixes:
 derp:
   server:
     # If enabled, runs the embedded DERP server and merges it into the rest of the DERP config
+    # The Headscale server_url defined above MUST be using https, DERP requires TLS to be in place
     enabled: false
-
-    # Insecure mode is recommended only for tests. It indicates the tailscale clients
-    # to use insecure connections to this server.
-    insecure: false
 
   # List of externally available DERP maps encoded in JSON
   urls:
