@@ -55,6 +55,14 @@ ip_prefixes:
 # headscale needs a list of DERP servers that can be presented
 # to the clients.
 derp:
+  server:
+    # If enabled, runs the embedded DERP server and merges it into the rest of the DERP config
+    enabled: false
+
+    # Insecure mode is recommended only for tests. It indicates the tailscale clients
+    # to use insecure connections to this server.
+    insecure: false
+
   # List of externally available DERP maps encoded in JSON
   urls:
     - https://controlplane.tailscale.com/derpmap/default

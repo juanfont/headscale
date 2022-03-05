@@ -117,11 +117,8 @@ func LoadConfig(path string) error {
 }
 
 func GetDERPConfig() headscale.DERPConfig {
-	if viper.GetBool("derp.embedded_derp") {
-		return headscale.DERPConfig{
-			EmbeddedDERP: true,
-		}
-	}
+	enabled := viper.GetBool("derp.server.enabled")
+	insecure := viper.GetBool("derp.server.insecure")
 
 	urlStrs := viper.GetStringSlice("derp.urls")
 
@@ -144,6 +141,8 @@ func GetDERPConfig() headscale.DERPConfig {
 	updateFrequency := viper.GetDuration("derp.update_frequency")
 
 	return headscale.DERPConfig{
+		ServerEnabled:   enabled,
+		ServerInsecure:  insecure,
 		URLs:            urls,
 		Paths:           paths,
 		AutoUpdate:      autoUpdate,

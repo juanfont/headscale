@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -120,7 +121,8 @@ type OIDCConfig struct {
 }
 
 type DERPConfig struct {
-	EmbeddedDERP    bool
+	ServerEnabled   bool
+	ServerInsecure  bool
 	URLs            []url.URL
 	Paths           []string
 	AutoUpdate      bool
@@ -143,8 +145,8 @@ type Headscale struct {
 	dbDebug    bool
 	privateKey *key.MachinePrivate
 
-	DERPMap            *tailcfg.DERPMap
-	EmbeddedDERPServer *EmbeddedDERPServer
+	DERPMap    *tailcfg.DERPMap
+	DERPServer *DERPServer
 
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
@@ -180,7 +182,6 @@ func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
 	}
 }
 
-// NewHeadscale returns the Headscale app.
 func NewHeadscale(cfg Config) (*Headscale, error) {
 	privKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
@@ -241,30 +242,49 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		}
 	}
 
-	if cfg.DERP.EmbeddedDERP {
-		embeddedDERPServer, err := app.NewEmbeddedDERPServer()
+	if cfg.DERP.ServerEnabled {
+		embeddedDERPServer, err := app.NewDERPServer()
 		if err != nil {
 			return nil, err
 		}
-		app.EmbeddedDERPServer = embeddedDERPServer
+		app.DERPServer = embeddedDERPServer
 
-		// If we are using the embedded DERP, there is no reason to use Tailscale's DERP infrastructure
 		serverURL, err := url.Parse(app.cfg.ServerURL)
 		if err != nil {
 			return nil, err
 		}
+		var host string
+		var port int
+		host, portStr, err := net.SplitHostPort(serverURL.Host)
+		if err != nil {
+			if serverURL.Scheme == "https" {
+				host = serverURL.Host
+				port = 443
+			} else {
+				host = serverURL.Host
+				port = 80
+			}
+		} else {
+			port, err = strconv.Atoi(portStr)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		app.DERPMap = &tailcfg.DERPMap{
 			Regions: map[int]*tailcfg.DERPRegion{
-				1: {
-					RegionID:   1,
+				999: {
+					RegionID:   999,
 					RegionCode: "headscale",
 					RegionName: "Headscale Embedded DERP",
 					Avoid:      false,
 					Nodes: []*tailcfg.DERPNode{
 						{
-							Name:     "1a",
-							RegionID: 1,
-							HostName: serverURL.Host,
+							Name:             "999a",
+							RegionID:         999,
+							HostName:         host,
+							DERPPort:         port,
+							InsecureForTests: cfg.DERP.ServerInsecure,
 						},
 					},
 				},
@@ -495,7 +515,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.GET("/swagger", SwaggerUI)
 	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
 
-	if h.cfg.DERP.EmbeddedDERP {
+	if h.cfg.DERP.ServerEnabled {
 		router.Any("/derp", h.EmbeddedDERPHandler)
 		router.Any("/derp/probe", h.EmbeddedDERPProbeHandler)
 		router.Any("/bootstrap-dns", h.EmbeddedDERPBootstrapDNSHandler)
@@ -516,7 +536,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 func (h *Headscale) Serve() error {
 	var err error
 
-	if h.cfg.DERP.EmbeddedDERP {
+	if h.cfg.DERP.ServerEnabled {
 		go h.ServeSTUN()
 	} else {
 		// Fetch an initial DERP Map before we start serving
