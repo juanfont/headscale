@@ -28,17 +28,18 @@ var (
 	bootstrapDNS = "derp.tailscale.com"
 )
 
-type EmbeddedDERPServer struct {
+type DERPServer struct {
 	tailscaleDERP *derp.Server
 }
 
-func (h *Headscale) NewEmbeddedDERPServer() (*EmbeddedDERPServer, error) {
+func (h *Headscale) NewDERPServer() (*DERPServer, error) {
 	s := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
-	return &EmbeddedDERPServer{s}, nil
+	return &DERPServer{s}, nil
 
 }
 
-func (h *Headscale) EmbeddedDERPHandler(ctx *gin.Context) {
+func (h *Headscale) DERPHandler(ctx *gin.Context) {
+	log.Trace().Caller().Msgf("/derp request from %v", ctx.ClientIP())
 	up := strings.ToLower(ctx.Request.Header.Get("Upgrade"))
 	if up != "websocket" && up != "derp" {
 		if up != "" {
@@ -75,12 +76,12 @@ func (h *Headscale) EmbeddedDERPHandler(ctx *gin.Context) {
 			pubKey.UntypedHexString())
 	}
 
-	h.EmbeddedDERPServer.tailscaleDERP.Accept(netConn, conn, netConn.RemoteAddr().String())
+	h.DERPServer.tailscaleDERP.Accept(netConn, conn, netConn.RemoteAddr().String())
 }
 
-// EmbeddedDERPProbeHandler is the endpoint that js/wasm clients hit to measure
+// DERPProbeHandler is the endpoint that js/wasm clients hit to measure
 // DERP latency, since they can't do UDP STUN queries.
-func (h *Headscale) EmbeddedDERPProbeHandler(ctx *gin.Context) {
+func (h *Headscale) DERPProbeHandler(ctx *gin.Context) {
 	switch ctx.Request.Method {
 	case "HEAD", "GET":
 		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")
@@ -89,7 +90,7 @@ func (h *Headscale) EmbeddedDERPProbeHandler(ctx *gin.Context) {
 	}
 }
 
-func (h *Headscale) EmbeddedDERPBootstrapDNSHandler(ctx *gin.Context) {
+func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
 	ctx.Header("Content-Type", "application/json")
 	j, _ := dnsCache.Load().([]byte)
 	// Bootstrap DNS requests occur cross-regions,
@@ -105,7 +106,7 @@ func (h *Headscale) ServeSTUN() {
 	if err != nil {
 		log.Fatal().Msgf("failed to open STUN listener: %v", err)
 	}
-	log.Printf("running STUN server on %v", pc.LocalAddr())
+	log.Trace().Msgf("STUN server started at %s", pc.LocalAddr())
 	serverSTUNListener(context.Background(), pc.(*net.UDPConn))
 }
 
@@ -122,10 +123,11 @@ func serverSTUNListener(ctx context.Context, pc *net.UDPConn) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("STUN ReadFrom: %v", err)
+			log.Error().Caller().Err(err).Msgf("STUN ReadFrom")
 			time.Sleep(time.Second)
 			continue
 		}
+		log.Trace().Caller().Msgf("STUN request from %v", ua)
 		pkt := buf[:n]
 		if !stun.Is(pkt) {
 			continue
@@ -164,7 +166,7 @@ func refreshBootstrapDNS() {
 	for _, name := range names {
 		addrs, err := r.LookupIP(ctx, "ip", name)
 		if err != nil {
-			log.Printf("bootstrap DNS lookup %q: %v", name, err)
+			log.Trace().Caller().Err(err).Msgf("bootstrap DNS lookup %q: %v", name)
 			continue
 		}
 		dnsEntries[name] = addrs
