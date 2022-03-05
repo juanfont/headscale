@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"tailscale.com/derp"
 	"tailscale.com/net/stun"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -30,12 +33,56 @@ var (
 
 type DERPServer struct {
 	tailscaleDERP *derp.Server
+	region        tailcfg.DERPRegion
 }
 
 func (h *Headscale) NewDERPServer() (*DERPServer, error) {
 	s := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
-	return &DERPServer{s}, nil
+	region, err := h.generateRegionLocalDERP()
+	if err != nil {
+		return nil, err
+	}
+	return &DERPServer{s, region}, nil
+}
 
+func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
+	serverURL, err := url.Parse(h.cfg.ServerURL)
+	if err != nil {
+		return tailcfg.DERPRegion{}, err
+	}
+	var host string
+	var port int
+	host, portStr, err := net.SplitHostPort(serverURL.Host)
+	if err != nil {
+		if serverURL.Scheme == "https" {
+			host = serverURL.Host
+			port = 443
+		} else {
+			host = serverURL.Host
+			port = 80
+		}
+	} else {
+		port, err = strconv.Atoi(portStr)
+		if err != nil {
+			return tailcfg.DERPRegion{}, err
+		}
+	}
+
+	localDERPregion := tailcfg.DERPRegion{
+		RegionID:   999,
+		RegionCode: "headscale",
+		RegionName: "Headscale Embedded DERP",
+		Avoid:      false,
+		Nodes: []*tailcfg.DERPNode{
+			{
+				Name:     "999a",
+				RegionID: 999,
+				HostName: host,
+				DERPPort: port,
+			},
+		},
+	}
+	return localDERPregion, nil
 }
 
 func (h *Headscale) DERPHandler(ctx *gin.Context) {

@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -247,48 +246,6 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 			return nil, err
 		}
 		app.DERPServer = embeddedDERPServer
-
-		serverURL, err := url.Parse(app.cfg.ServerURL)
-		if err != nil {
-			return nil, err
-		}
-		var host string
-		var port int
-		host, portStr, err := net.SplitHostPort(serverURL.Host)
-		if err != nil {
-			if serverURL.Scheme == "https" {
-				host = serverURL.Host
-				port = 443
-			} else {
-				host = serverURL.Host
-				port = 80
-			}
-		} else {
-			port, err = strconv.Atoi(portStr)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		app.DERPMap = &tailcfg.DERPMap{
-			Regions: map[int]*tailcfg.DERPRegion{
-				999: {
-					RegionID:   999,
-					RegionCode: "headscale",
-					RegionName: "Headscale Embedded DERP",
-					Avoid:      false,
-					Nodes: []*tailcfg.DERPNode{
-						{
-							Name:     "999a",
-							RegionID: 999,
-							HostName: host,
-							DERPPort: port,
-						},
-					},
-				},
-			},
-			OmitDefaultRegions: false,
-		}
 	}
 
 	return &app, nil
@@ -536,17 +493,18 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 func (h *Headscale) Serve() error {
 	var err error
 
+	// Fetch an initial DERP Map before we start serving
+	h.DERPMap = GetDERPMap(h.cfg.DERP)
+
 	if h.cfg.DERP.ServerEnabled {
 		go h.ServeSTUN()
-	} else {
-		// Fetch an initial DERP Map before we start serving
-		h.DERPMap = GetDERPMap(h.cfg.DERP)
+		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
+	}
 
-		if h.cfg.DERP.AutoUpdate {
-			derpMapCancelChannel := make(chan struct{})
-			defer func() { derpMapCancelChannel <- struct{}{} }()
-			go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
-		}
+	if h.cfg.DERP.AutoUpdate {
+		derpMapCancelChannel := make(chan struct{})
+		defer func() { derpMapCancelChannel <- struct{}{} }()
+		go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
 	}
 
 	go h.expireEphemeralNodes(updateInterval)
