@@ -1,5 +1,5 @@
 # Builder image
-FROM docker.io/golang:1.17.7-alpine AS build
+FROM docker.io/golang:1.17.8-alpine AS build
 ENV GOPATH /go
 WORKDIR /go/src/headscale
 
