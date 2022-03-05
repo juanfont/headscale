@@ -7,5 +7,10 @@ RUN apt-get update \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.gpg | apt-key add - \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.list | tee /etc/apt/sources.list.d/tailscale.list \
     && apt-get update \
-    && apt-get install -y tailscale=${TAILSCALE_VERSION} dnsutils \
+    && apt-get install -y ca-certificates tailscale=${TAILSCALE_VERSION} dnsutils \
     && rm -rf /var/lib/apt/lists/*
+
+ADD integration_test/etc_embedded_derp/tls/server.crt /usr/local/share/ca-certificates/
+RUN chmod 644 /usr/local/share/ca-certificates/server.crt 
+
+RUN update-ca-certificates
