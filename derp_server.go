@@ -166,7 +166,7 @@ func refreshBootstrapDNS() {
 	for _, name := range names {
 		addrs, err := r.LookupIP(ctx, "ip", name)
 		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("bootstrap DNS lookup %q: %v", name)
+			log.Trace().Caller().Err(err).Msgf("bootstrap DNS lookup %q", name)
 			continue
 		}
 		dnsEntries[name] = addrs
