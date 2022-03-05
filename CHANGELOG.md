@@ -18,6 +18,7 @@
 - Add support for writing ACL files with YAML [#359](https://github.com/juanfont/headscale/pull/359)
 - Users can now use emails in ACL's groups [#372](https://github.com/juanfont/headscale/issues/372)
 - Add shorthand aliases for commands and subcommands [#376](https://github.com/juanfont/headscale/pull/376)
+- Add `/windows` endpoint for Windows configuration instructions + registry file download [#392](https://github.com/juanfont/headscale/pull/392)
 
 ### Changes
 
