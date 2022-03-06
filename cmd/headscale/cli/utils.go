@@ -118,6 +118,8 @@ func LoadConfig(path string) error {
 
 func GetDERPConfig() headscale.DERPConfig {
 	enabled := viper.GetBool("derp.server.enabled")
+	stunEnabled := viper.GetBool("derp.server.stun.enabled")
+	stunAddr := viper.GetString("derp.server.stun.listen_addr")
 
 	urlStrs := viper.GetStringSlice("derp.urls")
 
@@ -141,6 +143,8 @@ func GetDERPConfig() headscale.DERPConfig {
 
 	return headscale.DERPConfig{
 		ServerEnabled:   enabled,
+		STUNEnabled:     stunEnabled,
+		STUNAddr:        stunAddr,
 		URLs:            urls,
 		Paths:           paths,
 		AutoUpdate:      autoUpdate,

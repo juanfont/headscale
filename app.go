@@ -121,6 +121,8 @@ type OIDCConfig struct {
 
 type DERPConfig struct {
 	ServerEnabled   bool
+	STUNEnabled     bool
+	STUNAddr        string
 	URLs            []url.URL
 	Paths           []string
 	AutoUpdate      bool
@@ -497,8 +499,10 @@ func (h *Headscale) Serve() error {
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
 
 	if h.cfg.DERP.ServerEnabled {
-		go h.ServeSTUN()
 		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
+		if h.cfg.DERP.STUNEnabled {
+			go h.ServeSTUN()
+		}
 	}
 
 	if h.cfg.DERP.AutoUpdate {

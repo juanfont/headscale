@@ -75,6 +75,19 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 			},
 		},
 	}
+
+	if h.cfg.DERP.STUNEnabled {
+		_, portStr, err := net.SplitHostPort(h.cfg.DERP.STUNAddr)
+		if err != nil {
+			return tailcfg.DERPRegion{}, err
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return tailcfg.DERPRegion{}, err
+		}
+		localDERPregion.Nodes[0].STUNPort = port
+	}
+
 	return localDERPregion, nil
 }
 
@@ -136,6 +149,7 @@ func (h *Headscale) DERPProbeHandler(ctx *gin.Context) {
 // because its DNS are broken.
 // The initial implementation is here https://github.com/tailscale/tailscale/pull/1406
 // They have a cache, but not clear if that is really necessary at Headscale, uh, scale.
+// An example implementation is found here https://derp.tailscale.com/bootstrap-dns
 func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
 	dnsEntries := make(map[string][]net.IP)
 
@@ -155,14 +169,14 @@ func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, dnsEntries)
 }
 
-// ServeSTUN starts a STUN server on udp/3478
+// ServeSTUN starts a STUN server on the configured addr
 func (h *Headscale) ServeSTUN() {
-	pc, err := net.ListenPacket("udp", "0.0.0.0:3478")
+	packetConn, err := net.ListenPacket("udp", h.cfg.DERP.STUNAddr)
 	if err != nil {
 		log.Fatal().Msgf("failed to open STUN listener: %v", err)
 	}
-	log.Trace().Msgf("STUN server started at %s", pc.LocalAddr())
-	serverSTUNListener(context.Background(), pc.(*net.UDPConn))
+	log.Info().Msgf("STUN server started at %s", packetConn.LocalAddr())
+	serverSTUNListener(context.Background(), packetConn.(*net.UDPConn))
 }
 
 func serverSTUNListener(ctx context.Context, pc *net.UDPConn) {

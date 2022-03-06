@@ -60,6 +60,12 @@ derp:
     # The Headscale server_url defined above MUST be using https, DERP requires TLS to be in place
     enabled: false
 
+    # If enabled, also listens in the configured address for STUN connections to help on NAT traversal
+    # For more details on how this works, check this great article: https://tailscale.com/blog/how-tailscale-works/
+    stun:
+      enabled: false
+      listen_addr: "0.0.0.0:3478"
+
   # List of externally available DERP maps encoded in JSON
   urls:
     - https://controlplane.tailscale.com/derpmap/default
