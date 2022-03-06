@@ -123,7 +123,7 @@ tls_client_auth_mode: relaxed
 tls_letsencrypt_cache_dir: /var/lib/headscale/cache
 
 # Type of ACME challenge to use, currently supported types:
-# HTTP-01 or TLS_ALPN-01
+# HTTP-01 or TLS-ALPN-01
 # See [docs/tls.md](docs/tls.md) for more information
 tls_letsencrypt_challenge_type: HTTP-01
 # When HTTP-01 challenge is chosen, letsencrypt must set up a
