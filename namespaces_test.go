@@ -233,7 +233,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	c.Assert(found, check.Equals, true)
 }
 
-func TestNormalizeNamespaceName(t *testing.T) {
+func TestNormalizeName(t *testing.T) {
 	type args struct {
 		name             string
 		stripEmailDomain bool
@@ -310,7 +310,7 @@ func TestNormalizeNamespaceName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NormalizeNamespaceName(tt.args.name, tt.args.stripEmailDomain)
+			got, err := NormalizeName(tt.args.name, tt.args.stripEmailDomain)
 			if (err != nil) != tt.wantErr {
 				t.Errorf(
 					"NormalizeNamespaceName() error = %v, wantErr %v",
@@ -327,7 +327,7 @@ func TestNormalizeNamespaceName(t *testing.T) {
 	}
 }
 
-func TestCheckNamespaceName(t *testing.T) {
+func TestCheckName(t *testing.T) {
 	type args struct {
 		name string
 	}
@@ -366,7 +366,7 @@ func TestCheckNamespaceName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := CheckNamespaceName(tt.args.name); (err != nil) != tt.wantErr {
+			if err := CheckName(tt.args.name); (err != nil) != tt.wantErr {
 				t.Errorf("CheckNamespaceName() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

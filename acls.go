@@ -444,7 +444,7 @@ func expandGroup(
 				errInvalidGroup,
 			)
 		}
-		grp, err := NormalizeNamespaceName(group, stripEmailDomain)
+		grp, err := NormalizeName(group, stripEmailDomain)
 		if err != nil {
 			return []string{}, fmt.Errorf(
 				"failed to normalize group %q, err: %w",

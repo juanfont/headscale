@@ -83,7 +83,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("machine", machine.Name).
 		Msg("Found machine in database")
 
-	hname, err := NormalizeNamespaceName(
+	hname, err := NormalizeName(
 		req.Hostinfo.Hostname,
 		h.cfg.OIDC.StripEmaildomain,
 	)
