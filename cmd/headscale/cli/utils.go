@@ -117,7 +117,10 @@ func LoadConfig(path string) error {
 }
 
 func GetDERPConfig() headscale.DERPConfig {
-	enabled := viper.GetBool("derp.server.enabled")
+	serverEnabled := viper.GetBool("derp.server.enabled")
+	serverRegionID := viper.GetInt("derp.server.region_id")
+	serverRegionCode := viper.GetString("derp.server.region_code")
+	serverRegionName := viper.GetString("derp.server.region_name")
 	stunEnabled := viper.GetBool("derp.server.stun.enabled")
 	stunAddr := viper.GetString("derp.server.stun.listen_addr")
 
@@ -142,13 +145,16 @@ func GetDERPConfig() headscale.DERPConfig {
 	updateFrequency := viper.GetDuration("derp.update_frequency")
 
 	return headscale.DERPConfig{
-		ServerEnabled:   enabled,
-		STUNEnabled:     stunEnabled,
-		STUNAddr:        stunAddr,
-		URLs:            urls,
-		Paths:           paths,
-		AutoUpdate:      autoUpdate,
-		UpdateFrequency: updateFrequency,
+		ServerEnabled:    serverEnabled,
+		ServerRegionID:   serverRegionID,
+		ServerRegionCode: serverRegionCode,
+		ServerRegionName: serverRegionName,
+		STUNEnabled:      stunEnabled,
+		STUNAddr:         stunAddr,
+		URLs:             urls,
+		Paths:            paths,
+		AutoUpdate:       autoUpdate,
+		UpdateFrequency:  updateFrequency,
 	}
 }
 

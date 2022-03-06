@@ -60,6 +60,15 @@ derp:
     # The Headscale server_url defined above MUST be using https, DERP requires TLS to be in place
     enabled: false
 
+    # Region ID to use for the embedded DERP server.
+    # The local DERP prevails if the region ID collides with other region ID coming from
+    # the regular DERP config.
+    region_id: 999
+
+    # Region code and name are displayed in the Tailscale UI to identify a DERP region
+    region_code: "headscale"
+    region_name: "Headscale Embedded DERP"
+
     # If enabled, also listens in the configured address for STUN connections to help on NAT traversal
     # For more details on how this works, check this great article: https://tailscale.com/blog/how-tailscale-works/
     stun:

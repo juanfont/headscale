@@ -120,13 +120,16 @@ type OIDCConfig struct {
 }
 
 type DERPConfig struct {
-	ServerEnabled   bool
-	STUNEnabled     bool
-	STUNAddr        string
-	URLs            []url.URL
-	Paths           []string
-	AutoUpdate      bool
-	UpdateFrequency time.Duration
+	ServerEnabled    bool
+	ServerRegionID   int
+	ServerRegionCode string
+	ServerRegionName string
+	STUNEnabled      bool
+	STUNAddr         string
+	URLs             []url.URL
+	Paths            []string
+	AutoUpdate       bool
+	UpdateFrequency  time.Duration
 }
 
 type CLIConfig struct {

@@ -62,14 +62,14 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 	}
 
 	localDERPregion := tailcfg.DERPRegion{
-		RegionID:   999,
-		RegionCode: "headscale",
-		RegionName: "Headscale Embedded DERP",
+		RegionID:   h.cfg.DERP.ServerRegionID,
+		RegionCode: h.cfg.DERP.ServerRegionCode,
+		RegionName: h.cfg.DERP.ServerRegionName,
 		Avoid:      false,
 		Nodes: []*tailcfg.DERPNode{
 			{
-				Name:     "999a",
-				RegionID: 999,
+				Name:     fmt.Sprintf("%d", h.cfg.DERP.ServerRegionID),
+				RegionID: h.cfg.DERP.ServerRegionID,
 				HostName: host,
 				DERPPort: port,
 			},
@@ -108,6 +108,7 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 	if !ok {
 		log.Error().Caller().Msg("DERP requires Hijacker interface from Gin")
 		ctx.String(http.StatusInternalServerError, "HTTP does not support general TCP support")
+
 		return
 	}
 
@@ -115,6 +116,7 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 	if err != nil {
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
 		ctx.String(http.StatusInternalServerError, "HTTP does not support general TCP support")
+
 		return
 	}
 
@@ -169,7 +171,7 @@ func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, dnsEntries)
 }
 
-// ServeSTUN starts a STUN server on the configured addr
+// ServeSTUN starts a STUN server on the configured addr.
 func (h *Headscale) ServeSTUN() {
 	packetConn, err := net.ListenPacket("udp", h.cfg.DERP.STUNAddr)
 	if err != nil {
