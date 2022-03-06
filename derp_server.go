@@ -30,12 +30,13 @@ type DERPServer struct {
 }
 
 func (h *Headscale) NewDERPServer() (*DERPServer, error) {
-	s := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
+	server := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
 	region, err := h.generateRegionLocalDERP()
 	if err != nil {
 		return nil, err
 	}
-	return &DERPServer{s, region}, nil
+
+	return &DERPServer{server, region}, nil
 }
 
 func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
@@ -99,6 +100,7 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 			log.Warn().Caller().Msgf("Weird websockets connection upgrade: %q", up)
 		}
 		ctx.String(http.StatusUpgradeRequired, "DERP requires connection upgrade")
+
 		return
 	}
 
@@ -122,13 +124,14 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()
+		pubKeyStr := pubKey.UntypedHexString() // nolint
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\n"+
 			"Upgrade: DERP\r\n"+
 			"Connection: Upgrade\r\n"+
 			"Derp-Version: %v\r\n"+
 			"Derp-Public-Key: %s\r\n\r\n",
 			derp.ProtocolVersion,
-			pubKey.UntypedHexString())
+			pubKeyStr)
 	}
 
 	h.DERPServer.tailscaleDERP.Accept(netConn, conn, netConn.RemoteAddr().String())
@@ -163,6 +166,7 @@ func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
 			addrs, err := r.LookupIP(resolvCtx, "ip", node.HostName)
 			if err != nil {
 				log.Trace().Caller().Err(err).Msgf("bootstrap DNS lookup failed %q", node.HostName)
+
 				continue
 			}
 			dnsEntries[node.HostName] = addrs
@@ -178,28 +182,34 @@ func (h *Headscale) ServeSTUN() {
 		log.Fatal().Msgf("failed to open STUN listener: %v", err)
 	}
 	log.Info().Msgf("STUN server started at %s", packetConn.LocalAddr())
-	serverSTUNListener(context.Background(), packetConn.(*net.UDPConn))
+
+	udpConn, ok := packetConn.(*net.UDPConn)
+	if !ok {
+		log.Fatal().Msg("STUN listener is not a UDP listener")
+	}
+	serverSTUNListener(context.Background(), udpConn)
 }
 
-func serverSTUNListener(ctx context.Context, pc *net.UDPConn) {
+func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 	var buf [64 << 10]byte
 	var (
-		n   int
-		ua  *net.UDPAddr
-		err error
+		bytesRead int
+		udpAddr   *net.UDPAddr
+		err       error
 	)
 	for {
-		n, ua, err = pc.ReadFromUDP(buf[:])
+		bytesRead, udpAddr, err = packetConn.ReadFromUDP(buf[:])
 		if err != nil {
 			if ctx.Err() != nil {
 				return
 			}
 			log.Error().Caller().Err(err).Msgf("STUN ReadFrom")
 			time.Sleep(time.Second)
+
 			continue
 		}
-		log.Trace().Caller().Msgf("STUN request from %v", ua)
-		pkt := buf[:n]
+		log.Trace().Caller().Msgf("STUN request from %v", udpAddr)
+		pkt := buf[:bytesRead]
 		if !stun.Is(pkt) {
 			continue
 		}
@@ -208,7 +218,10 @@ func serverSTUNListener(ctx context.Context, pc *net.UDPConn) {
 			continue
 		}
 
-		res := stun.Response(txid, ua.IP, uint16(ua.Port))
-		pc.WriteTo(res, ua)
+		res := stun.Response(txid, udpAddr.IP, uint16(udpAddr.Port))
+		_, err = packetConn.WriteTo(res, udpAddr)
+		if err != nil {
+			continue
+		}
 	}
 }
