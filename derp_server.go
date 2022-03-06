@@ -2,14 +2,12 @@ package headscale
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,11 +23,6 @@ import (
 // headers and it will begin writing & reading the DERP protocol immediately
 // following its HTTP request.
 const fastStartHeader = "Derp-Fast-Start"
-
-var (
-	dnsCache     atomic.Value // of []byte
-	bootstrapDNS = "derp.tailscale.com"
-)
 
 type DERPServer struct {
 	tailscaleDERP *derp.Server
@@ -137,14 +130,29 @@ func (h *Headscale) DERPProbeHandler(ctx *gin.Context) {
 	}
 }
 
+// DERPBootstrapDNSHandler implements the /bootsrap-dns endpoint
+// Described in https://github.com/tailscale/tailscale/issues/1405,
+// this endpoint provides a way to help a client when it fails to start up
+// because its DNS are broken.
+// The initial implementation is here https://github.com/tailscale/tailscale/pull/1406
+// They have a cache, but not clear if that is really necessary at Headscale, uh, scale.
 func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
-	ctx.Header("Content-Type", "application/json")
-	j, _ := dnsCache.Load().([]byte)
-	// Bootstrap DNS requests occur cross-regions,
-	// and are randomized per request,
-	// so keeping a connection open is pointlessly expensive.
-	ctx.Header("Connection", "close")
-	ctx.Writer.Write(j)
+	dnsEntries := make(map[string][]net.IP)
+
+	resolvCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	var r net.Resolver
+	for _, region := range h.DERPMap.Regions {
+		for _, node := range region.Nodes { // we don't care if we override some nodes
+			addrs, err := r.LookupIP(resolvCtx, "ip", node.HostName)
+			if err != nil {
+				log.Trace().Caller().Err(err).Msgf("bootstrap DNS lookup failed %q", node.HostName)
+				continue
+			}
+			dnsEntries[node.HostName] = addrs
+		}
+	}
+	ctx.JSON(http.StatusOK, dnsEntries)
 }
 
 // ServeSTUN starts a STUN server on udp/3478
@@ -187,41 +195,4 @@ func serverSTUNListener(ctx context.Context, pc *net.UDPConn) {
 		res := stun.Response(txid, ua.IP, uint16(ua.Port))
 		pc.WriteTo(res, ua)
 	}
-}
-
-// Shamelessly taken from
-// https://github.com/tailscale/tailscale/blob/main/cmd/derper/bootstrap_dns.go
-func refreshBootstrapDNSLoop() {
-	if bootstrapDNS == "" {
-		return
-	}
-	for {
-		refreshBootstrapDNS()
-		time.Sleep(10 * time.Minute)
-	}
-}
-
-func refreshBootstrapDNS() {
-	if bootstrapDNS == "" {
-		return
-	}
-	dnsEntries := make(map[string][]net.IP)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	names := strings.Split(bootstrapDNS, ",")
-	var r net.Resolver
-	for _, name := range names {
-		addrs, err := r.LookupIP(ctx, "ip", name)
-		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("bootstrap DNS lookup %q", name)
-			continue
-		}
-		dnsEntries[name] = addrs
-	}
-	j, err := json.MarshalIndent(dnsEntries, "", "\t")
-	if err != nil {
-		// leave the old values in place
-		return
-	}
-	dnsCache.Store(j)
 }
