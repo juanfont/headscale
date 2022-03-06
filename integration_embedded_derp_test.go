@@ -377,7 +377,7 @@ func (s *IntegrationDERPTestSuite) TestPingAllPeersByHostname() {
 				)
 				assert.Nil(t, err)
 				log.Printf("Result for %s: %s\n", hostname, result)
-				assert.Contains(t, result, "via DERP")
+				assert.Contains(t, result, "via DERP(headscale)")
 			})
 		}
 	}
