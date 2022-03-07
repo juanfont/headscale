@@ -144,6 +144,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 				Str("func", "RegistrationHandler").
 				Str("hostinfo.name", req.Hostinfo.Hostname).
 				Err(err)
+
 			return
 		}
 
