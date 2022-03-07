@@ -134,6 +134,18 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 
 			return
 		}
+		hname, err := NormalizeName(
+			req.Hostinfo.Hostname,
+			h.cfg.OIDC.StripEmaildomain,
+		)
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "RegistrationHandler").
+				Str("hostinfo.name", req.Hostinfo.Hostname).
+				Err(err)
+			return
+		}
 
 		// The machine did not have a key to authenticate, which means
 		// that we rely on a method that calls back some how (OpenID or CLI)
@@ -141,7 +153,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		// happens
 		newMachine := Machine{
 			MachineKey: machineKeyStr,
-			Name:       req.Hostinfo.Hostname,
+			Name:       hname,
 			NodeKey:    NodePublicKeyStripPrefix(req.NodeKey),
 			LastSeen:   &now,
 			Expiry:     &time.Time{},
