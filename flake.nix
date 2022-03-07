@@ -84,6 +84,16 @@
               buf
               clang-tools # clang-format
             ];
+
+
+          # Add entry to build a docker image with headscale
+          # caveat: only works on Linux
+          headscale-docker = pkgs.dockerTools.buildLayeredImage {
+            name = "headscale";
+            tag = "latest";
+            contents = [ pkgs.${system}.headscale ];
+            config.Entrypoint = [ (pkgs.${system}.headscale + "/bin/headscale") ];
+          };
         in
         rec {
           # `nix develop`
@@ -92,6 +102,8 @@
           # `nix build`
           packages = with pkgs; {
             inherit headscale;
+            inherit headscale-docker;
+
           };
           defaultPackage = pkgs.headscale;
 
@@ -100,6 +112,7 @@
             drv = packages.headscale;
           };
           defaultApp = apps.headscale;
+
 
         });
 }
