@@ -88,6 +88,10 @@
 
           # Add entry to build a docker image with headscale
           # caveat: only works on Linux
+          #
+          # Usage:
+          # nix build .#headscale-docker
+          # docker load < result
           headscale-docker = pkgs.dockerTools.buildLayeredImage {
             name = "headscale";
             tag = "latest";
