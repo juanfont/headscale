@@ -91,8 +91,8 @@
           headscale-docker = pkgs.dockerTools.buildLayeredImage {
             name = "headscale";
             tag = "latest";
-            contents = [ pkgs.${system}.headscale ];
-            config.Entrypoint = [ (pkgs.${system}.headscale + "/bin/headscale") ];
+            contents = [ pkgs.headscale ];
+            config.Entrypoint = [ (pkgs.headscale + "/bin/headscale") ];
           };
         in
         rec {
