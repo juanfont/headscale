@@ -253,7 +253,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	namespaceName, err := NormalizeName(
+	namespaceName, err := NormalizeToFQDNRules(
 		claims.Email,
 		h.cfg.OIDC.StripEmaildomain,
 	)

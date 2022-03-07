@@ -134,7 +134,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 
 			return
 		}
-		hname, err := NormalizeName(
+		hname, err := NormalizeToFQDNRules(
 			req.Hostinfo.Hostname,
 			h.cfg.OIDC.StripEmaildomain,
 		)
