@@ -63,6 +63,7 @@ one of the maintainers.
 - Dual stack (IPv4 and IPv6)
 - Routing advertising (including exit nodes)
 - Ephemeral nodes
+- Embedded [DERP server](https://tailscale.com/blog/how-tailscale-works/#encrypted-tcp-relays-derp)
 
 ## Client OS support
 
