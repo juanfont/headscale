@@ -7,6 +7,9 @@
   };
 
   outputs = { self, nixpkgs, flake-utils, ... }:
+    let
+      headscaleVersion = if (self ? shortRev) then self.shortRev else "dev";
+    in
     {
       overlay = final: prev:
         let
@@ -52,7 +55,7 @@
           headscale =
             pkgs.buildGo117Module rec {
               pname = "headscale";
-              version = "dev";
+              version = headscaleVersion;
               src = pkgs.lib.cleanSource self;
 
               # When updating go.mod or go.sum, a new sha will need to be calculated,
@@ -94,7 +97,7 @@
           # docker load < result
           headscale-docker = pkgs.dockerTools.buildLayeredImage {
             name = "headscale";
-            tag = "latest";
+            tag = headscaleVersion;
             contents = [ pkgs.headscale ];
             config.Entrypoint = [ (pkgs.headscale + "/bin/headscale") ];
           };
