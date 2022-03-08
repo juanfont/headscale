@@ -49,6 +49,7 @@ require (
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/atomicgo/cursor v0.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/ccding/go-stun/stun v0.0.0-20200514191101-4dc67bcdb029 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/containerd/continuity v0.2.2 // indirect

@@ -211,16 +211,22 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 		log.Trace().Caller().Msgf("STUN request from %v", udpAddr)
 		pkt := buf[:bytesRead]
 		if !stun.Is(pkt) {
+			log.Trace().Caller().Msgf("UDP packet is not STUN")
+
 			continue
 		}
 		txid, err := stun.ParseBindingRequest(pkt)
 		if err != nil {
+			log.Trace().Caller().Err(err).Msgf("STUN parse error")
+
 			continue
 		}
 
 		res := stun.Response(txid, udpAddr.IP, uint16(udpAddr.Port))
 		_, err = packetConn.WriteTo(res, udpAddr)
 		if err != nil {
+			log.Trace().Caller().Err(err).Msgf("Issue writing to UDP")
+
 			continue
 		}
 	}

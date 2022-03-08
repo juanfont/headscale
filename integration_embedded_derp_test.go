@@ -23,6 +23,8 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/ccding/go-stun/stun"
 )
 
 const (
@@ -381,4 +383,14 @@ func (s *IntegrationDERPTestSuite) TestPingAllPeersByHostname() {
 			})
 		}
 	}
+}
+
+func (s *IntegrationDERPTestSuite) TestDERPSTUN() {
+	headscaleSTUNAddr := fmt.Sprintf("localhost:%s", s.headscale.GetPort("3478/udp"))
+	client := stun.NewClient()
+	client.SetVerbose(true)
+	client.SetVVerbose(true)
+	client.SetServerAddr(headscaleSTUNAddr)
+	_, _, err := client.Discover()
+	assert.Nil(s.T(), err)
 }
