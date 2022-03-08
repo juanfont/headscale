@@ -29,13 +29,6 @@ import (
 	"tailscale.com/ipn/ipnstate"
 )
 
-var tailscaleVersions = []string{"1.20.4", "1.18.2", "1.16.2", "1.14.3", "1.12.3"}
-
-type TestNamespace struct {
-	count      int
-	tailscales map[string]dockertest.Resource
-}
-
 type IntegrationTestSuite struct {
 	suite.Suite
 	stats *suite.SuiteInformation
@@ -685,38 +678,6 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 			}
 		}
 	}
-}
-
-func getIPs(
-	tailscales map[string]dockertest.Resource,
-) (map[string][]netaddr.IP, error) {
-	ips := make(map[string][]netaddr.IP)
-	for hostname, tailscale := range tailscales {
-		command := []string{"tailscale", "ip"}
-
-		result, err := ExecuteCommand(
-			&tailscale,
-			command,
-			[]string{},
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, address := range strings.Split(result, "\n") {
-			address = strings.TrimSuffix(address, "\n")
-			if len(address) < 1 {
-				continue
-			}
-			ip, err := netaddr.ParseIP(address)
-			if err != nil {
-				return nil, err
-			}
-			ips[hostname] = append(ips[hostname], ip)
-		}
-	}
-
-	return ips, nil
 }
 
 func getAPIURLs(

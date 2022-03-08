@@ -1,0 +1,29 @@
+log_level: trace
+acl_policy_path: ""
+db_type: sqlite3
+ephemeral_node_inactivity_timeout: 30m
+ip_prefixes:
+  - fd7a:115c:a1e0::/48
+  - 100.64.0.0/10
+dns_config:
+  base_domain: headscale.net
+  magic_dns: true
+  domains: []
+  nameservers:
+    - 1.1.1.1
+db_path: /tmp/integration_test_db.sqlite3
+private_key_path: private.key
+listen_addr: 0.0.0.0:8443
+server_url: https://headscale:8443
+tls_cert_path: "/etc/headscale/tls/server.crt"
+tls_key_path: "/etc/headscale/tls/server.key"
+tls_client_auth_mode: disabled
+derp:
+  server:
+    enabled: true
+    region_id: 999
+    region_code: "headscale"
+    region_name: "Headscale Embedded DERP"
+    stun:
+      enabled: true
+      listen_addr: "0.0.0.0:3478"
