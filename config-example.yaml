@@ -16,6 +16,12 @@ server_url: http://127.0.0.1:8080
 #
 listen_addr: 0.0.0.0:8080
 
+# Address to listen to /metrics, you may want
+# to keep this endpoint private to your internal
+# network
+#
+metrics_listen_addr: 127.0.0.1:9090
+
 # Address to listen for gRPC.
 # gRPC is used for controlling a headscale server
 # remotely with the CLI
@@ -49,6 +55,26 @@ ip_prefixes:
 # headscale needs a list of DERP servers that can be presented
 # to the clients.
 derp:
+  server:
+    # If enabled, runs the embedded DERP server and merges it into the rest of the DERP config
+    # The Headscale server_url defined above MUST be using https, DERP requires TLS to be in place
+    enabled: false
+
+    # Region ID to use for the embedded DERP server.
+    # The local DERP prevails if the region ID collides with other region ID coming from
+    # the regular DERP config.
+    region_id: 999
+
+    # Region code and name are displayed in the Tailscale UI to identify a DERP region
+    region_code: "headscale"
+    region_name: "Headscale Embedded DERP"
+
+    # If enabled, also listens in UDP at the configured address for STUN connections to help on NAT traversal
+    # For more details on how this works, check this great article: https://tailscale.com/blog/how-tailscale-works/
+    stun:
+      enabled: false
+      listen_addr: "0.0.0.0:3478"
+
   # List of externally available DERP maps encoded in JSON
   urls:
     - https://controlplane.tailscale.com/derpmap/default
@@ -105,12 +131,19 @@ acme_email: ""
 # Domain name to request a TLS certificate for:
 tls_letsencrypt_hostname: ""
 
+# Client (Tailscale/Browser) authentication mode (mTLS)
+# Acceptable values:
+# - disabled: client authentication disabled
+# - relaxed: client certificate is required but not verified
+# - enforced: client certificate is required and verified
+tls_client_auth_mode: relaxed
+
 # Path to store certificates and metadata needed by
 # letsencrypt
 tls_letsencrypt_cache_dir: /var/lib/headscale/cache
 
 # Type of ACME challenge to use, currently supported types:
-# HTTP-01 or TLS_ALPN-01
+# HTTP-01 or TLS-ALPN-01
 # See [docs/tls.md](docs/tls.md) for more information
 tls_letsencrypt_challenge_type: HTTP-01
 # When HTTP-01 challenge is chosen, letsencrypt must set up a
@@ -125,7 +158,8 @@ tls_key_path: ""
 log_level: info
 
 # Path to a file containg ACL policies.
-# Recommended path: /etc/headscale/acl.hujson
+# ACLs can be defined as YAML or HUJSON.
+# https://tailscale.com/kb/1018/acls/
 acl_policy_path: ""
 
 ## DNS
@@ -180,7 +214,9 @@ unix_socket_permission: "0770"
 #   client_id: "your-oidc-client-id"
 #   client_secret: "your-oidc-client-secret"
 #
-#   # Domain map is used to map incomming users (by their email) to
-#   # a namespace. The key can be a string, or regex.
-#   domain_map:
-#     ".*": default-namespace
+#   If `strip_email_domain` is set to `true`, the domain part of the username email address will be removed.
+#   This will transform `first-name.last-name@example.com` to the namespace `first-name.last-name`
+#   If `strip_email_domain` is set to `false` the domain part will NOT be removed resulting to the following
+#   namespace: `first-name.last-name.example.com`
+#
+#   strip_email_domain: true

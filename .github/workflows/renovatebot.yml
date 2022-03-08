@@ -1,0 +1,27 @@
+---
+name: Renovate
+on:
+  schedule:
+    - cron: "* * 5,20 * *" # Every 5th and 20th of the month
+  workflow_dispatch:
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get token
+        id: get_token
+        uses: machine-learning-apps/actions-app-token@master
+        with:
+          APP_PEM: ${{ secrets.RENOVATEBOT_SECRET }}
+          APP_ID: ${{ secrets.RENOVATEBOT_APP_ID }}
+
+      - name: Checkout
+        uses: actions/checkout@v2.0.0
+
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@v31.81.3
+        with:
+          configurationFile: .github/renovate.json
+          token: "x-access-token:${{ steps.get_token.outputs.app_token }}"
+        # env:
+        #  LOG_LEVEL: "debug"

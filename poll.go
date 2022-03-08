@@ -2,7 +2,6 @@ package headscale
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -85,12 +83,33 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("machine", machine.Name).
 		Msg("Found machine in database")
 
-	hostinfo, _ := json.Marshal(req.Hostinfo)
-	machine.Name = req.Hostinfo.Hostname
-	machine.HostInfo = datatypes.JSON(hostinfo)
+	hname, err := NormalizeToFQDNRules(
+		req.Hostinfo.Hostname,
+		h.cfg.OIDC.StripEmaildomain,
+	)
+	if err != nil {
+		log.Error().
+			Caller().
+			Str("func", "handleAuthKey").
+			Str("hostinfo.name", req.Hostinfo.Hostname).
+			Err(err)
+	}
+	machine.Name = hname
+	machine.HostInfo = HostInfo(*req.Hostinfo)
 	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
 	now := time.Now().UTC()
 
+	// update ACLRules with peer informations (to update server tags if necessary)
+	if h.aclPolicy != nil {
+		err = h.UpdateACLRules()
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "handleAuthKey").
+				Str("machine", machine.Name).
+				Err(err)
+		}
+	}
 	// From Tailscale client:
 	//
 	// ReadOnly is whether the client just wants to fetch the MapResponse,
@@ -100,8 +119,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	// The intended use is for clients to discover the DERP map at start-up
 	// before their first real endpoint update.
 	if !req.ReadOnly {
-		endpoints, _ := json.Marshal(req.Endpoints)
-		machine.Endpoints = datatypes.JSON(endpoints)
+		machine.Endpoints = req.Endpoints
 		machine.LastSeen = &now
 	}
 	h.db.Updates(machine)

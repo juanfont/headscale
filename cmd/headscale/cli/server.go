@@ -1,8 +1,7 @@
 package cli
 
 import (
-	"log"
-
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -19,12 +18,12 @@ var serveCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		h, err := getHeadscaleApp()
 		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+			log.Fatal().Caller().Err(err).Msg("Error initializing")
 		}
 
 		err = h.Serve()
 		if err != nil {
-			log.Fatalf("Error initializing: %s", err)
+			log.Fatal().Caller().Err(err).Msg("Error starting server")
 		}
 	},
 }

@@ -55,19 +55,24 @@ const (
 	HTTPReadTimeout    = 30 * time.Second
 	privateKeyFileMode = 0o600
 
-	requestedExpiryCacheExpiration      = time.Minute * 5
-	requestedExpiryCacheCleanupInterval = time.Minute * 10
+	registerCacheExpiration = time.Minute * 15
+	registerCacheCleanup    = time.Minute * 20
 
 	errUnsupportedDatabase                 = Error("unsupported DB")
 	errUnsupportedLetsEncryptChallengeType = Error(
 		"unknown value for Lets Encrypt challenge type",
 	)
+
+	DisabledClientAuth = "disabled"
+	RelaxedClientAuth  = "relaxed"
+	EnforcedClientAuth = "enforced"
 )
 
 // Config contains the initial Headscale configuration.
 type Config struct {
 	ServerURL                      string
 	Addr                           string
+	MetricsAddr                    string
 	GRPCAddr                       string
 	GRPCAllowInsecure              bool
 	EphemeralNodeInactivityTimeout time.Duration
@@ -90,8 +95,9 @@ type Config struct {
 	TLSLetsEncryptCacheDir      string
 	TLSLetsEncryptChallengeType string
 
-	TLSCertPath string
-	TLSKeyPath  string
+	TLSCertPath       string
+	TLSKeyPath        string
+	TLSClientAuthMode tls.ClientAuthType
 
 	ACMEURL   string
 	ACMEEmail string
@@ -107,17 +113,23 @@ type Config struct {
 }
 
 type OIDCConfig struct {
-	Issuer       string
-	ClientID     string
-	ClientSecret string
-	MatchMap     map[string]string
+	Issuer           string
+	ClientID         string
+	ClientSecret     string
+	StripEmaildomain bool
 }
 
 type DERPConfig struct {
-	URLs            []url.URL
-	Paths           []string
-	AutoUpdate      bool
-	UpdateFrequency time.Duration
+	ServerEnabled    bool
+	ServerRegionID   int
+	ServerRegionCode string
+	ServerRegionName string
+	STUNEnabled      bool
+	STUNAddr         string
+	URLs             []url.URL
+	Paths            []string
+	AutoUpdate       bool
+	UpdateFrequency  time.Duration
 }
 
 type CLIConfig struct {
@@ -136,21 +148,43 @@ type Headscale struct {
 	dbDebug    bool
 	privateKey *key.MachinePrivate
 
-	DERPMap *tailcfg.DERPMap
+	DERPMap    *tailcfg.DERPMap
+	DERPServer *DERPServer
 
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
 
 	lastStateChange sync.Map
 
-	oidcProvider   *oidc.Provider
-	oauth2Config   *oauth2.Config
-	oidcStateCache *cache.Cache
+	oidcProvider *oidc.Provider
+	oauth2Config *oauth2.Config
 
-	requestedExpiryCache *cache.Cache
+	registrationCache *cache.Cache
+
+	ipAllocationMutex sync.Mutex
 }
 
-// NewHeadscale returns the Headscale app.
+// Look up the TLS constant relative to user-supplied TLS client
+// authentication mode. If an unknown mode is supplied, the default
+// value, tls.RequireAnyClientCert, is returned. The returned boolean
+// indicates if the supplied mode was valid.
+func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
+	switch mode {
+	case DisabledClientAuth:
+		// Client cert is _not_ required.
+		return tls.NoClientCert, true
+	case RelaxedClientAuth:
+		// Client cert required, but _not verified_.
+		return tls.RequireAnyClientCert, true
+	case EnforcedClientAuth:
+		// Client cert is _required and verified_.
+		return tls.RequireAndVerifyClientCert, true
+	default:
+		// Return the default when an unknown value is supplied.
+		return tls.RequireAnyClientCert, false
+	}
+}
+
 func NewHeadscale(cfg Config) (*Headscale, error) {
 	privKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
@@ -174,18 +208,18 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		return nil, errUnsupportedDatabase
 	}
 
-	requestedExpiryCache := cache.New(
-		requestedExpiryCacheExpiration,
-		requestedExpiryCacheCleanupInterval,
+	registrationCache := cache.New(
+		registerCacheExpiration,
+		registerCacheCleanup,
 	)
 
 	app := Headscale{
-		cfg:                  cfg,
-		dbType:               cfg.DBtype,
-		dbString:             dbString,
-		privateKey:           privKey,
-		aclRules:             tailcfg.FilterAllowAll, // default allowall
-		requestedExpiryCache: requestedExpiryCache,
+		cfg:               cfg,
+		dbType:            cfg.DBtype,
+		dbString:          dbString,
+		privateKey:        privKey,
+		aclRules:          tailcfg.FilterAllowAll, // default allowall
+		registrationCache: registrationCache,
 	}
 
 	err = app.initDB()
@@ -209,6 +243,14 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		for _, d := range magicDNSDomains {
 			app.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
+	}
+
+	if cfg.DERP.ServerEnabled {
+		embeddedDERPServer, err := app.NewDERPServer()
+		if err != nil {
+			return nil, err
+		}
+		app.DERPServer = embeddedDERPServer
 	}
 
 	return &app, nil
@@ -406,11 +448,17 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
-func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
-	router := gin.Default()
+func (h *Headscale) createPrometheusRouter() *gin.Engine {
+	promRouter := gin.Default()
 
 	prometheus := ginprometheus.NewPrometheus("gin")
-	prometheus.Use(router)
+	prometheus.Use(promRouter)
+
+	return promRouter
+}
+
+func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
+	router := gin.Default()
 
 	router.GET(
 		"/health",
@@ -422,10 +470,18 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.POST("/machine/:id", h.RegistrationHandler)
 	router.GET("/oidc/register/:mkey", h.RegisterOIDC)
 	router.GET("/oidc/callback", h.OIDCCallback)
-	router.GET("/apple", h.AppleMobileConfig)
+	router.GET("/apple", h.AppleConfigMessage)
 	router.GET("/apple/:platform", h.ApplePlatformConfig)
+	router.GET("/windows", h.WindowsConfigMessage)
+	router.GET("/windows/tailscale.reg", h.WindowsRegConfig)
 	router.GET("/swagger", SwaggerUI)
 	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
+
+	if h.cfg.DERP.ServerEnabled {
+		router.Any("/derp", h.DERPHandler)
+		router.Any("/derp/probe", h.DERPProbeHandler)
+		router.Any("/bootstrap-dns", h.DERPBootstrapDNSHandler)
+	}
 
 	api := router.Group("/api")
 	api.Use(h.httpAuthenticationMiddleware)
@@ -444,6 +500,13 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
+
+	if h.cfg.DERP.ServerEnabled {
+		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
+		if h.cfg.DERP.STUNEnabled {
+			go h.ServeSTUN()
+		}
+	}
 
 	if h.cfg.DERP.AutoUpdate {
 		derpMapCancelChannel := make(chan struct{})
@@ -622,6 +685,27 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
+	promRouter := h.createPrometheusRouter()
+
+	promHTTPServer := &http.Server{
+		Addr:         h.cfg.MetricsAddr,
+		Handler:      promRouter,
+		ReadTimeout:  HTTPReadTimeout,
+		WriteTimeout: 0,
+	}
+
+	var promHTTPListener net.Listener
+	promHTTPListener, err = net.Listen("tcp", h.cfg.MetricsAddr)
+
+	if err != nil {
+		return fmt.Errorf("failed to bind to TCP address: %w", err)
+	}
+
+	errorGroup.Go(func() error { return promHTTPServer.Serve(promHTTPListener) })
+
+	log.Info().
+		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
+
 	return errorGroup.Wait()
 }
 
@@ -676,12 +760,18 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
+
+		log.Info().Msg(fmt.Sprintf(
+			"Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
+			h.cfg.TLSClientAuthMode))
+
 		tlsConfig := &tls.Config{
-			ClientAuth:   tls.RequireAnyClientCert,
+			ClientAuth:   h.cfg.TLSClientAuthMode,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: make([]tls.Certificate, 1),
 			MinVersion:   tls.VersionTLS12,
 		}
+
 		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
 
 		return tlsConfig, err

@@ -157,9 +157,6 @@ func GetIPPrefixEndpoints(na netaddr.IPPrefix) (network, broadcast netaddr.IP) {
 	return
 }
 
-// TODO: Is this concurrency safe?
-// What would happen if multiple hosts were to register at the same time?
-// Would we attempt to assign the same addresses to multiple nodes?
 func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, error) {
 	usedIps, err := h.getUsedIPs()
 	if err != nil {
@@ -179,7 +176,7 @@ func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, erro
 		switch {
 		case ip.Compare(ipPrefixBroadcastAddress) == 0:
 			fallthrough
-		case containsIPs(usedIps, ip):
+		case usedIps.Contains(ip):
 			fallthrough
 		case ip.IsZero() || ip.IsLoopback():
 			ip = ip.Next()
@@ -192,29 +189,43 @@ func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, erro
 	}
 }
 
-func (h *Headscale) getUsedIPs() ([]netaddr.IP, error) {
+func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 	// FIXME: This really deserves a better data model,
 	// but this was quick to get running and it should be enough
 	// to begin experimenting with a dual stack tailnet.
 	var addressesSlices []string
 	h.db.Model(&Machine{}).Pluck("ip_addresses", &addressesSlices)
 
-	ips := make([]netaddr.IP, 0, len(h.cfg.IPPrefixes)*len(addressesSlices))
+	var ips netaddr.IPSetBuilder
 	for _, slice := range addressesSlices {
-		var a MachineAddresses
-		err := a.Scan(slice)
+		var machineAddresses MachineAddresses
+		err := machineAddresses.Scan(slice)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read ip from database: %w", err)
+			return &netaddr.IPSet{}, fmt.Errorf(
+				"failed to read ip from database: %w",
+				err,
+			)
 		}
-		ips = append(ips, a...)
+
+		for _, ip := range machineAddresses {
+			ips.Add(ip)
+		}
 	}
 
-	return ips, nil
+	ipSet, err := ips.IPSet()
+	if err != nil {
+		return &netaddr.IPSet{}, fmt.Errorf(
+			"failed to build IP Set: %w",
+			err,
+		)
+	}
+
+	return ipSet, nil
 }
 
-func containsIPs(ips []netaddr.IP, ip netaddr.IP) bool {
-	for _, v := range ips {
-		if v == ip {
+func containsString(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
 			return true
 		}
 	}

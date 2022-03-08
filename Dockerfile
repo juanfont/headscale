@@ -1,5 +1,5 @@
 # Builder image
-FROM docker.io/golang:1.17.7-bullseye AS build
+FROM docker.io/golang:1.17.8-bullseye AS build
 ENV GOPATH /go
 WORKDIR /go/src/headscale
 
@@ -8,7 +8,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go install -a -ldflags="-extldflags=-static" -tags netgo,sqlite_omit_load_extension ./cmd/headscale
+RUN GGO_ENABLED=0 GOOS=linux go install -a ./cmd/headscale
 RUN strip /go/bin/headscale
 RUN test -e /go/bin/headscale
 

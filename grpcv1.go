@@ -3,12 +3,10 @@ package headscale
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
-	"gorm.io/datatypes"
 	"tailscale.com/tailcfg"
 )
 
@@ -159,9 +157,11 @@ func (api headscaleV1APIServer) RegisterMachine(
 		Str("namespace", request.GetNamespace()).
 		Str("machine_key", request.GetKey()).
 		Msg("Registering machine")
-	machine, err := api.h.RegisterMachine(
+
+	machine, err := api.h.RegisterMachineFromAuthCallback(
 		request.GetKey(),
 		request.GetNamespace(),
+		RegisterMethodCLI,
 	)
 	if err != nil {
 		return nil, err
@@ -232,15 +232,6 @@ func (api headscaleV1APIServer) ListMachines(
 			return nil, err
 		}
 
-		sharedMachines, err := api.h.ListSharedMachinesInNamespace(
-			request.GetNamespace(),
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		machines = append(machines, sharedMachines...)
-
 		response := make([]*v1.Machine, len(machines))
 		for index, machine := range machines {
 			response[index] = machine.toProto()
@@ -262,50 +253,6 @@ func (api headscaleV1APIServer) ListMachines(
 	return &v1.ListMachinesResponse{Machines: response}, nil
 }
 
-func (api headscaleV1APIServer) ShareMachine(
-	ctx context.Context,
-	request *v1.ShareMachineRequest,
-) (*v1.ShareMachineResponse, error) {
-	destinationNamespace, err := api.h.GetNamespace(request.GetNamespace())
-	if err != nil {
-		return nil, err
-	}
-
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
-	if err != nil {
-		return nil, err
-	}
-
-	err = api.h.AddSharedMachineToNamespace(machine, destinationNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	return &v1.ShareMachineResponse{Machine: machine.toProto()}, nil
-}
-
-func (api headscaleV1APIServer) UnshareMachine(
-	ctx context.Context,
-	request *v1.UnshareMachineRequest,
-) (*v1.UnshareMachineResponse, error) {
-	destinationNamespace, err := api.h.GetNamespace(request.GetNamespace())
-	if err != nil {
-		return nil, err
-	}
-
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
-	if err != nil {
-		return nil, err
-	}
-
-	err = api.h.RemoveSharedMachineFromNamespace(machine, destinationNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	return &v1.UnshareMachineResponse{Machine: machine.toProto()}, nil
-}
-
 func (api headscaleV1APIServer) GetMachineRoute(
 	ctx context.Context,
 	request *v1.GetMachineRouteRequest,
@@ -315,13 +262,8 @@ func (api headscaleV1APIServer) GetMachineRoute(
 		return nil, err
 	}
 
-	routes, err := machine.RoutesToProto()
-	if err != nil {
-		return nil, err
-	}
-
 	return &v1.GetMachineRouteResponse{
-		Routes: routes,
+		Routes: machine.RoutesToProto(),
 	}, nil
 }
 
@@ -339,13 +281,8 @@ func (api headscaleV1APIServer) EnableMachineRoutes(
 		return nil, err
 	}
 
-	routes, err := machine.RoutesToProto()
-	if err != nil {
-		return nil, err
-	}
-
 	return &v1.EnableMachineRoutesResponse{
-		Routes: routes,
+		Routes: machine.RoutesToProto(),
 	}, nil
 }
 
@@ -432,13 +369,6 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		Hostname:    "DebugTestMachine",
 	}
 
-	log.Trace().Caller().Interface("hostinfo", hostinfo).Msg("")
-
-	hostinfoJson, err := json.Marshal(hostinfo)
-	if err != nil {
-		return nil, err
-	}
-
 	newMachine := Machine{
 		MachineKey: request.GetKey(),
 		Name:       request.GetName(),
@@ -448,14 +378,14 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		LastSeen:             &time.Time{},
 		LastSuccessfulUpdate: &time.Time{},
 
-		HostInfo: datatypes.JSON(hostinfoJson),
+		HostInfo: HostInfo(hostinfo),
 	}
 
-	// log.Trace().Caller().Interface("machine", newMachine).Msg("")
-
-	if err := api.h.db.Create(&newMachine).Error; err != nil {
-		return nil, err
-	}
+	api.h.registrationCache.Set(
+		request.GetKey(),
+		newMachine,
+		registerCacheExpiration,
+	)
 
 	return &v1.DebugCreateMachineResponse{Machine: newMachine.toProto()}, nil
 }

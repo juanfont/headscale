@@ -529,7 +529,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	namespace, err := s.createNamespace("machine-namespace")
 	assert.Nil(s.T(), err)
 
-	sharedNamespace, err := s.createNamespace("shared-namespace")
+	secondNamespace, err := s.createNamespace("other-namespace")
 	assert.Nil(s.T(), err)
 
 	// Randomly generated machine keys
@@ -589,7 +589,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 
 	assert.Len(s.T(), machines, len(machineKeys))
 
-	// Test list all nodes after added shared
+	// Test list all nodes after added seconds
 	listAllResult, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
@@ -621,20 +621,14 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Equal(s.T(), "machine-4", listAll[3].Name)
 	assert.Equal(s.T(), "machine-5", listAll[4].Name)
 
-	assert.True(s.T(), listAll[0].Registered)
-	assert.True(s.T(), listAll[1].Registered)
-	assert.True(s.T(), listAll[2].Registered)
-	assert.True(s.T(), listAll[3].Registered)
-	assert.True(s.T(), listAll[4].Registered)
-
-	sharedMachineKeys := []string{
+	otherNamespaceMachineKeys := []string{
 		"b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
 		"dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
 	}
-	sharedMachines := make([]*v1.Machine, len(sharedMachineKeys))
+	otherNamespaceMachines := make([]*v1.Machine, len(otherNamespaceMachineKeys))
 	assert.Nil(s.T(), err)
 
-	for index, machineKey := range sharedMachineKeys {
+	for index, machineKey := range otherNamespaceMachineKeys {
 		_, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -642,9 +636,9 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("shared-machine-%d", index+1),
+				fmt.Sprintf("otherNamespace-machine-%d", index+1),
 				"--namespace",
-				sharedNamespace.Name,
+				secondNamespace.Name,
 				"--key",
 				machineKey,
 				"--output",
@@ -660,7 +654,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				"headscale",
 				"nodes",
 				"--namespace",
-				sharedNamespace.Name,
+				secondNamespace.Name,
 				"register",
 				"--key",
 				machineKey,
@@ -675,13 +669,13 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		err = json.Unmarshal([]byte(machineResult), &machine)
 		assert.Nil(s.T(), err)
 
-		sharedMachines[index] = &machine
+		otherNamespaceMachines[index] = &machine
 	}
 
-	assert.Len(s.T(), sharedMachines, len(sharedMachineKeys))
+	assert.Len(s.T(), otherNamespaceMachines, len(otherNamespaceMachineKeys))
 
-	// Test list all nodes after added shared
-	listAllWithSharedResult, err := ExecuteCommand(
+	// Test list all nodes after added otherNamespace
+	listAllWithotherNamespaceResult, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -694,31 +688,31 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAllWithShared []v1.Machine
-	err = json.Unmarshal([]byte(listAllWithSharedResult), &listAllWithShared)
+	var listAllWithotherNamespace []v1.Machine
+	err = json.Unmarshal(
+		[]byte(listAllWithotherNamespaceResult),
+		&listAllWithotherNamespace,
+	)
 	assert.Nil(s.T(), err)
 
-	// All nodes, machines + shared
-	assert.Len(s.T(), listAllWithShared, 7)
+	// All nodes, machines + otherNamespace
+	assert.Len(s.T(), listAllWithotherNamespace, 7)
 
-	assert.Equal(s.T(), uint64(6), listAllWithShared[5].Id)
-	assert.Equal(s.T(), uint64(7), listAllWithShared[6].Id)
+	assert.Equal(s.T(), uint64(6), listAllWithotherNamespace[5].Id)
+	assert.Equal(s.T(), uint64(7), listAllWithotherNamespace[6].Id)
 
-	assert.Equal(s.T(), "shared-machine-1", listAllWithShared[5].Name)
-	assert.Equal(s.T(), "shared-machine-2", listAllWithShared[6].Name)
+	assert.Equal(s.T(), "otherNamespace-machine-1", listAllWithotherNamespace[5].Name)
+	assert.Equal(s.T(), "otherNamespace-machine-2", listAllWithotherNamespace[6].Name)
 
-	assert.True(s.T(), listAllWithShared[5].Registered)
-	assert.True(s.T(), listAllWithShared[6].Registered)
-
-	// Test list all nodes after added shared
-	listOnlySharedMachineNamespaceResult, err := ExecuteCommand(
+	// Test list all nodes after added otherNamespace
+	listOnlyotherNamespaceMachineNamespaceResult, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
 			"nodes",
 			"list",
 			"--namespace",
-			sharedNamespace.Name,
+			secondNamespace.Name,
 			"--output",
 			"json",
 		},
@@ -726,23 +720,28 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listOnlySharedMachineNamespace []v1.Machine
+	var listOnlyotherNamespaceMachineNamespace []v1.Machine
 	err = json.Unmarshal(
-		[]byte(listOnlySharedMachineNamespaceResult),
-		&listOnlySharedMachineNamespace,
+		[]byte(listOnlyotherNamespaceMachineNamespaceResult),
+		&listOnlyotherNamespaceMachineNamespace,
 	)
 	assert.Nil(s.T(), err)
 
-	assert.Len(s.T(), listOnlySharedMachineNamespace, 2)
+	assert.Len(s.T(), listOnlyotherNamespaceMachineNamespace, 2)
 
-	assert.Equal(s.T(), uint64(6), listOnlySharedMachineNamespace[0].Id)
-	assert.Equal(s.T(), uint64(7), listOnlySharedMachineNamespace[1].Id)
+	assert.Equal(s.T(), uint64(6), listOnlyotherNamespaceMachineNamespace[0].Id)
+	assert.Equal(s.T(), uint64(7), listOnlyotherNamespaceMachineNamespace[1].Id)
 
-	assert.Equal(s.T(), "shared-machine-1", listOnlySharedMachineNamespace[0].Name)
-	assert.Equal(s.T(), "shared-machine-2", listOnlySharedMachineNamespace[1].Name)
-
-	assert.True(s.T(), listOnlySharedMachineNamespace[0].Registered)
-	assert.True(s.T(), listOnlySharedMachineNamespace[1].Registered)
+	assert.Equal(
+		s.T(),
+		"otherNamespace-machine-1",
+		listOnlyotherNamespaceMachineNamespace[0].Name,
+	)
+	assert.Equal(
+		s.T(),
+		"otherNamespace-machine-2",
+		listOnlyotherNamespaceMachineNamespace[1].Name,
+	)
 
 	// Delete a machines
 	_, err = ExecuteCommand(
@@ -786,120 +785,6 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), listOnlyMachineNamespaceAfterDelete, 4)
-
-	// test: share node
-
-	shareMachineResult, err := ExecuteCommand(
-		&s.headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"share",
-			"--namespace",
-			namespace.Name,
-			"--identifier",
-			"7",
-			"--output",
-			"json",
-		},
-		[]string{},
-	)
-	assert.Nil(s.T(), err)
-
-	var shareMachine v1.Machine
-	err = json.Unmarshal([]byte(shareMachineResult), &shareMachine)
-	assert.Nil(s.T(), err)
-
-	assert.Equal(s.T(), uint64(7), shareMachine.Id)
-
-	assert.Equal(s.T(), "shared-machine-2", shareMachine.Name)
-
-	assert.True(s.T(), shareMachine.Registered)
-
-	// Test: list main namespace after machine has been shared
-	listOnlyMachineNamespaceAfterShareResult, err := ExecuteCommand(
-		&s.headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--namespace",
-			namespace.Name,
-			"--output",
-			"json",
-		},
-		[]string{},
-	)
-	assert.Nil(s.T(), err)
-
-	var listOnlyMachineNamespaceAfterShare []v1.Machine
-	err = json.Unmarshal(
-		[]byte(listOnlyMachineNamespaceAfterShareResult),
-		&listOnlyMachineNamespaceAfterShare,
-	)
-	assert.Nil(s.T(), err)
-
-	assert.Len(s.T(), listOnlyMachineNamespaceAfterShare, 5)
-
-	assert.Equal(s.T(), uint64(7), listOnlyMachineNamespaceAfterShare[4].Id)
-
-	assert.Equal(s.T(), "shared-machine-2", listOnlyMachineNamespaceAfterShare[4].Name)
-
-	assert.True(s.T(), listOnlyMachineNamespaceAfterShare[4].Registered)
-
-	// test: unshare node
-
-	unshareMachineResult, err := ExecuteCommand(
-		&s.headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"unshare",
-			"--namespace",
-			namespace.Name,
-			"--identifier",
-			"7",
-			"--output",
-			"json",
-		},
-		[]string{},
-	)
-	assert.Nil(s.T(), err)
-
-	var unshareMachine v1.Machine
-	err = json.Unmarshal([]byte(unshareMachineResult), &unshareMachine)
-	assert.Nil(s.T(), err)
-
-	assert.Equal(s.T(), uint64(7), unshareMachine.Id)
-
-	assert.Equal(s.T(), "shared-machine-2", unshareMachine.Name)
-
-	assert.True(s.T(), unshareMachine.Registered)
-
-	// Test: list main namespace after machine has been shared
-	listOnlyMachineNamespaceAfterUnshareResult, err := ExecuteCommand(
-		&s.headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--namespace",
-			namespace.Name,
-			"--output",
-			"json",
-		},
-		[]string{},
-	)
-	assert.Nil(s.T(), err)
-
-	var listOnlyMachineNamespaceAfterUnshare []v1.Machine
-	err = json.Unmarshal(
-		[]byte(listOnlyMachineNamespaceAfterUnshareResult),
-		&listOnlyMachineNamespaceAfterUnshare,
-	)
-	assert.Nil(s.T(), err)
-
-	assert.Len(s.T(), listOnlyMachineNamespaceAfterUnshare, 4)
 }
 
 func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
@@ -1082,7 +967,6 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 
 	assert.Equal(s.T(), uint64(1), machine.Id)
 	assert.Equal(s.T(), "route-machine", machine.Name)
-	assert.True(s.T(), machine.Registered)
 
 	listAllResult, err := ExecuteCommand(
 		&s.headscale,

@@ -163,7 +163,11 @@ func getMapResponseDNSConfig(
 		dnsConfig = dnsConfigOrig.Clone()
 		dnsConfig.Domains = append(
 			dnsConfig.Domains,
-			fmt.Sprintf("%s.%s", machine.Namespace.Name, baseDomain),
+			fmt.Sprintf(
+				"%s.%s",
+				machine.Namespace.Name,
+				baseDomain,
+			),
 		)
 
 		namespaceSet := set.New(set.ThreadSafe)
@@ -171,8 +175,14 @@ func getMapResponseDNSConfig(
 		for _, p := range peers {
 			namespaceSet.Add(p.Namespace)
 		}
-		for _, namespace := range namespaceSet.List() {
-			dnsRoute := fmt.Sprintf("%s.%s", namespace.(Namespace).Name, baseDomain)
+		for _, ns := range namespaceSet.List() {
+			namespace, ok := ns.(Namespace)
+			if !ok {
+				dnsConfig = dnsConfigOrig
+
+				continue
+			}
+			dnsRoute := fmt.Sprintf("%v.%v", namespace.Name, baseDomain)
 			dnsConfig.Routes[dnsRoute] = nil
 		}
 	} else {

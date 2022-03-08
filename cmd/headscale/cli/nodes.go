@@ -46,35 +46,12 @@ func init() {
 		log.Fatalf(err.Error())
 	}
 	nodeCmd.AddCommand(deleteNodeCmd)
-
-	shareMachineCmd.Flags().StringP("namespace", "n", "", "Namespace")
-	err = shareMachineCmd.MarkFlagRequired("namespace")
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	shareMachineCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err = shareMachineCmd.MarkFlagRequired("identifier")
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	nodeCmd.AddCommand(shareMachineCmd)
-
-	unshareMachineCmd.Flags().StringP("namespace", "n", "", "Namespace")
-	err = unshareMachineCmd.MarkFlagRequired("namespace")
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	unshareMachineCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err = unshareMachineCmd.MarkFlagRequired("identifier")
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	nodeCmd.AddCommand(unshareMachineCmd)
 }
 
 var nodeCmd = &cobra.Command{
-	Use:   "nodes",
-	Short: "Manage the nodes of Headscale",
+	Use:     "nodes",
+	Short:   "Manage the nodes of Headscale",
+	Aliases: []string{"node", "machine", "machines"},
 }
 
 var registerNodeCmd = &cobra.Command{
@@ -128,8 +105,9 @@ var registerNodeCmd = &cobra.Command{
 }
 
 var listNodesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List nodes",
+	Use:     "list",
+	Short:   "List nodes",
+	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		namespace, err := cmd.Flags().GetString("namespace")
@@ -188,7 +166,7 @@ var expireNodeCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire (log out) a machine in your network",
 	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
-	Aliases: []string{"logout"},
+	Aliases: []string{"logout", "exp", "e"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -230,8 +208,9 @@ var expireNodeCmd = &cobra.Command{
 }
 
 var deleteNodeCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a node",
+	Use:     "delete",
+	Short:   "Delete a node",
+	Aliases: []string{"del"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -314,139 +293,6 @@ var deleteNodeCmd = &cobra.Command{
 		} else {
 			SuccessOutput(map[string]string{"Result": "Node not deleted"}, "Node not deleted", output)
 		}
-	},
-}
-
-func sharingWorker(
-	cmd *cobra.Command,
-) (string, *v1.Machine, *v1.Namespace, error) {
-	output, _ := cmd.Flags().GetString("output")
-	namespaceStr, err := cmd.Flags().GetString("namespace")
-	if err != nil {
-		ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
-
-		return "", nil, nil, err
-	}
-
-	ctx, client, conn, cancel := getHeadscaleCLIClient()
-	defer cancel()
-	defer conn.Close()
-
-	identifier, err := cmd.Flags().GetUint64("identifier")
-	if err != nil {
-		ErrorOutput(err, fmt.Sprintf("Error converting ID to integer: %s", err), output)
-
-		return "", nil, nil, err
-	}
-
-	machineRequest := &v1.GetMachineRequest{
-		MachineId: identifier,
-	}
-
-	machineResponse, err := client.GetMachine(ctx, machineRequest)
-	if err != nil {
-		ErrorOutput(
-			err,
-			fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()),
-			output,
-		)
-
-		return "", nil, nil, err
-	}
-
-	namespaceRequest := &v1.GetNamespaceRequest{
-		Name: namespaceStr,
-	}
-
-	namespaceResponse, err := client.GetNamespace(ctx, namespaceRequest)
-	if err != nil {
-		ErrorOutput(
-			err,
-			fmt.Sprintf("Error getting node node: %s", status.Convert(err).Message()),
-			output,
-		)
-
-		return "", nil, nil, err
-	}
-
-	return output, machineResponse.GetMachine(), namespaceResponse.GetNamespace(), nil
-}
-
-var shareMachineCmd = &cobra.Command{
-	Use:   "share",
-	Short: "Shares a node from the current namespace to the specified one",
-	Run: func(cmd *cobra.Command, args []string) {
-		output, machine, namespace, err := sharingWorker(cmd)
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to fetch namespace or machine: %s", err),
-				output,
-			)
-
-			return
-		}
-
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
-		defer cancel()
-		defer conn.Close()
-
-		request := &v1.ShareMachineRequest{
-			MachineId: machine.Id,
-			Namespace: namespace.Name,
-		}
-
-		response, err := client.ShareMachine(ctx, request)
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error sharing node: %s", status.Convert(err).Message()),
-				output,
-			)
-
-			return
-		}
-
-		SuccessOutput(response.Machine, "Node shared", output)
-	},
-}
-
-var unshareMachineCmd = &cobra.Command{
-	Use:   "unshare",
-	Short: "Unshares a node from the specified namespace",
-	Run: func(cmd *cobra.Command, args []string) {
-		output, machine, namespace, err := sharingWorker(cmd)
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to fetch namespace or machine: %s", err),
-				output,
-			)
-
-			return
-		}
-
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
-		defer cancel()
-		defer conn.Close()
-
-		request := &v1.UnshareMachineRequest{
-			MachineId: machine.Id,
-			Namespace: namespace.Name,
-		}
-
-		response, err := client.UnshareMachine(ctx, request)
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error unsharing node: %s", status.Convert(err).Message()),
-				output,
-			)
-
-			return
-		}
-
-		SuccessOutput(response.Machine, "Node unshared", output)
 	},
 }
 
