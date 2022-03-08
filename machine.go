@@ -347,6 +347,20 @@ func (h *Headscale) GetMachineByMachineKey(
 	return &m, nil
 }
 
+// GetValidMachineByMachineKey finds an unexpired Machine by ID and returns the Machine struct.
+func (h *Headscale) GetValidMachineByMachineKey(
+	machineKey key.MachinePublic,
+) (*Machine, error) {
+	m := Machine{}
+	if result := h.db.Preload("Namespace").
+		Where("expiry == ? OR expiry > ?", TimeZero, time.Now()).
+		First(&m, "machine_key = ?", MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &m, nil
+}
+
 // UpdateMachine takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
 func (h *Headscale) UpdateMachine(machine *Machine) error {

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"inet.af/netaddr"
@@ -52,6 +53,9 @@ const (
 	// privateKey prefix.
 	privateHexPrefix = "privkey:"
 )
+
+// represents a zero/unset time value
+var TimeZero, _ = time.Parse(time.RFC3339, "0001-01-01T00:00:00Z")
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
 	return strings.TrimPrefix(machineKey.String(), machinePublicHexPrefix)
@@ -194,7 +198,9 @@ func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 	// but this was quick to get running and it should be enough
 	// to begin experimenting with a dual stack tailnet.
 	var addressesSlices []string
-	h.db.Model(&Machine{}).Pluck("ip_addresses", &addressesSlices)
+	h.db.Model(&Machine{}).
+		Where("expiry == ? OR expiry > ?", TimeZero, time.Now()).
+		Pluck("ip_addresses", &addressesSlices)
 
 	var ips netaddr.IPSetBuilder
 	for _, slice := range addressesSlices {
