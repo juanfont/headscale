@@ -83,7 +83,18 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Str("machine", machine.Name).
 		Msg("Found machine in database")
 
-	machine.Name = req.Hostinfo.Hostname
+	hname, err := NormalizeToFQDNRules(
+		req.Hostinfo.Hostname,
+		h.cfg.OIDC.StripEmaildomain,
+	)
+	if err != nil {
+		log.Error().
+			Caller().
+			Str("func", "handleAuthKey").
+			Str("hostinfo.name", req.Hostinfo.Hostname).
+			Err(err)
+	}
+	machine.Name = hname
 	machine.HostInfo = HostInfo(*req.Hostinfo)
 	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
 	now := time.Now().UTC()
