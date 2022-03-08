@@ -17,12 +17,11 @@ import (
 )
 
 const (
-	errEmptyPolicy        = Error("empty policy")
-	errInvalidAction      = Error("invalid action")
-	errInvalidUserSection = Error("invalid user section")
-	errInvalidGroup       = Error("invalid group")
-	errInvalidTag         = Error("invalid tag")
-	errInvalidPortFormat  = Error("invalid port format")
+	errEmptyPolicy       = Error("empty policy")
+	errInvalidAction     = Error("invalid action")
+	errInvalidGroup      = Error("invalid group")
+	errInvalidTag        = Error("invalid tag")
+	errInvalidPortFormat = Error("invalid port format")
 )
 
 const (
@@ -445,7 +444,7 @@ func expandGroup(
 				errInvalidGroup,
 			)
 		}
-		grp, err := NormalizeNamespaceName(group, stripEmailDomain)
+		grp, err := NormalizeToFQDNRules(group, stripEmailDomain)
 		if err != nil {
 			return []string{}, fmt.Errorf(
 				"failed to normalize group %q, err: %w",

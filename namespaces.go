@@ -41,7 +41,7 @@ type Namespace struct {
 // CreateNamespace creates a new Namespace. Returns error if could not be created
 // or another namespace already exists.
 func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
-	err := CheckNamespaceName(name)
+	err := CheckForFQDNRules(name)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	err = CheckNamespaceName(newName)
+	err = CheckForFQDNRules(newName)
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func (h *Headscale) ListNamespaces() ([]Namespace, error) {
 
 // ListMachinesInNamespace gets all the nodes in a given namespace.
 func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
-	err := CheckNamespaceName(name)
+	err := CheckForFQDNRules(name)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
 
 // SetMachineNamespace assigns a Machine to a namespace.
 func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) error {
-	err := CheckNamespaceName(namespaceName)
+	err := CheckForFQDNRules(namespaceName)
 	if err != nil {
 		return err
 	}
@@ -237,9 +237,9 @@ func (n *Namespace) toProto() *v1.Namespace {
 	}
 }
 
-// NormalizeNamespaceName will replace forbidden chars in namespace
+// NormalizeToFQDNRules will replace forbidden chars in namespace
 // it can also return an error if the namespace doesn't respect RFC 952 and 1123.
-func NormalizeNamespaceName(name string, stripEmailDomain bool) (string, error) {
+func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, "'", "")
 	atIdx := strings.Index(name, "@")
@@ -263,7 +263,7 @@ func NormalizeNamespaceName(name string, stripEmailDomain bool) (string, error) 
 	return name, nil
 }
 
-func CheckNamespaceName(name string) error {
+func CheckForFQDNRules(name string) error {
 	if len(name) > labelHostnameLength {
 		return fmt.Errorf(
 			"Namespace must not be over 63 chars. %v doesn't comply with this rule: %w",
