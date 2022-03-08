@@ -45,22 +45,21 @@ type registerWebAPITemplateConfig struct {
 }
 
 var registerWebAPITemplate = template.Must(
-	template.New("registerweb").Parse(`<html>
+	template.New("registerweb").Parse(`
+<html>
+	<head>
+		<title>Registration - Headscale</title>
+	</head>
 	<body>
-	<h1>headscale</h1>
-	<p>
-		Run the command below in the headscale server to add this machine to your network:
-	</p>
-
-	<p>
-		<code>
-			<b>headscale -n NAMESPACE nodes register --key {{.Key}}</b>
-		</code>
-	</p>
-
+		<h1>headscale</h1>
+		<h2>Machine registration</h2>
+		<p>
+			Run the command below in the headscale server to add this machine to your network:
+		</p>
+		<pre><code>headscale -n NAMESPACE nodes register --key {{.Key}}</code></pre>
 	</body>
-	</html>`),
-)
+</html>
+`))
 
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
 // Listens in /register.

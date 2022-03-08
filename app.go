@@ -120,10 +120,16 @@ type OIDCConfig struct {
 }
 
 type DERPConfig struct {
-	URLs            []url.URL
-	Paths           []string
-	AutoUpdate      bool
-	UpdateFrequency time.Duration
+	ServerEnabled    bool
+	ServerRegionID   int
+	ServerRegionCode string
+	ServerRegionName string
+	STUNEnabled      bool
+	STUNAddr         string
+	URLs             []url.URL
+	Paths            []string
+	AutoUpdate       bool
+	UpdateFrequency  time.Duration
 }
 
 type CLIConfig struct {
@@ -142,7 +148,8 @@ type Headscale struct {
 	dbDebug    bool
 	privateKey *key.MachinePrivate
 
-	DERPMap *tailcfg.DERPMap
+	DERPMap    *tailcfg.DERPMap
+	DERPServer *DERPServer
 
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
@@ -178,7 +185,6 @@ func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
 	}
 }
 
-// NewHeadscale returns the Headscale app.
 func NewHeadscale(cfg Config) (*Headscale, error) {
 	privKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
@@ -237,6 +243,14 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 		for _, d := range magicDNSDomains {
 			app.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
+	}
+
+	if cfg.DERP.ServerEnabled {
+		embeddedDERPServer, err := app.NewDERPServer()
+		if err != nil {
+			return nil, err
+		}
+		app.DERPServer = embeddedDERPServer
 	}
 
 	return &app, nil
@@ -463,6 +477,12 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.GET("/swagger", SwaggerUI)
 	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
 
+	if h.cfg.DERP.ServerEnabled {
+		router.Any("/derp", h.DERPHandler)
+		router.Any("/derp/probe", h.DERPProbeHandler)
+		router.Any("/bootstrap-dns", h.DERPBootstrapDNSHandler)
+	}
+
 	api := router.Group("/api")
 	api.Use(h.httpAuthenticationMiddleware)
 	{
@@ -480,6 +500,13 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
+
+	if h.cfg.DERP.ServerEnabled {
+		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
+		if h.cfg.DERP.STUNEnabled {
+			go h.ServeSTUN()
+		}
+	}
 
 	if h.cfg.DERP.AutoUpdate {
 		derpMapCancelChannel := make(chan struct{})
