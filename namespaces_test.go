@@ -233,7 +233,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	c.Assert(found, check.Equals, true)
 }
 
-func TestNormalizeNamespaceName(t *testing.T) {
+func TestNormalizeToFQDNRules(t *testing.T) {
 	type args struct {
 		name             string
 		stripEmailDomain bool
@@ -310,10 +310,10 @@ func TestNormalizeNamespaceName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NormalizeNamespaceName(tt.args.name, tt.args.stripEmailDomain)
+			got, err := NormalizeToFQDNRules(tt.args.name, tt.args.stripEmailDomain)
 			if (err != nil) != tt.wantErr {
 				t.Errorf(
-					"NormalizeNamespaceName() error = %v, wantErr %v",
+					"NormalizeToFQDNRules() error = %v, wantErr %v",
 					err,
 					tt.wantErr,
 				)
@@ -321,13 +321,13 @@ func TestNormalizeNamespaceName(t *testing.T) {
 				return
 			}
 			if got != tt.want {
-				t.Errorf("NormalizeNamespaceName() = %v, want %v", got, tt.want)
+				t.Errorf("NormalizeToFQDNRules() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestCheckNamespaceName(t *testing.T) {
+func TestCheckForFQDNRules(t *testing.T) {
 	type args struct {
 		name string
 	}
@@ -366,8 +366,8 @@ func TestCheckNamespaceName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := CheckNamespaceName(tt.args.name); (err != nil) != tt.wantErr {
-				t.Errorf("CheckNamespaceName() error = %v, wantErr %v", err, tt.wantErr)
+			if err := CheckForFQDNRules(tt.args.name); (err != nil) != tt.wantErr {
+				t.Errorf("CheckForFQDNRules() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
