@@ -3,6 +3,7 @@
 // development
 integration_test.go
 integration_test/
+!integration_test/etc_embedded_derp/tls/server.crt
 
 Dockerfile*
 docker-compose*

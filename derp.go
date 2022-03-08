@@ -148,6 +148,7 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 		case <-ticker.C:
 			log.Info().Msg("Fetching DERPMap updates")
 			h.DERPMap = GetDERPMap(h.cfg.DERP)
+			h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
 
 			namespaces, err := h.ListNamespaces()
 			if err != nil {
