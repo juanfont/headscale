@@ -600,7 +600,6 @@ func (h *Headscale) handleAuthKey(
 		machine.NodeKey = nodeKey
 		machine.AuthKeyID = uint(pak.ID)
 		h.RefreshMachine(machine, registerRequest.Expiry)
-
 	} else {
 
 		now := time.Now().UTC()
@@ -614,7 +613,7 @@ func (h *Headscale) handleAuthKey(
 			LastSeen:       &now,
 			AuthKeyID:      uint(pak.ID),
 		}
-	
+
 		machine, err = h.RegisterMachine(
 			machineToRegister,
 		)
@@ -629,9 +628,9 @@ func (h *Headscale) handleAuthKey(
 				http.StatusInternalServerError,
 				"could not register machine",
 			)
-	
+
 			return
-		}			
+		}
 	}
 
 	h.UsePreAuthKey(pak)
