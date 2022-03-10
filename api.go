@@ -568,8 +568,13 @@ func (h *Headscale) handleAuthKey(
 			Str("func", "handleAuthKey").
 			Str("machine", registerRequest.Hostinfo.Hostname).
 			Msg("Failed authentication via AuthKey")
-		machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
-			Inc()
+
+		if pak != nil {
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
+				Inc()
+		} else {
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error").Inc()
+		}
 
 		return
 	}
@@ -580,35 +585,53 @@ func (h *Headscale) handleAuthKey(
 		Msg("Authentication key was valid, proceeding to acquire IP addresses")
 
 	nodeKey := NodePublicKeyStripPrefix(registerRequest.NodeKey)
-	now := time.Now().UTC()
 
-	machineToRegister := Machine{
-		Name:           registerRequest.Hostinfo.Hostname,
-		NamespaceID:    pak.Namespace.ID,
-		MachineKey:     machineKeyStr,
-		RegisterMethod: RegisterMethodAuthKey,
-		Expiry:         &registerRequest.Expiry,
-		NodeKey:        nodeKey,
-		LastSeen:       &now,
-		AuthKeyID:      uint(pak.ID),
-	}
-
-	machine, err := h.RegisterMachine(
-		machineToRegister,
-	)
-	if err != nil {
-		log.Error().
+	// retrieve machine information if it exist
+	// The error is not important, because if it does not
+	// exist, then this is a new machine and we will move
+	// on to registration.
+	machine, _ := h.GetMachineByMachineKey(machineKey)
+	if machine != nil {
+		log.Trace().
 			Caller().
-			Err(err).
-			Msg("could not register machine")
-		machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
-			Inc()
-		ctx.String(
-			http.StatusInternalServerError,
-			"could not register machine",
-		)
+			Str("machine", machine.Name).
+			Msg("machine already registered, refreshing with new auth key")
 
-		return
+		machine.NodeKey = nodeKey
+		machine.AuthKeyID = uint(pak.ID)
+		h.RefreshMachine(machine, registerRequest.Expiry)
+
+	} else {
+
+		now := time.Now().UTC()
+		machineToRegister := Machine{
+			Name:           registerRequest.Hostinfo.Hostname,
+			NamespaceID:    pak.Namespace.ID,
+			MachineKey:     machineKeyStr,
+			RegisterMethod: RegisterMethodAuthKey,
+			Expiry:         &registerRequest.Expiry,
+			NodeKey:        nodeKey,
+			LastSeen:       &now,
+			AuthKeyID:      uint(pak.ID),
+		}
+	
+		machine, err = h.RegisterMachine(
+			machineToRegister,
+		)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("could not register machine")
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
+				Inc()
+			ctx.String(
+				http.StatusInternalServerError,
+				"could not register machine",
+			)
+	
+			return
+		}			
 	}
 
 	h.UsePreAuthKey(pak)
