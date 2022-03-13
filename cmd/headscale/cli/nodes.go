@@ -235,9 +235,13 @@ var renameNodeCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
+		newName := ""
+		if len(args) > 0 {
+			newName = args[0]
+		}
 		request := &v1.RenameMachineRequest{
 			MachineId: identifier,
-			NewName: args[0],
+			NewName: newName,
 		}
 
 		response, err := client.RenameMachine(ctx, request)
