@@ -222,6 +222,28 @@ func (api headscaleV1APIServer) ExpireMachine(
 	return &v1.ExpireMachineResponse{Machine: machine.toProto()}, nil
 }
 
+func (api headscaleV1APIServer) RenameMachine(
+	ctx context.Context,
+	request *v1.RenameMachineRequest,
+) (*v1.RenameMachineResponse, error) {
+	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	if err != nil {
+		return nil, err
+	}
+
+	api.h.RenameMachine(
+		machine,
+		request.GetNewName(),
+	)
+
+	log.Trace().
+		Str("machine", machine.Name).
+		Time("expiry", *machine.Expiry).
+		Msg("machine expired")
+
+	return &v1.RenameMachineResponse{Machine: machine.toProto()}, nil
+}
+
 func (api headscaleV1APIServer) ListMachines(
 	ctx context.Context,
 	request *v1.ListMachinesRequest,

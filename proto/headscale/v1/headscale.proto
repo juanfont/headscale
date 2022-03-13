@@ -99,6 +99,12 @@ service HeadscaleService {
         };
     }
 
+    rpc RenameMachine(RenameMachineRequest) returns (RenameMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/rename/{new_name}"
+        };
+    }
+
     rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse) {
         option (google.api.http) = {
             get: "/api/v1/machine"

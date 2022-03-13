@@ -40,6 +40,7 @@ type Machine struct {
 	DiscoKey    string
 	IPAddresses MachineAddresses
 	Name        string
+	Nickname    string
 	NamespaceID uint
 	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
 
@@ -367,6 +368,15 @@ func (h *Headscale) ExpireMachine(machine *Machine) {
 	h.db.Save(machine)
 }
 
+// RenameMachine takes a Machine struct and sets the expire field to now.
+func (h *Headscale) RenameMachine(machine *Machine, newName string) {
+	machine.Nickname = newName
+
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
+	h.db.Save(machine)
+}
+
 // RefreshMachine takes a Machine struct and sets the expire field to now.
 func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 	now := time.Now()
@@ -554,11 +564,15 @@ func (machine Machine) toNode(
 		keyExpiry = time.Time{}
 	}
 
+	name := machine.Name
+	if len(machine.Nickname) > 0 {
+		name = machine.Nickname
+	}
 	var hostname string
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
-			machine.Name,
+			name,
 			machine.Namespace.Name,
 			baseDomain,
 		)
@@ -612,6 +626,7 @@ func (machine *Machine) toProto() *v1.Machine {
 		DiscoKey:    machine.DiscoKey,
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Name,
+		Nickname:    machine.Nickname,
 		Namespace:   machine.Namespace.toProto(),
 
 		// TODO(kradalby): Implement register method enum converter

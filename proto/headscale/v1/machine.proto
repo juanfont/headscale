@@ -38,6 +38,8 @@ message Machine {
     // bytes host_info      = 15;
     // bytes endpoints      = 16;
     // bytes enabled_routes = 17;
+
+    string          nickname     = 18;
 }
 
 message RegisterMachineRequest {
@@ -69,6 +71,15 @@ message ExpireMachineRequest {
 }
 
 message ExpireMachineResponse {
+    Machine machine = 1;
+}
+
+message RenameMachineRequest {
+    uint64 machine_id = 1;
+    string new_name = 2;
+}
+
+message RenameMachineResponse {
     Machine machine = 1;
 }
 

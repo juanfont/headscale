@@ -291,6 +291,43 @@
         ]
       }
     },
+    "/api/v1/machine/{machineId}/rename/{newName}": {
+      "post": {
+        "operationId": "HeadscaleService_RenameMachine",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RenameMachineResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "machineId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "newName",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/machine/{machineId}/routes": {
       "get": {
         "summary": "--- Route start ---",
@@ -906,6 +943,9 @@
         },
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
+        },
+        "nickname": {
+          "type": "string"
         }
       }
     },
@@ -972,6 +1012,14 @@
         "REGISTER_METHOD_OIDC"
       ],
       "default": "REGISTER_METHOD_UNSPECIFIED"
+    },
+    "v1RenameMachineResponse": {
+      "type": "object",
+      "properties": {
+        "machine": {
+          "$ref": "#/definitions/v1Machine"
+        }
+      }
     },
     "v1RenameNamespaceResponse": {
       "type": "object",
