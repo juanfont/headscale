@@ -370,7 +370,21 @@ func (h *Headscale) ExpireMachine(machine *Machine) {
 
 // RenameMachine takes a Machine struct and sets the expire field to now.
 func (h *Headscale) RenameMachine(machine *Machine, newName string) {
-	machine.Nickname = newName
+	newNickname, err := NormalizeToFQDNRules(
+		newName,
+		h.cfg.OIDC.StripEmaildomain,
+	)
+	if err != nil {
+		log.Error().
+			Caller().
+			Str("func", "RenameMachine").
+			Str("machine", machine.Name).
+			Str("newName", newName).
+			Err(err)
+
+		return
+	}
+	machine.Nickname = newNickname
 
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
