@@ -62,6 +62,7 @@ const (
 	errUnsupportedLetsEncryptChallengeType = Error(
 		"unknown value for Lets Encrypt challenge type",
 	)
+	errSTUNAddressNotSet = Error("STUN address not set")
 
 	DisabledClientAuth = "disabled"
 	RelaxedClientAuth  = "relaxed"
@@ -502,6 +503,10 @@ func (h *Headscale) Serve() error {
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
 
 	if h.cfg.DERP.ServerEnabled {
+		if h.cfg.DERP.STUNAddr == "" { // When embedded DERP is enabled we always need a STUN server address, embedded or external
+			return errSTUNAddressNotSet
+		}
+
 		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
 		if h.cfg.DERP.STUNEnabled {
 			go h.ServeSTUN()

@@ -55,6 +55,9 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("dns_config", nil)
 
+	viper.SetDefault("derp.server.enabled", false)
+	viper.SetDefault("derp.server.stun.enabled", true)
+
 	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
 
