@@ -48,6 +48,14 @@ import (
 )
 
 const (
+	errSTUNAddressNotSet                   = Error("STUN address not set")
+	errUnsupportedDatabase                 = Error("unsupported DB")
+	errUnsupportedLetsEncryptChallengeType = Error(
+		"unknown value for Lets Encrypt challenge type",
+	)
+)
+
+const (
 	AuthPrefix         = "Bearer "
 	Postgres           = "postgres"
 	Sqlite             = "sqlite3"
@@ -57,12 +65,6 @@ const (
 
 	registerCacheExpiration = time.Minute * 15
 	registerCacheCleanup    = time.Minute * 20
-
-	errUnsupportedDatabase                 = Error("unsupported DB")
-	errUnsupportedLetsEncryptChallengeType = Error(
-		"unknown value for Lets Encrypt challenge type",
-	)
-	errSTUNAddressNotSet = Error("STUN address not set")
 
 	DisabledClientAuth = "disabled"
 	RelaxedClientAuth  = "relaxed"
