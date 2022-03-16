@@ -501,7 +501,8 @@ func (h *Headscale) Serve() error {
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
 
 	if h.cfg.DERP.ServerEnabled {
-		if h.cfg.DERP.STUNAddr == "" { // When embedded DERP is enabled we always need a STUN server address, embedded or external
+		// When embedded DERP is enabled we always need a STUN server address, embedded or external
+		if h.cfg.DERP.STUNAddr == "" {
 			return errSTUNAddressNotSet
 		}
 
