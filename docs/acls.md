@@ -26,19 +26,10 @@ servers.
 
 ## Setup of the network
 
-Let's create the namespaces. Each user should have his own namespace. The users
-here are represented as namespaces.
+Namespaces will be created automatically when users authenticate with the 
+Headscale server.
 
-```bash
-headscale namespaces create boss
-headscale namespaces create admin1
-headscale namespaces create dev1
-headscale namespaces create dev2
-headscale namespaces create intern1
-```
-
-We don't need to create namespaces for the servers because the servers will be
-tagged. When registering the servers we will need to add the flag
+When registering the servers we will need to add the flag
 `--advertised-tags=tag:<tag1>,tag:<tag2>`, and the user (namespace) that is
 registering the server should be allowed to do it. Since anyone can add tags to
 a server they can register, the check of the tags is done on headscale server
