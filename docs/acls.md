@@ -5,11 +5,14 @@ ACL's are the most useful).
 
 We have a small company with a boss, an admin, two developers and an intern.
 
-The boss should have access to all servers but not to the users hosts. Admin
+The boss should have access to all servers but not to the user's hosts. Admin
 should also have access to all hosts except that their permissions should be
 limited to maintaining the hosts (for example purposes). The developers can do
-anything they want on dev hosts, but only watch on productions hosts. Intern
+anything they want on dev hosts but only watch on productions hosts. Intern
 can only interact with the development servers.
+
+There's an additional server that acts as a router, connecting the VPN users
+to an internal network 10.20.0.0/16
 
 Each user have at least a device connected to the network and we have some
 servers.
@@ -19,6 +22,7 @@ servers.
 - app-server1.prod
 - app-server1.dev
 - billing.internal
+- router.internal
 
 ## Setup of the network
 
