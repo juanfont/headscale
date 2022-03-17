@@ -409,8 +409,6 @@ func (h *Headscale) httpAuthenticationMiddleware(ctx *gin.Context) {
 		return
 	}
 
-	ctx.AbortWithStatus(http.StatusUnauthorized)
-
 	valid, err := h.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
 	if err != nil {
 		log.Error().
