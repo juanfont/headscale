@@ -22,30 +22,21 @@ jobs:
         uses: tj-actions/changed-files@v14.1
         with:
           files: |
+            *.nix
             go.*
             **/*.go
             integration_test/
             config-example.yaml
 
-      - name: Setup Go
+      - uses: cachix/install-nix-action@v16
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: actions/setup-go@v2
-        with:
-          go-version: "1.17.7"
-
-      - name: Install dependencies
-        if: steps.changed-files.outputs.any_changed == 'true'
-        run: |
-          go version
-          sudo apt update
-          sudo apt install -y make
 
       - name: Run build
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: make build
+        run: nix build
 
       - uses: actions/upload-artifact@v2
         if: steps.changed-files.outputs.any_changed == 'true'
         with:
           name: headscale-linux
-          path: headscale
+          path: result/bin/headscale
