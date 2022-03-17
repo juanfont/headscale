@@ -2,7 +2,10 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-unstable";
+    # TODO: Use unstable when Go 1.18 has made it in
+    # https://nixpk.gs/pr-tracker.html?pr=164292
+    # nixpkgs.url = "nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "nixpkgs/master";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -53,7 +56,7 @@
             };
 
           headscale =
-            pkgs.buildGo117Module rec {
+            pkgs.buildGo118Module rec {
               pname = "headscale";
               version = headscaleVersion;
               src = pkgs.lib.cleanSource self;
@@ -72,7 +75,7 @@
             overlays = [ self.overlay ];
             inherit system;
           };
-          buildDeps = with pkgs; [ git go_1_17 gnumake ];
+          buildDeps = with pkgs; [ git go_1_18 gnumake ];
           devDeps = with pkgs;
             buildDeps ++ [
               golangci-lint
@@ -110,8 +113,8 @@
           packages = with pkgs; {
             inherit headscale;
             inherit headscale-docker;
-
           };
+
           defaultPackage = pkgs.headscale;
 
           # `nix run`
@@ -119,6 +122,25 @@
             drv = packages.headscale;
           };
           defaultApp = apps.headscale;
+
+          checks = {
+            format = pkgs.runCommand "check-format"
+              {
+                buildInputs = with pkgs; [
+                  nixpkgs-fmt
+                  golangci-lint
+                  nodePackages.prettier
+                  golines
+                  clang-tools
+                ];
+              } ''
+              ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt ${./.}
+              ${pkgs.golangci-lint}/bin/golangci-lint run --fix --timeout 10m
+              ${pkgs.nodePackages.prettier}/bin/prettier --write '**/**.{ts,js,md,yaml,yml,sass,css,scss,html}'
+              ${pkgs.golines}/bin/golines --max-len=88 --base-formatter=gofumpt -w ${./.}
+              ${pkgs.clang-tools}/bin/clang-format -style="{BasedOnStyle: Google, IndentWidth: 4, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true, ColumnLimit: 0}" -i ${./.}
+            '';
+          };
 
 
         });
