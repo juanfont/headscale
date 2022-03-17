@@ -12,7 +12,8 @@ anything they want on dev hosts but only watch on productions hosts. Intern
 can only interact with the development servers.
 
 There's an additional server that acts as a router, connecting the VPN users
-to an internal network 10.20.0.0/16
+to an internal network `10.20.0.0/16`. Developers must have access to those
+internal resources.
 
 Each user have at least a device connected to the network and we have some
 servers.
@@ -24,10 +25,15 @@ servers.
 - billing.internal
 - router.internal
 
-## Setup of the network
+![ACL implementation example](images/headscale-acl-network.png)
 
-Namespaces will be created automatically when users authenticate with the 
+## ACL setup
+
+Note: Namespaces will be created automatically when users authenticate with the
 Headscale server.
+
+ACLs could be written either on [huJSON](https://github.com/tailscale/hujson)
+or Yaml. Check the [test ACLs](../tests/acls) for further information.
 
 When registering the servers we will need to add the flag
 `--advertised-tags=tag:<tag1>,tag:<tag2>`, and the user (namespace) that is
@@ -64,6 +70,14 @@ Here are the ACL's to implement the same permissions as above:
     "tag:dev-app-servers": ["group:admin", "group:dev"]
 
     // interns cannot add servers
+  },
+  // hosts should be defined using its IP addresses and a subnet mask.
+  // to define a single host, use a /32 mask. You cannot use DNS entries here,
+  // as they're prone to be hijacked by replacing their IP addresses.
+  // see https://github.com/tailscale/tailscale/issues/3800 for more information.
+  "Hosts": {
+    "postgresql.internal": "10.20.0.2/32",
+    "webservers.internal": "10.20.10.1/29"
   },
   "acls": [
     // boss have access to all servers
@@ -102,6 +116,16 @@ Here are the ACL's to implement the same permissions as above:
         "tag:dev-app-servers:*",
         "tag:prod-app-servers:80,443"
       ]
+    },
+    // developers have access to the internal network through the router.
+    // the internal network is composed of HTTPS endpoints and Postgresql
+    // database servers. There's an additional rule to allow traffic to be
+    // forwarded to the internal subnet, 10.20.0.0/16. See this issue
+    // https://github.com/juanfont/headscale/issues/502
+    {
+      "action": "accept",
+      "users": ["group:dev"],
+      "ports": ["10.20.0.0/16:443,5432", "router.internal:0"]
     },
 
     // servers should be able to talk to database. Database should not be able to initiate connections to
