@@ -16,6 +16,7 @@ jobs:
         uses: tj-actions/changed-files@v14.1
         with:
           files: |
+            *.nix
             go.*
             **/*.go
             integration_test/
