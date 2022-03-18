@@ -129,6 +129,10 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 
 	oauth2Token, err := h.oauth2Config.Exchange(context.Background(), code)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("Could not exchange code for token")
 		ctx.String(http.StatusBadRequest, "Could not exchange code for token")
 
 		return
