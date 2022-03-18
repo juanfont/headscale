@@ -127,6 +127,7 @@
             format = pkgs.runCommand "check-format"
               {
                 buildInputs = with pkgs; [
+                  gnumake
                   nixpkgs-fmt
                   golangci-lint
                   nodePackages.prettier

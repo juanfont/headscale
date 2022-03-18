@@ -27,4 +27,4 @@ jobs:
 
       - name: Run Integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: nix develop --command "make test_integration"
+        run: nix develop --command -- make test_integration
