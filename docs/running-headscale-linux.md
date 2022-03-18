@@ -67,7 +67,7 @@ To run `headscale` in the background, please follow the steps in the [SystemD se
 Verify `headscale` is available:
 
 ```shell
-curl http://127.0.0.1:8080/metrics
+curl http://127.0.0.1:9090/metrics
 ```
 
 8. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
