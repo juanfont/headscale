@@ -168,16 +168,8 @@ func (s *IntegrationTestSuite) Join(
 func (s *IntegrationTestSuite) tailscaleContainer(
 	namespace, identifier, version string,
 ) (string, *dockertest.Resource) {
-	tailscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile.tailscale",
-		ContextDir: ".",
-		BuildArgs: []docker.BuildArg{
-			{
-				Name:  "TAILSCALE_VERSION",
-				Value: version,
-			},
-		},
-	}
+	tailscaleBuildOptions := getDockerBuildOptions(version)
+
 	hostname := fmt.Sprintf(
 		"%s-tailscale-%s-%s",
 		namespace,

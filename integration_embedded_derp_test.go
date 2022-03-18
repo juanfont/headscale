@@ -245,16 +245,8 @@ func (s *IntegrationDERPTestSuite) Join(
 
 func (s *IntegrationDERPTestSuite) tailscaleContainer(identifier, version string, network dockertest.Network,
 ) (string, *dockertest.Resource) {
-	tailscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile.tailscale",
-		ContextDir: ".",
-		BuildArgs: []docker.BuildArg{
-			{
-				Name:  "TAILSCALE_VERSION",
-				Value: version,
-			},
-		},
-	}
+	tailscaleBuildOptions := getDockerBuildOptions(version)
+
 	hostname := fmt.Sprintf(
 		"tailscale-%s-%s",
 		strings.Replace(version, ".", "-", -1),
