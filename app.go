@@ -127,7 +127,6 @@ type DERPConfig struct {
 	ServerRegionID   int
 	ServerRegionCode string
 	ServerRegionName string
-	STUNEnabled      bool
 	STUNAddr         string
 	URLs             []url.URL
 	Paths            []string
@@ -503,15 +502,13 @@ func (h *Headscale) Serve() error {
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
 
 	if h.cfg.DERP.ServerEnabled {
-		// When embedded DERP is enabled we always need a STUN server address, embedded or external
+		// When embedded DERP is enabled we always need a STUN server
 		if h.cfg.DERP.STUNAddr == "" {
 			return errSTUNAddressNotSet
 		}
 
 		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
-		if h.cfg.DERP.STUNEnabled {
-			go h.ServeSTUN()
-		}
+		go h.ServeSTUN()
 	}
 
 	if h.cfg.DERP.AutoUpdate {
