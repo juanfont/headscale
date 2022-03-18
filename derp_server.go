@@ -77,17 +77,15 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 		},
 	}
 
-	if h.cfg.DERP.STUNEnabled {
-		_, portStr, err := net.SplitHostPort(h.cfg.DERP.STUNAddr)
-		if err != nil {
-			return tailcfg.DERPRegion{}, err
-		}
-		port, err := strconv.Atoi(portStr)
-		if err != nil {
-			return tailcfg.DERPRegion{}, err
-		}
-		localDERPregion.Nodes[0].STUNPort = port
+	_, portSTUNStr, err := net.SplitHostPort(h.cfg.DERP.STUNAddr)
+	if err != nil {
+		return tailcfg.DERPRegion{}, err
 	}
+	portSTUN, err := strconv.Atoi(portSTUNStr)
+	if err != nil {
+		return tailcfg.DERPRegion{}, err
+	}
+	localDERPregion.Nodes[0].STUNPort = portSTUN
 
 	return localDERPregion, nil
 }
