@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
@@ -229,7 +230,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			Str("machine", machine.Name).
 			Msg("machine already registered, reauthenticating")
 
-		h.RefreshMachine(machine, *machine.Expiry)
+		h.RefreshMachine(machine, time.Time{})
 
 		var content bytes.Buffer
 		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
