@@ -69,11 +69,11 @@ derp:
     region_code: "headscale"
     region_name: "Headscale Embedded DERP"
 
-    # If enabled, also listens in UDP at the configured address for STUN connections to help on NAT traversal
+    # Listens in UDP at the configured address for STUN connections to help on NAT traversal.
+    # When the embedded DERP server is enabled stun_listen_addr MUST be defined.
+    #
     # For more details on how this works, check this great article: https://tailscale.com/blog/how-tailscale-works/
-    stun:
-      enabled: false
-      listen_addr: "0.0.0.0:3478"
+    stun_listen_addr: "0.0.0.0:3478"
 
   # List of externally available DERP maps encoded in JSON
   urls:
