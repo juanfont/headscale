@@ -69,7 +69,6 @@ derp:
     region_code: "headscale"
     region_name: "Headscale Embedded DERP"
 
-
     # Listens in UDP at the configured address for STUN connections to help on NAT traversal.
     # When the embedded DERP server is enabled stun_listen_addr MUST be defined.
     #
