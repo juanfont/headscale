@@ -55,6 +55,7 @@ docker run \
   --rm \
   --volume $(pwd)/config:/etc/headscale/ \
   --publish 127.0.0.1:8080:8080 \
+  --publish 127.0.0.1:9090:9090 \
   headscale/headscale:<VERSION> \
   headscale serve
 
@@ -80,7 +81,7 @@ docker ps
 Verify `headscale` is available:
 
 ```shell
-curl http://127.0.0.1:8080/metrics
+curl http://127.0.0.1:9090/metrics
 ```
 
 6. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):

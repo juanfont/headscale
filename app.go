@@ -48,6 +48,14 @@ import (
 )
 
 const (
+	errSTUNAddressNotSet                   = Error("STUN address not set")
+	errUnsupportedDatabase                 = Error("unsupported DB")
+	errUnsupportedLetsEncryptChallengeType = Error(
+		"unknown value for Lets Encrypt challenge type",
+	)
+)
+
+const (
 	AuthPrefix         = "Bearer "
 	Postgres           = "postgres"
 	Sqlite             = "sqlite3"
@@ -57,11 +65,6 @@ const (
 
 	registerCacheExpiration = time.Minute * 15
 	registerCacheCleanup    = time.Minute * 20
-
-	errUnsupportedDatabase                 = Error("unsupported DB")
-	errUnsupportedLetsEncryptChallengeType = Error(
-		"unknown value for Lets Encrypt challenge type",
-	)
 
 	DisabledClientAuth = "disabled"
 	RelaxedClientAuth  = "relaxed"
@@ -124,7 +127,6 @@ type DERPConfig struct {
 	ServerRegionID   int
 	ServerRegionCode string
 	ServerRegionName string
-	STUNEnabled      bool
 	STUNAddr         string
 	URLs             []url.URL
 	Paths            []string
@@ -409,8 +411,6 @@ func (h *Headscale) httpAuthenticationMiddleware(ctx *gin.Context) {
 		return
 	}
 
-	ctx.AbortWithStatus(http.StatusUnauthorized)
-
 	valid, err := h.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
 	if err != nil {
 		log.Error().
@@ -502,10 +502,13 @@ func (h *Headscale) Serve() error {
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
 
 	if h.cfg.DERP.ServerEnabled {
-		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
-		if h.cfg.DERP.STUNEnabled {
-			go h.ServeSTUN()
+		// When embedded DERP is enabled we always need a STUN server
+		if h.cfg.DERP.STUNAddr == "" {
+			return errSTUNAddressNotSet
 		}
+
+		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
+		go h.ServeSTUN()
 	}
 
 	if h.cfg.DERP.AutoUpdate {
