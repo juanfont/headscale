@@ -30,3 +30,4 @@ test_output/
 
 # Nix build output
 result
+.direnv/
