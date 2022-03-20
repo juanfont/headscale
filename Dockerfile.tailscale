@@ -1,7 +1,7 @@
 FROM ubuntu:latest
 
-ARG TAILSCALE_VERSION
-ARG TAILSCALE_CHANNEL
+ARG TAILSCALE_VERSION=*
+ARG TAILSCALE_CHANNEL=stable
 
 RUN apt-get update \
     && apt-get install -y gnupg curl \
