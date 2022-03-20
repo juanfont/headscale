@@ -19,7 +19,7 @@
 - Users can now use emails in ACL's groups [#372](https://github.com/juanfont/headscale/issues/372)
 - Add shorthand aliases for commands and subcommands [#376](https://github.com/juanfont/headscale/pull/376)
 - Add `/windows` endpoint for Windows configuration instructions + registry file download [#392](https://github.com/juanfont/headscale/pull/392)
-- Added embedded DERP server into Headscale [#388](https://github.com/juanfont/headscale/pull/388)
+- Added embedded DERP (and STUN) server into Headscale [#388](https://github.com/juanfont/headscale/pull/388)
 
 ### Changes
 
@@ -30,6 +30,7 @@
 - Reduce the overhead of marshal/unmarshal for Hostinfo, routes and endpoints by using specific types in Machine [#371](https://github.com/juanfont/headscale/pull/371)
 - Apply normalization function to FQDN on hostnames when hosts registers and retrieve informations [#363](https://github.com/juanfont/headscale/issues/363)
 - Fix a bug that prevented the use of `tailscale logout` with OIDC [#508](https://github.com/juanfont/headscale/issues/508)
+- Added Tailscale repo HEAD and unstable releases channel to the integration tests targets [#513](https://github.com/juanfont/headscale/pull/513)
 
 ## 0.14.0 (2022-02-24)
 
