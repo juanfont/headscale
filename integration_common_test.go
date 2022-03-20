@@ -20,7 +20,7 @@ var (
 	IpPrefix4 = netaddr.MustParseIPPrefix("100.64.0.0/10")
 	IpPrefix6 = netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48")
 
-	tailscaleVersions = []string{"HEAD", "unstable", "1.22.0", "1.20.4", "1.18.2", "1.16.2", "1.14.3", "1.12.3"}
+	tailscaleVersions = []string{"head", "unstable", "1.22.2", "1.20.4", "1.18.2", "1.16.2", "1.14.3", "1.12.3"}
 )
 
 type TestNamespace struct {
@@ -131,7 +131,7 @@ func DockerAllowNetworkAdministration(config *docker.HostConfig) {
 func getDockerBuildOptions(version string) *dockertest.BuildOptions {
 	var tailscaleBuildOptions *dockertest.BuildOptions
 	switch version {
-	case "HEAD":
+	case "head":
 		tailscaleBuildOptions = &dockertest.BuildOptions{
 			Dockerfile: "Dockerfile.tailscale-HEAD",
 			ContextDir: ".",
