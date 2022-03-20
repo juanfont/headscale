@@ -121,7 +121,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
-		log.Fatalf("Could not start resource: %s", err)
+		log.Fatalf("Could not start headscale container: %s", err)
 	}
 	log.Println("Created headscale container to test DERP")
 
@@ -271,7 +271,7 @@ func (s *IntegrationDERPTestSuite) tailscaleContainer(identifier, version string
 		DockerAllowNetworkAdministration,
 	)
 	if err != nil {
-		log.Fatalf("Could not start resource: %s", err)
+		log.Fatalf("Could not start tailscale container version %s: %s", version, err)
 	}
 	log.Printf("Created %s container\n", hostname)
 
