@@ -1,7 +1,7 @@
 FROM golang:latest
 
 RUN apt-get update \
-    && apt-get install -y ca-certificates dnsutils git \
+    && apt-get install -y ca-certificates dnsutils git iptables \
     && rm -rf /var/lib/apt/lists/*
 
 
