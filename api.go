@@ -573,7 +573,7 @@ func (h *Headscale) handleAuthKey(
 			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
 				Inc()
 		} else {
-			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error").Inc()
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", "unknown").Inc()
 		}
 
 		return
