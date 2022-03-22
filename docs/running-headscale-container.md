@@ -14,8 +14,8 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 1. Prepare a directory on the host Docker node in your directory of choice, used to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
 ```shell
-mkdir ./headscale && cd ./headscale
-mkdir ./config
+mkdir -p ./headscale/config
+cd ./headscale
 ```
 
 2. Create an empty SQlite datebase in the headscale directory:
@@ -44,7 +44,13 @@ curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.ya
 touch ./config/config.yaml
 ```
 
-Modify the config file to your preferences before launching Docker container.
+Modify the config file to your preferences before launching Docker container. Here are some settings that you likely want:
+```yaml
+server_url: http://your-host-name:8080 # Change to your hostname or host IP
+metrics_listen_addr: 0.0.0.0:9090 # Listen to 0.0.0.0 so it's accessible outside the container
+private_key_path: /etc/headscale/private.key # The default /var/lib/headscale path is not writable in the container
+db_path: /etc/headscale/db.sqlite # The default /var/lib/headscale path is not writable  in the container
+```
 
 4. Start the headscale server while working in the host headscale directory:
 
@@ -54,7 +60,7 @@ docker run \
   --detach \
   --rm \
   --volume $(pwd)/config:/etc/headscale/ \
-  --publish 127.0.0.1:8080:8080 \
+  --publish 0.0.0.0:8080:8080 \
   --publish 127.0.0.1:9090:9090 \
   headscale/headscale:<VERSION> \
   headscale serve
@@ -87,7 +93,7 @@ curl http://127.0.0.1:9090/metrics
 6. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
 ```shell
-docker exec headscale -- headscale namespaces create myfirstnamespace
+docker exec headscale headscale namespaces create myfirstnamespace
 ```
 
 ### Register a machine (normal login)
@@ -101,7 +107,7 @@ tailscale up --login-server YOUR_HEADSCALE_URL
 To register a machine when running `headscale` in a container, take the headscale command and pass it to the container:
 
 ```shell
-docker exec headscale -- \
+docker exec headscale \
   headscale --namespace myfirstnamespace nodes register --key <YOU_+MACHINE_KEY>
 ```
 
@@ -110,7 +116,7 @@ docker exec headscale -- \
 Generate a key using the command line:
 
 ```shell
-docker exec headscale -- \
+docker exec headscale \
   headscale --namespace myfirstnamespace preauthkeys create --reusable --expiration 24h
 ```
 
