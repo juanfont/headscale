@@ -2,6 +2,10 @@
 
 ## 0.16.0 (2022-xx-xx)
 
+### Changes
+
+- Fix labels cardinality error when registering unknown pre-auth key [#519](https://github.com/juanfont/headscale/pull/519)
+
 ## 0.15.0 (2022-03-20)
 
 **Note:** Take a backup of your database before upgrading.
