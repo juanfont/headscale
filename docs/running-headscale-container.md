@@ -45,6 +45,7 @@ touch ./config/config.yaml
 ```
 
 Modify the config file to your preferences before launching Docker container. Here are some settings that you likely want:
+
 ```yaml
 server_url: http://your-host-name:8080 # Change to your hostname or host IP
 metrics_listen_addr: 0.0.0.0:9090 # Listen to 0.0.0.0 so it's accessible outside the container
