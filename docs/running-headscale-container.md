@@ -44,7 +44,8 @@ curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.ya
 touch ./config/config.yaml
 ```
 
-Modify the config file to your preferences before launching Docker container. Here are some settings that you likely want:
+Modify the config file to your preferences before launching Docker container.
+Here are some settings that you likely want:
 
 ```yaml
 server_url: http://your-host-name:8080 # Change to your hostname or host IP
