@@ -65,12 +65,14 @@ docker run \
   --detach \
   --rm \
   --volume $(pwd)/config:/etc/headscale/ \
-  --publish 0.0.0.0:8080:8080 \
+  --publish 127.0.0.1:8080:8080 \
   --publish 127.0.0.1:9090:9090 \
   headscale/headscale:<VERSION> \
   headscale serve
 
 ```
+
+Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
 
 This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
 `headscale` instance becomes available and then detach so headscale runs in the background.
