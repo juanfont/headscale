@@ -152,6 +152,8 @@ type Headscale struct {
 	privateKey      *key.MachinePrivate
 	noisePrivateKey *key.MachinePrivate
 
+	router *gin.Engine
+
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *DERPServer
 
@@ -476,6 +478,8 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 		"/health",
 		func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"healthy": "ok"}) },
 	)
+
+	router.POST("/ts2021", h.NoiseUpgradeHandler)
 	router.GET("/key", h.KeyHandler)
 	router.GET("/register", h.RegisterWebAPI)
 	router.POST("/machine/:id/map", h.PollNetMapHandler)
@@ -671,11 +675,11 @@ func (h *Headscale) Serve() error {
 	// HTTP setup
 	//
 
-	router := h.createRouter(grpcGatewayMux)
+	h.router = h.createRouter(grpcGatewayMux)
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
-		Handler:     router,
+		Handler:     h.router,
 		ReadTimeout: HTTPReadTimeout,
 		// Go does not handle timeouts in HTTP very well, and there is
 		// no good way to handle streaming timeouts, therefore we need to
