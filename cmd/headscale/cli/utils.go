@@ -326,9 +326,10 @@ func getHeadscaleConfig() headscale.Config {
 		GRPCAddr:          viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure: viper.GetBool("grpc_allow_insecure"),
 
-		IPPrefixes:     prefixes,
-		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
-		BaseDomain:     baseDomain,
+		IPPrefixes:          prefixes,
+		PrivateKeyPath:      absPath(viper.GetString("private_key_path")),
+		NoisePrivateKeyPath: absPath(viper.GetString("noise_private_key_path")),
+		BaseDomain:          baseDomain,
 
 		DERP: derpConfig,
 
