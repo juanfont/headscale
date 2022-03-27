@@ -563,8 +563,13 @@ func (h *Headscale) handleAuthKey(
 	machineKey key.MachinePublic,
 	registerRequest tailcfg.RegisterRequest,
 ) {
-	machineKeyStr := MachinePublicKeyStripPrefix(machineKey)
-
+	var machineKeyStr string
+	if machineKey.IsZero() {
+		// We are handling here a Noise auth key
+		machineKeyStr = ""
+	} else {
+		machineKeyStr = MachinePublicKeyStripPrefix(machineKey)
+	}
 	log.Debug().
 		Str("func", "handleAuthKey").
 		Str("machine", registerRequest.Hostinfo.Hostname).

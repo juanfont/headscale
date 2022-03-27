@@ -513,6 +513,8 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 func (h *Headscale) createNoiseRouter() *gin.Engine {
 	router := gin.Default()
 
+	router.POST("/machine/register", h.NoiseRegistrationHandler)
+
 	return router
 }
 
