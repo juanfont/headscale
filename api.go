@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,18 +22,50 @@ import (
 )
 
 const (
-	reservedResponseHeaderSize               = 4
-	RegisterMethodAuthKey                    = "authkey"
-	RegisterMethodOIDC                       = "oidc"
-	RegisterMethodCLI                        = "cli"
 	ErrRegisterMethodCLIDoesNotSupportExpire = Error(
 		"machines registered with CLI does not support expire",
 	)
 )
 
+const (
+	reservedResponseHeaderSize = 4
+	RegisterMethodAuthKey      = "authkey"
+	RegisterMethodOIDC         = "oidc"
+	RegisterMethodCLI          = "cli"
+
+	// The CapabilityVersion is used by Tailscale clients to indicate
+	// their codebase version. Tailscale clients can communicate over TS2021
+	// from CapabilityVersion 28.
+	// See https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go
+	NoiseCapabilityVersion = 28
+)
+
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
 func (h *Headscale) KeyHandler(ctx *gin.Context) {
+	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
+	v := ctx.Query("v")
+	if v != "" {
+		clientCapabilityVersion, err := strconv.Atoi(v)
+		if err != nil {
+			ctx.String(http.StatusBadRequest, "Invalid version")
+
+			return
+		}
+
+		if clientCapabilityVersion >= NoiseCapabilityVersion {
+			// Tailscale has a different key for the TS2021 protocol. Not sure why.
+			resp := tailcfg.OverTLSPublicKeyResponse{
+				LegacyPublicKey: h.privateKey.Public(),
+				PublicKey:       h.noisePrivateKey.Public(),
+			}
+			ctx.JSON(http.StatusOK, resp)
+
+			return
+		}
+	}
+
+	// Old clients don't send a 'v' parameter, so we send the legacy public key
 	ctx.Data(
 		http.StatusOK,
 		"text/plain; charset=utf-8",
