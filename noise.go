@@ -62,7 +62,7 @@ func (h *Headscale) NoiseUpgradeHandler(ctx *gin.Context) {
 	}
 
 	server := http.Server{}
-	server.Handler = h2c.NewHandler(h.router, &http2.Server{})
+	server.Handler = h2c.NewHandler(h.noiseRouter, &http2.Server{})
 	server.Serve(netutil.NewOneConnListener(noiseConn, nil))
 }
 
