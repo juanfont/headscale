@@ -13,6 +13,7 @@ dns_config:
     - 1.1.1.1
 db_path: /tmp/integration_test_db.sqlite3
 private_key_path: private.key
+noise_private_key_path: noise_private.key
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 127.0.0.1:9090
 server_url: http://headscale:8080
