@@ -100,7 +100,8 @@ curl http://127.0.0.1:9090/metrics
 6. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
 ```shell
-docker exec headscale headscale namespaces create myfirstnamespace
+docker exec headscale \
+  headscale namespaces create myfirstnamespace
 ```
 
 ### Register a machine (normal login)
