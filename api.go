@@ -321,33 +321,61 @@ func (h *Headscale) getMapResponse(
 		Msgf("Generated map response: %s", tailMapResponseToString(resp))
 
 	var respBody []byte
-	if req.Compress == "zstd" {
-		src, err := json.Marshal(resp)
+	if machineKey.IsZero() {
+		// The TS2021 protocol does not rely anymore on the machine key to
+		// encrypt in a NaCl box the map response. We just send it back
+		// unencrypted via the encrypted Noise channel.
+		// declare the incoming size on the first 4 bytes
+		respBody, err := json.Marshal(resp)
 		if err != nil {
 			log.Error().
 				Caller().
-				Str("func", "getMapResponse").
 				Err(err).
-				Msg("Failed to marshal response for the client")
-
-			return nil, err
+				Msg("Cannot marshal map response")
 		}
 
-		encoder, _ := zstd.NewWriter(nil)
-		srcCompressed := encoder.EncodeAll(src, nil)
-		respBody = h.privateKey.SealTo(machineKey, srcCompressed)
+		var srcCompressed []byte
+		if req.Compress == "zstd" {
+			encoder, _ := zstd.NewWriter(nil)
+			srcCompressed = encoder.EncodeAll(respBody, nil)
+		} else {
+			srcCompressed = respBody
+		}
+
+		data := make([]byte, reservedResponseHeaderSize)
+		binary.LittleEndian.PutUint32(data, uint32(len(srcCompressed)))
+		data = append(data, srcCompressed...)
+
+		return data, nil
 	} else {
-		respBody, err = encode(resp, &machineKey, h.privateKey)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// declare the incoming size on the first 4 bytes
-	data := make([]byte, reservedResponseHeaderSize)
-	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
-	data = append(data, respBody...)
+		if req.Compress == "zstd" {
+			src, err := json.Marshal(resp)
+			if err != nil {
+				log.Error().
+					Caller().
+					Str("func", "getMapResponse").
+					Err(err).
+					Msg("Failed to marshal response for the client")
 
-	return data, nil
+				return nil, err
+			}
+
+			encoder, _ := zstd.NewWriter(nil)
+			srcCompressed := encoder.EncodeAll(src, nil)
+			respBody = h.privateKey.SealTo(machineKey, srcCompressed)
+		} else {
+			respBody, err = encode(resp, &machineKey, h.privateKey)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// declare the incoming size on the first 4 bytes
+		data := make([]byte, reservedResponseHeaderSize)
+		binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
+		data = append(data, respBody...)
+
+		return data, nil
+	}
 }
 
 func (h *Headscale) getMapKeepAliveResponse(
@@ -359,31 +387,36 @@ func (h *Headscale) getMapKeepAliveResponse(
 	}
 	var respBody []byte
 	var err error
-	if mapRequest.Compress == "zstd" {
-		src, err := json.Marshal(mapResponse)
-		if err != nil {
-			log.Error().
-				Caller().
-				Str("func", "getMapKeepAliveResponse").
-				Err(err).
-				Msg("Failed to marshal keepalive response for the client")
-
-			return nil, err
-		}
-		encoder, _ := zstd.NewWriter(nil)
-		srcCompressed := encoder.EncodeAll(src, nil)
-		respBody = h.privateKey.SealTo(machineKey, srcCompressed)
+	if machineKey.IsZero() {
+		// The TS2021 protocol does not rely anymore on the machine key.
+		return json.Marshal(mapResponse)
 	} else {
-		respBody, err = encode(mapResponse, &machineKey, h.privateKey)
-		if err != nil {
-			return nil, err
-		}
-	}
-	data := make([]byte, reservedResponseHeaderSize)
-	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
-	data = append(data, respBody...)
+		if mapRequest.Compress == "zstd" {
+			src, err := json.Marshal(mapResponse)
+			if err != nil {
+				log.Error().
+					Caller().
+					Str("func", "getMapKeepAliveResponse").
+					Err(err).
+					Msg("Failed to marshal keepalive response for the client")
 
-	return data, nil
+				return nil, err
+			}
+			encoder, _ := zstd.NewWriter(nil)
+			srcCompressed := encoder.EncodeAll(src, nil)
+			respBody = h.privateKey.SealTo(machineKey, srcCompressed)
+		} else {
+			respBody, err = encode(mapResponse, &machineKey, h.privateKey)
+			if err != nil {
+				return nil, err
+			}
+		}
+		data := make([]byte, reservedResponseHeaderSize)
+		binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
+		data = append(data, respBody...)
+
+		return data, nil
+	}
 }
 
 func (h *Headscale) handleMachineLogOut(
@@ -571,7 +604,7 @@ func (h *Headscale) handleAuthKey(
 		machineKeyStr = MachinePublicKeyStripPrefix(machineKey)
 	}
 	log.Debug().
-		Str("func", "handleAuthKey").
+		Caller().
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Msgf("Processing auth key for %s", registerRequest.Hostinfo.Hostname)
 	resp := tailcfg.RegisterResponse{}
@@ -618,7 +651,7 @@ func (h *Headscale) handleAuthKey(
 	}
 
 	log.Debug().
-		Str("func", "handleAuthKey").
+		Caller().
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Msg("Authentication key was valid, proceeding to acquire IP addresses")
 
@@ -674,6 +707,14 @@ func (h *Headscale) handleAuthKey(
 
 	resp.MachineAuthorized = true
 	resp.User = *pak.Namespace.toUser()
+
+	// TS2021
+	if machineKey.IsZero() {
+		ctx.JSON(http.StatusOK, resp)
+
+		return
+	}
+
 	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().

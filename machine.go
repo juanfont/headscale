@@ -518,11 +518,14 @@ func (machine Machine) toNode(
 	}
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText(
-		[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+	if machine.MachineKey != "" {
+		// MachineKey is only used in the legacy protocol
+		err = machineKey.UnmarshalText(
+			[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+		}
 	}
 
 	var discoKey key.DiscoPublic

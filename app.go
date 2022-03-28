@@ -514,6 +514,7 @@ func (h *Headscale) createNoiseRouter() *gin.Engine {
 	router := gin.Default()
 
 	router.POST("/machine/register", h.NoiseRegistrationHandler)
+	router.POST("/machine/map", h.NoisePollNetMapHandler)
 
 	return router
 }
