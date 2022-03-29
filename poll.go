@@ -388,10 +388,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "keepAlive").
 				Int("bytes", len(data)).
 				Msg("Keep alive sent successfully")
-				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
-				// when an outdated machine object is kept alive, e.g. db is update from
-				// command line, but then overwritten.
-			err = h.UpdateMachine(machine)
+				// TODO(kradalbCne(machine)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").

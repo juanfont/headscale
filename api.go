@@ -202,7 +202,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		}
 
 		h.registrationCache.Set(
-			machineKeyStr,
+			NodePublicKeyStripPrefix(req.NodeKey),
 			newMachine,
 			registerCacheExpiration,
 		)
@@ -477,6 +477,7 @@ func (h *Headscale) handleMachineValidRegistration(
 
 		return
 	}
+
 	machineRegistrations.WithLabelValues("update", "web", "success", machine.Namespace.Name).
 		Inc()
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
@@ -503,10 +504,10 @@ func (h *Headscale) handleMachineExpired(
 
 	if h.cfg.OIDC.Issuer != "" {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.String())
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), machine.NodeKey)
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.String())
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), machine.NodeKey)
 	}
 
 	respBody, err := encode(resp, &machineKey, h.privateKey)
@@ -521,6 +522,7 @@ func (h *Headscale) handleMachineExpired(
 
 		return
 	}
+
 	machineRegistrations.WithLabelValues("reauth", "web", "success", machine.Namespace.Name).
 		Inc()
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
@@ -570,13 +572,21 @@ func (h *Headscale) handleMachineRegistrationNew(
 		resp.AuthURL = fmt.Sprintf(
 			"%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			machineKey.String(),
+			NodePublicKeyStripPrefix(registerRequest.NodeKey),
 		)
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), MachinePublicKeyStripPrefix(machineKey))
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), NodePublicKeyStripPrefix(registerRequest.NodeKey))
 	}
 
+	if machineKey.IsZero() {
+		// TS2021
+		ctx.JSON(http.StatusOK, resp)
+
+		return
+	}
+
+	// The Tailscale legacy protocol requires to encrypt the NaCl box with the MachineKey
 	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
@@ -590,21 +600,15 @@ func (h *Headscale) handleMachineRegistrationNew(
 	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
 }
 
-// TODO: check if any locks are needed around IP allocation.
 func (h *Headscale) handleAuthKey(
 	ctx *gin.Context,
 	machineKey key.MachinePublic,
 	registerRequest tailcfg.RegisterRequest,
 ) {
-	var machineKeyStr string
-	if machineKey.IsZero() {
-		// We are handling here a Noise auth key
-		machineKeyStr = ""
-	} else {
-		machineKeyStr = MachinePublicKeyStripPrefix(machineKey)
-	}
+	machineKeyStr := MachinePublicKeyStripPrefix(machineKey)
+
 	log.Debug().
-		Caller().
+		Str("func", "handleAuthKey").
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Msgf("Processing auth key for %s", registerRequest.Hostinfo.Hostname)
 	resp := tailcfg.RegisterResponse{}
@@ -651,7 +655,7 @@ func (h *Headscale) handleAuthKey(
 	}
 
 	log.Debug().
-		Caller().
+		Str("func", "handleAuthKey").
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Msg("Authentication key was valid, proceeding to acquire IP addresses")
 
@@ -707,14 +711,6 @@ func (h *Headscale) handleAuthKey(
 
 	resp.MachineAuthorized = true
 	resp.User = *pak.Namespace.toUser()
-
-	// TS2021
-	if machineKey.IsZero() {
-		ctx.JSON(http.StatusOK, resp)
-
-		return
-	}
-
 	respBody, err := encode(resp, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().

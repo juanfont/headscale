@@ -62,10 +62,10 @@ func (h *Headscale) initOIDC() error {
 
 // RegisterOIDC redirects to the OIDC provider for authentication
 // Puts machine key in cache so the callback can retrieve it using the oidc state param
-// Listens in /oidc/register/:mKey.
+// Listens in /oidc/register/:nKey.
 func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
-	machineKeyStr := ctx.Param("mkey")
-	if machineKeyStr == "" {
+	nodeKeyStr := ctx.Param("nkey")
+	if nodeKeyStr == "" {
 		ctx.String(http.StatusBadRequest, "Wrong params")
 
 		return
@@ -73,7 +73,7 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 
 	log.Trace().
 		Caller().
-		Str("machine_key", machineKeyStr).
+		Str("node_key", nodeKeyStr).
 		Msg("Received oidc register call")
 
 	randomBlob := make([]byte, randomByteSize)
@@ -89,7 +89,7 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 	stateStr := hex.EncodeToString(randomBlob)[:32]
 
 	// place the machine key into the state cache, so it can be retrieved later
-	h.registrationCache.Set(stateStr, machineKeyStr, registerCacheExpiration)
+	h.registrationCache.Set(stateStr, nodeKeyStr, registerCacheExpiration)
 
 	authURL := h.oauth2Config.AuthCodeURL(stateStr)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
@@ -114,7 +114,7 @@ var oidcCallbackTemplate = template.Must(
 )
 
 // OIDCCallback handles the callback from the OIDC endpoint
-// Retrieves the mkey from the state cache and adds the machine to the users email namespace
+// Retrieves the nkey from the state cache and adds the machine to the users email namespace
 // TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
 // TODO: Add groups information from OIDC tokens into machine HostInfo
 // Listens in /oidc/callback.
@@ -188,32 +188,32 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 	}
 
 	// retrieve machinekey from state cache
-	machineKeyIf, machineKeyFound := h.registrationCache.Get(state)
+	nodeKeyIf, machineKeyFound := h.registrationCache.Get(state)
 
 	if !machineKeyFound {
 		log.Error().
-			Msg("requested machine state key expired before authorisation completed")
+			Msg("requested node state key expired before authorisation completed")
 		ctx.String(http.StatusBadRequest, "state has expired")
 
 		return
 	}
 
-	machineKeyFromCache, machineKeyOK := machineKeyIf.(string)
+	nodeKeyFromCache, nodeKeyOK := nodeKeyIf.(string)
 
-	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText(
-		[]byte(MachinePublicKeyEnsurePrefix(machineKeyFromCache)),
+	var nodeKey key.NodePublic
+	err = nodeKey.UnmarshalText(
+		[]byte(NodePublicKeyEnsurePrefix(nodeKeyFromCache)),
 	)
 	if err != nil {
 		log.Error().
-			Msg("could not parse machine public key")
+			Msg("could not parse node public key")
 		ctx.String(http.StatusBadRequest, "could not parse public key")
 
 		return
 	}
 
-	if !machineKeyOK {
-		log.Error().Msg("could not get machine key from cache")
+	if !nodeKeyOK {
+		log.Error().Msg("could not get node key from cache")
 		ctx.String(
 			http.StatusInternalServerError,
 			"could not get machine key from cache",
@@ -226,7 +226,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 	// The error is not important, because if it does not
 	// exist, then this is a new machine and we will move
 	// on to registration.
-	machine, _ := h.GetMachineByMachineKey(machineKey)
+	machine, _ := h.GetMachineByNodeKeys(nodeKey, key.NodePublic{})
 
 	if machine != nil {
 		log.Trace().
@@ -305,10 +305,10 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 		return
 	}
 
-	machineKeyStr := MachinePublicKeyStripPrefix(machineKey)
+	nodeKeyStr := NodePublicKeyStripPrefix(nodeKey)
 
 	_, err = h.RegisterMachineFromAuthCallback(
-		machineKeyStr,
+		nodeKeyStr,
 		namespace.Name,
 		RegisterMethodOIDC,
 	)

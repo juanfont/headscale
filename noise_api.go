@@ -42,7 +42,7 @@ func (h *Headscale) NoiseRegistrationHandler(ctx *gin.Context) {
 
 		// If the machine has AuthKey set, handle registration via PreAuthKeys
 		if req.Auth.AuthKey != "" {
-			h.handleAuthKey(ctx, key.MachinePublic{}, req)
+			h.handleNoiseAuthKey(ctx, req)
 
 			return
 		}
@@ -244,13 +244,13 @@ func (h *Headscale) NoisePollNetMapHandler(ctx *gin.Context) {
 		Bool("readOnly", req.ReadOnly).
 		Bool("omitPeers", req.OmitPeers).
 		Bool("stream", req.Stream).
-		Msg("Client map request processed")
+		Msg("Noise client map request processed")
 
 	if req.ReadOnly {
 		log.Info().
 			Caller().
 			Str("machine", machine.Name).
-			Msg("Client is starting up. Probably interested in a DERP map")
+			Msg("Noise client is starting up. Probably interested in a DERP map")
 			// log.Info().Str("machine", machine.Name).Bytes("resp", data).Msg("Sending DERP map to client")
 
 		ctx.Data(http.StatusOK, "application/json; charset=utf-8", data)
@@ -270,7 +270,7 @@ func (h *Headscale) NoisePollNetMapHandler(ctx *gin.Context) {
 		Caller().
 		Str("id", ctx.Param("id")).
 		Str("machine", machine.Name).
-		Msg("Loading or creating update channel")
+		Msg("Noise loading or creating update channel")
 
 	// TODO: could probably remove all that duplication once generics land.
 	closeChanWithLog := func(channel interface{}, name string) {
@@ -303,7 +303,7 @@ func (h *Headscale) NoisePollNetMapHandler(ctx *gin.Context) {
 		log.Info().
 			Caller().
 			Str("machine", machine.Name).
-			Msg("Client sent endpoint update and is ok with a response without peer list")
+			Msg("Noise client sent endpoint update and is ok with a response without peer list")
 		ctx.Data(http.StatusOK, "application/json; charset=utf-8", data)
 
 		// It sounds like we should update the nodes when we have received a endpoint update
@@ -326,7 +326,7 @@ func (h *Headscale) NoisePollNetMapHandler(ctx *gin.Context) {
 	log.Info().
 		Caller().
 		Str("machine", machine.Name).
-		Msg("Client is ready to access the tailnet")
+		Msg("Noise client is ready to access the tailnet")
 	log.Info().
 		Caller().
 		Str("machine", machine.Name).
@@ -423,11 +423,12 @@ func (h *Headscale) handleNoiseNodeExpired(
 
 	// The client has registered before, but has expired
 	log.Debug().
+		Caller().
 		Str("machine", machine.Name).
 		Msg("Machine registration has expired. Sending a authurl to register")
 
 	if registerRequest.Auth.AuthKey != "" {
-		h.handleAuthKey(ctx, key.MachinePublic{}, registerRequest)
+		h.handleNoiseAuthKey(ctx, registerRequest)
 
 		return
 	}
@@ -443,4 +444,107 @@ func (h *Headscale) handleNoiseNodeExpired(
 	machineRegistrations.WithLabelValues("reauth", "web", "success", machine.Namespace.Name).
 		Inc()
 	ctx.JSON(http.StatusOK, resp)
+}
+
+func (h *Headscale) handleNoiseAuthKey(
+	ctx *gin.Context,
+	registerRequest tailcfg.RegisterRequest,
+) {
+	log.Debug().
+		Caller().
+		Str("machine", registerRequest.Hostinfo.Hostname).
+		Msgf("Processing auth key for %s over Noise", registerRequest.Hostinfo.Hostname)
+	resp := tailcfg.RegisterResponse{}
+
+	pak, err := h.checkKeyValidity(registerRequest.Auth.AuthKey)
+	if err != nil {
+		log.Error().
+			Caller().
+			Str("machine", registerRequest.Hostinfo.Hostname).
+			Err(err).
+			Msg("Failed authentication via AuthKey")
+		resp.MachineAuthorized = false
+
+		ctx.JSON(http.StatusUnauthorized, resp)
+		log.Error().
+			Caller().
+			Str("machine", registerRequest.Hostinfo.Hostname).
+			Msg("Failed authentication via AuthKey over Noise")
+
+		if pak != nil {
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
+				Inc()
+		} else {
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", "unknown").Inc()
+		}
+
+		return
+	}
+
+	log.Debug().
+		Caller().
+		Str("machine", registerRequest.Hostinfo.Hostname).
+		Msg("Authentication key was valid, proceeding to acquire IP addresses")
+
+	nodeKey := NodePublicKeyStripPrefix(registerRequest.NodeKey)
+
+	// retrieve machine information if it exist
+	// The error is not important, because if it does not
+	// exist, then this is a new machine and we will move
+	// on to registration.
+	machine, _ := h.GetMachineByNodeKeys(registerRequest.NodeKey, registerRequest.OldNodeKey)
+	if machine != nil {
+		log.Trace().
+			Caller().
+			Str("machine", machine.Name).
+			Msg("machine already registered, refreshing with new auth key")
+
+		machine.NodeKey = nodeKey
+		machine.AuthKeyID = uint(pak.ID)
+		h.RefreshMachine(machine, registerRequest.Expiry)
+	} else {
+		now := time.Now().UTC()
+		machineToRegister := Machine{
+			Name:           registerRequest.Hostinfo.Hostname,
+			NamespaceID:    pak.Namespace.ID,
+			MachineKey:     "",
+			RegisterMethod: RegisterMethodAuthKey,
+			Expiry:         &registerRequest.Expiry,
+			NodeKey:        nodeKey,
+			LastSeen:       &now,
+			AuthKeyID:      uint(pak.ID),
+		}
+
+		machine, err = h.RegisterMachine(
+			machineToRegister,
+		)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("could not register machine")
+			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
+				Inc()
+			ctx.String(
+				http.StatusInternalServerError,
+				"could not register machine",
+			)
+
+			return
+		}
+	}
+
+	h.UsePreAuthKey(pak)
+
+	resp.MachineAuthorized = true
+	resp.User = *pak.Namespace.toUser()
+
+	machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "success", pak.Namespace.Name).
+		Inc()
+	ctx.JSON(http.StatusOK, resp)
+	log.Info().
+		Caller().
+		Str("machine", registerRequest.Hostinfo.Hostname).
+		Str("ips", strings.Join(machine.IPAddresses.ToStringSlice(), ", ")).
+		Msg("Successfully authenticated via AuthKey on Noise")
 }

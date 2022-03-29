@@ -5,9 +5,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 type headscaleV1APIServer struct { // v1.HeadscaleServiceServer
@@ -373,6 +374,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		MachineKey: request.GetKey(),
 		Name:       request.GetName(),
 		Namespace:  *namespace,
+		NodeKey:    key.NewNode().Public().String(),
 
 		Expiry:               &time.Time{},
 		LastSeen:             &time.Time{},
@@ -382,7 +384,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 	}
 
 	api.h.registrationCache.Set(
-		request.GetKey(),
+		newMachine.NodeKey,
 		newMachine,
 		registerCacheExpiration,
 	)

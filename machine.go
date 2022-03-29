@@ -658,11 +658,11 @@ func (machine *Machine) toProto() *v1.Machine {
 }
 
 func (h *Headscale) RegisterMachineFromAuthCallback(
-	machineKeyStr string,
+	nodeKeyStr string,
 	namespaceName string,
 	registrationMethod string,
 ) (*Machine, error) {
-	if machineInterface, ok := h.registrationCache.Get(machineKeyStr); ok {
+	if machineInterface, ok := h.registrationCache.Get(nodeKeyStr); ok {
 		if registrationMachine, ok := machineInterface.(Machine); ok {
 			namespace, err := h.GetNamespace(namespaceName)
 			if err != nil {
