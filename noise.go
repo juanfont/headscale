@@ -61,21 +61,25 @@ func (h *Headscale) getNoiseConnection(ctx *gin.Context) (*controlbase.Conn, err
 	next := ctx.GetHeader("Upgrade")
 	if next == "" {
 		ctx.String(http.StatusBadRequest, "missing next protocol")
+
 		return nil, errWrongConnectionUpgrade
 	}
 	if next != upgradeHeaderValue {
 		ctx.String(http.StatusBadRequest, "unknown next protocol")
+
 		return nil, errWrongConnectionUpgrade
 	}
 
 	initB64 := ctx.GetHeader(handshakeHeaderName)
 	if initB64 == "" {
 		ctx.String(http.StatusBadRequest, "missing Tailscale handshake header")
+
 		return nil, errWrongConnectionUpgrade
 	}
 	init, err := base64.StdEncoding.DecodeString(initB64)
 	if err != nil {
 		ctx.String(http.StatusBadRequest, "invalid tailscale handshake header")
+
 		return nil, errWrongConnectionUpgrade
 	}
 
@@ -83,6 +87,7 @@ func (h *Headscale) getNoiseConnection(ctx *gin.Context) (*controlbase.Conn, err
 	if !ok {
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
 		ctx.String(http.StatusInternalServerError, "HTTP does not support general TCP support")
+
 		return nil, errCannotHijack
 	}
 
@@ -102,6 +107,7 @@ func (h *Headscale) getNoiseConnection(ctx *gin.Context) (*controlbase.Conn, err
 	}
 	if err := conn.Flush(); err != nil {
 		netConn.Close()
+
 		return nil, errCannotHijack
 	}
 	netConn = netutil.NewDrainBufConn(netConn, conn.Reader)
@@ -109,6 +115,7 @@ func (h *Headscale) getNoiseConnection(ctx *gin.Context) (*controlbase.Conn, err
 	nc, err := controlbase.Server(ctx.Request.Context(), netConn, *h.noisePrivateKey, init)
 	if err != nil {
 		netConn.Close()
+
 		return nil, errNoiseHandshakeFailed
 	}
 
