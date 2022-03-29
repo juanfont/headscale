@@ -2,8 +2,6 @@ package headscale
 
 import (
 	"encoding/base64"
-	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,13 +10,12 @@ import (
 	"golang.org/x/net/http2/h2c"
 	"tailscale.com/control/controlbase"
 	"tailscale.com/net/netutil"
-	"tailscale.com/types/key"
 )
 
 const (
 	errWrongConnectionUpgrade = Error("wrong connection upgrade")
 	errCannotHijack           = Error("cannot hijack connection")
-	errNetClosing             = Error("net is closing")
+	errNoiseHandshakeFailed   = Error("noise handshake failed")
 )
 
 const (
@@ -31,14 +28,6 @@ const (
 	// payload, to save an RTT.
 	handshakeHeaderName = "X-Tailscale-Handshake"
 )
-
-type serverResult struct {
-	err        error
-	clientAddr string
-	version    int
-	peer       key.MachinePublic
-	conn       *controlbase.Conn
-}
 
 // NoiseUpgradeHandler is to upgrade the connection and hijack the net.Conn
 // in order to use the Noise-based TS2021 protocol. Listens in /ts2021
@@ -72,29 +61,29 @@ func (h *Headscale) getNoiseConnection(ctx *gin.Context) (*controlbase.Conn, err
 	next := ctx.GetHeader("Upgrade")
 	if next == "" {
 		ctx.String(http.StatusBadRequest, "missing next protocol")
-		return nil, errors.New("no next protocol in HTTP request")
+		return nil, errWrongConnectionUpgrade
 	}
 	if next != upgradeHeaderValue {
 		ctx.String(http.StatusBadRequest, "unknown next protocol")
-		return nil, fmt.Errorf("client requested unhandled next protocol %q", next)
+		return nil, errWrongConnectionUpgrade
 	}
 
 	initB64 := ctx.GetHeader(handshakeHeaderName)
 	if initB64 == "" {
 		ctx.String(http.StatusBadRequest, "missing Tailscale handshake header")
-		return nil, errors.New("no tailscale handshake header in HTTP request")
+		return nil, errWrongConnectionUpgrade
 	}
 	init, err := base64.StdEncoding.DecodeString(initB64)
 	if err != nil {
 		ctx.String(http.StatusBadRequest, "invalid tailscale handshake header")
-		return nil, fmt.Errorf("decoding base64 handshake header: %v", err)
+		return nil, errWrongConnectionUpgrade
 	}
 
 	hijacker, ok := ctx.Writer.(http.Hijacker)
 	if !ok {
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
 		ctx.String(http.StatusInternalServerError, "HTTP does not support general TCP support")
-		return nil, errors.New("can't hijack client connection")
+		return nil, errCannotHijack
 	}
 
 	// This is what changes from the original AcceptHTTP() function.
@@ -109,18 +98,18 @@ func (h *Headscale) getNoiseConnection(ctx *gin.Context) (*controlbase.Conn, err
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
 		ctx.String(http.StatusInternalServerError, "HTTP does not support general TCP support")
 
-		return nil, errors.New("can't hijack client connection")
+		return nil, errCannotHijack
 	}
 	if err := conn.Flush(); err != nil {
 		netConn.Close()
-		return nil, fmt.Errorf("flushing hijacked HTTP buffer: %w", err)
+		return nil, errCannotHijack
 	}
 	netConn = netutil.NewDrainBufConn(netConn, conn.Reader)
 
 	nc, err := controlbase.Server(ctx.Request.Context(), netConn, *h.noisePrivateKey, init)
 	if err != nil {
 		netConn.Close()
-		return nil, fmt.Errorf("noise handshake failed: %w", err)
+		return nil, errNoiseHandshakeFailed
 	}
 
 	return nc, nil
