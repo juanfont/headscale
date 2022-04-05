@@ -31,7 +31,7 @@ func init() {
 	createPreAuthKeyCmd.PersistentFlags().
 		Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().
-		DurationP("expiration", "e", DefaultPreAuthKeyExpiry, "Human-readable expiration of the key (30m, 24h, 365d...)")
+		DurationP("expiration", "e", DefaultPreAuthKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
 }
 
 var preauthkeysCmd = &cobra.Command{
