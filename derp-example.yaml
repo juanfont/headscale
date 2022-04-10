@@ -12,4 +12,4 @@ regions:
         ipv6: "2604:a880:400:d1::828:b001"
         stunport: 0
         stunonly: false
-        derptestport: 0
+        derpport: 0
