@@ -10,7 +10,7 @@ PROTO_SOURCES = $(call rwildcard,,*.proto)
 
 
 build:
-	GGO_ENABLED=0 go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
+	CGO_ENABLED=0 go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
 
 dev: lint test build
 
