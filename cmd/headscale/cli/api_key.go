@@ -23,7 +23,7 @@ func init() {
 	apiKeysCmd.AddCommand(listAPIKeys)
 
 	createAPIKeyCmd.Flags().
-		DurationP("expiration", "e", DefaultAPIKeyExpiry, "Human-readable expiration of the key (30m, 24h, 365d...)")
+		DurationP("expiration", "e", DefaultAPIKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
 
 	apiKeysCmd.AddCommand(createAPIKeyCmd)
 
