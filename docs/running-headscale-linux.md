@@ -178,7 +178,7 @@ systemctl status headscale
 Verify `headscale` is available:
 
 ```shell
-curl http://127.0.0.1:8080/metrics
+curl http://127.0.0.1:9090/metrics
 ```
 
 `headscale` will now run in the background and start at boot.
