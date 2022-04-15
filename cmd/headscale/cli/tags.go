@@ -16,7 +16,8 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	addTagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
+	addTagCmd.Flags().
+		StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	tagCmd.AddCommand(addTagCmd)
 
 	delTagCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
@@ -24,7 +25,8 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	delTagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to remove from the node")
+	delTagCmd.Flags().
+		StringSliceP("tags", "t", []string{}, "List of tags to remove from the node")
 	tagCmd.AddCommand(delTagCmd)
 }
 
@@ -58,7 +60,7 @@ var addTagCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error retrieving list of tags to add to machine", err),
+				fmt.Sprintf("Error retrieving list of tags to add to machine, %v", err),
 				output,
 			)
 
@@ -110,7 +112,6 @@ var addTagCmd = &cobra.Command{
 				output,
 			)
 		}
-
 	},
 }
 
@@ -139,7 +140,7 @@ var delTagCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error retrieving list of tags to add to machine", err),
+				fmt.Sprintf("Error retrieving list of tags to add to machine: %v", err),
 				output,
 			)
 
@@ -193,7 +194,6 @@ var delTagCmd = &cobra.Command{
 				output,
 			)
 		}
-
 	},
 }
 

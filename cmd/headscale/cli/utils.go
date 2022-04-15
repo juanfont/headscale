@@ -127,7 +127,8 @@ func GetDERPConfig() headscale.DERPConfig {
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
 
 	if serverEnabled && stunAddr == "" {
-		log.Fatal().Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
+		log.Fatal().
+			Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
 	}
 
 	urlStrs := viper.GetStringSlice("derp.urls")

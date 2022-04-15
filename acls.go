@@ -261,7 +261,11 @@ func expandAlias(
 					}
 				}
 				if len(ips) == 0 {
-					return ips, fmt.Errorf("%w. %v isn't owned by a TagOwner and no forced tags are defined.", errInvalidTag, alias)
+					return ips, fmt.Errorf(
+						"%w. %v isn't owned by a TagOwner and no forced tags are defined.",
+						errInvalidTag,
+						alias,
+					)
 				}
 				return ips, nil
 			} else {

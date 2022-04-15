@@ -631,7 +631,7 @@ func (machine *Machine) toProto() *v1.Machine {
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Name,
 		Namespace:   machine.Namespace.toProto(),
-		ForcedTags: machine.ForcedTags,
+		ForcedTags:  machine.ForcedTags,
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
