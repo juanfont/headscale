@@ -45,6 +45,8 @@ type Machine struct {
 
 	RegisterMethod string
 
+	ForcedTags StringList
+
 	// TODO(kradalby): This seems like irrelevant information?
 	AuthKeyID uint
 	AuthKey   *PreAuthKey
@@ -357,6 +359,22 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 	return nil
 }
 
+// UpdateDBMachine takes a Machine struct pointer (typically already loaded from database
+// search for the same machine in the database and update the latter
+func (h *Headscale) UpdateDBMachine(machine Machine) error {
+	destMachine := Machine{}
+	if result := h.db.Where("id = ?", machine.ID).Find(&destMachine); result.Error != nil {
+		return result.Error
+	}
+	destMachine.Name = machine.Name
+	destMachine.NamespaceID = machine.NamespaceID
+	destMachine.ForcedTags = machine.ForcedTags
+
+	h.db.Save(destMachine)
+
+	return nil
+}
+
 // ExpireMachine takes a Machine struct and sets the expire field to now.
 func (h *Headscale) ExpireMachine(machine *Machine) {
 	now := time.Now()
@@ -613,6 +631,7 @@ func (machine *Machine) toProto() *v1.Machine {
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Name,
 		Namespace:   machine.Namespace.toProto(),
+		ForcedTags: machine.ForcedTags,
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,

@@ -81,6 +81,13 @@ service HeadscaleService {
         };
     }
 
+    rpc UpdateMachine(UpdateMachineRequest) returns (UpdateMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine.id}"
+            body: "*"
+        };
+    }
+
     rpc RegisterMachine(RegisterMachineRequest) returns (RegisterMachineResponse) {
         option (google.api.http) = {
             post: "/api/v1/machine/register"

@@ -35,6 +35,7 @@ type HeadscaleServiceClient interface {
 	// --- Machine start ---
 	DebugCreateMachine(ctx context.Context, in *DebugCreateMachineRequest, opts ...grpc.CallOption) (*DebugCreateMachineResponse, error)
 	GetMachine(ctx context.Context, in *GetMachineRequest, opts ...grpc.CallOption) (*GetMachineResponse, error)
+	UpdateMachine(ctx context.Context, in *UpdateMachineRequest, opts ...grpc.CallOption) (*UpdateMachineResponse, error)
 	RegisterMachine(ctx context.Context, in *RegisterMachineRequest, opts ...grpc.CallOption) (*RegisterMachineResponse, error)
 	DeleteMachine(ctx context.Context, in *DeleteMachineRequest, opts ...grpc.CallOption) (*DeleteMachineResponse, error)
 	ExpireMachine(ctx context.Context, in *ExpireMachineRequest, opts ...grpc.CallOption) (*ExpireMachineResponse, error)
@@ -146,6 +147,15 @@ func (c *headscaleServiceClient) GetMachine(ctx context.Context, in *GetMachineR
 	return out, nil
 }
 
+func (c *headscaleServiceClient) UpdateMachine(ctx context.Context, in *UpdateMachineRequest, opts ...grpc.CallOption) (*UpdateMachineResponse, error) {
+	out := new(UpdateMachineResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/UpdateMachine", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *headscaleServiceClient) RegisterMachine(ctx context.Context, in *RegisterMachineRequest, opts ...grpc.CallOption) (*RegisterMachineResponse, error) {
 	out := new(RegisterMachineResponse)
 	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/RegisterMachine", in, out, opts...)
@@ -244,6 +254,7 @@ type HeadscaleServiceServer interface {
 	// --- Machine start ---
 	DebugCreateMachine(context.Context, *DebugCreateMachineRequest) (*DebugCreateMachineResponse, error)
 	GetMachine(context.Context, *GetMachineRequest) (*GetMachineResponse, error)
+	UpdateMachine(context.Context, *UpdateMachineRequest) (*UpdateMachineResponse, error)
 	RegisterMachine(context.Context, *RegisterMachineRequest) (*RegisterMachineResponse, error)
 	DeleteMachine(context.Context, *DeleteMachineRequest) (*DeleteMachineResponse, error)
 	ExpireMachine(context.Context, *ExpireMachineRequest) (*ExpireMachineResponse, error)
@@ -291,6 +302,9 @@ func (UnimplementedHeadscaleServiceServer) DebugCreateMachine(context.Context, *
 }
 func (UnimplementedHeadscaleServiceServer) GetMachine(context.Context, *GetMachineRequest) (*GetMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMachine not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) UpdateMachine(context.Context, *UpdateMachineRequest) (*UpdateMachineResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateMachine not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) RegisterMachine(context.Context, *RegisterMachineRequest) (*RegisterMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterMachine not implemented")
@@ -512,6 +526,24 @@ func _HeadscaleService_GetMachine_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_UpdateMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateMachineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).UpdateMachine(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/UpdateMachine",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).UpdateMachine(ctx, req.(*UpdateMachineRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HeadscaleService_RegisterMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegisterMachineRequest)
 	if err := dec(in); err != nil {
@@ -720,6 +752,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMachine",
 			Handler:    _HeadscaleService_GetMachine_Handler,
+		},
+		{
+			MethodName: "UpdateMachine",
+			Handler:    _HeadscaleService_UpdateMachine_Handler,
 		},
 		{
 			MethodName: "RegisterMachine",

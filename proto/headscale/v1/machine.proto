@@ -32,6 +32,9 @@ message Machine {
     google.protobuf.Timestamp created_at = 12;
 
     RegisterMethod register_method = 13;
+
+    repeated string forced_tags = 14;
+
     // google.protobuf.Timestamp updated_at = 14;
     // google.protobuf.Timestamp deleted_at = 15;
 
@@ -54,6 +57,14 @@ message GetMachineRequest {
 }
 
 message GetMachineResponse {
+    Machine machine = 1;
+}
+
+message UpdateMachineRequest {
+    Machine machine = 1;
+}
+
+message UpdateMachineResponse {
     Machine machine = 1;
 }
 
