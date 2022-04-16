@@ -150,7 +150,7 @@ or run all headscale commands as the headscale user:
 su - headscale
 ```
 
-2. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a SystemD friendly path:
+2. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with path that is writable by the `headscale` user or group:
 
 ```yaml
 unix_socket: /var/run/headscale/headscale.sock
@@ -165,8 +165,7 @@ systemctl daemon-reload
 4. Enable and start the new `headscale` service:
 
 ```shell
-systemctl enable headscale
-systemctl start headscale
+systemctl enable --now headscale
 ```
 
 5. Verify the headscale service:
