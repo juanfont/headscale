@@ -951,6 +951,18 @@
           "items": {
             "type": "string"
           }
+        },
+        "invalidTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

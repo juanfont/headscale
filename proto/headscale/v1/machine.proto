@@ -32,14 +32,17 @@ message Machine {
 
     RegisterMethod register_method = 13;
 
-    repeated string forced_tags = 14;
-
+    reserved 14 to 17;
     // google.protobuf.Timestamp updated_at = 14;
     // google.protobuf.Timestamp deleted_at = 15;
 
     // bytes host_info      = 15;
     // bytes endpoints      = 16;
     // bytes enabled_routes = 17;
+
+    repeated string forced_tags = 18;
+    repeated string invalid_tags = 19;
+    repeated string valid_tags = 20;
 }
 
 message RegisterMachineRequest {
