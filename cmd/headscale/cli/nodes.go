@@ -311,6 +311,7 @@ func nodesToPtables(
 			"Last seen",
 			"Online",
 			"Expired",
+			"Tags",
 		},
 	}
 
@@ -356,6 +357,22 @@ func nodesToPtables(
 			expired = pterm.LightRed("yes")
 		}
 
+		var tags string
+		for _, tag := range machine.ForcedTags {
+			tags += "," + tag
+		}
+		for _, tag := range machine.InvalidTags {
+			if !containsString(machine.ForcedTags, tag) {
+				tags += "," + pterm.LightRed(tag)
+			}
+		}
+		for _, tag := range machine.ValidTags {
+			if !containsString(machine.ForcedTags, tag) {
+				tags += "," + pterm.LightGreen(tag)
+			}
+		}
+		tags = strings.TrimLeft(tags, ",")
+
 		var namespace string
 		if currentNamespace == "" || (currentNamespace == machine.Namespace.Name) {
 			namespace = pterm.LightMagenta(machine.Namespace.Name)
@@ -375,6 +392,7 @@ func nodesToPtables(
 				lastSeenTime,
 				online,
 				expired,
+				tags,
 			},
 		)
 	}
