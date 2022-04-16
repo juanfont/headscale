@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -658,6 +659,37 @@ func (machine *Machine) toProto() *v1.Machine {
 	}
 
 	return machineProto
+}
+
+// getTags will return the tags of the current machine
+func getTags(aclPolicy ACLPolicy, machine Machine, stripEmailDomain bool) (validTags []string, invalidTags []string) {
+	validTagMap := make(map[string]bool)
+	invalidTagMap := make(map[string]bool)
+	for _, tag := range machine.HostInfo.RequestTags {
+		owners, err := expandTagOwners(aclPolicy, tag, stripEmailDomain)
+		if errors.Is(err, errInvalidTag) {
+			invalidTags = append(invalidTags, tag)
+		}
+		var found bool
+		for _, owner := range owners {
+			if machine.Namespace.Name == owner {
+				found = true
+			}
+		}
+		if found {
+			validTagMap[tag] = true
+		} else {
+			invalidTagMap[tag] = true
+		}
+	}
+	for tag := range invalidTagMap {
+		invalidTags = append(invalidTags, tag)
+	}
+	for tag := range validTagMap {
+		validTags = append(validTags, tag)
+	}
+
+	return
 }
 
 func (h *Headscale) RegisterMachineFromAuthCallback(

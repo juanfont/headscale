@@ -280,7 +280,11 @@ func (api headscaleV1APIServer) ListMachines(
 
 	response := make([]*v1.Machine, len(machines))
 	for index, machine := range machines {
-		response[index] = machine.toProto()
+		m := machine.toProto()
+		validTags, invalidTags := getTags(*api.h.aclPolicy, machine, api.h.cfg.OIDC.StripEmaildomain)
+		m.InvalidTags = invalidTags
+		m.ValidTags = validTags
+		response[index] = m
 	}
 
 	return &v1.ListMachinesResponse{Machines: response}, nil
