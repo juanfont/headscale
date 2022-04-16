@@ -52,7 +52,7 @@ from the [headscale repository](../)
 6. Start the headscale server:
 
 ```shell
-  headscale serve
+headscale serve
 ```
 
 This command will start `headscale` in the current terminal session.
