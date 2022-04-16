@@ -277,6 +277,124 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 	}
 }
 
+func Test_getTags(t *testing.T) {
+	type args struct {
+		aclPolicy        ACLPolicy
+		machine          Machine
+		stripEmailDomain bool
+	}
+	tests := []struct {
+		name        string
+		args        args
+		wantInvalid []string
+		wantValid   []string
+	}{
+		{
+			name: "valid tag one machine",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:valid": []string{"joe"},
+					},
+				},
+				machine: Machine{
+					Namespace: Namespace{
+						Name: "joe",
+					},
+					HostInfo: HostInfo{
+						RequestTags: []string{"tag:valid"},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   []string{"tag:valid"},
+			wantInvalid: nil,
+		},
+		{
+			name: "invalid tag and valid tag one machine",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:valid": []string{"joe"},
+					},
+				},
+				machine: Machine{
+					Namespace: Namespace{
+						Name: "joe",
+					},
+					HostInfo: HostInfo{
+						RequestTags: []string{"tag:valid", "tag:invalid"},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   []string{"tag:valid"},
+			wantInvalid: []string{"tag:invalid"},
+		},
+		{
+			name: "multiple invalid and identical tags, should return only one invalid tag",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:valid": []string{"joe"},
+					},
+				},
+				machine: Machine{
+					Namespace: Namespace{
+						Name: "joe",
+					},
+					HostInfo: HostInfo{
+						RequestTags: []string{
+							"tag:invalid",
+							"tag:valid",
+							"tag:invalid",
+						},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   []string{"tag:valid"},
+			wantInvalid: []string{"tag:invalid"},
+		},
+		{
+			name: "only invalid tags",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:valid": []string{"joe"},
+					},
+				},
+				machine: Machine{
+					Namespace: Namespace{
+						Name: "joe",
+					},
+					HostInfo: HostInfo{
+						RequestTags: []string{"tag:invalid", "very-invalid"},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   nil,
+			wantInvalid: []string{"tag:invalid", "very-invalid"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotValid, gotInvalid := getTags(
+				test.args.aclPolicy,
+				test.args.machine,
+				test.args.stripEmailDomain,
+			)
+			if !reflect.DeepEqual(gotValid, test.wantValid) {
+				t.Errorf("getTags() = %v, want %v", gotValid, test.wantValid)
+			}
+			if !reflect.DeepEqual(gotInvalid, test.wantInvalid) {
+				t.Errorf("getTags() = %v, want %v", gotInvalid, test.wantInvalid)
+			}
+		})
+	}
+}
+
 // nolint
 func Test_getFilteredByACLPeers(t *testing.T) {
 	type args struct {
