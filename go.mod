@@ -40,7 +40,7 @@ require (
 	gorm.io/driver/postgres v1.3.1
 	gorm.io/gorm v1.23.1
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
-	tailscale.com v1.22.0
+	tailscale.com v1.22.2
 )
 
 require (
