@@ -661,7 +661,7 @@ func (machine *Machine) toProto() *v1.Machine {
 	return machineProto
 }
 
-// getTags will return the tags of the current machine
+// getTags will return the tags of the current machine.
 func getTags(
 	aclPolicy ACLPolicy,
 	machine Machine,
@@ -693,7 +693,7 @@ func getTags(
 		validTags = append(validTags, tag)
 	}
 
-	return
+	return validTags, invalidTags
 }
 
 func (h *Headscale) RegisterMachineFromAuthCallback(
