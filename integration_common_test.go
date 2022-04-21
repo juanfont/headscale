@@ -20,7 +20,7 @@ var (
 	IpPrefix4 = netaddr.MustParseIPPrefix("100.64.0.0/10")
 	IpPrefix6 = netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48")
 
-	tailscaleVersions = []string{"1.22.0", "1.20.4", "1.18.2", "1.16.2", "1.14.3", "1.12.3"}
+	tailscaleVersions = []string{"head", "unstable", "1.22.2", "1.20.4", "1.18.2", "1.16.2", "1.14.3", "1.12.3"}
 )
 
 type TestNamespace struct {
@@ -126,6 +126,49 @@ func DockerAllowNetworkAdministration(config *docker.HostConfig) {
 		Source: "/dev/net/tun",
 		Target: "/dev/net/tun",
 	})
+}
+
+func getDockerBuildOptions(version string) *dockertest.BuildOptions {
+	var tailscaleBuildOptions *dockertest.BuildOptions
+	switch version {
+	case "head":
+		tailscaleBuildOptions = &dockertest.BuildOptions{
+			Dockerfile: "Dockerfile.tailscale-HEAD",
+			ContextDir: ".",
+			BuildArgs:  []docker.BuildArg{},
+		}
+	case "unstable":
+		tailscaleBuildOptions = &dockertest.BuildOptions{
+			Dockerfile: "Dockerfile.tailscale",
+			ContextDir: ".",
+			BuildArgs: []docker.BuildArg{
+				{
+					Name:  "TAILSCALE_VERSION",
+					Value: "*", // Installs the latest version https://askubuntu.com/a/824926
+				},
+				{
+					Name:  "TAILSCALE_CHANNEL",
+					Value: "unstable",
+				},
+			},
+		}
+	default:
+		tailscaleBuildOptions = &dockertest.BuildOptions{
+			Dockerfile: "Dockerfile.tailscale",
+			ContextDir: ".",
+			BuildArgs: []docker.BuildArg{
+				{
+					Name:  "TAILSCALE_VERSION",
+					Value: version,
+				},
+				{
+					Name:  "TAILSCALE_CHANNEL",
+					Value: "stable",
+				},
+			},
+		}
+	}
+	return tailscaleBuildOptions
 }
 
 func getIPs(

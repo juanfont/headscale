@@ -55,6 +55,9 @@ func LoadConfig(path string) error {
 
 	viper.SetDefault("dns_config", nil)
 
+	viper.SetDefault("derp.server.enabled", false)
+	viper.SetDefault("derp.server.stun.enabled", true)
+
 	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
 
@@ -121,8 +124,11 @@ func GetDERPConfig() headscale.DERPConfig {
 	serverRegionID := viper.GetInt("derp.server.region_id")
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
-	stunEnabled := viper.GetBool("derp.server.stun.enabled")
-	stunAddr := viper.GetString("derp.server.stun.listen_addr")
+	stunAddr := viper.GetString("derp.server.stun_listen_addr")
+
+	if serverEnabled && stunAddr == "" {
+		log.Fatal().Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
+	}
 
 	urlStrs := viper.GetStringSlice("derp.urls")
 
@@ -149,7 +155,6 @@ func GetDERPConfig() headscale.DERPConfig {
 		ServerRegionID:   serverRegionID,
 		ServerRegionCode: serverRegionCode,
 		ServerRegionName: serverRegionName,
-		STUNEnabled:      stunEnabled,
 		STUNAddr:         stunAddr,
 		URLs:             urls,
 		Paths:            paths,
@@ -403,7 +408,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		aclPath := absPath(viper.GetString("acl_policy_path"))
 		err = app.LoadACLPolicy(aclPath)
 		if err != nil {
-			log.Error().
+			log.Fatal().
 				Str("path", aclPath).
 				Err(err).
 				Msg("Could not load the ACL policy")

@@ -3,7 +3,7 @@
 This page contains the official and community contributed documentation for `headscale`.
 
 If you are having trouble with following the documentation or get unexpected results,
-please ask on [Discord](https://discord.gg/XcQxk2VHjx) instead of opening an Issue.
+please ask on [Discord](https://discord.gg/c84AZQhmpx) instead of opening an Issue.
 
 ## Official documentation
 
