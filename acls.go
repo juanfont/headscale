@@ -267,6 +267,7 @@ func expandAlias(
 						alias,
 					)
 				}
+
 				return ips, nil
 			} else {
 				return ips, err

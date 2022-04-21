@@ -361,7 +361,7 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 }
 
 // UpdateDBMachine takes a Machine struct pointer (typically already loaded from database
-// search for the same machine in the database and update the latter
+// search for the same machine in the database and update the latter.
 func (h *Headscale) UpdateDBMachine(machine Machine) error {
 	destMachine := Machine{}
 	if result := h.db.Where("id = ?", machine.ID).Find(&destMachine); result.Error != nil {
