@@ -31,7 +31,13 @@ mkdir -p /etc/headscale
 # Directory for Database, and other variable data (like certificates)
 mkdir -p /var/lib/headscale
 # or if you create a headscale user:
-useradd -md /var/lib/headscale/ -rUs /usr/bin/nologin headscale
+useradd \
+	--create-home \
+	--home-dir /var/lib/headscale/ \
+	--system \
+	--user-group \
+	--shell /usr/bin/nologin \
+	headscale
 ```
 
 4. Create an empty SQLite database:
