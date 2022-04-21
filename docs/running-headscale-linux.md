@@ -30,6 +30,14 @@ mkdir -p /etc/headscale
 
 # Directory for Database, and other variable data (like certificates)
 mkdir -p /var/lib/headscale
+# or if you create a headscale user:
+useradd \
+	--create-home \
+	--home-dir /var/lib/headscale/ \
+	--system \
+	--user-group \
+	--shell /usr/bin/nologin \
+	headscale
 ```
 
 4. Create an empty SQLite database:
@@ -50,7 +58,7 @@ from the [headscale repository](../)
 6. Start the headscale server:
 
 ```shell
-  headscale serve
+headscale serve
 ```
 
 This command will start `headscale` in the current terminal session.
@@ -150,7 +158,7 @@ or run all headscale commands as the headscale user:
 su - headscale
 ```
 
-2. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a SystemD friendly path:
+2. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with path that is writable by the `headscale` user or group:
 
 ```yaml
 unix_socket: /var/run/headscale/headscale.sock
@@ -165,8 +173,7 @@ systemctl daemon-reload
 4. Enable and start the new `headscale` service:
 
 ```shell
-systemctl enable headscale
-systemctl start headscale
+systemctl enable --now headscale
 ```
 
 5. Verify the headscale service:

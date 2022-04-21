@@ -6,6 +6,8 @@ labels: ["bug"]
 assignees: ""
 ---
 
+<!-- Headscale is a multinational community across the globe. Our common language is English. Please consider raising the bug report in this language. -->
+
 **Bug description**
 
 <!-- A clear and concise description of what the bug is. Describe the expected bahavior
