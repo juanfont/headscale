@@ -564,3 +564,13 @@ func GetFileMode(key string) fs.FileMode {
 
 	return fs.FileMode(mode)
 }
+
+func containsString(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+
+	return false
+}
