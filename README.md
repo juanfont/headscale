@@ -4,7 +4,7 @@
 
 An open source, self-hosted implementation of the Tailscale control server.
 
-Join our [Discord](https://discord.gg/xGj2TuqyxY) server for a chat.
+Join our [Discord](https://discord.gg/c84AZQhmpx) server for a chat.
 
 **Note:** Always select the same GitHub tag as the released version you use
 to ensure you have the correct example configuration and documentation.
