@@ -408,7 +408,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		aclPath := absPath(viper.GetString("acl_policy_path"))
 		err = app.LoadACLPolicy(aclPath)
 		if err != nil {
-			log.Error().
+			log.Fatal().
 				Str("path", aclPath).
 				Err(err).
 				Msg("Could not load the ACL policy")
