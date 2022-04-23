@@ -41,14 +41,14 @@ fmt:
 	clang-format -style="{BasedOnStyle: Google, IndentWidth: 4, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true, ColumnLimit: 0}" -i $(PROTO_SOURCES)
 
 proto-lint:
-	cd proto/ && buf lint
+	cd proto/ && go run github.com/bufbuild/buf/cmd/buf lint
 
 compress: build
 	upx --brute headscale
 
 generate:
 	rm -rf gen
-	buf generate proto
+	go run github.com/bufbuild/buf/cmd/buf generate proto
 
 install-protobuf-plugins:
 	go install \
