@@ -39,8 +39,18 @@ type Machine struct {
 	NodeKey     string
 	DiscoKey    string
 	IPAddresses MachineAddresses
-	Name        string
-	Nickname    string
+
+	// Hostname represents the name given by the Tailscale
+	// client during registration
+	Hostname string
+
+	// Givenname represents either:
+	// a DNS normalized version of Hostname
+	// a valid name set by the User
+	//
+	// GivenName is the name used in all DNS related
+	// parts of headscale.
+	GivenName   string
 	NamespaceID uint
 	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
 
@@ -150,7 +160,7 @@ func getFilteredByACLPeers(
 ) Machines {
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Finding peers filtered by ACLs")
 
 	peers := make(map[uint64]Machine)
@@ -217,7 +227,7 @@ func getFilteredByACLPeers(
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msgf("Found some machines: %v", machines)
 
 	return authorizedPeers
@@ -226,7 +236,7 @@ func getFilteredByACLPeers(
 func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Finding direct peers")
 
 	machines := Machines{}
@@ -241,7 +251,7 @@ func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msgf("Found peers: %s", machines.String())
 
 	return machines, nil
@@ -278,7 +288,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msgf("Found total peers: %s", peers.String())
 
 	return peers, nil
@@ -318,7 +328,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 	}
 
 	for _, m := range machines {
-		if m.Name == name {
+		if m.Hostname == name {
 			return &m, nil
 		}
 	}
@@ -369,26 +379,27 @@ func (h *Headscale) ExpireMachine(machine *Machine) {
 }
 
 // RenameMachine takes a Machine struct and sets the expire field to now.
-func (h *Headscale) RenameMachine(machine *Machine, newName string) {
-	newNickname, err := NormalizeToFQDNRules(
+func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
+	err := CheckForFQDNRules(
 		newName,
-		h.cfg.OIDC.StripEmaildomain,
 	)
 	if err != nil {
 		log.Error().
 			Caller().
 			Str("func", "RenameMachine").
-			Str("machine", machine.Name).
+			Str("machine", machine.Hostname).
 			Str("newName", newName).
 			Err(err)
 
-		return
+		return err
 	}
-	machine.Nickname = newNickname
+	machine.GivenName = newName
 
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
 	h.db.Save(machine)
+
+	return nil
 }
 
 // RefreshMachine takes a Machine struct and sets the expire field to now.
@@ -458,23 +469,23 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 	}
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Time("last_successful_update", lastChange).
 		Time("last_state_change", lastUpdate).
-		Msgf("Checking if %s is missing updates", machine.Name)
+		Msgf("Checking if %s is missing updates", machine.Hostname)
 
 	return lastUpdate.Before(lastChange)
 }
 
 func (machine Machine) String() string {
-	return machine.Name
+	return machine.Hostname
 }
 
 func (machines Machines) String() string {
 	temp := make([]string, len(machines))
 
 	for index, machine := range machines {
-		temp[index] = machine.Name
+		temp[index] = machine.Hostname
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
@@ -485,7 +496,7 @@ func (machines MachinesP) String() string {
 	temp := make([]string, len(machines))
 
 	for index, machine := range machines {
-		temp[index] = machine.Name
+		temp[index] = machine.Hostname
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
@@ -578,15 +589,11 @@ func (machine Machine) toNode(
 		keyExpiry = time.Time{}
 	}
 
-	name := machine.Name
-	if len(machine.Nickname) > 0 {
-		name = machine.Nickname
-	}
 	var hostname string
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
-			name,
+			machine.GivenName,
 			machine.Namespace.Name,
 			baseDomain,
 		)
@@ -598,7 +605,7 @@ func (machine Machine) toNode(
 			)
 		}
 	} else {
-		hostname = machine.Name
+		hostname = machine.GivenName
 	}
 
 	hostInfo := machine.GetHostInfo()
@@ -639,8 +646,8 @@ func (machine *Machine) toProto() *v1.Machine {
 		NodeKey:     machine.NodeKey,
 		DiscoKey:    machine.DiscoKey,
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
-		Name:        machine.Name,
-		Nickname:    machine.Nickname,
+		Name:        machine.Hostname,
+		GivenName:   machine.GivenName,
 		Namespace:   machine.Namespace.toProto(),
 
 		// TODO(kradalby): Implement register method enum converter
@@ -711,7 +718,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Attempting to register machine")
 
 	h.ipAllocationMutex.Lock()
@@ -722,7 +729,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", machine.Name).
+			Str("machine", machine.Hostname).
 			Msg("Could not find IP for the new machine")
 
 		return nil, err
@@ -734,7 +741,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
 		Msg("Machine registered with the database")
 
@@ -783,7 +790,7 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 		if !containsIPPrefix(machine.GetAdvertisedRoutes(), newRoute) {
 			return fmt.Errorf(
 				"route (%s) is not available on node %s: %w",
-				machine.Name,
+				machine.Hostname,
 				newRoute, errMachineRouteIsNotAvailable,
 			)
 		}

@@ -298,14 +298,14 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 				time.Now().
 					After(machine.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
 				log.Info().
-					Str("machine", machine.Name).
+					Str("machine", machine.Hostname).
 					Msg("Ephemeral client removed from database")
 
 				err = h.db.Unscoped().Delete(machine).Error
 				if err != nil {
 					log.Error().
 						Err(err).
-						Str("machine", machine.Name).
+						Str("machine", machine.Hostname).
 						Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
 			}

@@ -27,7 +27,7 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -53,7 +53,7 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -72,7 +72,7 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
@@ -94,7 +94,7 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine3",
+		Hostname:       "testmachine3",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
@@ -124,7 +124,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 			MachineKey:     "foo" + strconv.Itoa(index),
 			NodeKey:        "bar" + strconv.Itoa(index),
 			DiscoKey:       "faa" + strconv.Itoa(index),
-			Name:           "testmachine" + strconv.Itoa(index),
+			Hostname:       "testmachine" + strconv.Itoa(index),
 			NamespaceID:    namespace.ID,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
@@ -139,9 +139,9 @@ func (s *Suite) TestListPeers(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(peersOfMachine0), check.Equals, 9)
-	c.Assert(peersOfMachine0[0].Name, check.Equals, "testmachine2")
-	c.Assert(peersOfMachine0[5].Name, check.Equals, "testmachine7")
-	c.Assert(peersOfMachine0[8].Name, check.Equals, "testmachine10")
+	c.Assert(peersOfMachine0[0].Hostname, check.Equals, "testmachine2")
+	c.Assert(peersOfMachine0[5].Hostname, check.Equals, "testmachine7")
+	c.Assert(peersOfMachine0[8].Hostname, check.Equals, "testmachine10")
 }
 
 func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
@@ -172,7 +172,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 			IPAddresses: MachineAddresses{
 				netaddr.MustParseIP(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1))),
 			},
-			Name:           "testmachine" + strconv.Itoa(index),
+			Hostname:       "testmachine" + strconv.Itoa(index),
 			NamespaceID:    stor[index%2].namespace.ID,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(stor[index%2].key.ID),
@@ -197,11 +197,11 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	adminMachine, err := app.GetMachineByID(1)
-	c.Logf("Machine(%v), namespace: %v", adminMachine.Name, adminMachine.Namespace)
+	c.Logf("Machine(%v), namespace: %v", adminMachine.Hostname, adminMachine.Namespace)
 	c.Assert(err, check.IsNil)
 
 	testMachine, err := app.GetMachineByID(2)
-	c.Logf("Machine(%v), namespace: %v", testMachine.Name, testMachine.Namespace)
+	c.Logf("Machine(%v), namespace: %v", testMachine.Hostname, testMachine.Namespace)
 	c.Assert(err, check.IsNil)
 
 	machines, err := app.ListMachines()
@@ -212,15 +212,15 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 
 	c.Log(peersOfTestMachine)
 	c.Assert(len(peersOfTestMachine), check.Equals, 4)
-	c.Assert(peersOfTestMachine[0].Name, check.Equals, "testmachine4")
-	c.Assert(peersOfTestMachine[1].Name, check.Equals, "testmachine6")
-	c.Assert(peersOfTestMachine[3].Name, check.Equals, "testmachine10")
+	c.Assert(peersOfTestMachine[0].Hostname, check.Equals, "testmachine4")
+	c.Assert(peersOfTestMachine[1].Hostname, check.Equals, "testmachine6")
+	c.Assert(peersOfTestMachine[3].Hostname, check.Equals, "testmachine10")
 
 	c.Log(peersOfAdminMachine)
 	c.Assert(len(peersOfAdminMachine), check.Equals, 9)
-	c.Assert(peersOfAdminMachine[0].Name, check.Equals, "testmachine2")
-	c.Assert(peersOfAdminMachine[2].Name, check.Equals, "testmachine4")
-	c.Assert(peersOfAdminMachine[5].Name, check.Equals, "testmachine7")
+	c.Assert(peersOfAdminMachine[0].Hostname, check.Equals, "testmachine2")
+	c.Assert(peersOfAdminMachine[2].Hostname, check.Equals, "testmachine4")
+	c.Assert(peersOfAdminMachine[5].Hostname, check.Equals, "testmachine7")
 }
 
 func (s *Suite) TestExpireMachine(c *check.C) {
@@ -238,7 +238,7 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
