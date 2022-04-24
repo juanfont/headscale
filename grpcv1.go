@@ -215,7 +215,7 @@ func (api headscaleV1APIServer) ExpireMachine(
 	)
 
 	log.Trace().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Time("expiry", *machine.Expiry).
 		Msg("machine expired")
 
@@ -231,13 +231,16 @@ func (api headscaleV1APIServer) RenameMachine(
 		return nil, err
 	}
 
-	api.h.RenameMachine(
+	err = api.h.RenameMachine(
 		machine,
 		request.GetNewName(),
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	log.Trace().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Time("expiry", *machine.Expiry).
 		Msg("machine expired")
 
@@ -393,7 +396,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 
 	newMachine := Machine{
 		MachineKey: request.GetKey(),
-		Name:       request.GetName(),
+		Hostname:   request.GetName(),
 		Namespace:  *namespace,
 
 		Expiry:               &time.Time{},
