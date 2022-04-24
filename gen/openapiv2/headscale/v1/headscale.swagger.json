@@ -944,7 +944,7 @@
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
         },
-        "nickname": {
+        "givenName": {
           "type": "string"
         }
       }
