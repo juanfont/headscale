@@ -231,7 +231,7 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 	if machine != nil {
 		log.Trace().
 			Caller().
-			Str("machine", machine.Name).
+			Str("machine", machine.Hostname).
 			Msg("machine already registered, reauthenticating")
 
 		h.RefreshMachine(machine, time.Time{})
