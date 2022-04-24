@@ -39,7 +39,7 @@ message Machine {
     // bytes endpoints      = 16;
     // bytes enabled_routes = 17;
 
-    string          nickname     = 18;
+    string          given_name     = 18;
 }
 
 message RegisterMachineRequest {
