@@ -378,7 +378,8 @@ func (h *Headscale) ExpireMachine(machine *Machine) {
 	h.db.Save(machine)
 }
 
-// RenameMachine takes a Machine struct and sets the expire field to now.
+// RenameMachine takes a Machine struct and a new GivenName for the machines
+// and renames it.
 func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
 	err := CheckForFQDNRules(
 		newName,
