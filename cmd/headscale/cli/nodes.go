@@ -215,8 +215,8 @@ var expireNodeCmd = &cobra.Command{
 }
 
 var renameNodeCmd = &cobra.Command{
-	Use:     "rename NEW_NAME",
-	Short:   "Renames a machine in your network",
+	Use:   "rename NEW_NAME",
+	Short: "Renames a machine in your network",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -241,7 +241,7 @@ var renameNodeCmd = &cobra.Command{
 		}
 		request := &v1.RenameMachineRequest{
 			MachineId: identifier,
-			NewName: newName,
+			NewName:   newName,
 		}
 
 		response, err := client.RenameMachine(ctx, request)
@@ -358,8 +358,8 @@ func nodesToPtables(
 	tableData := pterm.TableData{
 		{
 			"ID",
-			"Name",
-			"Nickname",
+			"Hostname",
+			"Friendly name",
 			"NodeKey",
 			"Namespace",
 			"IP addresses",
@@ -424,7 +424,7 @@ func nodesToPtables(
 			[]string{
 				strconv.FormatUint(machine.Id, headscale.Base10),
 				machine.Name,
-				machine.Nickname,
+				machine.GivenName,
 				nodeKey.ShortString(),
 				namespace,
 				strings.Join(machine.IpAddresses, ", "),
