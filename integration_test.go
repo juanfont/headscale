@@ -168,16 +168,8 @@ func (s *IntegrationTestSuite) Join(
 func (s *IntegrationTestSuite) tailscaleContainer(
 	namespace, identifier, version string,
 ) (string, *dockertest.Resource) {
-	tailscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile.tailscale",
-		ContextDir: ".",
-		BuildArgs: []docker.BuildArg{
-			{
-				Name:  "TAILSCALE_VERSION",
-				Value: version,
-			},
-		},
-	}
+	tailscaleBuildOptions := getDockerBuildOptions(version)
+
 	hostname := fmt.Sprintf(
 		"%s-tailscale-%s-%s",
 		namespace,
@@ -200,7 +192,7 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		DockerAllowNetworkAdministration,
 	)
 	if err != nil {
-		log.Fatalf("Could not start resource: %s", err)
+		log.Fatalf("Could not start tailscale container version %s: %s", version, err)
 	}
 	log.Printf("Created %s container\n", hostname)
 
@@ -249,7 +241,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
-		log.Fatalf("Could not start resource: %s", err)
+		log.Fatalf("Could not start headscale container: %s", err)
 	}
 	log.Println("Created headscale container")
 

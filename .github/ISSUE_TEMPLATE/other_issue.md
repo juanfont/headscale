@@ -6,6 +6,8 @@ labels: ["bug"]
 assignees: ""
 ---
 
+<!-- Headscale is a multinational community across the globe. Our common language is English. Please consider raising the issue in this language. -->
+
 <!-- If you have a question, please consider using our Discord for asking questions -->
 
 **Issue description**

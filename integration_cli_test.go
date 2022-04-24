@@ -72,7 +72,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
-		log.Fatalf("Could not start resource: %s", err)
+		log.Fatalf("Could not start headscale container: %s", err)
 	}
 	fmt.Println("Created headscale container")
 
