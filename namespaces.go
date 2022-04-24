@@ -237,7 +237,6 @@ func (n *Namespace) toProto() *v1.Namespace {
 	}
 }
 
-// TODO(kradalby): We need these fields to be unique, we need to add a hash or something at the end.
 // NormalizeToFQDNRules will replace forbidden chars in namespace
 // it can also return an error if the namespace doesn't respect RFC 952 and 1123.
 func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {

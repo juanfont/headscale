@@ -133,6 +133,8 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 
 			return
 		}
+
+		// TODO(kradalby): We need these fields to be unique, we need to add a hash or something at the end.
 		normalizedHostname, err := NormalizeToFQDNRules(
 			req.Hostinfo.Hostname,
 			h.cfg.OIDC.StripEmaildomain,
