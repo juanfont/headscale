@@ -385,11 +385,17 @@ func Test_getTags(t *testing.T) {
 				test.args.machine,
 				test.args.stripEmailDomain,
 			)
-			if !reflect.DeepEqual(gotValid, test.wantValid) {
-				t.Errorf("getTags() = %v, want %v", gotValid, test.wantValid)
+			for _, valid := range gotValid {
+				if !contains(test.wantValid, valid) {
+					t.Errorf("valids: getTags() = %v, want %v", gotValid, test.wantValid)
+					break
+				}
 			}
-			if !reflect.DeepEqual(gotInvalid, test.wantInvalid) {
-				t.Errorf("getTags() = %v, want %v", gotInvalid, test.wantInvalid)
+			for _, invalid := range gotInvalid {
+				if !contains(test.wantInvalid, invalid) {
+					t.Errorf("invalids: getTags() = %v, want %v", gotInvalid, test.wantInvalid)
+					break
+				}
 			}
 		})
 	}

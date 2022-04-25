@@ -670,6 +670,7 @@ func getTags(
 		owners, err := expandTagOwners(aclPolicy, tag, stripEmailDomain)
 		if errors.Is(err, errInvalidTag) {
 			invalidTagMap[tag] = true
+			continue
 		}
 		var found bool
 		for _, owner := range owners {
