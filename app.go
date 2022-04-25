@@ -119,6 +119,10 @@ type OIDCConfig struct {
 	Issuer           string
 	ClientID         string
 	ClientSecret     string
+	Scope            []string
+	ExtraParams      map[string]string
+	AllowedDomains   []string
+	AllowedUsers     []string
 	StripEmaildomain bool
 }
 

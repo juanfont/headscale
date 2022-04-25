@@ -317,3 +317,13 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 
 	return base64.RawURLEncoding.EncodeToString(b), err
 }
+
+func IsStringInSlice(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+
+	return false
+}
