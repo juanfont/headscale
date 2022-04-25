@@ -360,18 +360,15 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 	return nil
 }
 
-// UpdateDBMachine takes a Machine struct pointer (typically already loaded from database
-// search for the same machine in the database and update the latter.
-func (h *Headscale) UpdateDBMachine(machine Machine) error {
-	destMachine := Machine{}
-	if result := h.db.Where("id = ?", machine.ID).Find(&destMachine); result.Error != nil {
-		return result.Error
+// SetTags takes a Machine struct pointer and update the forced tags.
+func (h *Headscale) SetTags(machine *Machine, tags []string) error {
+	machine.ForcedTags = tags
+	err := h.UpdateACLRules()
+	if err != nil {
+		return err
 	}
-	destMachine.Name = machine.Name
-	destMachine.NamespaceID = machine.NamespaceID
-	destMachine.ForcedTags = machine.ForcedTags
-
-	h.db.Save(destMachine)
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.db.Save(machine)
 
 	return nil
 }

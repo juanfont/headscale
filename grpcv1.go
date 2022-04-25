@@ -3,8 +3,6 @@ package headscale
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -184,35 +182,23 @@ func (api headscaleV1APIServer) GetMachine(
 	return &v1.GetMachineResponse{Machine: machine.toProto()}, nil
 }
 
-func (api headscaleV1APIServer) UpdateMachine(
+func (api headscaleV1APIServer) SetTags(
 	ctx context.Context,
-	request *v1.UpdateMachineRequest,
-) (*v1.UpdateMachineResponse, error) {
-	rMachine := request.GetMachine()
-	machine, err := api.h.GetMachineByID(rMachine.Id)
+	request *v1.SetTagsRequest,
+) (*v1.SetTagsResponse, error) {
+	machine, err := api.h.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
 	}
 
-	machine.ForcedTags = rMachine.ForcedTags
-	machine.Name = rMachine.Name
-	id, err := strconv.Atoi(rMachine.Namespace.Id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert namespace id to integer: %w", err)
-	}
-	machine.NamespaceID = uint(id)
+	api.h.SetTags(machine, request.GetTags())
 
-	err = api.h.UpdateDBMachine(*machine)
-	if err != nil {
-		return nil, err
-	}
+	log.Trace().
+		Str("machine", machine.Name).
+		Strs("tags", request.GetTags()).
+		Msg("Changing tags of machine")
 
-	machine, err = api.h.GetMachineByID(rMachine.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	return &v1.UpdateMachineResponse{Machine: machine.toProto()}, nil
+	return &v1.SetTagsResponse{Machine: machine.toProto()}, nil
 }
 
 func (api headscaleV1APIServer) DeleteMachine(
