@@ -40,9 +40,9 @@ message Machine {
     // bytes endpoints      = 16;
     // bytes enabled_routes = 17;
 
-    repeated string forced_tags = 18;
+    repeated string forced_tags  = 18;
     repeated string invalid_tags = 19;
-    repeated string valid_tags = 20;
+    repeated string valid_tags   = 20;
 }
 
 message RegisterMachineRequest {
@@ -63,8 +63,8 @@ message GetMachineResponse {
 }
 
 message SetTagsRequest {
-    uint64 machine_id = 1;
-    repeated string tags = 2;
+    uint64          machine_id = 1;
+    repeated string tags       = 2;
 }
 
 message SetTagsResponse {

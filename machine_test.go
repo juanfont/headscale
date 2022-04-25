@@ -387,13 +387,23 @@ func Test_getTags(t *testing.T) {
 			)
 			for _, valid := range gotValid {
 				if !contains(test.wantValid, valid) {
-					t.Errorf("valids: getTags() = %v, want %v", gotValid, test.wantValid)
+					t.Errorf(
+						"valids: getTags() = %v, want %v",
+						gotValid,
+						test.wantValid,
+					)
+
 					break
 				}
 			}
 			for _, invalid := range gotInvalid {
 				if !contains(test.wantInvalid, invalid) {
-					t.Errorf("invalids: getTags() = %v, want %v", gotInvalid, test.wantInvalid)
+					t.Errorf(
+						"invalids: getTags() = %v, want %v",
+						gotInvalid,
+						test.wantInvalid,
+					)
+
 					break
 				}
 			}

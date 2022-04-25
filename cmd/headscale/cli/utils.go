@@ -566,9 +566,9 @@ func GetFileMode(key string) fs.FileMode {
 	return fs.FileMode(mode)
 }
 
-func contains[T string](ts []T, t T) bool {
+func contains(ts []T, t T) bool {
 	for _, v := range ts {
-		if reflect.DeepEqual(v,t) {
+		if reflect.DeepEqual(v, t) {
 			return true
 		}
 	}

@@ -363,8 +363,7 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 // SetTags takes a Machine struct pointer and update the forced tags.
 func (h *Headscale) SetTags(machine *Machine, tags []string) error {
 	machine.ForcedTags = tags
-	err := h.UpdateACLRules()
-	if err != nil {
+	if err := h.UpdateACLRules(); err != nil {
 		return err
 	}
 	h.setLastStateChangeToNow(machine.Namespace.Name)
@@ -670,6 +669,7 @@ func getTags(
 		owners, err := expandTagOwners(aclPolicy, tag, stripEmailDomain)
 		if errors.Is(err, errInvalidTag) {
 			invalidTagMap[tag] = true
+
 			continue
 		}
 		var found bool
