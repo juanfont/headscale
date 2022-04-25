@@ -62,11 +62,12 @@ message GetMachineResponse {
     Machine machine = 1;
 }
 
-message UpdateMachineRequest {
-    Machine machine = 1;
+message SetTagsRequest {
+    uint64 machine_id = 1;
+    repeated string tags = 2;
 }
 
-message UpdateMachineResponse {
+message SetTagsResponse {
     Machine machine = 1;
 }
 

@@ -81,9 +81,9 @@ service HeadscaleService {
         };
     }
 
-    rpc UpdateMachine(UpdateMachineRequest) returns (UpdateMachineResponse) {
+    rpc SetTags(SetTagsRequest) returns (SetTagsResponse) {
         option (google.api.http) = {
-            post: "/api/v1/machine/{machine.id}"
+            post: "/api/v1/machine/{machine_id}/tags"
             body: "*"
         };
     }
