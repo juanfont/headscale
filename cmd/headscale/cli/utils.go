@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -565,9 +566,9 @@ func GetFileMode(key string) fs.FileMode {
 	return fs.FileMode(mode)
 }
 
-func containsString(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
+func contains[T string](ts []T, t T) bool {
+	for _, v := range ts {
+		if reflect.DeepEqual(v,t) {
 			return true
 		}
 	}

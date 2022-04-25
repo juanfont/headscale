@@ -372,12 +372,12 @@ func nodesToPtables(
 			tags += "," + tag
 		}
 		for _, tag := range machine.InvalidTags {
-			if !containsString(machine.ForcedTags, tag) {
+			if !contains(machine.ForcedTags, tag) {
 				tags += "," + pterm.LightRed(tag)
 			}
 		}
 		for _, tag := range machine.ValidTags {
-			if !containsString(machine.ForcedTags, tag) {
+			if !contains(machine.ForcedTags, tag) {
 				tags += "," + pterm.LightGreen(tag)
 			}
 		}

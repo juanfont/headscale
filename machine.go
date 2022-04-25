@@ -125,7 +125,7 @@ func (machine Machine) isExpired() bool {
 
 func containsAddresses(inputs []string, addrs []string) bool {
 	for _, addr := range addrs {
-		if containsString(inputs, addr) {
+		if contains(inputs, addr) {
 			return true
 		}
 	}
@@ -803,7 +803,7 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	}
 
 	for _, newRoute := range newRoutes {
-		if !containsIPPrefix(machine.GetAdvertisedRoutes(), newRoute) {
+		if !contains(machine.GetAdvertisedRoutes(), newRoute) {
 			return fmt.Errorf(
 				"route (%s) is not available on node %s: %w",
 				machine.Name,

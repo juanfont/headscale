@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -223,16 +224,6 @@ func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 	return ipSet, nil
 }
 
-func containsString(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-
-	return false
-}
-
 func tailNodesToString(nodes []*tailcfg.Node) string {
 	temp := make([]string, len(nodes))
 
@@ -282,9 +273,9 @@ func stringToIPPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
 	return result, nil
 }
 
-func containsIPPrefix(prefixes []netaddr.IPPrefix, prefix netaddr.IPPrefix) bool {
-	for _, p := range prefixes {
-		if prefix == p {
+func contains[T string | netaddr.IPPrefix](ts []T, t T) bool {
+	for _, v := range ts {
+		if reflect.DeepEqual(v, t) {
 			return true
 		}
 	}

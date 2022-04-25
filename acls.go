@@ -332,7 +332,7 @@ func excludeCorrectlyTaggedNodes(
 	out := []Machine{}
 	tags := []string{}
 	for tag, ns := range aclPolicy.TagOwners {
-		if containsString(ns, namespace) {
+		if contains(ns, namespace) {
 			tags = append(tags, tag)
 		}
 	}
@@ -342,7 +342,7 @@ func excludeCorrectlyTaggedNodes(
 
 		found := false
 		for _, t := range hi.RequestTags {
-			if containsString(tags, t) {
+			if contains(tags, t) {
 				found = true
 
 				break
