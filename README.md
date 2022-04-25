@@ -91,6 +91,10 @@ Please have a look at the documentation under [`docs/`](docs/).
 To contribute to headscale you would need the lastest version of [Go](https://golang.org)
 and [Buf](https://buf.build)(Protobuf generator).
 
+We recommend using [Nix](https://nixos.org/) to setup a development environment. This can
+be done with `nix develop`, which will install the tools and give you a shell.
+This guarantees that you will have the same dev env as `headscale` maintainers.
+
 PRs and suggestions are welcome.
 
 ### Code style
@@ -115,10 +119,12 @@ Check out the `.golangci.yaml` and `Makefile` to see the specific configuration.
 
 - Go
 - Buf
-- Protobuf tools:
+- Protobuf tools
+
+Install and activate:
 
 ```shell
-make install-protobuf-plugins
+nix develop
 ```
 
 ### Testing and building
@@ -139,6 +145,12 @@ make test
 ```
 
 To build the program:
+
+```shell
+nix build
+```
+
+or
 
 ```shell
 make build
