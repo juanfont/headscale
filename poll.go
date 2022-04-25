@@ -619,7 +619,7 @@ func (h *Headscale) scheduledPollWorker(
 	}
 }
 
-func closeChanWithLog(channel C, machine, name string) {
+func closeChanWithLog[C chan []byte | chan struct{}](channel C, machine, name string) {
 	log.Trace().
 		Str("handler", "PollNetMap").
 		Str("machine", machine).
