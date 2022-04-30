@@ -27,7 +27,8 @@ require (
 	github.com/tailscale/hujson v0.0.0-20211215203138-ffd971c5f362
 	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e
 	github.com/zsais/go-gin-prometheus v0.1.0
-	golang.org/x/crypto v0.0.0-20220321153916-2c7772ba3064
+	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
+	golang.org/x/net v0.0.0-20220407224826-aac1ed45d8e3
 	golang.org/x/oauth2 v0.0.0-20220223155221-ee480838109b
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	google.golang.org/genproto v0.0.0-20220228195345-15d65a4533f7
@@ -40,7 +41,7 @@ require (
 	gorm.io/driver/postgres v1.3.1
 	gorm.io/gorm v1.23.1
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
-	tailscale.com v1.1.1-0.20220324165610-b647977b33d1
+	tailscale.com v1.24.0
 )
 
 require (
@@ -48,6 +49,7 @@ require (
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
+	github.com/alexbrainman/sspi v0.0.0-20210105120005-909beea2cc74 // indirect
 	github.com/atomicgo/cursor v0.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.2 // indirect
@@ -69,6 +71,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/google/go-cmp v0.5.7 // indirect
 	github.com/google/go-github v17.0.0+incompatible // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -89,6 +92,8 @@ require (
 	github.com/jinzhu/gorm v1.9.16 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.4 // indirect
+	github.com/josharian/native v1.0.0 // indirect
+	github.com/jsimonetti/rtnetlink v1.1.2-0.20220408201609-d380b505068b // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
@@ -101,6 +106,8 @@ require (
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/mattn/go-sqlite3 v1.14.11 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
+	github.com/mdlayher/netlink v1.6.0 // indirect
+	github.com/mdlayher/socket v0.2.3 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.4.3 // indirect
@@ -133,11 +140,11 @@ require (
 	go4.org/intern v0.0.0-20211027215823-ae77deb06f29 // indirect
 	go4.org/mem v0.0.0-20210711025021-927187094b94 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37 // indirect
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
-	golang.org/x/sys v0.0.0-20220315194320-039c03cc5b86 // indirect
+	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11 // indirect
+	golang.zx2c4.com/wireguard/windows v0.4.10 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
