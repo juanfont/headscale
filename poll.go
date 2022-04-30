@@ -163,6 +163,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 
 	// There has been an update to _any_ of the nodes that the other nodes would
 	// need to know about
+	log.Trace().Msgf("Updating peers for machine %s", machine.Name)
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
 	// The request is not ReadOnly, so we need to set up channels for updating
@@ -433,7 +434,7 @@ func (h *Headscale) PollNetMapStream(
 						Err(err).
 						Msg("Could not get the map update")
 				}
-				_, err = writer.Write(data)
+				nBytes, err := writer.Write(data)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").
@@ -450,7 +451,7 @@ func (h *Headscale) PollNetMapStream(
 					Str("handler", "PollNetMapStream").
 					Str("machine", machine.Name).
 					Str("channel", "update").
-					Msg("Updated Map has been sent")
+					Msgf("Updated Map has been sent (%d bytes)", nBytes)
 				updateRequestsSentToNode.WithLabelValues(machine.Namespace.Name, machine.Name, "success").
 					Inc()
 
@@ -588,7 +589,7 @@ func (h *Headscale) scheduledPollWorker(
 
 		case <-updateCheckerTicker.C:
 			log.Debug().
-				Str("func", "scheduledPollWorker").
+				Caller().
 				Str("machine", machine.Name).
 				Msg("Sending update request")
 			updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Name, "scheduled-update").
