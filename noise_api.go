@@ -260,6 +260,7 @@ func (h *Headscale) NoisePollNetMapHandler(ctx *gin.Context) {
 
 	// There has been an update to _any_ of the nodes that the other nodes would
 	// need to know about
+	log.Trace().Msgf("Updating peers for noise machine %s", machine.Name)
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
 	// The request is not ReadOnly, so we need to set up channels for updating
