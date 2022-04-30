@@ -19,6 +19,9 @@ const (
 )
 
 const (
+	// ts2021UpgradePath is the path that the server listens on for the WebSockets upgrade
+	ts2021UpgradePath = "/ts2021"
+
 	// upgradeHeader is the value of the Upgrade HTTP header used to
 	// indicate the Tailscale control protocol.
 	upgradeHeaderValue = "tailscale-control-protocol"
