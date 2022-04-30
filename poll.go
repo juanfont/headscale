@@ -64,8 +64,8 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
-				Str("handler", "PollNetMap").
-				Msgf("Ignoring request, cannot find machine with key %s", machineKey.String())
+				Caller().
+				Msgf("Ignoring request (client %s), cannot find machine with key %s", ctx.ClientIP(), machineKey.String())
 			ctx.String(http.StatusUnauthorized, "")
 
 			return
@@ -241,7 +241,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		Msg("Finished stream, closing PollNetMap session")
 }
 
-// PollNetMapStream takes care of /machine/:id/map
+// PollNetMapStream takes care of /map
 // stream logic, ensuring we communicate updates and data
 // to the connected clients.
 func (h *Headscale) PollNetMapStream(
@@ -254,24 +254,6 @@ func (h *Headscale) PollNetMapStream(
 	updateChan chan struct{},
 ) {
 	{
-		machine, err := h.GetMachineByMachineKey(machineKey)
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.Warn().
-					Str("handler", "PollNetMap").
-					Msgf("Ignoring request, cannot find machine with key %s", machineKey.String())
-				ctx.String(http.StatusUnauthorized, "")
-
-				return
-			}
-			log.Error().
-				Str("handler", "PollNetMap").
-				Msgf("Failed to fetch machine from the database with Machine key: %s", machineKey.String())
-			ctx.String(http.StatusInternalServerError, "")
-
-			return
-		}
-
 		ctx := context.WithValue(ctx.Request.Context(), "machineName", machine.Name)
 
 		ctx, cancel := context.WithCancel(ctx)
