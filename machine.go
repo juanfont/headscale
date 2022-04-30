@@ -375,6 +375,7 @@ func (h *Headscale) ExpireMachine(machine *Machine) {
 	now := time.Now()
 	machine.Expiry = &now
 
+	log.Trace().Msgf("Expiring machine %s", machine.Name)
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
 	h.db.Save(machine)
@@ -387,6 +388,7 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 	machine.LastSuccessfulUpdate = &now
 	machine.Expiry = &expiry
 
+	log.Trace().Msgf("Refreshing machine %s", machine.Name)
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
 	h.db.Save(machine)
