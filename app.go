@@ -273,9 +273,10 @@ func NewHeadscale(cfg Config) (*Headscale, error) {
 }
 
 // Redirect to our TLS url.
-func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
-	target := h.cfg.ServerURL + req.URL.RequestURI()
-	http.Redirect(w, req, target, http.StatusFound)
+func (h *Headscale) redirect(ctx *gin.Context) {
+	log.Trace().Msgf("Redirecting to TLS, path %s", ctx.Request.RequestURI)
+	target := h.cfg.ServerURL + ctx.Request.RequestURI
+	http.Redirect(ctx.Writer, ctx.Request, target, http.StatusFound)
 }
 
 // expireEphemeralNodes deletes ephemeral machine records that have not been
@@ -479,7 +480,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 		func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"healthy": "ok"}) },
 	)
 
-	router.POST("/ts2021", h.NoiseUpgradeHandler)
+	router.POST(ts2021UpgradePath, h.NoiseUpgradeHandler)
 	router.GET("/key", h.KeyHandler)
 	router.GET("/register", h.RegisterWebAPI)
 	router.POST("/machine/:id/map", h.PollNetMapHandler)
@@ -772,10 +773,14 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
+			httpRouter := gin.Default()
+			httpRouter.POST(ts2021UpgradePath, h.NoiseUpgradeHandler)
+			httpRouter.NoRoute(h.redirect)
+
 			go func() {
 				log.Fatal().
 					Caller().
-					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
+					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, certManager.HTTPHandler(httpRouter))).
 					Msg("failed to set up a HTTP server")
 			}()
 
@@ -813,6 +818,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 }
 
 func (h *Headscale) setLastStateChangeToNow(namespace string) {
+	log.Trace().Msgf("setting last state change to now for namespace %s", namespace)
 	now := time.Now().UTC()
 	lastStateUpdate.WithLabelValues("", "headscale").Set(float64(now.Unix()))
 	h.lastStateChange.Store(namespace, now)
