@@ -104,6 +104,12 @@ service HeadscaleService {
             get: "/api/v1/machine"
         };
     }
+
+    rpc MoveMachine(MoveMachineRequest) returns (MoveMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/namespace"
+        };
+    }
     // --- Machine end ---
 
     // --- Route start ---
