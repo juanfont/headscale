@@ -122,7 +122,7 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()
-		pubKeyStr := pubKey.UntypedHexString() // nolint
+		pubKeyStr := pubKey.UntypedHexString()
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\n"+
 			"Upgrade: DERP\r\n"+
 			"Connection: Upgrade\r\n"+
