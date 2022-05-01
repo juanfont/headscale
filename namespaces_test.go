@@ -372,3 +372,38 @@ func TestCheckForFQDNRules(t *testing.T) {
 		})
 	}
 }
+
+func (s *Suite) TestSetMachineNamespace(c *check.C) {
+	oldNamespace, err := app.CreateNamespace("old")
+	c.Assert(err, check.IsNil)
+
+	newNamespace, err := app.CreateNamespace("new")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKey(oldNamespace.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	machine := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Name:           "testmachine",
+		NamespaceID:    oldNamespace.ID,
+		RegisterMethod: RegisterMethodAuthKey,
+		AuthKeyID:      uint(pak.ID),
+	}
+	app.db.Save(&machine)
+	c.Assert(machine.NamespaceID, check.Equals, oldNamespace.ID)
+
+	err = app.SetMachineNamespace(&machine, newNamespace.Name)
+	c.Assert(err, check.IsNil)
+	c.Assert(machine.NamespaceID, check.Equals, newNamespace.ID)
+
+	err = app.SetMachineNamespace(&machine, "non-existing-namespace")
+	c.Assert(err, check.Equals, errNamespaceNotFound)
+
+	err = app.SetMachineNamespace(&machine, newNamespace.Name)
+	c.Assert(err, check.IsNil)
+	c.Assert(machine.NamespaceID, check.Equals, newNamespace.ID)
+}
