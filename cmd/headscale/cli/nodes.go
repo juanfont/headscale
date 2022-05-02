@@ -48,11 +48,14 @@ func init() {
 	nodeCmd.AddCommand(deleteNodeCmd)
 
 	moveNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+
 	err = moveNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+
 	moveNodeCmd.Flags().StringP("namespace", "n", "", "New namespace")
+
 	err = moveNodeCmd.MarkFlagRequired("namespace")
 	if err != nil {
 		log.Fatalf(err.Error())
