@@ -399,6 +399,7 @@ func (s *Suite) TestSetMachineNamespace(c *check.C) {
 	err = app.SetMachineNamespace(&machine, newNamespace.Name)
 	c.Assert(err, check.IsNil)
 	c.Assert(machine.NamespaceID, check.Equals, newNamespace.ID)
+	c.Assert(machine.Namespace.Name, check.Equals, newNamespace.Name)
 
 	err = app.SetMachineNamespace(&machine, "non-existing-namespace")
 	c.Assert(err, check.Equals, errNamespaceNotFound)
@@ -406,4 +407,5 @@ func (s *Suite) TestSetMachineNamespace(c *check.C) {
 	err = app.SetMachineNamespace(&machine, newNamespace.Name)
 	c.Assert(err, check.IsNil)
 	c.Assert(machine.NamespaceID, check.Equals, newNamespace.ID)
+	c.Assert(machine.Namespace.Name, check.Equals, newNamespace.Name)
 }
