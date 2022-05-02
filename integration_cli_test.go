@@ -1300,6 +1300,29 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 
 	assert.Equal(s.T(), machine.Namespace, newNamespace)
 
+	listAllNodesResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var allNodes []v1.Machine
+	err = json.Unmarshal([]byte(listAllNodesResult), &allNodes)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), allNodes, 1)
+
+	assert.Equal(s.T(), allNodes[0].Id, machine.Id)
+	assert.Equal(s.T(), allNodes[0].Namespace, machine.Namespace)
+	assert.Equal(s.T(), allNodes[0].Namespace, newNamespace)
+
 	moveToNonExistingNSResult, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
