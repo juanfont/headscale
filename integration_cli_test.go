@@ -1222,3 +1222,172 @@ func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
 		}
 	}
 }
+
+func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
+	oldNamespace, err := s.createNamespace("old-namespace")
+	assert.Nil(s.T(), err)
+	newNamespace, err := s.createNamespace("new-namespace")
+	assert.Nil(s.T(), err)
+
+	// Randomly generated machine key
+	machineKey := "688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
+
+	_, err = ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"debug",
+			"create-node",
+			"--name",
+			"nomad-machine",
+			"--namespace",
+			oldNamespace.Name,
+			"--key",
+			machineKey,
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	machineResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"--namespace",
+			oldNamespace.Name,
+			"register",
+			"--key",
+			machineKey,
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var machine v1.Machine
+	err = json.Unmarshal([]byte(machineResult), &machine)
+	assert.Nil(s.T(), err)
+
+	assert.Equal(s.T(), uint64(1), machine.Id)
+	assert.Equal(s.T(), "nomad-machine", machine.Name)
+	assert.Equal(s.T(), machine.Namespace.Name, oldNamespace.Name)
+
+	machineId := fmt.Sprintf("%d", machine.Id)
+
+	moveToNewNSResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"move",
+			"--identifier",
+			machineId,
+			"--namespace",
+			newNamespace.Name,
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	err = json.Unmarshal([]byte(moveToNewNSResult), &machine)
+	assert.Nil(s.T(), err)
+
+	assert.Equal(s.T(), machine.Namespace, newNamespace)
+
+	listAllNodesResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var allNodes []v1.Machine
+	err = json.Unmarshal([]byte(listAllNodesResult), &allNodes)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), allNodes, 1)
+
+	assert.Equal(s.T(), allNodes[0].Id, machine.Id)
+	assert.Equal(s.T(), allNodes[0].Namespace, machine.Namespace)
+	assert.Equal(s.T(), allNodes[0].Namespace, newNamespace)
+
+	moveToNonExistingNSResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"move",
+			"--identifier",
+			machineId,
+			"--namespace",
+			"non-existing-namespace",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	assert.Contains(
+		s.T(),
+		string(moveToNonExistingNSResult),
+		"Namespace not found",
+	)
+	assert.Equal(s.T(), machine.Namespace, newNamespace)
+
+	moveToOldNSResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"move",
+			"--identifier",
+			machineId,
+			"--namespace",
+			oldNamespace.Name,
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	err = json.Unmarshal([]byte(moveToOldNSResult), &machine)
+	assert.Nil(s.T(), err)
+
+	assert.Equal(s.T(), machine.Namespace, oldNamespace)
+
+	moveToSameNSResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"move",
+			"--identifier",
+			machineId,
+			"--namespace",
+			oldNamespace.Name,
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	err = json.Unmarshal([]byte(moveToSameNSResult), &machine)
+	assert.Nil(s.T(), err)
+
+	assert.Equal(s.T(), machine.Namespace, oldNamespace)
+}

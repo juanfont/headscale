@@ -8,6 +8,7 @@
 - Fix labels cardinality error when registering unknown pre-auth key [#519](https://github.com/juanfont/headscale/pull/519)
 - Fix send on closed channel crash in polling [#542](https://github.com/juanfont/headscale/pull/542)
 - Fixed spurious calls to setLastStateChangeToNow from ephemeral nodes [#566](https://github.com/juanfont/headscale/pull/566)
+- Add command for moving nodes between namespaces [#362](https://github.com/juanfont/headscale/issues/362)
 
 ## 0.15.0 (2022-03-20)
 

@@ -46,6 +46,21 @@ func init() {
 		log.Fatalf(err.Error())
 	}
 	nodeCmd.AddCommand(deleteNodeCmd)
+
+	moveNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+
+	err = moveNodeCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	moveNodeCmd.Flags().StringP("namespace", "n", "", "New namespace")
+
+	err = moveNodeCmd.MarkFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	nodeCmd.AddCommand(moveNodeCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -293,6 +308,80 @@ var deleteNodeCmd = &cobra.Command{
 		} else {
 			SuccessOutput(map[string]string{"Result": "Node not deleted"}, "Node not deleted", output)
 		}
+	},
+}
+
+var moveNodeCmd = &cobra.Command{
+	Use:     "move",
+	Short:   "Move node to another namespace",
+	Aliases: []string{"mv"},
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		identifier, err := cmd.Flags().GetUint64("identifier")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting ID to integer: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		namespace, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting namespace: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		getRequest := &v1.GetMachineRequest{
+			MachineId: identifier,
+		}
+
+		_, err = client.GetMachine(ctx, getRequest)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Error getting node: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		moveRequest := &v1.MoveMachineRequest{
+			MachineId: identifier,
+			Namespace: namespace,
+		}
+
+		moveResponse, err := client.MoveMachine(ctx, moveRequest)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Error moving node: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(moveResponse.Machine, "Node moved to another namespace", output)
 	},
 }
 
