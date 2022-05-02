@@ -381,28 +381,7 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		if output != "" {
-			SuccessOutput(moveResponse, "", output)
-
-			return
-		}
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf(
-					"Error moving node: %s",
-					status.Convert(err).Message(),
-				),
-				output,
-			)
-
-			return
-		}
-		SuccessOutput(
-			map[string]string{"Result": "Node moved to another namespace"},
-			"Node moved to another namespace",
-			output,
-		)
+		SuccessOutput(moveResponse.Machine, "Node moved to another namespace", output)
 	},
 }
 
