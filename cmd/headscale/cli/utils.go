@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
@@ -68,6 +69,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
 
+	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -369,6 +371,10 @@ func getHeadscaleConfig() headscale.Config {
 			Issuer:           viper.GetString("oidc.issuer"),
 			ClientID:         viper.GetString("oidc.client_id"),
 			ClientSecret:     viper.GetString("oidc.client_secret"),
+			Scope:            viper.GetStringSlice("oidc.scope"),
+			ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
+			AllowedDomains:   viper.GetStringSlice("oidc.allowed_domains"),
+			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 		},
 
