@@ -659,14 +659,18 @@ func (machine *Machine) toProto() *v1.Machine {
 
 // getTags will return the tags of the current machine.
 func getTags(
-	aclPolicy ACLPolicy,
+	aclPolicy *ACLPolicy,
 	machine Machine,
 	stripEmailDomain bool,
 ) (validTags []string, invalidTags []string) {
+	if aclPolicy == nil {
+		return
+	}
+	fmt.Println(aclPolicy)
 	validTagMap := make(map[string]bool)
 	invalidTagMap := make(map[string]bool)
 	for _, tag := range machine.HostInfo.RequestTags {
-		owners, err := expandTagOwners(aclPolicy, tag, stripEmailDomain)
+		owners, err := expandTagOwners(*aclPolicy, tag, stripEmailDomain)
 		if errors.Is(err, errInvalidTag) {
 			invalidTagMap[tag] = true
 

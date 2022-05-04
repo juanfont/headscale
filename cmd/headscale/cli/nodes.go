@@ -68,7 +68,8 @@ func init() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	tagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
+	tagCmd.Flags().
+		StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
 }
 

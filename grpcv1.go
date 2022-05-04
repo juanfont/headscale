@@ -268,7 +268,7 @@ func (api headscaleV1APIServer) ListMachines(
 	for index, machine := range machines {
 		m := machine.toProto()
 		validTags, invalidTags := getTags(
-			*api.h.aclPolicy,
+			api.h.aclPolicy,
 			machine,
 			api.h.cfg.OIDC.StripEmaildomain,
 		)

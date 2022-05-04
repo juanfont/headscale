@@ -279,7 +279,7 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 
 func Test_getTags(t *testing.T) {
 	type args struct {
-		aclPolicy        ACLPolicy
+		aclPolicy        *ACLPolicy
 		machine          Machine
 		stripEmailDomain bool
 	}
@@ -292,7 +292,7 @@ func Test_getTags(t *testing.T) {
 		{
 			name: "valid tag one machine",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{
 						"tag:valid": []string{"joe"},
 					},
@@ -313,7 +313,7 @@ func Test_getTags(t *testing.T) {
 		{
 			name: "invalid tag and valid tag one machine",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{
 						"tag:valid": []string{"joe"},
 					},
@@ -334,7 +334,7 @@ func Test_getTags(t *testing.T) {
 		{
 			name: "multiple invalid and identical tags, should return only one invalid tag",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{
 						"tag:valid": []string{"joe"},
 					},
@@ -359,7 +359,7 @@ func Test_getTags(t *testing.T) {
 		{
 			name: "only invalid tags",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{
 						"tag:valid": []string{"joe"},
 					},
@@ -376,6 +376,23 @@ func Test_getTags(t *testing.T) {
 			},
 			wantValid:   nil,
 			wantInvalid: []string{"tag:invalid", "very-invalid"},
+		},
+		{
+			name: "empty ACLPolicy should return empty tags and should not panic",
+			args: args{
+				aclPolicy: nil,
+				machine: Machine{
+					Namespace: Namespace{
+						Name: "joe",
+					},
+					HostInfo: HostInfo{
+						RequestTags: []string{"tag:invalid", "very-invalid"},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   nil,
+			wantInvalid: nil,
 		},
 	}
 	for _, test := range tests {
