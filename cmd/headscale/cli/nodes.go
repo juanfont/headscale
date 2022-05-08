@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	survey "github.com/AlecAivazis/survey/v2"
@@ -13,6 +12,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
+	"inet.af/netaddr"
 	"tailscale.com/types/key"
 )
 
@@ -452,6 +452,16 @@ func nodesToPtables(
 			// Shared into this namespace
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
+
+		var IpAddresses string
+		if netaddr.MustParseIP(machine.IpAddresses[0]).Is4() {
+			IpAddresses = machine.IpAddresses[0]
+			IpAddresses += ", " + machine.IpAddresses[1]
+		} else {
+			IpAddresses = machine.IpAddresses[1]
+			IpAddresses += ", " + machine.IpAddresses[0]
+		}
+
 		tableData = append(
 			tableData,
 			[]string{
@@ -459,7 +469,7 @@ func nodesToPtables(
 				machine.Name,
 				nodeKey.ShortString(),
 				namespace,
-				strings.Join(machine.IpAddresses, ", "),
+				IpAddresses,
 				strconv.FormatBool(ephemeral),
 				lastSeenTime,
 				online,
