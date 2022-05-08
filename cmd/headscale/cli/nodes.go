@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	survey "github.com/AlecAivazis/survey/v2"
@@ -453,13 +454,14 @@ func nodesToPtables(
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
 
-		var IpAddresses string
-		if netaddr.MustParseIP(machine.IpAddresses[0]).Is4() {
-			IpAddresses = machine.IpAddresses[0]
-			IpAddresses += ", " + machine.IpAddresses[1]
-		} else {
-			IpAddresses = machine.IpAddresses[1]
-			IpAddresses += ", " + machine.IpAddresses[0]
+		var IpV4Address string
+		var IpV6Address string
+		for _, addr := range machine.IpAddresses {
+			if netaddr.MustParseIP(addr).Is4() {
+				IpV4Address = addr
+			} else {
+				IpV6Address = addr
+			}
 		}
 
 		tableData = append(
@@ -469,7 +471,7 @@ func nodesToPtables(
 				machine.Name,
 				nodeKey.ShortString(),
 				namespace,
-				IpAddresses,
+				strings.Join([]string{IpV4Address, IpV6Address}, ", "),
 				strconv.FormatBool(ephemeral),
 				lastSeenTime,
 				online,
