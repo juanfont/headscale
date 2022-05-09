@@ -8,6 +8,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/spf13/viper"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 )
@@ -45,7 +46,8 @@ func (h *Headscale) CreatePreAuthKey(
 		return nil, err
 	}
 
-	now := time.Now().UTC()
+	location, _ := time.LoadLocation(viper.GetString("TZ"))
+	now := time.Now().In(location)
 	kstr, err := h.generateKey()
 	if err != nil {
 		return nil, err

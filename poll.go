@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -97,7 +98,8 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 	machine.Name = hname
 	machine.HostInfo = HostInfo(*req.Hostinfo)
 	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
-	now := time.Now().UTC()
+	location, _ := time.LoadLocation(viper.GetString("TZ"))
+	now := time.Now().In(location)
 
 	// update ACLRules with peer informations (to update server tags if necessary)
 	if h.aclPolicy != nil {
@@ -339,7 +341,8 @@ func (h *Headscale) PollNetMapStream(
 				// since the stream opened, terminate connection.
 				return false
 			}
-			now := time.Now().UTC()
+			location, _ := time.LoadLocation(viper.GetString("TZ"))
+			now := time.Now().In(location)
 			machine.LastSeen = &now
 
 			lastStateUpdate.WithLabelValues(machine.Namespace.Name, machine.Name).
@@ -405,7 +408,8 @@ func (h *Headscale) PollNetMapStream(
 				// since the stream opened, terminate connection.
 				return false
 			}
-			now := time.Now().UTC()
+			location, _ := time.LoadLocation(viper.GetString("TZ"))
+			now := time.Now().In(location)
 			machine.LastSeen = &now
 			err = h.TouchMachine(machine)
 			if err != nil {
@@ -495,7 +499,8 @@ func (h *Headscale) PollNetMapStream(
 					// since the stream opened, terminate connection.
 					return false
 				}
-				now := time.Now().UTC()
+				location, _ := time.LoadLocation(viper.GetString("TZ"))
+				now := time.Now().In(location)
 
 				lastStateUpdate.WithLabelValues(machine.Namespace.Name, machine.Name).
 					Set(float64(now.Unix()))
@@ -546,7 +551,9 @@ func (h *Headscale) PollNetMapStream(
 				// since the stream opened, terminate connection.
 				return false
 			}
-			now := time.Now().UTC()
+
+			location, _ := time.LoadLocation(viper.GetString("TZ"))
+			now := time.Now().In(location)
 			machine.LastSeen = &now
 			err = h.TouchMachine(machine)
 			if err != nil {

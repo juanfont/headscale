@@ -11,6 +11,7 @@ import (
 	"github.com/fatih/set"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -116,8 +117,9 @@ func (machine Machine) isExpired() bool {
 	if machine.Expiry == nil || machine.Expiry.IsZero() {
 		return false
 	}
+	location, _ := time.LoadLocation(viper.GetString("TZ"))
 
-	return time.Now().UTC().After(*machine.Expiry)
+	return time.Now().In(location).After(*machine.Expiry)
 }
 
 func containsAddresses(inputs []string, addrs []string) bool {

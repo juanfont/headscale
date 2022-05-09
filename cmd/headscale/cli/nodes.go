@@ -12,6 +12,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"google.golang.org/grpc/status"
 	"inet.af/netaddr"
 	"tailscale.com/types/key"
@@ -413,7 +414,8 @@ func nodesToPtables(
 		var lastSeen time.Time
 		var lastSeenTime string
 		if machine.LastSeen != nil {
-			lastSeen = machine.LastSeen.AsTime()
+			location, _ := time.LoadLocation(viper.GetString("TZ"))
+			lastSeen = machine.LastSeen.AsTime().In(location)
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
 

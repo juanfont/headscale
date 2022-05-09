@@ -36,7 +36,19 @@ func main() {
 		colors = false
 	}
 
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	viper.SetDefault("TZ", "UTC")
+	if tz := os.Getenv("TZ"); tz != "" {
+		_, err := time.LoadLocation(tz)
+		if err == nil {
+			viper.SetDefault("TZ", tz)
+		}
+	}
+
+	zerolog.TimestampFunc = func() time.Time {
+		location, _ := time.LoadLocation(viper.GetString("TZ"))
+		return time.Now().In(location)
+	}
+
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339,

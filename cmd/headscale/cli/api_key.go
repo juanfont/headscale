@@ -10,6 +10,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -119,7 +120,8 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 		request := &v1.CreateApiKeyRequest{}
 
 		duration, _ := cmd.Flags().GetDuration("expiration")
-		expiration := time.Now().UTC().Add(duration)
+		location, _ := time.LoadLocation(viper.GetString("TZ"))
+		expiration := time.Now().In(location).Add(duration)
 
 		log.Trace().Dur("expiration", duration).Msg("expiration has been set")
 

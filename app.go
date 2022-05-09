@@ -27,6 +27,7 @@ import (
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
@@ -791,7 +792,8 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 }
 
 func (h *Headscale) setLastStateChangeToNow(namespace string) {
-	now := time.Now().UTC()
+	location, _ := time.LoadLocation(viper.GetString("TZ"))
+	now := time.Now().In(location)
 	lastStateUpdate.WithLabelValues("", "headscale").Set(float64(now.Unix()))
 	h.lastStateChange.Store(namespace, now)
 }
@@ -814,7 +816,8 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 	log.Trace().Msgf("Latest times %#v", times)
 
 	if len(times) == 0 {
-		return time.Now().UTC()
+		location, _ := time.LoadLocation(viper.GetString("TZ"))
+		return time.Now().In(location)
 	} else {
 		return times[0]
 	}
