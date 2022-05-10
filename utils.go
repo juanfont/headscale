@@ -335,3 +335,8 @@ func NowFromTZEnv() time.Time {
 	now := time.Now().In(location)
 	return now
 }
+
+func TimeFromTZEnv(input time.Time) time.Time {
+	location, _ := time.LoadLocation(viper.GetString("TZ"))
+	return input.In(location)
+}
