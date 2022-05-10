@@ -24,6 +24,8 @@ func init() {
 	enableRouteCmd.Flags().
 		StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to enable")
 	enableRouteCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	enableRouteCmd.Flags().BoolP("all", "a", false, "All routes from host")
+
 	err = enableRouteCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -125,20 +127,41 @@ omit the route you do not want to enable.
 			return
 		}
 
-		routes, err := cmd.Flags().GetStringSlice("route")
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting routes from flag: %s", err),
-				output,
-			)
-
-			return
-		}
-
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
 		defer conn.Close()
+
+		routes := []string{}
+
+		isAll, _ := cmd.Flags().GetBool("all")
+		if isAll == true {
+			// x := v1.NewHeadscaleServiceClient(conn)
+			// machine, err := x.GetMachineByID(machineID)
+			response, err := client.GetMachineRoute(ctx, &v1.GetMachineRouteRequest{
+				MachineId: machineID,
+			})
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf(
+						"Cannot get machine routes: %s\n",
+						status.Convert(err).Message(),
+					),
+					output,
+				)
+			}
+			routes = response.GetRoutes().GetAdvertisedRoutes()
+		} else {
+			routes, err = cmd.Flags().GetStringSlice("route")
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Error getting routes from flag: %s", err),
+					output,
+				)
+				return
+			}
+		}
 
 		request := &v1.EnableMachineRoutesRequest{
 			MachineId: machineID,
