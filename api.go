@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -121,8 +120,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		return
 	}
 
-	location, _ := time.LoadLocation(viper.GetString("TZ"))
-	now := time.Now().In(location)
+	now := NowFromTZEnv()
 	machine, err := h.GetMachineByMachineKey(machineKey)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Info().Str("machine", req.Hostinfo.Hostname).Msg("New machine")
@@ -191,7 +189,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		if machine.NodeKey == NodePublicKeyStripPrefix(req.NodeKey) {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
-			if !req.Expiry.IsZero() && req.Expiry.In(location).Before(now) {
+			if !req.Expiry.IsZero() && req.Expiry.Before(NowFromTZEnv()) {
 				h.handleMachineLogOut(ctx, machineKey, *machine)
 
 				return
@@ -603,8 +601,7 @@ func (h *Headscale) handleAuthKey(
 		machine.AuthKeyID = uint(pak.ID)
 		h.RefreshMachine(machine, registerRequest.Expiry)
 	} else {
-		location, _ := time.LoadLocation(viper.GetString("TZ"))
-		now := time.Now().In(location)
+		now := NowFromTZEnv()
 		machineToRegister := Machine{
 			Name:           registerRequest.Hostinfo.Hostname,
 			NamespaceID:    pak.Namespace.ID,
