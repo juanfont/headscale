@@ -45,10 +45,7 @@ func main() {
 		}
 	}
 
-	zerolog.TimestampFunc = func() time.Time {
-
-		return headscale.NowFromTZEnv()
-	}
+	zerolog.TimestampFunc = headscale.NowFromTZEnv
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stdout,
