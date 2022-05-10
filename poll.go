@@ -546,7 +546,6 @@ func (h *Headscale) PollNetMapStream(
 				// since the stream opened, terminate connection.
 				return false
 			}
-
 			now := NowFromTZEnv()
 			machine.LastSeen = &now
 			err = h.TouchMachine(machine)
