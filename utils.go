@@ -13,8 +13,10 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -326,4 +328,10 @@ func IsStringInSlice(slice []string, str string) bool {
 	}
 
 	return false
+}
+
+func NowFromTZEnv() time.Time {
+	location, _ := time.LoadLocation(viper.GetString("TZ"))
+	now := time.Now().In(location)
+	return now
 }
