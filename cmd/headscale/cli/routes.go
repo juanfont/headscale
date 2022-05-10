@@ -131,12 +131,10 @@ omit the route you do not want to enable.
 		defer cancel()
 		defer conn.Close()
 
-		routes := []string{}
+		var routes []string
 
 		isAll, _ := cmd.Flags().GetBool("all")
-		if isAll == true {
-			// x := v1.NewHeadscaleServiceClient(conn)
-			// machine, err := x.GetMachineByID(machineID)
+		if isAll {
 			response, err := client.GetMachineRoute(ctx, &v1.GetMachineRouteRequest{
 				MachineId: machineID,
 			})
@@ -149,6 +147,8 @@ omit the route you do not want to enable.
 					),
 					output,
 				)
+
+				return
 			}
 			routes = response.GetRoutes().GetAdvertisedRoutes()
 		} else {
@@ -159,6 +159,7 @@ omit the route you do not want to enable.
 					fmt.Sprintf("Error getting routes from flag: %s", err),
 					output,
 				)
+
 				return
 			}
 		}
