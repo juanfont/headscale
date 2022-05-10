@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/efekarakus/termcolor"
+	"github.com/juanfont/headscale"
 	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -45,8 +46,7 @@ func main() {
 	}
 
 	zerolog.TimestampFunc = func() time.Time {
-		location, _ := time.LoadLocation(viper.GetString("TZ"))
-		return time.Now().In(location)
+		return headscale.NowFromTZEnv()
 	}
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{
