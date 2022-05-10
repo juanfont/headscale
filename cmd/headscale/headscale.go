@@ -46,6 +46,7 @@ func main() {
 	}
 
 	zerolog.TimestampFunc = func() time.Time {
+
 		return headscale.NowFromTZEnv()
 	}
 
