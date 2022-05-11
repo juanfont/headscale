@@ -21,6 +21,7 @@ func init() {
 	rootCmd.AddCommand(nodeCmd)
 	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
 	nodeCmd.AddCommand(listNodesCmd)
+
 	listNodesCmd.Flags().BoolP("show-tags", "", false, "Show tags assigned to node")
 	nodeCmd.AddCommand(listNodesCmd)
 
@@ -401,38 +402,23 @@ func nodesToPtables(
 	machines []*v1.Machine,
 ) (pterm.TableData, error) {
 
-	var tableData pterm.TableData
+	tableHeader := []string{
+		"ID",
+		"Name",
+		"NodeKey",
+		"Namespace",
+		"IP addresses",
+		"Ephemeral",
+		"Last seen",
+		"Online",
+		"Expired",
+	}
 
 	if showTags {
-		tableData = pterm.TableData{
-			{
-				"ID",
-				"Name",
-				"NodeKey",
-				"Namespace",
-				"IP addresses",
-				"Ephemeral",
-				"Last seen",
-				"Online",
-				"Expired",
-				"Tags",
-			},
-		}
-	} else {
-		tableData = pterm.TableData{
-			{
-				"ID",
-				"Name",
-				"NodeKey",
-				"Namespace",
-				"IP addresses",
-				"Ephemeral",
-				"Last seen",
-				"Online",
-				"Expired",
-			},
-		}
+		tableHeader = append(tableHeader, "Tags")
 	}
+
+	tableData := pterm.TableData{tableHeader}
 
 	for _, machine := range machines {
 		var ephemeral bool
@@ -494,38 +480,23 @@ func nodesToPtables(
 			}
 		}
 
-		if showTags {
-			tableData = append(
-				tableData,
-				[]string{
-					strconv.FormatUint(machine.Id, headscale.Base10),
-					machine.Name,
-					nodeKey.ShortString(),
-					namespace,
-					strings.Join([]string{IpV4Address, IpV6Address}, ", "),
-					strconv.FormatBool(ephemeral),
-					lastSeenTime,
-					online,
-					expired,
-					strings.Join(machine.RequestTags, ", "),
-				},
-			)
-		} else {
-			tableData = append(
-				tableData,
-				[]string{
-					strconv.FormatUint(machine.Id, headscale.Base10),
-					machine.Name,
-					nodeKey.ShortString(),
-					namespace,
-					strings.Join([]string{IpV4Address, IpV6Address}, ", "),
-					strconv.FormatBool(ephemeral),
-					lastSeenTime,
-					online,
-					expired,
-				},
-			)
+		nodeData := []string{
+			strconv.FormatUint(machine.Id, headscale.Base10),
+			machine.Name,
+			nodeKey.ShortString(),
+			namespace,
+			strings.Join([]string{IpV4Address, IpV6Address}, ", "),
+			strconv.FormatBool(ephemeral),
+			lastSeenTime,
+			online,
+			expired,
 		}
+
+		if showTags {
+			nodeData = append(nodeData, strings.Join(machine.RequestTags, ", "))
+		}
+
+		tableData = append(tableData, nodeData)
 	}
 
 	return tableData, nil
