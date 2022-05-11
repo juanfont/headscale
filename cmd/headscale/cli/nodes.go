@@ -21,6 +21,8 @@ func init() {
 	rootCmd.AddCommand(nodeCmd)
 	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
 	nodeCmd.AddCommand(listNodesCmd)
+	listNodesCmd.Flags().BoolP("show-tags", "", false, "Show tags assigned to node")
+	nodeCmd.AddCommand(listNodesCmd)
 
 	registerNodeCmd.Flags().StringP("namespace", "n", "", "Namespace")
 	err := registerNodeCmd.MarkFlagRequired("namespace")
@@ -133,6 +135,13 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
+		showTags, err := cmd.Flags().GetBool("show-tags")
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error getting tags: %s", err), output)
+
+			return
+		}
+
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
 		defer conn.Close()
@@ -158,7 +167,7 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
-		tableData, err := nodesToPtables(namespace, response.Machines)
+		tableData, err := nodesToPtables(namespace, showTags, response.Machines)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
@@ -388,20 +397,41 @@ var moveNodeCmd = &cobra.Command{
 
 func nodesToPtables(
 	currentNamespace string,
+	showTags bool,
 	machines []*v1.Machine,
 ) (pterm.TableData, error) {
-	tableData := pterm.TableData{
-		{
-			"ID",
-			"Name",
-			"NodeKey",
-			"Namespace",
-			"IP addresses",
-			"Ephemeral",
-			"Last seen",
-			"Online",
-			"Expired",
-		},
+
+	var tableData pterm.TableData
+
+	if showTags {
+		tableData = pterm.TableData{
+			{
+				"ID",
+				"Name",
+				"NodeKey",
+				"Namespace",
+				"IP addresses",
+				"Ephemeral",
+				"Last seen",
+				"Online",
+				"Expired",
+				"Tags",
+			},
+		}
+	} else {
+		tableData = pterm.TableData{
+			{
+				"ID",
+				"Name",
+				"NodeKey",
+				"Namespace",
+				"IP addresses",
+				"Ephemeral",
+				"Last seen",
+				"Online",
+				"Expired",
+			},
+		}
 	}
 
 	for _, machine := range machines {
@@ -464,20 +494,38 @@ func nodesToPtables(
 			}
 		}
 
-		tableData = append(
-			tableData,
-			[]string{
-				strconv.FormatUint(machine.Id, headscale.Base10),
-				machine.Name,
-				nodeKey.ShortString(),
-				namespace,
-				strings.Join([]string{IpV4Address, IpV6Address}, ", "),
-				strconv.FormatBool(ephemeral),
-				lastSeenTime,
-				online,
-				expired,
-			},
-		)
+		if showTags {
+			tableData = append(
+				tableData,
+				[]string{
+					strconv.FormatUint(machine.Id, headscale.Base10),
+					machine.Name,
+					nodeKey.ShortString(),
+					namespace,
+					strings.Join([]string{IpV4Address, IpV6Address}, ", "),
+					strconv.FormatBool(ephemeral),
+					lastSeenTime,
+					online,
+					expired,
+					strings.Join(machine.RequestTags, ", "),
+				},
+			)
+		} else {
+			tableData = append(
+				tableData,
+				[]string{
+					strconv.FormatUint(machine.Id, headscale.Base10),
+					machine.Name,
+					nodeKey.ShortString(),
+					namespace,
+					strings.Join([]string{IpV4Address, IpV6Address}, ", "),
+					strconv.FormatBool(ephemeral),
+					lastSeenTime,
+					online,
+					expired,
+				},
+			)
+		}
 	}
 
 	return tableData, nil

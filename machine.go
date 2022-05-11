@@ -613,6 +613,7 @@ func (machine *Machine) toProto() *v1.Machine {
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Name,
 		Namespace:   machine.Namespace.toProto(),
+		RequestTags: machine.HostInfo.RequestTags,
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
