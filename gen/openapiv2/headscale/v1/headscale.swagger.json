@@ -943,6 +943,12 @@
         },
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
+        },
+        "requestTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
