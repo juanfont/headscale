@@ -24,7 +24,7 @@ To create a API key, log into your `headscale` server and generate a key:
 headscale apikeys create --expiration 90d
 ```
 
-Copy the output of the command and save it for later. Please not that you can not retrieve a key again,
+Copy the output of the command and save it for later. Please note that you can not retrieve a key again,
 if the key is lost, expire the old one, and create a new key.
 
 To list the keys currently assosicated with the server:
