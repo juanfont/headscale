@@ -395,7 +395,6 @@ func nodesToPtables(
 	showRoutes bool,
 	machines []*v1.Machine,
 ) (pterm.TableData, error) {
-
 	tableHeader := []string{
 		"ID",
 		"Name",
