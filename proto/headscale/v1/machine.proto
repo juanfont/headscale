@@ -31,6 +31,9 @@ message Machine {
     google.protobuf.Timestamp created_at = 12;
 
     RegisterMethod register_method = 13;
+    reserved 14 to 18;
+    repeated string requested_routes = 19;
+    repeated string enabled_routes = 20;
     // google.protobuf.Timestamp updated_at = 14;
     // google.protobuf.Timestamp deleted_at = 15;
 

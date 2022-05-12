@@ -608,11 +608,13 @@ func (machine *Machine) toProto() *v1.Machine {
 		Id:         machine.ID,
 		MachineKey: machine.MachineKey,
 
-		NodeKey:     machine.NodeKey,
-		DiscoKey:    machine.DiscoKey,
-		IpAddresses: machine.IPAddresses.ToStringSlice(),
-		Name:        machine.Name,
-		Namespace:   machine.Namespace.toProto(),
+		NodeKey:         machine.NodeKey,
+		DiscoKey:        machine.DiscoKey,
+		IpAddresses:     machine.IPAddresses.ToStringSlice(),
+		Name:            machine.Name,
+		Namespace:       machine.Namespace.toProto(),
+		RequestedRoutes: ipPrefixToString(machine.GetAdvertisedRoutes()),
+		EnabledRoutes:   ipPrefixToString(machine.GetEnabledRoutes()),
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,

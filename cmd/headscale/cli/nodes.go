@@ -22,6 +22,9 @@ func init() {
 	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
 	nodeCmd.AddCommand(listNodesCmd)
 
+	listNodesCmd.Flags().BoolP("show-routes", "", false, "Show routes assiged to node")
+	nodeCmd.AddCommand(listNodesCmd)
+
 	registerNodeCmd.Flags().StringP("namespace", "n", "", "Namespace")
 	err := registerNodeCmd.MarkFlagRequired("namespace")
 	if err != nil {
@@ -126,6 +129,7 @@ var listNodesCmd = &cobra.Command{
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
+		showRoutes, _ := cmd.Flags().GetBool("show-routes")
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
@@ -158,7 +162,7 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
-		tableData, err := nodesToPtables(namespace, response.Machines)
+		tableData, err := nodesToPtables(namespace, showRoutes, response.Machines)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
@@ -388,21 +392,27 @@ var moveNodeCmd = &cobra.Command{
 
 func nodesToPtables(
 	currentNamespace string,
+	showRoutes bool,
 	machines []*v1.Machine,
 ) (pterm.TableData, error) {
-	tableData := pterm.TableData{
-		{
-			"ID",
-			"Name",
-			"NodeKey",
-			"Namespace",
-			"IP addresses",
-			"Ephemeral",
-			"Last seen",
-			"Online",
-			"Expired",
-		},
+
+	tableHeader := []string{
+		"ID",
+		"Name",
+		"NodeKey",
+		"Namespace",
+		"IP addresses",
+		"Ephemeral",
+		"Last seen",
+		"Online",
+		"Expired",
 	}
+
+	if showRoutes {
+		tableHeader = append(tableHeader, "Routes")
+	}
+
+	tableData := pterm.TableData{tableHeader}
 
 	for _, machine := range machines {
 		var ephemeral bool
@@ -464,20 +474,32 @@ func nodesToPtables(
 			}
 		}
 
-		tableData = append(
-			tableData,
-			[]string{
-				strconv.FormatUint(machine.Id, headscale.Base10),
-				machine.Name,
-				nodeKey.ShortString(),
-				namespace,
-				strings.Join([]string{IpV4Address, IpV6Address}, ", "),
-				strconv.FormatBool(ephemeral),
-				lastSeenTime,
-				online,
-				expired,
-			},
-		)
+		var routes []string
+		for _, route := range machine.RequestedRoutes {
+			if isStringInSlice(machine.EnabledRoutes, route) {
+				routes = append(routes, pterm.LightGreen(route))
+			} else {
+				routes = append(routes, pterm.LightRed(route))
+			}
+		}
+
+		nodeData := []string{
+			strconv.FormatUint(machine.Id, headscale.Base10),
+			machine.Name,
+			nodeKey.ShortString(),
+			namespace,
+			strings.Join([]string{IpV4Address, IpV6Address}, ", "),
+			strconv.FormatBool(ephemeral),
+			lastSeenTime,
+			online,
+			expired,
+		}
+
+		if showRoutes {
+			nodeData = append(nodeData, strings.Join(routes, ", "))
+		}
+
+		tableData = append(tableData, nodeData)
 	}
 
 	return tableData, nil
