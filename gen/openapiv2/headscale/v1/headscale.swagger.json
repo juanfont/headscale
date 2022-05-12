@@ -943,6 +943,18 @@
         },
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
+        },
+        "requestedRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "enabledRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
