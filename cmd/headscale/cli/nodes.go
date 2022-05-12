@@ -477,7 +477,7 @@ func nodesToPtables(
 		var routes []string
 		for _, route := range machine.RequestedRoutes {
 			if isStringInSlice(machine.EnabledRoutes, route) {
-				routes = append(routes, pterm.LightGreen(route))
+				routes = append(routes, "*"+pterm.LightGreen(route))
 			} else {
 				routes = append(routes, pterm.LightRed(route))
 			}
