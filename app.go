@@ -874,3 +874,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 
 	return &machineKey, nil
 }
+
+func (h *Headscale) GetACLPolicy() (*ACLPolicy) {
+	return h.aclPolicy
+}

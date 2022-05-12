@@ -11,11 +11,11 @@ import (
 
 // ACLPolicy represents a Tailscale ACL Policy.
 type ACLPolicy struct {
-	Groups    Groups    `json:"Groups"    yaml:"Groups"`
-	Hosts     Hosts     `json:"Hosts"     yaml:"Hosts"`
-	TagOwners TagOwners `json:"TagOwners" yaml:"TagOwners"`
-	ACLs      []ACL     `json:"ACLs"      yaml:"ACLs"`
-	Tests     []ACLTest `json:"Tests"     yaml:"Tests"`
+	Groups    Groups    `json:"Groups,omitempty"    yaml:"Groups,omitempty"`
+	Hosts     Hosts     `json:"Hosts,omitempty"     yaml:"Hosts,omitempty"`
+	TagOwners TagOwners `json:"TagOwners,omitempty" yaml:"TagOwners,omitempty"`
+	ACLs      []ACL     `json:"ACLs,omitempty"      yaml:"ACLs,omitempty"`
+	Tests     []ACLTest `json:"Tests,omitempty"     yaml:"Tests,omitempty"`
 }
 
 // ACL is a basic rule for the ACL Policy.
