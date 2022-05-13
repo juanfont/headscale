@@ -3,6 +3,7 @@ package headscale
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -189,6 +190,15 @@ func (api headscaleV1APIServer) SetTags(
 	machine, err := api.h.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
+	}
+
+	for _, tag := range request.GetTags() {
+		if strings.Index(tag, "tag:") != 0 {
+			return &v1.SetTagsResponse{Machine: nil, Error: &v1.Error{
+				Status:  400,
+				Message: "Invalid tag detected. Each tag must start with the string 'tag:'",
+			}}, nil
+		}
 	}
 
 	api.h.SetTags(machine, request.GetTags())
