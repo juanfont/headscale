@@ -13,6 +13,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
+	"inet.af/netaddr"
 	"tailscale.com/types/key"
 )
 
@@ -496,12 +497,23 @@ func nodesToPtables(
 			// Shared into this namespace
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
+
+		var IpV4Address string
+		var IpV6Address string
+		for _, addr := range machine.IpAddresses {
+			if netaddr.MustParseIP(addr).Is4() {
+				IpV4Address = addr
+			} else {
+				IpV6Address = addr
+			}
+		}
+
 		nodeData := []string{
 			strconv.FormatUint(machine.Id, headscale.Base10),
 			machine.Name,
 			nodeKey.ShortString(),
 			namespace,
-			strings.Join(machine.IpAddresses, ", "),
+			strings.Join([]string{IpV4Address, IpV6Address}, ", "),
 			strconv.FormatBool(ephemeral),
 			lastSeenTime,
 			online,
