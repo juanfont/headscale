@@ -8,6 +8,8 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"tailscale.com/tailcfg"
 )
 
@@ -194,10 +196,12 @@ func (api headscaleV1APIServer) SetTags(
 
 	for _, tag := range request.GetTags() {
 		if strings.Index(tag, "tag:") != 0 {
-			return &v1.SetTagsResponse{Machine: nil, Error: &v1.Error{
-				Status:  400,
-				Message: "Invalid tag detected. Each tag must start with the string 'tag:'",
-			}}, nil
+			return &v1.SetTagsResponse{
+					Machine: nil,
+				}, status.Error(
+					codes.InvalidArgument,
+					"Invalid tag detected. Each tag must start with the string 'tag:'",
+				)
 		}
 	}
 

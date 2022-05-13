@@ -543,6 +543,8 @@ var tagCmd = &cobra.Command{
 				fmt.Sprintf("Error while sending tags to headscale: %s", err),
 				output,
 			)
+
+			return
 		}
 
 		if resp != nil {
