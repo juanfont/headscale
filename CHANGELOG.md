@@ -10,6 +10,8 @@
 - Fixed spurious calls to setLastStateChangeToNow from ephemeral nodes [#566](https://github.com/juanfont/headscale/pull/566)
 - Add command for moving nodes between namespaces [#362](https://github.com/juanfont/headscale/issues/362)
 - Added more configuration parameters for OpenID Connect (scopes, free-form paramters, domain and user allowlist)
+- Add command to set tags on a node [#525](https://github.com/juanfont/headscale/issues/525)
+- Add command to view tags of nodes [#356](https://github.com/juanfont/headscale/issues/356)
 
 ## 0.15.0 (2022-03-20)
 
