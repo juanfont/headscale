@@ -205,7 +205,12 @@ func (api headscaleV1APIServer) SetTags(
 		}
 	}
 
-	api.h.SetTags(machine, request.GetTags())
+	err = api.h.SetTags(machine, request.GetTags())
+	if err != nil {
+		return &v1.SetTagsResponse{
+			Machine: nil,
+		}, status.Error(codes.Internal, err.Error())
+	}
 
 	log.Trace().
 		Str("machine", machine.Name).
