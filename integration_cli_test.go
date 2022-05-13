@@ -601,7 +601,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	assert.Equal(s.T(), []string{"tag:test"}, machine.ForcedTags)
 
 	// try to set a wrong tag and retrieve the error
-	_, err = ExecuteCommand(
+	wrongTagResult, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -613,7 +613,14 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 		},
 		[]string{},
 	)
-	assert.ErrorContains(s.T(), err, "Invalid tag detected")
+	assert.Nil(s.T(), err)
+	type errOutput struct {
+		Error string `json:"error"`
+	}
+	var errorOutput errOutput
+	err = json.Unmarshal([]byte(wrongTagResult), &errorOutput)
+	assert.Nil(s.T(), err)
+	assert.Contains(s.T(), errorOutput.Error, "Invalid tag detected")
 
 	// Test list all nodes after added seconds
 	listAllResult, err := ExecuteCommand(
