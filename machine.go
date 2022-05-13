@@ -363,7 +363,7 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 // SetTags takes a Machine struct pointer and update the forced tags.
 func (h *Headscale) SetTags(machine *Machine, tags []string) error {
 	machine.ForcedTags = tags
-	if err := h.UpdateACLRules(); !errors.Is(err, errEmptyPolicy) {
+	if err := h.UpdateACLRules(); err != nil && !errors.Is(err, errEmptyPolicy) {
 		return err
 	}
 	h.setLastStateChangeToNow(machine.Namespace.Name)
