@@ -666,7 +666,6 @@ func getTags(
 	if aclPolicy == nil {
 		return
 	}
-	fmt.Println(aclPolicy)
 	validTagMap := make(map[string]bool)
 	invalidTagMap := make(map[string]bool)
 	for _, tag := range machine.HostInfo.RequestTags {
