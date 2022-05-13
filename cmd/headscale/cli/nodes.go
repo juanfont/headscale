@@ -19,6 +19,7 @@ import (
 func init() {
 	rootCmd.AddCommand(nodeCmd)
 	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
+	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
 	nodeCmd.AddCommand(listNodesCmd)
 
 	registerNodeCmd.Flags().StringP("namespace", "n", "", "Namespace")
@@ -141,6 +142,12 @@ var listNodesCmd = &cobra.Command{
 
 			return
 		}
+		showTags, err := cmd.Flags().GetBool("tags")
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error getting tags flag: %s", err), output)
+
+			return
+		}
 
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
@@ -167,7 +174,7 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
-		tableData, err := nodesToPtables(namespace, response.Machines)
+		tableData, err := nodesToPtables(namespace, showTags, response.Machines)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
@@ -397,22 +404,28 @@ var moveNodeCmd = &cobra.Command{
 
 func nodesToPtables(
 	currentNamespace string,
+	showTags bool,
 	machines []*v1.Machine,
 ) (pterm.TableData, error) {
-	tableData := pterm.TableData{
-		{
-			"ID",
-			"Name",
-			"NodeKey",
-			"Namespace",
-			"IP addresses",
-			"Ephemeral",
-			"Last seen",
-			"Online",
-			"Expired",
-			"Tags",
-		},
+	tableHeader := []string{
+		"ID",
+		"Name",
+		"NodeKey",
+		"Namespace",
+		"IP addresses",
+		"Ephemeral",
+		"Last seen",
+		"Online",
+		"Expired",
 	}
+	if showTags {
+		tableHeader = append(tableHeader, []string{
+			"ForcedTags",
+			"InvalidTags",
+			"ValidTags",
+		}...)
+	}
+	tableData := pterm.TableData{tableHeader}
 
 	for _, machine := range machines {
 		var ephemeral bool
@@ -456,21 +469,25 @@ func nodesToPtables(
 			expired = pterm.LightRed("yes")
 		}
 
-		var tags string
+		var forcedTags string
 		for _, tag := range machine.ForcedTags {
-			tags += "," + tag
+			forcedTags += "," + tag
 		}
+		forcedTags = strings.TrimLeft(forcedTags, ",")
+		var invalidTags string
 		for _, tag := range machine.InvalidTags {
 			if !contains(machine.ForcedTags, tag) {
-				tags += "," + pterm.LightRed(tag)
+				invalidTags += "," + pterm.LightRed(tag)
 			}
 		}
+		invalidTags = strings.TrimLeft(invalidTags, ",")
+		var validTags string
 		for _, tag := range machine.ValidTags {
 			if !contains(machine.ForcedTags, tag) {
-				tags += "," + pterm.LightGreen(tag)
+				validTags += "," + pterm.LightGreen(tag)
 			}
 		}
-		tags = strings.TrimLeft(tags, ",")
+		validTags = strings.TrimLeft(validTags, ",")
 
 		var namespace string
 		if currentNamespace == "" || (currentNamespace == machine.Namespace.Name) {
@@ -479,20 +496,23 @@ func nodesToPtables(
 			// Shared into this namespace
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
+		nodeData := []string{
+			strconv.FormatUint(machine.Id, headscale.Base10),
+			machine.Name,
+			nodeKey.ShortString(),
+			namespace,
+			strings.Join(machine.IpAddresses, ", "),
+			strconv.FormatBool(ephemeral),
+			lastSeenTime,
+			online,
+			expired,
+		}
+		if showTags {
+			nodeData = append(nodeData, []string{forcedTags, invalidTags, validTags}...)
+		}
 		tableData = append(
 			tableData,
-			[]string{
-				strconv.FormatUint(machine.Id, headscale.Base10),
-				machine.Name,
-				nodeKey.ShortString(),
-				namespace,
-				strings.Join(machine.IpAddresses, ", "),
-				strconv.FormatBool(ephemeral),
-				lastSeenTime,
-				online,
-				expired,
-				tags,
-			},
+			nodeData,
 		)
 	}
 
