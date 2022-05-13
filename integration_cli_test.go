@@ -630,7 +630,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	assert.Nil(s.T(), err)
 	json.Unmarshal([]byte(listAllResult), &resultMachines)
 	found := false
-	for _, machine := range machines {
+	for _, machine := range resultMachines {
 		if machine.ForcedTags != nil {
 			for _, tag := range machine.ForcedTags {
 				if tag == "tag:test" {
