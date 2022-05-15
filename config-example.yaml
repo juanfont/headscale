@@ -16,6 +16,14 @@ server_url: http://127.0.0.1:8080
 #
 listen_addr: 0.0.0.0:8080
 
+
+# Headscale uses UTC as it's default time zone
+# you can override this by setting the TZ env
+# variable. Additionally you can set your time
+# zone here.
+
+time_zone: UTC
+
 # Address to listen to /metrics, you may want
 # to keep this endpoint private to your internal
 # network

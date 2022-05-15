@@ -37,14 +37,6 @@ func main() {
 		colors = false
 	}
 
-	viper.SetDefault("TZ", "UTC")
-	if tz := os.Getenv("TZ"); tz != "" {
-		_, err := time.LoadLocation(tz)
-		if err == nil {
-			viper.SetDefault("TZ", tz)
-		}
-	}
-
 	zerolog.TimestampFunc = headscale.NowFromTZEnv
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{

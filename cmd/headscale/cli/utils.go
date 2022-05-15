@@ -71,8 +71,26 @@ func LoadConfig(path string) error {
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
 
+	viper.SetDefault("TZ", "UTC")
+	if tz := os.Getenv("TZ"); tz != "" {
+		_, err := time.LoadLocation(tz)
+		if err == nil {
+			viper.SetDefault("TZ", tz)
+		}
+	}
+
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("fatal error reading config file: %w", err)
+	}
+
+	if viper.GetString("time_zone") != "" {
+		_, err := time.LoadLocation(viper.GetString("time_zone"))
+		if err == nil {
+			viper.SetDefault("TZ", viper.GetString("time_zone"))
+		} else {
+			log.Warn().
+				Msg("Warning: invalid timzone, fallingback to UTC")
+		}
 	}
 
 	// Collect any validation errors and return them all at once
