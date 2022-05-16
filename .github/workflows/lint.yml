@@ -26,7 +26,7 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: golangci/golangci-lint-action@v2
         with:
-          version: latest
+          version: v1.41.0
 
           # Only block PRs on new problems.
           # If this is not enabled, we will end up having PRs
