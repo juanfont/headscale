@@ -1,5 +1,5 @@
 # Calculate version
-version = $(shell ./scripts/version-at-commit.sh)
+version = $(git describe --always --tags --dirty)
 
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
 
@@ -10,7 +10,7 @@ PROTO_SOURCES = $(call rwildcard,,*.proto)
 
 
 build:
-	GGO_ENABLED=0 go build -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
+	CGO_ENABLED=0 go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
 
 dev: lint test build
 
@@ -41,14 +41,14 @@ fmt:
 	clang-format -style="{BasedOnStyle: Google, IndentWidth: 4, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true, ColumnLimit: 0}" -i $(PROTO_SOURCES)
 
 proto-lint:
-	cd proto/ && buf lint
+	cd proto/ && go run github.com/bufbuild/buf/cmd/buf lint
 
 compress: build
 	upx --brute headscale
 
 generate:
 	rm -rf gen
-	buf generate proto
+	go run github.com/bufbuild/buf/cmd/buf generate proto
 
 install-protobuf-plugins:
 	go install \

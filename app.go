@@ -119,6 +119,10 @@ type OIDCConfig struct {
 	Issuer           string
 	ClientID         string
 	ClientSecret     string
+	Scope            []string
+	ExtraParams      map[string]string
+	AllowedDomains   []string
+	AllowedUsers     []string
 	StripEmaildomain bool
 }
 
@@ -292,11 +296,13 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 			return
 		}
 
+		expiredFound := false
 		for _, machine := range machines {
 			if machine.AuthKey != nil && machine.LastSeen != nil &&
 				machine.AuthKey.Ephemeral &&
 				time.Now().
 					After(machine.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
+				expiredFound = true
 				log.Info().
 					Str("machine", machine.Name).
 					Msg("Ephemeral client removed from database")
@@ -311,14 +317,17 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 			}
 		}
 
-		h.setLastStateChangeToNow(namespace.Name)
+		if expiredFound {
+			h.setLastStateChangeToNow(namespace.Name)
+		}
 	}
 }
 
 func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler) (interface{}, error) {
+	handler grpc.UnaryHandler,
+) (interface{}, error) {
 	// Check if the request is coming from the on-server client.
 	// This is not secure, but it is to maintain maintainability
 	// with the "legacy" database-based client

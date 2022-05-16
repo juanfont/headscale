@@ -27,3 +27,7 @@ derp.yaml
 .idea
 
 test_output/ 
+
+# Nix build output
+result
+.direnv/

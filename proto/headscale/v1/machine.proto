@@ -22,7 +22,6 @@ message Machine {
     string          name         = 6;
     Namespace namespace          = 7;
 
-
     google.protobuf.Timestamp last_seen              = 8;
     google.protobuf.Timestamp last_successful_update = 9;
     google.protobuf.Timestamp expiry                 = 10;
@@ -78,6 +77,15 @@ message ListMachinesRequest {
 
 message ListMachinesResponse {
     repeated Machine machines = 1;
+}
+
+message MoveMachineRequest {
+    uint64 machine_id = 1;
+    string namespace  = 2;
+}
+
+message MoveMachineResponse {
+    Machine machine = 1;
 }
 
 message DebugCreateMachineRequest {

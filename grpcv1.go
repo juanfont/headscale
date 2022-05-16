@@ -253,6 +253,23 @@ func (api headscaleV1APIServer) ListMachines(
 	return &v1.ListMachinesResponse{Machines: response}, nil
 }
 
+func (api headscaleV1APIServer) MoveMachine(
+	ctx context.Context,
+	request *v1.MoveMachineRequest,
+) (*v1.MoveMachineResponse, error) {
+	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	if err != nil {
+		return nil, err
+	}
+
+	err = api.h.SetMachineNamespace(machine, request.GetNamespace())
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.MoveMachineResponse{Machine: machine.toProto()}, nil
+}
+
 func (api headscaleV1APIServer) GetMachineRoute(
 	ctx context.Context,
 	request *v1.GetMachineRouteRequest,
