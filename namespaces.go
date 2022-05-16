@@ -266,21 +266,21 @@ func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
 func CheckForFQDNRules(name string) error {
 	if len(name) > labelHostnameLength {
 		return fmt.Errorf(
-			"Namespace must not be over 63 chars. %v doesn't comply with this rule: %w",
+			"DNS segment must not be over 63 chars. %v doesn't comply with this rule: %w",
 			name,
 			errInvalidNamespaceName,
 		)
 	}
 	if strings.ToLower(name) != name {
 		return fmt.Errorf(
-			"Namespace name should be lowercase. %v doesn't comply with this rule: %w",
+			"DNS segment should be lowercase. %v doesn't comply with this rule: %w",
 			name,
 			errInvalidNamespaceName,
 		)
 	}
 	if invalidCharsInNamespaceRegex.MatchString(name) {
 		return fmt.Errorf(
-			"Namespace name should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
+			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
 			name,
 			errInvalidNamespaceName,
 		)
