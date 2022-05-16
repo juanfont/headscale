@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -129,7 +130,8 @@ func GetDERPConfig() headscale.DERPConfig {
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
 
 	if serverEnabled && stunAddr == "" {
-		log.Fatal().Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
+		log.Fatal().
+			Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
 	}
 
 	urlStrs := viper.GetStringSlice("derp.urls")
@@ -568,4 +570,14 @@ func GetFileMode(key string) fs.FileMode {
 	}
 
 	return fs.FileMode(mode)
+}
+
+func contains[T string](ts []T, t T) bool {
+	for _, v := range ts {
+		if reflect.DeepEqual(v, t) {
+			return true
+		}
+	}
+
+	return false
 }

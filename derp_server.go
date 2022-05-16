@@ -107,7 +107,10 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 	hijacker, ok := ctx.Writer.(http.Hijacker)
 	if !ok {
 		log.Error().Caller().Msg("DERP requires Hijacker interface from Gin")
-		ctx.String(http.StatusInternalServerError, "HTTP does not support general TCP support")
+		ctx.String(
+			http.StatusInternalServerError,
+			"HTTP does not support general TCP support",
+		)
 
 		return
 	}
@@ -115,14 +118,17 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 	netConn, conn, err := hijacker.Hijack()
 	if err != nil {
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
-		ctx.String(http.StatusInternalServerError, "HTTP does not support general TCP support")
+		ctx.String(
+			http.StatusInternalServerError,
+			"HTTP does not support general TCP support",
+		)
 
 		return
 	}
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()
-		pubKeyStr := pubKey.UntypedHexString()
+		pubKeyStr := pubKey.UntypedHexString() // nolint
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\n"+
 			"Upgrade: DERP\r\n"+
 			"Connection: Upgrade\r\n"+
@@ -163,7 +169,10 @@ func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
 		for _, node := range region.Nodes { // we don't care if we override some nodes
 			addrs, err := r.LookupIP(resolvCtx, "ip", node.HostName)
 			if err != nil {
-				log.Trace().Caller().Err(err).Msgf("bootstrap DNS lookup failed %q", node.HostName)
+				log.Trace().
+					Caller().
+					Err(err).
+					Msgf("bootstrap DNS lookup failed %q", node.HostName)
 
 				continue
 			}

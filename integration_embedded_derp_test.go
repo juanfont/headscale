@@ -107,7 +107,10 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	headscaleOptions := &dockertest.RunOptions{
 		Name: headscaleHostname,
 		Mounts: []string{
-			fmt.Sprintf("%s/integration_test/etc_embedded_derp:/etc/headscale", currentPath),
+			fmt.Sprintf(
+				"%s/integration_test/etc_embedded_derp:/etc/headscale",
+				currentPath,
+			),
 		},
 		Cmd:          []string{"headscale", "serve"},
 		ExposedPorts: []string{"8443/tcp", "3478/udp"},
@@ -197,7 +200,10 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	assert.Nil(s.T(), err)
 	assert.True(s.T(), preAuthKey.Reusable)
 
-	headscaleEndpoint := fmt.Sprintf("https://headscale:%s", s.headscale.GetPort("8443/tcp"))
+	headscaleEndpoint := fmt.Sprintf(
+		"https://headscale:%s",
+		s.headscale.GetPort("8443/tcp"),
+	)
 
 	log.Printf(
 		"Joining tailscale containers to headscale at %s\n",
@@ -243,7 +249,9 @@ func (s *IntegrationDERPTestSuite) Join(
 	log.Printf("%s joined\n", hostname)
 }
 
-func (s *IntegrationDERPTestSuite) tailscaleContainer(identifier, version string, network dockertest.Network,
+func (s *IntegrationDERPTestSuite) tailscaleContainer(
+	identifier, version string,
+	network dockertest.Network,
 ) (string, *dockertest.Resource) {
 	tailscaleBuildOptions := getDockerBuildOptions(version)
 
@@ -260,7 +268,10 @@ func (s *IntegrationDERPTestSuite) tailscaleContainer(identifier, version string
 		},
 
 		// expose the host IP address, so we can access it from inside the container
-		ExtraHosts: []string{"host.docker.internal:host-gateway", "headscale:host-gateway"},
+		ExtraHosts: []string{
+			"host.docker.internal:host-gateway",
+			"headscale:host-gateway",
+		},
 	}
 
 	pts, err := s.pool.BuildAndRunWithBuildOptions(
