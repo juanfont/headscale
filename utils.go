@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"time"
 
@@ -137,26 +138,29 @@ func encode(
 	return privKey.SealTo(*pubKey, b), nil
 }
 
-func (h *Headscale) getAvailableIPs() (ips MachineAddresses, err error) {
+func (h *Headscale) getAvailableIPs() (MachineAddresses, error) {
+	var ips MachineAddresses
+	var err error
 	ipPrefixes := h.cfg.IPPrefixes
 	for _, ipPrefix := range ipPrefixes {
 		var ip *netaddr.IP
 		ip, err = h.getAvailableIP(ipPrefix)
 		if err != nil {
-			return
+			return ips, err
 		}
 		ips = append(ips, *ip)
 	}
 
-	return
+	return ips, err
 }
 
-func GetIPPrefixEndpoints(na netaddr.IPPrefix) (network, broadcast netaddr.IP) {
+func GetIPPrefixEndpoints(na netaddr.IPPrefix) (netaddr.IP, netaddr.IP) {
+	var network, broadcast netaddr.IP
 	ipRange := na.Range()
 	network = ipRange.From()
 	broadcast = ipRange.To()
 
-	return
+	return network, broadcast
 }
 
 func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, error) {
@@ -225,16 +229,6 @@ func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 	return ipSet, nil
 }
 
-func containsString(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-
-	return false
-}
-
 func tailNodesToString(nodes []*tailcfg.Node) string {
 	temp := make([]string, len(nodes))
 
@@ -284,9 +278,9 @@ func stringToIPPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
 	return result, nil
 }
 
-func containsIPPrefix(prefixes []netaddr.IPPrefix, prefix netaddr.IPPrefix) bool {
-	for _, p := range prefixes {
-		if prefix == p {
+func contains[T string | netaddr.IPPrefix](ts []T, t T) bool {
+	for _, v := range ts {
+		if reflect.DeepEqual(v, t) {
 			return true
 		}
 	}

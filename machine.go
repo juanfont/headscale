@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -44,6 +45,8 @@ type Machine struct {
 	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
 
 	RegisterMethod string
+
+	ForcedTags StringList
 
 	// TODO(kradalby): This seems like irrelevant information?
 	AuthKeyID uint
@@ -122,7 +125,7 @@ func (machine Machine) isExpired() bool {
 
 func containsAddresses(inputs []string, addrs []string) bool {
 	for _, addr := range addrs {
-		if containsString(inputs, addr) {
+		if contains(inputs, addr) {
 			return true
 		}
 	}
@@ -353,6 +356,18 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 	if result := h.db.Find(machine).First(&machine); result.Error != nil {
 		return result.Error
 	}
+
+	return nil
+}
+
+// SetTags takes a Machine struct pointer and update the forced tags.
+func (h *Headscale) SetTags(machine *Machine, tags []string) error {
+	machine.ForcedTags = tags
+	if err := h.UpdateACLRules(); err != nil && !errors.Is(err, errEmptyPolicy) {
+		return err
+	}
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.db.Save(machine)
 
 	return nil
 }
@@ -613,6 +628,7 @@ func (machine *Machine) toProto() *v1.Machine {
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Name,
 		Namespace:   machine.Namespace.toProto(),
+		ForcedTags:  machine.ForcedTags,
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
@@ -639,6 +655,50 @@ func (machine *Machine) toProto() *v1.Machine {
 	}
 
 	return machineProto
+}
+
+// getTags will return the tags of the current machine.
+// Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
+// Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
+func getTags(
+	aclPolicy *ACLPolicy,
+	machine Machine,
+	stripEmailDomain bool,
+) ([]string, []string) {
+	validTags := make([]string, 0)
+	invalidTags := make([]string, 0)
+	if aclPolicy == nil {
+		return validTags, invalidTags
+	}
+	validTagMap := make(map[string]bool)
+	invalidTagMap := make(map[string]bool)
+	for _, tag := range machine.HostInfo.RequestTags {
+		owners, err := expandTagOwners(*aclPolicy, tag, stripEmailDomain)
+		if errors.Is(err, errInvalidTag) {
+			invalidTagMap[tag] = true
+
+			continue
+		}
+		var found bool
+		for _, owner := range owners {
+			if machine.Namespace.Name == owner {
+				found = true
+			}
+		}
+		if found {
+			validTagMap[tag] = true
+		} else {
+			invalidTagMap[tag] = true
+		}
+	}
+	for tag := range invalidTagMap {
+		invalidTags = append(invalidTags, tag)
+	}
+	for tag := range validTagMap {
+		validTags = append(validTags, tag)
+	}
+
+	return validTags, invalidTags
 }
 
 func (h *Headscale) RegisterMachineFromAuthCallback(
@@ -751,7 +811,7 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	}
 
 	for _, newRoute := range newRoutes {
-		if !containsIPPrefix(machine.GetAdvertisedRoutes(), newRoute) {
+		if !contains(machine.GetAdvertisedRoutes(), newRoute) {
 			return fmt.Errorf(
 				"route (%s) is not available on node %s: %w",
 				machine.Name,
