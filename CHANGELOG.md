@@ -12,6 +12,7 @@
 - Added more configuration parameters for OpenID Connect (scopes, free-form paramters, domain and user allowlist)
 - Add command to set tags on a node [#525](https://github.com/juanfont/headscale/issues/525)
 - Add command to view tags of nodes [#356](https://github.com/juanfont/headscale/issues/356)
+- Add --all (-a) flag to enable routes command [#360](https://github.com/juanfont/headscale/issues/360)
 
 ## 0.15.0 (2022-03-20)
 

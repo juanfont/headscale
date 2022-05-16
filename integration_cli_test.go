@@ -1205,6 +1205,35 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 		string(failEnableNonAdvertisedRoute),
 		"route (route-machine) is not available on node",
 	)
+
+	// Enable all routes on host
+	enableAllRouteResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"enable",
+			"--output",
+			"json",
+			"--identifier",
+			"0",
+			"--all",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var enableAllRoute v1.Routes
+	err = json.Unmarshal([]byte(enableAllRouteResult), &enableAllRoute)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), enableAllRoute.AdvertisedRoutes, 2)
+	assert.Contains(s.T(), enableAllRoute.AdvertisedRoutes, "10.0.0.0/8")
+	assert.Contains(s.T(), enableAllRoute.AdvertisedRoutes, "192.168.1.0/24")
+
+	assert.Len(s.T(), enableAllRoute.EnabledRoutes, 2)
+	assert.Contains(s.T(), enableAllRoute.EnabledRoutes, "10.0.0.0/8")
+	assert.Contains(s.T(), enableAllRoute.EnabledRoutes, "192.168.1.0/24")
 }
 
 func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
