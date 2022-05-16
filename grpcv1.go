@@ -241,8 +241,8 @@ func (api headscaleV1APIServer) RenameMachine(
 
 	log.Trace().
 		Str("machine", machine.Hostname).
-		Time("expiry", *machine.Expiry).
-		Msg("machine expired")
+		Str("new_name", request.GetNewName()).
+		Msg("machine renamed")
 
 	return &v1.RenameMachineResponse{Machine: machine.toProto()}, nil
 }
