@@ -31,12 +31,18 @@ message Machine {
     google.protobuf.Timestamp created_at = 12;
 
     RegisterMethod register_method = 13;
+
+    reserved 14 to 17;
     // google.protobuf.Timestamp updated_at = 14;
     // google.protobuf.Timestamp deleted_at = 15;
 
     // bytes host_info      = 15;
     // bytes endpoints      = 16;
     // bytes enabled_routes = 17;
+
+    repeated string forced_tags  = 18;
+    repeated string invalid_tags = 19;
+    repeated string valid_tags   = 20;
 }
 
 message RegisterMachineRequest {
@@ -53,6 +59,15 @@ message GetMachineRequest {
 }
 
 message GetMachineResponse {
+    Machine machine = 1;
+}
+
+message SetTagsRequest {
+    uint64          machine_id = 1;
+    repeated string tags       = 2;
+}
+
+message SetTagsResponse {
     Machine machine = 1;
 }
 

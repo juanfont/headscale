@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -251,7 +252,26 @@ func expandAlias(
 	if strings.HasPrefix(alias, "tag:") {
 		owners, err := expandTagOwners(aclPolicy, alias, stripEmailDomain)
 		if err != nil {
-			return ips, err
+			if errors.Is(err, errInvalidTag) {
+				for _, machine := range machines {
+					for _, t := range machine.ForcedTags {
+						if alias == t {
+							ips = append(ips, machine.IPAddresses.ToStringSlice()...)
+						}
+					}
+				}
+				if len(ips) == 0 {
+					return ips, fmt.Errorf(
+						"%w. %v isn't owned by a TagOwner and no forced tags are defined",
+						errInvalidTag,
+						alias,
+					)
+				}
+
+				return ips, nil
+			} else {
+				return ips, err
+			}
 		}
 		for _, namespace := range owners {
 			machines := filterMachinesByNamespace(machines, namespace)
@@ -312,7 +332,7 @@ func excludeCorrectlyTaggedNodes(
 	out := []Machine{}
 	tags := []string{}
 	for tag, ns := range aclPolicy.TagOwners {
-		if containsString(ns, namespace) {
+		if contains(ns, namespace) {
 			tags = append(tags, tag)
 		}
 	}
@@ -322,11 +342,14 @@ func excludeCorrectlyTaggedNodes(
 
 		found := false
 		for _, t := range hi.RequestTags {
-			if containsString(tags, t) {
+			if contains(tags, t) {
 				found = true
 
 				break
 			}
+		}
+		if len(machine.ForcedTags) > 0 {
+			found = true
 		}
 		if !found {
 			out = append(out, machine)

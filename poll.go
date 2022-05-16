@@ -20,6 +20,10 @@ const (
 	updateCheckInterval = 10 * time.Second
 )
 
+type contextKey string
+
+const machineNameContextKey = contextKey("machineName")
+
 // PollNetMapHandler takes care of /machine/:id/map
 //
 // This is the busiest endpoint, as it keeps the HTTP long poll that updates
@@ -272,7 +276,7 @@ func (h *Headscale) PollNetMapStream(
 			return
 		}
 
-		ctx := context.WithValue(ctx.Request.Context(), "machineName", machine.Name)
+		ctx := context.WithValue(ctx.Request.Context(), machineNameContextKey, machine.Name)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -576,12 +580,12 @@ func (h *Headscale) scheduledPollWorker(
 
 	defer closeChanWithLog(
 		updateChan,
-		fmt.Sprint(ctx.Value("machineName")),
+		fmt.Sprint(ctx.Value(machineNameContextKey)),
 		"updateChan",
 	)
 	defer closeChanWithLog(
 		keepAliveChan,
-		fmt.Sprint(ctx.Value("machineName")),
+		fmt.Sprint(ctx.Value(machineNameContextKey)),
 		"updateChan",
 	)
 

@@ -399,6 +399,53 @@
         ]
       }
     },
+    "/api/v1/machine/{machineId}/tags": {
+      "post": {
+        "operationId": "HeadscaleService_SetTags",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SetTagsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "machineId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/namespace": {
       "get": {
         "operationId": "HeadscaleService_ListNamespaces",
@@ -943,6 +990,24 @@
         },
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
+        },
+        "forcedTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "invalidTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -1040,6 +1105,14 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "v1SetTagsResponse": {
+      "type": "object",
+      "properties": {
+        "machine": {
+          "$ref": "#/definitions/v1Machine"
         }
       }
     }
