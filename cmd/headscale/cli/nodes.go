@@ -249,7 +249,7 @@ var renameNodeCmd = &cobra.Command{
 			ErrorOutput(
 				err,
 				fmt.Sprintf(
-					"Cannot expire machine: %s\n",
+					"Cannot rename machine: %s\n",
 					status.Convert(err).Message(),
 				),
 				output,
