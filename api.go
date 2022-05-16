@@ -134,11 +134,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			return
 		}
 
-		// TODO(kradalby): We need these fields to be unique, we need to add a hash or something at the end.
-		normalizedHostname, err := NormalizeToFQDNRules(
-			req.Hostinfo.Hostname,
-			h.cfg.OIDC.StripEmaildomain,
-		)
+		givenName, err := h.GenerateGivenName(req.Hostinfo.Hostname)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -156,7 +152,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		newMachine := Machine{
 			MachineKey: machineKeyStr,
 			Hostname:   req.Hostinfo.Hostname,
-			GivenName:  normalizedHostname,
+			GivenName:  givenName,
 			NodeKey:    NodePublicKeyStripPrefix(req.NodeKey),
 			LastSeen:   &now,
 			Expiry:     &time.Time{},

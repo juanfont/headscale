@@ -394,9 +394,15 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		Hostname:    "DebugTestMachine",
 	}
 
+	givenName, err := api.h.GenerateGivenName(request.GetName())
+	if err != nil {
+		return nil, err
+	}
+
 	newMachine := Machine{
 		MachineKey: request.GetKey(),
 		Hostname:   request.GetName(),
+		GivenName:  givenName,
 		Namespace:  *namespace,
 
 		Expiry:               &time.Time{},
