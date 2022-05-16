@@ -498,13 +498,13 @@ func nodesToPtables(
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
 
-		var IpV4Address string
-		var IpV6Address string
+		var IPV4Address string
+		var IPV6Address string
 		for _, addr := range machine.IpAddresses {
 			if netaddr.MustParseIP(addr).Is4() {
-				IpV4Address = addr
+				IPV4Address = addr
 			} else {
-				IpV6Address = addr
+				IPV6Address = addr
 			}
 		}
 
@@ -513,7 +513,7 @@ func nodesToPtables(
 			machine.Name,
 			nodeKey.ShortString(),
 			namespace,
-			strings.Join([]string{IpV4Address, IpV6Address}, ", "),
+			strings.Join([]string{IPV4Address, IPV6Address}, ", "),
 			strconv.FormatBool(ephemeral),
 			lastSeenTime,
 			online,

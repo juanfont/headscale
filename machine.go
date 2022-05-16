@@ -664,9 +664,11 @@ func getTags(
 	aclPolicy *ACLPolicy,
 	machine Machine,
 	stripEmailDomain bool,
-) (validTags []string, invalidTags []string) {
+) ([]string, []string) {
+	validTags := make([]string, 0)
+	invalidTags := make([]string, 0)
 	if aclPolicy == nil {
-		return
+		return validTags, invalidTags
 	}
 	validTagMap := make(map[string]bool)
 	invalidTagMap := make(map[string]bool)
