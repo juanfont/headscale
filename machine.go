@@ -658,6 +658,8 @@ func (machine *Machine) toProto() *v1.Machine {
 }
 
 // getTags will return the tags of the current machine.
+// Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
+// Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
 func getTags(
 	aclPolicy *ACLPolicy,
 	machine Machine,
