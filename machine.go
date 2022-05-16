@@ -51,7 +51,7 @@ type Machine struct {
 	//
 	// GivenName is the name used in all DNS related
 	// parts of headscale.
-	GivenName   string
+	GivenName   string `gorm:"type:varchar(63);unique_index"`
 	NamespaceID uint
 	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
 
