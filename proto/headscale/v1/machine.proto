@@ -22,7 +22,6 @@ message Machine {
     string          name         = 6;
     Namespace namespace          = 7;
 
-
     google.protobuf.Timestamp last_seen              = 8;
     google.protobuf.Timestamp last_successful_update = 9;
     google.protobuf.Timestamp expiry                 = 10;
@@ -32,6 +31,8 @@ message Machine {
     google.protobuf.Timestamp created_at = 12;
 
     RegisterMethod register_method = 13;
+
+    reserved 14 to 17;
     // google.protobuf.Timestamp updated_at = 14;
     // google.protobuf.Timestamp deleted_at = 15;
 
@@ -39,7 +40,10 @@ message Machine {
     // bytes endpoints      = 16;
     // bytes enabled_routes = 17;
 
-    string          given_name     = 18;
+    repeated string forced_tags  = 18;
+    repeated string invalid_tags = 19;
+    repeated string valid_tags   = 20;
+    string          given_name   = 21;
 }
 
 message RegisterMachineRequest {
@@ -56,6 +60,15 @@ message GetMachineRequest {
 }
 
 message GetMachineResponse {
+    Machine machine = 1;
+}
+
+message SetTagsRequest {
+    uint64          machine_id = 1;
+    repeated string tags       = 2;
+}
+
+message SetTagsResponse {
     Machine machine = 1;
 }
 
@@ -76,7 +89,7 @@ message ExpireMachineResponse {
 
 message RenameMachineRequest {
     uint64 machine_id = 1;
-    string new_name = 2;
+    string new_name   = 2;
 }
 
 message RenameMachineResponse {
@@ -89,6 +102,15 @@ message ListMachinesRequest {
 
 message ListMachinesResponse {
     repeated Machine machines = 1;
+}
+
+message MoveMachineRequest {
+    uint64 machine_id = 1;
+    string namespace  = 2;
+}
+
+message MoveMachineResponse {
+    Machine machine = 1;
 }
 
 message DebugCreateMachineRequest {

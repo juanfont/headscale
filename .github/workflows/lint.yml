@@ -16,6 +16,7 @@ jobs:
         uses: tj-actions/changed-files@v14.1
         with:
           files: |
+            *.nix
             go.*
             **/*.go
             integration_test/
@@ -25,7 +26,7 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: golangci/golangci-lint-action@v2
         with:
-          version: latest
+          version: v1.46.1
 
           # Only block PRs on new problems.
           # If this is not enabled, we will end up having PRs
@@ -45,6 +46,7 @@ jobs:
         uses: tj-actions/changed-files@v14.1
         with:
           files: |
+            *.nix
             **/*.md
             **/*.yml
             **/*.yaml

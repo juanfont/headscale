@@ -3,10 +3,13 @@ package headscale
 
 import (
 	"context"
+	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"tailscale.com/tailcfg"
 )
 
@@ -182,6 +185,41 @@ func (api headscaleV1APIServer) GetMachine(
 	return &v1.GetMachineResponse{Machine: machine.toProto()}, nil
 }
 
+func (api headscaleV1APIServer) SetTags(
+	ctx context.Context,
+	request *v1.SetTagsRequest,
+) (*v1.SetTagsResponse, error) {
+	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, tag := range request.GetTags() {
+		if strings.Index(tag, "tag:") != 0 {
+			return &v1.SetTagsResponse{
+					Machine: nil,
+				}, status.Error(
+					codes.InvalidArgument,
+					"Invalid tag detected. Each tag must start with the string 'tag:'",
+				)
+		}
+	}
+
+	err = api.h.SetTags(machine, request.GetTags())
+	if err != nil {
+		return &v1.SetTagsResponse{
+			Machine: nil,
+		}, status.Error(codes.Internal, err.Error())
+	}
+
+	log.Trace().
+		Str("machine", machine.Hostname).
+		Strs("tags", request.GetTags()).
+		Msg("Changing tags of machine")
+
+	return &v1.SetTagsResponse{Machine: machine.toProto()}, nil
+}
+
 func (api headscaleV1APIServer) DeleteMachine(
 	ctx context.Context,
 	request *v1.DeleteMachineRequest,
@@ -272,10 +310,35 @@ func (api headscaleV1APIServer) ListMachines(
 
 	response := make([]*v1.Machine, len(machines))
 	for index, machine := range machines {
-		response[index] = machine.toProto()
+		m := machine.toProto()
+		validTags, invalidTags := getTags(
+			api.h.aclPolicy,
+			machine,
+			api.h.cfg.OIDC.StripEmaildomain,
+		)
+		m.InvalidTags = invalidTags
+		m.ValidTags = validTags
+		response[index] = m
 	}
 
 	return &v1.ListMachinesResponse{Machines: response}, nil
+}
+
+func (api headscaleV1APIServer) MoveMachine(
+	ctx context.Context,
+	request *v1.MoveMachineRequest,
+) (*v1.MoveMachineResponse, error) {
+	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	if err != nil {
+		return nil, err
+	}
+
+	err = api.h.SetMachineNamespace(machine, request.GetNamespace())
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.MoveMachineResponse{Machine: machine.toProto()}, nil
 }
 
 func (api headscaleV1APIServer) GetMachineRoute(

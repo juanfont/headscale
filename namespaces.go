@@ -177,8 +177,10 @@ func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) 
 	if err != nil {
 		return err
 	}
-	machine.NamespaceID = namespace.ID
-	h.db.Save(&machine)
+	machine.Namespace = *namespace
+	if result := h.db.Save(&machine); result.Error != nil {
+		return result.Error
+	}
 
 	return nil
 }

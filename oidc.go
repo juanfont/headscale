@@ -53,7 +53,7 @@ func (h *Headscale) initOIDC() error {
 				"%s/oidc/callback",
 				strings.TrimSuffix(h.cfg.ServerURL, "/"),
 			),
-			Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
+			Scopes: h.cfg.OIDC.Scope,
 		}
 	}
 
@@ -91,7 +91,14 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 	// place the machine key into the state cache, so it can be retrieved later
 	h.registrationCache.Set(stateStr, machineKeyStr, registerCacheExpiration)
 
-	authURL := h.oauth2Config.AuthCodeURL(stateStr)
+	// Add any extra parameter provided in the configuration to the Authorize Endpoint request
+	extras := make([]oauth2.AuthCodeOption, 0, len(h.cfg.OIDC.ExtraParams))
+
+	for k, v := range h.cfg.OIDC.ExtraParams {
+		extras = append(extras, oauth2.SetAuthURLParam(k, v))
+	}
+
+	authURL := h.oauth2Config.AuthCodeURL(stateStr, extras...)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
 
 	ctx.Redirect(http.StatusFound, authURL)
@@ -183,6 +190,29 @@ func (h *Headscale) OIDCCallback(ctx *gin.Context) {
 			http.StatusBadRequest,
 			"Failed to decode id token claims",
 		)
+
+		return
+	}
+
+	// If AllowedDomains is provided, check that the authenticated principal ends with @<alloweddomain>.
+	if len(h.cfg.OIDC.AllowedDomains) > 0 {
+		if at := strings.LastIndex(claims.Email, "@"); at < 0 ||
+			!IsStringInSlice(h.cfg.OIDC.AllowedDomains, claims.Email[at+1:]) {
+			log.Error().Msg("authenticated principal does not match any allowed domain")
+			ctx.String(
+				http.StatusBadRequest,
+				"unauthorized principal (domain mismatch)",
+			)
+
+			return
+		}
+	}
+
+	// If AllowedUsers is provided, check that the authenticated princial is part of that list.
+	if len(h.cfg.OIDC.AllowedUsers) > 0 &&
+		!IsStringInSlice(h.cfg.OIDC.AllowedUsers, claims.Email) {
+		log.Error().Msg("authenticated principal does not match any allowed user")
+		ctx.String(http.StatusBadRequest, "unauthorized principal (user mismatch)")
 
 		return
 	}

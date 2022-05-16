@@ -10,10 +10,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
@@ -67,6 +69,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
 
+	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -127,7 +130,8 @@ func GetDERPConfig() headscale.DERPConfig {
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
 
 	if serverEnabled && stunAddr == "" {
-		log.Fatal().Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
+		log.Fatal().
+			Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
 	}
 
 	urlStrs := viper.GetStringSlice("derp.urls")
@@ -367,6 +371,10 @@ func getHeadscaleConfig() headscale.Config {
 			Issuer:           viper.GetString("oidc.issuer"),
 			ClientID:         viper.GetString("oidc.client_id"),
 			ClientSecret:     viper.GetString("oidc.client_secret"),
+			Scope:            viper.GetStringSlice("oidc.scope"),
+			ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
+			AllowedDomains:   viper.GetStringSlice("oidc.allowed_domains"),
+			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 		},
 
@@ -562,4 +570,14 @@ func GetFileMode(key string) fs.FileMode {
 	}
 
 	return fs.FileMode(mode)
+}
+
+func contains[T string](ts []T, t T) bool {
+	for _, v := range ts {
+		if reflect.DeepEqual(v, t) {
+			return true
+		}
+	}
+
+	return false
 }

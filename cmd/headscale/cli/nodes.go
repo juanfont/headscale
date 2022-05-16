@@ -13,12 +13,14 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
+	"inet.af/netaddr"
 	"tailscale.com/types/key"
 )
 
 func init() {
 	rootCmd.AddCommand(nodeCmd)
 	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
+	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
 	nodeCmd.AddCommand(listNodesCmd)
 
 	registerNodeCmd.Flags().StringP("namespace", "n", "", "Namespace")
@@ -53,6 +55,31 @@ func init() {
 		log.Fatalf(err.Error())
 	}
 	nodeCmd.AddCommand(deleteNodeCmd)
+
+	moveNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+
+	err = moveNodeCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	moveNodeCmd.Flags().StringP("namespace", "n", "", "New namespace")
+
+	err = moveNodeCmd.MarkFlagRequired("namespace")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	nodeCmd.AddCommand(moveNodeCmd)
+
+	tagCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+
+	err = tagCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	tagCmd.Flags().
+		StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
+	nodeCmd.AddCommand(tagCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -123,6 +150,12 @@ var listNodesCmd = &cobra.Command{
 
 			return
 		}
+		showTags, err := cmd.Flags().GetBool("tags")
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error getting tags flag: %s", err), output)
+
+			return
+		}
 
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
@@ -149,7 +182,7 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
-		tableData, err := nodesToPtables(namespace, response.Machines)
+		tableData, err := nodesToPtables(namespace, showTags, response.Machines)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
@@ -351,24 +384,104 @@ var deleteNodeCmd = &cobra.Command{
 	},
 }
 
+var moveNodeCmd = &cobra.Command{
+	Use:     "move",
+	Short:   "Move node to another namespace",
+	Aliases: []string{"mv"},
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		identifier, err := cmd.Flags().GetUint64("identifier")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting ID to integer: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		namespace, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting namespace: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		getRequest := &v1.GetMachineRequest{
+			MachineId: identifier,
+		}
+
+		_, err = client.GetMachine(ctx, getRequest)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Error getting node: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		moveRequest := &v1.MoveMachineRequest{
+			MachineId: identifier,
+			Namespace: namespace,
+		}
+
+		moveResponse, err := client.MoveMachine(ctx, moveRequest)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Error moving node: %s",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(moveResponse.Machine, "Node moved to another namespace", output)
+	},
+}
+
 func nodesToPtables(
 	currentNamespace string,
+	showTags bool,
 	machines []*v1.Machine,
 ) (pterm.TableData, error) {
-	tableData := pterm.TableData{
-		{
-			"ID",
-			"Hostname",
-			"Friendly name",
-			"NodeKey",
-			"Namespace",
-			"IP addresses",
-			"Ephemeral",
-			"Last seen",
-			"Online",
-			"Expired",
-		},
+	tableHeader := []string{
+		"ID",
+		"Name",
+		"NodeKey",
+		"Namespace",
+		"IP addresses",
+		"Ephemeral",
+		"Last seen",
+		"Online",
+		"Expired",
 	}
+	if showTags {
+		tableHeader = append(tableHeader, []string{
+			"ForcedTags",
+			"InvalidTags",
+			"ValidTags",
+		}...)
+	}
+	tableData := pterm.TableData{tableHeader}
 
 	for _, machine := range machines {
 		var ephemeral bool
@@ -412,6 +525,26 @@ func nodesToPtables(
 			expired = pterm.LightRed("yes")
 		}
 
+		var forcedTags string
+		for _, tag := range machine.ForcedTags {
+			forcedTags += "," + tag
+		}
+		forcedTags = strings.TrimLeft(forcedTags, ",")
+		var invalidTags string
+		for _, tag := range machine.InvalidTags {
+			if !contains(machine.ForcedTags, tag) {
+				invalidTags += "," + pterm.LightRed(tag)
+			}
+		}
+		invalidTags = strings.TrimLeft(invalidTags, ",")
+		var validTags string
+		for _, tag := range machine.ValidTags {
+			if !contains(machine.ForcedTags, tag) {
+				validTags += "," + pterm.LightGreen(tag)
+			}
+		}
+		validTags = strings.TrimLeft(validTags, ",")
+
 		var namespace string
 		if currentNamespace == "" || (currentNamespace == machine.Namespace.Name) {
 			namespace = pterm.LightMagenta(machine.Namespace.Name)
@@ -419,22 +552,94 @@ func nodesToPtables(
 			// Shared into this namespace
 			namespace = pterm.LightYellow(machine.Namespace.Name)
 		}
+
+		var IPV4Address string
+		var IPV6Address string
+		for _, addr := range machine.IpAddresses {
+			if netaddr.MustParseIP(addr).Is4() {
+				IPV4Address = addr
+			} else {
+				IPV6Address = addr
+			}
+		}
+
+		nodeData := []string{
+			strconv.FormatUint(machine.Id, headscale.Base10),
+			machine.Name,
+			nodeKey.ShortString(),
+			namespace,
+			strings.Join([]string{IPV4Address, IPV6Address}, ", "),
+			strconv.FormatBool(ephemeral),
+			lastSeenTime,
+			online,
+			expired,
+		}
+		if showTags {
+			nodeData = append(nodeData, []string{forcedTags, invalidTags, validTags}...)
+		}
 		tableData = append(
 			tableData,
-			[]string{
-				strconv.FormatUint(machine.Id, headscale.Base10),
-				machine.Name,
-				machine.GivenName,
-				nodeKey.ShortString(),
-				namespace,
-				strings.Join(machine.IpAddresses, ", "),
-				strconv.FormatBool(ephemeral),
-				lastSeenTime,
-				online,
-				expired,
-			},
+			nodeData,
 		)
 	}
 
 	return tableData, nil
+}
+
+var tagCmd = &cobra.Command{
+	Use:     "tag",
+	Short:   "Manage the tags of a node",
+	Aliases: []string{"tags", "t"},
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		// retrieve flags from CLI
+		identifier, err := cmd.Flags().GetUint64("identifier")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting ID to integer: %s", err),
+				output,
+			)
+
+			return
+		}
+		tagsToSet, err := cmd.Flags().GetStringSlice("tags")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error retrieving list of tags to add to machine, %v", err),
+				output,
+			)
+
+			return
+		}
+
+		// Sending tags to machine
+		request := &v1.SetTagsRequest{
+			MachineId: identifier,
+			Tags:      tagsToSet,
+		}
+		resp, err := client.SetTags(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error while sending tags to headscale: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		if resp != nil {
+			SuccessOutput(
+				resp.GetMachine(),
+				"Machine updated",
+				output,
+			)
+		}
+	},
 }

@@ -28,6 +28,6 @@ derp.yaml
 
 test_output/ 
 
-# Nix and direnv
-.direnv/
+# Nix build output
 result
+.direnv/
