@@ -317,3 +317,16 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 
 	return base64.RawURLEncoding.EncodeToString(b), err
 }
+
+// GenerateRandomStringDNSSafe returns a DNS-safe
+// securely generated random string.
+// It will return an error if the system's secure random
+// number generator fails to function correctly, in which
+// case the caller should not continue.
+func GenerateRandomStringDNSSafe(n int) (string, error) {
+	str, err := GenerateRandomStringURLSafe(n)
+
+	str = strings.ReplaceAll(str, "_", "-")
+
+	return str[:n], err
+}

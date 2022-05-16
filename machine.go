@@ -26,6 +26,7 @@ const (
 	)
 	errCouldNotConvertMachineInterface = Error("failed to convert machine interface")
 	errHostnameTooLong                 = Error("Hostname too long")
+	MachineGivenNameHashLength         = 8
 )
 
 const (
@@ -812,4 +813,33 @@ func (machine *Machine) RoutesToProto() *v1.Routes {
 		AdvertisedRoutes: ipPrefixToString(availableRoutes),
 		EnabledRoutes:    ipPrefixToString(enabledRoutes),
 	}
+}
+
+func (h *Headscale) GenerateGivenName(suppliedName string) (string, error) {
+	// If a hostname is or will be longer than 63 chars after adding the hash,
+	// it needs to be trimmed.
+	trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - 2
+
+	normalizedHostname, err := NormalizeToFQDNRules(
+		suppliedName,
+		h.cfg.OIDC.StripEmaildomain,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	postfix, err := GenerateRandomStringDNSSafe(MachineGivenNameHashLength)
+	if err != nil {
+		return "", err
+	}
+
+	// Verify that that the new unique name is shorter than the maximum allowed
+	// DNS segment.
+	if len(normalizedHostname) <= trimmedHostnameLength {
+		normalizedHostname = fmt.Sprintf("%s-%s", normalizedHostname, postfix)
+	} else {
+		normalizedHostname = fmt.Sprintf("%s-%s", normalizedHostname[:trimmedHostnameLength], postfix)
+	}
+
+	return normalizedHostname, nil
 }

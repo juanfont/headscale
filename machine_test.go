@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -650,6 +651,139 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getFilteredByACLPeers() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHeadscale_GenerateGivenName(t *testing.T) {
+	type args struct {
+		suppliedName string
+	}
+	tests := []struct {
+		name    string
+		h       *Headscale
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "simple machine name generation",
+			h: &Headscale{
+				cfg: Config{
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "testmachine",
+			},
+			want:    "testmachine",
+			wantErr: false,
+		},
+		{
+			name: "machine name with 53 chars",
+			h: &Headscale{
+				cfg: Config{
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
+			},
+			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
+			wantErr: false,
+		},
+		{
+			name: "machine name with 60 chars",
+			h: &Headscale{
+				cfg: Config{
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567",
+			},
+			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
+			wantErr: false,
+		},
+		{
+			name: "machine name with 63 chars",
+			h: &Headscale{
+				cfg: Config{
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567890",
+			},
+			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			wantErr: false,
+		},
+		{
+			name: "machine name with 64 chars",
+			h: &Headscale{
+				cfg: Config{
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567891",
+			},
+			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			wantErr: false,
+		},
+		{
+			name: "machine name with 73 chars",
+			h: &Headscale{
+				cfg: Config{
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
+			},
+			want:    "",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.h.GenerateGivenName(tt.args.suppliedName)
+			if (err != nil) != tt.wantErr {
+				t.Errorf(
+					"Headscale.GenerateGivenName() error = %v, wantErr %v",
+					err,
+					tt.wantErr,
+				)
+				return
+			}
+
+			if tt.want != "" && strings.Contains(tt.want, got) {
+				t.Errorf(
+					"Headscale.GenerateGivenName() = %v, is not a substring of %v",
+					tt.want,
+					got,
+				)
+			}
+
+			if len(got) > labelHostnameLength {
+				t.Errorf(
+					"Headscale.GenerateGivenName() = %v is larger than allowed DNS segment %d",
+					got,
+					labelHostnameLength,
+				)
 			}
 		})
 	}
