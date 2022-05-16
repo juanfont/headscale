@@ -45,10 +45,10 @@
                 owner = "golangci";
                 repo = "golangci-lint";
                 rev = "v${version}";
-                sha256 = "sha256-BUXEg+4r9L/gqe4DhTlhN55P3jWt7ZyWFQycO6QePrw=";
+                sha256 = "sha256-hLeBZEZWQ0kyK1yLMQMaLtHIOjc5ZRmhEM7cvXXgcUM=";
               };
 
-              vendorSha256 = "sha256-sEzWUeVk5GB0H41wrp12P8sBWRjg0FHUX6ABDEEBqK8=";
+              vendorSha256 = "sha256-G52z3zmVKQz9iQrAAx2TTaxNjPBJiYT4ZJuWp9FVfTM=";
 
               nativeBuildInputs = [ pkgs.installShellFiles ];
             };
