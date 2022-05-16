@@ -36,6 +36,24 @@
               nativeBuildInputs = [ pkgs.installShellFiles ];
             };
 
+          golangci-lint =
+            pkgs.buildGoModule rec {
+              pname = "golangci-lint";
+              version = "1.46.1";
+
+              src = pkgs.fetchFromGitHub {
+                owner = "golangci";
+                repo = "golangci-lint";
+                rev = "v${version}";
+                sha256 = "sha256-BUXEg+4r9L/gqe4DhTlhN55P3jWt7ZyWFQycO6QePrw=";
+              };
+
+              vendorSha256 = "sha256-sEzWUeVk5GB0H41wrp12P8sBWRjg0FHUX6ABDEEBqK8=";
+
+              nativeBuildInputs = [ pkgs.installShellFiles ];
+            };
+
+
           protoc-gen-grpc-gateway =
             pkgs.buildGoModule rec {
               pname = "grpc-gateway";
