@@ -25,6 +25,7 @@ linters:
     - godox
     - ireturn
     - execinquery
+    - exhaustruct
 
     # We should strive to enable these:
     - wrapcheck
