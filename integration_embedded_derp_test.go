@@ -356,6 +356,8 @@ func (s *IntegrationDERPTestSuite) TestPingAllPeersByHostname() {
 	hostnames, err := getDNSNames(&s.headscale)
 	assert.Nil(s.T(), err)
 
+	log.Printf("Hostnames: %#v\n", hostnames)
+
 	for hostname, tailscale := range s.tailscales {
 		for _, peername := range hostnames {
 			if strings.Contains(peername, hostname) {

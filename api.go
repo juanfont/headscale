@@ -601,8 +601,21 @@ func (h *Headscale) handleAuthKey(
 		h.RefreshMachine(machine, registerRequest.Expiry)
 	} else {
 		now := time.Now().UTC()
+
+		givenName, err := h.GenerateGivenName(registerRequest.Hostinfo.Hostname)
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "RegistrationHandler").
+				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
+				Err(err)
+
+			return
+		}
+
 		machineToRegister := Machine{
 			Hostname:       registerRequest.Hostinfo.Hostname,
+			GivenName:      givenName,
 			NamespaceID:    pak.Namespace.ID,
 			MachineKey:     machineKeyStr,
 			RegisterMethod: RegisterMethodAuthKey,
