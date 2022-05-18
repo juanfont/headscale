@@ -22,17 +22,21 @@ jobs:
             integration_test/
             config-example.yaml
 
-      - name: golangci-lint
+      - uses: cachix/install-nix-action@v16
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: golangci/golangci-lint-action@v2
-        with:
-          version: v1.46.1
 
-          # Only block PRs on new problems.
-          # If this is not enabled, we will end up having PRs
-          # blocked because new linters has appared and other
-          # parts of the code is affected.
-          only-new-issues: true
+      - uses: actions/cache@v3
+        if: steps.changed-files.outputs.any_changed == 'true'
+        with:
+          path: |
+            /nix
+          key: ${{ runner.os }}-nix-${{ hashFiles('**/flake.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nix-
+
+      - name: Run Integration tests
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: nix develop --command -- golangci-lint run --timeout 10m
 
   prettier-lint:
     runs-on: ubuntu-latest
@@ -57,14 +61,21 @@ jobs:
             **/*.scss
             **/*.html
 
-      - name: Prettify code
+      - uses: cachix/install-nix-action@v16
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: creyD/prettier_action@v4.0
+
+      - uses: actions/cache@v3
+        if: steps.changed-files.outputs.any_changed == 'true'
         with:
-          prettier_options: >-
-            --check **/*.{ts,js,md,yaml,yml,sass,css,scss,html}
-          only_changed: false
-          dry: true
+          path: |
+            /nix
+          key: ${{ runner.os }}-nix-${{ hashFiles('**/flake.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nix-
+
+      - name: Run Integration tests
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: nix develop --command -- prettier --check '**/**.{ts,js,md,yaml,yml,sass,css,scss,html}'
 
   proto-lint:
     runs-on: ubuntu-latest
