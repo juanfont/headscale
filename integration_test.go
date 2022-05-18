@@ -636,11 +636,13 @@ func (s *IntegrationTestSuite) TestPingAllPeersByHostname() {
 }
 
 func (s *IntegrationTestSuite) TestMagicDNS() {
-	for namespace, scales := range s.namespaces {
-		ips, err := getIPs(scales.tailscales)
-		assert.Nil(s.T(), err)
+	hostnames, err := getMagicFQDN(&s.headscale)
+	assert.Nil(s.T(), err)
 
-		hostnames, err := getDNSNames(&s.headscale)
+	log.Printf("Resolved hostnames: %#v", hostnames)
+
+	for _, scales := range s.namespaces {
+		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
 
 		for hostname, tailscale := range scales.tailscales {
@@ -648,10 +650,10 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 				if strings.Contains(peername, hostname) {
 					continue
 				}
+
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 					command := []string{
-						"tailscale", "ip",
-						fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
+						"tailscale", "ip", peername,
 					}
 
 					log.Printf(

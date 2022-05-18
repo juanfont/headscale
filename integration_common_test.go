@@ -248,3 +248,37 @@ func getDNSNames(
 
 	return hostnames, nil
 }
+
+func getMagicFQDN(
+	headscale *dockertest.Resource,
+) ([]string, error) {
+
+	listAllResult, err := ExecuteCommand(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var listAll []v1.Machine
+	err = json.Unmarshal([]byte(listAllResult), &listAll)
+	if err != nil {
+		return nil, err
+	}
+
+	hostnames := make([]string, len(listAll))
+
+	for index := range listAll {
+		hostnames[index] = fmt.Sprintf("%s.%s.headscale.net", listAll[index].GetGivenName(), listAll[index].GetNamespace().GetName())
+	}
+
+	return hostnames, nil
+}
