@@ -639,9 +639,13 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 	for namespace, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
+
+		hostnames, err := getDNSNames(&s.headscale)
+		assert.Nil(s.T(), err)
+
 		for hostname, tailscale := range scales.tailscales {
-			for peername, ips := range ips {
-				if peername == hostname {
+			for _, peername := range hostnames {
+				if strings.Contains(peername, hostname) {
 					continue
 				}
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
@@ -663,7 +667,9 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 					assert.Nil(t, err)
 					log.Printf("Result for %s: %s\n", hostname, result)
 
-					for _, ip := range ips {
+					peerBaseName := peername[:len(peername)-MachineGivenNameHashLength-1]
+					expectedAddresses := ips[peerBaseName]
+					for _, ip := range expectedAddresses {
 						assert.Contains(t, result, ip.String())
 					}
 				})
