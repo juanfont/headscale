@@ -32,6 +32,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
       - uses: cachix/install-nix-action@v16
         if: steps.changed-files.outputs.any_changed == 'true'
 
