@@ -45,38 +45,6 @@ func (h *Headscale) initDB() error {
 	// the field is populated and normalized if it was not when the
 	// machine was registered.
 	_ = db.Migrator().RenameColumn(&Machine{}, "nickname", "given_name")
-	if db.Migrator().HasColumn(&Machine{}, "given_name") {
-		machines := Machines{}
-		if err := h.db.Find(&machines).Error; err != nil {
-			log.Error().Err(err).Msg("Error accessing db")
-		}
-
-		for _, machine := range machines {
-			if machine.GivenName == "" {
-				normalizedHostname, err := NormalizeToFQDNRules(
-					machine.Hostname,
-					h.cfg.OIDC.StripEmaildomain,
-				)
-				if err != nil {
-					log.Error().
-						Caller().
-						Str("hostname", machine.Hostname).
-						Err(err).
-						Msg("Failed to normalize machine hostname in DB migration")
-				}
-
-				err = h.RenameMachine(&machine, normalizedHostname)
-				if err != nil {
-					log.Error().
-						Caller().
-						Str("hostname", machine.Hostname).
-						Err(err).
-						Msg("Failed to save normalized machine name in DB migration")
-				}
-
-			}
-		}
-	}
 
 	// If the Machine table has a column for registered,
 	// find all occourences of "false" and drop them. Then
@@ -113,6 +81,39 @@ func (h *Headscale) initDB() error {
 	err = db.AutoMigrate(&Machine{})
 	if err != nil {
 		return err
+	}
+
+	if db.Migrator().HasColumn(&Machine{}, "given_name") {
+		machines := Machines{}
+		if err := h.db.Find(&machines).Error; err != nil {
+			log.Error().Err(err).Msg("Error accessing db")
+		}
+
+		for _, machine := range machines {
+			if machine.GivenName == "" {
+				normalizedHostname, err := NormalizeToFQDNRules(
+					machine.Hostname,
+					h.cfg.OIDC.StripEmaildomain,
+				)
+				if err != nil {
+					log.Error().
+						Caller().
+						Str("hostname", machine.Hostname).
+						Err(err).
+						Msg("Failed to normalize machine hostname in DB migration")
+				}
+
+				err = h.RenameMachine(&machine, normalizedHostname)
+				if err != nil {
+					log.Error().
+						Caller().
+						Str("hostname", machine.Hostname).
+						Err(err).
+						Msg("Failed to save normalized machine name in DB migration")
+				}
+
+			}
+		}
 	}
 
 	err = db.AutoMigrate(&KV{})
