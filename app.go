@@ -40,6 +40,7 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -505,7 +506,26 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 
 // Serve launches a GIN server with the Headscale API.
 func (h *Headscale) Serve() error {
-	var err error
+	var err = profiler.Start(
+		profiler.WithService(os.Getenv("DD_SERVICE")),
+		profiler.WithEnv(os.Getenv("DD_ENV")),
+		profiler.WithVersion(os.Getenv("DD_VERSION")),
+
+		// profiler.WithTags("<KEY1>:<VALUE1>,<KEY2>:<VALUE2>"),
+		profiler.WithProfileTypes(
+			profiler.CPUProfile,
+			profiler.HeapProfile,
+			profiler.BlockProfile,
+			profiler.MutexProfile,
+			profiler.GoroutineProfile,
+		),
+	)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Err(err).
+			Msg("failed to set datadog profiler")
+	}
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = GetDERPMap(h.cfg.DERP)
@@ -718,6 +738,7 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
 
+	defer profiler.Stop()
 	return errorGroup.Wait()
 }
 
