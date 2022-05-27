@@ -34,8 +34,10 @@ jobs:
         with:
           path: |
             /nix/store
-            /nix/var/nix/db
-          key: ${{ runner.os }}-nix-${{ hashFiles('**/flake.lock') }}
+            /nix/var/nix/db/db.sqlite
+            /nix/var/nix/db/schema
+          # key: ${{ runner.os }}-nix-${{ hashFiles('**/flake.lock') }}
+          key: ${{ runner.os }}-nix-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-nix-
 
@@ -55,7 +57,8 @@ jobs:
           path: |
             ${{ steps.go-cache-paths.outputs.go-mod }}
             ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          # key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-go-
 
