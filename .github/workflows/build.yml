@@ -28,6 +28,10 @@ jobs:
             integration_test/
             config-example.yaml
 
+      - name: Install Nix 
+        uses: cachix/install-nix-action@v16
+        if: steps.changed-files.outputs.any_changed == 'true'
+
       - name: Nix cache
         uses: actions/cache@v3
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -40,9 +44,6 @@ jobs:
           key: ${{ runner.os }}-nix-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-nix-
-
-      - uses: cachix/install-nix-action@v16
-        if: steps.changed-files.outputs.any_changed == 'true'
 
       - id: go-cache-paths
         if: steps.changed-files.outputs.any_changed == 'true'
