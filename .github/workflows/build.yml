@@ -28,11 +28,13 @@ jobs:
             integration_test/
             config-example.yaml
 
-      - uses: actions/cache@v3
+      - name: Nix cache
+        uses: actions/cache@v3
         if: steps.changed-files.outputs.any_changed == 'true'
         with:
           path: |
             /nix/store
+            /nix/var/nix/db
           key: ${{ runner.os }}-nix-${{ hashFiles('**/flake.lock') }}
           restore-keys: |
             ${{ runner.os }}-nix-
@@ -46,7 +48,7 @@ jobs:
           echo "::set-output name=go-build::$(nix develop --command -- go env GOCACHE)"
           echo "::set-output name=go-mod::$(nix develop --command -- go env GOMODCACHE)"
 
-      - name: Go Cache
+      - name: Go cache
         uses: actions/cache@v3
         if: steps.changed-files.outputs.any_changed == 'true'
         with:
