@@ -40,7 +40,9 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
-	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
+	ddgintrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gin-gonic/gin"
+	ddtracer "gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+	ddprofiler "gopkg.in/DataDog/dd-trace-go.v1/profiler"
 	"gorm.io/gorm"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
@@ -499,6 +501,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 		api.Any("/v1/*any", gin.WrapF(grpcMux.ServeHTTP))
 	}
 
+	router.Use(ddgintrace.Middleware("headscale"))
 	router.NoRoute(stdoutHandler)
 
 	return router
@@ -506,18 +509,21 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 
 // Serve launches a GIN server with the Headscale API.
 func (h *Headscale) Serve() error {
-	var err = profiler.Start(
-		profiler.WithService(os.Getenv("DD_SERVICE")),
-		profiler.WithEnv(os.Getenv("DD_ENV")),
-		profiler.WithVersion(os.Getenv("DD_VERSION")),
+	ddtracer.Start()
+	defer ddtracer.Stop()
+
+	var err = ddprofiler.Start(
+		ddprofiler.WithService("headscale"),
+		ddprofiler.WithEnv(os.Getenv("ENV_STAGE")),
+		ddprofiler.WithVersion(os.Getenv("ENV_VERSION")),
 
 		// profiler.WithTags("<KEY1>:<VALUE1>,<KEY2>:<VALUE2>"),
-		profiler.WithProfileTypes(
-			profiler.CPUProfile,
-			profiler.HeapProfile,
-			profiler.BlockProfile,
-			profiler.MutexProfile,
-			profiler.GoroutineProfile,
+		ddprofiler.WithProfileTypes(
+			ddprofiler.CPUProfile,
+			ddprofiler.HeapProfile,
+			ddprofiler.BlockProfile,
+			ddprofiler.MutexProfile,
+			ddprofiler.GoroutineProfile,
 		),
 	)
 	if err != nil {
@@ -738,7 +744,7 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
 
-	defer profiler.Stop()
+	defer ddprofiler.Stop()
 	return errorGroup.Wait()
 }
 
