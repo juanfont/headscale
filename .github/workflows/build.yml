@@ -32,7 +32,7 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         with:
           path: |
-            /nix
+            /nix/store
           key: ${{ runner.os }}-nix-${{ hashFiles('**/flake.lock') }}
           restore-keys: |
             ${{ runner.os }}-nix-
@@ -46,23 +46,16 @@ jobs:
           echo "::set-output name=go-build::$(nix develop --command -- go env GOCACHE)"
           echo "::set-output name=go-mod::$(nix develop --command -- go env GOMODCACHE)"
 
-      - name: Go Build Cache
+      - name: Go Cache
         uses: actions/cache@v3
         if: steps.changed-files.outputs.any_changed == 'true'
         with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-build-
-
-      - name: Go Mod Cache
-        uses: actions/cache@v3
-        if: steps.changed-files.outputs.any_changed == 'true'
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          path: |
+            ${{ steps.go-cache-paths.outputs.go-mod }}
+            ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-mod-
+            ${{ runner.os }}-go-
 
       - name: Run build
         if: steps.changed-files.outputs.any_changed == 'true'
