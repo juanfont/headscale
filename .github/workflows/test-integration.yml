@@ -22,16 +22,6 @@ jobs:
             integration_test/
             config-example.yaml
 
-      - uses: actions/cache@v3
-        if: steps.changed-files.outputs.any_changed == 'true'
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
       - name: Cache Docker layers
@@ -44,15 +34,6 @@ jobs:
 
       - uses: cachix/install-nix-action@v16
         if: steps.changed-files.outputs.any_changed == 'true'
-
-      - uses: actions/cache@v3
-        if: steps.changed-files.outputs.any_changed == 'true'
-        with:
-          path: |
-            /nix
-          key: ${{ runner.os }}-nix-${{ hashFiles('**/flake.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-nix-
 
       - name: Run Integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
