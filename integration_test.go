@@ -501,7 +501,6 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 	for _, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
-		assert.Nil(s.T(), err)
 
 		retry := func(times int, sleepInverval time.Duration, doWork func() error) (err error) {
 			for attempts := 0; attempts < times; attempts++ {
@@ -531,7 +530,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 					command := []string{
 						"tailscale", "file", "cp",
 						fmt.Sprintf("/tmp/file_from_%s", hostname),
-						fmt.Sprintf("%s:", peername),
+						fmt.Sprintf("%s:", ips[peername][1]),
 					}
 					retry(10, 1*time.Second, func() error {
 						log.Printf(
@@ -576,7 +575,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 					log.Printf(
 						"Checking file in %s (%s) from %s (%s)\n",
 						hostname,
-						ips[hostname],
+						ips[hostname][1],
 						peername,
 						ip,
 					)
@@ -599,21 +598,24 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 }
 
 func (s *IntegrationTestSuite) TestPingAllPeersByHostname() {
-	for namespace, scales := range s.namespaces {
-		ips, err := getIPs(scales.tailscales)
-		assert.Nil(s.T(), err)
+	hostnames, err := getMagicFQDN(&s.headscale)
+	assert.Nil(s.T(), err)
+
+	log.Printf("Resolved hostnames: %#v", hostnames)
+	for _, scales := range s.namespaces {
 		for hostname, tailscale := range scales.tailscales {
-			for peername := range ips {
-				if peername == hostname {
+			for _, peername := range hostnames {
+				if strings.Contains(peername, hostname) {
 					continue
 				}
+
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 					command := []string{
 						"tailscale", "ping",
 						"--timeout=10s",
 						"--c=20",
 						"--until-direct=true",
-						fmt.Sprintf("%s.%s.headscale.net", peername, namespace),
+						peername,
 					}
 
 					log.Printf(

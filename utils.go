@@ -320,7 +320,7 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 func GenerateRandomStringDNSSafe(n int) (string, error) {
 	str, err := GenerateRandomStringURLSafe(n)
 
-	str = strings.ReplaceAll(str, "_", "-")
+	str = strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""))
 
 	return str[:n], err
 }
