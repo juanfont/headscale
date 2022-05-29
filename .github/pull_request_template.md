@@ -1,6 +1,6 @@
 <!-- Please tick if the following things apply. You… -->
 
-- [ ] read the [CONTRIBUTING guidelines](README.md#user-content-contributing)
+- [ ] read the [CONTRIBUTING guidelines](README.md#contributing)
 - [ ] raised a GitHub issue or discussed it on the projects chat beforehand
 - [ ] added unit tests
 - [ ] added integration tests
