@@ -278,6 +278,9 @@ func (h *Headscale) getMapResponse(
 		PacketFilter: h.aclRules,
 		DERPMap:      h.DERPMap,
 		UserProfiles: profiles,
+		Debug: &tailcfg.Debug{
+			DisableLogTail: !h.cfg.LogTail.Enabled,
+		},
 	}
 
 	log.Trace().

@@ -113,6 +113,8 @@ type Config struct {
 
 	OIDC OIDCConfig
 
+	LogTail LogTailConfig
+
 	CLI CLIConfig
 }
 
@@ -137,6 +139,10 @@ type DERPConfig struct {
 	Paths            []string
 	AutoUpdate       bool
 	UpdateFrequency  time.Duration
+}
+
+type LogTailConfig struct {
+	Enabled bool
 }
 
 type CLIConfig struct {
