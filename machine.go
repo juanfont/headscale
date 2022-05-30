@@ -362,9 +362,9 @@ func (h *Headscale) GetMachineByMachineKey(
 	return &m, nil
 }
 
-// UpdateMachine takes a Machine struct pointer (typically already loaded from database
+// UpdateMachineFromDatabase takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
-func (h *Headscale) UpdateMachine(machine *Machine) error {
+func (h *Headscale) UpdateMachineFromDatabase(machine *Machine) error {
 	if result := h.db.Find(machine).First(&machine); result.Error != nil {
 		return result.Error
 	}
@@ -463,7 +463,7 @@ func (machine *Machine) GetHostInfo() tailcfg.Hostinfo {
 }
 
 func (h *Headscale) isOutdated(machine *Machine) bool {
-	if err := h.UpdateMachine(machine); err != nil {
+	if err := h.UpdateMachineFromDatabase(machine); err != nil {
 		// It does not seem meaningful to propagate this error as the end result
 		// will have to be that the machine has to be considered outdated.
 		return true
