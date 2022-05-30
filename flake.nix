@@ -46,6 +46,29 @@
               nativeBuildInputs = [ pkgs.installShellFiles ];
             };
 
+          golangci-lint = prev.golangci-lint.override {
+            # Override https://github.com/NixOS/nixpkgs/pull/166801 which changed this
+            # to buildGo118Module because it does not build on Darwin.
+            inherit (prev) buildGoModule;
+          };
+
+          # golangci-lint =
+          #   pkgs.buildGo117Module rec {
+          #     pname = "golangci-lint";
+          #     version = "1.46.2";
+          #
+          #     src = pkgs.fetchFromGitHub {
+          #       owner = "golangci";
+          #       repo = "golangci-lint";
+          #       rev = "v${version}";
+          #       sha256 = "sha256-7sDAwWz+qoB/ngeH35tsJ5FZUfAQvQsU6kU9rUHIHMk=";
+          #     };
+          #
+          #     vendorSha256 = "sha256-w38OKN6HPoz37utG/2QSPMai55IRDXCIIymeMe6ogIU=";
+          #
+          #     nativeBuildInputs = [ pkgs.installShellFiles ];
+          #   };
+
           protoc-gen-grpc-gateway =
             pkgs.buildGoModule rec {
               pname = "grpc-gateway";
