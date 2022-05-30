@@ -235,3 +235,12 @@ unix_socket_permission: "0770"
 #   namespace: `first-name.last-name.example.com`
 #
 #   strip_email_domain: true
+
+# Logtail configuration
+# Logtail is Tailscales logging and auditing infrastructure, it allows the control panel
+# to instruct tailscale nodes to log their activity to a remote server.
+logtail:
+  # Enable logtail for this headscales clients.
+  # As there is currently no support for overriding the log server in headscale, this is 
+  # disabled by default. Enabling this will make your clients send logs to Tailscale Inc.
+  enabled: false

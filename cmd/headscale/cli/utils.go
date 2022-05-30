@@ -72,6 +72,8 @@ func LoadConfig(path string) error {
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
 
+	viper.SetDefault("logtail.enabled", false)
+
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
@@ -164,6 +166,14 @@ func GetDERPConfig() headscale.DERPConfig {
 		Paths:            paths,
 		AutoUpdate:       autoUpdate,
 		UpdateFrequency:  updateFrequency,
+	}
+}
+
+func GetLogConfig() headscale.LogTailConfig {
+	enabled := viper.GetBool("logtail.enabled")
+
+	return headscale.LogTailConfig{
+		Enabled: enabled,
 	}
 }
 
@@ -270,6 +280,7 @@ func absPath(path string) string {
 func getHeadscaleConfig() headscale.Config {
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
+	logConfig := GetLogConfig()
 
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
 	parsedPrefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes)+1)
@@ -377,6 +388,8 @@ func getHeadscaleConfig() headscale.Config {
 			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 		},
+
+		LogTail: logConfig,
 
 		CLI: headscale.CLIConfig{
 			Address:  viper.GetString("cli.address"),
