@@ -16,6 +16,19 @@
           pkgs = nixpkgs.legacyPackages.${prev.system};
         in
         rec {
+          headscale =
+            pkgs.buildGo118Module rec {
+              pname = "headscale";
+              version = headscaleVersion;
+              src = pkgs.lib.cleanSource self;
+
+              # When updating go.mod or go.sum, a new sha will need to be calculated,
+              # update this if you have a mismatch after doing a change to thos files.
+              vendorSha256 = "sha256-e3s10NsadWTEk7H7SbEvePhihJ1x2dS9UfIqPNIbJqI=";
+
+              ldflags = [ "-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}" ];
+            };
+
           golines =
             pkgs.buildGoModule rec {
               pname = "golines";
@@ -50,19 +63,6 @@
               nativeBuildInputs = [ pkgs.installShellFiles ];
 
               subPackages = [ "protoc-gen-grpc-gateway" "protoc-gen-openapiv2" ];
-            };
-
-          headscale =
-            pkgs.buildGo118Module rec {
-              pname = "headscale";
-              version = headscaleVersion;
-              src = pkgs.lib.cleanSource self;
-
-              # When updating go.mod or go.sum, a new sha will need to be calculated,
-              # update this if you have a mismatch after doing a change to thos files.
-              vendorSha256 = "sha256-1yFvqQvsJLmjQn2RLDjwvyiZVDXv0dg/V+UUDvwk6Hg=";
-
-              ldflags = [ "-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}" ];
             };
         };
     } // flake-utils.lib.eachDefaultSystem
