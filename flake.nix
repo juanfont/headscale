@@ -32,7 +32,7 @@
           golines =
             pkgs.buildGoModule rec {
               pname = "golines";
-              version = "0.10.0";
+              version = "0.9.0";
 
               src = pkgs.fetchFromGitHub {
                 owner = "segmentio";
