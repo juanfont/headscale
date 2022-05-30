@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/set"
+	mapset "github.com/deckarep/golang-set/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -469,17 +469,10 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 		return true
 	}
 
-	namespaceSet := set.New(set.ThreadSafe)
+	namespaceSet := mapset.NewSet[string]()
 	namespaceSet.Add(machine.Namespace.Name)
 
-	namespaces := make([]string, namespaceSet.Size())
-	for index, namespace := range namespaceSet.List() {
-		if name, ok := namespace.(string); ok {
-			namespaces[index] = name
-		}
-	}
-
-	lastChange := h.getLastStateChange(namespaces...)
+	lastChange := h.getLastStateChange(namespaceSet.ToSlice()...)
 	lastUpdate := machine.CreatedAt
 	if machine.LastSuccessfulUpdate != nil {
 		lastUpdate = *machine.LastSuccessfulUpdate

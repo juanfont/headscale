@@ -6,8 +6,8 @@ require (
 	github.com/AlecAivazis/survey/v2 v2.3.4
 	github.com/ccding/go-stun/stun v0.0.0-20200514191101-4dc67bcdb029
 	github.com/coreos/go-oidc/v3 v3.1.0
+	github.com/deckarep/golang-set/v2 v2.1.0
 	github.com/efekarakus/termcolor v1.0.1
-	github.com/fatih/set v0.2.1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/glebarez/sqlite v1.4.3
 	github.com/gofrs/uuid v4.2.0+incompatible
