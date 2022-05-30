@@ -241,6 +241,6 @@ unix_socket_permission: "0770"
 # to instruct tailscale nodes to log their activity to a remote server.
 logtail:
   # Enable logtail for this headscales clients.
-  # As there is currently no support for overriding the log server in headscale, this is 
+  # As there is currently no support for overriding the log server in headscale, this is
   # disabled by default. Enabling this will make your clients send logs to Tailscale Inc.
   enabled: false
