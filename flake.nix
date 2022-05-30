@@ -2,10 +2,7 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    # TODO: Use unstable when Go 1.18 has made it in
-    # https://nixpk.gs/pr-tracker.html?pr=164292
-    # nixpkgs.url = "nixpkgs/nixpkgs-unstable";
-    nixpkgs.url = "nixpkgs/master";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-22.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
