@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	mapset "github.com/deckarep/golang-set/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -469,10 +468,12 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 		return true
 	}
 
-	namespaceSet := mapset.NewSet[string]()
-	namespaceSet.Add(machine.Namespace.Name)
-
-	lastChange := h.getLastStateChange(namespaceSet.ToSlice()...)
+	// Get the last update from all headscale namespaces to compare with our nodes
+	// last update.
+	// TODO(kradalby): Only request updates from namespaces where we can talk to nodes
+	// This would mostly be for a bit of performance, and can be calculated based on
+	// ACLs.
+	lastChange := h.getLastStateChange()
 	lastUpdate := machine.CreatedAt
 	if machine.LastSuccessfulUpdate != nil {
 		lastUpdate = *machine.LastSuccessfulUpdate

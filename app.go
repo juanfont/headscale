@@ -25,6 +25,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
+	"github.com/puzpuzpuz/xsync"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
@@ -160,7 +161,7 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
 
-	lastStateChange sync.Map
+	lastStateChange *xsync.MapOf[time.Time]
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -793,18 +794,29 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 func (h *Headscale) setLastStateChangeToNow(namespace string) {
 	now := time.Now().UTC()
 	lastStateUpdate.WithLabelValues("", "headscale").Set(float64(now.Unix()))
+	if h.lastStateChange == nil {
+		h.lastStateChange = xsync.NewMapOf[time.Time]()
+	}
 	h.lastStateChange.Store(namespace, now)
 }
 
 func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 	times := []time.Time{}
 
-	for _, namespace := range namespaces {
-		if wrapped, ok := h.lastStateChange.Load(namespace); ok {
-			lastChange, _ := wrapped.(time.Time)
-
-			times = append(times, lastChange)
+	// getLastStateChange takes a list of namespaces as a "filter", if no namespaces
+	// are past, then use the entier list of namespaces and look for the last update
+	if len(namespaces) > 0 {
+		for _, namespace := range namespaces {
+			if lastChange, ok := h.lastStateChange.Load(namespace); ok {
+				times = append(times, lastChange)
+			}
 		}
+	} else {
+		h.lastStateChange.Range(func(key string, value time.Time) bool {
+			times = append(times, value)
+
+			return true
+		})
 	}
 
 	sort.Slice(times, func(i, j int) bool {
