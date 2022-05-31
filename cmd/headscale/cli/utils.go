@@ -272,7 +272,7 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	return nil, ""
 }
 
-func absPath(path string) string {
+func AbsolutePathFromConfigPath(path string) string {
 	// If a relative path is provided, prefix it with the the directory where
 	// the config file was found.
 	if (path != "") && !strings.HasPrefix(path, string(os.PathSeparator)) {
@@ -350,7 +350,7 @@ func GetHeadscaleConfig() headscale.Config {
 		GRPCAllowInsecure: viper.GetBool("grpc_allow_insecure"),
 
 		IPPrefixes:     prefixes,
-		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
+		PrivateKeyPath: AbsolutePathFromConfigPath(viper.GetString("private_key_path")),
 		BaseDomain:     baseDomain,
 
 		DERP: derpConfig,
@@ -360,7 +360,7 @@ func GetHeadscaleConfig() headscale.Config {
 		),
 
 		DBtype: viper.GetString("db_type"),
-		DBpath: absPath(viper.GetString("db_path")),
+		DBpath: AbsolutePathFromConfigPath(viper.GetString("db_path")),
 		DBhost: viper.GetString("db_host"),
 		DBport: viper.GetInt("db_port"),
 		DBname: viper.GetString("db_name"),
@@ -369,13 +369,13 @@ func GetHeadscaleConfig() headscale.Config {
 
 		TLSLetsEncryptHostname: viper.GetString("tls_letsencrypt_hostname"),
 		TLSLetsEncryptListen:   viper.GetString("tls_letsencrypt_listen"),
-		TLSLetsEncryptCacheDir: absPath(
+		TLSLetsEncryptCacheDir: AbsolutePathFromConfigPath(
 			viper.GetString("tls_letsencrypt_cache_dir"),
 		),
 		TLSLetsEncryptChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
 
-		TLSCertPath:       absPath(viper.GetString("tls_cert_path")),
-		TLSKeyPath:        absPath(viper.GetString("tls_key_path")),
+		TLSCertPath:       AbsolutePathFromConfigPath(viper.GetString("tls_cert_path")),
+		TLSKeyPath:        AbsolutePathFromConfigPath(viper.GetString("tls_key_path")),
 		TLSClientAuthMode: tlsClientAuthMode,
 
 		DNSConfig: dnsConfig,
@@ -436,7 +436,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	// We are doing this here, as in the future could be cool to have it also hot-reload
 
 	if cfg.ACL.PolicyPath != "" {
-		aclPath := absPath(cfg.ACL.PolicyPath)
+		aclPath := AbsolutePathFromConfigPath(cfg.ACL.PolicyPath)
 		err = app.LoadACLPolicy(aclPath)
 		if err != nil {
 			log.Fatal().
