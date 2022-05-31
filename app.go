@@ -727,35 +727,48 @@ func (h *Headscale) Serve() error {
 		syscall.SIGHUP)
 	go func(c chan os.Signal) {
 		// Wait for a SIGINT or SIGKILL:
-		sig := <-c
-		switch sig {
-		case syscall.SIGHUP:
-			log.Info().
-				Str("signal", sig.String()).
-				Msg("Received SIGHUP, reloading ACL and Config")
+		for {
+			sig := <-c
+			switch sig {
+			case syscall.SIGHUP:
+				log.Info().
+					Str("signal", sig.String()).
+					Msg("Received SIGHUP, reloading ACL and Config")
 
-		// TODO(kradalby): Reload config on SIGHUP
+					// TODO(kradalby): Reload config on SIGHUP
 
-		default:
-			log.Info().
-				Str("signal", sig.String()).
-				Msg("Received signal to stop, shutting down gracefully")
+				if h.cfg.ACL.PolicyPath != "" {
+					aclPath := AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
+					err := h.LoadACLPolicy(aclPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to reload ACL policy")
+					}
+					log.Info().
+						Str("path", aclPath).
+						Msg("ACL policy successfully reloaded")
+				}
 
-			// Gracefully shut down servers
-			promHTTPServer.Shutdown(ctx)
-			httpServer.Shutdown(ctx)
-			grpcSocket.GracefulStop()
+			default:
+				log.Info().
+					Str("signal", sig.String()).
+					Msg("Received signal to stop, shutting down gracefully")
 
-			// Close network listeners
-			promHTTPListener.Close()
-			httpListener.Close()
-			grpcGatewayConn.Close()
+				// Gracefully shut down servers
+				promHTTPServer.Shutdown(ctx)
+				httpServer.Shutdown(ctx)
+				grpcSocket.GracefulStop()
 
-			// Stop listening (and unlink the socket if unix type):
-			socketListener.Close()
+				// Close network listeners
+				promHTTPListener.Close()
+				httpListener.Close()
+				grpcGatewayConn.Close()
 
-			// And we're done:
-			os.Exit(0)
+				// Stop listening (and unlink the socket if unix type):
+				socketListener.Close()
+
+				// And we're done:
+				os.Exit(0)
+			}
 		}
 	}(sigc)
 
