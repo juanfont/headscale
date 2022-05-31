@@ -42,6 +42,13 @@ func init() {
 	}
 	nodeCmd.AddCommand(expireNodeCmd)
 
+	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	err = renameNodeCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	nodeCmd.AddCommand(renameNodeCmd)
+
 	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = deleteNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
@@ -237,6 +244,54 @@ var expireNodeCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response.Machine, "Machine expired", output)
+	},
+}
+
+var renameNodeCmd = &cobra.Command{
+	Use:   "rename NEW_NAME",
+	Short: "Renames a machine in your network",
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		identifier, err := cmd.Flags().GetUint64("identifier")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting ID to integer: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		newName := ""
+		if len(args) > 0 {
+			newName = args[0]
+		}
+		request := &v1.RenameMachineRequest{
+			MachineId: identifier,
+			NewName:   newName,
+		}
+
+		response, err := client.RenameMachine(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot rename machine: %s\n",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+
+			return
+		}
+
+		SuccessOutput(response.Machine, "Machine renamed", output)
 	},
 }
 

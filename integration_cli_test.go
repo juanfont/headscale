@@ -1043,6 +1043,178 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 	assert.True(s.T(), listAllAfterExpiry[4].Expiry.AsTime().IsZero())
 }
 
+func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
+	namespace, err := s.createNamespace("machine-rename-command")
+	assert.Nil(s.T(), err)
+
+	// Randomly generated machine keys
+	machineKeys := []string{
+		"cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+	}
+	machines := make([]*v1.Machine, len(machineKeys))
+	assert.Nil(s.T(), err)
+
+	for index, machineKey := range machineKeys {
+		_, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"debug",
+				"create-node",
+				"--name",
+				fmt.Sprintf("machine-%d", index+1),
+				"--namespace",
+				namespace.Name,
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		machineResult, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"--namespace",
+				namespace.Name,
+				"register",
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		var machine v1.Machine
+		err = json.Unmarshal([]byte(machineResult), &machine)
+		assert.Nil(s.T(), err)
+
+		machines[index] = &machine
+	}
+
+	assert.Len(s.T(), machines, len(machineKeys))
+
+	listAllResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listAll []v1.Machine
+	err = json.Unmarshal([]byte(listAllResult), &listAll)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listAll, 5)
+
+	assert.Contains(s.T(), listAll[0].GetGivenName(), "machine-1")
+	assert.Contains(s.T(), listAll[1].GetGivenName(), "machine-2")
+	assert.Contains(s.T(), listAll[2].GetGivenName(), "machine-3")
+	assert.Contains(s.T(), listAll[3].GetGivenName(), "machine-4")
+	assert.Contains(s.T(), listAll[4].GetGivenName(), "machine-5")
+
+	for i := 0; i < 3; i++ {
+		_, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"rename",
+				"--identifier",
+				fmt.Sprintf("%d", listAll[i].Id),
+				fmt.Sprintf("newmachine-%d", i+1),
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+	}
+
+	listAllAfterRenameResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listAllAfterRename []v1.Machine
+	err = json.Unmarshal([]byte(listAllAfterRenameResult), &listAllAfterRename)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listAllAfterRename, 5)
+
+	assert.Equal(s.T(), "newmachine-1", listAllAfterRename[0].GetGivenName())
+	assert.Equal(s.T(), "newmachine-2", listAllAfterRename[1].GetGivenName())
+	assert.Equal(s.T(), "newmachine-3", listAllAfterRename[2].GetGivenName())
+	assert.Contains(s.T(), listAllAfterRename[3].GetGivenName(), "machine-4")
+	assert.Contains(s.T(), listAllAfterRename[4].GetGivenName(), "machine-5")
+
+	// Test failure for too long names
+	result, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"rename",
+			"--identifier",
+			fmt.Sprintf("%d", listAll[4].Id),
+			"testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+	assert.Contains(s.T(), result, "not be over 63 chars")
+
+	listAllAfterRenameAttemptResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listAllAfterRenameAttempt []v1.Machine
+	err = json.Unmarshal(
+		[]byte(listAllAfterRenameAttemptResult),
+		&listAllAfterRenameAttempt,
+	)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listAllAfterRenameAttempt, 5)
+
+	assert.Equal(s.T(), "newmachine-1", listAllAfterRenameAttempt[0].GetGivenName())
+	assert.Equal(s.T(), "newmachine-2", listAllAfterRenameAttempt[1].GetGivenName())
+	assert.Equal(s.T(), "newmachine-3", listAllAfterRenameAttempt[2].GetGivenName())
+	assert.Contains(s.T(), listAllAfterRenameAttempt[3].GetGivenName(), "machine-4")
+	assert.Contains(s.T(), listAllAfterRenameAttempt[4].GetGivenName(), "machine-5")
+}
+
 func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	namespace, err := s.createNamespace("routes-namespace")
 	assert.Nil(s.T(), err)

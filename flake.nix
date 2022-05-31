@@ -2,10 +2,7 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    # TODO: Use unstable when Go 1.18 has made it in
-    # https://nixpk.gs/pr-tracker.html?pr=164292
-    # nixpkgs.url = "nixpkgs/nixpkgs-unstable";
-    nixpkgs.url = "nixpkgs/master";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-22.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -19,6 +16,19 @@
           pkgs = nixpkgs.legacyPackages.${prev.system};
         in
         rec {
+          headscale =
+            pkgs.buildGo118Module rec {
+              pname = "headscale";
+              version = headscaleVersion;
+              src = pkgs.lib.cleanSource self;
+
+              # When updating go.mod or go.sum, a new sha will need to be calculated,
+              # update this if you have a mismatch after doing a change to thos files.
+              vendorSha256 = "sha256-b6qPOO/NmcXsAsSRWZlYXZKyRAF++DsL4TEZzRhQhME=";
+
+              ldflags = [ "-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}" ];
+            };
+
           golines =
             pkgs.buildGoModule rec {
               pname = "golines";
@@ -35,6 +45,29 @@
 
               nativeBuildInputs = [ pkgs.installShellFiles ];
             };
+
+          golangci-lint = prev.golangci-lint.override {
+            # Override https://github.com/NixOS/nixpkgs/pull/166801 which changed this
+            # to buildGo118Module because it does not build on Darwin.
+            inherit (prev) buildGoModule;
+          };
+
+          # golangci-lint =
+          #   pkgs.buildGo117Module rec {
+          #     pname = "golangci-lint";
+          #     version = "1.46.2";
+          #
+          #     src = pkgs.fetchFromGitHub {
+          #       owner = "golangci";
+          #       repo = "golangci-lint";
+          #       rev = "v${version}";
+          #       sha256 = "sha256-7sDAwWz+qoB/ngeH35tsJ5FZUfAQvQsU6kU9rUHIHMk=";
+          #     };
+          #
+          #     vendorSha256 = "sha256-w38OKN6HPoz37utG/2QSPMai55IRDXCIIymeMe6ogIU=";
+          #
+          #     nativeBuildInputs = [ pkgs.installShellFiles ];
+          #   };
 
           protoc-gen-grpc-gateway =
             pkgs.buildGoModule rec {
@@ -53,19 +86,6 @@
               nativeBuildInputs = [ pkgs.installShellFiles ];
 
               subPackages = [ "protoc-gen-grpc-gateway" "protoc-gen-openapiv2" ];
-            };
-
-          headscale =
-            pkgs.buildGo118Module rec {
-              pname = "headscale";
-              version = headscaleVersion;
-              src = pkgs.lib.cleanSource self;
-
-              # When updating go.mod or go.sum, a new sha will need to be calculated,
-              # update this if you have a mismatch after doing a change to thos files.
-              vendorSha256 = "sha256-bYEN0Rz7D1oJIIUjAHxdPB0CkVlb91f1lIQbucLnirg=";
-
-              ldflags = [ "-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}" ];
             };
         };
     } // flake-utils.lib.eachDefaultSystem

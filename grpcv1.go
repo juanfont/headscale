@@ -213,7 +213,7 @@ func (api headscaleV1APIServer) SetTags(
 	}
 
 	log.Trace().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Strs("tags", request.GetTags()).
 		Msg("Changing tags of machine")
 
@@ -253,11 +253,36 @@ func (api headscaleV1APIServer) ExpireMachine(
 	)
 
 	log.Trace().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Time("expiry", *machine.Expiry).
 		Msg("machine expired")
 
 	return &v1.ExpireMachineResponse{Machine: machine.toProto()}, nil
+}
+
+func (api headscaleV1APIServer) RenameMachine(
+	ctx context.Context,
+	request *v1.RenameMachineRequest,
+) (*v1.RenameMachineResponse, error) {
+	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	if err != nil {
+		return nil, err
+	}
+
+	err = api.h.RenameMachine(
+		machine,
+		request.GetNewName(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Trace().
+		Str("machine", machine.Hostname).
+		Str("new_name", request.GetNewName()).
+		Msg("machine renamed")
+
+	return &v1.RenameMachineResponse{Machine: machine.toProto()}, nil
 }
 
 func (api headscaleV1APIServer) ListMachines(
@@ -432,9 +457,15 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		Hostname:    "DebugTestMachine",
 	}
 
+	givenName, err := api.h.GenerateGivenName(request.GetName())
+	if err != nil {
+		return nil, err
+	}
+
 	newMachine := Machine{
 		MachineKey: request.GetKey(),
-		Name:       request.GetName(),
+		Hostname:   request.GetName(),
+		GivenName:  givenName,
 		Namespace:  *namespace,
 
 		Expiry:               &time.Time{},
