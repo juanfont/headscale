@@ -116,6 +116,8 @@ type Config struct {
 	LogTail LogTailConfig
 
 	CLI CLIConfig
+
+	ACL ACLConfig
 }
 
 type OIDCConfig struct {
@@ -150,6 +152,10 @@ type CLIConfig struct {
 	APIKey   string
 	Timeout  time.Duration
 	Insecure bool
+}
+
+type ACLConfig struct {
+	PolicyPath string
 }
 
 // Headscale represents the base app of the service.

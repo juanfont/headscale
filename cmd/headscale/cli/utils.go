@@ -177,6 +177,14 @@ func GetLogTailConfig() headscale.LogTailConfig {
 	}
 }
 
+func GetACLConfig() headscale.ACLConfig {
+	policyPath := viper.GetString("acl_policy_path")
+
+	return headscale.ACLConfig{
+		PolicyPath: policyPath,
+	}
+}
+
 func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	if viper.IsSet("dns_config") {
 		dnsConfig := &tailcfg.DNSConfig{}
@@ -397,6 +405,8 @@ func GetHeadscaleConfig() headscale.Config {
 			Timeout:  viper.GetDuration("cli.timeout"),
 			Insecure: viper.GetBool("cli.insecure"),
 		},
+
+		ACL: GetACLConfig(),
 	}
 }
 
