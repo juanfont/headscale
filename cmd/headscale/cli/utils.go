@@ -169,7 +169,7 @@ func GetDERPConfig() headscale.DERPConfig {
 	}
 }
 
-func GetLogConfig() headscale.LogTailConfig {
+func GetLogTailConfig() headscale.LogTailConfig {
 	enabled := viper.GetBool("logtail.enabled")
 
 	return headscale.LogTailConfig{
@@ -280,7 +280,7 @@ func absPath(path string) string {
 func getHeadscaleConfig() headscale.Config {
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
-	logConfig := GetLogConfig()
+	logConfig := GetLogTailConfig()
 
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
 	parsedPrefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes)+1)
