@@ -420,7 +420,7 @@ func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
 
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
-  if err := h.db.Save(machine).Error; err != nil {
+	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to rename machine in the database: %w", err)
 	}
 
@@ -428,7 +428,7 @@ func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
 }
 
 // RefreshMachine takes a Machine struct and sets the expire field to now.
-func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
+func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
 	now := time.Now()
 
 	machine.LastSuccessfulUpdate = &now
@@ -437,7 +437,10 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
 	if err := h.db.Save(machine).Error; err != nil {
-		return fmt.Errorf("failed to refresh machine (update expiration) in the database: %w", err)
+		return fmt.Errorf(
+			"failed to refresh machine (update expiration) in the database: %w",
+			err,
+		)
 	}
 
 	return nil

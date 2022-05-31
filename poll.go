@@ -121,7 +121,7 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 			log.Error().
 				Str("handler", "PollNetMap").
 				Str("id", ctx.Param("id")).
-				Str("machine", machine.Name).
+				Str("machine", machine.Hostname).
 				Err(err).
 				Msg("Failed to persist/update machine in the database")
 			ctx.String(http.StatusInternalServerError, ":(")
