@@ -7,6 +7,7 @@ import (
 
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/prometheus/common/model"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -15,7 +16,7 @@ import (
 
 const (
 	// 90 days.
-	DefaultAPIKeyExpiry = 90 * 24 * time.Hour
+	DefaultAPIKeyExpiry = "90d"
 )
 
 func init() {
@@ -23,7 +24,7 @@ func init() {
 	apiKeysCmd.AddCommand(listAPIKeys)
 
 	createAPIKeyCmd.Flags().
-		DurationP("expiration", "e", DefaultAPIKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
+		StringP("expiration", "e", DefaultAPIKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
 
 	apiKeysCmd.AddCommand(createAPIKeyCmd)
 
@@ -118,10 +119,22 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 
 		request := &v1.CreateApiKeyRequest{}
 
-		duration, _ := cmd.Flags().GetDuration("expiration")
-		expiration := time.Now().UTC().Add(duration)
+		durationStr, _ := cmd.Flags().GetString("expiration")
 
-		log.Trace().Dur("expiration", duration).Msg("expiration has been set")
+		duration, err := model.ParseDuration(durationStr)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Could not parse duration: %s\n", err),
+				output,
+			)
+
+			return
+		}
+
+		expiration := time.Now().UTC().Add(time.Duration(duration))
+
+		log.Trace().Dur("expiration", time.Duration(duration)).Msg("expiration has been set")
 
 		request.Expiration = timestamppb.New(expiration)
 
