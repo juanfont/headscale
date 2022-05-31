@@ -435,8 +435,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 	// We are doing this here, as in the future could be cool to have it also hot-reload
 
-	if viper.GetString("acl_policy_path") != "" {
-		aclPath := absPath(viper.GetString("acl_policy_path"))
+	if cfg.ACL.PolicyPath != "" {
+		aclPath := absPath(cfg.ACL.PolicyPath)
 		err = app.LoadACLPolicy(aclPath)
 		if err != nil {
 			log.Fatal().
