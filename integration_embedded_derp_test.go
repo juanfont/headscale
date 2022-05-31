@@ -353,11 +353,14 @@ func (s *IntegrationDERPTestSuite) saveLog(
 }
 
 func (s *IntegrationDERPTestSuite) TestPingAllPeersByHostname() {
-	ips, err := getIPs(s.tailscales)
+	hostnames, err := getDNSNames(&s.headscale)
 	assert.Nil(s.T(), err)
+
+	log.Printf("Hostnames: %#v\n", hostnames)
+
 	for hostname, tailscale := range s.tailscales {
-		for peername := range ips {
-			if peername == hostname {
+		for _, peername := range hostnames {
+			if strings.Contains(peername, hostname) {
 				continue
 			}
 			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {

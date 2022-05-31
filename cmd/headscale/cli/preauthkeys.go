@@ -6,6 +6,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/prometheus/common/model"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	DefaultPreAuthKeyExpiry = 1 * time.Hour
+	DefaultPreAuthKeyExpiry = "1h"
 )
 
 func init() {
@@ -31,7 +32,7 @@ func init() {
 	createPreAuthKeyCmd.PersistentFlags().
 		Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().
-		DurationP("expiration", "e", DefaultPreAuthKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
+		StringP("expiration", "e", DefaultPreAuthKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
 }
 
 var preauthkeysCmd = &cobra.Command{
@@ -148,10 +149,22 @@ var createPreAuthKeyCmd = &cobra.Command{
 			Ephemeral: ephemeral,
 		}
 
-		duration, _ := cmd.Flags().GetDuration("expiration")
-		expiration := time.Now().UTC().Add(duration)
+		durationStr, _ := cmd.Flags().GetString("expiration")
 
-		log.Trace().Dur("expiration", duration).Msg("expiration has been set")
+		duration, err := model.ParseDuration(durationStr)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Could not parse duration: %s\n", err),
+				output,
+			)
+
+			return
+		}
+
+		expiration := time.Now().UTC().Add(time.Duration(duration))
+
+		log.Trace().Dur("expiration", time.Duration(duration)).Msg("expiration has been set")
 
 		request.Expiration = timestamppb.New(expiration)
 

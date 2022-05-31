@@ -5,10 +5,12 @@ package headscale
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"inet.af/netaddr"
@@ -211,4 +213,72 @@ func getIPs(
 	}
 
 	return ips, nil
+}
+
+func getDNSNames(
+	headscale *dockertest.Resource,
+) ([]string, error) {
+
+	listAllResult, err := ExecuteCommand(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var listAll []v1.Machine
+	err = json.Unmarshal([]byte(listAllResult), &listAll)
+	if err != nil {
+		return nil, err
+	}
+
+	hostnames := make([]string, len(listAll))
+
+	for index := range listAll {
+		hostnames[index] = listAll[index].GetGivenName()
+	}
+
+	return hostnames, nil
+}
+
+func getMagicFQDN(
+	headscale *dockertest.Resource,
+) ([]string, error) {
+
+	listAllResult, err := ExecuteCommand(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var listAll []v1.Machine
+	err = json.Unmarshal([]byte(listAllResult), &listAll)
+	if err != nil {
+		return nil, err
+	}
+
+	hostnames := make([]string, len(listAll))
+
+	for index := range listAll {
+		hostnames[index] = fmt.Sprintf("%s.%s.headscale.net", listAll[index].GetGivenName(), listAll[index].GetNamespace().GetName())
+	}
+
+	return hostnames, nil
 }

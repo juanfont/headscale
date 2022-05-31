@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fatih/set"
+	mapset "github.com/deckarep/golang-set/v2"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/dnsname"
@@ -170,18 +170,12 @@ func getMapResponseDNSConfig(
 			),
 		)
 
-		namespaceSet := set.New(set.ThreadSafe)
+		namespaceSet := mapset.NewSet[Namespace]()
 		namespaceSet.Add(machine.Namespace)
 		for _, p := range peers {
 			namespaceSet.Add(p.Namespace)
 		}
-		for _, ns := range namespaceSet.List() {
-			namespace, ok := ns.(Namespace)
-			if !ok {
-				dnsConfig = dnsConfigOrig
-
-				continue
-			}
+		for _, namespace := range namespaceSet.ToSlice() {
 			dnsRoute := fmt.Sprintf("%v.%v", namespace.Name, baseDomain)
 			dnsConfig.Routes[dnsRoute] = nil
 		}
