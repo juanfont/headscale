@@ -12,10 +12,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -320,4 +323,17 @@ func IsStringInSlice(slice []string, str string) bool {
 	}
 
 	return false
+}
+
+func AbsolutePathFromConfigPath(path string) string {
+	// If a relative path is provided, prefix it with the the directory where
+	// the config file was found.
+	if (path != "") && !strings.HasPrefix(path, string(os.PathSeparator)) {
+		dir, _ := filepath.Split(viper.ConfigFileUsed())
+		if dir != "" {
+			path = filepath.Join(dir, path)
+		}
+	}
+
+	return path
 }
