@@ -16,6 +16,7 @@
 - Add option to enable/disable logtail (Tailscale's logging infrastructure) [#596](https://github.com/juanfont/headscale/pull/596)
   - This change disables the logs by default
 - Use [Prometheus]'s duration parser, supporting days (`d`), weeks (`w`) and years (`y`) [#598](https://github.com/juanfont/headscale/pull/598)
+- Add support for reloading ACLs and configuration with SIGHUP [#600](https://github.com/juanfont/headscale/pull/600)
 
 ## 0.15.0 (2022-03-20)
 
