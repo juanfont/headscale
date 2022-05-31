@@ -60,7 +60,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-		Name: "headscale",
+		Name: "headscale-cli",
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 		},

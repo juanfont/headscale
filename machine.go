@@ -772,7 +772,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 
 	machine.IPAddresses = ips
 
-	if err := h.db.Save(machine).Error; err != nil {
+	if err := h.db.Save(&machine).Error; err != nil {
 		return nil, fmt.Errorf("failed register(save) machine in the database: %w", err)
 	}
 
