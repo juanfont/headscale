@@ -277,7 +277,7 @@ func absPath(path string) string {
 	return path
 }
 
-func getHeadscaleConfig() headscale.Config {
+func GetHeadscaleConfig() headscale.Config {
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
@@ -416,7 +416,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		return nil, err
 	}
 
-	cfg := getHeadscaleConfig()
+	cfg := GetHeadscaleConfig()
 
 	app, err := headscale.NewHeadscale(cfg)
 	if err != nil {
@@ -440,7 +440,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 }
 
 func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
-	cfg := getHeadscaleConfig()
+	cfg := GetHeadscaleConfig()
 
 	log.Debug().
 		Dur("timeout", cfg.CLI.Timeout).
