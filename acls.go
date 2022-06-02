@@ -250,16 +250,17 @@ func expandAlias(
 	}
 
 	if strings.HasPrefix(alias, "tag:") {
+		// check for forced tags
+		for _, machine := range machines {
+			if contains(machine.ForcedTags, alias) {
+				ips = append(ips, machine.IPAddresses.ToStringSlice()...)
+			}
+		}
+
+		// find tag owners
 		owners, err := expandTagOwners(aclPolicy, alias, stripEmailDomain)
 		if err != nil {
 			if errors.Is(err, errInvalidTag) {
-				for _, machine := range machines {
-					for _, t := range machine.ForcedTags {
-						if alias == t {
-							ips = append(ips, machine.IPAddresses.ToStringSlice()...)
-						}
-					}
-				}
 				if len(ips) == 0 {
 					return ips, fmt.Errorf(
 						"%w. %v isn't owned by a TagOwner and no forced tags are defined",
@@ -267,20 +268,19 @@ func expandAlias(
 						alias,
 					)
 				}
-
 				return ips, nil
 			} else {
 				return ips, err
 			}
 		}
+
+		// filter out machines per tag owner
 		for _, namespace := range owners {
 			machines := filterMachinesByNamespace(machines, namespace)
 			for _, machine := range machines {
 				hi := machine.GetHostInfo()
-				for _, t := range hi.RequestTags {
-					if alias == t {
-						ips = append(ips, machine.IPAddresses.ToStringSlice()...)
-					}
+				if contains(hi.RequestTags, alias) {
+					ips = append(ips, machine.IPAddresses.ToStringSlice()...)
 				}
 			}
 		}
