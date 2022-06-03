@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"inet.af/netaddr"
@@ -28,6 +29,8 @@ type Config struct {
 	IPPrefixes                     []netaddr.IPPrefix
 	PrivateKeyPath                 string
 	BaseDomain                     string
+	LogLevel                       zerolog.Level
+	DisableUpdateCheck             bool
 
 	DERP DERPConfig
 
@@ -381,6 +384,12 @@ func GetHeadscaleConfig() Config {
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
 	parsedPrefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes)+1)
 
+	logLevelStr := viper.GetString("log_level")
+	logLevel, err := zerolog.ParseLevel(logLevelStr)
+	if err != nil {
+		logLevel = zerolog.DebugLevel
+	}
+
 	legacyPrefixField := viper.GetString("ip_prefix")
 	if len(legacyPrefixField) > 0 {
 		log.
@@ -427,11 +436,13 @@ func GetHeadscaleConfig() Config {
 	}
 
 	return Config{
-		ServerURL:         viper.GetString("server_url"),
-		Addr:              viper.GetString("listen_addr"),
-		MetricsAddr:       viper.GetString("metrics_listen_addr"),
-		GRPCAddr:          viper.GetString("grpc_listen_addr"),
-		GRPCAllowInsecure: viper.GetBool("grpc_allow_insecure"),
+		ServerURL:          viper.GetString("server_url"),
+		Addr:               viper.GetString("listen_addr"),
+		MetricsAddr:        viper.GetString("metrics_listen_addr"),
+		GRPCAddr:           viper.GetString("grpc_listen_addr"),
+		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
+		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
+		LogLevel:           logLevel,
 
 		IPPrefixes: prefixes,
 		PrivateKeyPath: AbsolutePathFromConfigPath(
