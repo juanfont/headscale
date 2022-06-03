@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -169,11 +168,19 @@ func GetDERPConfig() headscale.DERPConfig {
 	}
 }
 
-func GetLogConfig() headscale.LogTailConfig {
+func GetLogTailConfig() headscale.LogTailConfig {
 	enabled := viper.GetBool("logtail.enabled")
 
 	return headscale.LogTailConfig{
 		Enabled: enabled,
+	}
+}
+
+func GetACLConfig() headscale.ACLConfig {
+	policyPath := viper.GetString("acl_policy_path")
+
+	return headscale.ACLConfig{
+		PolicyPath: policyPath,
 	}
 }
 
@@ -264,23 +271,10 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	return nil, ""
 }
 
-func absPath(path string) string {
-	// If a relative path is provided, prefix it with the the directory where
-	// the config file was found.
-	if (path != "") && !strings.HasPrefix(path, string(os.PathSeparator)) {
-		dir, _ := filepath.Split(viper.ConfigFileUsed())
-		if dir != "" {
-			path = filepath.Join(dir, path)
-		}
-	}
-
-	return path
-}
-
-func getHeadscaleConfig() headscale.Config {
+func GetHeadscaleConfig() headscale.Config {
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
-	logConfig := GetLogConfig()
+	logConfig := GetLogTailConfig()
 
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
 	parsedPrefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes)+1)
@@ -342,7 +336,7 @@ func getHeadscaleConfig() headscale.Config {
 		GRPCAllowInsecure: viper.GetBool("grpc_allow_insecure"),
 
 		IPPrefixes:     prefixes,
-		PrivateKeyPath: absPath(viper.GetString("private_key_path")),
+		PrivateKeyPath: headscale.AbsolutePathFromConfigPath(viper.GetString("private_key_path")),
 		BaseDomain:     baseDomain,
 
 		DERP: derpConfig,
@@ -352,7 +346,7 @@ func getHeadscaleConfig() headscale.Config {
 		),
 
 		DBtype: viper.GetString("db_type"),
-		DBpath: absPath(viper.GetString("db_path")),
+		DBpath: headscale.AbsolutePathFromConfigPath(viper.GetString("db_path")),
 		DBhost: viper.GetString("db_host"),
 		DBport: viper.GetInt("db_port"),
 		DBname: viper.GetString("db_name"),
@@ -361,13 +355,13 @@ func getHeadscaleConfig() headscale.Config {
 
 		TLSLetsEncryptHostname: viper.GetString("tls_letsencrypt_hostname"),
 		TLSLetsEncryptListen:   viper.GetString("tls_letsencrypt_listen"),
-		TLSLetsEncryptCacheDir: absPath(
+		TLSLetsEncryptCacheDir: headscale.AbsolutePathFromConfigPath(
 			viper.GetString("tls_letsencrypt_cache_dir"),
 		),
 		TLSLetsEncryptChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
 
-		TLSCertPath:       absPath(viper.GetString("tls_cert_path")),
-		TLSKeyPath:        absPath(viper.GetString("tls_key_path")),
+		TLSCertPath:       headscale.AbsolutePathFromConfigPath(viper.GetString("tls_cert_path")),
+		TLSKeyPath:        headscale.AbsolutePathFromConfigPath(viper.GetString("tls_key_path")),
 		TLSClientAuthMode: tlsClientAuthMode,
 
 		DNSConfig: dnsConfig,
@@ -397,6 +391,8 @@ func getHeadscaleConfig() headscale.Config {
 			Timeout:  viper.GetDuration("cli.timeout"),
 			Insecure: viper.GetBool("cli.insecure"),
 		},
+
+		ACL: GetACLConfig(),
 	}
 }
 
@@ -416,7 +412,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 		return nil, err
 	}
 
-	cfg := getHeadscaleConfig()
+	cfg := GetHeadscaleConfig()
 
 	app, err := headscale.NewHeadscale(cfg)
 	if err != nil {
@@ -425,8 +421,8 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 	// We are doing this here, as in the future could be cool to have it also hot-reload
 
-	if viper.GetString("acl_policy_path") != "" {
-		aclPath := absPath(viper.GetString("acl_policy_path"))
+	if cfg.ACL.PolicyPath != "" {
+		aclPath := headscale.AbsolutePathFromConfigPath(cfg.ACL.PolicyPath)
 		err = app.LoadACLPolicy(aclPath)
 		if err != nil {
 			log.Fatal().
@@ -440,7 +436,7 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 }
 
 func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
-	cfg := getHeadscaleConfig()
+	cfg := GetHeadscaleConfig()
 
 	log.Debug().
 		Dur("timeout", cfg.CLI.Timeout).

@@ -116,6 +116,8 @@ type Config struct {
 	LogTail LogTailConfig
 
 	CLI CLIConfig
+
+	ACL ACLConfig
 }
 
 type OIDCConfig struct {
@@ -150,6 +152,10 @@ type CLIConfig struct {
 	APIKey   string
 	Timeout  time.Duration
 	Insecure bool
+}
+
+type ACLConfig struct {
+	PolicyPath string
 }
 
 // Headscale represents the base app of the service.
@@ -568,19 +574,6 @@ func (h *Headscale) Serve() error {
 		return fmt.Errorf("failed change permission of gRPC socket: %w", err)
 	}
 
-	// Handle common process-killing signals so we can gracefully shut down:
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
-	go func(c chan os.Signal) {
-		// Wait for a SIGINT or SIGKILL:
-		sig := <-c
-		log.Printf("Caught signal %s: shutting down.", sig)
-		// Stop listening (and unlink the socket if unix type):
-		socketListener.Close()
-		// And we're done:
-		os.Exit(0)
-	}(sigc)
-
 	grpcGatewayMux := runtime.NewServeMux()
 
 	// Make the grpc-gateway connect to grpc over socket
@@ -724,6 +717,61 @@ func (h *Headscale) Serve() error {
 
 	log.Info().
 		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
+
+	// Handle common process-killing signals so we can gracefully shut down:
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT,
+		syscall.SIGHUP)
+	go func(c chan os.Signal) {
+		// Wait for a SIGINT or SIGKILL:
+		for {
+			sig := <-c
+			switch sig {
+			case syscall.SIGHUP:
+				log.Info().
+					Str("signal", sig.String()).
+					Msg("Received SIGHUP, reloading ACL and Config")
+
+					// TODO(kradalby): Reload config on SIGHUP
+
+				if h.cfg.ACL.PolicyPath != "" {
+					aclPath := AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
+					err := h.LoadACLPolicy(aclPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to reload ACL policy")
+					}
+					log.Info().
+						Str("path", aclPath).
+						Msg("ACL policy successfully reloaded")
+				}
+
+			default:
+				log.Info().
+					Str("signal", sig.String()).
+					Msg("Received signal to stop, shutting down gracefully")
+
+				// Gracefully shut down servers
+				promHTTPServer.Shutdown(ctx)
+				httpServer.Shutdown(ctx)
+				grpcSocket.GracefulStop()
+
+				// Close network listeners
+				promHTTPListener.Close()
+				httpListener.Close()
+				grpcGatewayConn.Close()
+
+				// Stop listening (and unlink the socket if unix type):
+				socketListener.Close()
+
+				// And we're done:
+				os.Exit(0)
+			}
+		}
+	}(sigc)
 
 	return errorGroup.Wait()
 }
