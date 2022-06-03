@@ -214,7 +214,9 @@ func (h *Headscale) setValue(key string, value string) error {
 		return nil
 	}
 
-	h.db.Create(keyValue)
+	if err := h.db.Create(keyValue).Error; err != nil {
+		return fmt.Errorf("failed to create key value pair in the database: %w", err)
+	}
 
 	return nil
 }

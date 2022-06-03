@@ -378,19 +378,26 @@ func (h *Headscale) SetTags(machine *Machine, tags []string) error {
 		return err
 	}
 	h.setLastStateChangeToNow(machine.Namespace.Name)
-	h.db.Save(machine)
+
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
+	}
 
 	return nil
 }
 
 // ExpireMachine takes a Machine struct and sets the expire field to now.
-func (h *Headscale) ExpireMachine(machine *Machine) {
+func (h *Headscale) ExpireMachine(machine *Machine) error {
 	now := time.Now()
 	machine.Expiry = &now
 
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
-	h.db.Save(machine)
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf("failed to expire machine in the database: %w", err)
+	}
+
+	return nil
 }
 
 // RenameMachine takes a Machine struct and a new GivenName for the machines
@@ -413,13 +420,15 @@ func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
 
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
-	h.db.Save(machine)
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf("failed to rename machine in the database: %w", err)
+	}
 
 	return nil
 }
 
 // RefreshMachine takes a Machine struct and sets the expire field to now.
-func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
+func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
 	now := time.Now()
 
 	machine.LastSuccessfulUpdate = &now
@@ -427,7 +436,14 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
-	h.db.Save(machine)
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf(
+			"failed to refresh machine (update expiration) in the database: %w",
+			err,
+		)
+	}
+
+	return nil
 }
 
 // DeleteMachine softs deletes a Machine from the database.
@@ -793,7 +809,9 @@ func (h *Headscale) RegisterMachine(machine Machine,
 
 	machine.IPAddresses = ips
 
-	h.db.Save(&machine)
+	if err := h.db.Save(&machine).Error; err != nil {
+		return nil, fmt.Errorf("failed register(save) machine in the database: %w", err)
+	}
 
 	log.Trace().
 		Caller().
@@ -853,7 +871,10 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	}
 
 	machine.EnabledRoutes = newRoutes
-	h.db.Save(&machine)
+
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf("failed enable routes for machine in the database: %w", err)
+	}
 
 	return nil
 }
