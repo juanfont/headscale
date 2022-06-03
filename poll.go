@@ -115,7 +115,20 @@ func (h *Headscale) PollNetMapHandler(ctx *gin.Context) {
 		machine.Endpoints = req.Endpoints
 		machine.LastSeen = &now
 	}
-	h.db.Updates(machine)
+
+	if err := h.db.Updates(machine).Error; err != nil {
+		if err != nil {
+			log.Error().
+				Str("handler", "PollNetMap").
+				Str("id", ctx.Param("id")).
+				Str("machine", machine.Hostname).
+				Err(err).
+				Msg("Failed to persist/update machine in the database")
+			ctx.String(http.StatusInternalServerError, ":(")
+
+			return
+		}
+	}
 
 	data, err := h.getMapResponse(machineKey, req, machine)
 	if err != nil {

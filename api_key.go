@@ -57,7 +57,10 @@ func (h *Headscale) CreateAPIKey(
 		Hash:       hash,
 		Expiration: expiration,
 	}
-	h.db.Save(&key)
+
+	if err := h.db.Save(&key).Error; err != nil {
+		return "", nil, fmt.Errorf("failed to save API key to database: %w", err)
+	}
 
 	return keyStr, &key, nil
 }

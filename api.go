@@ -474,7 +474,16 @@ func (h *Headscale) handleMachineRefreshKey(
 		Str("machine", machine.Hostname).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
 	machine.NodeKey = NodePublicKeyStripPrefix(registerRequest.NodeKey)
-	h.db.Save(&machine)
+
+	if err := h.db.Save(&machine).Error; err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to update machine key in the database")
+		ctx.String(http.StatusInternalServerError, "Internal server error")
+
+		return
+	}
 
 	resp.AuthURL = ""
 	resp.User = *machine.Namespace.toUser()
@@ -484,7 +493,7 @@ func (h *Headscale) handleMachineRefreshKey(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		ctx.String(http.StatusInternalServerError, "Extremely sad!")
+		ctx.String(http.StatusInternalServerError, "Internal server error")
 
 		return
 	}
