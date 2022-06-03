@@ -39,14 +39,7 @@ type Config struct {
 	DBuser string
 	DBpass string
 
-	TLSLetsEncryptListen        string
-	TLSLetsEncryptHostname      string
-	TLSLetsEncryptCacheDir      string
-	TLSLetsEncryptChallengeType string
-
-	TLSCertPath       string
-	TLSKeyPath        string
-	TLSClientAuthMode tls.ClientAuthType
+	TLS TLSConfig
 
 	ACMEURL   string
 	ACMEEmail string
@@ -63,6 +56,21 @@ type Config struct {
 	CLI CLIConfig
 
 	ACL ACLConfig
+}
+
+type TLSConfig struct {
+	CertPath       string
+	KeyPath        string
+	ClientAuthMode tls.ClientAuthType
+
+	LetsEncrypt LetsEncryptConfig
+}
+
+type LetsEncryptConfig struct {
+	Listen        string
+	Hostname      string
+	CacheDir      string
+	ChallengeType string
 }
 
 type OIDCConfig struct {
@@ -190,6 +198,30 @@ func LoadConfig(path string) error {
 		return errors.New(strings.TrimSuffix(errorText, "\n"))
 	} else {
 		return nil
+	}
+}
+
+func GetTLSConfig() TLSConfig {
+	tlsClientAuthMode, _ := LookupTLSClientAuthMode(
+		viper.GetString("tls_client_auth_mode"),
+	)
+
+	return TLSConfig{
+		LetsEncrypt: LetsEncryptConfig{
+			Hostname: viper.GetString("tls_letsencrypt_hostname"),
+			Listen:   viper.GetString("tls_letsencrypt_listen"),
+			CacheDir: AbsolutePathFromConfigPath(
+				viper.GetString("tls_letsencrypt_cache_dir"),
+			),
+			ChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
+		},
+		CertPath: AbsolutePathFromConfigPath(
+			viper.GetString("tls_cert_path"),
+		),
+		KeyPath: AbsolutePathFromConfigPath(
+			viper.GetString("tls_key_path"),
+		),
+		ClientAuthMode: tlsClientAuthMode,
 	}
 }
 
@@ -394,10 +426,6 @@ func GetHeadscaleConfig() Config {
 			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
-	tlsClientAuthMode, _ := LookupTLSClientAuthMode(
-		viper.GetString("tls_client_auth_mode"),
-	)
-
 	return Config{
 		ServerURL:         viper.GetString("server_url"),
 		Addr:              viper.GetString("listen_addr"),
@@ -425,20 +453,7 @@ func GetHeadscaleConfig() Config {
 		DBuser: viper.GetString("db_user"),
 		DBpass: viper.GetString("db_pass"),
 
-		TLSLetsEncryptHostname: viper.GetString("tls_letsencrypt_hostname"),
-		TLSLetsEncryptListen:   viper.GetString("tls_letsencrypt_listen"),
-		TLSLetsEncryptCacheDir: AbsolutePathFromConfigPath(
-			viper.GetString("tls_letsencrypt_cache_dir"),
-		),
-		TLSLetsEncryptChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
-
-		TLSCertPath: AbsolutePathFromConfigPath(
-			viper.GetString("tls_cert_path"),
-		),
-		TLSKeyPath: AbsolutePathFromConfigPath(
-			viper.GetString("tls_key_path"),
-		),
-		TLSClientAuthMode: tlsClientAuthMode,
+		TLS: GetTLSConfig(),
 
 		DNSConfig: dnsConfig,
 

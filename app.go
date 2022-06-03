@@ -689,7 +689,7 @@ func (h *Headscale) Serve() error {
 
 func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	var err error
-	if h.cfg.TLSLetsEncryptHostname != "" {
+	if h.cfg.TLS.LetsEncrypt.Hostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().
 				Msg("Listening with TLS but ServerURL does not start with https://")
@@ -697,15 +697,15 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 
 		certManager := autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(h.cfg.TLSLetsEncryptHostname),
-			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
+			HostPolicy: autocert.HostWhitelist(h.cfg.TLS.LetsEncrypt.Hostname),
+			Cache:      autocert.DirCache(h.cfg.TLS.LetsEncrypt.CacheDir),
 			Client: &acme.Client{
 				DirectoryURL: h.cfg.ACMEURL,
 			},
 			Email: h.cfg.ACMEEmail,
 		}
 
-		switch h.cfg.TLSLetsEncryptChallengeType {
+		switch h.cfg.TLS.LetsEncrypt.ChallengeType {
 		case "TLS-ALPN-01":
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
@@ -719,7 +719,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			go func() {
 				log.Fatal().
 					Caller().
-					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
+					Err(http.ListenAndServe(h.cfg.TLS.LetsEncrypt.Listen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
 					Msg("failed to set up a HTTP server")
 			}()
 
@@ -728,7 +728,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		default:
 			return nil, errUnsupportedLetsEncryptChallengeType
 		}
-	} else if h.cfg.TLSCertPath == "" {
+	} else if h.cfg.TLS.CertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
 			log.Warn().Msg("Listening without TLS but ServerURL does not start with http://")
 		}
@@ -741,16 +741,16 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 
 		log.Info().Msg(fmt.Sprintf(
 			"Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
-			h.cfg.TLSClientAuthMode))
+			h.cfg.TLS.ClientAuthMode))
 
 		tlsConfig := &tls.Config{
-			ClientAuth:   h.cfg.TLSClientAuthMode,
+			ClientAuth:   h.cfg.TLS.ClientAuthMode,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: make([]tls.Certificate, 1),
 			MinVersion:   tls.VersionTLS12,
 		}
 
-		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
+		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
 
 		return tlsConfig, err
 	}
