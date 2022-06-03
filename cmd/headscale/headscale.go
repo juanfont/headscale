@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/efekarakus/termcolor"
+	"github.com/juanfont/headscale"
 	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -43,7 +44,7 @@ func main() {
 		NoColor:    !colors,
 	})
 
-	if err := cli.LoadConfig(""); err != nil {
+	if err := headscale.LoadConfig(""); err != nil {
 		log.Fatal().Caller().Err(err)
 	}
 
