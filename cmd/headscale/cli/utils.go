@@ -29,7 +29,6 @@ import (
 )
 
 const (
-	PermissionFallback      = 0o700
 	HeadscaleDateTimeFormat = "2006-01-02 15:04:05"
 )
 
@@ -568,17 +567,6 @@ func (t tokenAuth) GetRequestMetadata(
 
 func (tokenAuth) RequireTransportSecurity() bool {
 	return true
-}
-
-func GetFileMode(key string) fs.FileMode {
-	modeStr := viper.GetString(key)
-
-	mode, err := strconv.ParseUint(modeStr, headscale.Base8, headscale.BitSize64)
-	if err != nil {
-		return PermissionFallback
-	}
-
-	return fs.FileMode(mode)
 }
 
 func contains[T string](ts []T, t T) bool {
