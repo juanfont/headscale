@@ -1,7 +1,7 @@
 ---
 before:
   hooks:
-    - go mod tidy -compat=1.17
+    - go mod tidy -compat=1.18
 
 release:
   prerelease: auto
@@ -21,17 +21,15 @@ builds:
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
 
-  - id: linux-armhf
+  - id: darwin-arm64
     main: ./cmd/headscale/headscale.go
     mod_timestamp: "{{ .CommitTimestamp }}"
     env:
       - CGO_ENABLED=0
     goos:
-      - linux
+      - darwin
     goarch:
-      - arm
-    goarm:
-      - "7"
+      - arm64
     flags:
       - -mod=readonly
     ldflags:
@@ -65,7 +63,7 @@ archives:
   - id: golang-cross
     builds:
       - darwin-amd64
-      - linux-armhf
+      - darwin-arm64
       - linux-amd64
       - linux-arm64
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
