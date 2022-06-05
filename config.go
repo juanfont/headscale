@@ -376,7 +376,12 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	return nil, ""
 }
 
-func GetHeadscaleConfig() Config {
+func GetHeadscaleConfig() (*Config, error) {
+	err := LoadConfig("")
+	if err != nil {
+		return nil, err
+	}
+
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
@@ -435,7 +440,7 @@ func GetHeadscaleConfig() Config {
 			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
-	return Config{
+	return &Config{
 		ServerURL:          viper.GetString("server_url"),
 		Addr:               viper.GetString("listen_addr"),
 		MetricsAddr:        viper.GetString("metrics_listen_addr"),
@@ -495,5 +500,5 @@ func GetHeadscaleConfig() Config {
 		},
 
 		ACL: GetACLConfig(),
-	}
+	}, nil
 }

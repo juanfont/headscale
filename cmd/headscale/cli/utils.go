@@ -24,6 +24,11 @@ const (
 )
 
 func getHeadscaleApp() (*headscale.Headscale, error) {
+	cfg, err := headscale.GetHeadscaleConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration while creating headscale instance: %w", err)
+	}
+
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
 	// to avoid races
 	minInactivityTimeout, _ := time.ParseDuration("65s")
@@ -38,8 +43,6 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 
 		return nil, err
 	}
-
-	cfg := headscale.GetHeadscaleConfig()
 
 	app, err := headscale.NewHeadscale(cfg)
 	if err != nil {
@@ -63,7 +66,13 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 }
 
 func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
-	cfg := headscale.GetHeadscaleConfig()
+	cfg, err := headscale.GetHeadscaleConfig()
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Caller().
+			Msgf("Failed to load configuration")
+	}
 
 	log.Debug().
 		Dur("timeout", cfg.CLI.Timeout).
