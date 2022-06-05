@@ -43,7 +43,7 @@ func main() {
 		NoColor:    !colors,
 	})
 
-	if err := cli.LoadConfig(""); err != nil {
+	if err := cli.LoadConfig("", false); err != nil {
 		log.Fatal().Caller().Err(err)
 	}
 

@@ -33,15 +33,19 @@ const (
 	HeadscaleDateTimeFormat = "2006-01-02 15:04:05"
 )
 
-func LoadConfig(path string) error {
-	viper.SetConfigName("config")
-	if path == "" {
-		viper.AddConfigPath("/etc/headscale/")
-		viper.AddConfigPath("$HOME/.headscale")
-		viper.AddConfigPath(".")
+func LoadConfig(path string, isFile bool) error {
+	if isFile {
+		viper.SetConfigFile(path)
 	} else {
-		// For testing
-		viper.AddConfigPath(path)
+		viper.SetConfigName("config")
+		if path == "" {
+			viper.AddConfigPath("/etc/headscale/")
+			viper.AddConfigPath("$HOME/.headscale")
+			viper.AddConfigPath(".")
+		} else {
+			// For testing
+			viper.AddConfigPath(path)
+		}
 	}
 
 	viper.SetEnvPrefix("headscale")
