@@ -7,6 +7,7 @@ In additional to the "get up and running section", there is an optional [rc.d se
 describing how to make `headscale` run properly in a server environment.
 
 ## Install `headscale`
+
 1. Install from ports (Not Recommend)
 
    As of OpenBSD 7.1, there's a headscale in ports collection, however, it's severely outdated(v0.12.4).
@@ -14,7 +15,7 @@ describing how to make `headscale` run properly in a server environment.
 
 2. Install from source on OpenBSD 7.1
 
-``` shell
+```shell
 # Install prerequistes
 # 1. go v1.18+: headscale newer than 0.15 needs go 1.18+ to compile
 # 2. gmake: Makefile in the headscale repo is written in GNU make syntax
@@ -39,7 +40,7 @@ cp headscale /usr/local/sbin
 
 3. Install from source via cross compile
 
-``` shell
+```shell
 # Install prerequistes
 # 1. go v1.18+: headscale newer than 0.15 needs go 1.18+ to compile
 # 2. gmake: Makefile in the headscale repo is written in GNU make syntax
