@@ -3,7 +3,7 @@
 ## Goal
 
 This documentation has the goal of showing a user how-to install and run `headscale` on OpenBSD 7.1.
-In additional to the "get up and running section", there is an optional [rc.d section](#running-headscale-in-the-background-with-rc.d)
+In additional to the "get up and running section", there is an optional [rc.d section](#running-headscale-in-the-background-with-rcd)
 describing how to make `headscale` run properly in a server environment.
 
 ## Install `headscale`
@@ -97,7 +97,7 @@ This command will start `headscale` in the current terminal session.
 To continue the tutorial, open a new terminal and let it run in the background.
 Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux).
 
-To run `headscale` in the background, please follow the steps in the [rc.d section](#running-headscale-in-the-background-with-rc.d) before continuing.
+To run `headscale` in the background, please follow the steps in the [rc.d section](#running-headscale-in-the-background-with-rcd) before continuing.
 
 5. Verify `headscale` is running:
 
