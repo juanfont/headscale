@@ -1,0 +1,46 @@
+acl_policy_path: ""
+cli:
+  insecure: false
+  timeout: 5s
+db_path: /tmp/integration_test_db.sqlite3
+db_type: sqlite3
+derp:
+  auto_update_enabled: false
+  server:
+    enabled: false
+    stun:
+      enabled: true
+  update_frequency: 1m
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+dns_config:
+  base_domain: headscale.net
+  domains: []
+  magic_dns: true
+  nameservers:
+    - 1.1.1.1
+ephemeral_node_inactivity_timeout: 30m
+grpc_allow_insecure: false
+grpc_listen_addr: :50443
+ip_prefixes:
+  - fd7a:115c:a1e0::/48
+  - 100.64.0.0/10
+listen_addr: 0.0.0.0:8080
+log_level: trace
+logtail:
+  enabled: false
+metrics_listen_addr: 127.0.0.1:9090
+oidc:
+  scope:
+    - openid
+    - profile
+    - email
+  strip_email_domain: true
+private_key_path: private.key
+server_url: http://headscale:8080
+tls_client_auth_mode: relaxed
+tls_letsencrypt_cache_dir: /var/www/.cache
+tls_letsencrypt_challenge_type: HTTP-01
+unix_socket: /var/run/headscale.sock
+unix_socket_permission: "0o770"
+
