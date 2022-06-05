@@ -821,7 +821,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 		{
 			name: "simple machine name generation",
 			h: &Headscale{
-				cfg: Config{
+				cfg: &Config{
 					OIDC: OIDCConfig{
 						StripEmaildomain: true,
 					},
@@ -836,7 +836,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 		{
 			name: "machine name with 53 chars",
 			h: &Headscale{
-				cfg: Config{
+				cfg: &Config{
 					OIDC: OIDCConfig{
 						StripEmaildomain: true,
 					},
@@ -851,7 +851,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 		{
 			name: "machine name with 60 chars",
 			h: &Headscale{
-				cfg: Config{
+				cfg: &Config{
 					OIDC: OIDCConfig{
 						StripEmaildomain: true,
 					},
@@ -866,7 +866,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 		{
 			name: "machine name with 63 chars",
 			h: &Headscale{
-				cfg: Config{
+				cfg: &Config{
 					OIDC: OIDCConfig{
 						StripEmaildomain: true,
 					},
@@ -881,7 +881,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 		{
 			name: "machine name with 64 chars",
 			h: &Headscale{
-				cfg: Config{
+				cfg: &Config{
 					OIDC: OIDCConfig{
 						StripEmaildomain: true,
 					},
@@ -896,7 +896,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 		{
 			name: "machine name with 73 chars",
 			h: &Headscale{
-				cfg: Config{
+				cfg: &Config{
 					OIDC: OIDCConfig{
 						StripEmaildomain: true,
 					},

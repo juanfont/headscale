@@ -71,7 +71,7 @@ const (
 
 // Headscale represents the base app of the service.
 type Headscale struct {
-	cfg        Config
+	cfg        *Config
 	db         *gorm.DB
 	dbString   string
 	dbType     string
@@ -115,7 +115,7 @@ func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
 	}
 }
 
-func NewHeadscale(cfg Config) (*Headscale, error) {
+func NewHeadscale(cfg *Config) (*Headscale, error) {
 	privKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read or create private key: %w", err)
