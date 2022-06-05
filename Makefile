@@ -3,6 +3,13 @@ version = $(git describe --always --tags --dirty)
 
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
 
+# Determine if OS supports pie
+GOOS ?= $(shell uname | tr '[:upper:]' '[:lower:]')
+ifeq ($(filter $(GOOS), openbsd netbsd soloaris plan9), )
+	pieflags = -buildmode=pie
+else
+endif
+
 # GO_SOURCES = $(wildcard *.go)
 # PROTO_SOURCES = $(wildcard **/*.proto)
 GO_SOURCES = $(call rwildcard,,*.go)
@@ -10,7 +17,7 @@ PROTO_SOURCES = $(call rwildcard,,*.proto)
 
 
 build:
-	CGO_ENABLED=0 go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
+	GOOS=$(GOOS) CGO_ENABLED=0 go build -trimpath $(pieflags) -mod=readonly -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
 
 dev: lint test build
 
