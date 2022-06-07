@@ -5,10 +5,10 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/juanfont/headscale"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/tcnksm/go-latest"
 )
 
@@ -26,24 +26,25 @@ func init() {
 
 func initConfig() {
 	if cfgFile != "" {
-		if err := LoadConfig(cfgFile, true); err != nil {
+		err := headscale.LoadConfig(cfgFile, true)
+		if err != nil {
 			log.Fatal().Caller().Err(err)
 		}
 	} else {
-		if err := LoadConfig("", false); err != nil {
+		err := headscale.LoadConfig("", false)
+		if err != nil {
 			log.Fatal().Caller().Err(err)
 		}
+	}
+
+	cfg, err := headscale.GetHeadscaleConfig()
+	if err != nil {
+		log.Fatal().Caller().Err(err)
 	}
 
 	machineOutput := HasMachineOutputFlag()
 
-	logLevel := viper.GetString("log_level")
-	level, err := zerolog.ParseLevel(logLevel)
-	if err != nil {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	} else {
-		zerolog.SetGlobalLevel(level)
-	}
+	zerolog.SetGlobalLevel(cfg.LogLevel)
 
 	// If the user has requested a "machine" readable format,
 	// then disable login so the output remains valid.
@@ -51,7 +52,7 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	if !viper.GetBool("disable_check_updates") && !machineOutput {
+	if !cfg.DisableUpdateCheck && !machineOutput {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			Version != "dev" {
 			githubTag := &latest.GithubTag{

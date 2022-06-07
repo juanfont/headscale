@@ -46,7 +46,7 @@ func (s *Suite) ResetDB(c *check.C) {
 	}
 
 	app = Headscale{
-		cfg:      cfg,
+		cfg:      &cfg,
 		dbType:   "sqlite3",
 		dbString: tmpDir + "/headscale_test.db",
 	}

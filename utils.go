@@ -11,10 +11,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -55,6 +57,8 @@ const (
 
 	// privateKey prefix.
 	privateHexPrefix = "privkey:"
+
+	PermissionFallback = 0o700
 )
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
@@ -349,4 +353,15 @@ func AbsolutePathFromConfigPath(path string) string {
 	}
 
 	return path
+}
+
+func GetFileMode(key string) fs.FileMode {
+	modeStr := viper.GetString(key)
+
+	mode, err := strconv.ParseUint(modeStr, Base8, BitSize64)
+	if err != nil {
+		return PermissionFallback
+	}
+
+	return fs.FileMode(mode)
 }
