@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/efekarakus/termcolor"
+	"github.com/juanfont/headscale"
 	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"github.com/tcnksm/go-latest"
 )
 
@@ -43,19 +43,14 @@ func main() {
 		NoColor:    !colors,
 	})
 
-	if err := cli.LoadConfig(""); err != nil {
+	cfg, err := headscale.GetHeadscaleConfig()
+	if err != nil {
 		log.Fatal().Caller().Err(err)
 	}
 
 	machineOutput := cli.HasMachineOutputFlag()
 
-	logLevel := viper.GetString("log_level")
-	level, err := zerolog.ParseLevel(logLevel)
-	if err != nil {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	} else {
-		zerolog.SetGlobalLevel(level)
-	}
+	zerolog.SetGlobalLevel(cfg.LogLevel)
 
 	// If the user has requested a "machine" readable format,
 	// then disable login so the output remains valid.
@@ -63,7 +58,7 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	if !viper.GetBool("disable_check_updates") && !machineOutput {
+	if !cfg.DisableUpdateCheck && !machineOutput {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			cli.Version != "dev" {
 			githubTag := &latest.GithubTag{

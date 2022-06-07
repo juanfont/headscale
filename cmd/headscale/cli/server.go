@@ -16,12 +16,12 @@ var serveCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		h, err := getHeadscaleApp()
+		app, err := getHeadscaleApp()
 		if err != nil {
 			log.Fatal().Caller().Err(err).Msg("Error initializing")
 		}
 
-		err = h.Serve()
+		err = app.Serve()
 		if err != nil {
 			log.Fatal().Caller().Err(err).Msg("Error starting server")
 		}
