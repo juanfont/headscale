@@ -35,7 +35,6 @@
         // ports on git-server or ci-server.
         {
             "action": "accept",
-            "protocol": "tcp",
             "src": [
                 "group:example2",
                 "192.168.1.0/24"

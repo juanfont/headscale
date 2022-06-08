@@ -321,6 +321,20 @@ func (s *Suite) TestPortRange(c *check.C) {
 	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(5500))
 }
 
+func (s *Suite) TestProtocolParsing(c *check.C) {
+	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_protocols.hujson")
+	c.Assert(err, check.IsNil)
+
+	rules, err := app.generateACLRules()
+	c.Assert(err, check.IsNil)
+	c.Assert(rules, check.NotNil)
+
+	c.Assert(rules, check.HasLen, 3)
+	c.Assert(rules[0].IPProto[0], check.Equals, 6)  // tcp
+	c.Assert(rules[1].IPProto[0], check.Equals, 17) // udp
+	c.Assert(rules[2].IPProto[1], check.Equals, 58) // icmp v4
+}
+
 func (s *Suite) TestPortWildcard(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
 	c.Assert(err, check.IsNil)
