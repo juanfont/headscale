@@ -21,7 +21,7 @@ type ACLPolicy struct {
 // ACL is a basic rule for the ACL Policy.
 type ACL struct {
 	Action       string   `json:"action" yaml:"action"`
-	Protocol     string   `json:"protocol" yaml:"protocol"`
+	Protocol     string   `json:"proto" yaml:"proto"`
 	Sources      []string `json:"src"  yaml:"src"`
 	Destinations []string `json:"dst"  yaml:"dst"`
 }

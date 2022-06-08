@@ -628,7 +628,8 @@ func Test_expandTagOwners(t *testing.T) {
 
 func Test_expandPorts(t *testing.T) {
 	type args struct {
-		portsStr string
+		portsStr      string
+		needsWildcard bool
 	}
 	tests := []struct {
 		name    string
@@ -638,15 +639,29 @@ func Test_expandPorts(t *testing.T) {
 	}{
 		{
 			name: "wildcard",
-			args: args{portsStr: "*"},
+			args: args{portsStr: "*", needsWildcard: true},
 			want: &[]tailcfg.PortRange{
 				{First: portRangeBegin, Last: portRangeEnd},
 			},
 			wantErr: false,
 		},
 		{
+			name: "needs wildcard but does not require it",
+			args: args{portsStr: "*", needsWildcard: false},
+			want: &[]tailcfg.PortRange{
+				{First: portRangeBegin, Last: portRangeEnd},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "needs wildcard but gets port",
+			args:    args{portsStr: "80,443", needsWildcard: true},
+			want:    nil,
+			wantErr: true,
+		},
+		{
 			name: "two Destinations",
-			args: args{portsStr: "80,443"},
+			args: args{portsStr: "80,443", needsWildcard: false},
 			want: &[]tailcfg.PortRange{
 				{First: 80, Last: 80},
 				{First: 443, Last: 443},
@@ -655,7 +670,7 @@ func Test_expandPorts(t *testing.T) {
 		},
 		{
 			name: "a range and a port",
-			args: args{portsStr: "80-1024,443"},
+			args: args{portsStr: "80-1024,443", needsWildcard: false},
 			want: &[]tailcfg.PortRange{
 				{First: 80, Last: 1024},
 				{First: 443, Last: 443},
@@ -664,38 +679,38 @@ func Test_expandPorts(t *testing.T) {
 		},
 		{
 			name:    "out of bounds",
-			args:    args{portsStr: "854038"},
+			args:    args{portsStr: "854038", needsWildcard: false},
 			want:    nil,
 			wantErr: true,
 		},
 		{
 			name:    "wrong port",
-			args:    args{portsStr: "85a38"},
+			args:    args{portsStr: "85a38", needsWildcard: false},
 			want:    nil,
 			wantErr: true,
 		},
 		{
 			name:    "wrong port in first",
-			args:    args{portsStr: "a-80"},
+			args:    args{portsStr: "a-80", needsWildcard: false},
 			want:    nil,
 			wantErr: true,
 		},
 		{
 			name:    "wrong port in last",
-			args:    args{portsStr: "80-85a38"},
+			args:    args{portsStr: "80-85a38", needsWildcard: false},
 			want:    nil,
 			wantErr: true,
 		},
 		{
 			name:    "wrong port format",
-			args:    args{portsStr: "80-85a38-3"},
+			args:    args{portsStr: "80-85a38-3", needsWildcard: false},
 			want:    nil,
 			wantErr: true,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := expandPorts(test.args.portsStr)
+			got, err := expandPorts(test.args.portsStr, test.args.needsWildcard)
 			if (err != nil) != test.wantErr {
 				t.Errorf("expandPorts() error = %v, wantErr %v", err, test.wantErr)
 

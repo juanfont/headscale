@@ -23,6 +23,7 @@ const (
 	errInvalidGroup      = Error("invalid group")
 	errInvalidTag        = Error("invalid tag")
 	errInvalidPortFormat = Error("invalid port format")
+	errWildcardIsNeeded  = Error("wildcard as port is required for the procotol")
 )
 
 const (
@@ -134,9 +135,17 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 			srcIPs = append(srcIPs, srcs...)
 		}
 
+		protocols, needsWildcard, err := parseProtocol(acl.Protocol)
+		if err != nil {
+			log.Error().
+				Msgf("Error parsing ACL %d. protocol unknown %s", index, acl.Protocol)
+
+			return nil, err
+		}
+
 		destPorts := []tailcfg.NetPortRange{}
 		for innerIndex, dest := range acl.Destinations {
-			dests, err := h.generateACLPolicyDest(machines, *h.aclPolicy, dest)
+			dests, err := h.generateACLPolicyDest(machines, *h.aclPolicy, dest, needsWildcard)
 			if err != nil {
 				log.Error().
 					Msgf("Error parsing ACL %d, Destination %d", index, innerIndex)
@@ -149,6 +158,7 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 		rules = append(rules, tailcfg.FilterRule{
 			SrcIPs:   srcIPs,
 			DstPorts: destPorts,
+			IPProto:  protocols,
 		})
 	}
 
@@ -167,6 +177,7 @@ func (h *Headscale) generateACLPolicyDest(
 	machines []Machine,
 	aclPolicy ACLPolicy,
 	dest string,
+	needsWildcard bool,
 ) ([]tailcfg.NetPortRange, error) {
 	tokens := strings.Split(dest, ":")
 	if len(tokens) < expectedTokenItems || len(tokens) > 3 {
@@ -195,7 +206,7 @@ func (h *Headscale) generateACLPolicyDest(
 	if err != nil {
 		return nil, err
 	}
-	ports, err := expandPorts(tokens[len(tokens)-1])
+	ports, err := expandPorts(tokens[len(tokens)-1], needsWildcard)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +223,54 @@ func (h *Headscale) generateACLPolicyDest(
 	}
 
 	return dests, nil
+}
+
+// parseProtocol reads the proto field of the ACL and generates a list of
+// protocols that will be allowed, following the IANA IP protocol number
+// https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+//
+// If the ACL proto field is empty, it allows ICMPv4, ICMPv6, TCP, and UDP,
+// as per Tailscale behaviour (see tailcfg.FilterRule).
+//
+// Also returns a boolean indicating if the protocol
+// requires all the destinations to use wildcard as port number (only TCP,
+// UDP and SCTP support specifying ports).
+func parseProtocol(protocol string) ([]int, bool, error) {
+	switch protocol {
+	case "":
+		return []int{1, 58, 6, 17}, false, nil
+	case "igmp":
+		return []int{2}, true, nil
+	case "ipv4", "ip-in-ip":
+		return []int{4}, true, nil
+	case "tcp":
+		return []int{6}, false, nil
+	case "egp":
+		return []int{8}, true, nil
+	case "igp":
+		return []int{9}, true, nil
+	case "udp":
+		return []int{17}, false, nil
+	case "gre":
+		return []int{47}, true, nil
+	case "esp":
+		return []int{50}, true, nil
+	case "ah":
+		return []int{51}, true, nil
+	case "sctp":
+		return []int{132}, false, nil
+	case "icmp":
+		return []int{1, 58}, true, nil
+
+	default:
+		protocolNumber, err := strconv.Atoi(protocol)
+		if err != nil {
+			return nil, false, err
+		}
+		needsWildcard := protocolNumber != 6 && protocolNumber != 17 && protocolNumber != 132
+
+		return []int{protocolNumber}, needsWildcard, nil
+	}
 }
 
 // expandalias has an input of either
@@ -268,6 +327,7 @@ func expandAlias(
 						alias,
 					)
 				}
+
 				return ips, nil
 			} else {
 				return ips, err
@@ -359,11 +419,15 @@ func excludeCorrectlyTaggedNodes(
 	return out
 }
 
-func expandPorts(portsStr string) (*[]tailcfg.PortRange, error) {
+func expandPorts(portsStr string, needsWildcard bool) (*[]tailcfg.PortRange, error) {
 	if portsStr == "*" {
 		return &[]tailcfg.PortRange{
 			{First: portRangeBegin, Last: portRangeEnd},
 		}, nil
+	}
+
+	if needsWildcard {
+		return nil, errWildcardIsNeeded
 	}
 
 	ports := []tailcfg.PortRange{}
