@@ -188,8 +188,8 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		Hosts:     map[string]netaddr.IPPrefix{},
 		TagOwners: map[string][]string{},
 		ACLs: []ACL{
-			{Action: "accept", Users: []string{"admin"}, Ports: []string{"*:*"}},
-			{Action: "accept", Users: []string{"test"}, Ports: []string{"test:*"}},
+			{Action: "accept", Sources: []string{"admin"}, Destinations: []string{"*:*"}},
+			{Action: "accept", Sources: []string{"test"}, Destinations: []string{"test:*"}},
 		},
 		Tests: []ACLTest{},
 	}

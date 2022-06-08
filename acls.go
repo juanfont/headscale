@@ -123,11 +123,11 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 		}
 
 		srcIPs := []string{}
-		for innerIndex, user := range acl.Users {
-			srcs, err := h.generateACLPolicySrcIP(machines, *h.aclPolicy, user)
+		for innerIndex, src := range acl.Sources {
+			srcs, err := h.generateACLPolicySrcIP(machines, *h.aclPolicy, src)
 			if err != nil {
 				log.Error().
-					Msgf("Error parsing ACL %d, User %d", index, innerIndex)
+					Msgf("Error parsing ACL %d, Source %d", index, innerIndex)
 
 				return nil, err
 			}
@@ -135,11 +135,11 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 		}
 
 		destPorts := []tailcfg.NetPortRange{}
-		for innerIndex, ports := range acl.Ports {
-			dests, err := h.generateACLPolicyDestPorts(machines, *h.aclPolicy, ports)
+		for innerIndex, dest := range acl.Destinations {
+			dests, err := h.generateACLPolicyDest(machines, *h.aclPolicy, dest)
 			if err != nil {
 				log.Error().
-					Msgf("Error parsing ACL %d, Port %d", index, innerIndex)
+					Msgf("Error parsing ACL %d, Destination %d", index, innerIndex)
 
 				return nil, err
 			}
@@ -158,17 +158,17 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 func (h *Headscale) generateACLPolicySrcIP(
 	machines []Machine,
 	aclPolicy ACLPolicy,
-	u string,
+	src string,
 ) ([]string, error) {
-	return expandAlias(machines, aclPolicy, u, h.cfg.OIDC.StripEmaildomain)
+	return expandAlias(machines, aclPolicy, src, h.cfg.OIDC.StripEmaildomain)
 }
 
-func (h *Headscale) generateACLPolicyDestPorts(
+func (h *Headscale) generateACLPolicyDest(
 	machines []Machine,
 	aclPolicy ACLPolicy,
-	d string,
+	dest string,
 ) ([]tailcfg.NetPortRange, error) {
-	tokens := strings.Split(d, ":")
+	tokens := strings.Split(dest, ":")
 	if len(tokens) < expectedTokenItems || len(tokens) > 3 {
 		return nil, errInvalidPortFormat
 	}

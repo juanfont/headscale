@@ -62,7 +62,7 @@ func (s *Suite) TestBasicRule(c *check.C) {
 func (s *Suite) TestInvalidAction(c *check.C) {
 	app.aclPolicy = &ACLPolicy{
 		ACLs: []ACL{
-			{Action: "invalidAction", Users: []string{"*"}, Ports: []string{"*:*"}},
+			{Action: "invalidAction", Sources: []string{"*"}, Destinations: []string{"*:*"}},
 		},
 	}
 	err := app.UpdateACLRules()
@@ -70,14 +70,14 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 }
 
 func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
-	// this ACL is wrong because the group in users sections doesn't exist
+	// this ACL is wrong because the group in Sources sections doesn't exist
 	app.aclPolicy = &ACLPolicy{
 		Groups: Groups{
 			"group:test":  []string{"foo"},
 			"group:error": []string{"foo", "group:test"},
 		},
 		ACLs: []ACL{
-			{Action: "accept", Users: []string{"group:error"}, Ports: []string{"*:*"}},
+			{Action: "accept", Sources: []string{"group:error"}, Destinations: []string{"*:*"}},
 		},
 	}
 	err := app.UpdateACLRules()
@@ -88,7 +88,7 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 	// this ACL is wrong because no tagOwners own the requested tag for the server
 	app.aclPolicy = &ACLPolicy{
 		ACLs: []ACL{
-			{Action: "accept", Users: []string{"tag:foo"}, Ports: []string{"*:*"}},
+			{Action: "accept", Sources: []string{"tag:foo"}, Destinations: []string{"*:*"}},
 		},
 	}
 	err := app.UpdateACLRules()
@@ -97,8 +97,8 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 
 // this test should validate that we can expand a group in a TagOWner section and
 // match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
-// the tag is matched in the Users section.
-func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
+// the tag is matched in the Sources section.
+func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 	namespace, err := app.CreateNamespace("user1")
 	c.Assert(err, check.IsNil)
 
@@ -131,7 +131,7 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 		Groups:    Groups{"group:test": []string{"user1", "user2"}},
 		TagOwners: TagOwners{"tag:test": []string{"user3", "group:test"}},
 		ACLs: []ACL{
-			{Action: "accept", Users: []string{"tag:test"}, Ports: []string{"*:*"}},
+			{Action: "accept", Sources: []string{"tag:test"}, Destinations: []string{"*:*"}},
 		},
 	}
 	err = app.UpdateACLRules()
@@ -143,7 +143,7 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 
 // this test should validate that we can expand a group in a TagOWner section and
 // match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
-// the tag is matched in the Ports section.
+// the tag is matched in the Destinations section.
 func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 	namespace, err := app.CreateNamespace("user1")
 	c.Assert(err, check.IsNil)
@@ -177,7 +177,7 @@ func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 		Groups:    Groups{"group:test": []string{"user1", "user2"}},
 		TagOwners: TagOwners{"tag:test": []string{"user3", "group:test"}},
 		ACLs: []ACL{
-			{Action: "accept", Users: []string{"*"}, Ports: []string{"tag:test:*"}},
+			{Action: "accept", Sources: []string{"*"}, Destinations: []string{"tag:test:*"}},
 		},
 	}
 	err = app.UpdateACLRules()
@@ -222,7 +222,7 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 	app.aclPolicy = &ACLPolicy{
 		TagOwners: TagOwners{"tag:test": []string{"user1"}},
 		ACLs: []ACL{
-			{Action: "accept", Users: []string{"user1"}, Ports: []string{"*:*"}},
+			{Action: "accept", Sources: []string{"user1"}, Destinations: []string{"*:*"}},
 		},
 	}
 	err = app.UpdateACLRules()
@@ -287,9 +287,9 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		TagOwners: TagOwners{"tag:webapp": []string{"user1"}},
 		ACLs: []ACL{
 			{
-				Action: "accept",
-				Users:  []string{"user1"},
-				Ports:  []string{"tag:webapp:80,443"},
+				Action:       "accept",
+				Sources:      []string{"user1"},
+				Destinations: []string{"tag:webapp:80,443"},
 			},
 		},
 	}
@@ -645,7 +645,7 @@ func Test_expandPorts(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "two ports",
+			name: "two Destinations",
 			args: args{portsStr: "80,443"},
 			want: &[]tailcfg.PortRange{
 				{First: 80, Last: 80},
