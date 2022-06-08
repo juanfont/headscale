@@ -93,16 +93,31 @@ Here are the ACL's to implement the same permissions as above:
       ]
     },
 
-    // admin have only access to administrative ports of the servers
+    // admin have only access to administrative ports of the servers, in tcp/22
     {
       "action": "accept",
       "src": ["group:admin"],
+      "proto": "tcp",
       "dst": [
         "tag:prod-databases:22",
         "tag:prod-app-servers:22",
         "tag:internal:22",
         "tag:dev-databases:22",
         "tag:dev-app-servers:22"
+      ]
+    },
+
+    // we also allow admin to ping the servers
+    {
+      "action": "accept",
+      "src": ["group:admin"],
+      "proto": "icmp",
+      "dst": [
+        "tag:prod-databases:*",
+        "tag:prod-app-servers:*",
+        "tag:internal:*",
+        "tag:dev-databases:*",
+        "tag:dev-app-servers:*"
       ]
     },
 
@@ -128,11 +143,12 @@ Here are the ACL's to implement the same permissions as above:
       "dst": ["10.20.0.0/16:443,5432", "router.internal:0"]
     },
 
-    // servers should be able to talk to database. Database should not be able to initiate connections to
+    // servers should be able to talk to database in tcp/5432. Database should not be able to initiate connections to
     // applications servers
     {
       "action": "accept",
       "src": ["tag:dev-app-servers"],
+      "proto": "tcp",
       "dst": ["tag:dev-databases:5432"]
     },
     {
