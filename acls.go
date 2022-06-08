@@ -23,7 +23,7 @@ const (
 	errInvalidGroup      = Error("invalid group")
 	errInvalidTag        = Error("invalid tag")
 	errInvalidPortFormat = Error("invalid port format")
-	errWildcardIsNeeded  = Error("wildcard as port is required for the procotol")
+	errWildcardIsNeeded  = Error("wildcard as port is required for the protocol")
 )
 
 const (
@@ -267,7 +267,7 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		needsWildcard := protocolNumber != 6 && protocolNumber != 17 && protocolNumber != 132
+		needsWildcard := protocolNumber != 6 && protocolNumber != 17 && protocolNumber != 132 // nolint
 
 		return []int{protocolNumber}, needsWildcard, nil
 	}
