@@ -33,7 +33,7 @@ Note: Namespaces will be created automatically when users authenticate with the
 Headscale server.
 
 ACLs could be written either on [huJSON](https://github.com/tailscale/hujson)
-or Yaml. Check the [test ACLs](../tests/acls) for further information.
+or YAML. Check the [test ACLs](../tests/acls) for further information.
 
 When registering the servers we will need to add the flag
 `--advertised-tags=tag:<tag1>,tag:<tag2>`, and the user (namespace) that is
@@ -83,8 +83,8 @@ Here are the ACL's to implement the same permissions as above:
     // boss have access to all servers
     {
       "action": "accept",
-      "users": ["group:boss"],
-      "ports": [
+      "src": ["group:boss"],
+      "dst": [
         "tag:prod-databases:*",
         "tag:prod-app-servers:*",
         "tag:internal:*",
@@ -96,8 +96,8 @@ Here are the ACL's to implement the same permissions as above:
     // admin have only access to administrative ports of the servers
     {
       "action": "accept",
-      "users": ["group:admin"],
-      "ports": [
+      "src": ["group:admin"],
+      "dst": [
         "tag:prod-databases:22",
         "tag:prod-app-servers:22",
         "tag:internal:22",
@@ -110,8 +110,8 @@ Here are the ACL's to implement the same permissions as above:
     // they can only view the applications servers in prod and have no access to databases servers in production
     {
       "action": "accept",
-      "users": ["group:dev"],
-      "ports": [
+      "src": ["group:dev"],
+      "dst": [
         "tag:dev-databases:*",
         "tag:dev-app-servers:*",
         "tag:prod-app-servers:80,443"
@@ -124,37 +124,37 @@ Here are the ACL's to implement the same permissions as above:
     // https://github.com/juanfont/headscale/issues/502
     {
       "action": "accept",
-      "users": ["group:dev"],
-      "ports": ["10.20.0.0/16:443,5432", "router.internal:0"]
+      "src": ["group:dev"],
+      "dst": ["10.20.0.0/16:443,5432", "router.internal:0"]
     },
 
     // servers should be able to talk to database. Database should not be able to initiate connections to
     // applications servers
     {
       "action": "accept",
-      "users": ["tag:dev-app-servers"],
-      "ports": ["tag:dev-databases:5432"]
+      "src": ["tag:dev-app-servers"],
+      "dst": ["tag:dev-databases:5432"]
     },
     {
       "action": "accept",
-      "users": ["tag:prod-app-servers"],
-      "ports": ["tag:prod-databases:5432"]
+      "src": ["tag:prod-app-servers"],
+      "dst": ["tag:prod-databases:5432"]
     },
 
     // interns have access to dev-app-servers only in reading mode
     {
       "action": "accept",
-      "users": ["group:intern"],
-      "ports": ["tag:dev-app-servers:80,443"]
+      "src": ["group:intern"],
+      "dst": ["tag:dev-app-servers:80,443"]
     },
 
     // We still have to allow internal namespaces communications since nothing guarantees that each user have
     // their own namespaces.
-    { "action": "accept", "users": ["boss"], "ports": ["boss:*"] },
-    { "action": "accept", "users": ["dev1"], "ports": ["dev1:*"] },
-    { "action": "accept", "users": ["dev2"], "ports": ["dev2:*"] },
-    { "action": "accept", "users": ["admin1"], "ports": ["admin1:*"] },
-    { "action": "accept", "users": ["intern1"], "ports": ["intern1:*"] }
+    { "action": "accept", "src": ["boss"], "dst": ["boss:*"] },
+    { "action": "accept", "src": ["dev1"], "dst": ["dev1:*"] },
+    { "action": "accept", "src": ["dev2"], "dst": ["dev2:*"] },
+    { "action": "accept", "src": ["admin1"], "dst": ["admin1:*"] },
+    { "action": "accept", "src": ["intern1"], "dst": ["intern1:*"] }
   ]
 }
 ```
