@@ -75,7 +75,7 @@ one of the maintainers.
 | macOS   | Yes (see `/apple` on your headscale for more information)                                                         |
 | Windows | Yes [docs](./docs/windows-client.md)                                                                              |
 | Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
-| iOS     | Not yet                                                                                                           |
+| iOS     | [Via MDM configuration](https://news.ycombinator.com/item?id=28573354)                                                                                                           |
 
 ## Running headscale
 
