@@ -68,6 +68,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 		fs.FileMode(0o770),
 	)
 	c.Assert(viper.GetBool("logtail.enabled"), check.Equals, false)
+	c.Assert(viper.GetBool("randomize_client_port"), check.Equals, false)
 }
 
 func (*Suite) TestDNSConfigLoading(c *check.C) {

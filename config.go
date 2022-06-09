@@ -54,7 +54,8 @@ type Config struct {
 
 	OIDC OIDCConfig
 
-	LogTail LogTailConfig
+	LogTail             LogTailConfig
+	RandomizeClientPort bool
 
 	CLI CLIConfig
 
@@ -153,6 +154,7 @@ func LoadConfig(path string) error {
 	viper.SetDefault("oidc.strip_email_domain", true)
 
 	viper.SetDefault("logtail.enabled", false)
+	viper.SetDefault("randomize_client_port", false)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("fatal error reading config file: %w", err)
@@ -385,6 +387,7 @@ func GetHeadscaleConfig() (*Config, error) {
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
+	randomizeClientPort := viper.GetBool("randomize_client_port")
 
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
 	parsedPrefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes)+1)
@@ -490,7 +493,8 @@ func GetHeadscaleConfig() (*Config, error) {
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 		},
 
-		LogTail: logConfig,
+		LogTail:             logConfig,
+		RandomizeClientPort: randomizeClientPort,
 
 		CLI: CLIConfig{
 			Address:  viper.GetString("cli.address"),
