@@ -33,9 +33,7 @@ organisation.
 ## Design goal
 
 `headscale` aims to implement a self-hosted, open source alternative to the Tailscale
-control server. `headscale` has a narrower scope and an instance of `headscale`
-implements a _single_ Tailnet, which is typically what a single organisation, or
-home/personal setup would use.
+control server.
 
 `headscale` uses terms that maps to Tailscale's control server, consult the
 [glossary](./docs/glossary.md) for explainations.
