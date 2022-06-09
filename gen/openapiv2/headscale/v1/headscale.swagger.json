@@ -328,6 +328,43 @@
         ]
       }
     },
+    "/api/v1/machine/{machineId}/rename/{newName}": {
+      "post": {
+        "operationId": "HeadscaleService_RenameMachine",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RenameMachineResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "machineId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "newName",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/machine/{machineId}/routes": {
       "get": {
         "summary": "--- Route start ---",
@@ -392,6 +429,53 @@
               "type": "string"
             },
             "collectionFormat": "multi"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
+    "/api/v1/machine/{machineId}/tags": {
+      "post": {
+        "operationId": "HeadscaleService_SetTags",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SetTagsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "machineId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         ],
         "tags": [
@@ -943,6 +1027,27 @@
         },
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
+        },
+        "forcedTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "invalidTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "givenName": {
+          "type": "string"
         }
       }
     },
@@ -1018,6 +1123,14 @@
       ],
       "default": "REGISTER_METHOD_UNSPECIFIED"
     },
+    "v1RenameMachineResponse": {
+      "type": "object",
+      "properties": {
+        "machine": {
+          "$ref": "#/definitions/v1Machine"
+        }
+      }
+    },
     "v1RenameNamespaceResponse": {
       "type": "object",
       "properties": {
@@ -1040,6 +1153,14 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "v1SetTagsResponse": {
+      "type": "object",
+      "properties": {
+        "machine": {
+          "$ref": "#/definitions/v1Machine"
         }
       }
     }

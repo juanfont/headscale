@@ -11,10 +11,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -51,6 +57,8 @@ const (
 
 	// privateKey prefix.
 	privateHexPrefix = "privkey:"
+
+	PermissionFallback = 0o700
 )
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
@@ -135,26 +143,29 @@ func encode(
 	return privKey.SealTo(*pubKey, b), nil
 }
 
-func (h *Headscale) getAvailableIPs() (ips MachineAddresses, err error) {
+func (h *Headscale) getAvailableIPs() (MachineAddresses, error) {
+	var ips MachineAddresses
+	var err error
 	ipPrefixes := h.cfg.IPPrefixes
 	for _, ipPrefix := range ipPrefixes {
 		var ip *netaddr.IP
 		ip, err = h.getAvailableIP(ipPrefix)
 		if err != nil {
-			return
+			return ips, err
 		}
 		ips = append(ips, *ip)
 	}
 
-	return
+	return ips, err
 }
 
-func GetIPPrefixEndpoints(na netaddr.IPPrefix) (network, broadcast netaddr.IP) {
+func GetIPPrefixEndpoints(na netaddr.IPPrefix) (netaddr.IP, netaddr.IP) {
+	var network, broadcast netaddr.IP
 	ipRange := na.Range()
 	network = ipRange.From()
 	broadcast = ipRange.To()
 
-	return
+	return network, broadcast
 }
 
 func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, error) {
@@ -223,16 +234,6 @@ func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 	return ipSet, nil
 }
 
-func containsString(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-
-	return false
-}
-
 func tailNodesToString(nodes []*tailcfg.Node) string {
 	temp := make([]string, len(nodes))
 
@@ -282,9 +283,9 @@ func stringToIPPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
 	return result, nil
 }
 
-func containsIPPrefix(prefixes []netaddr.IPPrefix, prefix netaddr.IPPrefix) bool {
-	for _, p := range prefixes {
-		if prefix == p {
+func contains[T string | netaddr.IPPrefix](ts []T, t T) bool {
+	for _, v := range ts {
+		if reflect.DeepEqual(v, t) {
 			return true
 		}
 	}
@@ -318,6 +319,19 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), err
 }
 
+// GenerateRandomStringDNSSafe returns a DNS-safe
+// securely generated random string.
+// It will return an error if the system's secure random
+// number generator fails to function correctly, in which
+// case the caller should not continue.
+func GenerateRandomStringDNSSafe(n int) (string, error) {
+	str, err := GenerateRandomStringURLSafe(n)
+
+	str = strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""))
+
+	return str[:n], err
+}
+
 func IsStringInSlice(slice []string, str string) bool {
 	for _, s := range slice {
 		if s == str {
@@ -326,4 +340,28 @@ func IsStringInSlice(slice []string, str string) bool {
 	}
 
 	return false
+}
+
+func AbsolutePathFromConfigPath(path string) string {
+	// If a relative path is provided, prefix it with the the directory where
+	// the config file was found.
+	if (path != "") && !strings.HasPrefix(path, string(os.PathSeparator)) {
+		dir, _ := filepath.Split(viper.ConfigFileUsed())
+		if dir != "" {
+			path = filepath.Join(dir, path)
+		}
+	}
+
+	return path
+}
+
+func GetFileMode(key string) fs.FileMode {
+	modeStr := viper.GetString(key)
+
+	mode, err := strconv.ParseUint(modeStr, Base8, BitSize64)
+	if err != nil {
+		return PermissionFallback
+	}
+
+	return fs.FileMode(mode)
 }

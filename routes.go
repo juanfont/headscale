@@ -1,6 +1,8 @@
 package headscale
 
 import (
+	"fmt"
+
 	"inet.af/netaddr"
 )
 
@@ -108,7 +110,10 @@ func (h *Headscale) EnableNodeRoute(
 	}
 
 	machine.EnabledRoutes = enabledRoutes
-	h.db.Save(&machine)
+
+	if err := h.db.Save(&machine).Error; err != nil {
+		return fmt.Errorf("failed to update node routes in the database: %w", err)
+	}
 
 	return nil
 }

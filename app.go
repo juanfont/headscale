@@ -6,10 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"sort"
@@ -25,6 +23,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
+	"github.com/puzpuzpuz/xsync"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
@@ -41,7 +40,6 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
@@ -71,83 +69,9 @@ const (
 	EnforcedClientAuth = "enforced"
 )
 
-// Config contains the initial Headscale configuration.
-type Config struct {
-	ServerURL                      string
-	Addr                           string
-	MetricsAddr                    string
-	GRPCAddr                       string
-	GRPCAllowInsecure              bool
-	EphemeralNodeInactivityTimeout time.Duration
-	IPPrefixes                     []netaddr.IPPrefix
-	PrivateKeyPath                 string
-	BaseDomain                     string
-
-	DERP DERPConfig
-
-	DBtype string
-	DBpath string
-	DBhost string
-	DBport int
-	DBname string
-	DBuser string
-	DBpass string
-
-	TLSLetsEncryptListen        string
-	TLSLetsEncryptHostname      string
-	TLSLetsEncryptCacheDir      string
-	TLSLetsEncryptChallengeType string
-
-	TLSCertPath       string
-	TLSKeyPath        string
-	TLSClientAuthMode tls.ClientAuthType
-
-	ACMEURL   string
-	ACMEEmail string
-
-	DNSConfig *tailcfg.DNSConfig
-
-	UnixSocket           string
-	UnixSocketPermission fs.FileMode
-
-	OIDC OIDCConfig
-
-	CLI CLIConfig
-}
-
-type OIDCConfig struct {
-	Issuer           string
-	ClientID         string
-	ClientSecret     string
-	Scope            []string
-	ExtraParams      map[string]string
-	AllowedDomains   []string
-	AllowedUsers     []string
-	StripEmaildomain bool
-}
-
-type DERPConfig struct {
-	ServerEnabled    bool
-	ServerRegionID   int
-	ServerRegionCode string
-	ServerRegionName string
-	STUNAddr         string
-	URLs             []url.URL
-	Paths            []string
-	AutoUpdate       bool
-	UpdateFrequency  time.Duration
-}
-
-type CLIConfig struct {
-	Address  string
-	APIKey   string
-	Timeout  time.Duration
-	Insecure bool
-}
-
 // Headscale represents the base app of the service.
 type Headscale struct {
-	cfg        Config
+	cfg        *Config
 	db         *gorm.DB
 	dbString   string
 	dbType     string
@@ -160,7 +84,7 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
 
-	lastStateChange sync.Map
+	lastStateChange *xsync.MapOf[time.Time]
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -191,7 +115,7 @@ func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
 	}
 }
 
-func NewHeadscale(cfg Config) (*Headscale, error) {
+func NewHeadscale(cfg *Config) (*Headscale, error) {
 	privKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read or create private key: %w", err)
@@ -304,14 +228,14 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 					After(machine.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
 				expiredFound = true
 				log.Info().
-					Str("machine", machine.Name).
+					Str("machine", machine.Hostname).
 					Msg("Ephemeral client removed from database")
 
 				err = h.db.Unscoped().Delete(machine).Error
 				if err != nil {
 					log.Error().
 						Err(err).
-						Str("machine", machine.Name).
+						Str("machine", machine.Hostname).
 						Msg("🤮 Cannot delete ephemeral machine from the database")
 				}
 			}
@@ -561,19 +485,6 @@ func (h *Headscale) Serve() error {
 		return fmt.Errorf("failed change permission of gRPC socket: %w", err)
 	}
 
-	// Handle common process-killing signals so we can gracefully shut down:
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
-	go func(c chan os.Signal) {
-		// Wait for a SIGINT or SIGKILL:
-		sig := <-c
-		log.Printf("Caught signal %s: shutting down.", sig)
-		// Stop listening (and unlink the socket if unix type):
-		socketListener.Close()
-		// And we're done:
-		os.Exit(0)
-	}(sigc)
-
 	grpcGatewayMux := runtime.NewServeMux()
 
 	// Make the grpc-gateway connect to grpc over socket
@@ -718,12 +629,67 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
 
+	// Handle common process-killing signals so we can gracefully shut down:
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT,
+		syscall.SIGHUP)
+	go func(c chan os.Signal) {
+		// Wait for a SIGINT or SIGKILL:
+		for {
+			sig := <-c
+			switch sig {
+			case syscall.SIGHUP:
+				log.Info().
+					Str("signal", sig.String()).
+					Msg("Received SIGHUP, reloading ACL and Config")
+
+					// TODO(kradalby): Reload config on SIGHUP
+
+				if h.cfg.ACL.PolicyPath != "" {
+					aclPath := AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
+					err := h.LoadACLPolicy(aclPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to reload ACL policy")
+					}
+					log.Info().
+						Str("path", aclPath).
+						Msg("ACL policy successfully reloaded")
+				}
+
+			default:
+				log.Info().
+					Str("signal", sig.String()).
+					Msg("Received signal to stop, shutting down gracefully")
+
+				// Gracefully shut down servers
+				promHTTPServer.Shutdown(ctx)
+				httpServer.Shutdown(ctx)
+				grpcSocket.GracefulStop()
+
+				// Close network listeners
+				promHTTPListener.Close()
+				httpListener.Close()
+				grpcGatewayConn.Close()
+
+				// Stop listening (and unlink the socket if unix type):
+				socketListener.Close()
+
+				// And we're done:
+				os.Exit(0)
+			}
+		}
+	}(sigc)
+
 	return errorGroup.Wait()
 }
 
 func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	var err error
-	if h.cfg.TLSLetsEncryptHostname != "" {
+	if h.cfg.TLS.LetsEncrypt.Hostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().
 				Msg("Listening with TLS but ServerURL does not start with https://")
@@ -731,15 +697,15 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 
 		certManager := autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(h.cfg.TLSLetsEncryptHostname),
-			Cache:      autocert.DirCache(h.cfg.TLSLetsEncryptCacheDir),
+			HostPolicy: autocert.HostWhitelist(h.cfg.TLS.LetsEncrypt.Hostname),
+			Cache:      autocert.DirCache(h.cfg.TLS.LetsEncrypt.CacheDir),
 			Client: &acme.Client{
 				DirectoryURL: h.cfg.ACMEURL,
 			},
 			Email: h.cfg.ACMEEmail,
 		}
 
-		switch h.cfg.TLSLetsEncryptChallengeType {
+		switch h.cfg.TLS.LetsEncrypt.ChallengeType {
 		case "TLS-ALPN-01":
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
@@ -753,7 +719,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			go func() {
 				log.Fatal().
 					Caller().
-					Err(http.ListenAndServe(h.cfg.TLSLetsEncryptListen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
+					Err(http.ListenAndServe(h.cfg.TLS.LetsEncrypt.Listen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
 					Msg("failed to set up a HTTP server")
 			}()
 
@@ -762,7 +728,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		default:
 			return nil, errUnsupportedLetsEncryptChallengeType
 		}
-	} else if h.cfg.TLSCertPath == "" {
+	} else if h.cfg.TLS.CertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
 			log.Warn().Msg("Listening without TLS but ServerURL does not start with http://")
 		}
@@ -775,16 +741,16 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 
 		log.Info().Msg(fmt.Sprintf(
 			"Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
-			h.cfg.TLSClientAuthMode))
+			h.cfg.TLS.ClientAuthMode))
 
 		tlsConfig := &tls.Config{
-			ClientAuth:   h.cfg.TLSClientAuthMode,
+			ClientAuth:   h.cfg.TLS.ClientAuthMode,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: make([]tls.Certificate, 1),
 			MinVersion:   tls.VersionTLS12,
 		}
 
-		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLSCertPath, h.cfg.TLSKeyPath)
+		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
 
 		return tlsConfig, err
 	}
@@ -793,18 +759,29 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 func (h *Headscale) setLastStateChangeToNow(namespace string) {
 	now := time.Now().UTC()
 	lastStateUpdate.WithLabelValues("", "headscale").Set(float64(now.Unix()))
+	if h.lastStateChange == nil {
+		h.lastStateChange = xsync.NewMapOf[time.Time]()
+	}
 	h.lastStateChange.Store(namespace, now)
 }
 
 func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 	times := []time.Time{}
 
-	for _, namespace := range namespaces {
-		if wrapped, ok := h.lastStateChange.Load(namespace); ok {
-			lastChange, _ := wrapped.(time.Time)
-
-			times = append(times, lastChange)
+	// getLastStateChange takes a list of namespaces as a "filter", if no namespaces
+	// are past, then use the entier list of namespaces and look for the last update
+	if len(namespaces) > 0 {
+		for _, namespace := range namespaces {
+			if lastChange, ok := h.lastStateChange.Load(namespace); ok {
+				times = append(times, lastChange)
+			}
 		}
+	} else {
+		h.lastStateChange.Range(func(key string, value time.Time) bool {
+			times = append(times, value)
+
+			return true
+		})
 	}
 
 	sort.Slice(times, func(i, j int) bool {

@@ -4,12 +4,24 @@
 
 ### Changes
 
+- **Drop** armhf (32-bit ARM) support. [#609](https://github.com/juanfont/headscale/pull/609)
 - Headscale fails to serve if the ACL policy file cannot be parsed [#537](https://github.com/juanfont/headscale/pull/537)
 - Fix labels cardinality error when registering unknown pre-auth key [#519](https://github.com/juanfont/headscale/pull/519)
 - Fix send on closed channel crash in polling [#542](https://github.com/juanfont/headscale/pull/542)
 - Fixed spurious calls to setLastStateChangeToNow from ephemeral nodes [#566](https://github.com/juanfont/headscale/pull/566)
 - Add command for moving nodes between namespaces [#362](https://github.com/juanfont/headscale/issues/362)
 - Added more configuration parameters for OpenID Connect (scopes, free-form paramters, domain and user allowlist)
+- Add command to set tags on a node [#525](https://github.com/juanfont/headscale/issues/525)
+- Add command to view tags of nodes [#356](https://github.com/juanfont/headscale/issues/356)
+- Add --all (-a) flag to enable routes command [#360](https://github.com/juanfont/headscale/issues/360)
+- Fix issue where nodes was not updated across namespaces [#560](https://github.com/juanfont/headscale/pull/560)
+- Add the ability to rename a nodes name [#560](https://github.com/juanfont/headscale/pull/560)
+  - Node DNS names are now unique, a random suffix will be added when a node joins
+  - This change contains database changes, remember to **backup** your database before upgrading
+- Add option to enable/disable logtail (Tailscale's logging infrastructure) [#596](https://github.com/juanfont/headscale/pull/596)
+  - This change disables the logs by default
+- Use [Prometheus]'s duration parser, supporting days (`d`), weeks (`w`) and years (`y`) [#598](https://github.com/juanfont/headscale/pull/598)
+- Add support for reloading ACLs with SIGHUP [#601](https://github.com/juanfont/headscale/pull/601)
 
 ## 0.15.0 (2022-03-20)
 

@@ -81,6 +81,13 @@ service HeadscaleService {
         };
     }
 
+    rpc SetTags(SetTagsRequest) returns (SetTagsResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/tags"
+            body: "*"
+        };
+    }
+
     rpc RegisterMachine(RegisterMachineRequest) returns (RegisterMachineResponse) {
         option (google.api.http) = {
             post: "/api/v1/machine/register"
@@ -96,6 +103,12 @@ service HeadscaleService {
     rpc ExpireMachine(ExpireMachineRequest) returns (ExpireMachineResponse) {
         option (google.api.http) = {
             post: "/api/v1/machine/{machine_id}/expire"
+        };
+    }
+
+    rpc RenameMachine(RenameMachineRequest) returns (RenameMachineResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/machine/{machine_id}/rename/{new_name}"
         };
     }
 

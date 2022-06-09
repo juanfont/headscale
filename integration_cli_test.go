@@ -60,7 +60,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-		Name: "headscale",
+		Name: "headscale-cli",
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 		},
@@ -525,6 +525,135 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 	assert.Len(s.T(), listedPreAuthKeys, 2)
 }
 
+func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
+	namespace, err := s.createNamespace("machine-namespace")
+	assert.Nil(s.T(), err)
+
+	machineKeys := []string{
+		"9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+	}
+	machines := make([]*v1.Machine, len(machineKeys))
+	assert.Nil(s.T(), err)
+
+	for index, machineKey := range machineKeys {
+		_, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"debug",
+				"create-node",
+				"--name",
+				fmt.Sprintf("machine-%d", index+1),
+				"--namespace",
+				namespace.Name,
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		machineResult, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"--namespace",
+				namespace.Name,
+				"register",
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		var machine v1.Machine
+		err = json.Unmarshal([]byte(machineResult), &machine)
+		assert.Nil(s.T(), err)
+
+		machines[index] = &machine
+	}
+	assert.Len(s.T(), machines, len(machineKeys))
+
+	addTagResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"tag",
+			"-i", "1",
+			"-t", "tag:test",
+			"--output", "json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var machine v1.Machine
+	err = json.Unmarshal([]byte(addTagResult), &machine)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), []string{"tag:test"}, machine.ForcedTags)
+
+	// try to set a wrong tag and retrieve the error
+	wrongTagResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"tag",
+			"-i", "2",
+			"-t", "wrong-tag",
+			"--output", "json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+	type errOutput struct {
+		Error string `json:"error"`
+	}
+	var errorOutput errOutput
+	err = json.Unmarshal([]byte(wrongTagResult), &errorOutput)
+	assert.Nil(s.T(), err)
+	assert.Contains(s.T(), errorOutput.Error, "Invalid tag detected")
+
+	// Test list all nodes after added seconds
+	listAllResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output", "json",
+		},
+		[]string{},
+	)
+	resultMachines := make([]*v1.Machine, len(machineKeys))
+	assert.Nil(s.T(), err)
+	json.Unmarshal([]byte(listAllResult), &resultMachines)
+	found := false
+	for _, machine := range resultMachines {
+		if machine.ForcedTags != nil {
+			for _, tag := range machine.ForcedTags {
+				if tag == "tag:test" {
+					found = true
+				}
+			}
+		}
+	}
+	assert.Equal(
+		s.T(),
+		true,
+		found,
+		"should find a machine with the tag 'tag:test' in the list of machines",
+	)
+}
+
 func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	namespace, err := s.createNamespace("machine-namespace")
 	assert.Nil(s.T(), err)
@@ -914,6 +1043,178 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 	assert.True(s.T(), listAllAfterExpiry[4].Expiry.AsTime().IsZero())
 }
 
+func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
+	namespace, err := s.createNamespace("machine-rename-command")
+	assert.Nil(s.T(), err)
+
+	// Randomly generated machine keys
+	machineKeys := []string{
+		"cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+	}
+	machines := make([]*v1.Machine, len(machineKeys))
+	assert.Nil(s.T(), err)
+
+	for index, machineKey := range machineKeys {
+		_, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"debug",
+				"create-node",
+				"--name",
+				fmt.Sprintf("machine-%d", index+1),
+				"--namespace",
+				namespace.Name,
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		machineResult, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"--namespace",
+				namespace.Name,
+				"register",
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+
+		var machine v1.Machine
+		err = json.Unmarshal([]byte(machineResult), &machine)
+		assert.Nil(s.T(), err)
+
+		machines[index] = &machine
+	}
+
+	assert.Len(s.T(), machines, len(machineKeys))
+
+	listAllResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listAll []v1.Machine
+	err = json.Unmarshal([]byte(listAllResult), &listAll)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listAll, 5)
+
+	assert.Contains(s.T(), listAll[0].GetGivenName(), "machine-1")
+	assert.Contains(s.T(), listAll[1].GetGivenName(), "machine-2")
+	assert.Contains(s.T(), listAll[2].GetGivenName(), "machine-3")
+	assert.Contains(s.T(), listAll[3].GetGivenName(), "machine-4")
+	assert.Contains(s.T(), listAll[4].GetGivenName(), "machine-5")
+
+	for i := 0; i < 3; i++ {
+		_, err := ExecuteCommand(
+			&s.headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"rename",
+				"--identifier",
+				fmt.Sprintf("%d", listAll[i].Id),
+				fmt.Sprintf("newmachine-%d", i+1),
+			},
+			[]string{},
+		)
+		assert.Nil(s.T(), err)
+	}
+
+	listAllAfterRenameResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listAllAfterRename []v1.Machine
+	err = json.Unmarshal([]byte(listAllAfterRenameResult), &listAllAfterRename)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listAllAfterRename, 5)
+
+	assert.Equal(s.T(), "newmachine-1", listAllAfterRename[0].GetGivenName())
+	assert.Equal(s.T(), "newmachine-2", listAllAfterRename[1].GetGivenName())
+	assert.Equal(s.T(), "newmachine-3", listAllAfterRename[2].GetGivenName())
+	assert.Contains(s.T(), listAllAfterRename[3].GetGivenName(), "machine-4")
+	assert.Contains(s.T(), listAllAfterRename[4].GetGivenName(), "machine-5")
+
+	// Test failure for too long names
+	result, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"rename",
+			"--identifier",
+			fmt.Sprintf("%d", listAll[4].Id),
+			"testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+	assert.Contains(s.T(), result, "not be over 63 chars")
+
+	listAllAfterRenameAttemptResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var listAllAfterRenameAttempt []v1.Machine
+	err = json.Unmarshal(
+		[]byte(listAllAfterRenameAttemptResult),
+		&listAllAfterRenameAttempt,
+	)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), listAllAfterRenameAttempt, 5)
+
+	assert.Equal(s.T(), "newmachine-1", listAllAfterRenameAttempt[0].GetGivenName())
+	assert.Equal(s.T(), "newmachine-2", listAllAfterRenameAttempt[1].GetGivenName())
+	assert.Equal(s.T(), "newmachine-3", listAllAfterRenameAttempt[2].GetGivenName())
+	assert.Contains(s.T(), listAllAfterRenameAttempt[3].GetGivenName(), "machine-4")
+	assert.Contains(s.T(), listAllAfterRenameAttempt[4].GetGivenName(), "machine-5")
+}
+
 func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	namespace, err := s.createNamespace("routes-namespace")
 	assert.Nil(s.T(), err)
@@ -1076,6 +1377,35 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 		string(failEnableNonAdvertisedRoute),
 		"route (route-machine) is not available on node",
 	)
+
+	// Enable all routes on host
+	enableAllRouteResult, err := ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"enable",
+			"--output",
+			"json",
+			"--identifier",
+			"0",
+			"--all",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	var enableAllRoute v1.Routes
+	err = json.Unmarshal([]byte(enableAllRouteResult), &enableAllRoute)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), enableAllRoute.AdvertisedRoutes, 2)
+	assert.Contains(s.T(), enableAllRoute.AdvertisedRoutes, "10.0.0.0/8")
+	assert.Contains(s.T(), enableAllRoute.AdvertisedRoutes, "192.168.1.0/24")
+
+	assert.Len(s.T(), enableAllRoute.EnabledRoutes, 2)
+	assert.Contains(s.T(), enableAllRoute.EnabledRoutes, "10.0.0.0/8")
+	assert.Contains(s.T(), enableAllRoute.EnabledRoutes, "192.168.1.0/24")
 }
 
 func (s *IntegrationCLITestSuite) TestApiKeyCommand() {

@@ -118,7 +118,7 @@ func (s *Suite) TestValidExpandTagOwnersInUsers(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -164,7 +164,7 @@ func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
 		MachineKey:     "12345",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -210,7 +210,7 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 		MachineKey:     "12345",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -255,7 +255,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		MachineKey:     "12345",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "webserver",
+		Hostname:       "webserver",
 		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -274,7 +274,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		MachineKey:     "56789",
 		NodeKey:        "bar2",
 		DiscoKey:       "faab",
-		Name:           "user",
+		Hostname:       "user",
 		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -368,7 +368,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 		MachineKey:     "12345",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		IPAddresses:    ips,
@@ -410,7 +410,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Name:           "testmachine",
+		Hostname:       "testmachine",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		IPAddresses:    ips,
@@ -1018,6 +1018,90 @@ func Test_expandAlias(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "Forced tag defined",
+			args: args{
+				alias: "tag:hr-webserver",
+				machines: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace:  Namespace{Name: "joe"},
+						ForcedTags: []string{"tag:hr-webserver"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace:  Namespace{Name: "joe"},
+						ForcedTags: []string{"tag:hr-webserver"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				aclPolicy:        ACLPolicy{},
+				stripEmailDomain: true,
+			},
+			want:    []string{"100.64.0.1", "100.64.0.2"},
+			wantErr: false,
+		},
+		{
+			name: "Forced tag with legitimate tagOwner",
+			args: args{
+				alias: "tag:hr-webserver",
+				machines: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace:  Namespace{Name: "joe"},
+						ForcedTags: []string{"tag:hr-webserver"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "joe"},
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:hr-webserver"},
+						},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.3"),
+						},
+						Namespace: Namespace{Name: "marc"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "mickael"},
+					},
+				},
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:hr-webserver": []string{"joe"},
+					},
+				},
+				stripEmailDomain: true,
+			},
+			want:    []string{"100.64.0.1", "100.64.0.2"},
+			wantErr: false,
+		},
+		{
 			name: "list host in namespace without correctly tagged servers",
 			args: args{
 				alias: "joe",
@@ -1126,6 +1210,47 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+				},
+				namespace: "joe",
+			},
+			want: []Machine{
+				{
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")},
+					Namespace:   Namespace{Name: "joe"},
+				},
+			},
+		},
+		{
+			name: "exclude nodes with valid tags and with forced tags",
+			args: args{
+				aclPolicy: ACLPolicy{
+					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
+				},
+				nodes: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:accountant-webserver"},
+						},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace:  Namespace{Name: "joe"},
+						ForcedTags: []string{"tag:accountant-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{

@@ -133,10 +133,8 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 
 			return
 		}
-		hname, err := NormalizeToFQDNRules(
-			req.Hostinfo.Hostname,
-			h.cfg.OIDC.StripEmaildomain,
-		)
+
+		givenName, err := h.GenerateGivenName(req.Hostinfo.Hostname)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -153,7 +151,8 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		// happens
 		newMachine := Machine{
 			MachineKey: machineKeyStr,
-			Name:       hname,
+			Hostname:   req.Hostinfo.Hostname,
+			GivenName:  givenName,
 			NodeKey:    NodePublicKeyStripPrefix(req.NodeKey),
 			LastSeen:   &now,
 			Expiry:     &time.Time{},
@@ -279,6 +278,9 @@ func (h *Headscale) getMapResponse(
 		PacketFilter: h.aclRules,
 		DERPMap:      h.DERPMap,
 		UserProfiles: profiles,
+		Debug: &tailcfg.Debug{
+			DisableLogTail: !h.cfg.LogTail.Enabled,
+		},
 	}
 
 	log.Trace().
@@ -361,7 +363,7 @@ func (h *Headscale) handleMachineLogOut(
 	resp := tailcfg.RegisterResponse{}
 
 	log.Info().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Client requested logout")
 
 	h.ExpireMachine(&machine)
@@ -391,7 +393,7 @@ func (h *Headscale) handleMachineValidRegistration(
 
 	// The machine registration is valid, respond with redirect to /map
 	log.Debug().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Client is registered and we have the current NodeKey. All clear to /map")
 
 	resp.AuthURL = ""
@@ -426,7 +428,7 @@ func (h *Headscale) handleMachineExpired(
 
 	// The client has registered before, but has expired
 	log.Debug().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Machine registration has expired. Sending a authurl to register")
 
 	if registerRequest.Auth.AuthKey != "" {
@@ -469,10 +471,19 @@ func (h *Headscale) handleMachineRefreshKey(
 	resp := tailcfg.RegisterResponse{}
 
 	log.Debug().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
 	machine.NodeKey = NodePublicKeyStripPrefix(registerRequest.NodeKey)
-	h.db.Save(&machine)
+
+	if err := h.db.Save(&machine).Error; err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to update machine key in the database")
+		ctx.String(http.StatusInternalServerError, "Internal server error")
+
+		return
+	}
 
 	resp.AuthURL = ""
 	resp.User = *machine.Namespace.toUser()
@@ -482,7 +493,7 @@ func (h *Headscale) handleMachineRefreshKey(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		ctx.String(http.StatusInternalServerError, "Extremely sad!")
+		ctx.String(http.StatusInternalServerError, "Internal server error")
 
 		return
 	}
@@ -594,7 +605,7 @@ func (h *Headscale) handleAuthKey(
 	if machine != nil {
 		log.Trace().
 			Caller().
-			Str("machine", machine.Name).
+			Str("machine", machine.Hostname).
 			Msg("machine already registered, refreshing with new auth key")
 
 		machine.NodeKey = nodeKey
@@ -602,8 +613,21 @@ func (h *Headscale) handleAuthKey(
 		h.RefreshMachine(machine, registerRequest.Expiry)
 	} else {
 		now := time.Now().UTC()
+
+		givenName, err := h.GenerateGivenName(registerRequest.Hostinfo.Hostname)
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "RegistrationHandler").
+				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
+				Err(err)
+
+			return
+		}
+
 		machineToRegister := Machine{
-			Name:           registerRequest.Hostinfo.Hostname,
+			Hostname:       registerRequest.Hostinfo.Hostname,
+			GivenName:      givenName,
 			NamespaceID:    pak.Namespace.ID,
 			MachineKey:     machineKeyStr,
 			RegisterMethod: RegisterMethodAuthKey,

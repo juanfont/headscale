@@ -6,8 +6,8 @@ require (
 	github.com/AlecAivazis/survey/v2 v2.3.4
 	github.com/ccding/go-stun/stun v0.0.0-20200514191101-4dc67bcdb029
 	github.com/coreos/go-oidc/v3 v3.1.0
+	github.com/deckarep/golang-set/v2 v2.1.0
 	github.com/efekarakus/termcolor v1.0.1
-	github.com/fatih/set v0.2.1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/glebarez/sqlite v1.4.3
 	github.com/gofrs/uuid v4.2.0+incompatible
@@ -115,6 +115,7 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.32.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
+	github.com/puzpuzpuz/xsync v1.2.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.1-0.20211023094830-115ce09fd6b4 // indirect
@@ -134,7 +135,7 @@ require (
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37 // indirect
 	golang.org/x/net v0.0.0-20220412020605-290c469a71a5 // indirect
 	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad // indirect
-	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
+	golang.org/x/term v0.0.0-20220411215600-e5f449aeb171 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11 // indirect
 	golang.zx2c4.com/wireguard/windows v0.4.10 // indirect

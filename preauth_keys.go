@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -60,7 +61,10 @@ func (h *Headscale) CreatePreAuthKey(
 		CreatedAt:   &now,
 		Expiration:  expiration,
 	}
-	h.db.Save(&key)
+
+	if err := h.db.Save(&key).Error; err != nil {
+		return nil, fmt.Errorf("failed to create key in the database: %w", err)
+	}
 
 	return &key, nil
 }
@@ -114,9 +118,13 @@ func (h *Headscale) ExpirePreAuthKey(k *PreAuthKey) error {
 }
 
 // UsePreAuthKey marks a PreAuthKey as used.
-func (h *Headscale) UsePreAuthKey(k *PreAuthKey) {
+func (h *Headscale) UsePreAuthKey(k *PreAuthKey) error {
 	k.Used = true
-	h.db.Save(k)
+	if err := h.db.Save(k).Error; err != nil {
+		return fmt.Errorf("failed to update key used status in the database: %w", err)
+	}
+
+	return nil
 }
 
 // checkKeyValidity does the heavy lifting for validation of the PreAuthKey coming from a node

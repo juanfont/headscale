@@ -31,9 +31,11 @@ type HeadscaleServiceClient interface {
 	// --- Machine start ---
 	DebugCreateMachine(ctx context.Context, in *DebugCreateMachineRequest, opts ...grpc.CallOption) (*DebugCreateMachineResponse, error)
 	GetMachine(ctx context.Context, in *GetMachineRequest, opts ...grpc.CallOption) (*GetMachineResponse, error)
+	SetTags(ctx context.Context, in *SetTagsRequest, opts ...grpc.CallOption) (*SetTagsResponse, error)
 	RegisterMachine(ctx context.Context, in *RegisterMachineRequest, opts ...grpc.CallOption) (*RegisterMachineResponse, error)
 	DeleteMachine(ctx context.Context, in *DeleteMachineRequest, opts ...grpc.CallOption) (*DeleteMachineResponse, error)
 	ExpireMachine(ctx context.Context, in *ExpireMachineRequest, opts ...grpc.CallOption) (*ExpireMachineResponse, error)
+	RenameMachine(ctx context.Context, in *RenameMachineRequest, opts ...grpc.CallOption) (*RenameMachineResponse, error)
 	ListMachines(ctx context.Context, in *ListMachinesRequest, opts ...grpc.CallOption) (*ListMachinesResponse, error)
 	MoveMachine(ctx context.Context, in *MoveMachineRequest, opts ...grpc.CallOption) (*MoveMachineResponse, error)
 	// --- Route start ---
@@ -143,6 +145,15 @@ func (c *headscaleServiceClient) GetMachine(ctx context.Context, in *GetMachineR
 	return out, nil
 }
 
+func (c *headscaleServiceClient) SetTags(ctx context.Context, in *SetTagsRequest, opts ...grpc.CallOption) (*SetTagsResponse, error) {
+	out := new(SetTagsResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/SetTags", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *headscaleServiceClient) RegisterMachine(ctx context.Context, in *RegisterMachineRequest, opts ...grpc.CallOption) (*RegisterMachineResponse, error) {
 	out := new(RegisterMachineResponse)
 	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/RegisterMachine", in, out, opts...)
@@ -164,6 +175,15 @@ func (c *headscaleServiceClient) DeleteMachine(ctx context.Context, in *DeleteMa
 func (c *headscaleServiceClient) ExpireMachine(ctx context.Context, in *ExpireMachineRequest, opts ...grpc.CallOption) (*ExpireMachineResponse, error) {
 	out := new(ExpireMachineResponse)
 	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/ExpireMachine", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *headscaleServiceClient) RenameMachine(ctx context.Context, in *RenameMachineRequest, opts ...grpc.CallOption) (*RenameMachineResponse, error) {
+	out := new(RenameMachineResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/RenameMachine", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -250,9 +270,11 @@ type HeadscaleServiceServer interface {
 	// --- Machine start ---
 	DebugCreateMachine(context.Context, *DebugCreateMachineRequest) (*DebugCreateMachineResponse, error)
 	GetMachine(context.Context, *GetMachineRequest) (*GetMachineResponse, error)
+	SetTags(context.Context, *SetTagsRequest) (*SetTagsResponse, error)
 	RegisterMachine(context.Context, *RegisterMachineRequest) (*RegisterMachineResponse, error)
 	DeleteMachine(context.Context, *DeleteMachineRequest) (*DeleteMachineResponse, error)
 	ExpireMachine(context.Context, *ExpireMachineRequest) (*ExpireMachineResponse, error)
+	RenameMachine(context.Context, *RenameMachineRequest) (*RenameMachineResponse, error)
 	ListMachines(context.Context, *ListMachinesRequest) (*ListMachinesResponse, error)
 	MoveMachine(context.Context, *MoveMachineRequest) (*MoveMachineResponse, error)
 	// --- Route start ---
@@ -299,6 +321,9 @@ func (UnimplementedHeadscaleServiceServer) DebugCreateMachine(context.Context, *
 func (UnimplementedHeadscaleServiceServer) GetMachine(context.Context, *GetMachineRequest) (*GetMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMachine not implemented")
 }
+func (UnimplementedHeadscaleServiceServer) SetTags(context.Context, *SetTagsRequest) (*SetTagsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetTags not implemented")
+}
 func (UnimplementedHeadscaleServiceServer) RegisterMachine(context.Context, *RegisterMachineRequest) (*RegisterMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterMachine not implemented")
 }
@@ -307,6 +332,9 @@ func (UnimplementedHeadscaleServiceServer) DeleteMachine(context.Context, *Delet
 }
 func (UnimplementedHeadscaleServiceServer) ExpireMachine(context.Context, *ExpireMachineRequest) (*ExpireMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExpireMachine not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) RenameMachine(context.Context, *RenameMachineRequest) (*RenameMachineResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RenameMachine not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) ListMachines(context.Context, *ListMachinesRequest) (*ListMachinesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListMachines not implemented")
@@ -522,6 +550,24 @@ func _HeadscaleService_GetMachine_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_SetTags_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetTagsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).SetTags(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/SetTags",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).SetTags(ctx, req.(*SetTagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HeadscaleService_RegisterMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegisterMachineRequest)
 	if err := dec(in); err != nil {
@@ -572,6 +618,24 @@ func _HeadscaleService_ExpireMachine_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(HeadscaleServiceServer).ExpireMachine(ctx, req.(*ExpireMachineRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HeadscaleService_RenameMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameMachineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).RenameMachine(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/RenameMachine",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).RenameMachine(ctx, req.(*RenameMachineRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -750,6 +814,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _HeadscaleService_GetMachine_Handler,
 		},
 		{
+			MethodName: "SetTags",
+			Handler:    _HeadscaleService_SetTags_Handler,
+		},
+		{
 			MethodName: "RegisterMachine",
 			Handler:    _HeadscaleService_RegisterMachine_Handler,
 		},
@@ -760,6 +828,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExpireMachine",
 			Handler:    _HeadscaleService_ExpireMachine_Handler,
+		},
+		{
+			MethodName: "RenameMachine",
+			Handler:    _HeadscaleService_RenameMachine_Handler,
 		},
 		{
 			MethodName: "ListMachines",

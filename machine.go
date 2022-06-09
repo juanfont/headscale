@@ -2,13 +2,13 @@ package headscale
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/fatih/set"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -26,6 +26,7 @@ const (
 	)
 	errCouldNotConvertMachineInterface = Error("failed to convert machine interface")
 	errHostnameTooLong                 = Error("Hostname too long")
+	MachineGivenNameHashLength         = 8
 )
 
 const (
@@ -39,11 +40,24 @@ type Machine struct {
 	NodeKey     string
 	DiscoKey    string
 	IPAddresses MachineAddresses
-	Name        string
+
+	// Hostname represents the name given by the Tailscale
+	// client during registration
+	Hostname string
+
+	// Givenname represents either:
+	// a DNS normalized version of Hostname
+	// a valid name set by the User
+	//
+	// GivenName is the name used in all DNS related
+	// parts of headscale.
+	GivenName   string `gorm:"type:varchar(63);unique_index"`
 	NamespaceID uint
 	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
 
 	RegisterMethod string
+
+	ForcedTags StringList
 
 	// TODO(kradalby): This seems like irrelevant information?
 	AuthKeyID uint
@@ -122,7 +136,7 @@ func (machine Machine) isExpired() bool {
 
 func containsAddresses(inputs []string, addrs []string) bool {
 	for _, addr := range addrs {
-		if containsString(inputs, addr) {
+		if contains(inputs, addr) {
 			return true
 		}
 	}
@@ -149,7 +163,7 @@ func getFilteredByACLPeers(
 ) Machines {
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Finding peers filtered by ACLs")
 
 	peers := make(map[uint64]Machine)
@@ -216,7 +230,7 @@ func getFilteredByACLPeers(
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msgf("Found some machines: %v", machines)
 
 	return authorizedPeers
@@ -225,7 +239,7 @@ func getFilteredByACLPeers(
 func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Finding direct peers")
 
 	machines := Machines{}
@@ -240,7 +254,7 @@ func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msgf("Found peers: %s", machines.String())
 
 	return machines, nil
@@ -277,7 +291,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msgf("Found total peers: %s", peers.String())
 
 	return peers, nil
@@ -317,7 +331,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 	}
 
 	for _, m := range machines {
-		if m.Name == name {
+		if m.Hostname == name {
 			return &m, nil
 		}
 	}
@@ -347,9 +361,9 @@ func (h *Headscale) GetMachineByMachineKey(
 	return &m, nil
 }
 
-// UpdateMachine takes a Machine struct pointer (typically already loaded from database
+// UpdateMachineFromDatabase takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
-func (h *Headscale) UpdateMachine(machine *Machine) error {
+func (h *Headscale) UpdateMachineFromDatabase(machine *Machine) error {
 	if result := h.db.Find(machine).First(&machine); result.Error != nil {
 		return result.Error
 	}
@@ -357,18 +371,64 @@ func (h *Headscale) UpdateMachine(machine *Machine) error {
 	return nil
 }
 
+// SetTags takes a Machine struct pointer and update the forced tags.
+func (h *Headscale) SetTags(machine *Machine, tags []string) error {
+	machine.ForcedTags = tags
+	if err := h.UpdateACLRules(); err != nil && !errors.Is(err, errEmptyPolicy) {
+		return err
+	}
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
+	}
+
+	return nil
+}
+
 // ExpireMachine takes a Machine struct and sets the expire field to now.
-func (h *Headscale) ExpireMachine(machine *Machine) {
+func (h *Headscale) ExpireMachine(machine *Machine) error {
 	now := time.Now()
 	machine.Expiry = &now
 
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
-	h.db.Save(machine)
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf("failed to expire machine in the database: %w", err)
+	}
+
+	return nil
+}
+
+// RenameMachine takes a Machine struct and a new GivenName for the machines
+// and renames it.
+func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
+	err := CheckForFQDNRules(
+		newName,
+	)
+	if err != nil {
+		log.Error().
+			Caller().
+			Str("func", "RenameMachine").
+			Str("machine", machine.Hostname).
+			Str("newName", newName).
+			Err(err)
+
+		return err
+	}
+	machine.GivenName = newName
+
+	h.setLastStateChangeToNow(machine.Namespace.Name)
+
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf("failed to rename machine in the database: %w", err)
+	}
+
+	return nil
 }
 
 // RefreshMachine takes a Machine struct and sets the expire field to now.
-func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
+func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
 	now := time.Now()
 
 	machine.LastSuccessfulUpdate = &now
@@ -376,7 +436,14 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) {
 
 	h.setLastStateChangeToNow(machine.Namespace.Name)
 
-	h.db.Save(machine)
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf(
+			"failed to refresh machine (update expiration) in the database: %w",
+			err,
+		)
+	}
+
+	return nil
 }
 
 // DeleteMachine softs deletes a Machine from the database.
@@ -411,46 +478,41 @@ func (machine *Machine) GetHostInfo() tailcfg.Hostinfo {
 }
 
 func (h *Headscale) isOutdated(machine *Machine) bool {
-	if err := h.UpdateMachine(machine); err != nil {
+	if err := h.UpdateMachineFromDatabase(machine); err != nil {
 		// It does not seem meaningful to propagate this error as the end result
 		// will have to be that the machine has to be considered outdated.
 		return true
 	}
 
-	namespaceSet := set.New(set.ThreadSafe)
-	namespaceSet.Add(machine.Namespace.Name)
-
-	namespaces := make([]string, namespaceSet.Size())
-	for index, namespace := range namespaceSet.List() {
-		if name, ok := namespace.(string); ok {
-			namespaces[index] = name
-		}
-	}
-
-	lastChange := h.getLastStateChange(namespaces...)
+	// Get the last update from all headscale namespaces to compare with our nodes
+	// last update.
+	// TODO(kradalby): Only request updates from namespaces where we can talk to nodes
+	// This would mostly be for a bit of performance, and can be calculated based on
+	// ACLs.
+	lastChange := h.getLastStateChange()
 	lastUpdate := machine.CreatedAt
 	if machine.LastSuccessfulUpdate != nil {
 		lastUpdate = *machine.LastSuccessfulUpdate
 	}
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Time("last_successful_update", lastChange).
 		Time("last_state_change", lastUpdate).
-		Msgf("Checking if %s is missing updates", machine.Name)
+		Msgf("Checking if %s is missing updates", machine.Hostname)
 
 	return lastUpdate.Before(lastChange)
 }
 
 func (machine Machine) String() string {
-	return machine.Name
+	return machine.Hostname
 }
 
 func (machines Machines) String() string {
 	temp := make([]string, len(machines))
 
 	for index, machine := range machines {
-		temp[index] = machine.Name
+		temp[index] = machine.Hostname
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
@@ -461,7 +523,7 @@ func (machines MachinesP) String() string {
 	temp := make([]string, len(machines))
 
 	for index, machine := range machines {
-		temp[index] = machine.Name
+		temp[index] = machine.Hostname
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
@@ -558,7 +620,7 @@ func (machine Machine) toNode(
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
-			machine.Name,
+			machine.GivenName,
 			machine.Namespace.Name,
 			baseDomain,
 		)
@@ -570,7 +632,7 @@ func (machine Machine) toNode(
 			)
 		}
 	} else {
-		hostname = machine.Name
+		hostname = machine.GivenName
 	}
 
 	hostInfo := machine.GetHostInfo()
@@ -611,8 +673,10 @@ func (machine *Machine) toProto() *v1.Machine {
 		NodeKey:     machine.NodeKey,
 		DiscoKey:    machine.DiscoKey,
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
-		Name:        machine.Name,
+		Name:        machine.Hostname,
+		GivenName:   machine.GivenName,
 		Namespace:   machine.Namespace.toProto(),
+		ForcedTags:  machine.ForcedTags,
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
@@ -639,6 +703,50 @@ func (machine *Machine) toProto() *v1.Machine {
 	}
 
 	return machineProto
+}
+
+// getTags will return the tags of the current machine.
+// Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
+// Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
+func getTags(
+	aclPolicy *ACLPolicy,
+	machine Machine,
+	stripEmailDomain bool,
+) ([]string, []string) {
+	validTags := make([]string, 0)
+	invalidTags := make([]string, 0)
+	if aclPolicy == nil {
+		return validTags, invalidTags
+	}
+	validTagMap := make(map[string]bool)
+	invalidTagMap := make(map[string]bool)
+	for _, tag := range machine.HostInfo.RequestTags {
+		owners, err := expandTagOwners(*aclPolicy, tag, stripEmailDomain)
+		if errors.Is(err, errInvalidTag) {
+			invalidTagMap[tag] = true
+
+			continue
+		}
+		var found bool
+		for _, owner := range owners {
+			if machine.Namespace.Name == owner {
+				found = true
+			}
+		}
+		if found {
+			validTagMap[tag] = true
+		} else {
+			invalidTagMap[tag] = true
+		}
+	}
+	for tag := range invalidTagMap {
+		invalidTags = append(invalidTags, tag)
+	}
+	for tag := range validTagMap {
+		validTags = append(validTags, tag)
+	}
+
+	return validTags, invalidTags
 }
 
 func (h *Headscale) RegisterMachineFromAuthCallback(
@@ -682,7 +790,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Msg("Attempting to register machine")
 
 	h.ipAllocationMutex.Lock()
@@ -693,7 +801,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", machine.Name).
+			Str("machine", machine.Hostname).
 			Msg("Could not find IP for the new machine")
 
 		return nil, err
@@ -701,11 +809,13 @@ func (h *Headscale) RegisterMachine(machine Machine,
 
 	machine.IPAddresses = ips
 
-	h.db.Save(&machine)
+	if err := h.db.Save(&machine).Error; err != nil {
+		return nil, fmt.Errorf("failed register(save) machine in the database: %w", err)
+	}
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Name).
+		Str("machine", machine.Hostname).
 		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
 		Msg("Machine registered with the database")
 
@@ -751,17 +861,20 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	}
 
 	for _, newRoute := range newRoutes {
-		if !containsIPPrefix(machine.GetAdvertisedRoutes(), newRoute) {
+		if !contains(machine.GetAdvertisedRoutes(), newRoute) {
 			return fmt.Errorf(
 				"route (%s) is not available on node %s: %w",
-				machine.Name,
+				machine.Hostname,
 				newRoute, errMachineRouteIsNotAvailable,
 			)
 		}
 	}
 
 	machine.EnabledRoutes = newRoutes
-	h.db.Save(&machine)
+
+	if err := h.db.Save(machine).Error; err != nil {
+		return fmt.Errorf("failed enable routes for machine in the database: %w", err)
+	}
 
 	return nil
 }
@@ -775,4 +888,33 @@ func (machine *Machine) RoutesToProto() *v1.Routes {
 		AdvertisedRoutes: ipPrefixToString(availableRoutes),
 		EnabledRoutes:    ipPrefixToString(enabledRoutes),
 	}
+}
+
+func (h *Headscale) GenerateGivenName(suppliedName string) (string, error) {
+	// If a hostname is or will be longer than 63 chars after adding the hash,
+	// it needs to be trimmed.
+	trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - 2
+
+	normalizedHostname, err := NormalizeToFQDNRules(
+		suppliedName,
+		h.cfg.OIDC.StripEmaildomain,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	postfix, err := GenerateRandomStringDNSSafe(MachineGivenNameHashLength)
+	if err != nil {
+		return "", err
+	}
+
+	// Verify that that the new unique name is shorter than the maximum allowed
+	// DNS segment.
+	if len(normalizedHostname) <= trimmedHostnameLength {
+		normalizedHostname = fmt.Sprintf("%s-%s", normalizedHostname, postfix)
+	} else {
+		normalizedHostname = fmt.Sprintf("%s-%s", normalizedHostname[:trimmedHostnameLength], postfix)
+	}
+
+	return normalizedHostname, nil
 }

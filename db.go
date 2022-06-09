@@ -39,6 +39,12 @@ func (h *Headscale) initDB() error {
 	}
 
 	_ = db.Migrator().RenameColumn(&Machine{}, "ip_address", "ip_addresses")
+	_ = db.Migrator().RenameColumn(&Machine{}, "name", "hostname")
+
+	// GivenName is used as the primary source of DNS names, make sure
+	// the field is populated and normalized if it was not when the
+	// machine was registered.
+	_ = db.Migrator().RenameColumn(&Machine{}, "nickname", "given_name")
 
 	// If the Machine table has a column for registered,
 	// find all occourences of "false" and drop them. Then
@@ -54,13 +60,13 @@ func (h *Headscale) initDB() error {
 
 		for _, machine := range machines {
 			log.Info().
-				Str("machine", machine.Name).
+				Str("machine", machine.Hostname).
 				Str("machine_key", machine.MachineKey).
 				Msg("Deleting unregistered machine")
 			if err := h.db.Delete(&Machine{}, machine.ID).Error; err != nil {
 				log.Error().
 					Err(err).
-					Str("machine", machine.Name).
+					Str("machine", machine.Hostname).
 					Str("machine_key", machine.MachineKey).
 					Msg("Error deleting unregistered machine")
 			}
@@ -75,6 +81,39 @@ func (h *Headscale) initDB() error {
 	err = db.AutoMigrate(&Machine{})
 	if err != nil {
 		return err
+	}
+
+	if db.Migrator().HasColumn(&Machine{}, "given_name") {
+		machines := Machines{}
+		if err := h.db.Find(&machines).Error; err != nil {
+			log.Error().Err(err).Msg("Error accessing db")
+		}
+
+		for _, machine := range machines {
+			if machine.GivenName == "" {
+				normalizedHostname, err := NormalizeToFQDNRules(
+					machine.Hostname,
+					h.cfg.OIDC.StripEmaildomain,
+				)
+				if err != nil {
+					log.Error().
+						Caller().
+						Str("hostname", machine.Hostname).
+						Err(err).
+						Msg("Failed to normalize machine hostname in DB migration")
+				}
+
+				err = h.RenameMachine(&machine, normalizedHostname)
+				if err != nil {
+					log.Error().
+						Caller().
+						Str("hostname", machine.Hostname).
+						Err(err).
+						Msg("Failed to save normalized machine name in DB migration")
+				}
+
+			}
+		}
 	}
 
 	err = db.AutoMigrate(&KV{})
@@ -175,7 +214,9 @@ func (h *Headscale) setValue(key string, value string) error {
 		return nil
 	}
 
-	h.db.Create(keyValue)
+	if err := h.db.Create(keyValue).Error; err != nil {
+		return fmt.Errorf("failed to create key value pair in the database: %w", err)
+	}
 
 	return nil
 }
