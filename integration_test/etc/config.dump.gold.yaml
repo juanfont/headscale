@@ -43,4 +43,4 @@ tls_letsencrypt_cache_dir: /var/www/.cache
 tls_letsencrypt_challenge_type: HTTP-01
 unix_socket: /var/run/headscale.sock
 unix_socket_permission: "0o770"
-
+randomize_client_port: false
