@@ -330,9 +330,9 @@ func (s *Suite) TestProtocolParsing(c *check.C) {
 	c.Assert(rules, check.NotNil)
 
 	c.Assert(rules, check.HasLen, 3)
-	c.Assert(rules[0].IPProto[0], check.Equals, 6)  // tcp
-	c.Assert(rules[1].IPProto[0], check.Equals, 17) // udp
-	c.Assert(rules[2].IPProto[1], check.Equals, 58) // icmp v4
+	c.Assert(rules[0].IPProto[0], check.Equals, protocolTCP)
+	c.Assert(rules[1].IPProto[0], check.Equals, protocolUDP)
+	c.Assert(rules[2].IPProto[1], check.Equals, protocolIPv6ICMP)
 }
 
 func (s *Suite) TestPortWildcard(c *check.C) {
