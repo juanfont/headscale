@@ -144,7 +144,7 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 // this test should validate that we can expand a group in a TagOWner section and
 // match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
 // the tag is matched in the Destinations section.
-func (s *Suite) TestValidExpandTagOwnersInPorts(c *check.C) {
+func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 	namespace, err := app.CreateNamespace("user1")
 	c.Assert(err, check.IsNil)
 
