@@ -244,3 +244,8 @@ logtail:
   # As there is currently no support for overriding the log server in headscale, this is
   # disabled by default. Enabling this will make your clients send logs to Tailscale Inc.
   enabled: false
+
+# Enabling this option makes devices prefer a random port for WireGuard traffic over the
+# default static port 41641. This option is intended as a workaround for some buggy
+# firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
+randomize_client_port: false

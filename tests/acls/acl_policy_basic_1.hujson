@@ -3,19 +3,19 @@
 
 
 {
-    "Hosts": {
+    "hosts": {
         "host-1": "100.100.100.100",
         "subnet-1": "100.100.101.100/24",
     },
 
-    "ACLs": [
+    "acls": [
         {
-            "Action": "accept",
-            "Users": [
+            "action": "accept",
+            "src": [
                 "subnet-1",
                 "192.168.1.0/24"
             ],
-            "Ports": [
+            "dst": [
                 "*:22,3389",
                 "host-1:*",
             ],
