@@ -1721,3 +1721,43 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 
 	assert.Equal(s.T(), machine.Namespace, oldNamespace)
 }
+
+func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
+	// TODO: make sure defaultConfig is not same as altConfig
+	defaultConfig, err := os.ReadFile("integration_test/etc/config.dump.gold.yaml")
+	assert.Nil(s.T(), err)
+	altConfig, err := os.ReadFile("integration_test/etc/alt-config.dump.gold.yaml")
+	assert.Nil(s.T(), err)
+
+	_, err = ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"dumpConfig",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	defaultDumpConfig, err := os.ReadFile("integration_test/etc/config.dump.yaml")
+	assert.Nil(s.T(), err)
+
+	assert.YAMLEq(s.T(), string(defaultConfig), string(defaultDumpConfig))
+
+	_, err = ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"-c",
+			"/etc/headscale/alt-config.yaml",
+			"dumpConfig",
+		},
+		[]string{},
+	)
+	assert.Nil(s.T(), err)
+
+	altDumpConfig, err := os.ReadFile("integration_test/etc/config.dump.yaml")
+	assert.Nil(s.T(), err)
+
+	assert.YAMLEq(s.T(), string(altConfig), string(altDumpConfig))
+}
