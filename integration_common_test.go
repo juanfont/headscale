@@ -25,7 +25,8 @@ var (
 	tailscaleVersions = []string{
 		"head",
 		"unstable",
-		"1.24.0",
+		"1.26.0",
+		"1.24.2",
 		"1.22.2",
 		"1.20.4",
 		"1.18.2",
