@@ -22,6 +22,7 @@
   - This change disables the logs by default
 - Use [Prometheus]'s duration parser, supporting days (`d`), weeks (`w`) and years (`y`) [#598](https://github.com/juanfont/headscale/pull/598)
 - Add support for reloading ACLs with SIGHUP [#601](https://github.com/juanfont/headscale/pull/601)
+- Add -c option to specify config file from command line [#285](https://github.com/juanfont/headscale/issues/285) [#612](https://github.com/juanfont/headscale/pull/601)
 
 ## 0.15.0 (2022-03-20)
 

@@ -27,6 +27,51 @@ func (s *Suite) SetUpSuite(c *check.C) {
 func (s *Suite) TearDownSuite(c *check.C) {
 }
 
+func (*Suite) TestConfigFileLoading(c *check.C) {
+	tmpDir, err := ioutil.TempDir("", "headscale")
+	if err != nil {
+		c.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	path, err := os.Getwd()
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	cfgFile := filepath.Join(tmpDir, "config.yaml")
+
+	// Symlink the example config file
+	err = os.Symlink(
+		filepath.Clean(path+"/../../config-example.yaml"),
+		cfgFile,
+	)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	// Load example config, it should load without validation errors
+	err = headscale.LoadConfig(cfgFile, true)
+	c.Assert(err, check.IsNil)
+
+	// Test that config file was interpreted correctly
+	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
+	c.Assert(viper.GetString("listen_addr"), check.Equals, "0.0.0.0:8080")
+	c.Assert(viper.GetString("metrics_listen_addr"), check.Equals, "127.0.0.1:9090")
+	c.Assert(viper.GetString("db_type"), check.Equals, "sqlite3")
+	c.Assert(viper.GetString("db_path"), check.Equals, "/var/lib/headscale/db.sqlite")
+	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
+	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
+	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
+	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
+	c.Assert(
+		headscale.GetFileMode("unix_socket_permission"),
+		check.Equals,
+		fs.FileMode(0o770),
+	)
+	c.Assert(viper.GetBool("logtail.enabled"), check.Equals, false)
+}
+
 func (*Suite) TestConfigLoading(c *check.C) {
 	tmpDir, err := ioutil.TempDir("", "headscale")
 	if err != nil {
@@ -49,7 +94,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	}
 
 	// Load example config, it should load without validation errors
-	err = headscale.LoadConfig(tmpDir)
+	err = headscale.LoadConfig(tmpDir, false)
 	c.Assert(err, check.IsNil)
 
 	// Test that config file was interpreted correctly
@@ -93,7 +138,7 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 	}
 
 	// Load example config, it should load without validation errors
-	err = headscale.LoadConfig(tmpDir)
+	err = headscale.LoadConfig(tmpDir, false)
 	c.Assert(err, check.IsNil)
 
 	dnsConfig, baseDomain := headscale.GetDNSConfig()
@@ -126,7 +171,7 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	writeConfig(c, tmpDir, configYaml)
 
 	// Check configuration validation errors (1)
-	err = headscale.LoadConfig(tmpDir)
+	err = headscale.LoadConfig(tmpDir, false)
 	c.Assert(err, check.NotNil)
 	// check.Matches can not handle multiline strings
 	tmp := strings.ReplaceAll(err.Error(), "\n", "***")
@@ -151,6 +196,6 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 		"---\nserver_url: \"http://127.0.0.1:8080\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"",
 	)
 	writeConfig(c, tmpDir, configYaml)
-	err = headscale.LoadConfig(tmpDir)
+	err = headscale.LoadConfig(tmpDir, false)
 	c.Assert(err, check.IsNil)
 }

@@ -115,15 +115,19 @@ type ACLConfig struct {
 	PolicyPath string
 }
 
-func LoadConfig(path string) error {
-	viper.SetConfigName("config")
-	if path == "" {
-		viper.AddConfigPath("/etc/headscale/")
-		viper.AddConfigPath("$HOME/.headscale")
-		viper.AddConfigPath(".")
+func LoadConfig(path string, isFile bool) error {
+	if isFile {
+		viper.SetConfigFile(path)
 	} else {
-		// For testing
-		viper.AddConfigPath(path)
+		viper.SetConfigName("config")
+		if path == "" {
+			viper.AddConfigPath("/etc/headscale/")
+			viper.AddConfigPath("$HOME/.headscale")
+			viper.AddConfigPath(".")
+		} else {
+			// For testing
+			viper.AddConfigPath(path)
+		}
 	}
 
 	viper.SetEnvPrefix("headscale")
@@ -379,11 +383,6 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 }
 
 func GetHeadscaleConfig() (*Config, error) {
-	err := LoadConfig("")
-	if err != nil {
-		return nil, err
-	}
-
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
