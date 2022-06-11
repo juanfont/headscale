@@ -303,7 +303,7 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
 
 			nameservers := make([]netaddr.IP, len(nameserversStr))
-			resolvers := make([]dnstype.Resolver, len(nameserversStr))
+			resolvers := make([]*dnstype.Resolver, len(nameserversStr))
 
 			for index, nameserverStr := range nameserversStr {
 				nameserver, err := netaddr.ParseIP(nameserverStr)
@@ -315,7 +315,7 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 				}
 
 				nameservers[index] = nameserver
-				resolvers[index] = dnstype.Resolver{
+				resolvers[index] = &dnstype.Resolver{
 					Addr: nameserver.String(),
 				}
 			}
@@ -326,13 +326,13 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 
 		if viper.IsSet("dns_config.restricted_nameservers") {
 			if len(dnsConfig.Nameservers) > 0 {
-				dnsConfig.Routes = make(map[string][]dnstype.Resolver)
+				dnsConfig.Routes = make(map[string][]*dnstype.Resolver)
 				restrictedDNS := viper.GetStringMapStringSlice(
 					"dns_config.restricted_nameservers",
 				)
 				for domain, restrictedNameservers := range restrictedDNS {
 					restrictedResolvers := make(
-						[]dnstype.Resolver,
+						[]*dnstype.Resolver,
 						len(restrictedNameservers),
 					)
 					for index, nameserverStr := range restrictedNameservers {
@@ -343,7 +343,7 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 								Err(err).
 								Msgf("Could not parse restricted nameserver IP: %s", nameserverStr)
 						}
-						restrictedResolvers[index] = dnstype.Resolver{
+						restrictedResolvers[index] = &dnstype.Resolver{
 							Addr: nameserver.String(),
 						}
 					}
