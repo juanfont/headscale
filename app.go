@@ -657,7 +657,9 @@ func (h *Headscale) Serve() error {
 					}
 					log.Info().
 						Str("path", aclPath).
-						Msg("ACL policy successfully reloaded")
+						Msg("ACL policy successfully reloaded, notifying nodes of change")
+
+					h.setLastStateChangeToNow()
 				}
 
 			default:
@@ -756,13 +758,25 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	}
 }
 
-func (h *Headscale) setLastStateChangeToNow(namespace string) {
+func (h *Headscale) setLastStateChangeToNow(namespaces ...string) {
+	var err error
+
 	now := time.Now().UTC()
-	lastStateUpdate.WithLabelValues("", "headscale").Set(float64(now.Unix()))
-	if h.lastStateChange == nil {
-		h.lastStateChange = xsync.NewMapOf[time.Time]()
+
+	if len(namespaces) == 0 {
+		namespaces, err = h.ListNamespacesStr()
+		if err != nil {
+			log.Error().Caller().Err(err).Msg("failed to fetch all namespaces, failing to update last changed state.")
+		}
 	}
-	h.lastStateChange.Store(namespace, now)
+
+	for _, namespace := range namespaces {
+		lastStateUpdate.WithLabelValues(namespace, "headscale").Set(float64(now.Unix()))
+		if h.lastStateChange == nil {
+			h.lastStateChange = xsync.NewMapOf[time.Time]()
+		}
+		h.lastStateChange.Store(namespace, now)
+	}
 }
 
 func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
