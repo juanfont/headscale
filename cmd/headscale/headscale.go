@@ -1,17 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/efekarakus/termcolor"
-	"github.com/juanfont/headscale"
 	"github.com/juanfont/headscale/cmd/headscale/cli"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/tcnksm/go-latest"
 )
 
 func main() {
@@ -42,40 +38,6 @@ func main() {
 		TimeFormat: time.RFC3339,
 		NoColor:    !colors,
 	})
-
-	cfg, err := headscale.GetHeadscaleConfig()
-	if err != nil {
-		log.Fatal().Caller().Err(err)
-	}
-
-	machineOutput := cli.HasMachineOutputFlag()
-
-	zerolog.SetGlobalLevel(cfg.LogLevel)
-
-	// If the user has requested a "machine" readable format,
-	// then disable login so the output remains valid.
-	if machineOutput {
-		zerolog.SetGlobalLevel(zerolog.Disabled)
-	}
-
-	if !cfg.DisableUpdateCheck && !machineOutput {
-		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
-			cli.Version != "dev" {
-			githubTag := &latest.GithubTag{
-				Owner:      "juanfont",
-				Repository: "headscale",
-			}
-			res, err := latest.Check(githubTag, cli.Version)
-			if err == nil && res.Outdated {
-				//nolint
-				fmt.Printf(
-					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
-					res.Current,
-					cli.Version,
-				)
-			}
-		}
-	}
 
 	cli.Execute()
 }
