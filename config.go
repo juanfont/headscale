@@ -28,6 +28,7 @@ type Config struct {
 	EphemeralNodeInactivityTimeout time.Duration
 	IPPrefixes                     []netaddr.IPPrefix
 	PrivateKeyPath                 string
+	NoisePrivateKeyPath            string
 	BaseDomain                     string
 	LogLevel                       zerolog.Level
 	DisableUpdateCheck             bool
@@ -454,6 +455,9 @@ func GetHeadscaleConfig() (*Config, error) {
 		IPPrefixes: prefixes,
 		PrivateKeyPath: AbsolutePathFromConfigPath(
 			viper.GetString("private_key_path"),
+		),
+		NoisePrivateKeyPath: AbsolutePathFromConfigPath(
+			viper.GetString("noise_private_key_path"),
 		),
 		BaseDomain: baseDomain,
 
