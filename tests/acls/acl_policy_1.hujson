@@ -1,6 +1,6 @@
 {
     // Declare static groups of users beyond those in the identity service.
-    "Groups": {
+    "groups": {
         "group:example": [
             "user1@example.com",
             "user2@example.com",
@@ -11,12 +11,12 @@
         ],
     },
     // Declare hostname aliases to use in place of IP addresses or subnets.
-    "Hosts": {
+    "hosts": {
         "example-host-1": "100.100.100.100",
         "example-host-2": "100.100.101.100/24",
     },
     // Define who is allowed to use which tags.
-    "TagOwners": {
+    "tagOwners": {
         // Everyone in the montreal-admins or global-admins group are
         // allowed to tag servers as montreal-webserver.
         "tag:montreal-webserver": [
@@ -29,17 +29,17 @@
         ],
     },
     // Access control lists.
-    "ACLs": [
+    "acls": [
         // Engineering users, plus the president, can access port 22 (ssh)
         // and port 3389 (remote desktop protocol) on all servers, and all
         // ports on git-server or ci-server.
         {
-            "Action": "accept",
-            "Users": [
+            "action": "accept",
+            "src": [
                 "group:example2",
                 "192.168.1.0/24"
             ],
-            "Ports": [
+            "dst": [
                 "*:22,3389",
                 "git-server:*",
                 "ci-server:*"
@@ -48,22 +48,22 @@
         // Allow engineer users to access any port on a device tagged with
         // tag:production.
         {
-            "Action": "accept",
-            "Users": [
+            "action": "accept",
+            "src": [
                 "group:example"
             ],
-            "Ports": [
+            "dst": [
                 "tag:production:*"
             ],
         },
         // Allow servers in the my-subnet host and 192.168.1.0/24 to access hosts
         // on both networks.
         {
-            "Action": "accept",
-            "Users": [
+            "action": "accept",
+            "src": [
                 "example-host-2", 
             ],
-            "Ports": [
+            "dst": [
                 "example-host-1:*",
                 "192.168.1.0/24:*"
             ],
@@ -72,22 +72,22 @@
         // Comment out this section if you want to define specific ACL
         // restrictions above.
         {
-            "Action": "accept",
-            "Users": [
+            "action": "accept",
+            "src": [
                 "*"
             ],
-            "Ports": [
+            "dst": [
                 "*:*"
             ],
         },
         // All users in Montreal are allowed to access the Montreal web
         // servers.
         {
-            "Action": "accept",
-            "Users": [
+            "action": "accept",
+            "src": [
                 "example-host-1"
             ],
-            "Ports": [
+            "dst": [
                 "tag:montreal-webserver:80,443"
             ],
         },
@@ -96,30 +96,30 @@
         // In contrast, this doesn't grant API servers the right to initiate
         // any connections.
         {
-            "Action": "accept",
-            "Users": [
+            "action": "accept",
+            "src": [
                 "tag:montreal-webserver"
             ],
-            "Ports": [
+            "dst": [
                 "tag:api-server:443"
             ],
         },
     ],
     // Declare tests to check functionality of ACL rules
-    "Tests": [
+    "tests": [
         {
-            "User": "user1@example.com",
-            "Allow": [
+            "src": "user1@example.com",
+            "accept": [
                 "example-host-1:22",
                 "example-host-2:80"
             ],
-            "Deny": [
+            "deny": [
                 "exapmle-host-2:100"
             ],
         },
         {
-            "User": "user2@example.com",
-            "Allow": [
+            "src": "user2@example.com",
+            "accept": [
                 "100.60.3.4:22"
             ],
         },

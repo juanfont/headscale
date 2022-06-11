@@ -2,6 +2,10 @@
 
 ## 0.16.0 (2022-xx-xx)
 
+### BREAKING
+
+- Old ACL syntax is no longer supported ("users" & "ports" -> "src" & "dst"). Please check [the new syntax](https://tailscale.com/kb/1018/acls/).
+
 ### Changes
 
 - **Drop** armhf (32-bit ARM) support. [#609](https://github.com/juanfont/headscale/pull/609)
@@ -22,6 +26,7 @@
   - This change disables the logs by default
 - Use [Prometheus]'s duration parser, supporting days (`d`), weeks (`w`) and years (`y`) [#598](https://github.com/juanfont/headscale/pull/598)
 - Add support for reloading ACLs with SIGHUP [#601](https://github.com/juanfont/headscale/pull/601)
+- Use new ACL syntax [#618](https://github.com/juanfont/headscale/pull/618)
 - Add -c option to specify config file from command line [#285](https://github.com/juanfont/headscale/issues/285) [#612](https://github.com/juanfont/headscale/pull/601)
 - Add configuration option to allow Tailscale clients to use a random WireGuard port. [kb/1181/firewalls](https://tailscale.com/kb/1181/firewalls) [#624](https://github.com/juanfont/headscale/pull/624)
 
