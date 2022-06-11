@@ -657,7 +657,9 @@ func (h *Headscale) Serve() error {
 					}
 					log.Info().
 						Str("path", aclPath).
-						Msg("ACL policy successfully reloaded")
+						Msg("ACL policy successfully reloaded, notifying nodes of change")
+
+					h.setLastStateChangeToNow()
 				}
 
 			default:
