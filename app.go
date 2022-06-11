@@ -79,7 +79,7 @@ type Headscale struct {
 	privateKey      *key.MachinePrivate
 	noisePrivateKey *key.MachinePrivate
 
-	noiseRouter *gin.Engine
+	noiseMux *http.ServeMux
 
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *DERPServer
@@ -406,6 +406,7 @@ func (h *Headscale) createPrometheusRouter() *gin.Engine {
 func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router := gin.Default()
 
+	router.POST(ts2021UpgradePath, h.NoiseUpgradeHandler)
 	router.GET(
 		"/health",
 		func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"healthy": "ok"}) },
@@ -438,6 +439,15 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.NoRoute(stdoutHandler)
 
 	return router
+}
+
+func (h *Headscale) createNoiseMux() *http.ServeMux {
+	mux := http.NewServeMux()
+
+	// mux.HandleFunc("/machine/register", h.NoiseRegistrationHandler)
+	// mux.HandleFunc("/machine/map", h.NoisePollNetMapHandler)
+
+	return mux
 }
 
 // Serve launches a GIN server with the Headscale API.
@@ -592,7 +602,13 @@ func (h *Headscale) Serve() error {
 	// HTTP setup
 	//
 
+	// This is the regular router that we expose
+	// over our main Addr. It also serves the legacy Tailcale API
 	router := h.createRouter(grpcGatewayMux)
+
+	// This router is served only over the Noise connection,
+	// and exposes only the new API
+	h.noiseMux = h.createNoiseMux()
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
