@@ -1,0 +1,41 @@
+// This ACL is used to test wildcards
+
+{
+    "hosts": {
+        "host-1": "100.100.100.100",
+        "subnet-1": "100.100.101.100/24",
+    },
+
+    "acls": [
+        {
+            "Action": "accept",
+            "src": [
+                "*",
+            ],
+            "proto": "tcp",
+            "dst": [
+                "host-1:*",
+            ],
+        },
+        {
+            "Action": "accept",
+            "src": [
+                "*",
+            ],
+            "proto": "udp",
+            "dst": [
+                "host-1:53",
+            ],
+        },
+        {
+            "Action": "accept",
+            "src": [
+                "*",
+            ],
+            "proto": "icmp",
+            "dst": [
+                "host-1:*",
+            ],
+        },
+    ],
+}
