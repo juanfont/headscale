@@ -27,7 +27,11 @@ git clone https://github.com/juanfont/headscale.git
 cd headscale
 
 # optionally checkout a release
-git checkout v0.16.0-beta1
+# option a. you can find offical relase at https://github.com/juanfont/headscale/releases/latest
+# option b. get latest tag, this may be a beta relase
+latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+
+git checkout $latestTag
 
 gmake build
 
