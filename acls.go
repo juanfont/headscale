@@ -37,6 +37,23 @@ const (
 	expectedTokenItems = 2
 )
 
+// For some reason golang.org/x/net/internal/iana is an internal package
+const (
+	protocolICMP     = 1   // Internet Control Message
+	protocolIGMP     = 2   // Internet Group Management
+	protocolIPv4     = 4   // IPv4 encapsulation
+	protocolTCP      = 6   // Transmission Control
+	protocolEGP      = 8   // Exterior Gateway Protocol
+	protocolIGP      = 9   // any private interior gateway (used by Cisco for their IGRP)
+	protocolUDP      = 17  // User Datagram
+	protocolGRE      = 47  // Generic Routing Encapsulation
+	protocolESP      = 50  // Encap Security Payload
+	protocolAH       = 51  // Authentication Header
+	protocolIPv6ICMP = 58  // ICMP for IPv6
+	protocolSCTP     = 132 // Stream Control Transmission Protocol
+	ProtocolFC       = 133 // Fibre Channel
+)
+
 // LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules.
 func (h *Headscale) LoadACLPolicy(path string) error {
 	log.Debug().
@@ -238,36 +255,36 @@ func (h *Headscale) generateACLPolicyDest(
 func parseProtocol(protocol string) ([]int, bool, error) {
 	switch protocol {
 	case "":
-		return []int{1, 58, 6, 17}, false, nil
+		return []int{protocolICMP, protocolIPv6ICMP, protocolTCP, protocolUDP}, false, nil
 	case "igmp":
-		return []int{2}, true, nil
+		return []int{protocolIGMP}, true, nil
 	case "ipv4", "ip-in-ip":
-		return []int{4}, true, nil
+		return []int{protocolIPv4}, true, nil
 	case "tcp":
-		return []int{6}, false, nil
+		return []int{protocolTCP}, false, nil
 	case "egp":
-		return []int{8}, true, nil
+		return []int{protocolEGP}, true, nil
 	case "igp":
-		return []int{9}, true, nil
+		return []int{protocolIGP}, true, nil
 	case "udp":
-		return []int{17}, false, nil
+		return []int{protocolUDP}, false, nil
 	case "gre":
-		return []int{47}, true, nil
+		return []int{protocolGRE}, true, nil
 	case "esp":
-		return []int{50}, true, nil
+		return []int{protocolESP}, true, nil
 	case "ah":
-		return []int{51}, true, nil
+		return []int{protocolAH}, true, nil
 	case "sctp":
-		return []int{132}, false, nil
+		return []int{protocolSCTP}, false, nil
 	case "icmp":
-		return []int{1, 58}, true, nil
+		return []int{protocolICMP, protocolIPv6ICMP}, true, nil
 
 	default:
 		protocolNumber, err := strconv.Atoi(protocol)
 		if err != nil {
 			return nil, false, err
 		}
-		needsWildcard := protocolNumber != 6 && protocolNumber != 17 && protocolNumber != 132 // nolint
+		needsWildcard := protocolNumber != protocolTCP && protocolNumber != protocolUDP && protocolNumber != protocolSCTP
 
 		return []int{protocolNumber}, needsWildcard, nil
 	}
