@@ -160,7 +160,11 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
 
+	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
+
 	if err := viper.ReadInConfig(); err != nil {
+		log.Warn().Err(err).Msg("Failed to read configuration from disk")
+
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
 
@@ -200,6 +204,17 @@ func LoadConfig(path string, isFile bool) error {
 			DisabledClientAuth,
 			RelaxedClientAuth,
 			EnforcedClientAuth)
+	}
+
+	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
+	// to avoid races
+	minInactivityTimeout, _ := time.ParseDuration("65s")
+	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
+		errorText += fmt.Sprintf(
+			"Fatal config error: ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
+			viper.GetString("ephemeral_node_inactivity_timeout"),
+			minInactivityTimeout,
+		)
 	}
 
 	if errorText != "" {
