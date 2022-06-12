@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"time"
 
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -27,21 +25,6 @@ func getHeadscaleApp() (*headscale.Headscale, error) {
 	cfg, err := headscale.GetHeadscaleConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load configuration while creating headscale instance: %w", err)
-	}
-
-	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
-	// to avoid races
-	minInactivityTimeout, _ := time.ParseDuration("65s")
-	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
-		// TODO: Find a better way to return this text
-		//nolint
-		err := fmt.Errorf(
-			"ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
-			viper.GetString("ephemeral_node_inactivity_timeout"),
-			minInactivityTimeout,
-		)
-
-		return nil, err
 	}
 
 	app, err := headscale.NewHeadscale(cfg)

@@ -202,6 +202,17 @@ func LoadConfig(path string, isFile bool) error {
 			EnforcedClientAuth)
 	}
 
+	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
+	// to avoid races
+	minInactivityTimeout, _ := time.ParseDuration("65s")
+	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
+		errorText += fmt.Sprintf(
+			"Fatal config error: ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
+			viper.GetString("ephemeral_node_inactivity_timeout"),
+			minInactivityTimeout,
+		)
+	}
+
 	if errorText != "" {
 		//nolint
 		return errors.New(strings.TrimSuffix(errorText, "\n"))
