@@ -160,6 +160,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
 
+	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
+
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
