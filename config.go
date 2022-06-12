@@ -163,8 +163,12 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
 	if err := viper.ReadInConfig(); err != nil {
+		log.Warn().Err(err).Msg("Failed to read configuration from disk")
+
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
+
+	log.Debug().Str("path", viper.ConfigFileUsed()).Msg("Read configuration from disk")
 
 	// Collect any validation errors and return them all at once
 	var errorText string
