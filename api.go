@@ -546,11 +546,11 @@ func (h *Headscale) handleMachineRegistrationNew(
 		resp.AuthURL = fmt.Sprintf(
 			"%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			machineKey.String(),
+			NodePublicKeyStripPrefix(registerRequest.NodeKey),
 		)
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), MachinePublicKeyStripPrefix(machineKey))
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), NodePublicKeyStripPrefix(registerRequest.NodeKey))
 	}
 
 	respBody, err := encode(resp, &machineKey, h.privateKey)

@@ -349,7 +349,7 @@ func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	return &m, nil
 }
 
-// GetMachineByMachineKey finds a Machine by ID and returns the Machine struct.
+// GetMachineByMachineKey finds a Machine by its MachineKey and returns the Machine struct.
 func (h *Headscale) GetMachineByMachineKey(
 	machineKey key.MachinePublic,
 ) (*Machine, error) {
@@ -359,6 +359,19 @@ func (h *Headscale) GetMachineByMachineKey(
 	}
 
 	return &m, nil
+}
+
+// GetMachineByNodeKeys finds a Machine by its current NodeKey or the old one, and returns the Machine struct.
+func (h *Headscale) GetMachineByNodeKeys(
+	nodeKey key.NodePublic, oldNodeKey key.NodePublic,
+) (*Machine, error) {
+	machine := Machine{}
+	if result := h.db.Preload("Namespace").First(&machine, "node_key = ? OR node_key = ?",
+		NodePublicKeyStripPrefix(nodeKey), NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &machine, nil
 }
 
 // UpdateMachineFromDatabase takes a Machine struct pointer (typically already loaded from database
@@ -567,11 +580,14 @@ func (machine Machine) toNode(
 	}
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText(
-		[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+	if machine.MachineKey != "" {
+		// MachineKey is only used in the legacy protocol
+		err = machineKey.UnmarshalText(
+			[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+		}
 	}
 
 	var discoKey key.DiscoPublic
@@ -750,11 +766,11 @@ func getTags(
 }
 
 func (h *Headscale) RegisterMachineFromAuthCallback(
-	machineKeyStr string,
+	nodeKeyStr string,
 	namespaceName string,
 	registrationMethod string,
 ) (*Machine, error) {
-	if machineInterface, ok := h.registrationCache.Get(machineKeyStr); ok {
+	if machineInterface, ok := h.registrationCache.Get(nodeKeyStr); ok {
 		if registrationMachine, ok := machineInterface.(Machine); ok {
 			namespace, err := h.GetNamespace(namespaceName)
 			if err != nil {
@@ -785,7 +801,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 ) (*Machine, error) {
 	log.Trace().
 		Caller().
-		Str("machine_key", machine.MachineKey).
+		Str("node_key", machine.NodeKey).
 		Msg("Registering machine")
 
 	log.Trace().

@@ -11,6 +11,7 @@ import (
 	"gopkg.in/check.v1"
 	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 func (s *Suite) TestGetMachine(c *check.C) {
@@ -62,6 +63,35 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 	app.db.Save(&machine)
 
 	_, err = app.GetMachineByID(0)
+	c.Assert(err, check.IsNil)
+}
+
+func (s *Suite) TestGetMachineByNodeKeys(c *check.C) {
+	namespace, err := app.CreateNamespace("test")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = app.GetMachineByID(0)
+	c.Assert(err, check.NotNil)
+
+	nodeKey := key.NewNode()
+	oldNodeKey := key.NewNode()
+
+	machine := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
+		DiscoKey:       "faa",
+		Hostname:       "testmachine",
+		NamespaceID:    namespace.ID,
+		RegisterMethod: RegisterMethodAuthKey,
+		AuthKeyID:      uint(pak.ID),
+	}
+	app.db.Save(&machine)
+
+	_, err = app.GetMachineByNodeKeys(nodeKey.Public(), oldNodeKey.Public())
 	c.Assert(err, check.IsNil)
 }
 
