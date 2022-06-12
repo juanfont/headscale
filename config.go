@@ -168,8 +168,6 @@ func LoadConfig(path string, isFile bool) error {
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
 
-	log.Debug().Str("path", viper.ConfigFileUsed()).Msg("Read configuration from disk")
-
 	// Collect any validation errors and return them all at once
 	var errorText string
 	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
