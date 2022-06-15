@@ -445,7 +445,7 @@ func (h *Headscale) createNoiseMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/machine/register", h.NoiseRegistrationHandler)
-	// mux.HandleFunc("/machine/map", h.NoisePollNetMapHandler)
+	mux.HandleFunc("/machine/map", h.NoisePollNetMapHandler)
 
 	return mux
 }
@@ -747,6 +747,10 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
+			httpRouter := gin.Default()
+			httpRouter.POST(ts2021UpgradePath, h.NoiseUpgradeHandler)
+			httpRouter.NoRoute(gin.WrapF(h.redirect))
+
 			go func() {
 				log.Fatal().
 					Caller().
