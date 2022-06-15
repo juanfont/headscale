@@ -196,14 +196,21 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/huskyii>
+            <img src=https://avatars.githubusercontent.com/u/5499746?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Jiang Zhu/>
+            <br />
+            <sub style="font-size:14px"><b>Jiang Zhu</b></sub>
+        </a>
+    </td>
+</tr>
+<tr>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/e-zk>
             <img src=https://avatars.githubusercontent.com/u/58356365?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=e-zk/>
             <br />
             <sub style="font-size:14px"><b>e-zk</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/arch4ngel>
             <img src=https://avatars.githubusercontent.com/u/11574161?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Justin Angel/>
@@ -216,13 +223,6 @@ make build
             <img src=https://avatars.githubusercontent.com/u/43508?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Alessandro (Ale) Segala/>
             <br />
             <sub style="font-size:14px"><b>Alessandro (Ale) Segala</b></sub>
-        </a>
-    </td>
-    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
-        <a href=https://github.com/huskyii>
-            <img src=https://avatars.githubusercontent.com/u/5499746?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Jiang Zhu/>
-            <br />
-            <sub style="font-size:14px"><b>Jiang Zhu</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
