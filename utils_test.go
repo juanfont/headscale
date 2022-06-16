@@ -34,7 +34,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:           "testmachine",
+		Hostname:       "testmachine",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -82,7 +82,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 			MachineKey:     "foo",
 			NodeKey:        "bar",
 			DiscoKey:       "faa",
-			Hostname:           "testmachine",
+			Hostname:       "testmachine",
 			NamespaceID:    namespace.ID,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
@@ -172,7 +172,7 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:           "testmachine",
+		Hostname:       "testmachine",
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -184,4 +184,16 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 
 	c.Assert(len(ips2), check.Equals, 1)
 	c.Assert(ips2[0].String(), check.Equals, expected.String())
+}
+
+func (s *Suite) TestGenerateRandomStringDNSSafe(c *check.C) {
+	for i := 0; i < 100000; i++ {
+		str, err := GenerateRandomStringDNSSafe(8)
+		if err != nil {
+			c.Error(err)
+		}
+		if len(str) != 8 {
+			c.Error("invalid length", len(str), str)
+		}
+	}
 }
