@@ -637,6 +637,10 @@ func (machine Machine) toNode(
 
 	hostInfo := machine.GetHostInfo()
 
+	// A node is Online if it is connected to the control server,
+	// and we now we update LastSeen every keepAliveInterval duration at least.
+	online := machine.LastSeen.After(time.Now().Add(-keepAliveInterval))
+
 	node := tailcfg.Node{
 		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
@@ -653,6 +657,7 @@ func (machine Machine) toNode(
 		Endpoints:  machine.Endpoints,
 		DERP:       derp,
 
+		Online:   &online,
 		Hostinfo: hostInfo.View(),
 		Created:  machine.CreatedAt,
 		LastSeen: machine.LastSeen,
