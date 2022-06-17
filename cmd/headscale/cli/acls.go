@@ -65,4 +65,3 @@ var listAclsCmd = &cobra.Command{
 		return
 	},
 }
-}
