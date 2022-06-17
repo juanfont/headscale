@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"gopkg.in/yaml.v3"
@@ -37,7 +38,7 @@ const (
 	expectedTokenItems = 2
 )
 
-// For some reason golang.org/x/net/internal/iana is an internal package
+// For some reason golang.org/x/net/internal/iana is an internal package.
 const (
 	protocolICMP     = 1   // Internet Control Message
 	protocolIGMP     = 2   // Internet Group Management
@@ -123,6 +124,80 @@ func (h *Headscale) UpdateACLRules() error {
 	return nil
 }
 
+func (h *Headscale) ListACLPolicy() (*ACLPolicy, error) {
+	return h.aclPolicy, nil
+}
+
+func (policy *ACLPolicy) toProto() *v1.ACLPolicy {
+	protoACLPolicy := v1.ACLPolicy{
+		Groups:    policy.Groups.toProto(),
+		Hosts:     policy.Hosts.toProto(),
+		TagOwners: policy.TagOwners.toProto(),
+	}
+
+	// proto acls
+	protoACLPolicy.Acl = make([]*v1.ACL, len(policy.ACLs))
+	for k, v := range policy.ACLs {
+		protoACLPolicy.Acl[k] = v.toProto()
+	}
+
+	// proto acl tests
+	protoACLPolicy.AclTest = make([]*v1.ACLTest, len(policy.Tests))
+	for k, v := range policy.Tests {
+		protoACLPolicy.AclTest[k] = v.toProto()
+	}
+
+	return &protoACLPolicy
+}
+
+func (a *ACL) toProto() *v1.ACL {
+	protoACL := v1.ACL{
+		Action:       a.Action,
+		Sources:      a.Sources,
+		Destinations: a.Destinations,
+	}
+	return &protoACL
+}
+
+func (a *ACLTest) toProto() *v1.ACLTest {
+	protoACLTest := v1.ACLTest{
+		Source: a.Source,
+		Accept: a.Accept,
+		Deny:   a.Deny,
+	}
+	return &protoACLTest
+}
+
+func (g *Groups) toProto() map[string]*v1.Group {
+	protoGroups := make(map[string]*v1.Group, len(*g))
+	for k, v := range *g {
+		protoGroupSingle := &v1.Group{
+			Group: v,
+		}
+		protoGroups[k] = protoGroupSingle
+	}
+	return protoGroups
+}
+
+func (t *TagOwners) toProto() map[string]*v1.TagOwners {
+	protoTagOwners := make(map[string]*v1.TagOwners, len(*t))
+	for k, v := range *t {
+		protoTagOwner := &v1.TagOwners{
+			TagOwners: v,
+		}
+		protoTagOwners[k] = protoTagOwner
+	}
+	return protoTagOwners
+}
+
+func (h *Hosts) toProto() map[string]string {
+	protoHosts := make(map[string]string, len(*h))
+	for k, v := range *h {
+		protoHosts[k] = v.String()
+	}
+	return protoHosts
+}
+
 func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
 
@@ -162,7 +237,12 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 
 		destPorts := []tailcfg.NetPortRange{}
 		for innerIndex, dest := range acl.Destinations {
-			dests, err := h.generateACLPolicyDest(machines, *h.aclPolicy, dest, needsWildcard)
+			dests, err := h.generateACLPolicyDest(
+				machines,
+				*h.aclPolicy,
+				dest,
+				needsWildcard,
+			)
 			if err != nil {
 				log.Error().
 					Msgf("Error parsing ACL %d, Destination %d", index, innerIndex)
@@ -255,7 +335,12 @@ func (h *Headscale) generateACLPolicyDest(
 func parseProtocol(protocol string) ([]int, bool, error) {
 	switch protocol {
 	case "":
-		return []int{protocolICMP, protocolIPv6ICMP, protocolTCP, protocolUDP}, false, nil
+		return []int{
+			protocolICMP,
+			protocolIPv6ICMP,
+			protocolTCP,
+			protocolUDP,
+		}, false, nil
 	case "igmp":
 		return []int{protocolIGMP}, true, nil
 	case "ipv4", "ip-in-ip":
@@ -284,7 +369,9 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		needsWildcard := protocolNumber != protocolTCP && protocolNumber != protocolUDP && protocolNumber != protocolSCTP
+		needsWildcard := protocolNumber != protocolTCP &&
+			protocolNumber != protocolUDP &&
+			protocolNumber != protocolSCTP
 
 		return []int{protocolNumber}, needsWildcard, nil
 	}

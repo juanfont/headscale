@@ -2,32 +2,40 @@ package cli
 
 import (
 	"fmt"
-	
+
+	// "github.com/juanfont/headscale".
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/spf13/cobra"
 )
 
 func init() {
 	rootCmd.AddCommand(aclsCmd)
 	aclsCmd.AddCommand(listAclsCmd)
-
 }
 
 var aclsCmd = &cobra.Command{
 	Use:     "acls",
 	Short:   "Manage Access Control Lists (ACLs)",
-	Aliases: []string{"access-lists","acl"},
+	Aliases: []string{"access-lists", "acl"},
 }
 
 var listAclsCmd = &cobra.Command{
 	Use:     "list",
 	Short:   "List ACLs",
-	Aliases: []string{"ls","show"},
-	Run:      func(cmd *cobra.Command, args []string) {
+	Aliases: []string{"ls", "show"},
+	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		if output == `` {
 			output = `json`
 		}
-		h, err := getHeadscaleApp()
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.ListACLPolicyRequest{}
+
+		response, err := client.ListACLPolicy(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -37,24 +45,24 @@ var listAclsCmd = &cobra.Command{
 
 			return
 		}
-		policy := h.GetACLPolicy()
-		if policy == nil {
+
+		if response == nil {
 			SuccessOutput(
 				``,
 				`No policy defined.`,
 				``,
 			)
 
-			return 
-		} 
+			return
+		}
 
 		SuccessOutput(
-			policy,
+			response,
 			``,
 			output,
 		)
 
 		return
 	},
-
+}
 }

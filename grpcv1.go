@@ -430,6 +430,18 @@ func (api headscaleV1APIServer) ListApiKeys(
 	return &v1.ListApiKeysResponse{ApiKeys: response}, nil
 }
 
+func (api headscaleV1APIServer) ListACLPolicy(
+	ctx context.Context,
+	request *v1.ListACLPolicyRequest,
+) (*v1.ListACLPolicyResponse, error) {
+	policy, err := api.h.ListACLPolicy()
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.ListACLPolicyResponse{Policy: policy.toProto()}, nil
+}
+
 // The following service calls are for testing and debugging
 func (api headscaleV1APIServer) DebugCreateMachine(
 	ctx context.Context,

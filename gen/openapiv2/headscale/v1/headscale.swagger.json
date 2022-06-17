@@ -16,6 +16,29 @@
     "application/json"
   ],
   "paths": {
+    "/api/v1/acl": {
+      "get": {
+        "summary": "--- ACLs start ---",
+        "operationId": "HeadscaleService_ListACLPolicy",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListACLPolicyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/apikey": {
       "get": {
         "operationId": "HeadscaleService_ListApiKeys",
@@ -752,6 +775,81 @@
         }
       }
     },
+    "v1ACL": {
+      "type": "object",
+      "properties": {
+        "Action": {
+          "type": "string"
+        },
+        "Sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "Destinations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "v1ACLPolicy": {
+      "type": "object",
+      "properties": {
+        "Groups": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/v1Group"
+          }
+        },
+        "Hosts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "TagOwners": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/v1TagOwners"
+          }
+        },
+        "Acl": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/v1ACL"
+          }
+        },
+        "AclTest": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/v1ACLTest"
+          }
+        }
+      }
+    },
+    "v1ACLTest": {
+      "type": "object",
+      "properties": {
+        "Source": {
+          "type": "string"
+        },
+        "Accept": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "Deny": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "v1ApiKey": {
       "type": "object",
       "properties": {
@@ -931,6 +1029,25 @@
       "properties": {
         "namespace": {
           "$ref": "#/definitions/v1Namespace"
+        }
+      }
+    },
+    "v1Group": {
+      "type": "object",
+      "properties": {
+        "Group": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "v1ListACLPolicyResponse": {
+      "type": "object",
+      "properties": {
+        "Policy": {
+          "$ref": "#/definitions/v1ACLPolicy"
         }
       }
     },
@@ -1161,6 +1278,17 @@
       "properties": {
         "machine": {
           "$ref": "#/definitions/v1Machine"
+        }
+      }
+    },
+    "v1TagOwners": {
+      "type": "object",
+      "properties": {
+        "TagOwners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     }
