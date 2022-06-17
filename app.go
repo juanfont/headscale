@@ -402,7 +402,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 	router.POST("/machine/:id/map", h.PollNetMapHandler)
 	router.POST("/machine/:id", h.RegistrationHandler)
 	router.GET("/oidc/register/:mkey", h.RegisterOIDC)
-	router.GET("/oidc/callback", h.OIDCCallback)
+	router.GET("/oidc/callback", gin.WrapF(h.OIDCCallback))
 	router.GET("/apple", gin.WrapF(h.AppleConfigMessage))
 	router.GET("/apple/:platform", gin.WrapF(h.ApplePlatformConfig))
 	router.GET("/windows", gin.WrapF(h.WindowsConfigMessage))
