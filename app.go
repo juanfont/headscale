@@ -397,18 +397,18 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
 		"/health",
 		func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"healthy": "ok"}) },
 	)
-	router.GET("/key", h.KeyHandler)
-	router.GET("/register", h.RegisterWebAPI)
+	router.GET("/key", gin.WrapF(h.KeyHandler))
+	router.GET("/register", gin.WrapF(h.RegisterWebAPI))
 	router.POST("/machine/:id/map", h.PollNetMapHandler)
 	router.POST("/machine/:id", h.RegistrationHandler)
 	router.GET("/oidc/register/:mkey", h.RegisterOIDC)
 	router.GET("/oidc/callback", h.OIDCCallback)
-	router.GET("/apple", h.AppleConfigMessage)
-	router.GET("/apple/:platform", h.ApplePlatformConfig)
-	router.GET("/windows", h.WindowsConfigMessage)
-	router.GET("/windows/tailscale.reg", h.WindowsRegConfig)
-	router.GET("/swagger", SwaggerUI)
-	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
+	router.GET("/apple", gin.WrapF(h.AppleConfigMessage))
+	router.GET("/apple/:platform", gin.WrapF(h.ApplePlatformConfig))
+	router.GET("/windows", gin.WrapF(h.WindowsConfigMessage))
+	router.GET("/windows/tailscale.reg", gin.WrapF(h.WindowsRegConfig))
+	router.GET("/swagger", gin.WrapF(SwaggerUI))
+	router.GET("/swagger/v1/openapiv2.json", gin.WrapF(SwaggerAPIv1))
 
 	if h.cfg.DERP.ServerEnabled {
 		router.Any("/derp", h.DERPHandler)

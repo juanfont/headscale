@@ -6,14 +6,16 @@ import (
 	"html/template"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 )
 
 //go:embed gen/openapiv2/headscale/v1/headscale.swagger.json
 var apiV1JSON []byte
 
-func SwaggerUI(ctx *gin.Context) {
+func SwaggerUI(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	swaggerTemplate := template.Must(template.New("swagger").Parse(`
 <html>
 	<head>
@@ -52,18 +54,24 @@ func SwaggerUI(ctx *gin.Context) {
 			Caller().
 			Err(err).
 			Msg("Could not render Swagger")
-		ctx.Data(
-			http.StatusInternalServerError,
-			"text/html; charset=utf-8",
-			[]byte("Could not render Swagger"),
-		)
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not render Swagger"))
 
 		return
 	}
 
-	ctx.Data(http.StatusOK, "text/html; charset=utf-8", payload.Bytes())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(payload.Bytes())
 }
 
-func SwaggerAPIv1(ctx *gin.Context) {
-	ctx.Data(http.StatusOK, "application/json; charset=utf-8", apiV1JSON)
+func SwaggerAPIv1(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-88")
+	w.WriteHeader(http.StatusOK)
+	w.Write(apiV1JSON)
 }

@@ -32,12 +32,13 @@ const (
 
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
-func (h *Headscale) KeyHandler(ctx *gin.Context) {
-	ctx.Data(
-		http.StatusOK,
-		"text/plain; charset=utf-8",
-		[]byte(MachinePublicKeyStripPrefix(h.privateKey.Public())),
-	)
+func (h *Headscale) KeyHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(MachinePublicKeyStripPrefix(h.privateKey.Public())))
 }
 
 type registerWebAPITemplateConfig struct {
@@ -63,10 +64,15 @@ var registerWebAPITemplate = template.Must(
 
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
 // Listens in /register.
-func (h *Headscale) RegisterWebAPI(ctx *gin.Context) {
-	machineKeyStr := ctx.Query("key")
+func (h *Headscale) RegisterWebAPI(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	machineKeyStr := r.URL.Query().Get("key")
 	if machineKeyStr == "" {
-		ctx.String(http.StatusBadRequest, "Wrong params")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("Wrong params"))
 
 		return
 	}
@@ -79,14 +85,14 @@ func (h *Headscale) RegisterWebAPI(ctx *gin.Context) {
 			Str("func", "RegisterWebAPI").
 			Err(err).
 			Msg("Could not render register web API template")
-		ctx.Data(
-			http.StatusInternalServerError,
-			"text/html; charset=utf-8",
-			[]byte("Could not render register web API template"),
-		)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not render register web API template"))
 	}
 
-	ctx.Data(http.StatusOK, "text/html; charset=utf-8", content.Bytes())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(content.Bytes())
 }
 
 // RegistrationHandler handles the actual registration process of a machine

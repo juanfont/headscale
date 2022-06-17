@@ -6,13 +6,15 @@ import (
 	"net/http"
 	textTemplate "text/template"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 // WindowsConfigMessage shows a simple message in the browser for how to configure the Windows Tailscale client.
-func (h *Headscale) WindowsConfigMessage(ctx *gin.Context) {
+func (h *Headscale) WindowsConfigMessage(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	winTemplate := template.Must(template.New("windows").Parse(`
 <html>
 	<body>
@@ -63,20 +65,24 @@ REG ADD "HKLM\Software\Tailscale IPN" /v LoginURL /t REG_SZ /d "{{.URL}}"</code>
 			Str("handler", "WindowsRegConfig").
 			Err(err).
 			Msg("Could not render Windows index template")
-		ctx.Data(
-			http.StatusInternalServerError,
-			"text/html; charset=utf-8",
-			[]byte("Could not render Windows index template"),
-		)
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not render Windows index template"))
 
 		return
 	}
 
-	ctx.Data(http.StatusOK, "text/html; charset=utf-8", payload.Bytes())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(payload.Bytes())
 }
 
 // WindowsRegConfig generates and serves a .reg file configured with the Headscale server address.
-func (h *Headscale) WindowsRegConfig(ctx *gin.Context) {
+func (h *Headscale) WindowsRegConfig(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	config := WindowsRegistryConfig{
 		URL: h.cfg.ServerURL,
 	}
@@ -87,24 +93,24 @@ func (h *Headscale) WindowsRegConfig(ctx *gin.Context) {
 			Str("handler", "WindowsRegConfig").
 			Err(err).
 			Msg("Could not render Apple macOS template")
-		ctx.Data(
-			http.StatusInternalServerError,
-			"text/html; charset=utf-8",
-			[]byte("Could not render Windows registry template"),
-		)
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not render Windows registry template"))
 
 		return
 	}
 
-	ctx.Data(
-		http.StatusOK,
-		"text/x-ms-regedit; charset=utf-8",
-		content.Bytes(),
-	)
+	w.Header().Set("Content-Type", "text/x-ms-regedit; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(content.Bytes())
 }
 
 // AppleConfigMessage shows a simple message in the browser to point the user to the iOS/MacOS profile and instructions for how to install it.
-func (h *Headscale) AppleConfigMessage(ctx *gin.Context) {
+func (h *Headscale) AppleConfigMessage(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	appleTemplate := template.Must(template.New("apple").Parse(`
 <html>
 	<body>
@@ -165,20 +171,24 @@ func (h *Headscale) AppleConfigMessage(ctx *gin.Context) {
 			Str("handler", "AppleMobileConfig").
 			Err(err).
 			Msg("Could not render Apple index template")
-		ctx.Data(
-			http.StatusInternalServerError,
-			"text/html; charset=utf-8",
-			[]byte("Could not render Apple index template"),
-		)
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not render Apple index template"))
 
 		return
 	}
 
-	ctx.Data(http.StatusOK, "text/html; charset=utf-8", payload.Bytes())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(payload.Bytes())
 }
 
-func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
-	platform := ctx.Param("platform")
+func (h *Headscale) ApplePlatformConfig(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	platform := r.URL.Query().Get("platform")
 
 	id, err := uuid.NewV4()
 	if err != nil {
@@ -186,11 +196,10 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Failed not create UUID")
-		ctx.Data(
-			http.StatusInternalServerError,
-			"text/html; charset=utf-8",
-			[]byte("Failed to create UUID"),
-		)
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to create UUID"))
 
 		return
 	}
@@ -201,11 +210,10 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Failed not create UUID")
-		ctx.Data(
-			http.StatusInternalServerError,
-			"text/html; charset=utf-8",
-			[]byte("Failed to create UUID"),
-		)
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to create content UUID"))
 
 		return
 	}
@@ -224,11 +232,10 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 				Str("handler", "ApplePlatformConfig").
 				Err(err).
 				Msg("Could not render Apple macOS template")
-			ctx.Data(
-				http.StatusInternalServerError,
-				"text/html; charset=utf-8",
-				[]byte("Could not render Apple macOS template"),
-			)
+
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Could not render Apple macOS template"))
 
 			return
 		}
@@ -238,20 +245,17 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 				Str("handler", "ApplePlatformConfig").
 				Err(err).
 				Msg("Could not render Apple iOS template")
-			ctx.Data(
-				http.StatusInternalServerError,
-				"text/html; charset=utf-8",
-				[]byte("Could not render Apple iOS template"),
-			)
+
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Could not render Apple iOS template"))
 
 			return
 		}
 	default:
-		ctx.Data(
-			http.StatusOK,
-			"text/html; charset=utf-8",
-			[]byte("Invalid platform, only ios and macos is supported"),
-		)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Invalid platform, only ios and macos is supported"))
 
 		return
 	}
@@ -268,20 +272,17 @@ func (h *Headscale) ApplePlatformConfig(ctx *gin.Context) {
 			Str("handler", "ApplePlatformConfig").
 			Err(err).
 			Msg("Could not render Apple platform template")
-		ctx.Data(
-			http.StatusInternalServerError,
-			"text/html; charset=utf-8",
-			[]byte("Could not render Apple platform template"),
-		)
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not render Apple platform template"))
 
 		return
 	}
 
-	ctx.Data(
-		http.StatusOK,
-		"application/x-apple-aspen-config; charset=utf-8",
-		content.Bytes(),
-	)
+	w.Header().Set("Content-Type", "application/x-apple-aspen-config; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(content.Bytes())
 }
 
 type WindowsRegistryConfig struct {
