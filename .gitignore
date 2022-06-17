@@ -31,3 +31,5 @@ test_output/
 # Nix build output
 result
 .direnv/
+
+integration_test/etc/config.dump.yaml

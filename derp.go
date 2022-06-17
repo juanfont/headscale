@@ -152,16 +152,7 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 				h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
 			}
 
-			namespaces, err := h.ListNamespaces()
-			if err != nil {
-				log.Error().
-					Err(err).
-					Msg("Failed to fetch namespaces")
-			}
-
-			for _, namespace := range namespaces {
-				h.setLastStateChangeToNow(namespace.Name)
-			}
+			h.setLastStateChangeToNow()
 		}
 	}
 }

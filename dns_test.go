@@ -161,7 +161,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		DiscoKey:       "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
-		Hostname:           "test_get_shared_nodes_1",
+		Hostname:       "test_get_shared_nodes_1",
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -178,7 +178,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
-		Hostname:           "test_get_shared_nodes_2",
+		Hostname:       "test_get_shared_nodes_2",
 		NamespaceID:    namespaceShared2.ID,
 		Namespace:      *namespaceShared2,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -195,7 +195,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
-		Hostname:           "test_get_shared_nodes_3",
+		Hostname:       "test_get_shared_nodes_3",
 		NamespaceID:    namespaceShared3.ID,
 		Namespace:      *namespaceShared3,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -212,7 +212,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
-		Hostname:           "test_get_shared_nodes_4",
+		Hostname:       "test_get_shared_nodes_4",
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -223,7 +223,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 
 	baseDomain := "foobar.headscale.net"
 	dnsConfigOrig := tailcfg.DNSConfig{
-		Routes:  make(map[string][]dnstype.Resolver),
+		Routes:  make(map[string][]*dnstype.Resolver),
 		Domains: []string{baseDomain},
 		Proxied: true,
 	}
@@ -304,7 +304,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		DiscoKey:       "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
-		Hostname:           "test_get_shared_nodes_1",
+		Hostname:       "test_get_shared_nodes_1",
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -321,7 +321,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
-		Hostname:           "test_get_shared_nodes_2",
+		Hostname:       "test_get_shared_nodes_2",
 		NamespaceID:    namespaceShared2.ID,
 		Namespace:      *namespaceShared2,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -338,7 +338,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
-		Hostname:           "test_get_shared_nodes_3",
+		Hostname:       "test_get_shared_nodes_3",
 		NamespaceID:    namespaceShared3.ID,
 		Namespace:      *namespaceShared3,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -355,7 +355,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		DiscoKey:       "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
-		Hostname:           "test_get_shared_nodes_4",
+		Hostname:       "test_get_shared_nodes_4",
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		RegisterMethod: RegisterMethodAuthKey,
@@ -366,7 +366,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 
 	baseDomain := "foobar.headscale.net"
 	dnsConfigOrig := tailcfg.DNSConfig{
-		Routes:  make(map[string][]dnstype.Resolver),
+		Routes:  make(map[string][]*dnstype.Resolver),
 		Domains: []string{baseDomain},
 		Proxied: false,
 	}

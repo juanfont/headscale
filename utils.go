@@ -325,11 +325,17 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 // number generator fails to function correctly, in which
 // case the caller should not continue.
 func GenerateRandomStringDNSSafe(n int) (string, error) {
-	str, err := GenerateRandomStringURLSafe(n)
+	var str string
+	var err error
+	for len(str) < n {
+		str, err = GenerateRandomStringURLSafe(n)
+		if err != nil {
+			return "", err
+		}
+		str = strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""))
+	}
 
-	str = strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""))
-
-	return str[:n], err
+	return str[:n], nil
 }
 
 func IsStringInSlice(slice []string, str string) bool {

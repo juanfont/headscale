@@ -279,7 +279,8 @@ func (h *Headscale) getMapResponse(
 		DERPMap:      h.DERPMap,
 		UserProfiles: profiles,
 		Debug: &tailcfg.Debug{
-			DisableLogTail: !h.cfg.LogTail.Enabled,
+			DisableLogTail:      !h.cfg.LogTail.Enabled,
+			RandomizeClientPort: h.cfg.RandomizeClientPort,
 		},
 	}
 
