@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/derp"
 	"tailscale.com/net/stun"
@@ -90,7 +89,10 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 	return localDERPregion, nil
 }
 
-func (h *Headscale) DERPHandler(ctx *gin.Context) {
+func (h *Headscale) DERPHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	log.Trace().Caller().Msgf("/derp request from %v", ctx.ClientIP())
 	up := strings.ToLower(ctx.Request.Header.Get("Upgrade"))
 	if up != "websocket" && up != "derp" {
@@ -143,7 +145,10 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 
 // DERPProbeHandler is the endpoint that js/wasm clients hit to measure
 // DERP latency, since they can't do UDP STUN queries.
-func (h *Headscale) DERPProbeHandler(ctx *gin.Context) {
+func (h *Headscale) DERPProbeHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	switch ctx.Request.Method {
 	case "HEAD", "GET":
 		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")
@@ -159,15 +164,18 @@ func (h *Headscale) DERPProbeHandler(ctx *gin.Context) {
 // The initial implementation is here https://github.com/tailscale/tailscale/pull/1406
 // They have a cache, but not clear if that is really necessary at Headscale, uh, scale.
 // An example implementation is found here https://derp.tailscale.com/bootstrap-dns
-func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
+func (h *Headscale) DERPBootstrapDNSHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	dnsEntries := make(map[string][]net.IP)
 
 	resolvCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	var r net.Resolver
+	var resolver net.Resolver
 	for _, region := range h.DERPMap.Regions {
 		for _, node := range region.Nodes { // we don't care if we override some nodes
-			addrs, err := r.LookupIP(resolvCtx, "ip", node.HostName)
+			addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName)
 			if err != nil {
 				log.Trace().
 					Caller().
