@@ -90,7 +90,7 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ steps.meta.outputs.version }}
       - name: Prepare cache for next build
         run: |
           rm -rf /tmp/.buildx-cache
@@ -156,7 +156,7 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache-debug
           cache-to: type=local,dest=/tmp/.buildx-cache-debug-new
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ steps.meta-debug.outputs.version }}
       - name: Prepare cache for next build
         run: |
           rm -rf /tmp/.buildx-cache-debug
@@ -222,7 +222,7 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache-alpine
           cache-to: type=local,dest=/tmp/.buildx-cache-alpine-new
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ steps.meta-alpine.outputs.version }}
       - name: Prepare cache for next build
         run: |
           rm -rf /tmp/.buildx-cache-alpine
