@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -93,26 +94,27 @@ func (h *Headscale) DERPHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	log.Trace().Caller().Msgf("/derp request from %v", ctx.ClientIP())
-	up := strings.ToLower(ctx.Request.Header.Get("Upgrade"))
+	log.Trace().Caller().Msgf("/derp request from %v", r.RemoteAddr)
+	up := strings.ToLower(r.Header.Get("Upgrade"))
 	if up != "websocket" && up != "derp" {
 		if up != "" {
 			log.Warn().Caller().Msgf("Weird websockets connection upgrade: %q", up)
 		}
-		ctx.String(http.StatusUpgradeRequired, "DERP requires connection upgrade")
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusUpgradeRequired)
+		w.Write([]byte("DERP requires connection upgrade"))
 
 		return
 	}
 
-	fastStart := ctx.Request.Header.Get(fastStartHeader) == "1"
+	fastStart := r.Header.Get(fastStartHeader) == "1"
 
-	hijacker, ok := ctx.Writer.(http.Hijacker)
+	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		log.Error().Caller().Msg("DERP requires Hijacker interface from Gin")
-		ctx.String(
-			http.StatusInternalServerError,
-			"HTTP does not support general TCP support",
-		)
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("HTTP does not support general TCP support"))
 
 		return
 	}
@@ -120,10 +122,9 @@ func (h *Headscale) DERPHandler(
 	netConn, conn, err := hijacker.Hijack()
 	if err != nil {
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
-		ctx.String(
-			http.StatusInternalServerError,
-			"HTTP does not support general TCP support",
-		)
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("HTTP does not support general TCP support"))
 
 		return
 	}
@@ -149,11 +150,13 @@ func (h *Headscale) DERPProbeHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	switch ctx.Request.Method {
+	switch r.Method {
 	case "HEAD", "GET":
-		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
 	default:
-		ctx.String(http.StatusMethodNotAllowed, "bogus probe method")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte("bogus probe method"))
 	}
 }
 
@@ -187,7 +190,9 @@ func (h *Headscale) DERPBootstrapDNSHandler(
 			dnsEntries[node.HostName] = addrs
 		}
 	}
-	ctx.JSON(http.StatusOK, dnsEntries)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(dnsEntries)
 }
 
 // ServeSTUN starts a STUN server on the configured addr.
