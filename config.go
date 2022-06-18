@@ -37,6 +37,7 @@ type Config struct {
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
 	LogLevel                       zerolog.Level
+	JSONLogs                       bool
 	DisableUpdateCheck             bool
 
 	DERP DERPConfig
@@ -147,6 +148,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tls_client_auth_mode", "relaxed")
 
 	viper.SetDefault("log_level", "info")
+	viper.SetDefault("json_logs", false)
 
 	viper.SetDefault("dns_config", nil)
 
@@ -434,6 +436,7 @@ func GetHeadscaleConfig() (*Config, error) {
 	if err != nil {
 		logLevel = zerolog.DebugLevel
 	}
+	jsonLogs := viper.GetBool("json_logs")
 
 	legacyPrefixField := viper.GetString("ip_prefix")
 	if len(legacyPrefixField) > 0 {
@@ -488,6 +491,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 		LogLevel:           logLevel,
+		JSONLogs:           jsonLogs,
 
 		IPPrefixes: prefixes,
 		PrivateKeyPath: AbsolutePathFromConfigPath(

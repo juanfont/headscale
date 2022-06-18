@@ -173,6 +173,7 @@ tls_cert_path: ""
 tls_key_path: ""
 
 log_level: info
+json_logs: false
 
 # Path to a file containg ACL policies.
 # ACLs can be defined as YAML or HUJSON.

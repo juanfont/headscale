@@ -55,6 +55,10 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
+	if cfg.JSONLogs {
+		log.Logger = log.Output(os.Stdout)
+	}
+
 	if !cfg.DisableUpdateCheck && !machineOutput {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			Version != "dev" {
