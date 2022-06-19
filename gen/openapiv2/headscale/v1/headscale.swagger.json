@@ -778,16 +778,19 @@
     "v1ACL": {
       "type": "object",
       "properties": {
-        "Action": {
+        "action": {
           "type": "string"
         },
-        "Sources": {
+        "protocol": {
+          "type": "string"
+        },
+        "sources": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "Destinations": {
+        "destinations": {
           "type": "array",
           "items": {
             "type": "string"
@@ -798,31 +801,31 @@
     "v1ACLPolicy": {
       "type": "object",
       "properties": {
-        "Groups": {
+        "groups": {
           "type": "object",
           "additionalProperties": {
             "$ref": "#/definitions/v1Group"
           }
         },
-        "Hosts": {
+        "hosts": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           }
         },
-        "TagOwners": {
+        "tagOwners": {
           "type": "object",
           "additionalProperties": {
             "$ref": "#/definitions/v1TagOwners"
           }
         },
-        "Acl": {
+        "acl": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/v1ACL"
           }
         },
-        "AclTest": {
+        "aclTest": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/v1ACLTest"
@@ -833,16 +836,16 @@
     "v1ACLTest": {
       "type": "object",
       "properties": {
-        "Source": {
+        "source": {
           "type": "string"
         },
-        "Accept": {
+        "accept": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "Deny": {
+        "deny": {
           "type": "array",
           "items": {
             "type": "string"
@@ -1035,7 +1038,7 @@
     "v1Group": {
       "type": "object",
       "properties": {
-        "Group": {
+        "group": {
           "type": "array",
           "items": {
             "type": "string"
@@ -1046,7 +1049,7 @@
     "v1ListACLPolicyResponse": {
       "type": "object",
       "properties": {
-        "Policy": {
+        "policy": {
           "$ref": "#/definitions/v1ACLPolicy"
         }
       }
@@ -1284,7 +1287,7 @@
     "v1TagOwners": {
       "type": "object",
       "properties": {
-        "TagOwners": {
+        "tagOwners": {
           "type": "array",
           "items": {
             "type": "string"

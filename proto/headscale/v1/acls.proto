@@ -20,8 +20,9 @@ message TagOwners {
 
 message ACL {
     string action = 1;
-    repeated string sources = 2;
-    repeated string destinations = 3;
+    string protocol = 2;
+    repeated string sources = 3;
+    repeated string destinations = 4;
 }
 
 message ACLTest {
