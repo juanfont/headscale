@@ -337,7 +337,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 			Str("client_address", r.RemoteAddr).
 			Msg("HTTP authentication invoked")
 
-		authHeader := r.Header.Get("X-Session-Token")
+		authHeader := r.Header.Get("authorization")
 
 		if !strings.HasPrefix(authHeader, AuthPrefix) {
 			log.Error().
