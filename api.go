@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -96,10 +96,23 @@ func (h *Headscale) RegisterWebAPI(
 }
 
 // RegistrationHandler handles the actual registration process of a machine
-// Endpoint /machine/:id.
-func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
-	body, _ := io.ReadAll(ctx.Request.Body)
-	machineKeyStr := ctx.Param("id")
+// Endpoint /machine/:mkey.
+func (h *Headscale) RegistrationHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	vars := mux.Vars(r)
+	machineKeyStr, ok := vars["mkey"]
+	if !ok || machineKeyStr == "" {
+		log.Error().
+			Str("handler", "RegistrationHandler").
+			Msg("No machine ID in request")
+		http.Error(w, "No machine ID in request", http.StatusBadRequest)
+
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
 
 	var machineKey key.MachinePublic
 	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
@@ -109,7 +122,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			Err(err).
 			Msg("Cannot parse machine key")
 		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
-		ctx.String(http.StatusInternalServerError, "Sad!")
+		http.Error(w, "Cannot parse machine key", http.StatusBadRequest)
 
 		return
 	}
@@ -121,7 +134,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			Err(err).
 			Msg("Cannot decode message")
 		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
-		ctx.String(http.StatusInternalServerError, "Very sad!")
+		http.Error(w, "Cannot decode message", http.StatusBadRequest)
 
 		return
 	}
@@ -135,7 +148,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 
 		// If the machine has AuthKey set, handle registration via PreAuthKeys
 		if req.Auth.AuthKey != "" {
-			h.handleAuthKey(ctx, machineKey, req)
+			h.handleAuthKey(w, r, machineKey, req)
 
 			return
 		}
@@ -179,7 +192,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			registerCacheExpiration,
 		)
 
-		h.handleMachineRegistrationNew(ctx, machineKey, req)
+		h.handleMachineRegistrationNew(w, r, machineKey, req)
 
 		return
 	}
@@ -195,7 +208,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !req.Expiry.IsZero() && req.Expiry.UTC().Before(now) {
-				h.handleMachineLogOut(ctx, machineKey, *machine)
+				h.handleMachineLogOut(w, r, machineKey, *machine)
 
 				return
 			}
@@ -203,7 +216,7 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 			// If machine is not expired, and is register, we have a already accepted this machine,
 			// let it proceed with a valid registration
 			if !machine.isExpired() {
-				h.handleMachineValidRegistration(ctx, machineKey, *machine)
+				h.handleMachineValidRegistration(w, r, machineKey, *machine)
 
 				return
 			}
@@ -212,13 +225,13 @@ func (h *Headscale) RegistrationHandler(ctx *gin.Context) {
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
 		if machine.NodeKey == NodePublicKeyStripPrefix(req.OldNodeKey) &&
 			!machine.isExpired() {
-			h.handleMachineRefreshKey(ctx, machineKey, req, *machine)
+			h.handleMachineRefreshKey(w, r, machineKey, req, *machine)
 
 			return
 		}
 
 		// The machine has expired
-		h.handleMachineExpired(ctx, machineKey, req, *machine)
+		h.handleMachineExpired(w, r, machineKey, req, *machine)
 
 		return
 	}
@@ -363,7 +376,8 @@ func (h *Headscale) getMapKeepAliveResponse(
 }
 
 func (h *Headscale) handleMachineLogOut(
-	ctx *gin.Context,
+	w http.ResponseWriter,
+	r *http.Request,
 	machineKey key.MachinePublic,
 	machine Machine,
 ) {
@@ -384,15 +398,19 @@ func (h *Headscale) handleMachineLogOut(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		ctx.String(http.StatusInternalServerError, "")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respBody)
 }
 
 func (h *Headscale) handleMachineValidRegistration(
-	ctx *gin.Context,
+	w http.ResponseWriter,
+	r *http.Request,
 	machineKey key.MachinePublic,
 	machine Machine,
 ) {
@@ -416,17 +434,21 @@ func (h *Headscale) handleMachineValidRegistration(
 			Msg("Cannot encode message")
 		machineRegistrations.WithLabelValues("update", "web", "error", machine.Namespace.Name).
 			Inc()
-		ctx.String(http.StatusInternalServerError, "")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
 	machineRegistrations.WithLabelValues("update", "web", "success", machine.Namespace.Name).
 		Inc()
-	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respBody)
 }
 
 func (h *Headscale) handleMachineExpired(
-	ctx *gin.Context,
+	w http.ResponseWriter,
+	r *http.Request,
 	machineKey key.MachinePublic,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
@@ -439,7 +461,7 @@ func (h *Headscale) handleMachineExpired(
 		Msg("Machine registration has expired. Sending a authurl to register")
 
 	if registerRequest.Auth.AuthKey != "" {
-		h.handleAuthKey(ctx, machineKey, registerRequest)
+		h.handleAuthKey(w, r, machineKey, registerRequest)
 
 		return
 	}
@@ -460,17 +482,21 @@ func (h *Headscale) handleMachineExpired(
 			Msg("Cannot encode message")
 		machineRegistrations.WithLabelValues("reauth", "web", "error", machine.Namespace.Name).
 			Inc()
-		ctx.String(http.StatusInternalServerError, "")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
 	machineRegistrations.WithLabelValues("reauth", "web", "success", machine.Namespace.Name).
 		Inc()
-	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respBody)
 }
 
 func (h *Headscale) handleMachineRefreshKey(
-	ctx *gin.Context,
+	w http.ResponseWriter,
+	r *http.Request,
 	machineKey key.MachinePublic,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
@@ -487,7 +513,7 @@ func (h *Headscale) handleMachineRefreshKey(
 			Caller().
 			Err(err).
 			Msg("Failed to update machine key in the database")
-		ctx.String(http.StatusInternalServerError, "Internal server error")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
@@ -500,15 +526,19 @@ func (h *Headscale) handleMachineRefreshKey(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		ctx.String(http.StatusInternalServerError, "Internal server error")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respBody)
 }
 
 func (h *Headscale) handleMachineRegistrationNew(
-	ctx *gin.Context,
+	w http.ResponseWriter,
+	r *http.Request,
 	machineKey key.MachinePublic,
 	registerRequest tailcfg.RegisterRequest,
 ) {
@@ -535,16 +565,20 @@ func (h *Headscale) handleMachineRegistrationNew(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		ctx.String(http.StatusInternalServerError, "")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respBody)
 }
 
 // TODO: check if any locks are needed around IP allocation.
 func (h *Headscale) handleAuthKey(
-	ctx *gin.Context,
+	w http.ResponseWriter,
+	r *http.Request,
 	machineKey key.MachinePublic,
 	registerRequest tailcfg.RegisterRequest,
 ) {
@@ -573,14 +607,17 @@ func (h *Headscale) handleAuthKey(
 				Str("machine", registerRequest.Hostinfo.Hostname).
 				Err(err).
 				Msg("Cannot encode message")
-			ctx.String(http.StatusInternalServerError, "")
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
 				Inc()
 
 			return
 		}
 
-		ctx.Data(http.StatusUnauthorized, "application/json; charset=utf-8", respBody)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write(respBody)
+
 		log.Error().
 			Caller().
 			Str("func", "handleAuthKey").
@@ -654,10 +691,7 @@ func (h *Headscale) handleAuthKey(
 				Msg("could not register machine")
 			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
 				Inc()
-			ctx.String(
-				http.StatusInternalServerError,
-				"could not register machine",
-			)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 			return
 		}
@@ -677,13 +711,15 @@ func (h *Headscale) handleAuthKey(
 			Msg("Cannot encode message")
 		machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
 			Inc()
-		ctx.String(http.StatusInternalServerError, "Extremely sad!")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
 	machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "success", pak.Namespace.Name).
 		Inc()
-	ctx.Data(http.StatusOK, "application/json; charset=utf-8", respBody)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respBody)
 	log.Info().
 		Str("func", "handleAuthKey").
 		Str("machine", registerRequest.Hostinfo.Hostname).
