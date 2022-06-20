@@ -30,6 +30,7 @@ type DERPServer struct {
 }
 
 func (h *Headscale) NewDERPServer() (*DERPServer, error) {
+	log.Trace().Caller().Msg("Creating new embedded DERP server")
 	server := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
 	region, err := h.generateRegionLocalDERP()
 	if err != nil {
@@ -87,6 +88,7 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 	}
 	localDERPregion.Nodes[0].STUNPort = portSTUN
 
+	log.Info().Caller().Msgf("DERP region: %+v", localDERPregion)
 	return localDERPregion, nil
 }
 
@@ -128,6 +130,7 @@ func (h *Headscale) DERPHandler(
 
 		return
 	}
+	log.Trace().Caller().Msgf("Hijacked connection from %v", r.RemoteAddr)
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()
