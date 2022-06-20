@@ -2,7 +2,6 @@ package headscale
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -180,7 +179,7 @@ func (h *Headscale) PollNetMapHandler(
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(data)
+		w.Write(data)
 
 		return
 	}
@@ -214,7 +213,7 @@ func (h *Headscale) PollNetMapHandler(
 			Msg("Client sent endpoint update and is ok with a response without peer list")
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(data)
+		w.Write(data)
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
 		updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "endpoint-update").
