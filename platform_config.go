@@ -7,6 +7,7 @@ import (
 	textTemplate "text/template"
 
 	"github.com/gofrs/uuid"
+	"github.com/gorilla/mux"
 	"github.com/rs/zerolog/log"
 )
 
@@ -188,7 +189,16 @@ func (h *Headscale) ApplePlatformConfig(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	platform := r.URL.Query().Get("platform")
+	vars := mux.Vars(r)
+	platform, ok := vars["platform"]
+	if !ok {
+		log.Error().
+			Str("handler", "ApplePlatformConfig").
+			Msg("No platform specified")
+		http.Error(w, "No platform specified", http.StatusBadRequest)
+
+		return
+	}
 
 	id, err := uuid.NewV4()
 	if err != nil {
