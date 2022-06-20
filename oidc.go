@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 	"tailscale.com/types/key"
@@ -63,10 +63,17 @@ func (h *Headscale) initOIDC() error {
 // RegisterOIDC redirects to the OIDC provider for authentication
 // Puts machine key in cache so the callback can retrieve it using the oidc state param
 // Listens in /oidc/register/:mKey.
-func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
-	machineKeyStr := ctx.Param("mkey")
-	if machineKeyStr == "" {
-		ctx.String(http.StatusBadRequest, "Wrong params")
+func (h *Headscale) RegisterOIDC(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	vars := mux.Vars(r)
+	machineKeyStr, ok := vars["mkey"]
+	if !ok || machineKeyStr == "" {
+		log.Error().
+			Caller().
+			Msg("Missing machine key in URL")
+		http.Error(w, "Missing machine key in URL", http.StatusBadRequest)
 
 		return
 	}
@@ -81,7 +88,7 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 		log.Error().
 			Caller().
 			Msg("could not read 16 bytes from rand")
-		ctx.String(http.StatusInternalServerError, "could not read 16 bytes from rand")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
@@ -101,7 +108,7 @@ func (h *Headscale) RegisterOIDC(ctx *gin.Context) {
 	authURL := h.oauth2Config.AuthCodeURL(stateStr, extras...)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
 
-	ctx.Redirect(http.StatusFound, authURL)
+	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
 type oidcCallbackTemplateConfig struct {
