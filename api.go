@@ -71,7 +71,7 @@ func (h *Headscale) RegisterWebAPI(
 	machineKeyStr := r.URL.Query().Get("key")
 	if machineKeyStr == "" {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Wrong params"))
 
 		return
