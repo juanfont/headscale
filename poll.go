@@ -279,7 +279,7 @@ func (h *Headscale) PollNetMapStream(
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
 ) {
-	ctx := context.WithValue(context.Background(), machineNameContextKey, machine.Hostname)
+	ctx := context.WithValue(r.Context(), machineNameContextKey, machine.Hostname)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
