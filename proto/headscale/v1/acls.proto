@@ -6,7 +6,7 @@ message ACLPolicy {
     map<string,Group> groups = 1;
     map<string,string>  hosts  = 2; 
     map<string,TagOwners> tag_owners = 3;
-    repeated ACL acl = 4;
+    repeated ACL acls = 4;
     repeated ACLTest acl_test = 5;
 }
 

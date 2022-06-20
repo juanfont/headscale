@@ -6,6 +6,7 @@ import (
 	// "github.com/juanfont/headscale".
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/spf13/cobra"
+	
 )
 
 func init() {
@@ -57,7 +58,7 @@ var listAclsCmd = &cobra.Command{
 		}
 
 		SuccessOutput(
-			response,
+			response.Policy,
 			``,
 			output,
 		)

@@ -136,9 +136,9 @@ func (policy *ACLPolicy) toProto() *v1.ACLPolicy {
 	}
 
 	// proto acls
-	protoACLPolicy.Acl = make([]*v1.ACL, len(policy.ACLs))
+	protoACLPolicy.Acls = make([]*v1.ACL, len(policy.ACLs))
 	for k, v := range policy.ACLs {
-		protoACLPolicy.Acl[k] = v.toProto()
+		protoACLPolicy.Acls[k] = v.toProto()
 	}
 
 	// proto acl tests
@@ -153,9 +153,11 @@ func (policy *ACLPolicy) toProto() *v1.ACLPolicy {
 func (a *ACL) toProto() *v1.ACL {
 	protoACL := v1.ACL{
 		Action:       a.Action,
+		Protocol:     a.Protocol,
 		Sources:      a.Sources,
 		Destinations: a.Destinations,
 	}
+
 	return &protoACL
 }
 
@@ -165,6 +167,7 @@ func (a *ACLTest) toProto() *v1.ACLTest {
 		Accept: a.Accept,
 		Deny:   a.Deny,
 	}
+
 	return &protoACLTest
 }
 
@@ -176,6 +179,7 @@ func (g *Groups) toProto() map[string]*v1.Group {
 		}
 		protoGroups[k] = protoGroupSingle
 	}
+	
 	return protoGroups
 }
 

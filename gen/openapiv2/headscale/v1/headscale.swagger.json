@@ -819,7 +819,7 @@
             "$ref": "#/definitions/v1TagOwners"
           }
         },
-        "acl": {
+        "acls": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/v1ACL"
