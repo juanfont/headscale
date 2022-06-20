@@ -3,10 +3,9 @@ package cli
 import (
 	"fmt"
 
-	// "github.com/juanfont/headscale".
+	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/spf13/cobra"
-	
 )
 
 func init() {
@@ -40,7 +39,7 @@ var listAclsCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting headscale app: %s", err),
+				fmt.Sprintf("Error getting ACL from server: %s", err),
 				output,
 			)
 
@@ -57,8 +56,19 @@ var listAclsCmd = &cobra.Command{
 			return
 		}
 
+		policy, err := headscale.ACLProtoToStruct(response.Policy)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error parsing response from server: %s", err),
+				output,
+			)
+
+			return 
+		}
+
 		SuccessOutput(
-			response.Policy,
+			policy,
 			``,
 			output,
 		)

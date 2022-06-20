@@ -11,19 +11,19 @@ import (
 
 // ACLPolicy represents a Tailscale ACL Policy.
 type ACLPolicy struct {
-	Groups    Groups    `json:"groups"    yaml:"groups"`
-	Hosts     Hosts     `json:"hosts"     yaml:"hosts"`
-	TagOwners TagOwners `json:"tagOwners" yaml:"tagOwners"`
-	ACLs      []ACL     `json:"acls"      yaml:"acls"`
-	Tests     []ACLTest `json:"tests"     yaml:"tests"`
+	Groups    Groups    `json:"groups,omitempty"    yaml:"groups,omitempty"`
+	Hosts     Hosts     `json:"hosts,omitempty"     yaml:"hosts,omitempty"`
+	TagOwners TagOwners `json:"tagOwners,omitempty" yaml:"tagOwners,omitempty"`
+	ACLs      []ACL     `json:"acls,omitempty"      yaml:"acls,omitempty"`
+	Tests     []ACLTest `json:"tests,omitempty"     yaml:"tests,omitempty"`
 }
 
 // ACL is a basic rule for the ACL Policy.
 type ACL struct {
-	Action       string   `json:"action"  yaml:"action"`
-	Protocol     string   `json:"proto"   yaml:"proto"`
-	Sources      []string `json:"src"     yaml:"src"`
-	Destinations []string `json:"dst"     yaml:"dst"`
+	Action       string   `json:"action,omitempty"  yaml:"action,omitempty"`
+	Protocol     string   `json:"proto,omitempty"   yaml:"proto,omitempty"`
+	Sources      []string `json:"src,omitempty"     yaml:"src,omitempty"`
+	Destinations []string `json:"dst,omitempty"     yaml:"dst,omitempty"`
 }
 
 // Groups references a series of alias in the ACL rules.
@@ -37,9 +37,9 @@ type TagOwners map[string][]string
 
 // ACLTest is not implemented, but should be use to check if a certain rule is allowed.
 type ACLTest struct {
-	Source string   `json:"src"             yaml:"src"`
-	Accept []string `json:"accept"          yaml:"accept"`
-	Deny   []string `json:"deny,omitempty"  yaml:"deny,omitempty"`
+	Source string   `json:"src,omitempty"       yaml:"src,omitempty"`
+	Accept []string `json:"accept,omitempty"    yaml:"accept,omitempty"`
+	Deny   []string `json:"deny,omitempty"      yaml:"deny,omitempty"`
 }
 
 // UnmarshalJSON allows to parse the Hosts directly into netaddr objects.

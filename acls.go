@@ -128,6 +128,67 @@ func (h *Headscale) ListACLPolicy() (*ACLPolicy, error) {
 	return h.aclPolicy, nil
 }
 
+func ACLProtoToStruct(v *v1.ACLPolicy) (*ACLPolicy, error) {
+	
+	// v := req.GetPolicy()
+
+	// groups parsing
+	vgroups := v.GetGroups()
+	groups := make(map[string][]string, len(vgroups))
+	for n,i := range vgroups {
+		groups[n] = i.GetGroup()
+	}
+
+	// hosts parsing
+	vhosts := v.GetHosts() 
+	hosts := make(map[string]netaddr.IPPrefix, len(vhosts))
+	for n,i := range vhosts {
+		addr, err := netaddr.ParseIPPrefix(i)
+		if err != nil {
+			return nil, err 
+		}
+		hosts[n] = addr 
+	}
+
+	// tag owners parsing
+	vtagowners := v.GetTagOwners()
+	tagowners := make(map[string][]string, len(vtagowners))
+	for n,i := range vtagowners {
+		tagowners[n] = i.GetTagOwners()
+	}
+
+	// ACLs parsing 
+	vacls := (*v).GetAcls()
+	acls  := make([]ACL, len(vacls))
+	for n,i := range vacls {
+		acls[n] = ACL{
+			Action: i.GetAction(),
+			Protocol: i.GetProtocol(),
+			Sources: i.GetSources(),
+			Destinations: i.GetDestinations(),
+		}
+	}
+
+	// ACL Tests parsing 
+	vtests := v.GetAclTest()
+	tests := make([]ACLTest, len(vtests))
+	for n,i := range vtests {
+		tests[n] = ACLTest{
+			Source: i.GetSource(),
+			Accept: i.GetAccept(),
+			Deny: i.GetDeny(),
+		}
+	}
+	
+	return &ACLPolicy{
+		Groups: 	groups,
+		Hosts:  	hosts, 
+		TagOwners: 	tagowners,
+		ACLs: 		acls, 
+		Tests:		tests,
+	}, nil
+}
+
 func (policy *ACLPolicy) toProto() *v1.ACLPolicy {
 	protoACLPolicy := v1.ACLPolicy{
 		Groups:    policy.Groups.toProto(),
