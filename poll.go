@@ -572,6 +572,13 @@ func (h *Headscale) PollNetMapStream(
 
 			// The connection has been closed, so we can stop polling.
 			return
+
+		case <-h.shutdownChan:
+			log.Info().
+				Str("handler", "PollNetMapStream").
+				Str("machine", machine.Hostname).
+				Msg("The long-poll handler is shutting down")
+			return
 		}
 	}
 }

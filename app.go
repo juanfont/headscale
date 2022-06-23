@@ -93,6 +93,8 @@ type Headscale struct {
 	registrationCache *cache.Cache
 
 	ipAllocationMutex sync.Mutex
+
+	shutdownChan chan struct{}
 }
 
 // Look up the TLS constant relative to user-supplied TLS client
@@ -642,6 +644,7 @@ func (h *Headscale) Serve() error {
 		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
 
 	// Handle common process-killing signals so we can gracefully shut down:
+	h.shutdownChan = make(chan struct{})
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGHUP,
@@ -678,6 +681,8 @@ func (h *Headscale) Serve() error {
 				log.Info().
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
+
+				h.shutdownChan <- struct{}{}
 
 				// Gracefully shut down servers
 				promHTTPServer.Shutdown(ctx)
