@@ -323,6 +323,7 @@ func (h *Headscale) PollNetMapStream(
 
 				return
 			}
+			w.(http.Flusher).Flush()
 
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -390,6 +391,7 @@ func (h *Headscale) PollNetMapStream(
 
 				return
 			}
+			w.(http.Flusher).Flush()
 
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -478,6 +480,8 @@ func (h *Headscale) PollNetMapStream(
 
 					return
 				}
+				w.(http.Flusher).Flush()
+
 				log.Trace().
 					Str("handler", "PollNetMapStream").
 					Str("machine", machine.Hostname).
