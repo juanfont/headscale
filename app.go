@@ -54,12 +54,13 @@ const (
 )
 
 const (
-	AuthPrefix         = "Bearer "
-	Postgres           = "postgres"
-	Sqlite             = "sqlite3"
-	updateInterval     = 5000
-	HTTPReadTimeout    = 30 * time.Second
-	privateKeyFileMode = 0o600
+	AuthPrefix          = "Bearer "
+	Postgres            = "postgres"
+	Sqlite              = "sqlite3"
+	updateInterval      = 5000
+	HTTPReadTimeout     = 30 * time.Second
+	HTTPShutdownTimeout = 3 * time.Second
+	privateKeyFileMode  = 0o600
 
 	registerCacheExpiration = time.Minute * 15
 	registerCacheCleanup    = time.Minute * 20
@@ -668,8 +669,13 @@ func (h *Headscale) Serve() error {
 					Msg("Received signal to stop, shutting down gracefully")
 
 				// Gracefully shut down servers
-				promHTTPServer.Shutdown(ctx)
-				httpServer.Shutdown(ctx)
+				ctx, cancel := context.WithTimeout(context.Background(), HTTPShutdownTimeout)
+				if err := promHTTPServer.Shutdown(ctx); err != nil {
+					log.Error().Err(err).Msg("Failed to shutdown prometheus http")
+				}
+				if err := httpServer.Shutdown(ctx); err != nil {
+					log.Error().Err(err).Msg("Failed to shutdown http")
+				}
 				grpcSocket.GracefulStop()
 
 				// Close network listeners
@@ -680,7 +686,21 @@ func (h *Headscale) Serve() error {
 				// Stop listening (and unlink the socket if unix type):
 				socketListener.Close()
 
+				// Close db connections
+				db, err := h.db.DB()
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to get db handle")
+				}
+				err = db.Close()
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to close db")
+				}
+
+				log.Info().
+					Msg("Headscale stopped")
+
 				// And we're done:
+				cancel()
 				os.Exit(0)
 			}
 		}
