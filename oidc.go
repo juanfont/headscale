@@ -345,7 +345,16 @@ func (h *Headscale) OIDCCallback(
 			Str("machine", machine.Hostname).
 			Msg("machine already registered, reauthenticating")
 
-		h.RefreshMachine(machine, time.Time{})
+		err := h.RefreshMachine(machine, time.Time{})
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to refresh machine")
+			http.Error(writer, "Failed to refresh machine", http.StatusInternalServerError)
+
+			return
+		}
 
 		var content bytes.Buffer
 		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
@@ -373,7 +382,7 @@ func (h *Headscale) OIDCCallback(
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
-		_, err := writer.Write(content.Bytes())
+		_, err = writer.Write(content.Bytes())
 		if err != nil {
 			log.Error().
 				Caller().
