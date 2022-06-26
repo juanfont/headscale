@@ -335,7 +335,18 @@ func (h *Headscale) PollNetMapStream(
 
 				return
 			}
-			writer.(http.Flusher).Flush()
+
+			flusher, ok := writer.(http.Flusher)
+			if !ok {
+				log.Error().
+					Caller().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Hostname).
+					Str("channel", "pollData").
+					Msg("Cannot cast writer to http.Flusher")
+			} else {
+				flusher.Flush()
+			}
 
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -403,7 +414,17 @@ func (h *Headscale) PollNetMapStream(
 
 				return
 			}
-			writer.(http.Flusher).Flush()
+			flusher, ok := writer.(http.Flusher)
+			if !ok {
+				log.Error().
+					Caller().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Hostname).
+					Str("channel", "keepAlive").
+					Msg("Cannot cast writer to http.Flusher")
+			} else {
+				flusher.Flush()
+			}
 
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -492,7 +513,18 @@ func (h *Headscale) PollNetMapStream(
 
 					return
 				}
-				writer.(http.Flusher).Flush()
+
+				flusher, ok := writer.(http.Flusher)
+				if !ok {
+					log.Error().
+						Caller().
+						Str("handler", "PollNetMapStream").
+						Str("machine", machine.Hostname).
+						Str("channel", "update").
+						Msg("Cannot cast writer to http.Flusher")
+				} else {
+					flusher.Flush()
+				}
 
 				log.Trace().
 					Str("handler", "PollNetMapStream").
