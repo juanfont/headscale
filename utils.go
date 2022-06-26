@@ -324,18 +324,18 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 // It will return an error if the system's secure random
 // number generator fails to function correctly, in which
 // case the caller should not continue.
-func GenerateRandomStringDNSSafe(n int) (string, error) {
+func GenerateRandomStringDNSSafe(size int) (string, error) {
 	var str string
 	var err error
-	for len(str) < n {
-		str, err = GenerateRandomStringURLSafe(n)
+	for len(str) < size {
+		str, err = GenerateRandomStringURLSafe(size)
 		if err != nil {
 			return "", err
 		}
 		str = strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""))
 	}
 
-	return str[:n], nil
+	return str[:size], nil
 }
 
 func IsStringInSlice(slice []string, str string) bool {
