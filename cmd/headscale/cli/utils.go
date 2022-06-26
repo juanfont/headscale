@@ -55,7 +55,7 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 			Err(err).
 			Caller().
 			Msgf("Failed to load configuration")
-		os.Exit(-1) // we get here if logging is supressed (i.e., json output)
+		os.Exit(-1) // we get here if logging is suppressed (i.e., json output)
 	}
 
 	log.Debug().
