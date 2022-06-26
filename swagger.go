@@ -57,14 +57,26 @@ func SwaggerUI(
 
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("Could not render Swagger"))
+		_, err := writer.Write([]byte("Could not render Swagger"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(payload.Bytes())
+	_, err := writer.Write(payload.Bytes())
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 func SwaggerAPIv1(
@@ -73,5 +85,10 @@ func SwaggerAPIv1(
 ) {
 	writer.Header().Set("Content-Type", "application/json; charset=utf-88")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(apiV1JSON)
+	if _, err := writer.Write(apiV1JSON); err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }

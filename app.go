@@ -348,7 +348,13 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 				Str("client_address", req.RemoteAddr).
 				Msg(`missing "Bearer " prefix in "Authorization" header`)
 			writer.WriteHeader(http.StatusUnauthorized)
-			writer.Write([]byte("Unauthorized"))
+			_, err := writer.Write([]byte("Unauthorized"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 
 			return
 		}
@@ -362,7 +368,13 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 				Msg("failed to validate token")
 
 			writer.WriteHeader(http.StatusInternalServerError)
-			writer.Write([]byte("Unauthorized"))
+			_, err := writer.Write([]byte("Unauthorized"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 
 			return
 		}
@@ -373,7 +385,13 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 				Msg("invalid token")
 
 			writer.WriteHeader(http.StatusUnauthorized)
-			writer.Write([]byte("Unauthorized"))
+			_, err := writer.Write([]byte("Unauthorized"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 
 			return
 		}
@@ -409,7 +427,13 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 		"/health",
 		func(writer http.ResponseWriter, req *http.Request) {
 			writer.WriteHeader(http.StatusOK)
-			writer.Write([]byte("{\"healthy\": \"ok\"}"))
+			_, err := writer.Write([]byte("{\"healthy\": \"ok\"}"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 		}).Methods(http.MethodGet)
 
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)

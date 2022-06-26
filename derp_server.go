@@ -105,7 +105,13 @@ func (h *Headscale) DERPHandler(
 		}
 		writer.Header().Set("Content-Type", "text/plain")
 		writer.WriteHeader(http.StatusUpgradeRequired)
-		writer.Write([]byte("DERP requires connection upgrade"))
+		_, err := writer.Write([]byte("DERP requires connection upgrade"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -117,7 +123,13 @@ func (h *Headscale) DERPHandler(
 		log.Error().Caller().Msg("DERP requires Hijacker interface from Gin")
 		writer.Header().Set("Content-Type", "text/plain")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("HTTP does not support general TCP support"))
+		_, err := writer.Write([]byte("HTTP does not support general TCP support"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -127,7 +139,13 @@ func (h *Headscale) DERPHandler(
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
 		writer.Header().Set("Content-Type", "text/plain")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("HTTP does not support general TCP support"))
+		_, err = writer.Write([]byte("HTTP does not support general TCP support"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -160,7 +178,13 @@ func (h *Headscale) DERPProbeHandler(
 		writer.WriteHeader(http.StatusOK)
 	default:
 		writer.WriteHeader(http.StatusMethodNotAllowed)
-		writer.Write([]byte("bogus probe method"))
+		_, err := writer.Write([]byte("bogus probe method"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 	}
 }
 
@@ -196,7 +220,13 @@ func (h *Headscale) DERPBootstrapDNSHandler(
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	json.NewEncoder(writer).Encode(dnsEntries)
+	err := json.NewEncoder(writer).Encode(dnsEntries)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 // ServeSTUN starts a STUN server on the configured addr.

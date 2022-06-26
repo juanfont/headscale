@@ -142,7 +142,13 @@ func (h *Headscale) OIDCCallback(
 	if code == "" || state == "" {
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("Wrong params"))
+		_, err := writer.Write([]byte("Wrong params"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -155,7 +161,13 @@ func (h *Headscale) OIDCCallback(
 			Msg("Could not exchange code for token")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("Could not exchange code for token"))
+		_, err := writer.Write([]byte("Could not exchange code for token"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -170,7 +182,13 @@ func (h *Headscale) OIDCCallback(
 	if !rawIDTokenOK {
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("Could not extract ID Token"))
+		_, err := writer.Write([]byte("Could not extract ID Token"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -185,7 +203,13 @@ func (h *Headscale) OIDCCallback(
 			Msg("failed to verify id token")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("Failed to verify id token"))
+		_, err := writer.Write([]byte("Failed to verify id token"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -206,7 +230,13 @@ func (h *Headscale) OIDCCallback(
 			Msg("Failed to decode id token claims")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("Failed to decode id token claims"))
+		_, err := writer.Write([]byte("Failed to decode id token claims"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -218,7 +248,13 @@ func (h *Headscale) OIDCCallback(
 			log.Error().Msg("authenticated principal does not match any allowed domain")
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			writer.WriteHeader(http.StatusBadRequest)
-			writer.Write([]byte("unauthorized principal (domain mismatch)"))
+			_, err := writer.Write([]byte("unauthorized principal (domain mismatch)"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 
 			return
 		}
@@ -230,7 +266,13 @@ func (h *Headscale) OIDCCallback(
 		log.Error().Msg("authenticated principal does not match any allowed user")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("unauthorized principal (user mismatch)"))
+		_, err := writer.Write([]byte("unauthorized principal (user mismatch)"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -243,7 +285,13 @@ func (h *Headscale) OIDCCallback(
 			Msg("requested machine state key expired before authorisation completed")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("state has expired"))
+		_, err := writer.Write([]byte("state has expired"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -259,7 +307,13 @@ func (h *Headscale) OIDCCallback(
 			Msg("could not parse machine public key")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("could not parse public key"))
+		_, err := writer.Write([]byte("could not parse public key"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -268,7 +322,13 @@ func (h *Headscale) OIDCCallback(
 		log.Error().Msg("could not get machine key from cache")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("could not get machine key from cache"))
+		_, err := writer.Write([]byte("could not get machine key from cache"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -300,14 +360,26 @@ func (h *Headscale) OIDCCallback(
 
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			writer.WriteHeader(http.StatusInternalServerError)
-			writer.Write([]byte("Could not render OIDC callback template"))
+			_, err := writer.Write([]byte("Could not render OIDC callback template"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 
 			return
 		}
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
-		writer.Write(content.Bytes())
+		_, err := writer.Write(content.Bytes())
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -320,7 +392,13 @@ func (h *Headscale) OIDCCallback(
 		log.Error().Err(err).Caller().Msgf("couldn't normalize email")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("couldn't normalize email"))
+		_, err := writer.Write([]byte("couldn't normalize email"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -339,7 +417,13 @@ func (h *Headscale) OIDCCallback(
 				Msgf("could not create new namespace '%s'", namespaceName)
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			writer.WriteHeader(http.StatusInternalServerError)
-			writer.Write([]byte("could not create namespace"))
+			_, err := writer.Write([]byte("could not create namespace"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 
 			return
 		}
@@ -351,7 +435,13 @@ func (h *Headscale) OIDCCallback(
 			Msg("could not find or create namespace")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("could not find or create namespace"))
+		_, err := writer.Write([]byte("could not find or create namespace"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -370,7 +460,13 @@ func (h *Headscale) OIDCCallback(
 			Msg("could not register machine")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("could not register machine"))
+		_, err := writer.Write([]byte("could not register machine"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -388,12 +484,24 @@ func (h *Headscale) OIDCCallback(
 
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("Could not render OIDC callback template"))
+		_, err := writer.Write([]byte("Could not render OIDC callback template"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(content.Bytes())
+	_, err = writer.Write(content.Bytes())
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }

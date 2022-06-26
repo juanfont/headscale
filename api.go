@@ -38,7 +38,13 @@ func (h *Headscale) KeyHandler(
 ) {
 	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(MachinePublicKeyStripPrefix(h.privateKey.Public())))
+	_, err := writer.Write([]byte(MachinePublicKeyStripPrefix(h.privateKey.Public())))
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 type registerWebAPITemplateConfig struct {
@@ -72,7 +78,13 @@ func (h *Headscale) RegisterWebAPI(
 	if machineKeyStr == "" {
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("Wrong params"))
+		_, err := writer.Write([]byte("Wrong params"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -87,14 +99,26 @@ func (h *Headscale) RegisterWebAPI(
 			Msg("Could not render register web API template")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte("Could not render register web API template"))
+		_, err = writer.Write([]byte("Could not render register web API template"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(content.Bytes())
+	_, err := writer.Write(content.Bytes())
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 // RegistrationHandler handles the actual registration process of a machine
@@ -407,7 +431,13 @@ func (h *Headscale) handleMachineLogOut(
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(respBody)
+	_, err = writer.Write(respBody)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 func (h *Headscale) handleMachineValidRegistration(
@@ -445,7 +475,13 @@ func (h *Headscale) handleMachineValidRegistration(
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(respBody)
+	_, err = writer.Write(respBody)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 func (h *Headscale) handleMachineExpired(
@@ -493,7 +529,13 @@ func (h *Headscale) handleMachineExpired(
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(respBody)
+	_, err = writer.Write(respBody)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 func (h *Headscale) handleMachineRefreshKey(
@@ -535,7 +577,13 @@ func (h *Headscale) handleMachineRefreshKey(
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(respBody)
+	_, err = writer.Write(respBody)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 func (h *Headscale) handleMachineRegistrationNew(
@@ -574,7 +622,13 @@ func (h *Headscale) handleMachineRegistrationNew(
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(respBody)
+	_, err = writer.Write(respBody)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 // TODO: check if any locks are needed around IP allocation.
@@ -618,7 +672,13 @@ func (h *Headscale) handleAuthKey(
 
 		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 		writer.WriteHeader(http.StatusUnauthorized)
-		writer.Write(respBody)
+		_, err = writer.Write(respBody)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		log.Error().
 			Caller().
@@ -721,7 +781,14 @@ func (h *Headscale) handleAuthKey(
 		Inc()
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(respBody)
+	_, err = writer.Write(respBody)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
+
 	log.Info().
 		Str("func", "handleAuthKey").
 		Str("machine", registerRequest.Hostinfo.Hostname).
