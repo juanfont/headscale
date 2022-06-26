@@ -407,9 +407,9 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 
 	router.HandleFunc(
 		"/health",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("{\"healthy\": \"ok\"}"))
+		func(writer http.ResponseWriter, req *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+			writer.Write([]byte("{\"healthy\": \"ok\"}"))
 		}).Methods(http.MethodGet)
 
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
