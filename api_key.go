@@ -46,9 +46,23 @@ func (h *Headscale) CreateAPIKey(
 	// Key to return to user, this will only be visible _once_
 	keyStr := prefix + "." + toBeHashed
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(toBeHashed), bcrypt.DefaultCost)
+	key, err := h.SaveAPIKey(prefix, toBeHashed, expiration)
 	if err != nil {
 		return "", nil, err
+	}
+
+	return keyStr, key, nil
+}
+
+// SaveAPIKey saves an ApiKey in a namespace.
+func (h *Headscale) SaveAPIKey(
+	prefix string,
+	toBeHashed string,
+	expiration *time.Time,
+) (*APIKey, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(toBeHashed), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
 	}
 
 	key := APIKey{
@@ -58,10 +72,10 @@ func (h *Headscale) CreateAPIKey(
 	}
 
 	if err := h.db.Save(&key).Error; err != nil {
-		return "", nil, fmt.Errorf("failed to save API key to database: %w", err)
+		return nil, fmt.Errorf("failed to save API key to database: %w", err)
 	}
 
-	return keyStr, &key, nil
+	return &key, nil
 }
 
 // ListAPIKeys returns the list of ApiKeys for a namespace.
