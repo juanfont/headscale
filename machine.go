@@ -27,6 +27,7 @@ const (
 	errCouldNotConvertMachineInterface = Error("failed to convert machine interface")
 	errHostnameTooLong                 = Error("Hostname too long")
 	MachineGivenNameHashLength         = 8
+	MachineGivenNameTrimSize           = 2
 )
 
 const (
@@ -898,7 +899,7 @@ func (machine *Machine) RoutesToProto() *v1.Routes {
 func (h *Headscale) GenerateGivenName(suppliedName string) (string, error) {
 	// If a hostname is or will be longer than 63 chars after adding the hash,
 	// it needs to be trimmed.
-	trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - 2
+	trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - MachineGivenNameTrimSize
 
 	normalizedHostname, err := NormalizeToFQDNRules(
 		suppliedName,

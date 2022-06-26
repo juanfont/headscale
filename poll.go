@@ -527,7 +527,6 @@ func (h *Headscale) PollNetMapStream(
 
 					return
 				}
-
 			} else {
 				var lastUpdate time.Time
 				if machine.LastSuccessfulUpdate != nil {

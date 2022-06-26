@@ -37,7 +37,7 @@ const (
 	expectedTokenItems = 2
 )
 
-// For some reason golang.org/x/net/internal/iana is an internal package
+// For some reason golang.org/x/net/internal/iana is an internal package.
 const (
 	protocolICMP     = 1   // Internet Control Message
 	protocolIGMP     = 2   // Internet Group Management

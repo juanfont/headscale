@@ -13,8 +13,8 @@ import (
 var apiV1JSON []byte
 
 func SwaggerUI(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 ) {
 	swaggerTemplate := template.Must(template.New("swagger").Parse(`
 <html>
@@ -55,23 +55,23 @@ func SwaggerUI(
 			Err(err).
 			Msg("Could not render Swagger")
 
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Could not render Swagger"))
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte("Could not render Swagger"))
 
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write(payload.Bytes())
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+	writer.Write(payload.Bytes())
 }
 
 func SwaggerAPIv1(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 ) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-88")
-	w.WriteHeader(http.StatusOK)
-	w.Write(apiV1JSON)
+	writer.Header().Set("Content-Type", "application/json; charset=utf-88")
+	writer.WriteHeader(http.StatusOK)
+	writer.Write(apiV1JSON)
 }

@@ -89,6 +89,7 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 	localDERPregion.Nodes[0].STUNPort = portSTUN
 
 	log.Info().Caller().Msgf("DERP region: %+v", localDERPregion)
+
 	return localDERPregion, nil
 }
 
@@ -150,16 +151,16 @@ func (h *Headscale) DERPHandler(
 // DERPProbeHandler is the endpoint that js/wasm clients hit to measure
 // DERP latency, since they can't do UDP STUN queries.
 func (h *Headscale) DERPProbeHandler(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 ) {
-	switch r.Method {
+	switch req.Method {
 	case "HEAD", "GET":
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(http.StatusOK)
+		writer.Header().Set("Access-Control-Allow-Origin", "*")
+		writer.WriteHeader(http.StatusOK)
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte("bogus probe method"))
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		writer.Write([]byte("bogus probe method"))
 	}
 }
 
@@ -171,8 +172,8 @@ func (h *Headscale) DERPProbeHandler(
 // They have a cache, but not clear if that is really necessary at Headscale, uh, scale.
 // An example implementation is found here https://derp.tailscale.com/bootstrap-dns
 func (h *Headscale) DERPBootstrapDNSHandler(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 ) {
 	dnsEntries := make(map[string][]net.IP)
 
@@ -193,9 +194,9 @@ func (h *Headscale) DERPBootstrapDNSHandler(
 			dnsEntries[node.HostName] = addrs
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(dnsEntries)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	json.NewEncoder(writer).Encode(dnsEntries)
 }
 
 // ServeSTUN starts a STUN server on the configured addr.

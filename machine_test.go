@@ -918,6 +918,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 					err,
 					tt.wantErr,
 				)
+
 				return
 			}
 
