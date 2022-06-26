@@ -64,16 +64,16 @@ func (h *Headscale) initOIDC() error {
 // Puts machine key in cache so the callback can retrieve it using the oidc state param
 // Listens in /oidc/register/:mKey.
 func (h *Headscale) RegisterOIDC(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 ) {
-	vars := mux.Vars(r)
+	vars := mux.Vars(req)
 	machineKeyStr, ok := vars["mkey"]
 	if !ok || machineKeyStr == "" {
 		log.Error().
 			Caller().
 			Msg("Missing machine key in URL")
-		http.Error(w, "Missing machine key in URL", http.StatusBadRequest)
+		http.Error(writer, "Missing machine key in URL", http.StatusBadRequest)
 
 		return
 	}
@@ -88,7 +88,7 @@ func (h *Headscale) RegisterOIDC(
 		log.Error().
 			Caller().
 			Msg("could not read 16 bytes from rand")
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
@@ -108,7 +108,7 @@ func (h *Headscale) RegisterOIDC(
 	authURL := h.oauth2Config.AuthCodeURL(stateStr, extras...)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
 
-	http.Redirect(w, r, authURL, http.StatusFound)
+	http.Redirect(writer, req, authURL, http.StatusFound)
 }
 
 type oidcCallbackTemplateConfig struct {

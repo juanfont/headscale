@@ -94,30 +94,30 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 }
 
 func (h *Headscale) DERPHandler(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 ) {
-	log.Trace().Caller().Msgf("/derp request from %v", r.RemoteAddr)
-	up := strings.ToLower(r.Header.Get("Upgrade"))
+	log.Trace().Caller().Msgf("/derp request from %v", req.RemoteAddr)
+	up := strings.ToLower(req.Header.Get("Upgrade"))
 	if up != "websocket" && up != "derp" {
 		if up != "" {
 			log.Warn().Caller().Msgf("Weird websockets connection upgrade: %q", up)
 		}
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusUpgradeRequired)
-		w.Write([]byte("DERP requires connection upgrade"))
+		writer.Header().Set("Content-Type", "text/plain")
+		writer.WriteHeader(http.StatusUpgradeRequired)
+		writer.Write([]byte("DERP requires connection upgrade"))
 
 		return
 	}
 
-	fastStart := r.Header.Get(fastStartHeader) == "1"
+	fastStart := req.Header.Get(fastStartHeader) == "1"
 
-	hijacker, ok := w.(http.Hijacker)
+	hijacker, ok := writer.(http.Hijacker)
 	if !ok {
 		log.Error().Caller().Msg("DERP requires Hijacker interface from Gin")
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("HTTP does not support general TCP support"))
+		writer.Header().Set("Content-Type", "text/plain")
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte("HTTP does not support general TCP support"))
 
 		return
 	}
@@ -125,13 +125,13 @@ func (h *Headscale) DERPHandler(
 	netConn, conn, err := hijacker.Hijack()
 	if err != nil {
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("HTTP does not support general TCP support"))
+		writer.Header().Set("Content-Type", "text/plain")
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte("HTTP does not support general TCP support"))
 
 		return
 	}
-	log.Trace().Caller().Msgf("Hijacked connection from %v", r.RemoteAddr)
+	log.Trace().Caller().Msgf("Hijacked connection from %v", req.RemoteAddr)
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()

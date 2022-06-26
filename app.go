@@ -332,23 +332,23 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 
 func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(
-		w http.ResponseWriter,
-		r *http.Request,
+		writer http.ResponseWriter,
+		req *http.Request,
 	) {
 		log.Trace().
 			Caller().
-			Str("client_address", r.RemoteAddr).
+			Str("client_address", req.RemoteAddr).
 			Msg("HTTP authentication invoked")
 
-		authHeader := r.Header.Get("authorization")
+		authHeader := req.Header.Get("authorization")
 
 		if !strings.HasPrefix(authHeader, AuthPrefix) {
 			log.Error().
 				Caller().
-				Str("client_address", r.RemoteAddr).
+				Str("client_address", req.RemoteAddr).
 				Msg(`missing "Bearer " prefix in "Authorization" header`)
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("Unauthorized"))
+			writer.WriteHeader(http.StatusUnauthorized)
+			writer.Write([]byte("Unauthorized"))
 
 			return
 		}
@@ -358,27 +358,27 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 			log.Error().
 				Caller().
 				Err(err).
-				Str("client_address", r.RemoteAddr).
+				Str("client_address", req.RemoteAddr).
 				Msg("failed to validate token")
 
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Unauthorized"))
+			writer.WriteHeader(http.StatusInternalServerError)
+			writer.Write([]byte("Unauthorized"))
 
 			return
 		}
 
 		if !valid {
 			log.Info().
-				Str("client_address", r.RemoteAddr).
+				Str("client_address", req.RemoteAddr).
 				Msg("invalid token")
 
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("Unauthorized"))
+			writer.WriteHeader(http.StatusUnauthorized)
+			writer.Write([]byte("Unauthorized"))
 
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(writer, req)
 	})
 }
 
@@ -849,15 +849,15 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 }
 
 func stdoutHandler(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 ) {
-	body, _ := io.ReadAll(r.Body)
+	body, _ := io.ReadAll(req.Body)
 
 	log.Trace().
-		Interface("header", r.Header).
-		Interface("proto", r.Proto).
-		Interface("url", r.URL).
+		Interface("header", req.Header).
+		Interface("proto", req.Proto).
+		Interface("url", req.URL).
 		Bytes("body", body).
 		Msg("Request did not match")
 }
