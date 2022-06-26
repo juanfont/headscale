@@ -34,16 +34,16 @@ const machineNameContextKey = contextKey("machineName")
 //
 // At this moment the updates are sent in a quite horrendous way, but they kinda work.
 func (h *Headscale) PollNetMapHandler(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 ) {
-	vars := mux.Vars(r)
+	vars := mux.Vars(req)
 	machineKeyStr, ok := vars["mkey"]
 	if !ok || machineKeyStr == "" {
 		log.Error().
 			Str("handler", "PollNetMap").
 			Msg("No machine key in request")
-		http.Error(w, "No machine key in request", http.StatusBadRequest)
+		http.Error(writer, "No machine key in request", http.StatusBadRequest)
 
 		return
 	}
@@ -51,7 +51,7 @@ func (h *Headscale) PollNetMapHandler(
 		Str("handler", "PollNetMap").
 		Str("id", machineKeyStr).
 		Msg("PollNetMapHandler called")
-	body, _ := io.ReadAll(r.Body)
+	body, _ := io.ReadAll(req.Body)
 
 	var machineKey key.MachinePublic
 	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
@@ -61,18 +61,18 @@ func (h *Headscale) PollNetMapHandler(
 			Err(err).
 			Msg("Cannot parse client key")
 
-		http.Error(w, "Cannot parse client key", http.StatusBadRequest)
+		http.Error(writer, "Cannot parse client key", http.StatusBadRequest)
 
 		return
 	}
-	req := tailcfg.MapRequest{}
+	mapRequest := tailcfg.MapRequest{}
 	err = decode(body, &req, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
 			Err(err).
 			Msg("Cannot decode message")
-		http.Error(w, "Cannot decode message", http.StatusBadRequest)
+		http.Error(writer, "Cannot decode message", http.StatusBadRequest)
 
 		return
 	}
@@ -84,14 +84,14 @@ func (h *Headscale) PollNetMapHandler(
 				Str("handler", "PollNetMap").
 				Msgf("Ignoring request, cannot find machine with key %s", machineKey.String())
 
-			http.Error(w, "", http.StatusUnauthorized)
+			http.Error(writer, "", http.StatusUnauthorized)
 
 			return
 		}
 		log.Error().
 			Str("handler", "PollNetMap").
 			Msgf("Failed to fetch machine from the database with Machine key: %s", machineKey.String())
-		http.Error(w, "", http.StatusInternalServerError)
+		http.Error(writer, "", http.StatusInternalServerError)
 
 		return
 	}
@@ -101,9 +101,9 @@ func (h *Headscale) PollNetMapHandler(
 		Str("machine", machine.Hostname).
 		Msg("Found machine in database")
 
-	machine.Hostname = req.Hostinfo.Hostname
-	machine.HostInfo = HostInfo(*req.Hostinfo)
-	machine.DiscoKey = DiscoPublicKeyStripPrefix(req.DiscoKey)
+	machine.Hostname = mapRequest.Hostinfo.Hostname
+	machine.HostInfo = HostInfo(*mapRequest.Hostinfo)
+	machine.DiscoKey = DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
 	now := time.Now().UTC()
 
 	// update ACLRules with peer informations (to update server tags if necessary)
@@ -125,8 +125,8 @@ func (h *Headscale) PollNetMapHandler(
 	//
 	// The intended use is for clients to discover the DERP map at start-up
 	// before their first real endpoint update.
-	if !req.ReadOnly {
-		machine.Endpoints = req.Endpoints
+	if !mapRequest.ReadOnly {
+		machine.Endpoints = mapRequest.Endpoints
 		machine.LastSeen = &now
 	}
 
@@ -138,13 +138,13 @@ func (h *Headscale) PollNetMapHandler(
 				Str("machine", machine.Hostname).
 				Err(err).
 				Msg("Failed to persist/update machine in the database")
-			http.Error(w, "", http.StatusInternalServerError)
+			http.Error(writer, "", http.StatusInternalServerError)
 
 			return
 		}
 	}
 
-	data, err := h.getMapResponse(machineKey, req, machine)
+	data, err := h.getMapResponse(machineKey, mapRequest, machine)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -152,7 +152,7 @@ func (h *Headscale) PollNetMapHandler(
 			Str("machine", machine.Hostname).
 			Err(err).
 			Msg("Failed to get Map response")
-		http.Error(w, "", http.StatusInternalServerError)
+		http.Error(writer, "", http.StatusInternalServerError)
 
 		return
 	}
@@ -166,20 +166,20 @@ func (h *Headscale) PollNetMapHandler(
 		Str("handler", "PollNetMap").
 		Str("id", machineKeyStr).
 		Str("machine", machine.Hostname).
-		Bool("readOnly", req.ReadOnly).
-		Bool("omitPeers", req.OmitPeers).
-		Bool("stream", req.Stream).
+		Bool("readOnly", mapRequest.ReadOnly).
+		Bool("omitPeers", mapRequest.OmitPeers).
+		Bool("stream", mapRequest.Stream).
 		Msg("Client map request processed")
 
-	if req.ReadOnly {
+	if mapRequest.ReadOnly {
 		log.Info().
 			Str("handler", "PollNetMap").
 			Str("machine", machine.Hostname).
 			Msg("Client is starting up. Probably interested in a DERP map")
 
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write(data)
+		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+		writer.WriteHeader(http.StatusOK)
+		writer.Write(data)
 
 		return
 	}
@@ -206,14 +206,14 @@ func (h *Headscale) PollNetMapHandler(
 
 	keepAliveChan := make(chan []byte)
 
-	if req.OmitPeers && !req.Stream {
+	if mapRequest.OmitPeers && !mapRequest.Stream {
 		log.Info().
 			Str("handler", "PollNetMap").
 			Str("machine", machine.Hostname).
 			Msg("Client sent endpoint update and is ok with a response without peer list")
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write(data)
+		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+		writer.WriteHeader(http.StatusOK)
+		writer.Write(data)
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
 		updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "endpoint-update").
@@ -221,12 +221,12 @@ func (h *Headscale) PollNetMapHandler(
 		updateChan <- struct{}{}
 
 		return
-	} else if req.OmitPeers && req.Stream {
+	} else if mapRequest.OmitPeers && mapRequest.Stream {
 		log.Warn().
 			Str("handler", "PollNetMap").
 			Str("machine", machine.Hostname).
 			Msg("Ignoring request, don't know how to handle it")
-		http.Error(w, "", http.StatusBadRequest)
+		http.Error(writer, "", http.StatusBadRequest)
 
 		return
 	}
@@ -250,10 +250,10 @@ func (h *Headscale) PollNetMapHandler(
 	updateChan <- struct{}{}
 
 	h.PollNetMapStream(
-		w,
-		r,
-		machine,
+		writer,
 		req,
+		machine,
+		mapRequest,
 		machineKey,
 		pollDataChan,
 		keepAliveChan,
@@ -270,8 +270,8 @@ func (h *Headscale) PollNetMapHandler(
 // stream logic, ensuring we communicate updates and data
 // to the connected clients.
 func (h *Headscale) PollNetMapStream(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 	machine *Machine,
 	mapRequest tailcfg.MapRequest,
 	machineKey key.MachinePublic,
@@ -279,7 +279,7 @@ func (h *Headscale) PollNetMapStream(
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
 ) {
-	ctx := context.WithValue(r.Context(), machineNameContextKey, machine.Hostname)
+	ctx := context.WithValue(req.Context(), machineNameContextKey, machine.Hostname)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -312,7 +312,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "pollData").
 				Int("bytes", len(data)).
 				Msg("Sending data received via pollData channel")
-			_, err := w.Write(data)
+			_, err := writer.Write(data)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -323,7 +323,7 @@ func (h *Headscale) PollNetMapStream(
 
 				return
 			}
-			w.(http.Flusher).Flush()
+			writer.(http.Flusher).Flush()
 
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -380,7 +380,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "keepAlive").
 				Int("bytes", len(data)).
 				Msg("Sending keep alive message")
-			_, err := w.Write(data)
+			_, err := writer.Write(data)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -391,7 +391,7 @@ func (h *Headscale) PollNetMapStream(
 
 				return
 			}
-			w.(http.Flusher).Flush()
+			writer.(http.Flusher).Flush()
 
 			log.Trace().
 				Str("handler", "PollNetMapStream").
@@ -467,7 +467,7 @@ func (h *Headscale) PollNetMapStream(
 
 					return
 				}
-				_, err = w.Write(data)
+				_, err = writer.Write(data)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").
@@ -480,7 +480,7 @@ func (h *Headscale) PollNetMapStream(
 
 					return
 				}
-				w.(http.Flusher).Flush()
+				writer.(http.Flusher).Flush()
 
 				log.Trace().
 					Str("handler", "PollNetMapStream").
@@ -581,6 +581,7 @@ func (h *Headscale) PollNetMapStream(
 				Str("handler", "PollNetMapStream").
 				Str("machine", machine.Hostname).
 				Msg("The long-poll handler is shutting down")
+
 			return
 		}
 	}
