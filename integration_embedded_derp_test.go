@@ -92,14 +92,14 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	if ppool, err := dockertest.NewPool(""); err == nil {
 		s.pool = *ppool
 	} else {
-		log.Fatalf("Could not connect to docker: %s", err)
+		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
 	for i := 0; i < totalContainers; i++ {
 		if pnetwork, err := s.pool.CreateNetwork(fmt.Sprintf("headscale-derp-%d", i)); err == nil {
 			s.networks[i] = *pnetwork
 		} else {
-			log.Fatalf("Could not create network: %s", err)
+			s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
 		}
 	}
 
@@ -110,7 +110,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 
 	currentPath, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Could not determine current path: %s", err)
+		s.FailNow(fmt.Sprintf("Could not determine current path: %s", err), "")
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
@@ -133,7 +133,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
-		log.Fatalf("Could not start headscale container: %s", err)
+		s.FailNow(fmt.Sprintf("Could not start headscale container: %s", err), "")
 	}
 	log.Println("Created headscale container to test DERP")
 

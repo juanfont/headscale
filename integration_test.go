@@ -218,13 +218,13 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	if ppool, err := dockertest.NewPool(""); err == nil {
 		s.pool = *ppool
 	} else {
-		log.Fatalf("Could not connect to docker: %s", err)
+		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
 	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
 		s.network = *pnetwork
 	} else {
-		log.Fatalf("Could not create network: %s", err)
+		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
@@ -234,7 +234,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 	currentPath, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Could not determine current path: %s", err)
+		s.FailNow(fmt.Sprintf("Could not determine current path: %s", err), "")
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
@@ -250,7 +250,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
-		log.Fatalf("Could not start headscale container: %s", err)
+		s.FailNow(fmt.Sprintf("Could not start headscale container: %s", err), "")
 	}
 	log.Println("Created headscale container")
 
