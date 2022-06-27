@@ -68,6 +68,11 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		Cmd:      []string{"headscale", "serve"},
 	}
 
+	err = s.pool.RemoveContainerByName(headscaleHostname)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
+	}
+
 	fmt.Println("Creating headscale container")
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
