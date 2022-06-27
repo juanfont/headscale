@@ -40,41 +40,50 @@ type IntegrationDERPTestSuite struct {
 	pool      dockertest.Pool
 	networks  map[int]dockertest.Network // so we keep the containers isolated
 	headscale dockertest.Resource
+	saveLogs  bool
 
 	tailscales    map[string]dockertest.Resource
 	joinWaitGroup sync.WaitGroup
 }
 
 func TestDERPIntegrationTestSuite(t *testing.T) {
+	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
+	if err != nil {
+		saveLogs = false
+	}
+
 	s := new(IntegrationDERPTestSuite)
 
 	s.tailscales = make(map[string]dockertest.Resource)
 	s.networks = make(map[int]dockertest.Network)
+	s.saveLogs = saveLogs
 
 	suite.Run(t, s)
 
 	// HandleStats, which allows us to check if we passed and save logs
 	// is called after TearDown, so we cannot tear down containers before
 	// we have potentially saved the logs.
-	for _, tailscale := range s.tailscales {
-		if err := s.pool.Purge(&tailscale); err != nil {
+	if s.saveLogs {
+		for _, tailscale := range s.tailscales {
+			if err := s.pool.Purge(&tailscale); err != nil {
+				log.Printf("Could not purge resource: %s\n", err)
+			}
+		}
+
+		if !s.stats.Passed() {
+			err := s.saveLog(&s.headscale, "test_output")
+			if err != nil {
+				log.Printf("Could not save log: %s\n", err)
+			}
+		}
+		if err := s.pool.Purge(&s.headscale); err != nil {
 			log.Printf("Could not purge resource: %s\n", err)
 		}
-	}
 
-	if !s.stats.Passed() {
-		err := s.saveLog(&s.headscale, "test_output")
-		if err != nil {
-			log.Printf("Could not save log: %s\n", err)
-		}
-	}
-	if err := s.pool.Purge(&s.headscale); err != nil {
-		log.Printf("Could not purge resource: %s\n", err)
-	}
-
-	for _, network := range s.networks {
-		if err := network.Close(); err != nil {
-			log.Printf("Could not close network: %s\n", err)
+		for _, network := range s.networks {
+			if err := network.Close(); err != nil {
+				log.Printf("Could not close network: %s\n", err)
+			}
 		}
 	}
 }
@@ -290,6 +299,23 @@ func (s *IntegrationDERPTestSuite) tailscaleContainer(
 }
 
 func (s *IntegrationDERPTestSuite) TearDownSuite() {
+	if !s.saveLogs {
+		for _, tailscale := range s.tailscales {
+			if err := s.pool.Purge(&tailscale); err != nil {
+				log.Printf("Could not purge resource: %s\n", err)
+			}
+		}
+
+		if err := s.pool.Purge(&s.headscale); err != nil {
+			log.Printf("Could not purge resource: %s\n", err)
+		}
+
+		for _, network := range s.networks {
+			if err := network.Close(); err != nil {
+				log.Printf("Could not close network: %s\n", err)
+			}
+		}
+	}
 }
 
 func (s *IntegrationDERPTestSuite) HandleStats(
