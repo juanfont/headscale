@@ -290,6 +290,9 @@ func (h *Headscale) PollNetMapStream(
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
 ) {
+	h.wg.Add(1)
+	defer h.wg.Done()
+
 	ctx := context.WithValue(req.Context(), machineNameContextKey, machine.Hostname)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -353,9 +356,9 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "pollData").
 				Int("bytes", len(data)).
 				Msg("Data from pollData channel written successfully")
-				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
-				// when an outdated machine object is kept alive, e.g. db is update from
-				// command line, but then overwritten.
+			// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
+			// when an outdated machine object is kept alive, e.g. db is update from
+			// command line, but then overwritten.
 			err = h.UpdateMachineFromDatabase(machine)
 			if err != nil {
 				log.Error().
@@ -431,9 +434,9 @@ func (h *Headscale) PollNetMapStream(
 				Str("channel", "keepAlive").
 				Int("bytes", len(data)).
 				Msg("Keep alive sent successfully")
-				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
-				// when an outdated machine object is kept alive, e.g. db is update from
-				// command line, but then overwritten.
+			// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
+			// when an outdated machine object is kept alive, e.g. db is update from
+			// command line, but then overwritten.
 			err = h.UpdateMachineFromDatabase(machine)
 			if err != nil {
 				log.Error().
@@ -588,9 +591,9 @@ func (h *Headscale) PollNetMapStream(
 				Str("handler", "PollNetMapStream").
 				Str("machine", machine.Hostname).
 				Msg("The client has closed the connection")
-				// TODO: Abstract away all the database calls, this can cause race conditions
-				// when an outdated machine object is kept alive, e.g. db is update from
-				// command line, but then overwritten.
+			// TODO: Abstract away all the database calls, this can cause race conditions
+			// when an outdated machine object is kept alive, e.g. db is update from
+			// command line, but then overwritten.
 			err := h.UpdateMachineFromDatabase(machine)
 			if err != nil {
 				log.Error().
