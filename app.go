@@ -423,19 +423,7 @@ func (h *Headscale) createPrometheusRouter() *gin.Engine {
 func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 
-	router.HandleFunc(
-		"/health",
-		func(writer http.ResponseWriter, req *http.Request) {
-			writer.WriteHeader(http.StatusOK)
-			_, err := writer.Write([]byte("{\"healthy\": \"ok\"}"))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-		}).Methods(http.MethodGet)
-
+	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/register", h.RegisterWebAPI).Methods(http.MethodGet)
 	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).Methods(http.MethodPost)

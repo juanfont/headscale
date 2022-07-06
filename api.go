@@ -30,6 +30,44 @@ const (
 	)
 )
 
+func (h *Headscale) HealthHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	respond := func(err error) {
+		writer.Header().Set("Content-Type", "application/health+json; charset=utf-8")
+
+		res := struct {
+			Status string `json:"status"`
+		}{
+			Status: "pass",
+		}
+
+		if err != nil {
+			writer.WriteHeader(http.StatusInternalServerError)
+			log.Error().Caller().Err(err).Msg("health check failed")
+			res.Status = "fail"
+		}
+
+		buf, err := json.Marshal(res)
+		if err != nil {
+			log.Error().Caller().Err(err).Msg("marshal failed")
+		}
+		_, err = writer.Write(buf)
+		if err != nil {
+			log.Error().Caller().Err(err).Msg("write failed")
+		}
+	}
+
+	if err := h.pingDB(); err != nil {
+		respond(err)
+
+		return
+	}
+
+	respond(nil)
+}
+
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
 func (h *Headscale) KeyHandler(
