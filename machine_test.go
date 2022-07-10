@@ -249,10 +249,12 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 
 	machineFromDB, err := app.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
+	c.Assert(machineFromDB, check.NotNil)
 
 	c.Assert(machineFromDB.isExpired(), check.Equals, false)
 
-	app.ExpireMachine(machineFromDB)
+	err = app.ExpireMachine(machineFromDB)
+	c.Assert(err, check.IsNil)
 
 	c.Assert(machineFromDB.isExpired(), check.Equals, true)
 }
@@ -918,6 +920,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 					err,
 					tt.wantErr,
 				)
+
 				return
 			}
 

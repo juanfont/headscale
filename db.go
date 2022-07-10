@@ -89,7 +89,7 @@ func (h *Headscale) initDB() error {
 			log.Error().Err(err).Msg("Error accessing db")
 		}
 
-		for _, machine := range machines {
+		for item, machine := range machines {
 			if machine.GivenName == "" {
 				normalizedHostname, err := NormalizeToFQDNRules(
 					machine.Hostname,
@@ -103,7 +103,7 @@ func (h *Headscale) initDB() error {
 						Msg("Failed to normalize machine hostname in DB migration")
 				}
 
-				err = h.RenameMachine(&machine, normalizedHostname)
+				err = h.RenameMachine(&machines[item], normalizedHostname)
 				if err != nil {
 					log.Error().
 						Caller().
@@ -111,7 +111,6 @@ func (h *Headscale) initDB() error {
 						Err(err).
 						Msg("Failed to save normalized machine name in DB migration")
 				}
-
 			}
 		}
 	}
