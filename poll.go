@@ -290,8 +290,8 @@ func (h *Headscale) PollNetMapStream(
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
 ) {
-	h.wg.Add(1)
-	defer h.wg.Done()
+	h.pollNetMapStreamWG.Add(1)
+	defer h.pollNetMapStreamWG.Done()
 
 	ctx := context.WithValue(req.Context(), machineNameContextKey, machine.Hostname)
 

@@ -94,8 +94,8 @@ type Headscale struct {
 
 	ipAllocationMutex sync.Mutex
 
-	shutdownChan chan struct{}
-	wg           sync.WaitGroup
+	shutdownChan       chan struct{}
+	pollNetMapStreamWG sync.WaitGroup
 }
 
 // Look up the TLS constant relative to user-supplied TLS client
@@ -148,13 +148,13 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 	)
 
 	app := Headscale{
-		cfg:               cfg,
-		dbType:            cfg.DBtype,
-		dbString:          dbString,
-		privateKey:        privKey,
-		aclRules:          tailcfg.FilterAllowAll, // default allowall
-		registrationCache: registrationCache,
-		wg:                sync.WaitGroup{},
+		cfg:                cfg,
+		dbType:             cfg.DBtype,
+		dbString:           dbString,
+		privateKey:         privKey,
+		aclRules:           tailcfg.FilterAllowAll, // default allowall
+		registrationCache:  registrationCache,
+		pollNetMapStreamWG: sync.WaitGroup{},
 	}
 
 	err = app.initDB()
@@ -672,7 +672,7 @@ func (h *Headscale) Serve() error {
 		syscall.SIGTERM,
 		syscall.SIGQUIT,
 		syscall.SIGHUP)
-	sig_func := func(c chan os.Signal) {
+	sigFunc := func(c chan os.Signal) {
 		// Wait for a SIGINT or SIGKILL:
 		for {
 			sig := <-c
@@ -703,7 +703,7 @@ func (h *Headscale) Serve() error {
 					Msg("Received signal to stop, shutting down gracefully")
 
 				close(h.shutdownChan)
-				h.wg.Wait()
+				h.pollNetMapStreamWG.Wait()
 
 				// Gracefully shut down servers
 				ctx, cancel := context.WithTimeout(context.Background(), HTTPShutdownTimeout)
@@ -747,7 +747,11 @@ func (h *Headscale) Serve() error {
 			}
 		}
 	}
-	errorGroup.Go(func() error { sig_func(sigc); return nil })
+	errorGroup.Go(func() error {
+		sigFunc(sigc)
+
+		return nil
+	})
 
 	return errorGroup.Wait()
 }
@@ -771,13 +775,13 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		}
 
 		switch h.cfg.TLS.LetsEncrypt.ChallengeType {
-		case "TLS-ALPN-01":
+		case tlsALPN01ChallengeType:
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
 			// must be reachable on port 443.
 			return certManager.TLSConfig(), nil
 
-		case "HTTP-01":
+		case http01ChallengeType:
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
