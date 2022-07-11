@@ -136,6 +136,82 @@ func (h *Headscale) OIDCCallback(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
+	code, state, ok := validateOIDCCallbackParams(writer, req)
+	if !ok {
+		return
+	}
+
+	rawIDToken, ok := h.getIDTokenForOIDCCallback(writer, code, state)
+	if !ok {
+		return
+	}
+
+	idToken, ok := h.verifyIDTokenForOIDCCallback(writer, rawIDToken)
+	if !ok {
+		return
+	}
+
+	// TODO: we can use userinfo at some point to grab additional information about the user (groups membership, etc)
+	// userInfo, err := oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
+	// if err != nil {
+	// 	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo"))
+	// 	return
+	// }
+
+	claims, ok := extractIDTokenClaims(writer, idToken)
+	if !ok {
+		return
+	}
+
+	if ok := validateOIDCAllowedDomains(writer, h.cfg.OIDC.AllowedDomains, claims); !ok {
+		return
+	}
+
+	if ok := validateOIDCAllowedUsers(writer, h.cfg.OIDC.AllowedUsers, claims); !ok {
+		return
+	}
+
+	machineKey, ok := h.validateMachineForOIDCCallback(writer, state, claims)
+	if !ok {
+		return
+	}
+
+	namespaceName, ok := getNamespaceName(writer, claims, h.cfg.OIDC.StripEmaildomain)
+	if !ok {
+		return
+	}
+
+	// register the machine if it's new
+	log.Debug().Msg("Registering new machine after successful callback")
+
+	namespace, ok := h.findOrCreateNewNamespaceForOIDCCallback(writer, namespaceName)
+	if !ok {
+		return
+	}
+
+	if ok := h.registerMachineForOIDCCallback(writer, namespace, machineKey); !ok {
+		return
+	}
+
+	content, ok := renderOIDCCallbackTemplate(writer, claims)
+	if !ok {
+		return
+	}
+
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+	if _, err := writer.Write(content.Bytes()); err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
+}
+
+func validateOIDCCallbackParams(
+	writer http.ResponseWriter,
+	req *http.Request,
+) (string, string, bool) {
 	code := req.URL.Query().Get("code")
 	state := req.URL.Query().Get("state")
 
@@ -150,9 +226,16 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return "", "", false
 	}
 
+	return code, state, true
+}
+
+func (h *Headscale) getIDTokenForOIDCCallback(
+	writer http.ResponseWriter,
+	code, state string,
+) (string, bool) {
 	oauth2Token, err := h.oauth2Config.Exchange(context.Background(), code)
 	if err != nil {
 		log.Error().
@@ -169,7 +252,7 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return "", false
 	}
 
 	log.Trace().
@@ -190,11 +273,17 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return "", false
 	}
 
-	verifier := h.oidcProvider.Verifier(&oidc.Config{ClientID: h.cfg.OIDC.ClientID})
+	return rawIDToken, true
+}
 
+func (h *Headscale) verifyIDTokenForOIDCCallback(
+	writer http.ResponseWriter,
+	rawIDToken string,
+) (*oidc.IDToken, bool) {
+	verifier := h.oidcProvider.Verifier(&oidc.Config{ClientID: h.cfg.OIDC.ClientID})
 	idToken, err := verifier.Verify(context.Background(), rawIDToken)
 	if err != nil {
 		log.Error().
@@ -211,19 +300,18 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return nil, false
 	}
 
-	// TODO: we can use userinfo at some point to grab additional information about the user (groups membership, etc)
-	// userInfo, err := oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
-	// if err != nil {
-	// 	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo"))
-	// 	return
-	// }
+	return idToken, true
+}
 
-	// Extract custom claims
+func extractIDTokenClaims(
+	writer http.ResponseWriter,
+	idToken *oidc.IDToken,
+) (*IDTokenClaims, bool) {
 	var claims IDTokenClaims
-	if err = idToken.Claims(&claims); err != nil {
+	if err := idToken.Claims(claims); err != nil {
 		log.Error().
 			Err(err).
 			Caller().
@@ -238,13 +326,22 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return nil, false
 	}
 
-	// If AllowedDomains is provided, check that the authenticated principal ends with @<alloweddomain>.
-	if len(h.cfg.OIDC.AllowedDomains) > 0 {
+	return &claims, true
+}
+
+// validateOIDCAllowedDomains checks that if AllowedDomains is provided,
+// that the authenticated principal ends with @<alloweddomain>.
+func validateOIDCAllowedDomains(
+	writer http.ResponseWriter,
+	allowedDomains []string,
+	claims *IDTokenClaims,
+) bool {
+	if len(allowedDomains) > 0 {
 		if at := strings.LastIndex(claims.Email, "@"); at < 0 ||
-			!IsStringInSlice(h.cfg.OIDC.AllowedDomains, claims.Email[at+1:]) {
+			!IsStringInSlice(allowedDomains, claims.Email[at+1:]) {
 			log.Error().Msg("authenticated principal does not match any allowed domain")
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			writer.WriteHeader(http.StatusBadRequest)
@@ -256,13 +353,22 @@ func (h *Headscale) OIDCCallback(
 					Msg("Failed to write response")
 			}
 
-			return
+			return false
 		}
 	}
 
-	// If AllowedUsers is provided, check that the authenticated princial is part of that list.
-	if len(h.cfg.OIDC.AllowedUsers) > 0 &&
-		!IsStringInSlice(h.cfg.OIDC.AllowedUsers, claims.Email) {
+	return true
+}
+
+// validateOIDCAllowedUsers checks that if AllowedUsers is provided,
+// that the authenticated principal is part of that list.
+func validateOIDCAllowedUsers(
+	writer http.ResponseWriter,
+	allowedUsers []string,
+	claims *IDTokenClaims,
+) bool {
+	if len(allowedUsers) > 0 &&
+		!IsStringInSlice(allowedUsers, claims.Email) {
 		log.Error().Msg("authenticated principal does not match any allowed user")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
@@ -274,12 +380,23 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return false
 	}
 
+	return true
+}
+
+// validateMachine retrieves machine information if it exist
+// The error is not important, because if it does not
+// exist, then this is a new machine and we will move
+// on to registration.
+func (h *Headscale) validateMachineForOIDCCallback(
+	writer http.ResponseWriter,
+	state string,
+	claims *IDTokenClaims,
+) (*key.MachinePublic, bool) {
 	// retrieve machinekey from state cache
 	machineKeyIf, machineKeyFound := h.registrationCache.Get(state)
-
 	if !machineKeyFound {
 		log.Error().
 			Msg("requested machine state key expired before authorisation completed")
@@ -293,13 +410,12 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return nil, false
 	}
 
-	machineKeyFromCache, machineKeyOK := machineKeyIf.(string)
-
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText(
+	machineKeyFromCache, machineKeyOK := machineKeyIf.(string)
+	err := machineKey.UnmarshalText(
 		[]byte(MachinePublicKeyEnsurePrefix(machineKeyFromCache)),
 	)
 	if err != nil {
@@ -315,7 +431,7 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return nil, false
 	}
 
 	if !machineKeyOK {
@@ -330,7 +446,7 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return nil, false
 	}
 
 	// retrieve machine information if it exist
@@ -353,7 +469,7 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to refresh machine")
 			http.Error(writer, "Failed to refresh machine", http.StatusInternalServerError)
 
-			return
+			return nil, false
 		}
 
 		var content bytes.Buffer
@@ -377,7 +493,7 @@ func (h *Headscale) OIDCCallback(
 					Msg("Failed to write response")
 			}
 
-			return
+			return nil, false
 		}
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -390,12 +506,20 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return nil, false
 	}
 
+	return &machineKey, true
+}
+
+func getNamespaceName(
+	writer http.ResponseWriter,
+	claims *IDTokenClaims,
+	stripEmaildomain bool,
+) (string, bool) {
 	namespaceName, err := NormalizeToFQDNRules(
 		claims.Email,
-		h.cfg.OIDC.StripEmaildomain,
+		stripEmaildomain,
 	)
 	if err != nil {
 		log.Error().Err(err).Caller().Msgf("couldn't normalize email")
@@ -409,12 +533,16 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return "", false
 	}
 
-	// register the machine if it's new
-	log.Debug().Msg("Registering new machine after successful callback")
+	return namespaceName, true
+}
 
+func (h *Headscale) findOrCreateNewNamespaceForOIDCCallback(
+	writer http.ResponseWriter,
+	namespaceName string,
+) (*Namespace, bool) {
 	namespace, err := h.GetNamespace(namespaceName)
 	if errors.Is(err, errNamespaceNotFound) {
 		namespace, err = h.CreateNamespace(namespaceName)
@@ -434,7 +562,7 @@ func (h *Headscale) OIDCCallback(
 					Msg("Failed to write response")
 			}
 
-			return
+			return nil, false
 		}
 	} else if err != nil {
 		log.Error().
@@ -452,17 +580,24 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return nil, false
 	}
 
-	machineKeyStr := MachinePublicKeyStripPrefix(machineKey)
+	return namespace, true
+}
 
-	_, err = h.RegisterMachineFromAuthCallback(
+func (h *Headscale) registerMachineForOIDCCallback(
+	writer http.ResponseWriter,
+	namespace *Namespace,
+	machineKey *key.MachinePublic,
+) bool {
+	machineKeyStr := MachinePublicKeyStripPrefix(*machineKey)
+
+	if _, err := h.RegisterMachineFromAuthCallback(
 		machineKeyStr,
 		namespace.Name,
 		RegisterMethodOIDC,
-	)
-	if err != nil {
+	); err != nil {
 		log.Error().
 			Caller().
 			Err(err).
@@ -477,9 +612,16 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return false
 	}
 
+	return true
+}
+
+func renderOIDCCallbackTemplate(
+	writer http.ResponseWriter,
+	claims *IDTokenClaims,
+) (*bytes.Buffer, bool) {
 	var content bytes.Buffer
 	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
 		User: claims.Email,
@@ -501,16 +643,8 @@ func (h *Headscale) OIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return
+		return nil, false
 	}
 
-	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	writer.WriteHeader(http.StatusOK)
-	_, err = writer.Write(content.Bytes())
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
-	}
+	return &content, true
 }
