@@ -33,7 +33,7 @@
 - Fix nodes being shown as 'offline' in `tailscale status` [#648](https://github.com/juanfont/headscale/pull/648)
 - Improve shutdown behaviour [#651](https://github.com/juanfont/headscale/pull/651)
 - Drop Gin as web framework in Headscale [648](https://github.com/juanfont/headscale/pull/648)
-- Make tailnet updates check interval configurable [#675](https://github.com/juanfont/headscale/pull/675)
+- Make tailnet node updates check interval configurable [#675](https://github.com/juanfont/headscale/pull/675)
 
 ## 0.15.0 (2022-03-20)
 

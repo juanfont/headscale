@@ -103,11 +103,11 @@ disable_check_updates: false
 # Time before an inactive ephemeral node is deleted?
 ephemeral_node_inactivity_timeout: 30m
 
-# Period to check for changes in the tailnet. A value too low will severily affect
+# Period to check for node updates in the tailnet. A value too low will severily affect
 # CPU consumption of Headscale. A value too high (over 60s) will cause problems
-# to the nodes, as they won't get updates or keep alive messages on time.
+# to the nodes, as they won't get updates or keep alive messages in time.
 # In case of doubts, do not touch the default 10s.
-changes_check_interval: 10s
+node_update_check_interval: 10s
 
 # SQLite config
 db_type: sqlite3

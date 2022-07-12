@@ -639,7 +639,7 @@ func (h *Headscale) scheduledPollWorker(
 	machine *Machine,
 ) {
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
-	updateCheckerTicker := time.NewTicker(h.cfg.ChangesCheckInterval)
+	updateCheckerTicker := time.NewTicker(h.cfg.NodeUpdateCheckInterval)
 
 	defer closeChanWithLog(
 		updateChan,
