@@ -20,6 +20,7 @@ dns_config:
   nameservers:
     - 1.1.1.1
 ephemeral_node_inactivity_timeout: 30m
+node_update_check_interval: 10s
 grpc_allow_insecure: false
 grpc_listen_addr: :50443
 ip_prefixes:
