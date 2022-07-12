@@ -26,6 +26,7 @@ type Config struct {
 	GRPCAddr                       string
 	GRPCAllowInsecure              bool
 	EphemeralNodeInactivityTimeout time.Duration
+	ChangesCheckInterval           time.Duration
 	IPPrefixes                     []netaddr.IPPrefix
 	PrivateKeyPath                 string
 	BaseDomain                     string
@@ -162,6 +163,8 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
+	viper.SetDefault("changes_check_interval", "10s")
+
 	if err := viper.ReadInConfig(); err != nil {
 		log.Warn().Err(err).Msg("Failed to read configuration from disk")
 
@@ -214,6 +217,15 @@ func LoadConfig(path string, isFile bool) error {
 			"Fatal config error: ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
 			viper.GetString("ephemeral_node_inactivity_timeout"),
 			minInactivityTimeout,
+		)
+	}
+
+	maxChangesCheckInterval, _ := time.ParseDuration("60s")
+	if viper.GetDuration("changes_check_interval") > maxChangesCheckInterval {
+		errorText += fmt.Sprintf(
+			"Fatal config error: changes_check_interval (%s) is set too high, must be less than %s",
+			viper.GetString("changes_check_interval"),
+			maxChangesCheckInterval,
 		)
 	}
 
@@ -476,6 +488,10 @@ func GetHeadscaleConfig() (*Config, error) {
 
 		EphemeralNodeInactivityTimeout: viper.GetDuration(
 			"ephemeral_node_inactivity_timeout",
+		),
+
+		ChangesCheckInterval: viper.GetDuration(
+			"changes_check_interval",
 		),
 
 		DBtype: viper.GetString("db_type"),

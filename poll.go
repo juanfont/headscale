@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	keepAliveInterval   = 60 * time.Second
-	updateCheckInterval = 10 * time.Second
+	keepAliveInterval = 60 * time.Second
 )
 
 type contextKey string
@@ -640,7 +639,7 @@ func (h *Headscale) scheduledPollWorker(
 	machine *Machine,
 ) {
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
-	updateCheckerTicker := time.NewTicker(updateCheckInterval)
+	updateCheckerTicker := time.NewTicker(h.cfg.ChangesCheckInterval)
 
 	defer closeChanWithLog(
 		updateChan,
