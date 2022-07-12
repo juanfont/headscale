@@ -30,11 +30,10 @@
 - Add -c option to specify config file from command line [#285](https://github.com/juanfont/headscale/issues/285) [#612](https://github.com/juanfont/headscale/pull/601)
 - Add configuration option to allow Tailscale clients to use a random WireGuard port. [kb/1181/firewalls](https://tailscale.com/kb/1181/firewalls) [#624](https://github.com/juanfont/headscale/pull/624)
 - Improve obtuse UX regarding missing configuration (`ephemeral_node_inactivity_timeout` not set) [#639](https://github.com/juanfont/headscale/pull/639)
-- Fix nodes being shown as 'offline' in `tailscale status` [648](https://github.com/juanfont/headscale/pull/648)
 - Fix nodes being shown as 'offline' in `tailscale status` [#648](https://github.com/juanfont/headscale/pull/648)
 - Improve shutdown behaviour [#651](https://github.com/juanfont/headscale/pull/651)
 - Drop Gin as web framework in Headscale [648](https://github.com/juanfont/headscale/pull/648)
-
+- Make tailnet updates check interval configurable [#675](https://github.com/juanfont/headscale/pull/675)
 
 ## 0.15.0 (2022-03-20)
 
