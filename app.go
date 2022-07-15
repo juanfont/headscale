@@ -17,17 +17,16 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/puzpuzpuz/xsync"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/oauth2"
@@ -411,15 +410,6 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
-func (h *Headscale) createPrometheusRouter() *gin.Engine {
-	promRouter := gin.Default()
-
-	prometheus := ginprometheus.NewPrometheus("gin")
-	prometheus.Use(promRouter)
-
-	return promRouter
-}
-
 func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 
@@ -647,11 +637,12 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
-	promRouter := h.createPrometheusRouter()
+	promMux := http.NewServeMux()
+	promMux.Handle("/metrics", promhttp.Handler())
 
 	promHTTPServer := &http.Server{
 		Addr:         h.cfg.MetricsAddr,
-		Handler:      promRouter,
+		Handler:      promMux,
 		ReadTimeout:  HTTPReadTimeout,
 		WriteTimeout: 0,
 	}
