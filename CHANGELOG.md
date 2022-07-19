@@ -32,7 +32,7 @@
 - Improve obtuse UX regarding missing configuration (`ephemeral_node_inactivity_timeout` not set) [#639](https://github.com/juanfont/headscale/pull/639)
 - Fix nodes being shown as 'offline' in `tailscale status` [#648](https://github.com/juanfont/headscale/pull/648)
 - Improve shutdown behaviour [#651](https://github.com/juanfont/headscale/pull/651)
-- Drop Gin as web framework in Headscale [648](https://github.com/juanfont/headscale/pull/648)
+- Drop Gin as web framework in Headscale [648](https://github.com/juanfont/headscale/pull/648) [677](https://github.com/juanfont/headscale/pull/677)
 - Make tailnet node updates check interval configurable [#675](https://github.com/juanfont/headscale/pull/675)
 
 ## 0.15.0 (2022-03-20)
