@@ -34,6 +34,7 @@
 - Improve shutdown behaviour [#651](https://github.com/juanfont/headscale/pull/651)
 - Drop Gin as web framework in Headscale [648](https://github.com/juanfont/headscale/pull/648) [677](https://github.com/juanfont/headscale/pull/677)
 - Make tailnet node updates check interval configurable [#675](https://github.com/juanfont/headscale/pull/675)
+- Fix regression with HTTP API [#684](https://github.com/juanfont/headscale/pull/684)
 
 ## 0.15.0 (2022-03-20)
 
