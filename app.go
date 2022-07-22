@@ -94,7 +94,8 @@ type Headscale struct {
 
 	ipAllocationMutex sync.Mutex
 
-	shutdownChan chan struct{}
+	shutdownChan       chan struct{}
+	pollNetMapStreamWG sync.WaitGroup
 }
 
 // Look up the TLS constant relative to user-supplied TLS client
@@ -147,12 +148,13 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 	)
 
 	app := Headscale{
-		cfg:               cfg,
-		dbType:            cfg.DBtype,
-		dbString:          dbString,
-		privateKey:        privKey,
-		aclRules:          tailcfg.FilterAllowAll, // default allowall
-		registrationCache: registrationCache,
+		cfg:                cfg,
+		dbType:             cfg.DBtype,
+		dbString:           dbString,
+		privateKey:         privKey,
+		aclRules:           tailcfg.FilterAllowAll, // default allowall
+		registrationCache:  registrationCache,
+		pollNetMapStreamWG: sync.WaitGroup{},
 	}
 
 	err = app.initDB()
@@ -565,6 +567,8 @@ func (h *Headscale) Serve() error {
 	// https://github.com/soheilhy/cmux/issues/68
 	// https://github.com/soheilhy/cmux/issues/91
 
+	var grpcServer *grpc.Server
+	var grpcListener net.Listener
 	if tlsConfig != nil || h.cfg.GRPCAllowInsecure {
 		log.Info().Msgf("Enabling remote gRPC at %s", h.cfg.GRPCAddr)
 
@@ -585,12 +589,12 @@ func (h *Headscale) Serve() error {
 			log.Warn().Msg("gRPC is running without security")
 		}
 
-		grpcServer := grpc.NewServer(grpcOptions...)
+		grpcServer = grpc.NewServer(grpcOptions...)
 
 		v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
 		reflection.Register(grpcServer)
 
-		grpcListener, err := net.Listen("tcp", h.cfg.GRPCAddr)
+		grpcListener, err = net.Listen("tcp", h.cfg.GRPCAddr)
 		if err != nil {
 			return fmt.Errorf("failed to bind to TCP address: %w", err)
 		}
@@ -666,7 +670,7 @@ func (h *Headscale) Serve() error {
 		syscall.SIGTERM,
 		syscall.SIGQUIT,
 		syscall.SIGHUP)
-	go func(c chan os.Signal) {
+	sigFunc := func(c chan os.Signal) {
 		// Wait for a SIGINT or SIGKILL:
 		for {
 			sig := <-c
@@ -676,7 +680,7 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received SIGHUP, reloading ACL and Config")
 
-					// TODO(kradalby): Reload config on SIGHUP
+				// TODO(kradalby): Reload config on SIGHUP
 
 				if h.cfg.ACL.PolicyPath != "" {
 					aclPath := AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
@@ -696,7 +700,8 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
 
-				h.shutdownChan <- struct{}{}
+				close(h.shutdownChan)
+				h.pollNetMapStreamWG.Wait()
 
 				// Gracefully shut down servers
 				ctx, cancel := context.WithTimeout(context.Background(), HTTPShutdownTimeout)
@@ -707,6 +712,11 @@ func (h *Headscale) Serve() error {
 					log.Error().Err(err).Msg("Failed to shutdown http")
 				}
 				grpcSocket.GracefulStop()
+
+				if grpcServer != nil {
+					grpcServer.GracefulStop()
+					grpcListener.Close()
+				}
 
 				// Close network listeners
 				promHTTPListener.Close()
@@ -734,7 +744,12 @@ func (h *Headscale) Serve() error {
 				os.Exit(0)
 			}
 		}
-	}(sigc)
+	}
+	errorGroup.Go(func() error {
+		sigFunc(sigc)
+
+		return nil
+	})
 
 	return errorGroup.Wait()
 }
@@ -758,13 +773,13 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		}
 
 		switch h.cfg.TLS.LetsEncrypt.ChallengeType {
-		case "TLS-ALPN-01":
+		case tlsALPN01ChallengeType:
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
 			// must be reachable on port 443.
 			return certManager.TLSConfig(), nil
 
-		case "HTTP-01":
+		case http01ChallengeType:
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
