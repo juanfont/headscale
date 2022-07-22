@@ -445,11 +445,9 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 		router.HandleFunc("/bootstrap-dns", h.DERPBootstrapDNSHandler)
 	}
 
-	api := router.PathPrefix("/api").Subrouter()
-	api.Use(h.httpAuthenticationMiddleware)
-	{
-		api.HandleFunc("/v1/*any", grpcMux.ServeHTTP)
-	}
+	apiRouter := router.PathPrefix("/api").Subrouter()
+	apiRouter.Use(h.httpAuthenticationMiddleware)
+	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
 
 	router.PathPrefix("/").HandlerFunc(stdoutHandler)
 
