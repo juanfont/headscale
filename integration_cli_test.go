@@ -625,7 +625,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	var errorOutput errOutput
 	err = json.Unmarshal([]byte(wrongTagResult), &errorOutput)
 	assert.Nil(s.T(), err)
-	assert.Contains(s.T(), errorOutput.Error, "Invalid tag detected")
+	assert.Contains(s.T(), errorOutput.Error, "tag must start with the string 'tag:'")
 
 	// Test list all nodes after added seconds
 	listAllResult, err := ExecuteCommand(

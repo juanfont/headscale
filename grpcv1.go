@@ -3,6 +3,7 @@ package headscale
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -195,13 +196,11 @@ func (api headscaleV1APIServer) SetTags(
 	}
 
 	for _, tag := range request.GetTags() {
-		if strings.Index(tag, "tag:") != 0 {
+		err := validateTag(tag)
+		if err != nil {
 			return &v1.SetTagsResponse{
 					Machine: nil,
-				}, status.Error(
-					codes.InvalidArgument,
-					"Invalid tag detected. Each tag must start with the string 'tag:'",
-				)
+			}, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
 
@@ -218,6 +217,19 @@ func (api headscaleV1APIServer) SetTags(
 		Msg("Changing tags of machine")
 
 	return &v1.SetTagsResponse{Machine: machine.toProto()}, nil
+}
+
+func validateTag(tag string) error {
+	if strings.Index(tag, "tag:") != 0 {
+		return fmt.Errorf("tag must start with the string 'tag:'")
+	}
+	if strings.ToLower(tag) != tag {
+		return fmt.Errorf("tag should be lowercase")
+	}
+	if len(strings.Fields(tag)) > 1 {
+		return fmt.Errorf("tag should not contains space")
+	}
+	return nil
 }
 
 func (api headscaleV1APIServer) DeleteMachine(
