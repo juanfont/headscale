@@ -1,6 +1,10 @@
 # CHANGELOG
 
-## 0.16.0 (2022-xx-xx)
+## 0.17.0 (2022-xx-xx)
+
+## 0.16.0 (2022-07-25)
+
+**Note:** Take a backup of your database before upgrading.
 
 ### BREAKING
 
