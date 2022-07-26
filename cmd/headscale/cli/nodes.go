@@ -465,6 +465,7 @@ func nodesToPtables(
 ) (pterm.TableData, error) {
 	tableHeader := []string{
 		"ID",
+		"Hostname",
 		"Name",
 		"NodeKey",
 		"Namespace",
@@ -566,6 +567,7 @@ func nodesToPtables(
 		nodeData := []string{
 			strconv.FormatUint(machine.Id, headscale.Base10),
 			machine.Name,
+			machine.GetGivenName(),
 			nodeKey.ShortString(),
 			namespace,
 			strings.Join([]string{IPV4Address, IPV6Address}, ", "),

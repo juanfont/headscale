@@ -17,17 +17,16 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/puzpuzpuz/xsync"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/oauth2"
@@ -95,7 +94,8 @@ type Headscale struct {
 
 	ipAllocationMutex sync.Mutex
 
-	shutdownChan chan struct{}
+	shutdownChan       chan struct{}
+	pollNetMapStreamWG sync.WaitGroup
 }
 
 // Look up the TLS constant relative to user-supplied TLS client
@@ -148,12 +148,13 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 	)
 
 	app := Headscale{
-		cfg:               cfg,
-		dbType:            cfg.DBtype,
-		dbString:          dbString,
-		privateKey:        privKey,
-		aclRules:          tailcfg.FilterAllowAll, // default allowall
-		registrationCache: registrationCache,
+		cfg:                cfg,
+		dbType:             cfg.DBtype,
+		dbString:           dbString,
+		privateKey:         privKey,
+		aclRules:           tailcfg.FilterAllowAll, // default allowall
+		registrationCache:  registrationCache,
+		pollNetMapStreamWG: sync.WaitGroup{},
 	}
 
 	err = app.initDB()
@@ -411,31 +412,10 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
-func (h *Headscale) createPrometheusRouter() *gin.Engine {
-	promRouter := gin.Default()
-
-	prometheus := ginprometheus.NewPrometheus("gin")
-	prometheus.Use(promRouter)
-
-	return promRouter
-}
-
 func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 
-	router.HandleFunc(
-		"/health",
-		func(writer http.ResponseWriter, req *http.Request) {
-			writer.WriteHeader(http.StatusOK)
-			_, err := writer.Write([]byte("{\"healthy\": \"ok\"}"))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-		}).Methods(http.MethodGet)
-
+	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/register", h.RegisterWebAPI).Methods(http.MethodGet)
 	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).Methods(http.MethodPost)
@@ -455,11 +435,9 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 		router.HandleFunc("/bootstrap-dns", h.DERPBootstrapDNSHandler)
 	}
 
-	api := router.PathPrefix("/api").Subrouter()
-	api.Use(h.httpAuthenticationMiddleware)
-	{
-		api.HandleFunc("/v1/*any", grpcMux.ServeHTTP)
-	}
+	apiRouter := router.PathPrefix("/api").Subrouter()
+	apiRouter.Use(h.httpAuthenticationMiddleware)
+	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
 
 	router.PathPrefix("/").HandlerFunc(stdoutHandler)
 
@@ -577,6 +555,8 @@ func (h *Headscale) Serve() error {
 	// https://github.com/soheilhy/cmux/issues/68
 	// https://github.com/soheilhy/cmux/issues/91
 
+	var grpcServer *grpc.Server
+	var grpcListener net.Listener
 	if tlsConfig != nil || h.cfg.GRPCAllowInsecure {
 		log.Info().Msgf("Enabling remote gRPC at %s", h.cfg.GRPCAddr)
 
@@ -597,12 +577,12 @@ func (h *Headscale) Serve() error {
 			log.Warn().Msg("gRPC is running without security")
 		}
 
-		grpcServer := grpc.NewServer(grpcOptions...)
+		grpcServer = grpc.NewServer(grpcOptions...)
 
 		v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
 		reflection.Register(grpcServer)
 
-		grpcListener, err := net.Listen("tcp", h.cfg.GRPCAddr)
+		grpcListener, err = net.Listen("tcp", h.cfg.GRPCAddr)
 		if err != nil {
 			return fmt.Errorf("failed to bind to TCP address: %w", err)
 		}
@@ -647,11 +627,12 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
-	promRouter := h.createPrometheusRouter()
+	promMux := http.NewServeMux()
+	promMux.Handle("/metrics", promhttp.Handler())
 
 	promHTTPServer := &http.Server{
 		Addr:         h.cfg.MetricsAddr,
-		Handler:      promRouter,
+		Handler:      promMux,
 		ReadTimeout:  HTTPReadTimeout,
 		WriteTimeout: 0,
 	}
@@ -677,7 +658,7 @@ func (h *Headscale) Serve() error {
 		syscall.SIGTERM,
 		syscall.SIGQUIT,
 		syscall.SIGHUP)
-	go func(c chan os.Signal) {
+	sigFunc := func(c chan os.Signal) {
 		// Wait for a SIGINT or SIGKILL:
 		for {
 			sig := <-c
@@ -687,7 +668,7 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received SIGHUP, reloading ACL and Config")
 
-					// TODO(kradalby): Reload config on SIGHUP
+				// TODO(kradalby): Reload config on SIGHUP
 
 				if h.cfg.ACL.PolicyPath != "" {
 					aclPath := AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
@@ -707,7 +688,8 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
 
-				h.shutdownChan <- struct{}{}
+				close(h.shutdownChan)
+				h.pollNetMapStreamWG.Wait()
 
 				// Gracefully shut down servers
 				ctx, cancel := context.WithTimeout(context.Background(), HTTPShutdownTimeout)
@@ -718,6 +700,11 @@ func (h *Headscale) Serve() error {
 					log.Error().Err(err).Msg("Failed to shutdown http")
 				}
 				grpcSocket.GracefulStop()
+
+				if grpcServer != nil {
+					grpcServer.GracefulStop()
+					grpcListener.Close()
+				}
 
 				// Close network listeners
 				promHTTPListener.Close()
@@ -745,7 +732,12 @@ func (h *Headscale) Serve() error {
 				os.Exit(0)
 			}
 		}
-	}(sigc)
+	}
+	errorGroup.Go(func() error {
+		sigFunc(sigc)
+
+		return nil
+	})
 
 	return errorGroup.Wait()
 }
@@ -769,13 +761,13 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		}
 
 		switch h.cfg.TLS.LetsEncrypt.ChallengeType {
-		case "TLS-ALPN-01":
+		case tlsALPN01ChallengeType:
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
 			// must be reachable on port 443.
 			return certManager.TLSConfig(), nil
 
-		case "HTTP-01":
+		case http01ChallengeType:
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
