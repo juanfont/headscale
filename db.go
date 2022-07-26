@@ -1,6 +1,7 @@
 package headscale
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -218,6 +219,17 @@ func (h *Headscale) setValue(key string, value string) error {
 	}
 
 	return nil
+}
+
+func (h *Headscale) pingDB() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	db, err := h.db.DB()
+	if err != nil {
+		return err
+	}
+
+	return db.PingContext(ctx)
 }
 
 // This is a "wrapper" type around tailscales
