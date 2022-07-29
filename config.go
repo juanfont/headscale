@@ -18,6 +18,11 @@ import (
 	"tailscale.com/types/dnstype"
 )
 
+const (
+	tlsALPN01ChallengeType = "TLS-ALPN-01"
+	http01ChallengeType    = "HTTP-01"
+)
+
 // Config contains the initial Headscale configuration.
 type Config struct {
 	ServerURL                      string
@@ -26,6 +31,7 @@ type Config struct {
 	GRPCAddr                       string
 	GRPCAllowInsecure              bool
 	EphemeralNodeInactivityTimeout time.Duration
+	NodeUpdateCheckInterval        time.Duration
 	IPPrefixes                     []netaddr.IPPrefix
 	PrivateKeyPath                 string
 	BaseDomain                     string
@@ -135,7 +141,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.AutomaticEnv()
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
-	viper.SetDefault("tls_letsencrypt_challenge_type", "HTTP-01")
+	viper.SetDefault("tls_letsencrypt_challenge_type", http01ChallengeType)
 	viper.SetDefault("tls_client_auth_mode", "relaxed")
 
 	viper.SetDefault("log_level", "info")
@@ -162,6 +168,8 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
+	viper.SetDefault("node_update_check_interval", "10s")
+
 	if err := viper.ReadInConfig(); err != nil {
 		log.Warn().Err(err).Msg("Failed to read configuration from disk")
 
@@ -176,15 +184,15 @@ func LoadConfig(path string, isFile bool) error {
 	}
 
 	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
-		(viper.GetString("tls_letsencrypt_challenge_type") == "TLS-ALPN-01") &&
+		(viper.GetString("tls_letsencrypt_challenge_type") == tlsALPN01ChallengeType) &&
 		(!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
 		log.Warn().
 			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
-	if (viper.GetString("tls_letsencrypt_challenge_type") != "HTTP-01") &&
-		(viper.GetString("tls_letsencrypt_challenge_type") != "TLS-ALPN-01") {
+	if (viper.GetString("tls_letsencrypt_challenge_type") != http01ChallengeType) &&
+		(viper.GetString("tls_letsencrypt_challenge_type") != tlsALPN01ChallengeType) {
 		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
 	}
 
@@ -214,6 +222,15 @@ func LoadConfig(path string, isFile bool) error {
 			"Fatal config error: ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
 			viper.GetString("ephemeral_node_inactivity_timeout"),
 			minInactivityTimeout,
+		)
+	}
+
+	maxNodeUpdateCheckInterval, _ := time.ParseDuration("60s")
+	if viper.GetDuration("node_update_check_interval") > maxNodeUpdateCheckInterval {
+		errorText += fmt.Sprintf(
+			"Fatal config error: node_update_check_interval (%s) is set too high, must be less than %s",
+			viper.GetString("node_update_check_interval"),
+			maxNodeUpdateCheckInterval,
 		)
 	}
 
@@ -476,6 +493,10 @@ func GetHeadscaleConfig() (*Config, error) {
 
 		EphemeralNodeInactivityTimeout: viper.GetDuration(
 			"ephemeral_node_inactivity_timeout",
+		),
+
+		NodeUpdateCheckInterval: viper.GetDuration(
+			"node_update_check_interval",
 		),
 
 		DBtype: viper.GetString("db_type"),

@@ -36,6 +36,7 @@ type IntegrationTestSuite struct {
 	pool      dockertest.Pool
 	network   dockertest.Network
 	headscale dockertest.Resource
+	saveLogs  bool
 
 	namespaces map[string]TestNamespace
 
@@ -43,6 +44,11 @@ type IntegrationTestSuite struct {
 }
 
 func TestIntegrationTestSuite(t *testing.T) {
+	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
+	if err != nil {
+		saveLogs = false
+	}
+
 	s := new(IntegrationTestSuite)
 
 	s.namespaces = map[string]TestNamespace{
@@ -55,32 +61,35 @@ func TestIntegrationTestSuite(t *testing.T) {
 			tailscales: make(map[string]dockertest.Resource),
 		},
 	}
+	s.saveLogs = saveLogs
 
 	suite.Run(t, s)
 
 	// HandleStats, which allows us to check if we passed and save logs
 	// is called after TearDown, so we cannot tear down containers before
 	// we have potentially saved the logs.
-	for _, scales := range s.namespaces {
-		for _, tailscale := range scales.tailscales {
-			if err := s.pool.Purge(&tailscale); err != nil {
-				log.Printf("Could not purge resource: %s\n", err)
+	if s.saveLogs {
+		for _, scales := range s.namespaces {
+			for _, tailscale := range scales.tailscales {
+				if err := s.pool.Purge(&tailscale); err != nil {
+					log.Printf("Could not purge resource: %s\n", err)
+				}
 			}
 		}
-	}
 
-	if !s.stats.Passed() {
-		err := s.saveLog(&s.headscale, "test_output")
-		if err != nil {
-			log.Printf("Could not save log: %s\n", err)
+		if !s.stats.Passed() {
+			err := s.saveLog(&s.headscale, "test_output")
+			if err != nil {
+				log.Printf("Could not save log: %s\n", err)
+			}
 		}
-	}
-	if err := s.pool.Purge(&s.headscale); err != nil {
-		log.Printf("Could not purge resource: %s\n", err)
-	}
+		if err := s.pool.Purge(&s.headscale); err != nil {
+			log.Printf("Could not purge resource: %s\n", err)
+		}
 
-	if err := s.network.Close(); err != nil {
-		log.Printf("Could not close network: %s\n", err)
+		if err := s.network.Close(); err != nil {
+			log.Printf("Could not close network: %s\n", err)
+		}
 	}
 }
 
@@ -209,13 +218,13 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	if ppool, err := dockertest.NewPool(""); err == nil {
 		s.pool = *ppool
 	} else {
-		log.Fatalf("Could not connect to docker: %s", err)
+		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
 	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
 		s.network = *pnetwork
 	} else {
-		log.Fatalf("Could not create network: %s", err)
+		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
@@ -225,7 +234,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 	currentPath, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Could not determine current path: %s", err)
+		s.FailNow(fmt.Sprintf("Could not determine current path: %s", err), "")
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
@@ -237,11 +246,16 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		Cmd:      []string{"headscale", "serve"},
 	}
 
+	err = s.pool.RemoveContainerByName(headscaleHostname)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
+	}
+
 	log.Println("Creating headscale container")
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
-		log.Fatalf("Could not start headscale container: %s", err)
+		s.FailNow(fmt.Sprintf("Could not start headscale container: %s", err), "")
 	}
 	log.Println("Created headscale container")
 
@@ -338,6 +352,23 @@ func (s *IntegrationTestSuite) SetupSuite() {
 }
 
 func (s *IntegrationTestSuite) TearDownSuite() {
+	if !s.saveLogs {
+		for _, scales := range s.namespaces {
+			for _, tailscale := range scales.tailscales {
+				if err := s.pool.Purge(&tailscale); err != nil {
+					log.Printf("Could not purge resource: %s\n", err)
+				}
+			}
+		}
+
+		if err := s.pool.Purge(&s.headscale); err != nil {
+			log.Printf("Could not purge resource: %s\n", err)
+		}
+
+		if err := s.network.Close(); err != nil {
+			log.Printf("Could not close network: %s\n", err)
+		}
+	}
 }
 
 func (s *IntegrationTestSuite) HandleStats(

@@ -40,13 +40,13 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 	if ppool, err := dockertest.NewPool(""); err == nil {
 		s.pool = *ppool
 	} else {
-		log.Fatalf("Could not connect to docker: %s", err)
+		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
 	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
 		s.network = *pnetwork
 	} else {
-		log.Fatalf("Could not create network: %s", err)
+		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
@@ -56,7 +56,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 
 	currentPath, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Could not determine current path: %s", err)
+		s.FailNow(fmt.Sprintf("Could not determine current path: %s", err), "")
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
@@ -68,11 +68,16 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		Cmd:      []string{"headscale", "serve"},
 	}
 
+	err = s.pool.RemoveContainerByName(headscaleHostname)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
+	}
+
 	fmt.Println("Creating headscale container")
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
-		log.Fatalf("Could not start headscale container: %s", err)
+		s.FailNow(fmt.Sprintf("Could not start headscale container: %s", err), "")
 	}
 	fmt.Println("Created headscale container")
 
@@ -620,7 +625,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	var errorOutput errOutput
 	err = json.Unmarshal([]byte(wrongTagResult), &errorOutput)
 	assert.Nil(s.T(), err)
-	assert.Contains(s.T(), errorOutput.Error, "Invalid tag detected")
+	assert.Contains(s.T(), errorOutput.Error, "tag must start with the string 'tag:'")
 
 	// Test list all nodes after added seconds
 	listAllResult, err := ExecuteCommand(

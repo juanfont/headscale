@@ -2,6 +2,7 @@ log_level: trace
 acl_policy_path: ""
 db_type: sqlite3
 ephemeral_node_inactivity_timeout: 30m
+node_update_check_interval: 10s
 ip_prefixes:
   - fd7a:115c:a1e0::/48
   - 100.64.0.0/10
