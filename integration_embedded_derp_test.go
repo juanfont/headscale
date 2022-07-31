@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -103,9 +104,13 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		}
 	}
 
+	platform := fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile",
 		ContextDir: ".",
+		Platform:   platform,
+		Version:    "2",
 	}
 
 	currentPath, err := os.Getwd()
@@ -127,6 +132,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 			"8443/tcp": {{HostPort: "8443"}},
 			"3478/udp": {{HostPort: "3478"}},
 		},
+		Platform: platform,
 	}
 
 	err = s.pool.RemoveContainerByName(headscaleHostname)

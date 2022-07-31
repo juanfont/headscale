@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -49,9 +50,13 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
 	}
 
+	platform := fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile",
 		ContextDir: ".",
+		Platform:   platform,
+		Version:    "2",
 	}
 
 	currentPath, err := os.Getwd()
@@ -66,6 +71,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		},
 		Networks: []*dockertest.Network{&s.network},
 		Cmd:      []string{"headscale", "serve"},
+		Platform: platform,
 	}
 
 	err = s.pool.RemoveContainerByName(headscaleHostname)
