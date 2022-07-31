@@ -104,7 +104,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile",
+		Dockerfile: "Dockerfile.tmp-integration",
 		ContextDir: ".",
 	}
 
