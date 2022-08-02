@@ -23,6 +23,10 @@ jobs:
           echo "Flags:     ${{ steps.buildx.outputs.flags }}"
           echo "Platforms: ${{ steps.buildx.outputs.platforms }}"
 
+      - name: check buildx version
+        run: docker buildx version
+        shell: bash
+
       - name: Get changed files
         id: changed-files
         uses: tj-actions/changed-files@v14.1
