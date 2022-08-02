@@ -15,6 +15,14 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@v2
 
+      - name: Inspect builder
+        run: |
+          echo "Name:      ${{ steps.buildx.outputs.name }}"
+          echo "Endpoint:  ${{ steps.buildx.outputs.endpoint }}"
+          echo "Status:    ${{ steps.buildx.outputs.status }}"
+          echo "Flags:     ${{ steps.buildx.outputs.flags }}"
+          echo "Platforms: ${{ steps.buildx.outputs.platforms }}"
+
       - name: Get changed files
         id: changed-files
         uses: tj-actions/changed-files@v14.1
