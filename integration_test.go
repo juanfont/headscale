@@ -1,4 +1,4 @@
-//go:build integration
+s/go:build integration
 // +build integration
 
 package headscale
@@ -28,6 +28,10 @@ import (
 	"inet.af/netaddr"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn/ipnstate"
+)
+
+const (
+	headscaleContainerName = "headscale"
 )
 
 type IntegrationTestSuite struct {
@@ -252,7 +256,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		Platform: platform,
 	}
 
-	err = s.pool.RemoveContainerByName(headscaleHostname)
+	err = s.pool.RemoveContainerByName(headscaleContainerName)
 	if err != nil {
 		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
 	}

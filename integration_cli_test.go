@@ -19,6 +19,10 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+const (
+	headscaleCLIContainerName = "headscale-cli"
+)
+
 type IntegrationCLITestSuite struct {
 	suite.Suite
 	stats *suite.SuiteInformation
@@ -65,7 +69,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-		Name: "headscale-cli",
+		Name: headscaleCLIContainerName,
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 		},
@@ -74,9 +78,15 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		Platform: platform,
 	}
 
-	err = s.pool.RemoveContainerByName(headscaleHostname)
+	err = s.pool.RemoveContainerByName(headscaleCLIContainerName)
 	if err != nil {
-		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
+		s.FailNow(
+			fmt.Sprintf(
+				"Could not remove existing container before building test: %s",
+				err,
+			),
+			"",
+		)
 	}
 
 	fmt.Println("Creating headscale container")
