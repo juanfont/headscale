@@ -1201,9 +1201,10 @@ func Test_expandAlias(t *testing.T) {
 
 func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 	type args struct {
-		aclPolicy ACLPolicy
-		nodes     []Machine
-		namespace string
+		aclPolicy        ACLPolicy
+		nodes            []Machine
+		namespace        string
+		stripEmailDomain bool
 	}
 	tests := []struct {
 		name    string
@@ -1247,7 +1248,57 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						Namespace: Namespace{Name: "joe"},
 					},
 				},
-				namespace: "joe",
+				namespace:        "joe",
+				stripEmailDomain: true,
+			},
+			want: []Machine{
+				{
+					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")},
+					Namespace:   Namespace{Name: "joe"},
+				},
+			},
+		},
+		{
+			name: "exclude nodes with valid tags, and owner is in a group",
+			args: args{
+				aclPolicy: ACLPolicy{
+					Groups: Groups{
+						"group:accountant": []string{"joe", "bar"},
+					},
+					TagOwners: TagOwners{"tag:accountant-webserver": []string{"group:accountant"}},
+				},
+				nodes: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.1"),
+						},
+						Namespace: Namespace{Name: "joe"},
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:accountant-webserver"},
+						},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.2"),
+						},
+						Namespace: Namespace{Name: "joe"},
+						HostInfo: HostInfo{
+							OS:          "centos",
+							Hostname:    "foo",
+							RequestTags: []string{"tag:accountant-webserver"},
+						},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netaddr.MustParseIP("100.64.0.4"),
+						},
+						Namespace: Namespace{Name: "joe"},
+					},
+				},
+				namespace:        "joe",
+				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
@@ -1288,7 +1339,8 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						Namespace: Namespace{Name: "joe"},
 					},
 				},
-				namespace: "joe",
+				namespace:        "joe",
+				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
@@ -1333,7 +1385,8 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						Namespace: Namespace{Name: "joe"},
 					},
 				},
-				namespace: "joe",
+				namespace:        "joe",
+				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
@@ -1373,6 +1426,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				test.args.aclPolicy,
 				test.args.nodes,
 				test.args.namespace,
+				test.args.stripEmailDomain,
 			)
 			if !reflect.DeepEqual(got, test.want) {
 				t.Errorf("excludeCorrectlyTaggedNodes() = %v, want %v", got, test.want)
