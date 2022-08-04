@@ -2,6 +2,10 @@
 
 ## 0.17.0 (2022-xx-xx)
 
+### Changes
+
+- Fix missing group expansion in function `excludeCorretlyTaggedNodes` [#563](https://github.com/juanfont/headscale/issues/563)
+
 ## 0.16.0 (2022-07-25)
 
 **Note:** Take a backup of your database before upgrading.
