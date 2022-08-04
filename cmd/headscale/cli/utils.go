@@ -24,7 +24,10 @@ const (
 func getHeadscaleApp() (*headscale.Headscale, error) {
 	cfg, err := headscale.GetHeadscaleConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration while creating headscale instance: %w", err)
+		return nil, fmt.Errorf(
+			"failed to load configuration while creating headscale instance: %w",
+			err,
+		)
 	}
 
 	app, err := headscale.NewHeadscale(cfg)

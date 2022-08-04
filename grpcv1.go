@@ -199,7 +199,7 @@ func (api headscaleV1APIServer) SetTags(
 		err := validateTag(tag)
 		if err != nil {
 			return &v1.SetTagsResponse{
-					Machine: nil,
+				Machine: nil,
 			}, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}

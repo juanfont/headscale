@@ -21,9 +21,9 @@ type ACLPolicy struct {
 // ACL is a basic rule for the ACL Policy.
 type ACL struct {
 	Action       string   `json:"action" yaml:"action"`
-	Protocol     string   `json:"proto" yaml:"proto"`
-	Sources      []string `json:"src"  yaml:"src"`
-	Destinations []string `json:"dst"  yaml:"dst"`
+	Protocol     string   `json:"proto"  yaml:"proto"`
+	Sources      []string `json:"src"    yaml:"src"`
+	Destinations []string `json:"dst"    yaml:"dst"`
 }
 
 // Groups references a series of alias in the ACL rules.
@@ -37,8 +37,8 @@ type TagOwners map[string][]string
 
 // ACLTest is not implemented, but should be use to check if a certain rule is allowed.
 type ACLTest struct {
-	Source string   `json:"src"           yaml:"src"`
-	Accept []string `json:"accept"          yaml:"accept"`
+	Source string   `json:"src"            yaml:"src"`
+	Accept []string `json:"accept"         yaml:"accept"`
 	Deny   []string `json:"deny,omitempty" yaml:"deny,omitempty"`
 }
 

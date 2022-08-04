@@ -248,7 +248,13 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 	err = s.pool.RemoveContainerByName(headscaleHostname)
 	if err != nil {
-		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
+		s.FailNow(
+			fmt.Sprintf(
+				"Could not remove existing container before building test: %s",
+				err,
+			),
+			"",
+		)
 	}
 
 	log.Println("Creating headscale container")

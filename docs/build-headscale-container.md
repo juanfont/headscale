@@ -5,6 +5,7 @@ The Dockerfiles included in the repository are using the [buildx plugin](https:/
 # Build native
 
 To build the container on the native arch you can just use:
+
 ```
 $ sudo docker buildx build -t headscale:custom-arch .
 ```
@@ -14,6 +15,7 @@ For example: This will build a amd64(x86_64) container if your hostsystem is amd
 # Build cross platform
 
 To build a arm64 container on a amd64 hostsystem you could use:
+
 ```
 $ sudo docker buildx build --platform linux/arm64 -t headscale:custom-arm64 .
 

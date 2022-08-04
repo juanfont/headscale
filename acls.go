@@ -162,7 +162,12 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 
 		destPorts := []tailcfg.NetPortRange{}
 		for innerIndex, dest := range acl.Destinations {
-			dests, err := h.generateACLPolicyDest(machines, *h.aclPolicy, dest, needsWildcard)
+			dests, err := h.generateACLPolicyDest(
+				machines,
+				*h.aclPolicy,
+				dest,
+				needsWildcard,
+			)
 			if err != nil {
 				log.Error().
 					Msgf("Error parsing ACL %d, Destination %d", index, innerIndex)
@@ -255,7 +260,12 @@ func (h *Headscale) generateACLPolicyDest(
 func parseProtocol(protocol string) ([]int, bool, error) {
 	switch protocol {
 	case "":
-		return []int{protocolICMP, protocolIPv6ICMP, protocolTCP, protocolUDP}, false, nil
+		return []int{
+			protocolICMP,
+			protocolIPv6ICMP,
+			protocolTCP,
+			protocolUDP,
+		}, false, nil
 	case "igmp":
 		return []int{protocolIGMP}, true, nil
 	case "ipv4", "ip-in-ip":
@@ -284,7 +294,9 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		needsWildcard := protocolNumber != protocolTCP && protocolNumber != protocolUDP && protocolNumber != protocolSCTP
+		needsWildcard := protocolNumber != protocolTCP &&
+			protocolNumber != protocolUDP &&
+			protocolNumber != protocolSCTP
 
 		return []int{protocolNumber}, needsWildcard, nil
 	}

@@ -351,7 +351,11 @@ func (h *Headscale) OIDCCallback(
 				Caller().
 				Err(err).
 				Msg("Failed to refresh machine")
-			http.Error(writer, "Failed to refresh machine", http.StatusInternalServerError)
+			http.Error(
+				writer,
+				"Failed to refresh machine",
+				http.StatusInternalServerError,
+			)
 
 			return
 		}
