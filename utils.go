@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	ErrCannotDecryptReponse = Error("cannot decrypt response")
-	ErrCouldNotAllocateIP   = Error("could not find any suitable IP")
+	ErrCannotDecryptResponse = Error("cannot decrypt response")
+	ErrCouldNotAllocateIP    = Error("could not find any suitable IP")
 
 	// These constants are copied from the upstream tailscale.com/types/key
 	// library, because they are not exported.
@@ -120,7 +120,7 @@ func decode(
 
 	decrypted, ok := privKey.OpenFrom(*pubKey, msg)
 	if !ok {
-		return ErrCannotDecryptReponse
+		return ErrCannotDecryptResponse
 	}
 
 	if err := json.Unmarshal(decrypted, output); err != nil {
