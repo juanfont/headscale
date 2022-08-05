@@ -73,21 +73,22 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
 	}
 
-	fmt.Println("Creating headscale container")
+	fmt.Println("Creating headscale container for CLI tests")
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
 		s.FailNow(fmt.Sprintf("Could not start headscale container: %s", err), "")
 	}
-	fmt.Println("Created headscale container")
+	fmt.Println("Created headscale container for CLI tests")
 
-	fmt.Println("Waiting for headscale to be ready")
+	fmt.Println("Waiting for headscale to be ready for CLI tests")
 	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8080/tcp"))
 
 	if err := s.pool.Retry(func() error {
 		url := fmt.Sprintf("http://%s/health", hostEndpoint)
 		resp, err := http.Get(url)
 		if err != nil {
+			fmt.Printf("headscale for CLI test is not ready: %s\n", err)
 			return err
 		}
 		if resp.StatusCode != http.StatusOK {
@@ -102,7 +103,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		// https://github.com/stretchr/testify/issues/849
 		return // fmt.Errorf("Could not connect to headscale: %s", err)
 	}
-	fmt.Println("headscale container is ready")
+	fmt.Println("headscale container is ready for CLI tests")
 }
 
 func (s *IntegrationCLITestSuite) TearDownTest() {
