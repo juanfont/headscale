@@ -36,7 +36,7 @@ ACLs could be written either on [huJSON](https://github.com/tailscale/hujson)
 or YAML. Check the [test ACLs](../tests/acls) for further information.
 
 When registering the servers we will need to add the flag
-`--advertised-tags=tag:<tag1>,tag:<tag2>`, and the user (namespace) that is
+`--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user (namespace) that is
 registering the server should be allowed to do it. Since anyone can add tags to
 a server they can register, the check of the tags is done on headscale server
 and only valid tags are applied. A tag is valid if the namespace that is
