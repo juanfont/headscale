@@ -20,10 +20,10 @@ type ACLPolicy struct {
 
 // ACL is a basic rule for the ACL Policy.
 type ACL struct {
-	Action       string   `json:"action,omitempty"  yaml:"action,omitempty"`
-	Protocol     string   `json:"proto,omitempty"   yaml:"proto,omitempty"`
-	Sources      []string `json:"src,omitempty"     yaml:"src,omitempty"`
-	Destinations []string `json:"dst,omitempty"     yaml:"dst,omitempty"`
+	Action       string   `json:"action,omitempty" yaml:"action,omitempty"`
+	Protocol     string   `json:"proto,omitempty"  yaml:"proto,omitempty"`
+	Sources      []string `json:"src,omitempty"    yaml:"src,omitempty"`
+	Destinations []string `json:"dst,omitempty"    yaml:"dst,omitempty"`
 }
 
 // Groups references a series of alias in the ACL rules.
@@ -37,9 +37,9 @@ type TagOwners map[string][]string
 
 // ACLTest is not implemented, but should be use to check if a certain rule is allowed.
 type ACLTest struct {
-	Source string   `json:"src,omitempty"       yaml:"src,omitempty"`
-	Accept []string `json:"accept,omitempty"    yaml:"accept,omitempty"`
-	Deny   []string `json:"deny,omitempty"      yaml:"deny,omitempty"`
+	Source string   `json:"src,omitempty"    yaml:"src,omitempty"`
+	Accept []string `json:"accept,omitempty" yaml:"accept,omitempty"`
+	Deny   []string `json:"deny,omitempty"   yaml:"deny,omitempty"`
 }
 
 // UnmarshalJSON allows to parse the Hosts directly into netaddr objects.

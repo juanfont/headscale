@@ -62,7 +62,11 @@ func (s *Suite) TestBasicRule(c *check.C) {
 func (s *Suite) TestInvalidAction(c *check.C) {
 	app.aclPolicy = &ACLPolicy{
 		ACLs: []ACL{
-			{Action: "invalidAction", Sources: []string{"*"}, Destinations: []string{"*:*"}},
+			{
+				Action:       "invalidAction",
+				Sources:      []string{"*"},
+				Destinations: []string{"*:*"},
+			},
 		},
 	}
 	err := app.UpdateACLRules()
@@ -77,7 +81,11 @@ func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
 			"group:error": []string{"foo", "group:test"},
 		},
 		ACLs: []ACL{
-			{Action: "accept", Sources: []string{"group:error"}, Destinations: []string{"*:*"}},
+			{
+				Action:       "accept",
+				Sources:      []string{"group:error"},
+				Destinations: []string{"*:*"},
+			},
 		},
 	}
 	err := app.UpdateACLRules()
@@ -88,7 +96,11 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 	// this ACL is wrong because no tagOwners own the requested tag for the server
 	app.aclPolicy = &ACLPolicy{
 		ACLs: []ACL{
-			{Action: "accept", Sources: []string{"tag:foo"}, Destinations: []string{"*:*"}},
+			{
+				Action:       "accept",
+				Sources:      []string{"tag:foo"},
+				Destinations: []string{"*:*"},
+			},
 		},
 	}
 	err := app.UpdateACLRules()
@@ -131,7 +143,11 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 		Groups:    Groups{"group:test": []string{"user1", "user2"}},
 		TagOwners: TagOwners{"tag:test": []string{"user3", "group:test"}},
 		ACLs: []ACL{
-			{Action: "accept", Sources: []string{"tag:test"}, Destinations: []string{"*:*"}},
+			{
+				Action:       "accept",
+				Sources:      []string{"tag:test"},
+				Destinations: []string{"*:*"},
+			},
 		},
 	}
 	err = app.UpdateACLRules()
@@ -177,7 +193,11 @@ func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 		Groups:    Groups{"group:test": []string{"user1", "user2"}},
 		TagOwners: TagOwners{"tag:test": []string{"user3", "group:test"}},
 		ACLs: []ACL{
-			{Action: "accept", Sources: []string{"*"}, Destinations: []string{"tag:test:*"}},
+			{
+				Action:       "accept",
+				Sources:      []string{"*"},
+				Destinations: []string{"tag:test:*"},
+			},
 		},
 	}
 	err = app.UpdateACLRules()
@@ -222,7 +242,11 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 	app.aclPolicy = &ACLPolicy{
 		TagOwners: TagOwners{"tag:test": []string{"user1"}},
 		ACLs: []ACL{
-			{Action: "accept", Sources: []string{"user1"}, Destinations: []string{"*:*"}},
+			{
+				Action:       "accept",
+				Sources:      []string{"user1"},
+				Destinations: []string{"*:*"},
+			},
 		},
 	}
 	err = app.UpdateACLRules()

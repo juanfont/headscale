@@ -332,7 +332,9 @@ func GenerateRandomStringDNSSafe(n int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		str = strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""))
+		str = strings.ToLower(
+			strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""),
+		)
 	}
 
 	return str[:n], nil

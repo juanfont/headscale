@@ -766,7 +766,10 @@ func (h *Headscale) setLastStateChangeToNow(namespaces ...string) {
 	if len(namespaces) == 0 {
 		namespaces, err = h.ListNamespacesStr()
 		if err != nil {
-			log.Error().Caller().Err(err).Msg("failed to fetch all namespaces, failing to update last changed state.")
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("failed to fetch all namespaces, failing to update last changed state.")
 		}
 	}
 

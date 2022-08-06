@@ -64,7 +64,7 @@ var listAclsCmd = &cobra.Command{
 				output,
 			)
 
-			return 
+			return
 		}
 
 		SuccessOutput(

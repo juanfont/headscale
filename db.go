@@ -111,7 +111,6 @@ func (h *Headscale) initDB() error {
 						Err(err).
 						Msg("Failed to save normalized machine name in DB migration")
 				}
-
 			}
 		}
 	}

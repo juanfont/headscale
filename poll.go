@@ -278,7 +278,11 @@ func (h *Headscale) PollNetMapStream(
 			return
 		}
 
-		ctx := context.WithValue(ctx.Request.Context(), machineNameContextKey, machine.Hostname)
+		ctx := context.WithValue(
+			ctx.Request.Context(),
+			machineNameContextKey,
+			machine.Hostname,
+		)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()

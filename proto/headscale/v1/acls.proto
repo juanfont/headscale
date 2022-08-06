@@ -3,11 +3,11 @@ package headscale.v1;
 option  go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 message ACLPolicy {
-    map<string,Group> groups = 1;
-    map<string,string>  hosts  = 2; 
-    map<string,TagOwners> tag_owners = 3;
-    repeated ACL acls = 4;
-    repeated ACLTest acl_test = 5;
+    map<string, Group>     groups     = 1;
+    map<string, string>    hosts      = 2;
+    map<string, TagOwners> tag_owners = 3;
+    repeated ACL           acls       = 4;
+    repeated ACLTest       acl_test   = 5;
 }
 
 message Group {
@@ -19,16 +19,16 @@ message TagOwners {
 }
 
 message ACL {
-    string action = 1;
-    string protocol = 2;
-    repeated string sources = 3;
+    string          action       = 1;
+    string          protocol     = 2;
+    repeated string sources      = 3;
     repeated string destinations = 4;
 }
 
 message ACLTest {
-    string source = 1;
+    string          source = 1;
     repeated string accept = 2;
-    repeated string deny = 3;
+    repeated string deny   = 3;
 }
 
 message ListACLPolicyRequest {
