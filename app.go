@@ -18,6 +18,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -54,12 +55,13 @@ const (
 )
 
 const (
-	AuthPrefix         = "Bearer "
-	Postgres           = "postgres"
-	Sqlite             = "sqlite3"
-	updateInterval     = 5000
-	HTTPReadTimeout    = 30 * time.Second
-	privateKeyFileMode = 0o600
+	AuthPrefix          = "Bearer "
+	Postgres            = "postgres"
+	Sqlite              = "sqlite3"
+	updateInterval      = 5000
+	HTTPReadTimeout     = 30 * time.Second
+	HTTPShutdownTimeout = 3 * time.Second
+	privateKeyFileMode  = 0o600
 
 	registerCacheExpiration = time.Minute * 15
 	registerCacheCleanup    = time.Minute * 20
@@ -92,6 +94,8 @@ type Headscale struct {
 	registrationCache *cache.Cache
 
 	ipAllocationMutex sync.Mutex
+
+	shutdownChan chan struct{}
 }
 
 // Look up the TLS constant relative to user-supplied TLS client
@@ -326,48 +330,74 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	return handler(ctx, req)
 }
 
-func (h *Headscale) httpAuthenticationMiddleware(ctx *gin.Context) {
-	log.Trace().
-		Caller().
-		Str("client_address", ctx.ClientIP()).
-		Msg("HTTP authentication invoked")
-
-	authHeader := ctx.GetHeader("authorization")
-
-	if !strings.HasPrefix(authHeader, AuthPrefix) {
-		log.Error().
+func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		req *http.Request,
+	) {
+		log.Trace().
 			Caller().
-			Str("client_address", ctx.ClientIP()).
-			Msg(`missing "Bearer " prefix in "Authorization" header`)
-		ctx.AbortWithStatus(http.StatusUnauthorized)
+			Str("client_address", req.RemoteAddr).
+			Msg("HTTP authentication invoked")
 
-		return
-	}
+		authHeader := req.Header.Get("authorization")
 
-	valid, err := h.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Str("client_address", ctx.ClientIP()).
-			Msg("failed to validate token")
+		if !strings.HasPrefix(authHeader, AuthPrefix) {
+			log.Error().
+				Caller().
+				Str("client_address", req.RemoteAddr).
+				Msg(`missing "Bearer " prefix in "Authorization" header`)
+			writer.WriteHeader(http.StatusUnauthorized)
+			_, err := writer.Write([]byte("Unauthorized"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 
-		ctx.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
 
-		return
-	}
+		valid, err := h.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Str("client_address", req.RemoteAddr).
+				Msg("failed to validate token")
 
-	if !valid {
-		log.Info().
-			Str("client_address", ctx.ClientIP()).
-			Msg("invalid token")
+			writer.WriteHeader(http.StatusInternalServerError)
+			_, err := writer.Write([]byte("Unauthorized"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
 
-		ctx.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
 
-		return
-	}
+		if !valid {
+			log.Info().
+				Str("client_address", req.RemoteAddr).
+				Msg("invalid token")
 
-	ctx.Next()
+			writer.WriteHeader(http.StatusUnauthorized)
+			_, err := writer.Write([]byte("Unauthorized"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
+
+			return
+		}
+
+		next.ServeHTTP(writer, req)
+	})
 }
 
 // ensureUnixSocketIsAbsent will check if the given path for headscales unix socket is clear
@@ -390,39 +420,48 @@ func (h *Headscale) createPrometheusRouter() *gin.Engine {
 	return promRouter
 }
 
-func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *gin.Engine {
-	router := gin.Default()
+func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
+	router := mux.NewRouter()
 
-	router.GET(
+	router.HandleFunc(
 		"/health",
-		func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"healthy": "ok"}) },
-	)
-	router.GET("/key", h.KeyHandler)
-	router.GET("/register", h.RegisterWebAPI)
-	router.POST("/machine/:id/map", h.PollNetMapHandler)
-	router.POST("/machine/:id", h.RegistrationHandler)
-	router.GET("/oidc/register/:mkey", h.RegisterOIDC)
-	router.GET("/oidc/callback", h.OIDCCallback)
-	router.GET("/apple", h.AppleConfigMessage)
-	router.GET("/apple/:platform", h.ApplePlatformConfig)
-	router.GET("/windows", h.WindowsConfigMessage)
-	router.GET("/windows/tailscale.reg", h.WindowsRegConfig)
-	router.GET("/swagger", SwaggerUI)
-	router.GET("/swagger/v1/openapiv2.json", SwaggerAPIv1)
+		func(writer http.ResponseWriter, req *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+			_, err := writer.Write([]byte("{\"healthy\": \"ok\"}"))
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
+		}).Methods(http.MethodGet)
+
+	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
+	router.HandleFunc("/register", h.RegisterWebAPI).Methods(http.MethodGet)
+	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).Methods(http.MethodPost)
+	router.HandleFunc("/machine/{mkey}", h.RegistrationHandler).Methods(http.MethodPost)
+	router.HandleFunc("/oidc/register/{mkey}", h.RegisterOIDC).Methods(http.MethodGet)
+	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
+	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
+	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).Methods(http.MethodGet)
+	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
+	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).Methods(http.MethodGet)
+	router.HandleFunc("/swagger", SwaggerUI).Methods(http.MethodGet)
+	router.HandleFunc("/swagger/v1/openapiv2.json", SwaggerAPIv1).Methods(http.MethodGet)
 
 	if h.cfg.DERP.ServerEnabled {
-		router.Any("/derp", h.DERPHandler)
-		router.Any("/derp/probe", h.DERPProbeHandler)
-		router.Any("/bootstrap-dns", h.DERPBootstrapDNSHandler)
+		router.HandleFunc("/derp", h.DERPHandler)
+		router.HandleFunc("/derp/probe", h.DERPProbeHandler)
+		router.HandleFunc("/bootstrap-dns", h.DERPBootstrapDNSHandler)
 	}
 
-	api := router.Group("/api")
+	api := router.PathPrefix("/api").Subrouter()
 	api.Use(h.httpAuthenticationMiddleware)
 	{
-		api.Any("/v1/*any", gin.WrapF(grpcMux.ServeHTTP))
+		api.HandleFunc("/v1/*any", grpcMux.ServeHTTP)
 	}
 
-	router.NoRoute(stdoutHandler)
+	router.PathPrefix("/").HandlerFunc(stdoutHandler)
 
 	return router
 }
@@ -630,6 +669,7 @@ func (h *Headscale) Serve() error {
 		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
 
 	// Handle common process-killing signals so we can gracefully shut down:
+	h.shutdownChan = make(chan struct{})
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGHUP,
@@ -667,9 +707,16 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
 
+				h.shutdownChan <- struct{}{}
+
 				// Gracefully shut down servers
-				promHTTPServer.Shutdown(ctx)
-				httpServer.Shutdown(ctx)
+				ctx, cancel := context.WithTimeout(context.Background(), HTTPShutdownTimeout)
+				if err := promHTTPServer.Shutdown(ctx); err != nil {
+					log.Error().Err(err).Msg("Failed to shutdown prometheus http")
+				}
+				if err := httpServer.Shutdown(ctx); err != nil {
+					log.Error().Err(err).Msg("Failed to shutdown http")
+				}
 				grpcSocket.GracefulStop()
 
 				// Close network listeners
@@ -680,7 +727,21 @@ func (h *Headscale) Serve() error {
 				// Stop listening (and unlink the socket if unix type):
 				socketListener.Close()
 
+				// Close db connections
+				db, err := h.db.DB()
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to get db handle")
+				}
+				err = db.Close()
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to close db")
+				}
+
+				log.Info().
+					Msg("Headscale stopped")
+
 				// And we're done:
+				cancel()
 				os.Exit(0)
 			}
 		}
@@ -814,13 +875,16 @@ func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
 	}
 }
 
-func stdoutHandler(ctx *gin.Context) {
-	body, _ := io.ReadAll(ctx.Request.Body)
+func stdoutHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	body, _ := io.ReadAll(req.Body)
 
 	log.Trace().
-		Interface("header", ctx.Request.Header).
-		Interface("proto", ctx.Request.Proto).
-		Interface("url", ctx.Request.URL).
+		Interface("header", req.Header).
+		Interface("proto", req.Proto).
+		Interface("url", req.URL).
 		Bytes("body", body).
 		Msg("Request did not match")
 }

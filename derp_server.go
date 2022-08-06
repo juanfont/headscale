@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/derp"
 	"tailscale.com/net/stun"
@@ -30,6 +30,7 @@ type DERPServer struct {
 }
 
 func (h *Headscale) NewDERPServer() (*DERPServer, error) {
+	log.Trace().Caller().Msg("Creating new embedded DERP server")
 	server := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
 	region, err := h.generateRegionLocalDERP()
 	if err != nil {
@@ -87,30 +88,48 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 	}
 	localDERPregion.Nodes[0].STUNPort = portSTUN
 
+	log.Info().Caller().Msgf("DERP region: %+v", localDERPregion)
+
 	return localDERPregion, nil
 }
 
-func (h *Headscale) DERPHandler(ctx *gin.Context) {
-	log.Trace().Caller().Msgf("/derp request from %v", ctx.ClientIP())
-	up := strings.ToLower(ctx.Request.Header.Get("Upgrade"))
+func (h *Headscale) DERPHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	log.Trace().Caller().Msgf("/derp request from %v", req.RemoteAddr)
+	up := strings.ToLower(req.Header.Get("Upgrade"))
 	if up != "websocket" && up != "derp" {
 		if up != "" {
 			log.Warn().Caller().Msgf("Weird websockets connection upgrade: %q", up)
 		}
-		ctx.String(http.StatusUpgradeRequired, "DERP requires connection upgrade")
+		writer.Header().Set("Content-Type", "text/plain")
+		writer.WriteHeader(http.StatusUpgradeRequired)
+		_, err := writer.Write([]byte("DERP requires connection upgrade"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
 
-	fastStart := ctx.Request.Header.Get(fastStartHeader) == "1"
+	fastStart := req.Header.Get(fastStartHeader) == "1"
 
-	hijacker, ok := ctx.Writer.(http.Hijacker)
+	hijacker, ok := writer.(http.Hijacker)
 	if !ok {
 		log.Error().Caller().Msg("DERP requires Hijacker interface from Gin")
-		ctx.String(
-			http.StatusInternalServerError,
-			"HTTP does not support general TCP support",
-		)
+		writer.Header().Set("Content-Type", "text/plain")
+		writer.WriteHeader(http.StatusInternalServerError)
+		_, err := writer.Write([]byte("HTTP does not support general TCP support"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
@@ -118,13 +137,19 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 	netConn, conn, err := hijacker.Hijack()
 	if err != nil {
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
-		ctx.String(
-			http.StatusInternalServerError,
-			"HTTP does not support general TCP support",
-		)
+		writer.Header().Set("Content-Type", "text/plain")
+		writer.WriteHeader(http.StatusInternalServerError)
+		_, err = writer.Write([]byte("HTTP does not support general TCP support"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 
 		return
 	}
+	log.Trace().Caller().Msgf("Hijacked connection from %v", req.RemoteAddr)
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()
@@ -143,12 +168,23 @@ func (h *Headscale) DERPHandler(ctx *gin.Context) {
 
 // DERPProbeHandler is the endpoint that js/wasm clients hit to measure
 // DERP latency, since they can't do UDP STUN queries.
-func (h *Headscale) DERPProbeHandler(ctx *gin.Context) {
-	switch ctx.Request.Method {
+func (h *Headscale) DERPProbeHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	switch req.Method {
 	case "HEAD", "GET":
-		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		writer.Header().Set("Access-Control-Allow-Origin", "*")
+		writer.WriteHeader(http.StatusOK)
 	default:
-		ctx.String(http.StatusMethodNotAllowed, "bogus probe method")
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		_, err := writer.Write([]byte("bogus probe method"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 	}
 }
 
@@ -159,15 +195,18 @@ func (h *Headscale) DERPProbeHandler(ctx *gin.Context) {
 // The initial implementation is here https://github.com/tailscale/tailscale/pull/1406
 // They have a cache, but not clear if that is really necessary at Headscale, uh, scale.
 // An example implementation is found here https://derp.tailscale.com/bootstrap-dns
-func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
+func (h *Headscale) DERPBootstrapDNSHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
 	dnsEntries := make(map[string][]net.IP)
 
 	resolvCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	var r net.Resolver
+	var resolver net.Resolver
 	for _, region := range h.DERPMap.Regions {
 		for _, node := range region.Nodes { // we don't care if we override some nodes
-			addrs, err := r.LookupIP(resolvCtx, "ip", node.HostName)
+			addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName)
 			if err != nil {
 				log.Trace().
 					Caller().
@@ -179,7 +218,15 @@ func (h *Headscale) DERPBootstrapDNSHandler(ctx *gin.Context) {
 			dnsEntries[node.HostName] = addrs
 		}
 	}
-	ctx.JSON(http.StatusOK, dnsEntries)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(writer).Encode(dnsEntries)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 // ServeSTUN starts a STUN server on the configured addr.

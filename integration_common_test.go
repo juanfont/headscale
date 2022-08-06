@@ -6,7 +6,10 @@ package headscale
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,9 +19,13 @@ import (
 	"inet.af/netaddr"
 )
 
-const DOCKER_EXECUTE_TIMEOUT = 10 * time.Second
+const (
+	DOCKER_EXECUTE_TIMEOUT = 10 * time.Second
+)
 
 var (
+	errEnvVarEmpty = errors.New("getenv: environment variable empty")
+
 	IpPrefix4 = netaddr.MustParseIPPrefix("100.64.0.0/10")
 	IpPrefix6 = netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48")
 
@@ -284,4 +291,26 @@ func getMagicFQDN(
 	}
 
 	return hostnames, nil
+}
+
+func GetEnvStr(key string) (string, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return v, errEnvVarEmpty
+	}
+
+	return v, nil
+}
+
+func GetEnvBool(key string) (bool, error) {
+	s, err := GetEnvStr(key)
+	if err != nil {
+		return false, err
+	}
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return false, err
+	}
+
+	return v, nil
 }
