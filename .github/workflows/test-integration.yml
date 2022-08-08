@@ -11,6 +11,11 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
+
       - name: Get changed files
         id: changed-files
         uses: tj-actions/changed-files@v14.1
