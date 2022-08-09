@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	errPreAuthKeyNotFound          = Error("AuthKey not found")
-	errPreAuthKeyExpired           = Error("AuthKey expired")
-	errSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
-	errNamespaceMismatch           = Error("namespace mismatch")
+	ErrPreAuthKeyNotFound          = Error("AuthKey not found")
+	ErrPreAuthKeyExpired           = Error("AuthKey expired")
+	ErrSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
+	ErrNamespaceMismatch           = Error("namespace mismatch")
 )
 
 // PreAuthKey describes a pre-authorization key usable in a particular namespace.
@@ -92,7 +92,7 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 	}
 
 	if pak.Namespace.Name != namespace {
-		return nil, errNamespaceMismatch
+		return nil, ErrNamespaceMismatch
 	}
 
 	return pak, nil
@@ -135,11 +135,11 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
-		return nil, errPreAuthKeyNotFound
+		return nil, ErrPreAuthKeyNotFound
 	}
 
 	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
-		return nil, errPreAuthKeyExpired
+		return nil, ErrPreAuthKeyExpired
 	}
 
 	if pak.Reusable || pak.Ephemeral { // we don't need to check if has been used before
@@ -152,7 +152,7 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 	}
 
 	if len(machines) != 0 || pak.Used {
-		return nil, errSingleUseAuthKeyHasBeenUsed
+		return nil, ErrSingleUseAuthKeyHasBeenUsed
 	}
 
 	return &pak, nil
