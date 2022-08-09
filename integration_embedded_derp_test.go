@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -362,7 +361,7 @@ func (s *IntegrationDERPTestSuite) saveLog(
 
 	log.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
 
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		path.Join(basePath, resource.Container.Name+".stdout.log"),
 		[]byte(stdout.String()),
 		0o644,
@@ -371,7 +370,7 @@ func (s *IntegrationDERPTestSuite) saveLog(
 		return err
 	}
 
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		path.Join(basePath, resource.Container.Name+".stderr.log"),
 		[]byte(stdout.String()),
 		0o644,
