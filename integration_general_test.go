@@ -52,7 +52,7 @@ func TestIntegrationTestSuite(t *testing.T) {
 
 	s.namespaces = map[string]TestNamespace{
 		"thisspace": {
-			count:      5,
+			count:      10,
 			tailscales: make(map[string]dockertest.Resource),
 		},
 		"otherspace": {
