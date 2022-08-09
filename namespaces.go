@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	errNamespaceExists          = Error("Namespace already exists")
-	errNamespaceNotFound        = Error("Namespace not found")
-	errNamespaceNotEmptyOfNodes = Error("Namespace not empty: node(s) found")
-	errInvalidNamespaceName     = Error("Invalid namespace name")
+	ErrNamespaceExists          = Error("Namespace already exists")
+	ErrNamespaceNotFound        = Error("Namespace not found")
+	ErrNamespaceNotEmptyOfNodes = Error("Namespace not empty: node(s) found")
+	ErrInvalidNamespaceName     = Error("Invalid namespace name")
 )
 
 const (
@@ -47,7 +47,7 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 	}
 	namespace := Namespace{}
 	if err := h.db.Where("name = ?", name).First(&namespace).Error; err == nil {
-		return nil, errNamespaceExists
+		return nil, ErrNamespaceExists
 	}
 	namespace.Name = name
 	if err := h.db.Create(&namespace).Error; err != nil {
@@ -67,7 +67,7 @@ func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
 func (h *Headscale) DestroyNamespace(name string) error {
 	namespace, err := h.GetNamespace(name)
 	if err != nil {
-		return errNamespaceNotFound
+		return ErrNamespaceNotFound
 	}
 
 	machines, err := h.ListMachinesInNamespace(name)
@@ -75,7 +75,7 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		return err
 	}
 	if len(machines) > 0 {
-		return errNamespaceNotEmptyOfNodes
+		return ErrNamespaceNotEmptyOfNodes
 	}
 
 	keys, err := h.ListPreAuthKeys(name)
@@ -110,9 +110,9 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 	}
 	_, err = h.GetNamespace(newName)
 	if err == nil {
-		return errNamespaceExists
+		return ErrNamespaceExists
 	}
-	if !errors.Is(err, errNamespaceNotFound) {
+	if !errors.Is(err, ErrNamespaceNotFound) {
 		return err
 	}
 
@@ -132,7 +132,7 @@ func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
-		return nil, errNamespaceNotFound
+		return nil, ErrNamespaceNotFound
 	}
 
 	return &namespace, nil
@@ -272,7 +272,7 @@ func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
 			return "", fmt.Errorf(
 				"label %v is more than 63 chars: %w",
 				elt,
-				errInvalidNamespaceName,
+				ErrInvalidNamespaceName,
 			)
 		}
 	}
@@ -285,21 +285,21 @@ func CheckForFQDNRules(name string) error {
 		return fmt.Errorf(
 			"DNS segment must not be over 63 chars. %v doesn't comply with this rule: %w",
 			name,
-			errInvalidNamespaceName,
+			ErrInvalidNamespaceName,
 		)
 	}
 	if strings.ToLower(name) != name {
 		return fmt.Errorf(
 			"DNS segment should be lowercase. %v doesn't comply with this rule: %w",
 			name,
-			errInvalidNamespaceName,
+			ErrInvalidNamespaceName,
 		)
 	}
 	if invalidCharsInNamespaceRegex.MatchString(name) {
 		return fmt.Errorf(
 			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
 			name,
-			errInvalidNamespaceName,
+			ErrInvalidNamespaceName,
 		)
 	}
 

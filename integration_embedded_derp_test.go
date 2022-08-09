@@ -1,4 +1,4 @@
-//go:build integration
+//go:build integration_derp
 
 package headscale
 
@@ -28,9 +28,8 @@ import (
 )
 
 const (
-	headscaleHostname = "headscale-derp"
-	namespaceName     = "derpnamespace"
-	totalContainers   = 3
+	namespaceName   = "derpnamespace"
+	totalContainers = 3
 )
 
 type IntegrationDERPTestSuite struct {
@@ -134,15 +133,15 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
 	}
 
-	log.Println("Creating headscale container")
+	log.Println("Creating headscale container for DERP integration tests")
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
 		s.FailNow(fmt.Sprintf("Could not start headscale container: %s", err), "")
 	}
-	log.Println("Created headscale container to test DERP")
+	log.Println("Created headscale container for embedded DERP tests")
 
-	log.Println("Creating tailscale containers")
+	log.Println("Creating tailscale containers for embedded DERP tests")
 
 	for i := 0; i < totalContainers; i++ {
 		version := tailscaleVersions[i%len(tailscaleVersions)]
@@ -154,7 +153,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		s.tailscales[hostname] = *container
 	}
 
-	log.Println("Waiting for headscale to be ready")
+	log.Println("Waiting for headscale to be ready for embedded DERP tests")
 	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8443/tcp"))
 
 	if err := s.pool.Retry(func() error {
@@ -164,6 +163,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		client := &http.Client{Transport: insecureTransport}
 		resp, err := client.Get(url)
 		if err != nil {
+			fmt.Printf("headscale for embedded DERP tests is not ready: %s\n", err)
 			return err
 		}
 
@@ -179,7 +179,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		// https://github.com/stretchr/testify/issues/849
 		return // fmt.Errorf("Could not connect to headscale: %s", err)
 	}
-	log.Println("headscale container is ready")
+	log.Println("headscale container is ready for embedded DERP tests")
 
 	log.Printf("Creating headscale namespace: %s\n", namespaceName)
 	result, err := ExecuteCommand(

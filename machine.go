@@ -18,14 +18,14 @@ import (
 )
 
 const (
-	errMachineNotFound                  = Error("machine not found")
-	errMachineRouteIsNotAvailable       = Error("route is not available on machine")
-	errMachineAddressesInvalid          = Error("failed to parse machine addresses")
-	errMachineNotFoundRegistrationCache = Error(
+	ErrMachineNotFound                  = Error("machine not found")
+	ErrMachineRouteIsNotAvailable       = Error("route is not available on machine")
+	ErrMachineAddressesInvalid          = Error("failed to parse machine addresses")
+	ErrMachineNotFoundRegistrationCache = Error(
 		"machine not found in registration cache",
 	)
-	errCouldNotConvertMachineInterface = Error("failed to convert machine interface")
-	errHostnameTooLong                 = Error("Hostname too long")
+	ErrCouldNotConvertMachineInterface = Error("failed to convert machine interface")
+	ErrHostnameTooLong                 = Error("Hostname too long")
 	MachineGivenNameHashLength         = 8
 	MachineGivenNameTrimSize           = 2
 )
@@ -112,7 +112,7 @@ func (ma *MachineAddresses) Scan(destination interface{}) error {
 		return nil
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", errMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
 	}
 }
 
@@ -337,7 +337,7 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 		}
 	}
 
-	return nil, errMachineNotFound
+	return nil, ErrMachineNotFound
 }
 
 // GetMachineByID finds a Machine by ID and returns the Machine struct.
@@ -635,7 +635,7 @@ func (machine Machine) toNode(
 			return nil, fmt.Errorf(
 				"hostname %q is too long it cannot except 255 ASCII chars: %w",
 				hostname,
-				errHostnameTooLong,
+				ErrHostnameTooLong,
 			)
 		}
 	} else {
@@ -785,11 +785,11 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 
 			return machine, err
 		} else {
-			return nil, errCouldNotConvertMachineInterface
+			return nil, ErrCouldNotConvertMachineInterface
 		}
 	}
 
-	return nil, errMachineNotFoundRegistrationCache
+	return nil, ErrMachineNotFoundRegistrationCache
 }
 
 // RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
@@ -877,7 +877,7 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 			return fmt.Errorf(
 				"route (%s) is not available on node %s: %w",
 				machine.Hostname,
-				newRoute, errMachineRouteIsNotAvailable,
+				newRoute, ErrMachineRouteIsNotAvailable,
 			)
 		}
 	}
