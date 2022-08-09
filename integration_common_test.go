@@ -30,9 +30,10 @@ var (
 	IpPrefix6 = netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48")
 
 	tailscaleVersions = []string{
-		"head",
+		// "head",
 		// "unstable",
-		"1.26.0",
+		"1.28.0",
+		"1.26.2",
 		"1.24.2",
 		"1.22.2",
 		"1.20.4",
