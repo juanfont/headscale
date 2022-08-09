@@ -14,7 +14,7 @@ const (
 	apiPrefixLength = 7
 	apiKeyLength    = 32
 
-	errAPIKeyFailedToParse = Error("Failed to parse ApiKey")
+	ErrAPIKeyFailedToParse = Error("Failed to parse ApiKey")
 )
 
 // APIKey describes the datamodel for API keys used to remotely authenticate with
@@ -116,7 +116,7 @@ func (h *Headscale) ExpireAPIKey(key *APIKey) error {
 func (h *Headscale) ValidateAPIKey(keyStr string) (bool, error) {
 	prefix, hash, found := strings.Cut(keyStr, ".")
 	if !found {
-		return false, errAPIKeyFailedToParse
+		return false, ErrAPIKeyFailedToParse
 	}
 
 	key, err := h.GetAPIKey(prefix)

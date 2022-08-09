@@ -1,5 +1,4 @@
-//go:build integration
-// +build integration
+//go:build integration_general
 
 package headscale
 
@@ -251,15 +250,15 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		s.FailNow(fmt.Sprintf("Could not remove existing container before building test: %s", err), "")
 	}
 
-	log.Println("Creating headscale container")
+	log.Println("Creating headscale container for core integration tests")
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
-		s.FailNow(fmt.Sprintf("Could not start headscale container: %s", err), "")
+		s.FailNow(fmt.Sprintf("Could not start headscale container for core integration tests: %s", err), "")
 	}
-	log.Println("Created headscale container")
+	log.Println("Created headscale container for core integration tests")
 
-	log.Println("Creating tailscale containers")
+	log.Println("Creating tailscale containers for core integration tests")
 	for namespace, scales := range s.namespaces {
 		for i := 0; i < scales.count; i++ {
 			version := tailscaleVersions[i%len(tailscaleVersions)]
@@ -273,7 +272,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		}
 	}
 
-	log.Println("Waiting for headscale to be ready")
+	log.Println("Waiting for headscale to be ready for core integration tests")
 	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8080/tcp"))
 
 	if err := s.pool.Retry(func() error {
@@ -281,6 +280,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 		resp, err := http.Get(url)
 		if err != nil {
+			fmt.Printf("headscale for core integration test is not ready: %s\n", err)
 			return err
 		}
 
@@ -296,7 +296,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		// https://github.com/stretchr/testify/issues/849
 		return // fmt.Errorf("Could not connect to headscale: %s", err)
 	}
-	log.Println("headscale container is ready")
+	log.Println("headscale container is ready for core integration tests")
 
 	for namespace, scales := range s.namespaces {
 		log.Printf("Creating headscale namespace: %s\n", namespace)
