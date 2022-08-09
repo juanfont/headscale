@@ -1,5 +1,4 @@
 //go:build integration
-// +build integration
 
 package headscale
 
@@ -20,6 +19,7 @@ import (
 )
 
 const (
+	headscaleHostname      = "headscale-derp"
 	DOCKER_EXECUTE_TIMEOUT = 10 * time.Second
 )
 

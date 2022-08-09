@@ -1,4 +1,4 @@
-//go:build integration
+//go:build integration_derp
 
 package headscale
 
@@ -28,9 +28,8 @@ import (
 )
 
 const (
-	headscaleHostname = "headscale-derp"
-	namespaceName     = "derpnamespace"
-	totalContainers   = 3
+	namespaceName   = "derpnamespace"
+	totalContainers = 3
 )
 
 type IntegrationDERPTestSuite struct {
