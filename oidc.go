@@ -551,7 +551,7 @@ func (h *Headscale) findOrCreateNewNamespaceForOIDCCallback(
 	namespaceName string,
 ) (*Namespace, error) {
 	namespace, err := h.GetNamespace(namespaceName)
-	if errors.Is(err, errNamespaceNotFound) {
+	if errors.Is(err, ErrNamespaceNotFound) {
 		namespace, err = h.CreateNamespace(namespaceName)
 
 		if err != nil {

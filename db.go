@@ -248,7 +248,7 @@ func (hi *HostInfo) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), hi)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", errMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
 	}
 }
 
@@ -270,7 +270,7 @@ func (i *IPPrefixes) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), i)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", errMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
 	}
 }
 
@@ -292,7 +292,7 @@ func (i *StringList) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), i)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", errMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
 	}
 }
 
