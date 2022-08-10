@@ -112,8 +112,8 @@ func (h *Headscale) RegisterWebAPI(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	machineKeyStr := req.URL.Query().Get("key")
-	if machineKeyStr == "" {
+	nodeKeyStr := req.URL.Query().Get("key")
+	if nodeKeyStr == "" {
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
 		_, err := writer.Write([]byte("Wrong params"))
@@ -129,7 +129,7 @@ func (h *Headscale) RegisterWebAPI(
 
 	var content bytes.Buffer
 	if err := registerWebAPITemplate.Execute(&content, registerWebAPITemplateConfig{
-		Key: machineKeyStr,
+		Key: nodeKeyStr,
 	}); err != nil {
 		log.Error().
 			Str("func", "RegisterWebAPI").
@@ -251,7 +251,7 @@ func (h *Headscale) RegistrationHandler(
 		}
 
 		h.registrationCache.Set(
-			machineKeyStr,
+			newMachine.NodeKey,
 			newMachine,
 			registerCacheExpiration,
 		)

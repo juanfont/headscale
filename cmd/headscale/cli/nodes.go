@@ -108,7 +108,7 @@ var registerNodeCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting machine key from flag: %s", err),
+				fmt.Sprintf("Error getting node key from flag: %s", err),
 				output,
 			)
 

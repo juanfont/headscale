@@ -27,7 +27,7 @@ const (
 	errOIDCAllowedDomains      = Error("authenticated principal does not match any allowed domain")
 	errOIDCAllowedUsers        = Error("authenticated principal does not match any allowed user")
 	errOIDCInvalidMachineState = Error("requested machine state key expired before authorisation completed")
-	errOIDCMachineKeyMissing   = Error("could not get machine key from cache")
+	errOIDCNodeKeyMissing      = Error("could not get node key from cache")
 )
 
 type IDTokenClaims struct {
@@ -68,26 +68,26 @@ func (h *Headscale) initOIDC() error {
 }
 
 // RegisterOIDC redirects to the OIDC provider for authentication
-// Puts machine key in cache so the callback can retrieve it using the oidc state param
+// Puts node key in cache so the callback can retrieve it using the oidc state param
 // Listens in /oidc/register/:mKey.
 func (h *Headscale) RegisterOIDC(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-	machineKeyStr, ok := vars["mkey"]
-	if !ok || machineKeyStr == "" {
+	nodeKeyStr, ok := vars["nkey"]
+	if !ok || nodeKeyStr == "" {
 		log.Error().
 			Caller().
-			Msg("Missing machine key in URL")
-		http.Error(writer, "Missing machine key in URL", http.StatusBadRequest)
+			Msg("Missing node key in URL")
+		http.Error(writer, "Missing node key in URL", http.StatusBadRequest)
 
 		return
 	}
 
 	log.Trace().
 		Caller().
-		Str("machine_key", machineKeyStr).
+		Str("node_key", nodeKeyStr).
 		Msg("Received oidc register call")
 
 	randomBlob := make([]byte, randomByteSize)
@@ -102,8 +102,8 @@ func (h *Headscale) RegisterOIDC(
 
 	stateStr := hex.EncodeToString(randomBlob)[:32]
 
-	// place the machine key into the state cache, so it can be retrieved later
-	h.registrationCache.Set(stateStr, machineKeyStr, registerCacheExpiration)
+	// place the node key into the state cache, so it can be retrieved later
+	h.registrationCache.Set(stateStr, nodeKeyStr, registerCacheExpiration)
 
 	// Add any extra parameter provided in the configuration to the Authorize Endpoint request
 	extras := make([]oauth2.AuthCodeOption, 0, len(h.cfg.OIDC.ExtraParams))
@@ -178,7 +178,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	machineKey, machineExists, err := h.validateMachineForOIDCCallback(writer, state, claims)
+	nodeKey, machineExists, err := h.validateMachineForOIDCCallback(writer, state, claims)
 	if err != nil || machineExists {
 		return
 	}
@@ -196,7 +196,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	if err := h.registerMachineForOIDCCallback(writer, namespace, machineKey); err != nil {
+	if err := h.registerMachineForOIDCCallback(writer, namespace, nodeKey); err != nil {
 		return
 	}
 
@@ -401,7 +401,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 	writer http.ResponseWriter,
 	state string,
 	claims *IDTokenClaims,
-) (*key.MachinePublic, bool, error) {
+) (*key.NodePublic, bool, error) {
 	// retrieve machinekey from state cache
 	machineKeyIf, machineKeyFound := h.registrationCache.Get(state)
 	if !machineKeyFound {
@@ -420,14 +420,14 @@ func (h *Headscale) validateMachineForOIDCCallback(
 		return nil, false, errOIDCInvalidMachineState
 	}
 
-	var machineKey key.MachinePublic
-	machineKeyFromCache, machineKeyOK := machineKeyIf.(string)
-	err := machineKey.UnmarshalText(
-		[]byte(MachinePublicKeyEnsurePrefix(machineKeyFromCache)),
+	var nodeKey key.NodePublic
+	nodeKeyFromCache, nodeKeyOK := machineKeyIf.(string)
+	err := nodeKey.UnmarshalText(
+		[]byte(NodePublicKeyEnsurePrefix(nodeKeyFromCache)),
 	)
 	if err != nil {
 		log.Error().
-			Msg("could not parse machine public key")
+			Msg("could not parse node public key")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
 		_, werr := writer.Write([]byte("could not parse public key"))
@@ -441,11 +441,11 @@ func (h *Headscale) validateMachineForOIDCCallback(
 		return nil, false, err
 	}
 
-	if !machineKeyOK {
-		log.Error().Msg("could not get machine key from cache")
+	if !nodeKeyOK {
+		log.Error().Msg("could not get node key from cache")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		_, err := writer.Write([]byte("could not get machine key from cache"))
+		_, err := writer.Write([]byte("could not get node key from cache"))
 		if err != nil {
 			log.Error().
 				Caller().
@@ -453,14 +453,14 @@ func (h *Headscale) validateMachineForOIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return nil, false, errOIDCMachineKeyMissing
+		return nil, false, errOIDCNodeKeyMissing
 	}
 
 	// retrieve machine information if it exist
 	// The error is not important, because if it does not
 	// exist, then this is a new machine and we will move
 	// on to registration.
-	machine, _ := h.GetMachineByMachineKey(machineKey)
+	machine, _ := h.GetMachineByNodeKey(nodeKey)
 
 	if machine != nil {
 		log.Trace().
@@ -516,7 +516,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 		return nil, true, nil
 	}
 
-	return &machineKey, false, nil
+	return &nodeKey, false, nil
 }
 
 func getNamespaceName(
@@ -596,12 +596,12 @@ func (h *Headscale) findOrCreateNewNamespaceForOIDCCallback(
 func (h *Headscale) registerMachineForOIDCCallback(
 	writer http.ResponseWriter,
 	namespace *Namespace,
-	machineKey *key.MachinePublic,
+	nodeKey *key.NodePublic,
 ) error {
-	machineKeyStr := MachinePublicKeyStripPrefix(*machineKey)
+	nodeKeyStr := NodePublicKeyStripPrefix(*nodeKey)
 
 	if _, err := h.RegisterMachineFromAuthCallback(
-		machineKeyStr,
+		nodeKeyStr,
 		namespace.Name,
 		RegisterMethodOIDC,
 	); err != nil {
