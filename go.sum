@@ -787,8 +787,8 @@ github.com/pterm/pterm v0.12.36/go.mod h1:NjiL09hFhT/vWjQHSj1athJpx6H8cjpHXNAK5b
 github.com/pterm/pterm v0.12.40/go.mod h1:ffwPLwlbXxP+rxT0GsgDTzS3y3rmpAO1NMjUkGTYf8s=
 github.com/pterm/pterm v0.12.45 h1:5HATKLTDjl9D74b0x7yiHzFI7OADlSXK3yHrJNhRwZE=
 github.com/pterm/pterm v0.12.45/go.mod h1:hJgLlBafm45w/Hr0dKXxY//POD7CgowhePaG1sdPNBg=
-github.com/puzpuzpuz/xsync v1.2.1 h1:faRb6HT9XN3IAhnE7IP0TnPpokPK42qFKXkhQVkWNwM=
-github.com/puzpuzpuz/xsync v1.2.1/go.mod h1:K98BYhX3k1dQ2M63t1YNVDanbwUPmBCAhNmVrrxfiGg=
+github.com/puzpuzpuz/xsync v1.4.2 h1:3SmMNFuNaSHy1xsGGR8edy3Rzv0Ix3dOirPWtAnXvKk=
+github.com/puzpuzpuz/xsync v1.4.2/go.mod h1:K98BYhX3k1dQ2M63t1YNVDanbwUPmBCAhNmVrrxfiGg=
 github.com/quasilyte/go-consistent v0.0.0-20190521200055-c6f3937de18c/go.mod h1:5STLWrekHfjyYwxBRVRXNOSewLJ3PWfDJd1VyTS21fI=
 github.com/quasilyte/go-ruleguard v0.3.1-0.20210203134552-1b5a410e1cc8/go.mod h1:KsAh3x0e7Fkpgs+Q9pNLS5XpFSvYCEVl5gP9Pp1xp30=
 github.com/quasilyte/go-ruleguard v0.3.13/go.mod h1:Ul8wwdqR6kBVOCt2dipDBkE+T6vAV/iixkrKuRTN1oQ=

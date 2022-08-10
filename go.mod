@@ -20,7 +20,7 @@ require (
 	github.com/prometheus/client_golang v1.13.0
 	github.com/prometheus/common v0.37.0
 	github.com/pterm/pterm v0.12.45
-	github.com/puzpuzpuz/xsync v1.2.1
+	github.com/puzpuzpuz/xsync v1.4.2
 	github.com/rs/zerolog v1.27.0
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
