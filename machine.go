@@ -362,7 +362,7 @@ func (h *Headscale) GetMachineByMachineKey(
 	return &m, nil
 }
 
-// GetMachineByNodeKey finds a Machine by its current NodeKey
+// GetMachineByNodeKey finds a Machine by its current NodeKey.
 func (h *Headscale) GetMachineByNodeKey(
 	nodeKey key.NodePublic,
 ) (*Machine, error) {
