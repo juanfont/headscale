@@ -417,7 +417,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/register", h.RegisterWebAPI).Methods(http.MethodGet)
+	router.HandleFunc("/register/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
 	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).Methods(http.MethodPost)
 	router.HandleFunc("/machine/{mkey}", h.RegistrationHandler).Methods(http.MethodPost)
 	router.HandleFunc("/oidc/register/{mkey}", h.RegisterOIDC).Methods(http.MethodGet)
