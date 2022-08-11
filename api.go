@@ -21,6 +21,7 @@ import (
 )
 
 const (
+	registrationHoldoff                      = time.Second * 5 // TODO(juan): remove this once https://github.com/juanfont/headscale/issues/727 is fixed
 	reservedResponseHeaderSize               = 4
 	RegisterMethodAuthKey                    = "authkey"
 	RegisterMethodOIDC                       = "oidc"
@@ -237,9 +238,15 @@ func (h *Headscale) RegistrationHandler(
 					Str("Followup", registerRequest.Followup).
 					Msg("Machine is waiting for interactive login")
 
-				h.handleMachineRegistrationNew(writer, req, machineKey, registerRequest)
+				ticker := time.NewTicker(registrationHoldoff)
+				select {
+				case <-req.Context().Done():
+					return
+				case <-ticker.C:
+					h.handleMachineRegistrationNew(writer, req, machineKey, registerRequest)
 
-				return
+					return
+				}
 			}
 		}
 
