@@ -108,6 +108,9 @@ var registerWebAPITemplate = template.Must(
 
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
 // Listens in /register/:nkey.
+//
+// This is not part of the Tailscale control API, as we could send whatever URL
+// in the RegisterResponse.AuthURL field.
 func (h *Headscale) RegisterWebAPI(
 	writer http.ResponseWriter,
 	req *http.Request,
