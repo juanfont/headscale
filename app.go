@@ -692,7 +692,10 @@ func (h *Headscale) Serve() error {
 				h.pollNetMapStreamWG.Wait()
 
 				// Gracefully shut down servers
-				ctx, cancel := context.WithTimeout(context.Background(), HTTPShutdownTimeout)
+				ctx, cancel := context.WithTimeout(
+					context.Background(),
+					HTTPShutdownTimeout,
+				)
 				if err := promHTTPServer.Shutdown(ctx); err != nil {
 					log.Error().Err(err).Msg("Failed to shutdown prometheus http")
 				}
@@ -819,7 +822,10 @@ func (h *Headscale) setLastStateChangeToNow(namespaces ...string) {
 	if len(namespaces) == 0 {
 		namespaces, err = h.ListNamespacesStr()
 		if err != nil {
-			log.Error().Caller().Err(err).Msg("failed to fetch all namespaces, failing to update last changed state.")
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("failed to fetch all namespaces, failing to update last changed state.")
 		}
 	}
 

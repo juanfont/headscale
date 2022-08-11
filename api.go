@@ -305,7 +305,8 @@ func (h *Headscale) RegistrationHandler(
 		if machine.NodeKey == NodePublicKeyStripPrefix(registerRequest.NodeKey) {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
-			if !registerRequest.Expiry.IsZero() && registerRequest.Expiry.UTC().Before(now) {
+			if !registerRequest.Expiry.IsZero() &&
+				registerRequest.Expiry.UTC().Before(now) {
 				h.handleMachineLogOut(writer, req, machineKey, *machine)
 
 				return
@@ -323,7 +324,13 @@ func (h *Headscale) RegistrationHandler(
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
 		if machine.NodeKey == NodePublicKeyStripPrefix(registerRequest.OldNodeKey) &&
 			!machine.isExpired() {
-			h.handleMachineRefreshKey(writer, req, machineKey, registerRequest, *machine)
+			h.handleMachineRefreshKey(
+				writer,
+				req,
+				machineKey,
+				registerRequest,
+				*machine,
+			)
 
 			return
 		}

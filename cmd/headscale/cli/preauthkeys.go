@@ -164,7 +164,9 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		expiration := time.Now().UTC().Add(time.Duration(duration))
 
-		log.Trace().Dur("expiration", time.Duration(duration)).Msg("expiration has been set")
+		log.Trace().
+			Dur("expiration", time.Duration(duration)).
+			Msg("expiration has been set")
 
 		request.Expiration = timestamppb.New(expiration)
 
