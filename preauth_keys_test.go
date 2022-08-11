@@ -44,13 +44,13 @@ func (*Suite) TestExpiredPreAuthKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errPreAuthKeyExpired)
+	c.Assert(err, check.Equals, ErrPreAuthKeyExpired)
 	c.Assert(key, check.IsNil)
 }
 
 func (*Suite) TestPreAuthKeyDoesNotExist(c *check.C) {
 	key, err := app.checkKeyValidity("potatoKey")
-	c.Assert(err, check.Equals, errPreAuthKeyNotFound)
+	c.Assert(err, check.Equals, ErrPreAuthKeyNotFound)
 	c.Assert(key, check.IsNil)
 }
 
@@ -86,7 +86,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	app.db.Save(&machine)
 
 	key, err := app.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errSingleUseAuthKeyHasBeenUsed)
+	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
 	c.Assert(key, check.IsNil)
 }
 
@@ -174,7 +174,7 @@ func (*Suite) TestExpirePreauthKey(c *check.C) {
 	c.Assert(pak.Expiration, check.NotNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errPreAuthKeyExpired)
+	c.Assert(err, check.Equals, ErrPreAuthKeyExpired)
 	c.Assert(key, check.IsNil)
 }
 
@@ -188,5 +188,5 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	app.db.Save(&pak)
 
 	_, err = app.checkKeyValidity(pak.Key)
-	c.Assert(err, check.Equals, errSingleUseAuthKeyHasBeenUsed)
+	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
 }

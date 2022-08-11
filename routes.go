@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	errRouteIsNotAvailable = Error("route is not available")
+	ErrRouteIsNotAvailable = Error("route is not available")
 )
 
 // Deprecated: use machine function instead
@@ -106,7 +106,7 @@ func (h *Headscale) EnableNodeRoute(
 	}
 
 	if !available {
-		return errRouteIsNotAvailable
+		return ErrRouteIsNotAvailable
 	}
 
 	machine.EnabledRoutes = enabledRoutes

@@ -24,14 +24,16 @@ dev: lint test build
 test:
 	@go test -coverprofile=coverage.out ./...
 
-test_integration:
-	go test -failfast -tags integration -timeout 30m -count=1 ./...
+test_integration: test_integration_cli test_integration_derp test_integration_general
 
 test_integration_cli:
-	go test -tags integration -v integration_cli_test.go integration_common_test.go
+	go test -failfast -tags integration_cli,integration -timeout 30m -count=1 ./...
 
 test_integration_derp:
-	go test -tags integration -v integration_embedded_derp_test.go integration_common_test.go
+	go test -failfast -tags integration_derp,integration -timeout 30m -count=1 ./...
+
+test_integration_general:
+	go test -failfast -tags integration_general,integration -timeout 30m -count=1 ./...
 
 coverprofile_func:
 	go tool cover -func=coverage.out

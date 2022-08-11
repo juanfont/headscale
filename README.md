@@ -67,15 +67,15 @@ one of the maintainers.
 
 ## Client OS support
 
-| OS      | Supports headscale                                                                                                |
-| ------- | ----------------------------------------------------------------------------------------------------------------- |
-| Linux   | Yes                                                                                                               |
-| OpenBSD | Yes                                                                                                               |
-| FreeBSD | Yes                                                                                                               |
-| macOS   | Yes (see `/apple` on your headscale for more information)                                                         |
-| Windows | Yes [docs](./docs/windows-client.md)                                                                              |
-| Android | [You need to compile the client yourself](https://github.com/juanfont/headscale/issues/58#issuecomment-885255270) |
-| iOS     | Not yet                                                                                                           |
+| OS      | Supports headscale                                        |
+| ------- | --------------------------------------------------------- |
+| Linux   | Yes                                                       |
+| OpenBSD | Yes                                                       |
+| FreeBSD | Yes                                                       |
+| macOS   | Yes (see `/apple` on your headscale for more information) |
+| Windows | Yes [docs](./docs/windows-client.md)                      |
+| Android | Yes [docs](./docs/android-client.md)                      |
+| iOS     | Not yet                                                   |
 
 ## Running headscale
 

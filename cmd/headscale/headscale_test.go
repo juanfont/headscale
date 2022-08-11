@@ -2,7 +2,6 @@ package main
 
 import (
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,7 @@ func (s *Suite) TearDownSuite(c *check.C) {
 }
 
 func (*Suite) TestConfigFileLoading(c *check.C) {
-	tmpDir, err := ioutil.TempDir("", "headscale")
+	tmpDir, err := os.MkdirTemp("", "headscale")
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -73,7 +72,7 @@ func (*Suite) TestConfigFileLoading(c *check.C) {
 }
 
 func (*Suite) TestConfigLoading(c *check.C) {
-	tmpDir, err := ioutil.TempDir("", "headscale")
+	tmpDir, err := os.MkdirTemp("", "headscale")
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -117,7 +116,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 }
 
 func (*Suite) TestDNSConfigLoading(c *check.C) {
-	tmpDir, err := ioutil.TempDir("", "headscale")
+	tmpDir, err := os.MkdirTemp("", "headscale")
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -152,14 +151,14 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 func writeConfig(c *check.C, tmpDir string, configYaml []byte) {
 	// Populate a custom config file
 	configFile := filepath.Join(tmpDir, "config.yaml")
-	err := ioutil.WriteFile(configFile, configYaml, 0o600)
+	err := os.WriteFile(configFile, configYaml, 0o600)
 	if err != nil {
 		c.Fatalf("Couldn't write file %s", configFile)
 	}
 }
 
 func (*Suite) TestTLSConfigValidation(c *check.C) {
-	tmpDir, err := ioutil.TempDir("", "headscale")
+	tmpDir, err := os.MkdirTemp("", "headscale")
 	if err != nil {
 		c.Fatal(err)
 	}
