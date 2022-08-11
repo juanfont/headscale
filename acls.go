@@ -421,9 +421,9 @@ func excludeCorrectlyTaggedNodes(
 ) []Machine {
 	out := []Machine{}
 	tags := []string{}
-	for tag, ns := range aclPolicy.TagOwners {
+	for tag := range aclPolicy.TagOwners {
 		owners, _ := expandTagOwners(aclPolicy, namespace, stripEmailDomain)
-		ns = append(owners, namespace)
+		ns := append(owners, namespace)
 		if contains(ns, namespace) {
 			tags = append(tags, tag)
 		}
