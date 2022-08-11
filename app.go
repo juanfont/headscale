@@ -420,7 +420,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router.HandleFunc("/register/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
 	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).Methods(http.MethodPost)
 	router.HandleFunc("/machine/{mkey}", h.RegistrationHandler).Methods(http.MethodPost)
-	router.HandleFunc("/oidc/register/{mkey}", h.RegisterOIDC).Methods(http.MethodGet)
+	router.HandleFunc("/oidc/register/{nkey}", h.RegisterOIDC).Methods(http.MethodGet)
 	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).Methods(http.MethodGet)

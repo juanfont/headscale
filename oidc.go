@@ -68,8 +68,8 @@ func (h *Headscale) initOIDC() error {
 }
 
 // RegisterOIDC redirects to the OIDC provider for authentication
-// Puts node key in cache so the callback can retrieve it using the oidc state param
-// Listens in /oidc/register/:mKey.
+// Puts NodeKey in cache so the callback can retrieve it using the oidc state param
+// Listens in /oidc/register/:nKey.
 func (h *Headscale) RegisterOIDC(
 	writer http.ResponseWriter,
 	req *http.Request,
@@ -135,7 +135,7 @@ var oidcCallbackTemplate = template.Must(
 )
 
 // OIDCCallback handles the callback from the OIDC endpoint
-// Retrieves the mkey from the state cache and adds the machine to the users email namespace
+// Retrieves the nkey from the state cache and adds the machine to the users email namespace
 // TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
 // TODO: Add groups information from OIDC tokens into machine HostInfo
 // Listens in /oidc/callback.
