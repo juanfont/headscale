@@ -227,7 +227,6 @@ func getIPs(
 func getDNSNames(
 	headscale *dockertest.Resource,
 ) ([]string, error) {
-
 	listAllResult, err := ExecuteCommand(
 		headscale,
 		[]string{
@@ -261,7 +260,6 @@ func getDNSNames(
 func getMagicFQDN(
 	headscale *dockertest.Resource,
 ) ([]string, error) {
-
 	listAllResult, err := ExecuteCommand(
 		headscale,
 		[]string{
@@ -286,7 +284,11 @@ func getMagicFQDN(
 	hostnames := make([]string, len(listAll))
 
 	for index := range listAll {
-		hostnames[index] = fmt.Sprintf("%s.%s.headscale.net", listAll[index].GetGivenName(), listAll[index].GetNamespace().GetName())
+		hostnames[index] = fmt.Sprintf(
+			"%s.%s.headscale.net",
+			listAll[index].GetGivenName(),
+			listAll[index].GetNamespace().GetName(),
+		)
 	}
 
 	return hostnames, nil

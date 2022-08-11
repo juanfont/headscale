@@ -325,7 +325,9 @@ func (h *Headscale) ApplePlatformConfig(
 	default:
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
-		_, err := writer.Write([]byte("Invalid platform, only ios and macos is supported"))
+		_, err := writer.Write(
+			[]byte("Invalid platform, only ios and macos is supported"),
+		)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -362,7 +364,8 @@ func (h *Headscale) ApplePlatformConfig(
 		return
 	}
 
-	writer.Header().Set("Content-Type", "application/x-apple-aspen-config; charset=utf-8")
+	writer.Header().
+		Set("Content-Type", "application/x-apple-aspen-config; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 	_, err = writer.Write(content.Bytes())
 	if err != nil {
