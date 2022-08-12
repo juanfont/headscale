@@ -254,9 +254,9 @@ func (h *Headscale) RegistrationHandler(
 		log.Info().
 			Caller().
 			Str("machine", registerRequest.Hostinfo.Hostname).
-			Str("NodeKey", registerRequest.NodeKey.ShortString()).
-			Str("OldNodeKey", registerRequest.OldNodeKey.ShortString()).
-			Str("Followup", registerRequest.Followup).
+			Str("node_key", registerRequest.NodeKey.ShortString()).
+			Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
+			Str("follow_up", registerRequest.Followup).
 			Msg("New machine not yet in the database")
 
 		givenName, err := h.GenerateGivenName(registerRequest.Hostinfo.Hostname)
