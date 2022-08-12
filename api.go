@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	registrationHoldoff                      = time.Second * 5 // TODO(juan): remove this once https://github.com/juanfont/headscale/issues/727 is fixed
+	// TODO(juan): remove this once https://github.com/juanfont/headscale/issues/727 is fixed
+	registrationHoldoff                      = time.Second * 5
 	reservedResponseHeaderSize               = 4
 	RegisterMethodAuthKey                    = "authkey"
 	RegisterMethodOIDC                       = "oidc"
