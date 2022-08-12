@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	keepAliveInterval   = 60 * time.Second
-	updateCheckInterval = 10 * time.Second
+	keepAliveInterval = 60 * time.Second
 )
 
 type contextKey string
@@ -291,11 +290,11 @@ func (h *Headscale) PollNetMapStream(
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
 ) {
-	ctx := context.WithValue(
-		ctx.Request.Context(),
-		machineNameContextKey,
-		machine.Hostname,
-	)
+	h.pollNetMapStreamWG.Add(1)
+	defer h.pollNetMapStreamWG.Done()
+
+	ctx := context.WithValue(req.Context(), machineNameContextKey, machine.Hostname)
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -643,7 +642,7 @@ func (h *Headscale) scheduledPollWorker(
 	machine *Machine,
 ) {
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
-	updateCheckerTicker := time.NewTicker(updateCheckInterval)
+	updateCheckerTicker := time.NewTicker(h.cfg.NodeUpdateCheckInterval)
 
 	defer closeChanWithLog(
 		updateChan,

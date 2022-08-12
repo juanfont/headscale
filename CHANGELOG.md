@@ -1,6 +1,13 @@
 # CHANGELOG
 
-## 0.16.0 (2022-xx-xx)
+## 0.17.0 (2022-xx-xx)
+
+- Updated dependencies (including the library that lacked armhf support) [#722](https://github.com/juanfont/headscale/pull/722)
+- Fix missing group expansion in function `excludeCorretlyTaggedNodes` [#563](https://github.com/juanfont/headscale/issues/563)
+
+## 0.16.0 (2022-07-25)
+
+**Note:** Take a backup of your database before upgrading.
 
 ### BREAKING
 
@@ -33,8 +40,10 @@
 - Add command to show current ACLs [#492](https://github.com/juanfont/headscale/issues/492)
 - Fix nodes being shown as 'offline' in `tailscale status` [#648](https://github.com/juanfont/headscale/pull/648)
 - Improve shutdown behaviour [#651](https://github.com/juanfont/headscale/pull/651)
-- Drop Gin as web framework in Headscale [#656](https://github.com/juanfont/headscale/pull/656)
-
+- Drop Gin as web framework in Headscale [648](https://github.com/juanfont/headscale/pull/648) [677](https://github.com/juanfont/headscale/pull/677)
+- Make tailnet node updates check interval configurable [#675](https://github.com/juanfont/headscale/pull/675)
+- Fix regression with HTTP API [#684](https://github.com/juanfont/headscale/pull/684)
+- nodes ls now print both Hostname and Name(Issue [#647](https://github.com/juanfont/headscale/issues/647) PR [#687](https://github.com/juanfont/headscale/pull/687))
 
 ## 0.15.0 (2022-03-20)
 

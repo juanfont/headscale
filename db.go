@@ -1,6 +1,7 @@
 package headscale
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -220,6 +221,17 @@ func (h *Headscale) setValue(key string, value string) error {
 	return nil
 }
 
+func (h *Headscale) pingDB() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	db, err := h.db.DB()
+	if err != nil {
+		return err
+	}
+
+	return db.PingContext(ctx)
+}
+
 // This is a "wrapper" type around tailscales
 // Hostinfo to allow us to add database "serialization"
 // methods. This allows us to use a typed values throughout
@@ -236,7 +248,7 @@ func (hi *HostInfo) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), hi)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", errMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
 	}
 }
 
@@ -258,7 +270,7 @@ func (i *IPPrefixes) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), i)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", errMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
 	}
 }
 
@@ -280,7 +292,7 @@ func (i *StringList) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), i)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", errMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
 	}
 }
 

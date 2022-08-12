@@ -518,7 +518,7 @@ func expandAlias(
 
 	// if alias is a namespace
 	nodes := filterMachinesByNamespace(machines, alias)
-	nodes = excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias)
+	nodes = excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias, stripEmailDomain)
 
 	for _, n := range nodes {
 		ips = append(ips, n.IPAddresses.ToStringSlice()...)
@@ -556,10 +556,13 @@ func excludeCorrectlyTaggedNodes(
 	aclPolicy ACLPolicy,
 	nodes []Machine,
 	namespace string,
+	stripEmailDomain bool,
 ) []Machine {
 	out := []Machine{}
 	tags := []string{}
-	for tag, ns := range aclPolicy.TagOwners {
+	for tag := range aclPolicy.TagOwners {
+		owners, _ := expandTagOwners(aclPolicy, namespace, stripEmailDomain)
+		ns := append(owners, namespace)
 		if contains(ns, namespace) {
 			tags = append(tags, tag)
 		}

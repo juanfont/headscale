@@ -1,7 +1,6 @@
 package headscale
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -35,7 +34,7 @@ func (s *Suite) ResetDB(c *check.C) {
 		os.RemoveAll(tmpDir)
 	}
 	var err error
-	tmpDir, err = ioutil.TempDir("", "autoygg-client-test")
+	tmpDir, err = os.MkdirTemp("", "autoygg-client-test")
 	if err != nil {
 		c.Fatal(err)
 	}

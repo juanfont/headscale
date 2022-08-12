@@ -288,6 +288,49 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 	}
 }
 
+func (s *Suite) TestSetTags(c *check.C) {
+	namespace, err := app.CreateNamespace("test")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = app.GetMachine("test", "testmachine")
+	c.Assert(err, check.NotNil)
+
+	machine := &Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Hostname:       "testmachine",
+		NamespaceID:    namespace.ID,
+		RegisterMethod: RegisterMethodAuthKey,
+		AuthKeyID:      uint(pak.ID),
+	}
+	app.db.Save(machine)
+
+	// assign simple tags
+	sTags := []string{"tag:test", "tag:foo"}
+	err = app.SetTags(machine, sTags)
+	c.Assert(err, check.IsNil)
+	machine, err = app.GetMachine("test", "testmachine")
+	c.Assert(err, check.IsNil)
+	c.Assert(machine.ForcedTags, check.DeepEquals, StringList(sTags))
+
+	// assign duplicat tags, expect no errors but no doubles in DB
+	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
+	err = app.SetTags(machine, eTags)
+	c.Assert(err, check.IsNil)
+	machine, err = app.GetMachine("test", "testmachine")
+	c.Assert(err, check.IsNil)
+	c.Assert(
+		machine.ForcedTags,
+		check.DeepEquals,
+		StringList([]string{"tag:bar", "tag:test", "tag:unknown"}),
+	)
+}
+
 func Test_getTags(t *testing.T) {
 	type args struct {
 		aclPolicy        *ACLPolicy

@@ -30,6 +30,44 @@ const (
 	)
 )
 
+func (h *Headscale) HealthHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	respond := func(err error) {
+		writer.Header().Set("Content-Type", "application/health+json; charset=utf-8")
+
+		res := struct {
+			Status string `json:"status"`
+		}{
+			Status: "pass",
+		}
+
+		if err != nil {
+			writer.WriteHeader(http.StatusInternalServerError)
+			log.Error().Caller().Err(err).Msg("health check failed")
+			res.Status = "fail"
+		}
+
+		buf, err := json.Marshal(res)
+		if err != nil {
+			log.Error().Caller().Err(err).Msg("marshal failed")
+		}
+		_, err = writer.Write(buf)
+		if err != nil {
+			log.Error().Caller().Err(err).Msg("write failed")
+		}
+	}
+
+	if err := h.pingDB(); err != nil {
+		respond(err)
+
+		return
+	}
+
+	respond(nil)
+}
+
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
 func (h *Headscale) KeyHandler(
@@ -233,7 +271,8 @@ func (h *Headscale) RegistrationHandler(
 		if machine.NodeKey == NodePublicKeyStripPrefix(registerRequest.NodeKey) {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
-			if !registerRequest.Expiry.IsZero() && registerRequest.Expiry.UTC().Before(now) {
+			if !registerRequest.Expiry.IsZero() &&
+				registerRequest.Expiry.UTC().Before(now) {
 				h.handleMachineLogOut(writer, req, machineKey, *machine)
 
 				return
@@ -251,7 +290,13 @@ func (h *Headscale) RegistrationHandler(
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
 		if machine.NodeKey == NodePublicKeyStripPrefix(registerRequest.OldNodeKey) &&
 			!machine.isExpired() {
-			h.handleMachineRefreshKey(writer, req, machineKey, registerRequest, *machine)
+			h.handleMachineRefreshKey(
+				writer,
+				req,
+				machineKey,
+				registerRequest,
+				*machine,
+			)
 
 			return
 		}
