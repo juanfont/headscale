@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	// TODO(juan): remove this once https://github.com/juanfont/headscale/issues/727 is fixed
+	// TODO(juan): remove this once https://github.com/juanfont/headscale/issues/727 is fixed.
 	registrationHoldoff                      = time.Second * 5
 	reservedResponseHeaderSize               = 4
 	RegisterMethodAuthKey                    = "authkey"
@@ -221,7 +221,7 @@ func (h *Headscale) RegistrationHandler(
 			return
 		}
 
-		// Check if the node is waiting for interactive login
+		// Check if the node is waiting for interactive login.
 		//
 		// TODO(juan): We could use this field to improve our protocol implementation,
 		// and hold the request until the client closes it, or the interactive
