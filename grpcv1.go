@@ -159,7 +159,7 @@ func (api headscaleV1APIServer) RegisterMachine(
 ) (*v1.RegisterMachineResponse, error) {
 	log.Trace().
 		Str("namespace", request.GetNamespace()).
-		Str("machine_key", request.GetKey()).
+		Str("node_key", request.GetKey()).
 		Msg("Registering machine")
 
 	machine, err := api.h.RegisterMachineFromAuthCallback(
