@@ -375,6 +375,19 @@ func (h *Headscale) GetMachineByNodeKey(
 	return &machine, nil
 }
 
+// GetMachineByAnyNodeKey finds a Machine by its current NodeKey or the old one, and returns the Machine struct.
+func (h *Headscale) GetMachineByAnyNodeKey(
+	nodeKey key.NodePublic, oldNodeKey key.NodePublic,
+) (*Machine, error) {
+	machine := Machine{}
+	if result := h.db.Preload("Namespace").First(&machine, "node_key = ? OR node_key = ?",
+		NodePublicKeyStripPrefix(nodeKey), NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &machine, nil
+}
+
 // UpdateMachineFromDatabase takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
 func (h *Headscale) UpdateMachineFromDatabase(machine *Machine) error {
