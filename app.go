@@ -51,6 +51,10 @@ const (
 	errUnsupportedLetsEncryptChallengeType = Error(
 		"unknown value for Lets Encrypt challenge type",
 	)
+
+	ErrFailedPrivateKey      = Error("failed to read or create private key")
+	ErrFailedNoisePrivateKey = Error("failed to read or create Noise protocol private key")
+	ErrSamePrivateKeys       = Error("private key and noise private key are the same")
 )
 
 const (
@@ -123,16 +127,16 @@ func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
 func NewHeadscale(cfg *Config) (*Headscale, error) {
 	privateKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read or create private key: %w", err)
+		return nil, ErrFailedPrivateKey
 	}
 
 	noisePrivateKey, err := readOrCreatePrivateKey(cfg.NoisePrivateKeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read or create noise private key: %w", err)
+		return nil, ErrFailedNoisePrivateKey
 	}
 
 	if privateKey.Equal(*noisePrivateKey) {
-		return nil, fmt.Errorf("private key and noise private key are the same")
+		return nil, ErrSamePrivateKeys
 	}
 
 	var dbString string
