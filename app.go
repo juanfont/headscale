@@ -72,12 +72,13 @@ const (
 
 // Headscale represents the base app of the service.
 type Headscale struct {
-	cfg        *Config
-	db         *gorm.DB
-	dbString   string
-	dbType     string
-	dbDebug    bool
-	privateKey *key.MachinePrivate
+	cfg             *Config
+	db              *gorm.DB
+	dbString        string
+	dbType          string
+	dbDebug         bool
+	privateKey      *key.MachinePrivate
+	noisePrivateKey *key.MachinePrivate
 
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *DERPServer
@@ -120,9 +121,18 @@ func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
 }
 
 func NewHeadscale(cfg *Config) (*Headscale, error) {
-	privKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
+	privateKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read or create private key: %w", err)
+	}
+
+	noisePrivateKey, err := readOrCreatePrivateKey(cfg.NoisePrivateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read or create noise private key: %w", err)
+	}
+
+	if privateKey.Equal(*noisePrivateKey) {
+		return nil, fmt.Errorf("private key and noise private key are the same")
 	}
 
 	var dbString string
@@ -151,7 +161,8 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		cfg:                cfg,
 		dbType:             cfg.DBtype,
 		dbString:           dbString,
-		privateKey:         privKey,
+		privateKey:         privateKey,
+		noisePrivateKey:    noisePrivateKey,
 		aclRules:           tailcfg.FilterAllowAll, // default allowall
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
