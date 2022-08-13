@@ -466,7 +466,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 func (h *Headscale) createNoiseMux() *mux.Router {
 	router := mux.NewRouter()
 
-	//router.HandleFunc("/machine/register", h.NoiseRegistrationHandler).Methods(http.MethodPost)
+	router.HandleFunc("/machine/register", h.NoiseRegistrationHandler).Methods(http.MethodPost)
 	//router.HandleFunc("/machine/map", h.NoisePollNetMapHandler).Methods(http.MethodPost)
 
 	return router
