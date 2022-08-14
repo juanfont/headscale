@@ -143,7 +143,7 @@ func (h *Headscale) PollNetMapHandler(
 		}
 	}
 
-	data, err := h.getMapResponse(machineKey, mapRequest, machine)
+	data, err := h.getLegacyMapResponseData(machineKey, mapRequest, machine)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -491,7 +491,7 @@ func (h *Headscale) PollNetMapStream(
 					Time("last_successful_update", lastUpdate).
 					Time("last_state_change", h.getLastStateChange(machine.Namespace.Name)).
 					Msgf("There has been updates since the last successful update to %s", machine.Hostname)
-				data, err := h.getMapResponse(machineKey, mapRequest, machine)
+				data, err := h.getLegacyMapResponseData(machineKey, mapRequest, machine)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").
