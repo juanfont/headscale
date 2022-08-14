@@ -113,6 +113,7 @@ func (h *Headscale) getNoiseConnection(
 	if err != nil {
 		log.Error().Caller().Err(err).Msgf("Hijack failed")
 		http.Error(writer, "HTTP does not support general TCP support", http.StatusInternalServerError)
+
 		return nil, errCannotHijack
 	}
 	if err := conn.Flush(); err != nil {
@@ -123,12 +124,12 @@ func (h *Headscale) getNoiseConnection(
 
 	netConn = netutil.NewDrainBufConn(netConn, conn.Reader)
 
-	nc, err := controlbase.Server(req.Context(), netConn, *h.noisePrivateKey, init)
+	noiseConn, err := controlbase.Server(req.Context(), netConn, *h.noisePrivateKey, init)
 	if err != nil {
 		netConn.Close()
 
 		return nil, errNoiseHandshakeFailed
 	}
 
-	return nc, nil
+	return noiseConn, nil
 }

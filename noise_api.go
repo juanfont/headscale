@@ -22,6 +22,7 @@ func (h *Headscale) NoiseRegistrationHandler(
 	log.Trace().Caller().Msgf("Noise registration handler for client %s", req.RemoteAddr)
 	if req.Method != http.MethodPost {
 		http.Error(writer, "Wrong method", http.StatusMethodNotAllowed)
+
 		return
 	}
 	body, _ := io.ReadAll(req.Body)
@@ -296,8 +297,8 @@ func (h *Headscale) handleNoiseAuthKey(
 }
 
 func (h *Headscale) handleNoiseNodeValidRegistration(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
@@ -314,9 +315,9 @@ func (h *Headscale) handleNoiseNodeValidRegistration(
 
 	machineRegistrations.WithLabelValues("update", "web", "success", machine.Namespace.Name).
 		Inc()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	json.NewEncoder(writer).Encode(resp)
 }
 
 func (h *Headscale) handleNoiseMachineRegistrationNew(
