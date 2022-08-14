@@ -197,7 +197,13 @@ func (h *Headscale) handleNoiseAuthKey(
 
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(writer).Encode(resp)
+		err = json.NewEncoder(writer).Encode(resp)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to encode response")
+		}
 
 		log.Error().
 			Caller().
@@ -234,7 +240,16 @@ func (h *Headscale) handleNoiseAuthKey(
 
 		machine.NodeKey = nodeKey
 		machine.AuthKeyID = uint(pak.ID)
-		h.RefreshMachine(machine, registerRequest.Expiry)
+		err = h.RefreshMachine(machine, registerRequest.Expiry)
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("machine", machine.Hostname).
+				Err(err).
+				Msg("Failed to refresh machine")
+
+			return
+		}
 	} else {
 		now := time.Now().UTC()
 
@@ -277,7 +292,18 @@ func (h *Headscale) handleNoiseAuthKey(
 		}
 	}
 
-	h.UsePreAuthKey(pak)
+	err = h.UsePreAuthKey(pak)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to use pre-auth key")
+		machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
+			Inc()
+		http.Error(writer, "Internal server error", http.StatusInternalServerError)
+
+		return
+	}
 
 	resp.MachineAuthorized = true
 	resp.User = *pak.Namespace.toUser()
@@ -358,7 +384,17 @@ func (h *Headscale) handleNoiseNodeLogOut(
 		Str("machine", machine.Hostname).
 		Msg("Client requested logout")
 
-	h.ExpireMachine(&machine)
+	err := h.ExpireMachine(&machine)
+	if err != nil {
+		log.Error().
+			Caller().
+			Str("func", "handleMachineLogOut").
+			Err(err).
+			Msg("Failed to expire machine")
+		http.Error(writer, "Internal server error", http.StatusInternalServerError)
+
+		return
+	}
 
 	resp.AuthURL = ""
 	resp.MachineAuthorized = false
@@ -366,7 +402,7 @@ func (h *Headscale) handleNoiseNodeLogOut(
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	err := json.NewEncoder(writer).Encode(resp)
+	err = json.NewEncoder(writer).Encode(resp)
 	if err != nil {
 		log.Error().
 			Caller().

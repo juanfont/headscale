@@ -56,7 +56,10 @@ func (h *Headscale) NoiseUpgradeHandler(
 
 	server := http.Server{}
 	server.Handler = h2c.NewHandler(h.noiseMux, &http2.Server{})
-	server.Serve(netutil.NewOneConnListener(noiseConn, nil))
+	err = server.Serve(netutil.NewOneConnListener(noiseConn, nil))
+	if err != nil {
+		log.Error().Err(err).Msg("noise server launch failed")
+	}
 }
 
 // getNoiseConnection is basically AcceptHTTP from tailscale
