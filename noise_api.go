@@ -369,8 +369,9 @@ func (h *Headscale) handleNoiseMachineRegistrationNew(
 
 	// The machine registration is new, redirect the client to the registration URL
 	log.Debug().
+		Caller().
 		Str("machine", registerRequest.Hostinfo.Hostname).
-		Msg("The node is sending us a new NodeKey, sending auth url")
+		Msg("The node seems to be new, sending auth url")
 	if h.cfg.OIDC.Issuer != "" {
 		resp.AuthURL = fmt.Sprintf(
 			"%s/oidc/register/%s",

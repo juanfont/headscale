@@ -298,10 +298,19 @@ func (h *Headscale) NoisePollNetMapStream(
 					Err(err).
 					Msg("Cannot write data")
 
-				break
+				return
 			}
-			if f, ok := writer.(http.Flusher); ok {
-				f.Flush()
+
+			flusher, ok := writer.(http.Flusher)
+			if !ok {
+				log.Error().
+					Caller().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Hostname).
+					Str("channel", "pollData").
+					Msg("Cannot cast writer to http.Flusher")
+			} else {
+				flusher.Flush()
 			}
 			log.Trace().
 				Str("handler", "NoisePollNetMapStream").
@@ -323,7 +332,7 @@ func (h *Headscale) NoisePollNetMapStream(
 
 				// client has been removed from database
 				// since the stream opened, terminate connection.
-				break
+				return
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
@@ -353,27 +362,34 @@ func (h *Headscale) NoisePollNetMapStream(
 
 		case data := <-keepAliveChan:
 			log.Trace().
-				Str("handler", "NoisePollNetMapStream").
+				Str("handler", "PollNetMapStream").
 				Str("machine", machine.Hostname).
 				Str("channel", "keepAlive").
 				Int("bytes", len(data)).
 				Msg("Sending keep alive message")
-
 			_, err := writer.Write(data)
-			if f, ok := writer.(http.Flusher); ok {
-				f.Flush()
-			}
-
 			if err != nil {
 				log.Error().
-					Str("handler", "NoisePollNetMapStream").
+					Str("handler", "PollNetMapStream").
 					Str("machine", machine.Hostname).
 					Str("channel", "keepAlive").
 					Err(err).
 					Msg("Cannot write keep alive message")
 
-				break
+				return
 			}
+			flusher, ok := writer.(http.Flusher)
+			if !ok {
+				log.Error().
+					Caller().
+					Str("handler", "PollNetMapStream").
+					Str("machine", machine.Hostname).
+					Str("channel", "keepAlive").
+					Msg("Cannot cast writer to http.Flusher")
+			} else {
+				flusher.Flush()
+			}
+
 			log.Trace().
 				Str("handler", "NoisePollNetMapStream").
 				Str("machine", machine.Hostname).
@@ -394,7 +410,7 @@ func (h *Headscale) NoisePollNetMapStream(
 
 				// client has been removed from database
 				// since the stream opened, terminate connection.
-				break
+				return
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
@@ -415,7 +431,7 @@ func (h *Headscale) NoisePollNetMapStream(
 					Msg("Machine updated successfully after sending keep alive")
 			}
 
-			break
+			return
 
 		case <-updateChan:
 			log.Trace().
@@ -456,7 +472,7 @@ func (h *Headscale) NoisePollNetMapStream(
 					updateRequestsSentToNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "failed").
 						Inc()
 
-					break
+					return
 				}
 
 				if f, ok := writer.(http.Flusher); ok {
@@ -489,7 +505,7 @@ func (h *Headscale) NoisePollNetMapStream(
 
 					// client has been removed from database
 					// since the stream opened, terminate connection.
-					break
+					return
 				}
 				now := time.Now().UTC()
 
@@ -519,7 +535,7 @@ func (h *Headscale) NoisePollNetMapStream(
 					Msgf("%s is up to date", machine.Hostname)
 			}
 
-			break
+			return
 
 		case <-ctx.Done():
 			log.Info().
@@ -540,7 +556,7 @@ func (h *Headscale) NoisePollNetMapStream(
 
 				// client has been removed from database
 				// since the stream opened, terminate connection.
-				break
+				return
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
@@ -554,7 +570,7 @@ func (h *Headscale) NoisePollNetMapStream(
 					Msg("Cannot update machine LastSeen")
 			}
 
-			break
+			return
 		}
 	}
 }
@@ -606,7 +622,7 @@ func (h *Headscale) noiseScheduledPollWorker(
 			log.Debug().
 				Str("func", "scheduledPollWorker").
 				Str("machine", machine.Hostname).
-				Msg("Sending update request")
+				Msg("Sending noise update request")
 			updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "scheduled-update").
 				Inc()
 			updateChan <- struct{}{}
