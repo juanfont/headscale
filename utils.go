@@ -59,6 +59,8 @@ const (
 	privateHexPrefix = "privkey:"
 
 	PermissionFallback = 0o700
+
+	ZstdCompression = "zstd"
 )
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {

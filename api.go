@@ -407,7 +407,7 @@ func (h *Headscale) getLegacyMapResponseData(
 	}
 
 	var respBody []byte
-	if mapRequest.Compress == "zstd" {
+	if mapRequest.Compress == ZstdCompression {
 		src, err := json.Marshal(resp)
 		if err != nil {
 			log.Error().
@@ -445,7 +445,7 @@ func (h *Headscale) getMapKeepAliveResponse(
 	}
 	var respBody []byte
 	var err error
-	if mapRequest.Compress == "zstd" {
+	if mapRequest.Compress == ZstdCompression {
 		src, err := json.Marshal(mapResponse)
 		if err != nil {
 			log.Error().
