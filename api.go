@@ -679,6 +679,7 @@ func (h *Headscale) handleMachineRegistrationNew(
 
 	// The machine registration is new, redirect the client to the registration URL
 	log.Debug().
+		Caller().
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Msg("The node seems to be new, sending auth url")
 	if h.cfg.OIDC.Issuer != "" {
