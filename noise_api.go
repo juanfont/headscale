@@ -14,7 +14,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// // NoiseRegistrationHandler handles the actual registration process of a machine
+// // NoiseRegistrationHandler handles the actual registration process of a machine.
 func (h *Headscale) NoiseRegistrationHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
@@ -175,8 +175,8 @@ func (h *Headscale) NoiseRegistrationHandler(
 }
 
 func (h *Headscale) handleNoiseAuthKey(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 ) {
 	log.Debug().
@@ -194,9 +194,9 @@ func (h *Headscale) handleNoiseAuthKey(
 			Msg("Failed authentication via AuthKey")
 		resp.MachineAuthorized = false
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(resp)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(writer).Encode(resp)
 
 		log.Error().
 			Caller().
@@ -270,7 +270,7 @@ func (h *Headscale) handleNoiseAuthKey(
 				Msg("could not register machine")
 			machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "error", pak.Namespace.Name).
 				Inc()
-			http.Error(w, "Internal error", http.StatusInternalServerError)
+			http.Error(writer, "Internal error", http.StatusInternalServerError)
 
 			return
 		}
@@ -284,9 +284,9 @@ func (h *Headscale) handleNoiseAuthKey(
 	machineRegistrations.WithLabelValues("new", RegisterMethodAuthKey, "success", pak.Namespace.Name).
 		Inc()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	json.NewEncoder(writer).Encode(resp)
 
 	log.Info().
 		Caller().
@@ -320,8 +320,8 @@ func (h *Headscale) handleNoiseNodeValidRegistration(
 }
 
 func (h *Headscale) handleNoiseMachineRegistrationNew(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 ) {
 	resp := tailcfg.RegisterResponse{}
@@ -337,18 +337,18 @@ func (h *Headscale) handleNoiseMachineRegistrationNew(
 			NodePublicKeyStripPrefix(registerRequest.NodeKey),
 		)
 	} else {
-		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
+		resp.AuthURL = fmt.Sprintf("%s/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"), NodePublicKeyStripPrefix(registerRequest.NodeKey))
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	json.NewEncoder(writer).Encode(resp)
 }
 
 func (h *Headscale) handleNoiseNodeLogOut(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 	machine Machine,
 ) {
 	resp := tailcfg.RegisterResponse{}
@@ -363,14 +363,20 @@ func (h *Headscale) handleNoiseNodeLogOut(
 	resp.MachineAuthorized = false
 	resp.User = *machine.Namespace.toUser()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(writer).Encode(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("could not encode response")
+	}
 }
 
 func (h *Headscale) handleNoiseNodeRefreshKey(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
@@ -385,14 +391,14 @@ func (h *Headscale) handleNoiseNodeRefreshKey(
 	resp.AuthURL = ""
 	resp.User = *machine.Namespace.toUser()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	json.NewEncoder(writer).Encode(resp)
 }
 
 func (h *Headscale) handleNoiseNodeExpired(
-	w http.ResponseWriter,
-	r *http.Request,
+	writer http.ResponseWriter,
+	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 ) {
@@ -405,7 +411,7 @@ func (h *Headscale) handleNoiseNodeExpired(
 		Msg("Machine registration has expired. Sending a authurl to register")
 
 	if registerRequest.Auth.AuthKey != "" {
-		h.handleNoiseAuthKey(w, r, registerRequest)
+		h.handleNoiseAuthKey(writer, req, registerRequest)
 
 		return
 	}
@@ -421,7 +427,10 @@ func (h *Headscale) handleNoiseNodeExpired(
 	machineRegistrations.WithLabelValues("reauth", "web", "success", machine.Namespace.Name).
 		Inc()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(writer).Encode(resp)
+	if err != nil {
+		log.Error().Caller().Err(err).Msg("Failed to encode response")
+	}
 }
