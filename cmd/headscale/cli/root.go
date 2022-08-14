@@ -28,12 +28,12 @@ func initConfig() {
 	if cfgFile != "" {
 		err := headscale.LoadConfig(cfgFile, true)
 		if err != nil {
-			log.Fatal().Caller().Err(err)
+			log.Fatal().Caller().Err(err).Msgf("Error loading config file %s", cfgFile)
 		}
 	} else {
 		err := headscale.LoadConfig("", false)
 		if err != nil {
-			log.Fatal().Caller().Err(err)
+			log.Fatal().Caller().Err(err).Msgf("Error loading config")
 		}
 	}
 

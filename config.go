@@ -184,6 +184,10 @@ func LoadConfig(path string, isFile bool) error {
 		errorText += "Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both\n"
 	}
 
+	if !viper.IsSet("noise_private_key_path") {
+		errorText += "Fatal config error: headscale now requires a new `noise_private_key_path` field in the config file for the Tailscale v2 protocol\n"
+	}
+
 	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
 		(viper.GetString("tls_letsencrypt_challenge_type") == tlsALPN01ChallengeType) &&
 		(!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
