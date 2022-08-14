@@ -38,6 +38,7 @@ oidc:
     - email
   strip_email_domain: true
 private_key_path: private.key
+noise_private_key_path: noise_private.key
 server_url: http://headscale:18080
 tls_client_auth_mode: relaxed
 tls_letsencrypt_cache_dir: /var/www/.cache
