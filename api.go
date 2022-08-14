@@ -2,7 +2,6 @@ package headscale
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -149,46 +147,6 @@ func (h *Headscale) RegisterWebAPI(
 			Err(err).
 			Msg("Failed to write response")
 	}
-}
-
-func (h *Headscale) getLegacyMapResponseData(
-	machineKey key.MachinePublic,
-	mapRequest tailcfg.MapRequest,
-	machine *Machine,
-) ([]byte, error) {
-	resp, err := h.generateMapResponse(mapRequest, machine)
-	if err != nil {
-		return nil, err
-	}
-
-	var respBody []byte
-	if mapRequest.Compress == ZstdCompression {
-		src, err := json.Marshal(resp)
-		if err != nil {
-			log.Error().
-				Caller().
-				Str("func", "getMapResponse").
-				Err(err).
-				Msg("Failed to marshal response for the client")
-
-			return nil, err
-		}
-
-		encoder, _ := zstd.NewWriter(nil)
-		srcCompressed := encoder.EncodeAll(src, nil)
-		respBody = h.privateKey.SealTo(machineKey, srcCompressed)
-	} else {
-		respBody, err = encode(resp, &machineKey, h.privateKey)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// declare the incoming size on the first 4 bytes
-	data := make([]byte, reservedResponseHeaderSize)
-	binary.LittleEndian.PutUint32(data, uint32(len(respBody)))
-	data = append(data, respBody...)
-
-	return data, nil
 }
 
 func (h *Headscale) handleMachineLogOut(
