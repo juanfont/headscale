@@ -649,10 +649,10 @@ func (h *Headscale) handleMachineExpired(
 
 	if h.cfg.OIDC.Issuer != "" {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.String())
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), NodePublicKeyStripPrefix(registerRequest.NodeKey))
 	} else {
-		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), machineKey.String())
+		resp.AuthURL = fmt.Sprintf("%s/register/%s",
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), NodePublicKeyStripPrefix(registerRequest.NodeKey))
 	}
 
 	respBody, err := encode(resp, &machineKey, h.privateKey)
