@@ -88,6 +88,8 @@ func (h *Headscale) marshalResponse(
 	} else {
 		if !machineKey.IsZero() { // if legacy protocol
 			respBody = h.privateKey.SealTo(machineKey, jsonBody)
+		} else {
+			respBody = jsonBody
 		}
 	}
 
