@@ -165,7 +165,7 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	// defer os.RemoveAll(tmpDir)
 
 	configYaml := []byte(
-		"---\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"\"\ntls_cert_path: \"abc.pem\"",
+		"---\nnoise_private_key_path: \"noise_private.key\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"\"\ntls_cert_path: \"abc.pem\"\n",
 	)
 	writeConfig(c, tmpDir, configYaml)
 
@@ -192,7 +192,7 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 
 	// Check configuration validation errors (2)
 	configYaml = []byte(
-		"---\nserver_url: \"http://127.0.0.1:8080\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"",
+		"---\nnoise_private_key_path: \"noise_private.key\"\nserver_url: \"http://127.0.0.1:8080\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"",
 	)
 	writeConfig(c, tmpDir, configYaml)
 	err = headscale.LoadConfig(tmpDir, false)
