@@ -412,10 +412,10 @@ func (h *Headscale) handleNoiseNodeExpired(
 
 	if h.cfg.OIDC.Issuer != "" {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), machine.NodeKey)
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), NodePublicKeyStripPrefix(registerRequest.NodeKey))
 	} else {
-		resp.AuthURL = fmt.Sprintf("%s/register?key=%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"), machine.NodeKey)
+		resp.AuthURL = fmt.Sprintf("%s/register/%s",
+			strings.TrimSuffix(h.cfg.ServerURL, "/"), NodePublicKeyStripPrefix(registerRequest.NodeKey))
 	}
 
 	machineRegistrations.WithLabelValues("reauth", "web", "success", machine.Namespace.Name).
