@@ -313,7 +313,15 @@ func (h *Headscale) handleNoiseAuthKey(
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	json.NewEncoder(writer).Encode(resp)
+	err = json.NewEncoder(writer).Encode(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to encode response")
+
+		return
+	}
 
 	log.Info().
 		Caller().
@@ -343,7 +351,13 @@ func (h *Headscale) handleNoiseNodeValidRegistration(
 		Inc()
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	json.NewEncoder(writer).Encode(resp)
+	err := json.NewEncoder(writer).Encode(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to encode response")
+	}
 }
 
 func (h *Headscale) handleNoiseMachineRegistrationNew(
@@ -370,7 +384,13 @@ func (h *Headscale) handleNoiseMachineRegistrationNew(
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	json.NewEncoder(writer).Encode(resp)
+	err := json.NewEncoder(writer).Encode(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to encode response")
+	}
 }
 
 func (h *Headscale) handleNoiseNodeLogOut(
@@ -430,7 +450,13 @@ func (h *Headscale) handleNoiseNodeRefreshKey(
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	json.NewEncoder(writer).Encode(resp)
+	err := json.NewEncoder(writer).Encode(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to encode response")
+	}
 }
 
 func (h *Headscale) handleNoiseNodeExpired(
