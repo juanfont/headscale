@@ -699,7 +699,7 @@ func (h *Headscale) handleMachineRegistrationNew(
 		resp.AuthURL = fmt.Sprintf(
 			"%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			machineKey.String(),
+			NodePublicKeyStripPrefix(registerRequest.NodeKey),
 		)
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register/%s",
