@@ -121,6 +121,7 @@ db_type: sqlite3
 db_path: /var/lib/headscale/db.sqlite
 
 # # Postgres config
+# If using a Unix socket to connect to Postgres, set the socket path in the 'host' field and leave 'port' blank.
 # db_type: postgres
 # db_host: localhost
 # db_port: 5432
