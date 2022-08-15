@@ -118,7 +118,10 @@ func decode(
 	pubKey *key.MachinePublic,
 	privKey *key.MachinePrivate,
 ) error {
-	log.Trace().Int("length", len(msg)).Msg("Trying to decrypt")
+	log.Trace().
+		Str("pubkey", pubKey.ShortString()).
+		Int("length", len(msg)).
+		Msg("Trying to decrypt")
 
 	decrypted, ok := privKey.OpenFrom(*pubKey, msg)
 	if !ok {

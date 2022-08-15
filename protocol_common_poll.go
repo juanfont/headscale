@@ -18,6 +18,8 @@ type contextKey string
 
 const machineNameContextKey = contextKey("machineName")
 
+// handlePollCommon is the common code for the legacy and Noise protocols to
+// managed the poll loop.
 func (h *Headscale) handlePollCommon(
 	writer http.ResponseWriter,
 	req *http.Request,
@@ -37,7 +39,6 @@ func (h *Headscale) handlePollCommon(
 			log.Error().
 				Caller().
 				Bool("noise", isNoise).
-				Str("func", "handleAuthKey").
 				Str("machine", machine.Hostname).
 				Err(err)
 		}
@@ -246,13 +247,13 @@ func (h *Headscale) pollNetMapStream(
 	)
 
 	log.Trace().
-		Str("handler", "PollNetMapStream").
+		Str("handler", "pollNetMapStream").
 		Bool("noise", isNoise).
 		Str("machine", machine.Hostname).
 		Msg("Waiting for data to stream...")
 
 	log.Trace().
-		Str("handler", "PollNetMapStream").
+		Str("handler", "pollNetMapStream").
 		Bool("noise", isNoise).
 		Str("machine", machine.Hostname).
 		Msgf("pollData is %#v, keepAliveChan is %#v, updateChan is %#v", pollDataChan, keepAliveChan, updateChan)

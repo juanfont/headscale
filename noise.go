@@ -58,7 +58,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 	server.Handler = h2c.NewHandler(h.noiseMux, &http2.Server{})
 	err = server.Serve(netutil.NewOneConnListener(noiseConn, nil))
 	if err != nil {
-		log.Error().Err(err).Msg("noise server launch failed")
+		log.Info().Err(err).Msg("The HTTP2 server was closed")
 	}
 }
 
