@@ -9,6 +9,19 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+const (
+	// The CapabilityVersion is used by Tailscale clients to indicate
+	// their codebase version. Tailscale clients can communicate over TS2021
+	// from CapabilityVersion 28, but we only have good support for it
+	// since https://github.com/tailscale/tailscale/pull/4323 (Noise in any HTTPS port).
+	//
+	// Related to this change, there is https://github.com/tailscale/tailscale/pull/5379,
+	// where CapabilityVersion 39 is introduced to indicate #4323 was merged.
+	//
+	// See also https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go
+	NoiseCapabilityVersion = 39
+)
+
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
 func (h *Headscale) KeyHandler(
@@ -18,6 +31,10 @@ func (h *Headscale) KeyHandler(
 	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
 	clientCapabilityStr := req.URL.Query().Get("v")
 	if clientCapabilityStr != "" {
+		log.Debug().
+			Str("handler", "/key").
+			Str("v", clientCapabilityStr).
+			Msg("New noise client")
 		clientCapabilityVersion, err := strconv.Atoi(clientCapabilityStr)
 		if err != nil {
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -52,6 +69,9 @@ func (h *Headscale) KeyHandler(
 			return
 		}
 	}
+	log.Debug().
+		Str("handler", "/key").
+		Msg("New legacy client")
 
 	// Old clients don't send a 'v' parameter, so we send the legacy public key
 	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")

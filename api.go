@@ -25,12 +25,6 @@ const (
 	ErrRegisterMethodCLIDoesNotSupportExpire = Error(
 		"machines registered with CLI does not support expire",
 	)
-
-	// The CapabilityVersion is used by Tailscale clients to indicate
-	// their codebase version. Tailscale clients can communicate over TS2021
-	// from CapabilityVersion 28.
-	// See https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go
-	NoiseCapabilityVersion = 28
 )
 
 func (h *Headscale) HealthHandler(
