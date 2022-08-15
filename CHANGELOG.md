@@ -1,6 +1,16 @@
 # CHANGELOG
 
-## 0.17.0 (2022-xx-xx)
+## 0.17.0 (2022-XX-XX)
+
+## 0.16.2 (2022-08-14)
+
+### Changes
+
+- Fixed bugs in the client registration process after migration to NodeKey [#735](https://github.com/juanfont/headscale/pull/735)
+
+## 0.16.1 (2022-08-12)
+
+### Changes
 
 - Updated dependencies (including the library that lacked armhf support) [#722](https://github.com/juanfont/headscale/pull/722)
 - Fix missing group expansion in function `excludeCorretlyTaggedNodes` [#563](https://github.com/juanfont/headscale/issues/563)
