@@ -88,7 +88,7 @@ func (h *Headscale) PollNetMapHandler(
 		Str("handler", "PollNetMap").
 		Str("id", machineKeyStr).
 		Str("machine", machine.Hostname).
-		Msg("Found machine in database")
+		Msg("A machine is entering polling via the legacy protocol")
 
 	h.handlePollCommon(writer, req, machine, mapRequest, false)
 }

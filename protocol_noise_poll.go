@@ -61,7 +61,7 @@ func (h *Headscale) NoisePollNetMapHandler(
 	log.Debug().
 		Str("handler", "NoisePollNetMap").
 		Str("machine", machine.Hostname).
-		Msg("Found Noise machine in database")
+		Msg("A machine is entering polling via the Noise protocol")
 
 	h.handlePollCommon(writer, req, machine, mapRequest, true)
 }
