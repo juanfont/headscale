@@ -683,6 +683,18 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
 
+		retry := func(times int, sleepInverval time.Duration, doWork func() (string, error)) (result string, err error) {
+			for attempts := 0; attempts < times; attempts++ {
+				result, err = doWork()
+				if err == nil {
+					return
+				}
+				time.Sleep(sleepInverval)
+			}
+
+			return
+		}
+
 		for hostname, tailscale := range scales.tailscales {
 			for _, peername := range hostnames {
 				if strings.Contains(peername, hostname) {
@@ -693,17 +705,20 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 					command := []string{
 						"tailscale", "ip", peername,
 					}
+					result, err := retry(10, 1*time.Second, func() (string, error) {
+						log.Printf(
+							"Resolving name %s from %s\n",
+							peername,
+							hostname,
+						)
+						result, err := ExecuteCommand(
+							&tailscale,
+							command,
+							[]string{},
+						)
+						return result, err
+					})
 
-					log.Printf(
-						"Resolving name %s from %s\n",
-						peername,
-						hostname,
-					)
-					result, err := ExecuteCommand(
-						&tailscale,
-						command,
-						[]string{},
-					)
 					assert.Nil(t, err)
 					log.Printf("Result for %s: %s\n", hostname, result)
 
