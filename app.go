@@ -130,14 +130,22 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 	case Postgres:
 		dbString = fmt.Sprintf(
 			"host=%s port=%d dbname=%s user=%s password=%s",
+			"host=%s dbname=%s user=%s",
 			cfg.DBhost,
-			cfg.DBport,
 			cfg.DBname,
 			cfg.DBuser,
-			cfg.DBpass,
 		)
+
 		if !cfg.DBssl {
 			dbString = dbString + " sslmode=disable"
+    }
+
+		if cfg.DBport != 0 {
+			dbString += fmt.Sprintf(" port=%d", cfg.DBport)
+		}
+
+		if cfg.DBpass != "" {
+			dbString += fmt.Sprintf(" password=%s", cfg.DBpass)
 		}
 	case Sqlite:
 		dbString = cfg.DBpath
