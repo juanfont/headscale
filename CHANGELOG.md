@@ -2,6 +2,8 @@
 
 ## 0.17.0 (2022-XX-XX)
 
+- Add ability to connect to PostgreSQL over TLS/SSL [#745](https://github.com/juanfont/headscale/pull/745)
+
 ## 0.16.2 (2022-08-14)
 
 ### Changes
@@ -125,7 +127,7 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
 - OpenID Connect users will be mapped per namespaces
   - Each user will get its own namespace, created if it does not exist
   - `oidc.domain_map` option has been removed
-  - `strip_email_domain` option has been added (see [config-example.yaml](./config_example.yaml))
+  - `strip_email_domain` option has been added (see [config-example.yaml](./config-example.yaml))
 
 ### Changes
 
