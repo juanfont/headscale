@@ -566,7 +566,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 					command := []string{
 						"tailscale", "file", "cp",
 						fmt.Sprintf("/tmp/file_from_%s", hostname),
-						fmt.Sprintf("%s:", ips[peername][1]),
+						fmt.Sprintf("%s:", ips[peername][0]),
 					}
 					retry(10, 1*time.Second, func() error {
 						log.Printf(
