@@ -410,7 +410,7 @@ func (h *Headscale) SetTags(machine *Machine, tags []string) error {
 	if err := h.UpdateACLRules(); err != nil && !errors.Is(err, errEmptyPolicy) {
 		return err
 	}
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
@@ -424,7 +424,7 @@ func (h *Headscale) ExpireMachine(machine *Machine) error {
 	now := time.Now()
 	machine.Expiry = &now
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to expire machine in the database: %w", err)
@@ -451,7 +451,7 @@ func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
 	}
 	machine.GivenName = newName
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to rename machine in the database: %w", err)
@@ -467,7 +467,7 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
 	machine.LastSuccessfulUpdate = &now
 	machine.Expiry = &expiry
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf(

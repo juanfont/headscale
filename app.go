@@ -270,7 +270,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 		}
 
 		if expiredFound {
-			h.setLastStateChangeToNow(namespace.Name)
+			h.setLastStateChangeToNow()
 		}
 	}
 }

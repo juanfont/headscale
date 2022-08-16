@@ -125,7 +125,7 @@ func (h *Headscale) handlePollCommon(
 
 	// There has been an update to _any_ of the nodes that the other nodes would
 	// need to know about
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	// The request is not ReadOnly, so we need to set up channels for updating
 	// peers via longpoll
