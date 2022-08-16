@@ -244,8 +244,8 @@ func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ?",
-		machine.MachineKey).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("node_key <> ?",
+		machine.NodeKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
 		return Machines{}, err
