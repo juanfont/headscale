@@ -136,7 +136,7 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		)
 
 		if !cfg.DBssl {
-			dbString = dbString + " sslmode=disable"
+			dbString += " sslmode=disable"
 		}
 
 		if cfg.DBport != 0 {
