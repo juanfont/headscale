@@ -4,6 +4,12 @@
 
 - Add ability to connect to PostgreSQL over TLS/SSL [#745](https://github.com/juanfont/headscale/pull/745)
 
+## 0.16.3 (2022-08-17)
+
+### Changes
+
+- Fix issue with OIDC authentication [#747](https://github.com/juanfont/headscale/pull/747)
+
 ## 0.16.2 (2022-08-14)
 
 ### Changes
