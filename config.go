@@ -47,6 +47,7 @@ type Config struct {
 	DBname string
 	DBuser string
 	DBpass string
+	DBssl  bool
 
 	TLS TLSConfig
 
@@ -506,6 +507,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		DBname: viper.GetString("db_name"),
 		DBuser: viper.GetString("db_user"),
 		DBpass: viper.GetString("db_pass"),
+		DBssl:  viper.GetBool("db_ssl"),
 
 		TLS: GetTLSConfig(),
 
