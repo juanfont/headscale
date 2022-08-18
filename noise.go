@@ -39,7 +39,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 ) {
 	log.Trace().Caller().Msgf("Noise upgrade handler for client %s", req.RemoteAddr)
 
-	// Under normal circumpstances, we should be able to use the controlhttp.AcceptHTTP()
+	// Under normal circumstances, we should be able to use the controlhttp.AcceptHTTP()
 	// function to do this - kindly left there by the Tailscale authors for us to use.
 	// (https://github.com/tailscale/tailscale/blob/main/control/controlhttp/server.go)
 	//
