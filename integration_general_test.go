@@ -580,7 +580,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						fmt.Sprintf("/tmp/file_from_%s", hostname),
 						fmt.Sprintf("%s:", ip4),
 					}
-					retry(10, 1*time.Second, func() error {
+					err := retry(10, 1*time.Second, func() error {
 						log.Printf(
 							"Sending file from %s to %s\n",
 							hostname,
@@ -594,6 +594,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						)
 						return err
 					})
+
 					assert.Nil(t, err)
 				})
 			}
