@@ -121,6 +121,7 @@ db_path: /var/lib/headscale/db.sqlite
 # db_name: headscale
 # db_user: foo
 # db_pass: bar
+# db_ssl: false
 
 ### TLS configuration
 #
