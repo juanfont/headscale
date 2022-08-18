@@ -83,7 +83,7 @@ func SwaggerAPIv1(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	writer.Header().Set("Content-Type", "application/json; charset=utf-88")
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 	if _, err := writer.Write(apiV1JSON); err != nil {
 		log.Error().

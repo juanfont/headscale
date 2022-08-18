@@ -318,7 +318,7 @@ func extractIDTokenClaims(
 	idToken *oidc.IDToken,
 ) (*IDTokenClaims, error) {
 	var claims IDTokenClaims
-	if err := idToken.Claims(claims); err != nil {
+	if err := idToken.Claims(&claims); err != nil {
 		log.Error().
 			Err(err).
 			Caller().

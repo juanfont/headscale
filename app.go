@@ -145,11 +145,15 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 	switch cfg.DBtype {
 	case Postgres:
 		dbString = fmt.Sprintf(
-			"host=%s dbname=%s user=%s sslmode=disable",
+			"host=%s dbname=%s user=%s",
 			cfg.DBhost,
 			cfg.DBname,
 			cfg.DBuser,
 		)
+
+		if !cfg.DBssl {
+			dbString += " sslmode=disable"
+		}
 
 		if cfg.DBport != 0 {
 			dbString += fmt.Sprintf(" port=%d", cfg.DBport)
