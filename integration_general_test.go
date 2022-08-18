@@ -562,11 +562,23 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 				if peername == hostname {
 					continue
 				}
+
+				var ip4 netaddr.IP
+				for _, ip := range ips[peername] {
+					if ip.Is4() {
+						ip4 = ip
+						break
+					}
+				}
+				if ip4.IsZero() {
+					panic("no ipv4 address found")
+				}
+
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 					command := []string{
 						"tailscale", "file", "cp",
 						fmt.Sprintf("/tmp/file_from_%s", hostname),
-						fmt.Sprintf("%s:", ips[peername][0]),
+						fmt.Sprintf("%s:", ip4),
 					}
 					retry(10, 1*time.Second, func() error {
 						log.Printf(
