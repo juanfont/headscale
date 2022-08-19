@@ -100,11 +100,9 @@ func (h *Headscale) handleRegisterCommon(
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
-
 	now := time.Now().UTC()
 	machine, err := h.GetMachineByAnyNodeKey(registerRequest.NodeKey, registerRequest.OldNodeKey)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-
 		// If the machine has AuthKey set, handle registration via PreAuthKeys
 		if registerRequest.Auth.AuthKey != "" {
 			h.handleAuthKeyCommon(writer, req, registerRequest, machineKey)
@@ -242,7 +240,6 @@ func (h *Headscale) handleRegisterCommon(
 
 		return
 	}
-
 }
 
 // handleAuthKeyCommon contains the logic to manage auth key client registration
@@ -676,7 +673,6 @@ func (h *Headscale) handleMachineRefreshKeyCommon(
 		Str("old_node_key", registerRequest.OldNodeKey.ShortString()).
 		Str("machine", machine.Hostname).
 		Msg("Machine successfully refreshed")
-
 }
 
 func (h *Headscale) handleMachineExpiredCommon(

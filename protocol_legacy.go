@@ -55,5 +55,4 @@ func (h *Headscale) RegistrationHandler(
 	}
 
 	h.handleRegisterCommon(writer, req, registerRequest, machineKey)
-
 }
