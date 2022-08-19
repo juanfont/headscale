@@ -135,19 +135,6 @@ func decode(
 	return nil
 }
 
-func encode(
-	v interface{},
-	pubKey *key.MachinePublic,
-	privKey *key.MachinePrivate,
-) ([]byte, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-
-	return privKey.SealTo(*pubKey, b), nil
-}
-
 func (h *Headscale) getAvailableIPs() (MachineAddresses, error) {
 	var ips MachineAddresses
 	var err error
