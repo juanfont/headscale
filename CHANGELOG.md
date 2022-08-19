@@ -3,6 +3,7 @@
 ## 0.17.0 (2022-XX-XX)
 
 - Add ability to connect to PostgreSQL over TLS/SSL [#745](https://github.com/juanfont/headscale/pull/745)
+- Fix CLI registration of expired machines [#754](https://github.com/juanfont/headscale/pull/754)
 
 ## 0.16.3 (2022-08-17)
 
@@ -24,8 +25,6 @@
 - Fix missing group expansion in function `excludeCorretlyTaggedNodes` [#563](https://github.com/juanfont/headscale/issues/563)
 - Improve registration protocol implementation and switch to NodeKey as main identifier [#725](https://github.com/juanfont/headscale/pull/725)
 - Add ability to connect to PostgreSQL via unix socket [#734](https://github.com/juanfont/headscale/pull/734)
-
-- Fix CLI registration of expired machines [#754](https://github.com/juanfont/headscale/pull/754)
 
 ## 0.16.0 (2022-07-25)
 
