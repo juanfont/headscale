@@ -600,8 +600,8 @@ func (machine Machine) toNode(
 	}
 
 	var machineKey key.MachinePublic
+	// MachineKey is only used in the legacy protocol
 	if machine.MachineKey != "" {
-		// MachineKey is only used in the legacy protocol
 		err = machineKey.UnmarshalText(
 			[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
 		)
