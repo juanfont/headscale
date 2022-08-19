@@ -24,9 +24,9 @@ const (
 	ErrMachineNotFoundRegistrationCache = Error(
 		"machine not found in registration cache",
 	)
-	errCouldNotConvertMachineInterface = Error("failed to convert machine interface")
-	errHostnameTooLong                 = Error("Hostname too long")
-	errDifferentRegisteredNamespace    = Error("machine was previously registered with a different namespace")
+	ErrCouldNotConvertMachineInterface = Error("failed to convert machine interface")
+	ErrHostnameTooLong                 = Error("Hostname too long")
+	ErrDifferentRegisteredNamespace    = Error("machine was previously registered with a different namespace")
 	MachineGivenNameHashLength         = 8
 	MachineGivenNameTrimSize           = 2
 )
@@ -792,7 +792,7 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 
 			// Registration of expired machine with different namespace
 			if registrationMachine.ID != 0 && registrationMachine.NamespaceID != namespace.ID {
-				return nil, errDifferentRegisteredNamespace
+				return nil, ErrDifferentRegisteredNamespace
 			}
 
 			registrationMachine.NamespaceID = namespace.ID
