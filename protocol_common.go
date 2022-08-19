@@ -56,8 +56,8 @@ func (h *Headscale) KeyHandler(
 			return
 		}
 
+		// TS2021 (Tailscale v2 protocol) requires to have a different key
 		if clientCapabilityVersion >= NoiseCapabilityVersion {
-			// Tailscale has a different key for the TS2021 protocol
 			resp := tailcfg.OverTLSPublicKeyResponse{
 				LegacyPublicKey: h.privateKey.Public(),
 				PublicKey:       h.noisePrivateKey.Public(),

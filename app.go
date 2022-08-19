@@ -132,6 +132,7 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		return nil, ErrFailedPrivateKey
 	}
 
+	// TS2021 requires to have a different key from the legacy protocol.
 	noisePrivateKey, err := readOrCreatePrivateKey(cfg.NoisePrivateKeyPath)
 	if err != nil {
 		return nil, ErrFailedNoisePrivateKey
