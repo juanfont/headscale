@@ -21,7 +21,7 @@ func (h *Headscale) getMapResponseData(
 	}
 
 	if isNoise {
-		return h.marshalResponse(mapResponse, mapRequest.Compress, key.MachinePublic{})
+		return h.marshalMapResponse(mapResponse, key.MachinePublic{}, mapRequest.Compress)
 	}
 
 	var machineKey key.MachinePublic
@@ -35,7 +35,7 @@ func (h *Headscale) getMapResponseData(
 		return nil, err
 	}
 
-	return h.marshalResponse(mapResponse, mapRequest.Compress, machineKey)
+	return h.marshalMapResponse(mapResponse, machineKey, mapRequest.Compress)
 }
 
 func (h *Headscale) getMapKeepAliveResponseData(
@@ -48,7 +48,7 @@ func (h *Headscale) getMapKeepAliveResponseData(
 	}
 
 	if isNoise {
-		return h.marshalResponse(keepAliveResponse, mapRequest.Compress, key.MachinePublic{})
+		return h.marshalMapResponse(keepAliveResponse, key.MachinePublic{}, mapRequest.Compress)
 	}
 
 	var machineKey key.MachinePublic
@@ -62,13 +62,32 @@ func (h *Headscale) getMapKeepAliveResponseData(
 		return nil, err
 	}
 
-	return h.marshalResponse(keepAliveResponse, mapRequest.Compress, machineKey)
+	return h.marshalMapResponse(keepAliveResponse, machineKey, mapRequest.Compress)
 }
 
 func (h *Headscale) marshalResponse(
 	resp interface{},
-	compression string,
 	machineKey key.MachinePublic,
+) ([]byte, error) {
+	jsonBody, err := json.Marshal(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot marshal response")
+	}
+
+	if machineKey.IsZero() { // if Noise
+		return jsonBody, nil
+	}
+
+	return h.privateKey.SealTo(machineKey, jsonBody), nil
+}
+
+func (h *Headscale) marshalMapResponse(
+	resp interface{},
+	machineKey key.MachinePublic,
+	compression string,
 ) ([]byte, error) {
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
