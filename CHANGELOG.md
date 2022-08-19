@@ -25,6 +25,8 @@
 - Improve registration protocol implementation and switch to NodeKey as main identifier [#725](https://github.com/juanfont/headscale/pull/725)
 - Add ability to connect to PostgreSQL via unix socket [#734](https://github.com/juanfont/headscale/pull/734)
 
+- Fix CLI registration of expired machines [#754](https://github.com/juanfont/headscale/pull/754)
+
 ## 0.16.0 (2022-07-25)
 
 **Note:** Take a backup of your database before upgrading.
