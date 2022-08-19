@@ -803,7 +803,7 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 			)
 
 			if err == nil {
-				h.registrationCache.Delete(machineKeyStr)
+				h.registrationCache.Delete(nodeKeyStr)
 			}
 
 			return machine, err

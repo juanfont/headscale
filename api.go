@@ -348,7 +348,7 @@ func (h *Headscale) RegistrationHandler(
 
 		machine.Expiry = &time.Time{}
 		h.registrationCache.Set(
-			machineKeyStr,
+			NodePublicKeyStripPrefix(registerRequest.NodeKey),
 			*machine,
 			registerCacheExpiration,
 		)
