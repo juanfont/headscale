@@ -3,6 +3,7 @@
 ## 0.17.0 (2022-XX-XX)
 
 - Add ability to connect to PostgreSQL over TLS/SSL [#745](https://github.com/juanfont/headscale/pull/745)
+- Fix CLI registration of expired machines [#754](https://github.com/juanfont/headscale/pull/754)
 
 ## 0.16.3 (2022-08-17)
 

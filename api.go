@@ -346,6 +346,13 @@ func (h *Headscale) RegistrationHandler(
 		// The machine has expired
 		h.handleMachineExpired(writer, req, machineKey, registerRequest, *machine)
 
+		machine.Expiry = &time.Time{}
+		h.registrationCache.Set(
+			NodePublicKeyStripPrefix(registerRequest.NodeKey),
+			*machine,
+			registerCacheExpiration,
+		)
+
 		return
 	}
 }
