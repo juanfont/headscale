@@ -238,6 +238,13 @@ func (h *Headscale) handleRegisterCommon(
 		// The machine has expired
 		h.handleMachineExpiredCommon(writer, req, registerRequest, *machine, machineKey)
 
+		machine.Expiry = &time.Time{}
+		h.registrationCache.Set(
+			NodePublicKeyStripPrefix(registerRequest.NodeKey),
+			*machine,
+			registerCacheExpiration,
+		)
+
 		return
 	}
 }
