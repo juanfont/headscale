@@ -25,6 +25,9 @@ func init() {
 }
 
 func initConfig() {
+	if cfgFile == "" {
+		cfgFile = os.Getenv("HEADSCALE_CONFIG")
+	}
 	if cfgFile != "" {
 		err := headscale.LoadConfig(cfgFile, true)
 		if err != nil {
