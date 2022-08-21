@@ -51,6 +51,10 @@ const (
 	errUnsupportedLetsEncryptChallengeType = Error(
 		"unknown value for Lets Encrypt challenge type",
 	)
+
+	ErrFailedPrivateKey      = Error("failed to read or create private key")
+	ErrFailedNoisePrivateKey = Error("failed to read or create Noise protocol private key")
+	ErrSamePrivateKeys       = Error("private key and noise private key are the same")
 )
 
 const (
@@ -72,12 +76,15 @@ const (
 
 // Headscale represents the base app of the service.
 type Headscale struct {
-	cfg        *Config
-	db         *gorm.DB
-	dbString   string
-	dbType     string
-	dbDebug    bool
-	privateKey *key.MachinePrivate
+	cfg             *Config
+	db              *gorm.DB
+	dbString        string
+	dbType          string
+	dbDebug         bool
+	privateKey      *key.MachinePrivate
+	noisePrivateKey *key.MachinePrivate
+
+	noiseMux *mux.Router
 
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *DERPServer
@@ -120,9 +127,19 @@ func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
 }
 
 func NewHeadscale(cfg *Config) (*Headscale, error) {
-	privKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
+	privateKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read or create private key: %w", err)
+		return nil, ErrFailedPrivateKey
+	}
+
+	// TS2021 requires to have a different key from the legacy protocol.
+	noisePrivateKey, err := readOrCreatePrivateKey(cfg.NoisePrivateKeyPath)
+	if err != nil {
+		return nil, ErrFailedNoisePrivateKey
+	}
+
+	if privateKey.Equal(*noisePrivateKey) {
+		return nil, ErrSamePrivateKeys
 	}
 
 	var dbString string
@@ -161,7 +178,8 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		cfg:                cfg,
 		dbType:             cfg.DBtype,
 		dbString:           dbString,
-		privateKey:         privKey,
+		privateKey:         privateKey,
+		noisePrivateKey:    noisePrivateKey,
 		aclRules:           tailcfg.FilterAllowAll, // default allowall
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
@@ -257,7 +275,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 		}
 
 		if expiredFound {
-			h.setLastStateChangeToNow(namespace.Name)
+			h.setLastStateChangeToNow()
 		}
 	}
 }
@@ -425,6 +443,8 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 
+	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost)
+
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/register/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
@@ -450,6 +470,15 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
 
 	router.PathPrefix("/").HandlerFunc(stdoutHandler)
+
+	return router
+}
+
+func (h *Headscale) createNoiseMux() *mux.Router {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/machine/register", h.NoiseRegistrationHandler).Methods(http.MethodPost)
+	router.HandleFunc("/machine/map", h.NoisePollNetMapHandler)
 
 	return router
 }
@@ -607,8 +636,15 @@ func (h *Headscale) Serve() error {
 	//
 	// HTTP setup
 	//
-
+	// This is the regular router that we expose
+	// over our main Addr. It also serves the legacy Tailcale API
 	router := h.createRouter(grpcGatewayMux)
+
+	// This router is served only over the Noise connection, and exposes only the new API.
+	//
+	// The HTTP2 server that exposes this router is created for
+	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
+	h.noiseMux = h.createNoiseMux()
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,

@@ -59,6 +59,8 @@ const (
 	privateHexPrefix = "privkey:"
 
 	PermissionFallback = 0o700
+
+	ZstdCompression = "zstd"
 )
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
@@ -116,7 +118,10 @@ func decode(
 	pubKey *key.MachinePublic,
 	privKey *key.MachinePrivate,
 ) error {
-	log.Trace().Int("length", len(msg)).Msg("Trying to decrypt")
+	log.Trace().
+		Str("pubkey", pubKey.ShortString()).
+		Int("length", len(msg)).
+		Msg("Trying to decrypt")
 
 	decrypted, ok := privKey.OpenFrom(*pubKey, msg)
 	if !ok {
@@ -128,19 +133,6 @@ func decode(
 	}
 
 	return nil
-}
-
-func encode(
-	v interface{},
-	pubKey *key.MachinePublic,
-	privKey *key.MachinePrivate,
-) ([]byte, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-
-	return privKey.SealTo(*pubKey, b), nil
 }
 
 func (h *Headscale) getAvailableIPs() (MachineAddresses, error) {

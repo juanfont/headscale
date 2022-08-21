@@ -245,8 +245,8 @@ func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ?",
-		machine.MachineKey).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("node_key <> ?",
+		machine.NodeKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
 		return Machines{}, err
@@ -376,6 +376,19 @@ func (h *Headscale) GetMachineByNodeKey(
 	return &machine, nil
 }
 
+// GetMachineByAnyNodeKey finds a Machine by its current NodeKey or the old one, and returns the Machine struct.
+func (h *Headscale) GetMachineByAnyNodeKey(
+	nodeKey key.NodePublic, oldNodeKey key.NodePublic,
+) (*Machine, error) {
+	machine := Machine{}
+	if result := h.db.Preload("Namespace").First(&machine, "node_key = ? OR node_key = ?",
+		NodePublicKeyStripPrefix(nodeKey), NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &machine, nil
+}
+
 // UpdateMachineFromDatabase takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
 func (h *Headscale) UpdateMachineFromDatabase(machine *Machine) error {
@@ -398,7 +411,7 @@ func (h *Headscale) SetTags(machine *Machine, tags []string) error {
 	if err := h.UpdateACLRules(); err != nil && !errors.Is(err, errEmptyPolicy) {
 		return err
 	}
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
@@ -412,7 +425,7 @@ func (h *Headscale) ExpireMachine(machine *Machine) error {
 	now := time.Now()
 	machine.Expiry = &now
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to expire machine in the database: %w", err)
@@ -439,7 +452,7 @@ func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
 	}
 	machine.GivenName = newName
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to rename machine in the database: %w", err)
@@ -455,7 +468,7 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
 	machine.LastSuccessfulUpdate = &now
 	machine.Expiry = &expiry
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf(
@@ -588,11 +601,14 @@ func (machine Machine) toNode(
 	}
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText(
-		[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+	// MachineKey is only used in the legacy protocol
+	if machine.MachineKey != "" {
+		err = machineKey.UnmarshalText(
+			[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+		}
 	}
 
 	var discoKey key.DiscoPublic
