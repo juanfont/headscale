@@ -54,7 +54,8 @@ metrics_listen_addr: 0.0.0.0:9090
 # The default /var/lib/headscale path is not writable in the container
 private_key_path: /etc/headscale/private.key
 # The default /var/lib/headscale path is not writable in the container
-noise_private_key_path: /var/lib/headscale/noise_private.key
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
 # The default /var/lib/headscale path is not writable  in the container
 db_path: /etc/headscale/db.sqlite
 ```

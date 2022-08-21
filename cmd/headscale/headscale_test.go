@@ -163,10 +163,12 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 		c.Fatal(err)
 	}
 	// defer os.RemoveAll(tmpDir)
-
-	configYaml := []byte(
-		"---\nnoise_private_key_path: \"noise_private.key\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"\"\ntls_cert_path: \"abc.pem\"\n",
-	)
+	configYaml := []byte(`---
+tls_letsencrypt_hostname: example.com
+tls_letsencrypt_challenge_type: ""
+tls_cert_path: abc.pem
+noise:
+  private_key_path: noise_private.key`)
 	writeConfig(c, tmpDir, configYaml)
 
 	// Check configuration validation errors (1)
@@ -191,9 +193,13 @@ func (*Suite) TestTLSConfigValidation(c *check.C) {
 	)
 
 	// Check configuration validation errors (2)
-	configYaml = []byte(
-		"---\nnoise_private_key_path: \"noise_private.key\"\nserver_url: \"http://127.0.0.1:8080\"\ntls_letsencrypt_hostname: \"example.com\"\ntls_letsencrypt_challenge_type: \"TLS-ALPN-01\"",
-	)
+	configYaml = []byte(`---
+noise:
+  private_key_path: noise_private.key
+server_url: http://127.0.0.1:8080
+tls_letsencrypt_hostname: example.com
+tls_letsencrypt_challenge_type: TLS-ALPN-01
+`)
 	writeConfig(c, tmpDir, configYaml)
 	err = headscale.LoadConfig(tmpDir, false)
 	c.Assert(err, check.IsNil)
