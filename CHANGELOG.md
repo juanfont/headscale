@@ -10,6 +10,7 @@
 
 - Add ability to connect to PostgreSQL over TLS/SSL [#745](https://github.com/juanfont/headscale/pull/745)
 - Fix CLI registration of expired machines [#754](https://github.com/juanfont/headscale/pull/754)
+- Add ability to specify config location via env var `HEADSCALE_CONFIG` [#674](https://github.com/juanfont/headscale/issues/674)
 
 ## 0.16.3 (2022-08-17)
 
