@@ -2,6 +2,8 @@
 
 ## 0.17.0 (2022-XX-XX)
 
+- Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
+
 ## 0.16.4 (2022-08-21)
 
 ### Changes
