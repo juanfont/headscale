@@ -1,0 +1,27 @@
+log_level: trace
+acl_policy_path: ""
+db_type: sqlite3
+ephemeral_node_inactivity_timeout: 30m
+node_update_check_interval: 30s
+ip_prefixes:
+  - fd7a:115c:a1e0::/48
+  - 100.64.0.0/10
+dns_config:
+  base_domain: headscale.net
+  magic_dns: true
+  domains: []
+  nameservers:
+    - 1.1.1.1
+db_path: /tmp/integration_test_db.sqlite3
+private_key_path: private.key
+noise:
+  private_key_path: noise_private.key
+listen_addr: 0.0.0.0:18080
+metrics_listen_addr: 127.0.0.1:19090
+server_url: http://headscale:18080
+
+derp:
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+  auto_update_enabled: false
+  update_frequency: 1m
