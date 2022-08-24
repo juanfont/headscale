@@ -931,60 +931,48 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 }
 
 // Enabled any routes advertised by a machine that match the ACL autoApprovers policy
-// TODO simplify by expanding only for current machine, and by checking if approvedIPs contains machine.IPs[0]
 func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
-	approvedRoutes := make([]netaddr.IPPrefix, 0, len(machine.HostInfo.RoutableIPs))
-	machines, err := h.ListMachines()
-
-	if err != nil {
-		log.Err(err)
-		return err
+	if len(machine.IPAddresses) == 0 {
+		return nil // This machine has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
+	approvedRoutes := make([]netaddr.IPPrefix, 0, len(machine.HostInfo.RoutableIPs))
+	thisMachine := []Machine{*machine}
+
 	for _, advertisedRoute := range machine.HostInfo.RoutableIPs {
-		log.Debug().
-			Uint64("machine", machine.ID).
-			Str("advertisedRoute", advertisedRoute.String()).
-			Msg("Client requested to advertise route")
 
-		approved := false
-		routeApprovers := h.aclPolicy.AutoApprovers.Routes[advertisedRoute.String()]
-
-		if advertisedRoute.Bits() == 0 {
-			routeApprovers = h.aclPolicy.AutoApprovers.ExitNode
+		if contains(machine.EnabledRoutes, advertisedRoute) {
+			continue // Skip routes that are already enabled for the node
 		}
 
-		if len(routeApprovers) > 0 {
-			for _, approvedAlias := range routeApprovers {
+		approved := false
+		routeApprovers, err := h.aclPolicy.AutoApprovers.GetRouteApprovers(advertisedRoute)
 
-				approvedIps, err := expandAlias(machines, *h.aclPolicy, approvedAlias, h.cfg.OIDC.StripEmaildomain)
-
-				if err != nil {
-					log.Err(err).
-						Str("alias", approvedAlias).
-						Msg("Failed to expand alias when processing autoApprovers policy")
-					return err
-				}
-
-				for _, machineIp := range machine.IPAddresses {
-					for _, approvedIp := range approvedIps {
-						approved = machineIp.String() == approvedIp
-
-						if approved {
-							break
-						}
-					}
-
-					if approved {
-						break
-					}
-				}
-			}
-		} else {
-			log.Debug().
-				Uint64("client", machine.ID).
+		if err != nil {
+			log.Err(err).
 				Str("advertisedRoute", advertisedRoute.String()).
-				Msg("Advertised route is not automatically approved")
+				Uint64("machineId", machine.ID).
+				Msg("Failed to resolve autoApprovers for advertised route")
+			return err
+		}
+
+		for _, approvedAlias := range routeApprovers {
+
+			approvedIps, err := expandAlias(thisMachine, *h.aclPolicy, approvedAlias, h.cfg.OIDC.StripEmaildomain)
+
+			if err != nil {
+				log.Err(err).
+					Str("alias", approvedAlias).
+					Msg("Failed to expand alias when processing autoApprovers policy")
+				return err
+			}
+
+			// approvedIPs should contain all of machine's IPs if it matches the rule, so check for first
+			approved = contains(approvedIps, machine.IPAddresses[0].String())
+
+			if approved {
+				break
+			}
 		}
 
 		if approved {

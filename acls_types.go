@@ -108,3 +108,28 @@ func (policy ACLPolicy) IsZero() bool {
 
 	return false
 }
+
+// Returns the list of autoApproving namespaces, groups or tags for a given IPPrefix
+func (autoApprovers *AutoApprovers) GetRouteApprovers(
+	prefix netaddr.IPPrefix,
+) ([]string, error) {
+	if prefix.Bits() == 0 {
+		return autoApprovers.ExitNode, nil // 0.0.0.0/0, ::/0 or equivalent
+	}
+
+	approverAliases := []string{}
+
+	for autoApprovedPrefix, autoApproverAliases := range autoApprovers.Routes {
+		autoApprovedPrefix, err := netaddr.ParseIPPrefix(autoApprovedPrefix)
+		if err != nil {
+			return nil, err
+		}
+
+		if autoApprovedPrefix.Bits() >= prefix.Bits() &&
+			autoApprovedPrefix.Contains(prefix.IP()) {
+			approverAliases = append(approverAliases, autoApproverAliases...)
+		}
+	}
+
+	return approverAliases, nil
+}
