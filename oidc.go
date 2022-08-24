@@ -468,7 +468,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 			Str("machine", machine.Hostname).
 			Msg("machine already registered, reauthenticating")
 
-		err := h.RefreshMachine(machine, time.Time{})
+		err := h.RefreshMachine(machine, time.Now().Add(DefaultKeyExpireTime))
 		if err != nil {
 			log.Error().
 				Caller().
