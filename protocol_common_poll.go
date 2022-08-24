@@ -44,10 +44,7 @@ func (h *Headscale) handlePollCommon(
 		}
 
 		// update routes with peer information
-		err = h.EnableAutoApprovedRoutes(machine)
-		if err != nil {
-			//TODO
-		}
+		h.EnableAutoApprovedRoutes(machine)
 	}
 
 	// From Tailscale client:
