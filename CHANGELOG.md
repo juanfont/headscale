@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.17.1 (2022-XX-XX)
+
+- Added minimum validity of 60 minutes to generated keys
+
 ## 0.17.0 (2022-XX-XX)
 
 - Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)

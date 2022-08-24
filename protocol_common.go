@@ -26,6 +26,10 @@ const (
 	//
 	// See also https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go
 	NoiseCapabilityVersion = 39
+
+	// KeyExpiryTime determines the valid period of a generated key
+	// Keys of new machines are valid for this period
+	KeyExpiryTime = 60 * time.Minute
 )
 
 // KeyHandler provides the Headscale pub key
@@ -165,13 +169,14 @@ func (h *Headscale) handleRegisterCommon(
 		// that we rely on a method that calls back some how (OpenID or CLI)
 		// We create the machine and then keep it around until a callback
 		// happens
+		expiryTime := time.Now().Add(KeyExpiryTime)
 		newMachine := Machine{
 			MachineKey: MachinePublicKeyStripPrefix(machineKey),
 			Hostname:   registerRequest.Hostinfo.Hostname,
 			GivenName:  givenName,
 			NodeKey:    NodePublicKeyStripPrefix(registerRequest.NodeKey),
 			LastSeen:   &now,
-			Expiry:     &time.Time{},
+			Expiry:     &expiryTime,
 		}
 
 		if !registerRequest.Expiry.IsZero() {
