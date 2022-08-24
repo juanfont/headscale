@@ -930,6 +930,81 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	return nil
 }
 
+// Enabled any routes advertised by a machine that match the ACL autoApprovers policy
+// TODO simplify by expanding only for current machine, and by checking if approvedIPs contains machine.IPs[0]
+func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
+	approvedRoutes := make([]netaddr.IPPrefix, 0, len(machine.HostInfo.RoutableIPs))
+	machines, err := h.ListMachines()
+
+	if err != nil {
+		log.Err(err)
+		return err
+	}
+
+	for _, advertisedRoute := range machine.HostInfo.RoutableIPs {
+		log.Debug().
+			Uint64("machine", machine.ID).
+			Str("advertisedRoute", advertisedRoute.String()).
+			Msg("Client requested to advertise route")
+
+		approved := false
+		routeApprovers := h.aclPolicy.AutoApprovers.Routes[advertisedRoute.String()]
+
+		if advertisedRoute.Bits() == 0 {
+			routeApprovers = h.aclPolicy.AutoApprovers.ExitNode
+		}
+
+		if len(routeApprovers) > 0 {
+			for _, approvedAlias := range routeApprovers {
+
+				approvedIps, err := expandAlias(machines, *h.aclPolicy, approvedAlias, h.cfg.OIDC.StripEmaildomain)
+
+				if err != nil {
+					log.Err(err).
+						Str("alias", approvedAlias).
+						Msg("Failed to expand alias when processing autoApprovers policy")
+					return err
+				}
+
+				for _, machineIp := range machine.IPAddresses {
+					for _, approvedIp := range approvedIps {
+						approved = machineIp.String() == approvedIp
+
+						if approved {
+							break
+						}
+					}
+
+					if approved {
+						break
+					}
+				}
+			}
+		} else {
+			log.Debug().
+				Uint64("client", machine.ID).
+				Str("advertisedRoute", advertisedRoute.String()).
+				Msg("Advertised route is not automatically approved")
+		}
+
+		if approved {
+			approvedRoutes = append(approvedRoutes, advertisedRoute)
+		}
+	}
+
+	for _, approvedRoute := range approvedRoutes {
+		if !contains(machine.EnabledRoutes, approvedRoute) {
+			log.Info().
+				Str("route", approvedRoute.String()).
+				Uint64("client", machine.ID).
+				Msg("Enabling autoApproved route for client")
+			machine.EnabledRoutes = append(machine.EnabledRoutes, approvedRoute)
+		}
+	}
+
+	return nil
+}
+
 func (machine *Machine) RoutesToProto() *v1.Routes {
 	availableRoutes := machine.GetAdvertisedRoutes()
 

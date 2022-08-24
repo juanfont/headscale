@@ -11,11 +11,12 @@ import (
 
 // ACLPolicy represents a Tailscale ACL Policy.
 type ACLPolicy struct {
-	Groups    Groups    `json:"groups"    yaml:"groups"`
-	Hosts     Hosts     `json:"hosts"     yaml:"hosts"`
-	TagOwners TagOwners `json:"tagOwners" yaml:"tagOwners"`
-	ACLs      []ACL     `json:"acls"      yaml:"acls"`
-	Tests     []ACLTest `json:"tests"     yaml:"tests"`
+	Groups        Groups        `json:"groups"        yaml:"groups"`
+	Hosts         Hosts         `json:"hosts"         yaml:"hosts"`
+	TagOwners     TagOwners     `json:"tagOwners"     yaml:"tagOwners"`
+	ACLs          []ACL         `json:"acls"          yaml:"acls"`
+	Tests         []ACLTest     `json:"tests"         yaml:"tests"`
+	AutoApprovers AutoApprovers `json:"autoApprovers" yaml:"autoApprovers"`
 }
 
 // ACL is a basic rule for the ACL Policy.
@@ -40,6 +41,13 @@ type ACLTest struct {
 	Source string   `json:"src"            yaml:"src"`
 	Accept []string `json:"accept"         yaml:"accept"`
 	Deny   []string `json:"deny,omitempty" yaml:"deny,omitempty"`
+}
+
+// AutoApprovers specify which users (namespaces?), groups or tags have their advertised routes
+// or exit node status automatically enabled
+type AutoApprovers struct {
+	Routes   map[string][]string `json:"routes"   yaml:"routes"`
+	ExitNode []string            `json:"exitNode" yaml:"exitNode"`
 }
 
 // UnmarshalJSON allows to parse the Hosts directly into netaddr objects.
