@@ -1,4 +1,4 @@
-//nolint
+// nolint
 package headscale
 
 import (
@@ -111,6 +111,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
+		request.AclTags,
 	)
 	if err != nil {
 		return nil, err
@@ -141,6 +142,7 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	request *v1.ListPreAuthKeysRequest,
 ) (*v1.ListPreAuthKeysResponse, error) {
 	preAuthKeys, err := api.h.ListPreAuthKeys(request.GetNamespace())
+
 	if err != nil {
 		return nil, err
 	}

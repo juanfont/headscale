@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -33,6 +34,8 @@ func init() {
 		Bool("ephemeral", false, "Preauthkey for ephemeral nodes")
 	createPreAuthKeyCmd.Flags().
 		StringP("expiration", "e", DefaultPreAuthKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
+	createPreAuthKeyCmd.Flags().
+		StringSlice("tags", []string{}, "Tags to automatically assign to node")
 }
 
 var preauthkeysCmd = &cobra.Command{
@@ -81,7 +84,16 @@ var listPreAuthKeys = &cobra.Command{
 		}
 
 		tableData := pterm.TableData{
-			{"ID", "Key", "Reusable", "Ephemeral", "Used", "Expiration", "Created"},
+			{
+				"ID",
+				"Key",
+				"Reusable",
+				"Ephemeral",
+				"Used",
+				"Expiration",
+				"Created",
+				"Tags",
+			},
 		}
 		for _, key := range response.PreAuthKeys {
 			expiration := "-"
@@ -96,6 +108,15 @@ var listPreAuthKeys = &cobra.Command{
 				reusable = fmt.Sprintf("%v", key.GetReusable())
 			}
 
+			var aclTags string
+
+			if len(key.AclTags) > 0 {
+				for _, tag := range key.AclTags {
+					aclTags += "," + tag
+				}
+				aclTags = strings.TrimLeft(aclTags, ",")
+			}
+
 			tableData = append(tableData, []string{
 				key.GetId(),
 				key.GetKey(),
@@ -104,6 +125,7 @@ var listPreAuthKeys = &cobra.Command{
 				strconv.FormatBool(key.GetUsed()),
 				expiration,
 				key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+				aclTags,
 			})
 
 		}
@@ -136,6 +158,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
+		tags, _ := cmd.Flags().GetStringSlice("tags")
 
 		log.Trace().
 			Bool("reusable", reusable).
@@ -147,6 +170,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 			Namespace: namespace,
 			Reusable:  reusable,
 			Ephemeral: ephemeral,
+			AclTags:   tags,
 		}
 
 		durationStr, _ := cmd.Flags().GetString("expiration")
