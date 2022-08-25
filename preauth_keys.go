@@ -129,7 +129,7 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 // does not exist.
 func (h *Headscale) DestroyPreAuthKey(pak PreAuthKey) error {
 	return h.db.Transaction(func(db *gorm.DB) error {
-		if result := db.Unscoped().Delete(PreAuthKeyAclTag{PreAuthKeyID: pak.ID}); result.Error != nil {
+		if result := db.Unscoped().Where(PreAuthKeyAclTag{PreAuthKeyID: pak.ID}).Delete(&PreAuthKeyAclTag{}); result.Error != nil {
 			return result.Error
 		}
 

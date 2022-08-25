@@ -114,7 +114,7 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 	namespace, err := app.CreateNamespace("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "testmachine")
@@ -164,7 +164,7 @@ func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 	namespace, err := app.CreateNamespace("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "testmachine")
@@ -214,7 +214,7 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 	namespace, err := app.CreateNamespace("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "testmachine")
@@ -263,7 +263,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 	namespace, err := app.CreateNamespace("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "webserver")
@@ -395,7 +395,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	namespace, err := app.CreateNamespace("testnamespace")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("testnamespace", "testmachine")
@@ -437,7 +437,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	namespace, err := app.CreateNamespace("testnamespace")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("testnamespace", "testmachine")

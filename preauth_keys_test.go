@@ -7,14 +7,14 @@ import (
 )
 
 func (*Suite) TestCreatePreAuthKey(c *check.C) {
-	_, err := app.CreatePreAuthKey("bogus", true, false, nil)
+	_, err := app.CreatePreAuthKey("bogus", true, false, nil, nil)
 
 	c.Assert(err, check.NotNil)
 
 	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	key, err := app.CreatePreAuthKey(namespace.Name, true, false, nil)
+	key, err := app.CreatePreAuthKey(namespace.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	// Did we get a valid key?
@@ -40,7 +40,7 @@ func (*Suite) TestExpiredPreAuthKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	now := time.Now()
-	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, &now)
+	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, &now, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
@@ -58,7 +58,7 @@ func (*Suite) TestValidateKeyOk(c *check.C) {
 	namespace, err := app.CreateNamespace("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
@@ -70,7 +70,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	namespace, err := app.CreateNamespace("test4")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	machine := Machine{
@@ -94,7 +94,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	namespace, err := app.CreateNamespace("test5")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	machine := Machine{
@@ -118,7 +118,7 @@ func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
 	namespace, err := app.CreateNamespace("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
@@ -130,7 +130,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	namespace, err := app.CreateNamespace("test7")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, true, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, true, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	now := time.Now()
@@ -165,7 +165,7 @@ func (*Suite) TestExpirePreauthKey(c *check.C) {
 	namespace, err := app.CreateNamespace("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 	c.Assert(pak.Expiration, check.IsNil)
 
@@ -182,7 +182,7 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	namespace, err := app.CreateNamespace("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 	pak.Used = true
 	app.db.Save(&pak)

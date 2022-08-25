@@ -23,7 +23,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	namespace, err := app.CreateNamespace("test-ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "testmachine")
@@ -71,7 +71,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		ips, err := app.getAvailableIPs()
 		c.Assert(err, check.IsNil)
 
-		pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+		pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 
 		_, err = app.GetMachine("test", "testmachine")
@@ -161,7 +161,7 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 	namespace, err := app.CreateNamespace("test-ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "testmachine")
