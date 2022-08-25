@@ -260,6 +260,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 				"24h",
 				"--output",
 				"json",
+				"--tags",
+				"tag:test1,tag:test2",
 			},
 			[]string{},
 		)
@@ -332,6 +334,11 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 		s.T(),
 		listedPreAuthKeys[4].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
+
+	// Test that tags are present
+	for i := 0; i < count; i++ {
+		assert.DeepEquals(listedPreAuthKeys[i].AclTags, []string{"tag:test1,", "tag:test2"})
+	}
 
 	// Expire three keys
 	for i := 0; i < 3; i++ {

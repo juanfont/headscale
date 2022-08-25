@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -55,6 +56,12 @@ func (h *Headscale) CreatePreAuthKey(
 		return nil, err
 	}
 
+	for _, tag := range aclTags {
+		if !strings.HasPrefix(tag, "tag:") {
+			return nil, fmt.Errorf("aclTag '%s' did not begin with 'tag:'", tag)
+		}
+	}
+
 	now := time.Now().UTC()
 	kstr, err := h.generateKey()
 	if err != nil {
@@ -77,12 +84,17 @@ func (h *Headscale) CreatePreAuthKey(
 		}
 
 		if len(aclTags) > 0 {
+			seenTags := map[string]bool{}
+
 			for _, tag := range aclTags {
-				if err := db.Save(&PreAuthKeyAclTag{PreAuthKeyID: key.ID, Tag: tag}).Error; err != nil {
-					return fmt.Errorf(
-						"failed to create key tag in the database: %w",
-						err,
-					)
+				if seenTags[tag] == false {
+					if err := db.Save(&PreAuthKeyAclTag{PreAuthKeyID: key.ID, Tag: tag}).Error; err != nil {
+						return fmt.Errorf(
+							"failed to ceate key tag in the database: %w",
+							err,
+						)
+					}
+					seenTags[tag] = true
 				}
 			}
 		}
@@ -222,7 +234,7 @@ func (key *PreAuthKey) toProto() *v1.PreAuthKey {
 
 	if len(key.AclTags) > 0 {
 		for idx := range key.AclTags {
-			protoKey.AclTags[idx] = key.AclTags[0].Tag
+			protoKey.AclTags[idx] = key.AclTags[idx].Tag
 		}
 	}
 

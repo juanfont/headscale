@@ -190,3 +190,20 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	_, err = app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
 }
+
+func (*Suite) TestPreAuthKeyAclTags(c *check.C) {
+	namespace, err := app.CreateNamespace("test8")
+	c.Assert(err, check.IsNil)
+
+	_, err = app.CreatePreAuthKey(namespace.Name, false, false, nil, []string{"badtag"})
+	c.Assert(err, check.NotNil) // Confirm that malformed tags are rejected
+
+	tags := []string{"tag:test1", "tag:test2"}
+	tagsWithDuplicate := []string{"tag:test1", "tag:test2", "tag:test2"}
+	_, err = app.CreatePreAuthKey(namespace.Name, false, false, nil, tagsWithDuplicate)
+	c.Assert(err, check.IsNil)
+
+	listedPaks, err := app.ListPreAuthKeys("test8")
+	c.Assert(err, check.IsNil)
+	c.Assert(listedPaks[0].toProto().AclTags, check.DeepEquals, tags)
+}
