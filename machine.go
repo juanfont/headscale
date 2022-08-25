@@ -942,10 +942,6 @@ func (machine *Machine) RoutesToProto() *v1.Routes {
 }
 
 func (h *Headscale) GenerateGivenName(suppliedName string) (string, error) {
-	// If a hostname is or will be longer than 63 chars after adding the hash,
-	// it needs to be trimmed.
-	trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - MachineGivenNameTrimSize
-
 	normalizedHostname, err := NormalizeToFQDNRules(
 		suppliedName,
 		h.cfg.OIDC.StripEmaildomain,
@@ -954,17 +950,19 @@ func (h *Headscale) GenerateGivenName(suppliedName string) (string, error) {
 		return "", err
 	}
 
-	postfix, err := GenerateRandomStringDNSSafe(MachineGivenNameHashLength)
-	if err != nil {
-		return "", err
-	}
+	if h.cfg.HostnameRandomSuffix {
+		// Trim if a hostname will be longer than 63 chars after adding the hash.
+		trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - MachineGivenNameTrimSize
+		if len(normalizedHostname) > trimmedHostnameLength {
+			normalizedHostname = normalizedHostname[:trimmedHostnameLength]
+		}
 
-	// Verify that that the new unique name is shorter than the maximum allowed
-	// DNS segment.
-	if len(normalizedHostname) <= trimmedHostnameLength {
-		normalizedHostname = fmt.Sprintf("%s-%s", normalizedHostname, postfix)
-	} else {
-		normalizedHostname = fmt.Sprintf("%s-%s", normalizedHostname[:trimmedHostnameLength], postfix)
+		suffix, err := GenerateRandomStringDNSSafe(MachineGivenNameHashLength)
+		if err != nil {
+			return "", err
+		}
+
+		normalizedHostname += "-" + suffix
 	}
 
 	return normalizedHostname, nil

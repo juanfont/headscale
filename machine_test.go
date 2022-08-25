@@ -3,8 +3,8 @@ package headscale
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -926,7 +926,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 		name    string
 		h       *Headscale
 		args    args
-		want    string
+		want    *regexp.Regexp
 		wantErr bool
 	}{
 		{
@@ -941,7 +941,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 			args: args{
 				suppliedName: "testmachine",
 			},
-			want:    "testmachine",
+			want:    regexp.MustCompile("^testmachine$"),
 			wantErr: false,
 		},
 		{
@@ -956,22 +956,7 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 			args: args{
 				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
 			},
-			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
-			wantErr: false,
-		},
-		{
-			name: "machine name with 60 chars",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
-			},
-			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567",
-			},
-			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
+			want:    regexp.MustCompile("^testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine$"),
 			wantErr: false,
 		},
 		{
@@ -984,9 +969,9 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 				},
 			},
 			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567890",
+				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
 			},
-			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			want:    regexp.MustCompile("^machineeee12345678901234567890123456789012345678901234567890123$"),
 			wantErr: false,
 		},
 		{
@@ -999,10 +984,10 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 				},
 			},
 			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567891",
+				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234",
 			},
-			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			wantErr: false,
+			want:    nil,
+			wantErr: true,
 		},
 		{
 			name: "machine name with 73 chars",
@@ -1014,10 +999,42 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 				},
 			},
 			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
+				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234567890123",
 			},
-			want:    "",
+			want:    nil,
 			wantErr: true,
+		},
+		{
+			name: "machine name with random suffix",
+			h: &Headscale{
+				cfg: &Config{
+					HostnameRandomSuffix: true,
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "test",
+			},
+			want:    regexp.MustCompile(fmt.Sprintf("^test-[a-z0-9]{%d}$", MachineGivenNameHashLength)),
+			wantErr: false,
+		},
+		{
+			name: "machine name with 63 chars with random suffix",
+			h: &Headscale{
+				cfg: &Config{
+					HostnameRandomSuffix: true,
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
+			},
+			want:    regexp.MustCompile(fmt.Sprintf("^machineeee1234567890123456789012345678901234567890123-[a-z0-9]{%d}$", MachineGivenNameHashLength)),
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
@@ -1033,9 +1050,9 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 				return
 			}
 
-			if tt.want != "" && strings.Contains(tt.want, got) {
+			if tt.want != nil && !tt.want.MatchString(got) {
 				t.Errorf(
-					"Headscale.GenerateGivenName() = %v, is not a substring of %v",
+					"Headscale.GenerateGivenName() = %v, does not match %v",
 					tt.want,
 					got,
 				)

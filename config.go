@@ -36,6 +36,7 @@ type Config struct {
 	PrivateKeyPath                 string
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
+	HostnameRandomSuffix           bool
 	LogLevel                       zerolog.Level
 	DisableUpdateCheck             bool
 
@@ -149,6 +150,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("log_level", "info")
 
 	viper.SetDefault("dns_config", nil)
+
+	viper.SetDefault("hostname_random_suffix", false)
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
