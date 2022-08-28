@@ -27,7 +27,7 @@ type KV struct {
 	Key   string
 	Value string
 }
-
+// Value return json value, implement driver.Valuer interface.
 func (h *Headscale) initDB() error {
 	db, err := h.openDB()
 	if err != nil {
@@ -220,7 +220,7 @@ func (h *Headscale) setValue(key string, value string) error {
 
 	return nil
 }
-
+// getNamespace returns the namespace for the given key in Namespace.
 func (h *Headscale) pingDB() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -255,12 +255,11 @@ func (hi *HostInfo) Scan(destination interface{}) error {
 // Value return json value, implement driver.Valuer interface.
 func (hi HostInfo) Value() (driver.Value, error) {
 	bytes, err := json.Marshal(hi)
-
 	return string(bytes), err
 }
 
 type IPPrefixes []netaddr.IPPrefix
-
+// Value return json value, implement driver.Valuer interface.
 func (i *IPPrefixes) Scan(destination interface{}) error {
 	switch value := destination.(type) {
 	case []byte:
