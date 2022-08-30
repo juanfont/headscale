@@ -2,6 +2,12 @@
 
 ## 0.17.0 (2022-XX-XX)
 
+### BREAKING
+
+- Optional (off by default) random node suffixes. Reverts default Node DNS random suffixes introduced in 0.16.0.
+
+### Changes
+
 - Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
 - Add ability to specify config location via env var `HEADSCALE_CONFIG` [#674](https://github.com/juanfont/headscale/issues/674)
 

@@ -216,6 +216,12 @@ dns_config:
   # `hostname.namespace.base_domain` (e.g., _myhost.mynamespace.example.com_).
   base_domain: example.com
 
+# Assign random node DNS suffixes in the form of `hostname-<random suffix>.namespace.base_domain`.
+# The original hostname will be truncated if the hostname including the suffix is longer than 63 characters.
+# This setting avoids hostname collisions at the cost of hostnames configured on the physical device and over
+# the local network not matching the hostname over the VPN.
+hostname_random_suffix: false
+
 # Unix socket used for the CLI to connect without authentication
 # Note: for local development, you probably want to change this to:
 # unix_socket: ./headscale.sock
