@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/netip"
 	"reflect"
+	"regexp"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -344,6 +344,53 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 	for i := range deserialized {
 		c.Assert(deserialized[i], check.Equals, input[i])
 	}
+}
+
+func (s *Suite) TestGenerateGivenName(c *check.C) {
+	namespace1, err := app.CreateNamespace("namespace-1")
+	c.Assert(err, check.IsNil)
+
+	namespace2, err := app.CreateNamespace("namespace-2")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKey(namespace1.Name, false, false, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = app.GetMachine("namespace-1", "testmachine")
+	c.Assert(err, check.NotNil)
+
+	machine := &Machine{
+		ID:             0,
+		MachineKey:     "machine-key-1",
+		NodeKey:        "node-key-1",
+		DiscoKey:       "disco-key-1",
+		Hostname:       "hostname-1",
+		GivenName:      "hostname-1",
+		NamespaceID:    namespace1.ID,
+		RegisterMethod: RegisterMethodAuthKey,
+		AuthKeyID:      uint(pak.ID),
+	}
+	app.db.Save(machine)
+
+	givenName, err := app.GenerateGivenName(namespace1.Name, "machine-key-2", "hostname-2")
+	comment := check.Commentf("Same namespace, unique machines, unique hostnames, no conflict")
+	c.Assert(err, check.IsNil, comment)
+	c.Assert(givenName, check.Equals, "hostname-2", comment)
+
+	givenName, err = app.GenerateGivenName(namespace1.Name, "machine-key-1", "hostname-1")
+	comment = check.Commentf("Same namespace, same machine, same hostname, no conflict")
+	c.Assert(err, check.IsNil, comment)
+	c.Assert(givenName, check.Equals, "hostname-1", comment)
+
+	givenName, err = app.GenerateGivenName(namespace1.Name, "machine-key-2", "hostname-1")
+	comment = check.Commentf("Same namespace, unique machines, same hostname, conflict")
+	c.Assert(err, check.IsNil, comment)
+	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
+
+	givenName, err = app.GenerateGivenName(namespace2.Name, "machine-key-2", "hostname-1")
+	comment = check.Commentf("Unique namespaces, unique machines, same hostname, no conflict")
+	c.Assert(err, check.IsNil, comment)
+	c.Assert(givenName, check.Equals, "hostname-1", comment)
 }
 
 func (s *Suite) TestSetTags(c *check.C) {
@@ -917,15 +964,16 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 	}
 }
 
-func TestHeadscale_GenerateGivenName(t *testing.T) {
+func TestHeadscale_generateGivenName(t *testing.T) {
 	type args struct {
 		suppliedName string
+		randomSuffix bool
 	}
 	tests := []struct {
 		name    string
 		h       *Headscale
 		args    args
-		want    string
+		want    *regexp.Regexp
 		wantErr bool
 	}{
 		{
@@ -939,8 +987,9 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 			},
 			args: args{
 				suppliedName: "testmachine",
+				randomSuffix: false,
 			},
-			want:    "testmachine",
+			want:    regexp.MustCompile("^testmachine$"),
 			wantErr: false,
 		},
 		{
@@ -954,23 +1003,9 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 			},
 			args: args{
 				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
+				randomSuffix: false,
 			},
-			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
-			wantErr: false,
-		},
-		{
-			name: "machine name with 60 chars",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
-			},
-			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567",
-			},
-			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
+			want:    regexp.MustCompile("^testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine$"),
 			wantErr: false,
 		},
 		{
@@ -983,9 +1018,10 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 				},
 			},
 			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567890",
+				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
+				randomSuffix: false,
 			},
-			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			want:    regexp.MustCompile("^machineeee12345678901234567890123456789012345678901234567890123$"),
 			wantErr: false,
 		},
 		{
@@ -998,10 +1034,11 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 				},
 			},
 			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine1234567891",
+				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234",
+				randomSuffix: false,
 			},
-			want:    "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			wantErr: false,
+			want:    nil,
+			wantErr: true,
 		},
 		{
 			name: "machine name with 73 chars",
@@ -1013,15 +1050,48 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 				},
 			},
 			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
+				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234567890123",
+				randomSuffix: false,
 			},
-			want:    "",
+			want:    nil,
 			wantErr: true,
+		},
+		{
+			name: "machine name with random suffix",
+			h: &Headscale{
+				cfg: &Config{
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "test",
+				randomSuffix: true,
+			},
+			want:    regexp.MustCompile(fmt.Sprintf("^test-[a-z0-9]{%d}$", MachineGivenNameHashLength)),
+			wantErr: false,
+		},
+		{
+			name: "machine name with 63 chars with random suffix",
+			h: &Headscale{
+				cfg: &Config{
+					OIDC: OIDCConfig{
+						StripEmaildomain: true,
+					},
+				},
+			},
+			args: args{
+				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
+				randomSuffix: true,
+			},
+			want:    regexp.MustCompile(fmt.Sprintf("^machineeee1234567890123456789012345678901234567890123-[a-z0-9]{%d}$", MachineGivenNameHashLength)),
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.h.GenerateGivenName(tt.args.suppliedName)
+			got, err := tt.h.generateGivenName(tt.args.suppliedName, tt.args.randomSuffix)
 			if (err != nil) != tt.wantErr {
 				t.Errorf(
 					"Headscale.GenerateGivenName() error = %v, wantErr %v",
@@ -1032,9 +1102,9 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 				return
 			}
 
-			if tt.want != "" && strings.Contains(tt.want, got) {
+			if tt.want != nil && !tt.want.MatchString(got) {
 				t.Errorf(
-					"Headscale.GenerateGivenName() = %v, is not a substring of %v",
+					"Headscale.GenerateGivenName() = %v, does not match %v",
 					tt.want,
 					got,
 				)

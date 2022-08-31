@@ -1,4 +1,4 @@
-//nolint
+// nolint
 package headscale
 
 import (
@@ -479,7 +479,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		Hostname:    "DebugTestMachine",
 	}
 
-	givenName, err := api.h.GenerateGivenName(request.GetName())
+	givenName, err := api.h.GenerateGivenName(namespace.Name, request.GetKey(), request.GetName())
 	if err != nil {
 		return nil, err
 	}
