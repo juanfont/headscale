@@ -1,6 +1,9 @@
 package headscale
 
 import (
+	"net/netip"
+
+	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"inet.af/netaddr"
 )
@@ -10,7 +13,7 @@ func (s *Suite) TestGetAvailableIp(c *check.C) {
 
 	c.Assert(err, check.IsNil)
 
-	expected := netaddr.MustParseIP("10.27.0.1")
+	expected := netip.MustParseAddr("10.27.0.1")
 
 	c.Assert(len(ips), check.Equals, 1)
 	c.Assert(ips[0].String(), check.Equals, expected.String())
@@ -46,8 +49,8 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 
 	c.Assert(err, check.IsNil)
 
-	expected := netaddr.MustParseIP("10.27.0.1")
-	expectedIPSetBuilder := netaddr.IPSetBuilder{}
+	expected := netip.MustParseAddr("10.27.0.1")
+	expectedIPSetBuilder := netipx.IPSetBuilder{}
 	expectedIPSetBuilder.Add(expected)
 	expectedIPSet, _ := expectedIPSetBuilder.IPSet()
 
@@ -96,11 +99,11 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	usedIps, err := app.getUsedIPs()
 	c.Assert(err, check.IsNil)
 
-	expected0 := netaddr.MustParseIP("10.27.0.1")
-	expected9 := netaddr.MustParseIP("10.27.0.10")
-	expected300 := netaddr.MustParseIP("10.27.0.45")
+	expected0 := netip.MustParseAddr("10.27.0.1")
+	expected9 := netip.MustParseAddr("10.27.0.10")
+	expected300 := netip.MustParseAddr("10.27.0.45")
 
-	notExpectedIPSetBuilder := netaddr.IPSetBuilder{}
+	notExpectedIPSetBuilder := netipx.IPSetBuilder{}
 	notExpectedIPSetBuilder.Add(expected0)
 	notExpectedIPSetBuilder.Add(expected9)
 	notExpectedIPSetBuilder.Add(expected300)
@@ -121,7 +124,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(
 		machine1.IPAddresses[0],
 		check.Equals,
-		netaddr.MustParseIP("10.27.0.1"),
+		netip.MustParseAddr("10.27.0.1"),
 	)
 
 	machine50, err := app.GetMachineByID(50)
@@ -130,10 +133,10 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(
 		machine50.IPAddresses[0],
 		check.Equals,
-		netaddr.MustParseIP("10.27.0.50"),
+		netip.MustParseAddr("10.27.0.50"),
 	)
 
-	expectedNextIP := netaddr.MustParseIP("10.27.1.95")
+	expectedNextIP := netip.MustParseAddr("10.27.1.95")
 	nextIP, err := app.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
