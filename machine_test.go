@@ -2,6 +2,7 @@ package headscale
 
 import (
 	"fmt"
+	"net/netip"
 	"reflect"
 	"strconv"
 	"strings"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"gopkg.in/check.v1"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -229,7 +229,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 			NodeKey:    "bar" + strconv.Itoa(index),
 			DiscoKey:   "faa" + strconv.Itoa(index),
 			IPAddresses: MachineAddresses{
-				netaddr.MustParseIP(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1))),
+				netip.MustParseAddr(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1))),
 			},
 			Hostname:       "testmachine" + strconv.Itoa(index),
 			NamespaceID:    stor[index%2].namespace.ID,
@@ -243,7 +243,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		Groups: map[string][]string{
 			"group:test": {"admin"},
 		},
-		Hosts:     map[string]netaddr.IPPrefix{},
+		Hosts:     map[string]netip.Prefix{},
 		TagOwners: map[string][]string{},
 		ACLs: []ACL{
 			{
@@ -326,9 +326,9 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 }
 
 func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
-	input := MachineAddresses([]netaddr.IP{
-		netaddr.MustParseIP("192.0.2.1"),
-		netaddr.MustParseIP("2001:db8::1"),
+	input := MachineAddresses([]netip.Addr{
+		netip.MustParseAddr("192.0.2.1"),
+		netip.MustParseAddr("2001:db8::1"),
 	})
 	serialized, err := input.Value()
 	c.Assert(err, check.IsNil)
@@ -559,21 +559,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					{
 						ID: 1,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -588,19 +588,19 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 				machine: &Machine{ // current machine
 					ID:          1,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.1")},
 					Namespace:   Namespace{Name: "joe"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          2,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
 					Namespace:   Namespace{Name: "marc"},
 				},
 				{
 					ID:          3,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
 					Namespace:   Namespace{Name: "mickael"},
 				},
 			},
@@ -612,21 +612,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					{
 						ID: 1,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -641,14 +641,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 				machine: &Machine{ // current machine
 					ID:          1,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.1")},
 					Namespace:   Namespace{Name: "joe"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          2,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
 					Namespace:   Namespace{Name: "marc"},
 				},
 			},
@@ -660,21 +660,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					{
 						ID: 1,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -689,14 +689,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 				machine: &Machine{ // current machine
 					ID:          2,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
 					Namespace:   Namespace{Name: "marc"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          3,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
 					Namespace:   Namespace{Name: "mickael"},
 				},
 			},
@@ -708,21 +708,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					{
 						ID: 1,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -738,7 +738,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID: 1,
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.1"),
+						netip.MustParseAddr("100.64.0.1"),
 					},
 					Namespace: Namespace{Name: "joe"},
 				},
@@ -747,7 +747,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				{
 					ID: 2,
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.2"),
+						netip.MustParseAddr("100.64.0.2"),
 					},
 					Namespace: Namespace{Name: "marc"},
 				},
@@ -760,21 +760,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					{
 						ID: 1,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -790,7 +790,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID: 2,
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.2"),
+						netip.MustParseAddr("100.64.0.2"),
 					},
 					Namespace: Namespace{Name: "marc"},
 				},
@@ -799,14 +799,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				{
 					ID: 1,
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.1"),
+						netip.MustParseAddr("100.64.0.1"),
 					},
 					Namespace: Namespace{Name: "joe"},
 				},
 				{
 					ID: 3,
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.3"),
+						netip.MustParseAddr("100.64.0.3"),
 					},
 					Namespace: Namespace{Name: "mickael"},
 				},
@@ -819,21 +819,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					{
 						ID: 1,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -848,7 +848,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 				machine: &Machine{ // current machine
 					ID:          2,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
 					Namespace:   Namespace{Name: "marc"},
 				},
 			},
@@ -856,13 +856,13 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				{
 					ID: 1,
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.1"),
+						netip.MustParseAddr("100.64.0.1"),
 					},
 					Namespace: Namespace{Name: "joe"},
 				},
 				{
 					ID:          3,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.3")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
 					Namespace:   Namespace{Name: "mickael"},
 				},
 			},
@@ -874,21 +874,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					{
 						ID: 1,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -897,7 +897,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 				machine: &Machine{ // current machine
 					ID:          2,
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
 					Namespace:   Namespace{Name: "marc"},
 				},
 			},
