@@ -2,11 +2,11 @@ package headscale
 
 import (
 	"encoding/json"
+	"net/netip"
 	"strings"
 
 	"github.com/tailscale/hujson"
 	"gopkg.in/yaml.v3"
-	"inet.af/netaddr"
 )
 
 // ACLPolicy represents a Tailscale ACL Policy.
@@ -30,7 +30,7 @@ type ACL struct {
 type Groups map[string][]string
 
 // Hosts are alias for IP addresses or subnets.
-type Hosts map[string]netaddr.IPPrefix
+type Hosts map[string]netip.Prefix
 
 // TagOwners specify what users (namespaces?) are allow to use certain tags.
 type TagOwners map[string][]string
@@ -60,7 +60,7 @@ func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 		if !strings.Contains(prefixStr, "/") {
 			prefixStr += "/32"
 		}
-		prefix, err := netaddr.ParseIPPrefix(prefixStr)
+		prefix, err := netip.ParsePrefix(prefixStr)
 		if err != nil {
 			return err
 		}
@@ -81,7 +81,7 @@ func (hosts *Hosts) UnmarshalYAML(data []byte) error {
 		return err
 	}
 	for host, prefixStr := range hostIPPrefixMap {
-		prefix, err := netaddr.ParseIPPrefix(prefixStr)
+		prefix, err := netip.ParsePrefix(prefixStr)
 		if err != nil {
 			return err
 		}
