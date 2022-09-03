@@ -17,7 +17,7 @@
         in
         rec {
           headscale =
-            pkgs.buildGo118Module rec {
+            pkgs.buildGo119Module rec {
               pname = "headscale";
               version = headscaleVersion;
               src = pkgs.lib.cleanSource self;
@@ -95,7 +95,7 @@
             overlays = [ self.overlay ];
             inherit system;
           };
-          buildDeps = with pkgs; [ git go_1_18 gnumake ];
+          buildDeps = with pkgs; [ git go_1_19 gnumake ];
           devDeps = with pkgs;
             buildDeps ++ [
               golangci-lint
