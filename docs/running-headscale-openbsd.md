@@ -17,7 +17,7 @@ describing how to make `headscale` run properly in a server environment.
 
 ```shell
 # Install prerequistes
-# 1. go v1.18+: headscale newer than 0.15 needs go 1.18+ to compile
+# 1. go v1.19+: headscale newer than 0.17 needs go 1.19+ to compile
 # 2. gmake: Makefile in the headscale repo is written in GNU make syntax
 pkg_add -D snap go
 pkg_add gmake
@@ -46,7 +46,7 @@ cp headscale /usr/local/sbin
 
 ```shell
 # Install prerequistes
-# 1. go v1.18+: headscale newer than 0.15 needs go 1.18+ to compile
+# 1. go v1.19+: headscale newer than 0.17 needs go 1.19+ to compile
 # 2. gmake: Makefile in the headscale repo is written in GNU make syntax
 
 git clone https://github.com/juanfont/headscale.git
