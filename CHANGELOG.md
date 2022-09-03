@@ -4,6 +4,7 @@
 
 - Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
 - Add ability to specify config location via env var `HEADSCALE_CONFIG` [#674](https://github.com/juanfont/headscale/issues/674)
+- Target Go 1.19 for Headscale [#778](https://github.com/juanfont/headscale/pull/778)
 
 ## 0.16.4 (2022-08-21)
 
