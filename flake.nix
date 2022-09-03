@@ -2,7 +2,7 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-22.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -17,7 +17,7 @@
         in
         rec {
           headscale =
-            pkgs.buildGo118Module rec {
+            pkgs.buildGo119Module rec {
               pname = "headscale";
               version = headscaleVersion;
               src = pkgs.lib.cleanSource self;
@@ -95,7 +95,7 @@
             overlays = [ self.overlay ];
             inherit system;
           };
-          buildDeps = with pkgs; [ git go_1_18 gnumake ];
+          buildDeps = with pkgs; [ git go_1_19 gnumake ];
           devDeps = with pkgs;
             buildDeps ++ [
               golangci-lint
