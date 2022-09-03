@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"log"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
-	"inet.af/netaddr"
 	"tailscale.com/types/key"
 )
 
@@ -557,7 +557,7 @@ func nodesToPtables(
 		var IPV4Address string
 		var IPV6Address string
 		for _, addr := range machine.IpAddresses {
-			if netaddr.MustParseIP(addr).Is4() {
+			if netip.MustParseAddr(addr).Is4() {
 				IPV4Address = addr
 			} else {
 				IPV6Address = addr

@@ -5,7 +5,6 @@ import (
 
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
-	"inet.af/netaddr"
 )
 
 func (s *Suite) TestGetAvailableIp(c *check.C) {
@@ -156,7 +155,7 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 	ips, err := app.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
-	expected := netaddr.MustParseIP("10.27.0.1")
+	expected := netip.MustParseAddr("10.27.0.1")
 
 	c.Assert(len(ips), check.Equals, 1)
 	c.Assert(ips[0].String(), check.Equals, expected.String())

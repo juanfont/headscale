@@ -42,7 +42,7 @@ type ACLTest struct {
 	Deny   []string `json:"deny,omitempty" yaml:"deny,omitempty"`
 }
 
-// UnmarshalJSON allows to parse the Hosts directly into netaddr objects.
+// UnmarshalJSON allows to parse the Hosts directly into netip objects.
 func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 	newHosts := Hosts{}
 	hostIPPrefixMap := make(map[string]string)
@@ -71,7 +71,7 @@ func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalYAML allows to parse the Hosts directly into netaddr objects.
+// UnmarshalYAML allows to parse the Hosts directly into netip objects.
 func (hosts *Hosts) UnmarshalYAML(data []byte) error {
 	newHosts := Hosts{}
 	hostIPPrefixMap := make(map[string]string)
