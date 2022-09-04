@@ -221,8 +221,8 @@ func (h *Headscale) setValue(key string, value string) error {
 	return nil
 }
 
-func (h *Headscale) pingDB() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+func (h *Headscale) pingDB(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	db, err := h.db.DB()
 	if err != nil {

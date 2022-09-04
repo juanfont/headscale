@@ -31,7 +31,9 @@ func (h *Headscale) NoiseUpgradeHandler(
 		return
 	}
 
-	server := http.Server{}
+	server := http.Server{
+		ReadTimeout: HTTPReadTimeout,
+	}
 	server.Handler = h2c.NewHandler(h.noiseMux, &http2.Server{})
 	err = server.Serve(netutil.NewOneConnListener(noiseConn, nil))
 	if err != nil {

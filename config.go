@@ -5,11 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
-
-	"net/netip"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/rs/zerolog"

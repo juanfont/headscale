@@ -75,6 +75,8 @@ func (h *Headscale) marshalResponse(
 			Caller().
 			Err(err).
 			Msg("Cannot marshal response")
+
+		return nil, err
 	}
 
 	if machineKey.IsZero() { // if Noise
