@@ -7,7 +7,7 @@
 - Target Go 1.19 for Headscale [#778](https://github.com/juanfont/headscale/pull/778)
 - Target Tailscale v1.30.0 to build Headscale [#780](https://github.com/juanfont/headscale/pull/780)
 - Give a warning when running Headscale with reverse proxy improperly configured for WebSockets [#788](https://github.com/juanfont/headscale/pull/788)
-- Add documentation for running behind a reverse proxy.
+- Add documentation for running behind a reverse proxy. [#790](https://github.com/juanfont/headscale/pull/790)
 
 ## 0.16.4 (2022-08-21)
 
