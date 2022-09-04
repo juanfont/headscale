@@ -2,10 +2,11 @@ package headscale
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"inet.af/netaddr"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/dnsname"
 )
@@ -39,11 +40,11 @@ const (
 
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
-func generateMagicDNSRootDomains(ipPrefixes []netaddr.IPPrefix) []dnsname.FQDN {
+func generateMagicDNSRootDomains(ipPrefixes []netip.Prefix) []dnsname.FQDN {
 	fqdns := make([]dnsname.FQDN, 0, len(ipPrefixes))
 	for _, ipPrefix := range ipPrefixes {
-		var generateDNSRoot func(netaddr.IPPrefix) []dnsname.FQDN
-		switch ipPrefix.IP().BitLen() {
+		var generateDNSRoot func(netip.Prefix) []dnsname.FQDN
+		switch ipPrefix.Addr().BitLen() {
 		case ipv4AddressLength:
 			generateDNSRoot = generateIPv4DNSRootDomain
 
@@ -54,7 +55,7 @@ func generateMagicDNSRootDomains(ipPrefixes []netaddr.IPPrefix) []dnsname.FQDN {
 			panic(
 				fmt.Sprintf(
 					"unsupported IP version with address length %d",
-					ipPrefix.IP().BitLen(),
+					ipPrefix.Addr().BitLen(),
 				),
 			)
 		}
@@ -65,9 +66,9 @@ func generateMagicDNSRootDomains(ipPrefixes []netaddr.IPPrefix) []dnsname.FQDN {
 	return fqdns
 }
 
-func generateIPv4DNSRootDomain(ipPrefix netaddr.IPPrefix) []dnsname.FQDN {
+func generateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// Conversion to the std lib net.IPnet, a bit easier to operate
-	netRange := ipPrefix.IPNet()
+	netRange := netipx.PrefixIPNet(ipPrefix)
 	maskBits, _ := netRange.Mask.Size()
 
 	// lastOctet is the last IP byte covered by the mask
@@ -101,11 +102,11 @@ func generateIPv4DNSRootDomain(ipPrefix netaddr.IPPrefix) []dnsname.FQDN {
 	return fqdns
 }
 
-func generateIPv6DNSRootDomain(ipPrefix netaddr.IPPrefix) []dnsname.FQDN {
+func generateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	const nibbleLen = 4
 
-	maskBits, _ := ipPrefix.IPNet().Mask.Size()
-	expanded := ipPrefix.IP().StringExpanded()
+	maskBits, _ := netipx.PrefixIPNet(ipPrefix).Mask.Size()
+	expanded := ipPrefix.Addr().StringExpanded()
 	nibbleStr := strings.Map(func(r rune) rune {
 		if r == ':' {
 			return -1

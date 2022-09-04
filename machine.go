@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -26,6 +26,7 @@ const (
 	)
 	ErrCouldNotConvertMachineInterface = Error("failed to convert machine interface")
 	ErrHostnameTooLong                 = Error("Hostname too long")
+	ErrDifferentRegisteredNamespace    = Error("machine was previously registered with a different namespace")
 	MachineGivenNameHashLength         = 8
 	MachineGivenNameTrimSize           = 2
 )
@@ -82,7 +83,7 @@ type (
 	MachinesP []*Machine
 )
 
-type MachineAddresses []netaddr.IP
+type MachineAddresses []netip.Addr
 
 func (ma MachineAddresses) ToStringSlice() []string {
 	strSlice := make([]string, 0, len(ma))
@@ -102,7 +103,7 @@ func (ma *MachineAddresses) Scan(destination interface{}) error {
 			if len(addr) < 1 {
 				continue
 			}
-			parsed, err := netaddr.ParseIP(addr)
+			parsed, err := netip.ParseAddr(addr)
 			if err != nil {
 				return err
 			}
@@ -244,8 +245,8 @@ func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("machine_key <> ?",
-		machine.MachineKey).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("node_key <> ?",
+		machine.NodeKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
 		return Machines{}, err
@@ -375,6 +376,19 @@ func (h *Headscale) GetMachineByNodeKey(
 	return &machine, nil
 }
 
+// GetMachineByAnyNodeKey finds a Machine by its current NodeKey or the old one, and returns the Machine struct.
+func (h *Headscale) GetMachineByAnyNodeKey(
+	nodeKey key.NodePublic, oldNodeKey key.NodePublic,
+) (*Machine, error) {
+	machine := Machine{}
+	if result := h.db.Preload("Namespace").First(&machine, "node_key = ? OR node_key = ?",
+		NodePublicKeyStripPrefix(nodeKey), NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &machine, nil
+}
+
 // UpdateMachineFromDatabase takes a Machine struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
 func (h *Headscale) UpdateMachineFromDatabase(machine *Machine) error {
@@ -397,7 +411,7 @@ func (h *Headscale) SetTags(machine *Machine, tags []string) error {
 	if err := h.UpdateACLRules(); err != nil && !errors.Is(err, errEmptyPolicy) {
 		return err
 	}
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
@@ -411,7 +425,7 @@ func (h *Headscale) ExpireMachine(machine *Machine) error {
 	now := time.Now()
 	machine.Expiry = &now
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to expire machine in the database: %w", err)
@@ -438,7 +452,7 @@ func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
 	}
 	machine.GivenName = newName
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to rename machine in the database: %w", err)
@@ -454,7 +468,7 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
 	machine.LastSuccessfulUpdate = &now
 	machine.Expiry = &expiry
 
-	h.setLastStateChangeToNow(machine.Namespace.Name)
+	h.setLastStateChangeToNow()
 
 	if err := h.db.Save(machine).Error; err != nil {
 		return fmt.Errorf(
@@ -587,11 +601,14 @@ func (machine Machine) toNode(
 	}
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText(
-		[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+	// MachineKey is only used in the legacy protocol
+	if machine.MachineKey != "" {
+		err = machineKey.UnmarshalText(
+			[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+		}
 	}
 
 	var discoKey key.DiscoPublic
@@ -606,14 +623,14 @@ func (machine Machine) toNode(
 		discoKey = key.DiscoPublic{}
 	}
 
-	addrs := []netaddr.IPPrefix{}
+	addrs := []netip.Prefix{}
 	for _, machineAddress := range machine.IPAddresses {
-		ip := netaddr.IPPrefixFrom(machineAddress, machineAddress.BitLen())
+		ip := netip.PrefixFrom(machineAddress, machineAddress.BitLen())
 		addrs = append(addrs, ip)
 	}
 
 	allowedIPs := append(
-		[]netaddr.IPPrefix{},
+		[]netip.Prefix{},
 		addrs...) // we append the node own IP, as it is required by the clients
 
 	// TODO(kradalby): Needs investigation, We probably dont need this condition
@@ -789,12 +806,21 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 				)
 			}
 
+			// Registration of expired machine with different namespace
+			if registrationMachine.ID != 0 && registrationMachine.NamespaceID != namespace.ID {
+				return nil, ErrDifferentRegisteredNamespace
+			}
+
 			registrationMachine.NamespaceID = namespace.ID
 			registrationMachine.RegisterMethod = registrationMethod
 
 			machine, err := h.RegisterMachine(
 				registrationMachine,
 			)
+
+			if err == nil {
+				h.registrationCache.Delete(nodeKeyStr)
+			}
 
 			return machine, err
 		} else {
@@ -847,16 +873,16 @@ func (h *Headscale) RegisterMachine(machine Machine,
 	return &machine, nil
 }
 
-func (machine *Machine) GetAdvertisedRoutes() []netaddr.IPPrefix {
+func (machine *Machine) GetAdvertisedRoutes() []netip.Prefix {
 	return machine.HostInfo.RoutableIPs
 }
 
-func (machine *Machine) GetEnabledRoutes() []netaddr.IPPrefix {
+func (machine *Machine) GetEnabledRoutes() []netip.Prefix {
 	return machine.EnabledRoutes
 }
 
 func (machine *Machine) IsRoutesEnabled(routeStr string) bool {
-	route, err := netaddr.ParseIPPrefix(routeStr)
+	route, err := netip.ParsePrefix(routeStr)
 	if err != nil {
 		return false
 	}
@@ -875,9 +901,9 @@ func (machine *Machine) IsRoutesEnabled(routeStr string) bool {
 // EnableNodeRoute enables new routes based on a list of new routes. It will _replace_ the
 // previous list of routes.
 func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
-	newRoutes := make([]netaddr.IPPrefix, len(routeStrs))
+	newRoutes := make([]netip.Prefix, len(routeStrs))
 	for index, routeStr := range routeStrs {
-		route, err := netaddr.ParseIPPrefix(routeStr)
+		route, err := netip.ParsePrefix(routeStr)
 		if err != nil {
 			return err
 		}

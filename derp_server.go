@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -98,10 +99,13 @@ func (h *Headscale) DERPHandler(
 	req *http.Request,
 ) {
 	log.Trace().Caller().Msgf("/derp request from %v", req.RemoteAddr)
-	up := strings.ToLower(req.Header.Get("Upgrade"))
-	if up != "websocket" && up != "derp" {
-		if up != "" {
-			log.Warn().Caller().Msgf("Weird websockets connection upgrade: %q", up)
+	upgrade := strings.ToLower(req.Header.Get("Upgrade"))
+
+	if upgrade != "websocket" && upgrade != "derp" {
+		if upgrade != "" {
+			log.Warn().
+				Caller().
+				Msg("No Upgrade header in DERP server request. If headscale is behind a reverse proxy, make sure it is configured to pass WebSockets through.")
 		}
 		writer.Header().Set("Content-Type", "text/plain")
 		writer.WriteHeader(http.StatusUpgradeRequired)
@@ -153,7 +157,7 @@ func (h *Headscale) DERPHandler(
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()
-		pubKeyStr := pubKey.UntypedHexString() // nolint
+		pubKeyStr := pubKey.UntypedHexString() //nolint
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\n"+
 			"Upgrade: DERP\r\n"+
 			"Connection: Upgrade\r\n"+
@@ -163,7 +167,7 @@ func (h *Headscale) DERPHandler(
 			pubKeyStr)
 	}
 
-	h.DERPServer.tailscaleDERP.Accept(netConn, conn, netConn.RemoteAddr().String())
+	h.DERPServer.tailscaleDERP.Accept(req.Context(), netConn, conn, netConn.RemoteAddr().String())
 }
 
 // DERPProbeHandler is the endpoint that js/wasm clients hit to measure
@@ -173,7 +177,7 @@ func (h *Headscale) DERPProbeHandler(
 	req *http.Request,
 ) {
 	switch req.Method {
-	case "HEAD", "GET":
+	case http.MethodHead, http.MethodGet:
 		writer.Header().Set("Access-Control-Allow-Origin", "*")
 		writer.WriteHeader(http.StatusOK)
 	default:
@@ -201,7 +205,7 @@ func (h *Headscale) DERPBootstrapDNSHandler(
 ) {
 	dnsEntries := make(map[string][]net.IP)
 
-	resolvCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	resolvCtx, cancel := context.WithTimeout(req.Context(), time.Minute)
 	defer cancel()
 	var resolver net.Resolver
 	for _, region := range h.DERPMap.Regions {
@@ -276,7 +280,8 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 			continue
 		}
 
-		res := stun.Response(txid, udpAddr.IP, uint16(udpAddr.Port))
+		addr, _ := netip.AddrFromSlice(udpAddr.IP)
+		res := stun.Response(txid, netip.AddrPortFrom(addr, uint16(udpAddr.Port)))
 		_, err = packetConn.WriteTo(res, udpAddr)
 		if err != nil {
 			log.Trace().Caller().Err(err).Msgf("Issue writing to UDP")

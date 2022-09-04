@@ -2,6 +2,25 @@
 
 ## 0.17.0 (2022-XX-XX)
 
+- Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
+- Add ability to specify config location via env var `HEADSCALE_CONFIG` [#674](https://github.com/juanfont/headscale/issues/674)
+- Target Go 1.19 for Headscale [#778](https://github.com/juanfont/headscale/pull/778)
+- Target Tailscale v1.30.0 to build Headscale [#780](https://github.com/juanfont/headscale/pull/780)
+- Give a warning when running Headscale with reverse proxy improperly configured for WebSockets [#788](https://github.com/juanfont/headscale/pull/788)
+
+## 0.16.4 (2022-08-21)
+
+### Changes
+
+- Add ability to connect to PostgreSQL over TLS/SSL [#745](https://github.com/juanfont/headscale/pull/745)
+- Fix CLI registration of expired machines [#754](https://github.com/juanfont/headscale/pull/754)
+
+## 0.16.3 (2022-08-17)
+
+### Changes
+
+- Fix issue with OIDC authentication [#747](https://github.com/juanfont/headscale/pull/747)
+
 ## 0.16.2 (2022-08-14)
 
 ### Changes
@@ -125,7 +144,7 @@ This is a part of aligning `headscale`'s behaviour with Tailscale's upstream beh
 - OpenID Connect users will be mapped per namespaces
   - Each user will get its own namespace, created if it does not exist
   - `oidc.domain_map` option has been removed
-  - `strip_email_domain` option has been added (see [config-example.yaml](./config_example.yaml))
+  - `strip_email_domain` option has been added (see [config-example.yaml](./config-example.yaml))
 
 ### Changes
 

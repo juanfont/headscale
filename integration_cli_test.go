@@ -1739,6 +1739,8 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 	assert.Nil(s.T(), err)
 	altConfig, err := os.ReadFile("integration_test/etc/alt-config.dump.gold.yaml")
 	assert.Nil(s.T(), err)
+	altEnvConfig, err := os.ReadFile("integration_test/etc/alt-env-config.dump.gold.yaml")
+	assert.Nil(s.T(), err)
 
 	_, err = ExecuteCommand(
 		&s.headscale,
@@ -1768,6 +1770,42 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 	assert.Nil(s.T(), err)
 
 	altDumpConfig, err := os.ReadFile("integration_test/etc/config.dump.yaml")
+	assert.Nil(s.T(), err)
+
+	assert.YAMLEq(s.T(), string(altConfig), string(altDumpConfig))
+
+	_, err = ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"dumpConfig",
+		},
+		[]string{
+			"HEADSCALE_CONFIG=/etc/headscale/alt-env-config.yaml",
+		},
+	)
+	assert.Nil(s.T(), err)
+
+	altEnvDumpConfig, err := os.ReadFile("integration_test/etc/config.dump.yaml")
+	assert.Nil(s.T(), err)
+
+	assert.YAMLEq(s.T(), string(altEnvConfig), string(altEnvDumpConfig))
+
+	_, err = ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"-c",
+			"/etc/headscale/alt-config.yaml",
+			"dumpConfig",
+		},
+		[]string{
+			"HEADSCALE_CONFIG=/etc/headscale/alt-env-config.yaml",
+		},
+	)
+	assert.Nil(s.T(), err)
+
+	altDumpConfig, err = os.ReadFile("integration_test/etc/config.dump.yaml")
 	assert.Nil(s.T(), err)
 
 	assert.YAMLEq(s.T(), string(altConfig), string(altDumpConfig))

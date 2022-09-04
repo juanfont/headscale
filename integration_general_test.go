@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/netip"
 	"os"
 	"path"
 	"strings"
@@ -22,7 +23,6 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"inet.af/netaddr"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn/ipnstate"
 )
@@ -477,8 +477,8 @@ func (s *IntegrationTestSuite) TestGetIpAddresses() {
 //	}
 // }
 
-func getIPsfromIPNstate(status ipnstate.Status) []netaddr.IP {
-	ips := make([]netaddr.IP, 0)
+func getIPsfromIPNstate(status ipnstate.Status) []netip.Addr {
+	ips := make([]netip.Addr, 0)
 
 	for _, peer := range status.Peer {
 		ips = append(ips, peer.TailscaleIPs...)
@@ -562,13 +562,25 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 				if peername == hostname {
 					continue
 				}
+
+				var ip4 netip.Addr
+				for _, ip := range ips[peername] {
+					if ip.Is4() {
+						ip4 = ip
+						break
+					}
+				}
+				if ip4.IsUnspecified() {
+					panic("no ipv4 address found")
+				}
+
 				s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
 					command := []string{
 						"tailscale", "file", "cp",
 						fmt.Sprintf("/tmp/file_from_%s", hostname),
-						fmt.Sprintf("%s:", ips[peername][1]),
+						fmt.Sprintf("%s:", ip4),
 					}
-					retry(10, 1*time.Second, func() error {
+					err := retry(10, 1*time.Second, func() error {
 						log.Printf(
 							"Sending file from %s to %s\n",
 							hostname,
@@ -582,6 +594,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						)
 						return err
 					})
+
 					assert.Nil(t, err)
 				})
 			}
@@ -683,6 +696,18 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 		ips, err := getIPs(scales.tailscales)
 		assert.Nil(s.T(), err)
 
+		retry := func(times int, sleepInverval time.Duration, doWork func() (string, error)) (result string, err error) {
+			for attempts := 0; attempts < times; attempts++ {
+				result, err = doWork()
+				if err == nil {
+					return
+				}
+				time.Sleep(sleepInverval)
+			}
+
+			return
+		}
+
 		for hostname, tailscale := range scales.tailscales {
 			for _, peername := range hostnames {
 				if strings.Contains(peername, hostname) {
@@ -693,17 +718,20 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 					command := []string{
 						"tailscale", "ip", peername,
 					}
+					result, err := retry(10, 1*time.Second, func() (string, error) {
+						log.Printf(
+							"Resolving name %s from %s\n",
+							peername,
+							hostname,
+						)
+						result, err := ExecuteCommand(
+							&tailscale,
+							command,
+							[]string{},
+						)
+						return result, err
+					})
 
-					log.Printf(
-						"Resolving name %s from %s\n",
-						peername,
-						hostname,
-					)
-					result, err := ExecuteCommand(
-						&tailscale,
-						command,
-						[]string{},
-					)
 					assert.Nil(t, err)
 					log.Printf("Result for %s: %s\n", hostname, result)
 
@@ -720,8 +748,8 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 
 func getAPIURLs(
 	tailscales map[string]dockertest.Resource,
-) (map[netaddr.IP]string, error) {
-	fts := make(map[netaddr.IP]string)
+) (map[netip.Addr]string, error) {
+	fts := make(map[netip.Addr]string)
 	for _, tailscale := range tailscales {
 		command := []string{
 			"curl",
@@ -745,11 +773,11 @@ func getAPIURLs(
 		for _, ft := range pft {
 			n := ft.Node
 			for _, a := range n.Addresses { // just add all the addresses
-				if _, ok := fts[a.IP()]; !ok {
+				if _, ok := fts[a.Addr()]; !ok {
 					if ft.PeerAPIURL == "" {
 						return nil, errors.New("api url is empty")
 					}
-					fts[a.IP()] = ft.PeerAPIURL
+					fts[a.Addr()] = ft.PeerAPIURL
 				}
 			}
 		}

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,7 +22,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"inet.af/netaddr"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -59,6 +60,8 @@ const (
 	privateHexPrefix = "privkey:"
 
 	PermissionFallback = 0o700
+
+	ZstdCompression = "zstd"
 )
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
@@ -116,7 +119,10 @@ func decode(
 	pubKey *key.MachinePublic,
 	privKey *key.MachinePrivate,
 ) error {
-	log.Trace().Int("length", len(msg)).Msg("Trying to decrypt")
+	log.Trace().
+		Str("pubkey", pubKey.ShortString()).
+		Int("length", len(msg)).
+		Msg("Trying to decrypt")
 
 	decrypted, ok := privKey.OpenFrom(*pubKey, msg)
 	if !ok {
@@ -130,25 +136,12 @@ func decode(
 	return nil
 }
 
-func encode(
-	v interface{},
-	pubKey *key.MachinePublic,
-	privKey *key.MachinePrivate,
-) ([]byte, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-
-	return privKey.SealTo(*pubKey, b), nil
-}
-
 func (h *Headscale) getAvailableIPs() (MachineAddresses, error) {
 	var ips MachineAddresses
 	var err error
 	ipPrefixes := h.cfg.IPPrefixes
 	for _, ipPrefix := range ipPrefixes {
-		var ip *netaddr.IP
+		var ip *netip.Addr
 		ip, err = h.getAvailableIP(ipPrefix)
 		if err != nil {
 			return ips, err
@@ -159,16 +152,16 @@ func (h *Headscale) getAvailableIPs() (MachineAddresses, error) {
 	return ips, err
 }
 
-func GetIPPrefixEndpoints(na netaddr.IPPrefix) (netaddr.IP, netaddr.IP) {
-	var network, broadcast netaddr.IP
-	ipRange := na.Range()
+func GetIPPrefixEndpoints(na netip.Prefix) (netip.Addr, netip.Addr) {
+	var network, broadcast netip.Addr
+	ipRange := netipx.RangeOfPrefix(na)
 	network = ipRange.From()
 	broadcast = ipRange.To()
 
 	return network, broadcast
 }
 
-func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, error) {
+func (h *Headscale) getAvailableIP(ipPrefix netip.Prefix) (*netip.Addr, error) {
 	usedIps, err := h.getUsedIPs()
 	if err != nil {
 		return nil, err
@@ -189,7 +182,7 @@ func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, erro
 			fallthrough
 		case usedIps.Contains(ip):
 			fallthrough
-		case ip.IsZero() || ip.IsLoopback():
+		case ip == netip.Addr{} || ip.IsLoopback():
 			ip = ip.Next()
 
 			continue
@@ -200,19 +193,19 @@ func (h *Headscale) getAvailableIP(ipPrefix netaddr.IPPrefix) (*netaddr.IP, erro
 	}
 }
 
-func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
+func (h *Headscale) getUsedIPs() (*netipx.IPSet, error) {
 	// FIXME: This really deserves a better data model,
 	// but this was quick to get running and it should be enough
 	// to begin experimenting with a dual stack tailnet.
 	var addressesSlices []string
 	h.db.Model(&Machine{}).Pluck("ip_addresses", &addressesSlices)
 
-	var ips netaddr.IPSetBuilder
+	var ips netipx.IPSetBuilder
 	for _, slice := range addressesSlices {
 		var machineAddresses MachineAddresses
 		err := machineAddresses.Scan(slice)
 		if err != nil {
-			return &netaddr.IPSet{}, fmt.Errorf(
+			return &netipx.IPSet{}, fmt.Errorf(
 				"failed to read ip from database: %w",
 				err,
 			)
@@ -225,7 +218,7 @@ func (h *Headscale) getUsedIPs() (*netaddr.IPSet, error) {
 
 	ipSet, err := ips.IPSet()
 	if err != nil {
-		return &netaddr.IPSet{}, fmt.Errorf(
+		return &netipx.IPSet{}, fmt.Errorf(
 			"failed to build IP Set: %w",
 			err,
 		)
@@ -258,7 +251,7 @@ func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
 	return d.DialContext(ctx, "unix", addr)
 }
 
-func ipPrefixToString(prefixes []netaddr.IPPrefix) []string {
+func ipPrefixToString(prefixes []netip.Prefix) []string {
 	result := make([]string, len(prefixes))
 
 	for index, prefix := range prefixes {
@@ -268,13 +261,13 @@ func ipPrefixToString(prefixes []netaddr.IPPrefix) []string {
 	return result
 }
 
-func stringToIPPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
-	result := make([]netaddr.IPPrefix, len(prefixes))
+func stringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
+	result := make([]netip.Prefix, len(prefixes))
 
 	for index, prefixStr := range prefixes {
-		prefix, err := netaddr.ParseIPPrefix(prefixStr)
+		prefix, err := netip.ParsePrefix(prefixStr)
 		if err != nil {
-			return []netaddr.IPPrefix{}, err
+			return []netip.Prefix{}, err
 		}
 
 		result[index] = prefix
@@ -283,7 +276,7 @@ func stringToIPPrefix(prefixes []string) ([]netaddr.IPPrefix, error) {
 	return result, nil
 }
 
-func contains[T string | netaddr.IPPrefix](ts []T, t T) bool {
+func contains[T string | netip.Prefix](ts []T, t T) bool {
 	for _, v := range ts {
 		if reflect.DeepEqual(v, t) {
 			return true

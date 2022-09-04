@@ -18,10 +18,9 @@ dns_config:
   domains: []
   magic_dns: true
   nameservers:
-    - 127.0.0.11
     - 1.1.1.1
 ephemeral_node_inactivity_timeout: 30m
-node_update_check_interval: 10s
+node_update_check_interval: 30s
 grpc_allow_insecure: false
 grpc_listen_addr: :50443
 ip_prefixes:

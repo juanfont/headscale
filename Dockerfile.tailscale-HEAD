@@ -7,7 +7,9 @@ RUN apt-get update \
 
 RUN git clone https://github.com/tailscale/tailscale.git
 
-WORKDIR tailscale
+WORKDIR /go/tailscale
+
+RUN git checkout main
 
 RUN sh build_dist.sh tailscale.com/cmd/tailscale
 RUN sh build_dist.sh tailscale.com/cmd/tailscaled
