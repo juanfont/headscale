@@ -154,7 +154,7 @@ func (h *Headscale) DERPHandler(
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()
-		pubKeyStr := pubKey.UntypedHexString() // nolint
+		pubKeyStr := pubKey.UntypedHexString() //nolint
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\n"+
 			"Upgrade: DERP\r\n"+
 			"Connection: Upgrade\r\n"+
@@ -202,7 +202,7 @@ func (h *Headscale) DERPBootstrapDNSHandler(
 ) {
 	dnsEntries := make(map[string][]net.IP)
 
-	resolvCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	resolvCtx, cancel := context.WithTimeout(req.Context(), time.Minute)
 	defer cancel()
 	var resolver net.Resolver
 	for _, region := range h.DERPMap.Regions {
