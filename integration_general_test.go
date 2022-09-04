@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/netip"
 	"os"
 	"path"
 	"strings"
@@ -22,7 +23,6 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"inet.af/netaddr"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn/ipnstate"
 )
@@ -477,8 +477,8 @@ func (s *IntegrationTestSuite) TestGetIpAddresses() {
 //	}
 // }
 
-func getIPsfromIPNstate(status ipnstate.Status) []netaddr.IP {
-	ips := make([]netaddr.IP, 0)
+func getIPsfromIPNstate(status ipnstate.Status) []netip.Addr {
+	ips := make([]netip.Addr, 0)
 
 	for _, peer := range status.Peer {
 		ips = append(ips, peer.TailscaleIPs...)
@@ -563,14 +563,14 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 					continue
 				}
 
-				var ip4 netaddr.IP
+				var ip4 netip.Addr
 				for _, ip := range ips[peername] {
 					if ip.Is4() {
 						ip4 = ip
 						break
 					}
 				}
-				if ip4.IsZero() {
+				if ip4.IsUnspecified() {
 					panic("no ipv4 address found")
 				}
 
@@ -748,8 +748,8 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 
 func getAPIURLs(
 	tailscales map[string]dockertest.Resource,
-) (map[netaddr.IP]string, error) {
-	fts := make(map[netaddr.IP]string)
+) (map[netip.Addr]string, error) {
+	fts := make(map[netip.Addr]string)
 	for _, tailscale := range tailscales {
 		command := []string{
 			"curl",
@@ -773,11 +773,11 @@ func getAPIURLs(
 		for _, ft := range pft {
 			n := ft.Node
 			for _, a := range n.Addresses { // just add all the addresses
-				if _, ok := fts[a.IP()]; !ok {
+				if _, ok := fts[a.Addr()]; !ok {
 					if ft.PeerAPIURL == "" {
 						return nil, errors.New("api url is empty")
 					}
-					fts[a.IP()] = ft.PeerAPIURL
+					fts[a.Addr()] = ft.PeerAPIURL
 				}
 			}
 		}

@@ -18,7 +18,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/patrickmn/go-cache"
@@ -601,7 +601,7 @@ func (h *Headscale) Serve() error {
 
 		grpcOptions := []grpc.ServerOption{
 			grpc.UnaryInterceptor(
-				grpc_middleware.ChainUnaryServer(
+				grpcMiddleware.ChainUnaryServer(
 					h.grpcAuthenticationInterceptor,
 					zerolog.NewUnaryServerInterceptor(),
 				),
@@ -820,10 +820,19 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
+
+			server := &http.Server{
+				Addr:        h.cfg.TLS.LetsEncrypt.Listen,
+				Handler:     certManager.HTTPHandler(http.HandlerFunc(h.redirect)),
+				ReadTimeout: HTTPReadTimeout,
+			}
+
+			err := server.ListenAndServe()
+
 			go func() {
 				log.Fatal().
 					Caller().
-					Err(http.ListenAndServe(h.cfg.TLS.LetsEncrypt.Listen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
+					Err(err).
 					Msg("failed to set up a HTTP server")
 			}()
 
@@ -860,19 +869,17 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	}
 }
 
-func (h *Headscale) setLastStateChangeToNow(namespaces ...string) {
+func (h *Headscale) setLastStateChangeToNow() {
 	var err error
 
 	now := time.Now().UTC()
 
-	if len(namespaces) == 0 {
-		namespaces, err = h.ListNamespacesStr()
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("failed to fetch all namespaces, failing to update last changed state.")
-		}
+	namespaces, err := h.ListNamespacesStr()
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("failed to fetch all namespaces, failing to update last changed state.")
 	}
 
 	for _, namespace := range namespaces {

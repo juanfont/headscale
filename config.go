@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"inet.af/netaddr"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 )
@@ -32,7 +33,7 @@ type Config struct {
 	GRPCAllowInsecure              bool
 	EphemeralNodeInactivityTimeout time.Duration
 	NodeUpdateCheckInterval        time.Duration
-	IPPrefixes                     []netaddr.IPPrefix
+	IPPrefixes                     []netip.Prefix
 	PrivateKeyPath                 string
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
@@ -342,11 +343,11 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 		if viper.IsSet("dns_config.nameservers") {
 			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
 
-			nameservers := make([]netaddr.IP, len(nameserversStr))
+			nameservers := make([]netip.Addr, len(nameserversStr))
 			resolvers := make([]*dnstype.Resolver, len(nameserversStr))
 
 			for index, nameserverStr := range nameserversStr {
-				nameserver, err := netaddr.ParseIP(nameserverStr)
+				nameserver, err := netip.ParseAddr(nameserverStr)
 				if err != nil {
 					log.Error().
 						Str("func", "getDNSConfig").
@@ -376,7 +377,7 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 						len(restrictedNameservers),
 					)
 					for index, nameserverStr := range restrictedNameservers {
-						nameserver, err := netaddr.ParseIP(nameserverStr)
+						nameserver, err := netip.ParseAddr(nameserverStr)
 						if err != nil {
 							log.Error().
 								Str("func", "getDNSConfig").
@@ -429,7 +430,7 @@ func GetHeadscaleConfig() (*Config, error) {
 	randomizeClientPort := viper.GetBool("randomize_client_port")
 
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
-	parsedPrefixes := make([]netaddr.IPPrefix, 0, len(configuredPrefixes)+1)
+	parsedPrefixes := make([]netip.Prefix, 0, len(configuredPrefixes)+1)
 
 	logLevelStr := viper.GetString("log_level")
 	logLevel, err := zerolog.ParseLevel(logLevelStr)
@@ -447,7 +448,7 @@ func GetHeadscaleConfig() (*Config, error) {
 				"use of 'ip_prefix' for configuration is deprecated",
 				"please see 'ip_prefixes' in the shipped example.",
 			)
-		legacyPrefix, err := netaddr.ParseIPPrefix(legacyPrefixField)
+		legacyPrefix, err := netip.ParsePrefix(legacyPrefixField)
 		if err != nil {
 			panic(fmt.Errorf("failed to parse ip_prefix: %w", err))
 		}
@@ -455,19 +456,19 @@ func GetHeadscaleConfig() (*Config, error) {
 	}
 
 	for i, prefixInConfig := range configuredPrefixes {
-		prefix, err := netaddr.ParseIPPrefix(prefixInConfig)
+		prefix, err := netip.ParsePrefix(prefixInConfig)
 		if err != nil {
 			panic(fmt.Errorf("failed to parse ip_prefixes[%d]: %w", i, err))
 		}
 		parsedPrefixes = append(parsedPrefixes, prefix)
 	}
 
-	prefixes := make([]netaddr.IPPrefix, 0, len(parsedPrefixes))
+	prefixes := make([]netip.Prefix, 0, len(parsedPrefixes))
 	{
 		// dedup
 		normalizedPrefixes := make(map[string]int, len(parsedPrefixes))
 		for i, p := range parsedPrefixes {
-			normalized, _ := p.Range().Prefix()
+			normalized, _ := netipx.RangeOfPrefix(p).Prefix()
 			normalizedPrefixes[normalized.String()] = i
 		}
 
@@ -478,7 +479,7 @@ func GetHeadscaleConfig() (*Config, error) {
 	}
 
 	if len(prefixes) < 1 {
-		prefixes = append(prefixes, netaddr.MustParseIPPrefix("100.64.0.0/10"))
+		prefixes = append(prefixes, netip.MustParsePrefix("100.64.0.0/10"))
 		log.Warn().
 			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}

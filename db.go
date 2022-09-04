@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -13,7 +14,6 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -221,8 +221,8 @@ func (h *Headscale) setValue(key string, value string) error {
 	return nil
 }
 
-func (h *Headscale) pingDB() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+func (h *Headscale) pingDB(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	db, err := h.db.DB()
 	if err != nil {
@@ -259,7 +259,7 @@ func (hi HostInfo) Value() (driver.Value, error) {
 	return string(bytes), err
 }
 
-type IPPrefixes []netaddr.IPPrefix
+type IPPrefixes []netip.Prefix
 
 func (i *IPPrefixes) Scan(destination interface{}) error {
 	switch value := destination.(type) {
