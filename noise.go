@@ -30,7 +30,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		// be passed to Headscale. Let's give them a hint.
 		log.Warn().
 			Caller().
-			Msg("No Upgrade header found in TS2021 request. If running headscale behind a reverse proxy, make sure it is configured to pass WebSockets through.")
+			Msg("No Upgrade header in TS2021 request. If headscale is behind a reverse proxy, make sure it is configured to pass WebSockets through.")
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 
 		return
