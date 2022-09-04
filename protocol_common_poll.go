@@ -22,7 +22,7 @@ const machineNameContextKey = contextKey("machineName")
 // managed the poll loop.
 func (h *Headscale) handlePollCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
+	ctx context.Context,
 	machine *Machine,
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
@@ -201,7 +201,7 @@ func (h *Headscale) handlePollCommon(
 
 	h.pollNetMapStream(
 		writer,
-		req,
+		ctx,
 		machine,
 		mapRequest,
 		pollDataChan,
@@ -221,7 +221,7 @@ func (h *Headscale) handlePollCommon(
 // ensuring we communicate updates and data to the connected clients.
 func (h *Headscale) pollNetMapStream(
 	writer http.ResponseWriter,
-	req *http.Request,
+	ctxReq context.Context,
 	machine *Machine,
 	mapRequest tailcfg.MapRequest,
 	pollDataChan chan []byte,
@@ -232,7 +232,7 @@ func (h *Headscale) pollNetMapStream(
 	h.pollNetMapStreamWG.Add(1)
 	defer h.pollNetMapStreamWG.Done()
 
-	ctx := context.WithValue(req.Context(), machineNameContextKey, machine.Hostname)
+	ctx := context.WithValue(ctxReq, machineNameContextKey, machine.Hostname)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
