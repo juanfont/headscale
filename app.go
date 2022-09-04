@@ -820,10 +820,19 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
+
+			server := &http.Server{
+				Addr:        h.cfg.TLS.LetsEncrypt.Listen,
+				Handler:     certManager.HTTPHandler(http.HandlerFunc(h.redirect)),
+				ReadTimeout: HTTPReadTimeout,
+			}
+
+			err := server.ListenAndServe()
+
 			go func() {
 				log.Fatal().
 					Caller().
-					Err(http.ListenAndServe(h.cfg.TLS.LetsEncrypt.Listen, certManager.HTTPHandler(http.HandlerFunc(h.redirect)))).
+					Err(err).
 					Msg("failed to set up a HTTP server")
 			}()
 
