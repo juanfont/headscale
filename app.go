@@ -860,19 +860,17 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	}
 }
 
-func (h *Headscale) setLastStateChangeToNow(namespaces ...string) {
+func (h *Headscale) setLastStateChangeToNow() {
 	var err error
 
 	now := time.Now().UTC()
 
-	if len(namespaces) == 0 {
-		namespaces, err = h.ListNamespacesStr()
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("failed to fetch all namespaces, failing to update last changed state.")
-		}
+	namespaces, err := h.ListNamespacesStr()
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("failed to fetch all namespaces, failing to update last changed state.")
 	}
 
 	for _, namespace := range namespaces {
