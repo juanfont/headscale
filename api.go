@@ -52,7 +52,7 @@ func (h *Headscale) HealthHandler(
 		}
 	}
 
-	if err := h.pingDB(); err != nil {
+	if err := h.pingDB(req.Context()); err != nil {
 		respond(err)
 
 		return

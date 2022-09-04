@@ -2,16 +2,16 @@ package headscale
 
 import (
 	"fmt"
+	"net/netip"
 
 	"gopkg.in/check.v1"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 )
 
 func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
-	prefixes := []netaddr.IPPrefix{
-		netaddr.MustParseIPPrefix("100.64.0.0/10"),
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("100.64.0.0/10"),
 	}
 	domains := generateMagicDNSRootDomains(prefixes)
 
@@ -47,8 +47,8 @@ func (s *Suite) TestMagicDNSRootDomains100(c *check.C) {
 }
 
 func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
-	prefixes := []netaddr.IPPrefix{
-		netaddr.MustParseIPPrefix("172.16.0.0/16"),
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("172.16.0.0/16"),
 	}
 	domains := generateMagicDNSRootDomains(prefixes)
 
@@ -75,8 +75,8 @@ func (s *Suite) TestMagicDNSRootDomains172(c *check.C) {
 
 // Happens when netmask is a multiple of 4 bits (sounds likely).
 func (s *Suite) TestMagicDNSRootDomainsIPv6Single(c *check.C) {
-	prefixes := []netaddr.IPPrefix{
-		netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48"),
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
 	}
 	domains := generateMagicDNSRootDomains(prefixes)
 
@@ -89,8 +89,8 @@ func (s *Suite) TestMagicDNSRootDomainsIPv6Single(c *check.C) {
 }
 
 func (s *Suite) TestMagicDNSRootDomainsIPv6SingleMultiple(c *check.C) {
-	prefixes := []netaddr.IPPrefix{
-		netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/50"),
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("fd7a:115c:a1e0::/50"),
 	}
 	domains := generateMagicDNSRootDomains(prefixes)
 
@@ -169,7 +169,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.1")},
+		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
 	app.db.Save(machineInShared1)
@@ -186,7 +186,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		NamespaceID:    namespaceShared2.ID,
 		Namespace:      *namespaceShared2,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.2")},
+		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
 	app.db.Save(machineInShared2)
@@ -203,7 +203,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		NamespaceID:    namespaceShared3.ID,
 		Namespace:      *namespaceShared3,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.3")},
+		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
 	app.db.Save(machineInShared3)
@@ -220,7 +220,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.4")},
+		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.4")},
 		AuthKeyID:      uint(PreAuthKey2InShared1.ID),
 	}
 	app.db.Save(machine2InShared1)
@@ -316,7 +316,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.1")},
+		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
 	app.db.Save(machineInShared1)
@@ -333,7 +333,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		NamespaceID:    namespaceShared2.ID,
 		Namespace:      *namespaceShared2,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.2")},
+		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
 	app.db.Save(machineInShared2)
@@ -350,7 +350,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		NamespaceID:    namespaceShared3.ID,
 		Namespace:      *namespaceShared3,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.3")},
+		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
 	app.db.Save(machineInShared3)
@@ -367,7 +367,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		NamespaceID:    namespaceShared1.ID,
 		Namespace:      *namespaceShared1,
 		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    []netaddr.IP{netaddr.MustParseIP("100.64.0.4")},
+		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.4")},
 		AuthKeyID:      uint(preAuthKey2InShared1.ID),
 	}
 	app.db.Save(machine2InShared1)

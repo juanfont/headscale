@@ -2,11 +2,11 @@ package headscale
 
 import (
 	"errors"
+	"net/netip"
 	"reflect"
 	"testing"
 
 	"gopkg.in/check.v1"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -131,7 +131,7 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
+		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -181,7 +181,7 @@ func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
+		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -231,7 +231,7 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
+		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -280,7 +280,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "webserver",
-		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.1")},
+		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -299,7 +299,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		NodeKey:        "bar2",
 		DiscoKey:       "faab",
 		Hostname:       "user",
-		IPAddresses:    MachineAddresses{netaddr.MustParseIP("100.64.0.2")},
+		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.2")},
 		NamespaceID:    namespace.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
@@ -825,7 +825,6 @@ func Test_listMachinesInNamespace(t *testing.T) {
 	}
 }
 
-// nolint
 func Test_expandAlias(t *testing.T) {
 	type args struct {
 		machines         []Machine
@@ -844,10 +843,10 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "*",
 				machines: []Machine{
-					{IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.1")}},
+					{IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.1")}},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.78.84.227"),
+							netip.MustParseAddr("100.78.84.227"),
 						},
 					},
 				},
@@ -864,25 +863,25 @@ func Test_expandAlias(t *testing.T) {
 				machines: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -902,25 +901,25 @@ func Test_expandAlias(t *testing.T) {
 				machines: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -951,7 +950,7 @@ func Test_expandAlias(t *testing.T) {
 				machines: []Machine{},
 				aclPolicy: ACLPolicy{
 					Hosts: Hosts{
-						"homeNetwork": netaddr.MustParseIPPrefix("192.168.1.0/24"),
+						"homeNetwork": netip.MustParsePrefix("192.168.1.0/24"),
 					},
 				},
 				stripEmailDomain: true,
@@ -988,7 +987,7 @@ func Test_expandAlias(t *testing.T) {
 				machines: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -999,7 +998,7 @@ func Test_expandAlias(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1010,13 +1009,13 @@ func Test_expandAlias(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
@@ -1036,25 +1035,25 @@ func Test_expandAlias(t *testing.T) {
 				machines: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -1077,27 +1076,27 @@ func Test_expandAlias(t *testing.T) {
 				machines: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace:  Namespace{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace:  Namespace{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -1115,14 +1114,14 @@ func Test_expandAlias(t *testing.T) {
 				machines: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace:  Namespace{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1133,13 +1132,13 @@ func Test_expandAlias(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "mickael"},
 					},
@@ -1161,7 +1160,7 @@ func Test_expandAlias(t *testing.T) {
 				machines: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1172,7 +1171,7 @@ func Test_expandAlias(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1183,13 +1182,13 @@ func Test_expandAlias(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.3"),
+							netip.MustParseAddr("100.64.0.3"),
 						},
 						Namespace: Namespace{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
@@ -1245,7 +1244,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				nodes: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1256,7 +1255,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1267,7 +1266,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
@@ -1277,7 +1276,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 			},
 			want: []Machine{
 				{
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
 					Namespace:   Namespace{Name: "joe"},
 				},
 			},
@@ -1296,7 +1295,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				nodes: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1307,7 +1306,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1318,7 +1317,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
@@ -1328,7 +1327,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 			},
 			want: []Machine{
 				{
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
 					Namespace:   Namespace{Name: "joe"},
 				},
 			},
@@ -1342,7 +1341,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				nodes: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1353,14 +1352,14 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace:  Namespace{Name: "joe"},
 						ForcedTags: []string{"tag:accountant-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
@@ -1370,7 +1369,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 			},
 			want: []Machine{
 				{
-					IPAddresses: MachineAddresses{netaddr.MustParseIP("100.64.0.4")},
+					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
 					Namespace:   Namespace{Name: "joe"},
 				},
 			},
@@ -1384,7 +1383,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				nodes: []Machine{
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.1"),
+							netip.MustParseAddr("100.64.0.1"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1395,7 +1394,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.2"),
+							netip.MustParseAddr("100.64.0.2"),
 						},
 						Namespace: Namespace{Name: "joe"},
 						HostInfo: HostInfo{
@@ -1406,7 +1405,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					},
 					{
 						IPAddresses: MachineAddresses{
-							netaddr.MustParseIP("100.64.0.4"),
+							netip.MustParseAddr("100.64.0.4"),
 						},
 						Namespace: Namespace{Name: "joe"},
 					},
@@ -1417,7 +1416,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 			want: []Machine{
 				{
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.1"),
+						netip.MustParseAddr("100.64.0.1"),
 					},
 					Namespace: Namespace{Name: "joe"},
 					HostInfo: HostInfo{
@@ -1428,7 +1427,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				},
 				{
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.2"),
+						netip.MustParseAddr("100.64.0.2"),
 					},
 					Namespace: Namespace{Name: "joe"},
 					HostInfo: HostInfo{
@@ -1439,7 +1438,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				},
 				{
 					IPAddresses: MachineAddresses{
-						netaddr.MustParseIP("100.64.0.4"),
+						netip.MustParseAddr("100.64.0.4"),
 					},
 					Namespace: Namespace{Name: "joe"},
 				},

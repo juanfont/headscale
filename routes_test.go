@@ -1,8 +1,9 @@
 package headscale
 
 import (
+	"net/netip"
+
 	"gopkg.in/check.v1"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -16,11 +17,11 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	_, err = app.GetMachine("test", "test_get_route_machine")
 	c.Assert(err, check.NotNil)
 
-	route, err := netaddr.ParseIPPrefix("10.0.0.0/24")
+	route, err := netip.ParsePrefix("10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 
 	hostInfo := tailcfg.Hostinfo{
-		RoutableIPs: []netaddr.IPPrefix{route},
+		RoutableIPs: []netip.Prefix{route},
 	}
 
 	machine := Machine{
@@ -60,18 +61,18 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	_, err = app.GetMachine("test", "test_enable_route_machine")
 	c.Assert(err, check.NotNil)
 
-	route, err := netaddr.ParseIPPrefix(
+	route, err := netip.ParsePrefix(
 		"10.0.0.0/24",
 	)
 	c.Assert(err, check.IsNil)
 
-	route2, err := netaddr.ParseIPPrefix(
+	route2, err := netip.ParsePrefix(
 		"150.0.10.0/25",
 	)
 	c.Assert(err, check.IsNil)
 
 	hostInfo := tailcfg.Hostinfo{
-		RoutableIPs: []netaddr.IPPrefix{route, route2},
+		RoutableIPs: []netip.Prefix{route, route2},
 	}
 
 	machine := Machine{
