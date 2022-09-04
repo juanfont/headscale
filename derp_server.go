@@ -174,7 +174,7 @@ func (h *Headscale) DERPProbeHandler(
 	req *http.Request,
 ) {
 	switch req.Method {
-	case "HEAD", "GET":
+	case http.MethodHead, http.MethodGet:
 		writer.Header().Set("Access-Control-Allow-Origin", "*")
 		writer.WriteHeader(http.StatusOK)
 	default:
