@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -163,7 +164,7 @@ func (h *Headscale) DERPHandler(
 			pubKeyStr)
 	}
 
-	h.DERPServer.tailscaleDERP.Accept(netConn, conn, netConn.RemoteAddr().String())
+	h.DERPServer.tailscaleDERP.Accept(req.Context(), netConn, conn, netConn.RemoteAddr().String())
 }
 
 // DERPProbeHandler is the endpoint that js/wasm clients hit to measure
@@ -276,7 +277,8 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 			continue
 		}
 
-		res := stun.Response(txid, udpAddr.IP, uint16(udpAddr.Port))
+		addr, _ := netip.AddrFromSlice(udpAddr.IP)
+		res := stun.Response(txid, netip.AddrPortFrom(addr, uint16(udpAddr.Port)))
 		_, err = packetConn.WriteTo(res, udpAddr)
 		if err != nil {
 			log.Trace().Caller().Err(err).Msgf("Issue writing to UDP")

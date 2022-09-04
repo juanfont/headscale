@@ -1,11 +1,11 @@
 package headscale
 
 import (
+	"net/netip"
 	"os"
 	"testing"
 
 	"gopkg.in/check.v1"
-	"inet.af/netaddr"
 )
 
 func Test(t *testing.T) {
@@ -39,8 +39,8 @@ func (s *Suite) ResetDB(c *check.C) {
 		c.Fatal(err)
 	}
 	cfg := Config{
-		IPPrefixes: []netaddr.IPPrefix{
-			netaddr.MustParseIPPrefix("10.27.0.0/23"),
+		IPPrefixes: []netip.Prefix{
+			netip.MustParsePrefix("10.27.0.0/23"),
 		},
 	}
 
