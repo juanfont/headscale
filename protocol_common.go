@@ -215,7 +215,7 @@ func (h *Headscale) handleRegisterCommon(
 			// If machine is not expired, and is register, we have a already accepted this machine,
 			// let it proceed with a valid registration
 			if !machine.isExpired() {
-				h.handleMachineValidRegistrationCommon(writer, req, *machine, machineKey)
+				h.handleMachineValidRegistrationCommon(writer, *machine, machineKey)
 
 				return
 			}
@@ -226,7 +226,6 @@ func (h *Headscale) handleRegisterCommon(
 			!machine.isExpired() {
 			h.handleMachineRefreshKeyCommon(
 				writer,
-				req,
 				registerRequest,
 				*machine,
 				machineKey,
@@ -236,7 +235,7 @@ func (h *Headscale) handleRegisterCommon(
 		}
 
 		// The machine has expired
-		h.handleMachineExpiredCommon(writer, req, registerRequest, *machine, machineKey)
+		h.handleMachineExpiredCommon(writer, registerRequest, *machine, machineKey)
 
 		machine.Expiry = &time.Time{}
 		h.registrationCache.Set(
@@ -567,7 +566,6 @@ func (h *Headscale) handleMachineLogOutCommon(
 
 func (h *Headscale) handleMachineValidRegistrationCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	machine Machine,
 	machineKey key.MachinePublic,
 ) {
@@ -621,7 +619,6 @@ func (h *Headscale) handleMachineValidRegistrationCommon(
 
 func (h *Headscale) handleMachineRefreshKeyCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 	machineKey key.MachinePublic,
@@ -681,7 +678,6 @@ func (h *Headscale) handleMachineRefreshKeyCommon(
 
 func (h *Headscale) handleMachineExpiredCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 	machineKey key.MachinePublic,
