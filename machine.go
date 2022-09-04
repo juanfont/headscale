@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -83,7 +83,7 @@ type (
 	MachinesP []*Machine
 )
 
-type MachineAddresses []netaddr.IP
+type MachineAddresses []netip.Addr
 
 func (ma MachineAddresses) ToStringSlice() []string {
 	strSlice := make([]string, 0, len(ma))
@@ -103,7 +103,7 @@ func (ma *MachineAddresses) Scan(destination interface{}) error {
 			if len(addr) < 1 {
 				continue
 			}
-			parsed, err := netaddr.ParseIP(addr)
+			parsed, err := netip.ParseAddr(addr)
 			if err != nil {
 				return err
 			}
@@ -623,14 +623,14 @@ func (machine Machine) toNode(
 		discoKey = key.DiscoPublic{}
 	}
 
-	addrs := []netaddr.IPPrefix{}
+	addrs := []netip.Prefix{}
 	for _, machineAddress := range machine.IPAddresses {
-		ip := netaddr.IPPrefixFrom(machineAddress, machineAddress.BitLen())
+		ip := netip.PrefixFrom(machineAddress, machineAddress.BitLen())
 		addrs = append(addrs, ip)
 	}
 
 	allowedIPs := append(
-		[]netaddr.IPPrefix{},
+		[]netip.Prefix{},
 		addrs...) // we append the node own IP, as it is required by the clients
 
 	// TODO(kradalby): Needs investigation, We probably dont need this condition
@@ -873,16 +873,16 @@ func (h *Headscale) RegisterMachine(machine Machine,
 	return &machine, nil
 }
 
-func (machine *Machine) GetAdvertisedRoutes() []netaddr.IPPrefix {
+func (machine *Machine) GetAdvertisedRoutes() []netip.Prefix {
 	return machine.HostInfo.RoutableIPs
 }
 
-func (machine *Machine) GetEnabledRoutes() []netaddr.IPPrefix {
+func (machine *Machine) GetEnabledRoutes() []netip.Prefix {
 	return machine.EnabledRoutes
 }
 
 func (machine *Machine) IsRoutesEnabled(routeStr string) bool {
-	route, err := netaddr.ParseIPPrefix(routeStr)
+	route, err := netip.ParsePrefix(routeStr)
 	if err != nil {
 		return false
 	}
@@ -901,9 +901,9 @@ func (machine *Machine) IsRoutesEnabled(routeStr string) bool {
 // EnableNodeRoute enables new routes based on a list of new routes. It will _replace_ the
 // previous list of routes.
 func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
-	newRoutes := make([]netaddr.IPPrefix, len(routeStrs))
+	newRoutes := make([]netip.Prefix, len(routeStrs))
 	for index, routeStr := range routeStrs {
-		route, err := netaddr.ParseIPPrefix(routeStr)
+		route, err := netip.ParsePrefix(routeStr)
 		if err != nil {
 			return err
 		}

@@ -2,11 +2,11 @@ package headscale
 
 import (
 	"encoding/json"
+	"net/netip"
 	"strings"
 
 	"github.com/tailscale/hujson"
 	"gopkg.in/yaml.v3"
-	"inet.af/netaddr"
 )
 
 // ACLPolicy represents a Tailscale ACL Policy.
@@ -31,7 +31,7 @@ type ACL struct {
 type Groups map[string][]string
 
 // Hosts are alias for IP addresses or subnets.
-type Hosts map[string]netaddr.IPPrefix
+type Hosts map[string]netip.Prefix
 
 // TagOwners specify what users (namespaces?) are allow to use certain tags.
 type TagOwners map[string][]string
@@ -44,13 +44,13 @@ type ACLTest struct {
 }
 
 // AutoApprovers specify which users (namespaces?), groups or tags have their advertised routes
-// or exit node status automatically enabled
+// or exit node status automatically enabled.
 type AutoApprovers struct {
 	Routes   map[string][]string `json:"routes"   yaml:"routes"`
 	ExitNode []string            `json:"exitNode" yaml:"exitNode"`
 }
 
-// UnmarshalJSON allows to parse the Hosts directly into netaddr objects.
+// UnmarshalJSON allows to parse the Hosts directly into netip objects.
 func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 	newHosts := Hosts{}
 	hostIPPrefixMap := make(map[string]string)
@@ -68,7 +68,7 @@ func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 		if !strings.Contains(prefixStr, "/") {
 			prefixStr += "/32"
 		}
-		prefix, err := netaddr.ParseIPPrefix(prefixStr)
+		prefix, err := netip.ParsePrefix(prefixStr)
 		if err != nil {
 			return err
 		}
@@ -79,7 +79,7 @@ func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalYAML allows to parse the Hosts directly into netaddr objects.
+// UnmarshalYAML allows to parse the Hosts directly into netip objects.
 func (hosts *Hosts) UnmarshalYAML(data []byte) error {
 	newHosts := Hosts{}
 	hostIPPrefixMap := make(map[string]string)
@@ -89,7 +89,7 @@ func (hosts *Hosts) UnmarshalYAML(data []byte) error {
 		return err
 	}
 	for host, prefixStr := range hostIPPrefixMap {
-		prefix, err := netaddr.ParseIPPrefix(prefixStr)
+		prefix, err := netip.ParsePrefix(prefixStr)
 		if err != nil {
 			return err
 		}

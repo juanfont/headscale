@@ -2,8 +2,7 @@ package headscale
 
 import (
 	"fmt"
-
-	"inet.af/netaddr"
+	"net/netip"
 )
 
 const (
@@ -16,7 +15,7 @@ const (
 func (h *Headscale) GetAdvertisedNodeRoutes(
 	namespace string,
 	nodeName string,
-) (*[]netaddr.IPPrefix, error) {
+) (*[]netip.Prefix, error) {
 	machine, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
@@ -31,7 +30,7 @@ func (h *Headscale) GetAdvertisedNodeRoutes(
 func (h *Headscale) GetEnabledNodeRoutes(
 	namespace string,
 	nodeName string,
-) ([]netaddr.IPPrefix, error) {
+) ([]netip.Prefix, error) {
 	machine, err := h.GetMachine(namespace, nodeName)
 	if err != nil {
 		return nil, err
@@ -47,7 +46,7 @@ func (h *Headscale) IsNodeRouteEnabled(
 	nodeName string,
 	routeStr string,
 ) bool {
-	route, err := netaddr.ParseIPPrefix(routeStr)
+	route, err := netip.ParsePrefix(routeStr)
 	if err != nil {
 		return false
 	}
@@ -79,7 +78,7 @@ func (h *Headscale) EnableNodeRoute(
 		return err
 	}
 
-	route, err := netaddr.ParseIPPrefix(routeStr)
+	route, err := netip.ParsePrefix(routeStr)
 	if err != nil {
 		return err
 	}
