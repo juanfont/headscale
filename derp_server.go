@@ -99,10 +99,13 @@ func (h *Headscale) DERPHandler(
 	req *http.Request,
 ) {
 	log.Trace().Caller().Msgf("/derp request from %v", req.RemoteAddr)
-	up := strings.ToLower(req.Header.Get("Upgrade"))
-	if up != "websocket" && up != "derp" {
-		if up != "" {
-			log.Warn().Caller().Msgf("Weird websockets connection upgrade: %q", up)
+	upgrade := strings.ToLower(req.Header.Get("Upgrade"))
+
+	if upgrade != "websocket" && upgrade != "derp" {
+		if upgrade != "" {
+			log.Warn().
+				Caller().
+				Msg("No Upgrade header in DERP server request. If headscale is behind a reverse proxy, make sure it is configured to pass WebSockets through.")
 		}
 		writer.Header().Set("Content-Type", "text/plain")
 		writer.WriteHeader(http.StatusUpgradeRequired)
