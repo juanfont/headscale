@@ -23,6 +23,19 @@ func (h *Headscale) NoiseUpgradeHandler(
 ) {
 	log.Trace().Caller().Msgf("Noise upgrade handler for client %s", req.RemoteAddr)
 
+	upgrade := req.Header.Get("Upgrade")
+	if upgrade == "" {
+		// This probably means that the user is running Headscale behind an
+		// improperly configured reverse proxy. TS2021 requires WebSockets to
+		// be passed to Headscale. Let's give them a hint.
+		log.Warn().
+			Caller().
+			Msg("No Upgrade header found in TS2021 request. If running headscale behind a reverse proxy, make sure it is configured to pass WebSockets through.")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+		return
+	}
+
 	noiseConn, err := controlhttp.AcceptHTTP(req.Context(), writer, req, *h.noisePrivateKey)
 	if err != nil {
 		log.Error().Err(err).Msg("noise upgrade failed")
