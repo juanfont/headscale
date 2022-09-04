@@ -936,7 +936,7 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 		return nil // This machine has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
-	approvedRoutes := make([]netaddr.IPPrefix, 0, len(machine.HostInfo.RoutableIPs))
+	approvedRoutes := make([]netip.Prefix, 0, len(machine.HostInfo.RoutableIPs))
 	thisMachine := []Machine{*machine}
 
 	for _, advertisedRoute := range machine.HostInfo.RoutableIPs {

@@ -1063,9 +1063,9 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 
 	nodeKey := key.NewNode()
 
-	defaultRoute := netaddr.MustParseIPPrefix("0.0.0.0/0")
-	route1 := netaddr.MustParseIPPrefix("10.10.0.0/16")
-	route2 := netaddr.MustParseIPPrefix("10.11.0.0/16")
+	defaultRoute := netip.MustParsePrefix("0.0.0.0/0")
+	route1 := netip.MustParsePrefix("10.10.0.0/16")
+	route2 := netip.MustParsePrefix("10.11.0.0/16")
 
 	machine := Machine{
 		ID:             0,
@@ -1078,9 +1078,9 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		AuthKeyID:      uint(pak.ID),
 		HostInfo: HostInfo{
 			RequestTags: []string{"tag:exit"},
-			RoutableIPs: []netaddr.IPPrefix{defaultRoute, route1, route2},
+			RoutableIPs: []netip.Prefix{defaultRoute, route1, route2},
 		},
-		IPAddresses: []netaddr.IP{netaddr.MustParseIP("100.64.0.1")},
+		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 	}
 
 	app.db.Save(&machine)
