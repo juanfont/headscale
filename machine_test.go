@@ -540,7 +540,6 @@ func Test_getTags(t *testing.T) {
 	}
 }
 
-// nolint
 func Test_getFilteredByACLPeers(t *testing.T) {
 	type args struct {
 		machines []Machine

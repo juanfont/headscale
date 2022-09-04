@@ -825,7 +825,6 @@ func Test_listMachinesInNamespace(t *testing.T) {
 	}
 }
 
-// nolint
 func Test_expandAlias(t *testing.T) {
 	type args struct {
 		machines         []Machine
