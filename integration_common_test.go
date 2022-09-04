@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
-	"inet.af/netaddr"
 )
 
 const (
@@ -26,12 +26,13 @@ const (
 var (
 	errEnvVarEmpty = errors.New("getenv: environment variable empty")
 
-	IpPrefix4 = netaddr.MustParseIPPrefix("100.64.0.0/10")
-	IpPrefix6 = netaddr.MustParseIPPrefix("fd7a:115c:a1e0::/48")
+	IpPrefix4 = netip.MustParsePrefix("100.64.0.0/10")
+	IpPrefix6 = netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 
 	tailscaleVersions = []string{
 		// "head",
 		// "unstable",
+		"1.30.0",
 		"1.28.0",
 		"1.26.2",
 		"1.24.2",
@@ -194,8 +195,8 @@ func getDockerBuildOptions(version string) *dockertest.BuildOptions {
 
 func getIPs(
 	tailscales map[string]dockertest.Resource,
-) (map[string][]netaddr.IP, error) {
-	ips := make(map[string][]netaddr.IP)
+) (map[string][]netip.Addr, error) {
+	ips := make(map[string][]netip.Addr)
 	for hostname, tailscale := range tailscales {
 		command := []string{"tailscale", "ip"}
 
@@ -213,7 +214,7 @@ func getIPs(
 			if len(address) < 1 {
 				continue
 			}
-			ip, err := netaddr.ParseIP(address)
+			ip, err := netip.ParseAddr(address)
 			if err != nil {
 				return nil, err
 			}

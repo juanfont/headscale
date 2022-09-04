@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,7 +14,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"gopkg.in/yaml.v3"
-	"inet.af/netaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -394,13 +394,13 @@ func expandAlias(
 	}
 
 	// if alias is an IP
-	ip, err := netaddr.ParseIP(alias)
+	ip, err := netip.ParseAddr(alias)
 	if err == nil {
 		return []string{ip.String()}, nil
 	}
 
 	// if alias is an CIDR
-	cidr, err := netaddr.ParseIPPrefix(alias)
+	cidr, err := netip.ParsePrefix(alias)
 	if err == nil {
 		return []string{cidr.String()}, nil
 	}

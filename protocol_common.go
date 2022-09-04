@@ -109,7 +109,7 @@ func (h *Headscale) handleRegisterCommon(
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the machine has AuthKey set, handle registration via PreAuthKeys
 		if registerRequest.Auth.AuthKey != "" {
-			h.handleAuthKeyCommon(writer, req, registerRequest, machineKey)
+			h.handleAuthKeyCommon(writer, registerRequest, machineKey)
 
 			return
 		}
@@ -138,7 +138,7 @@ func (h *Headscale) handleRegisterCommon(
 				case <-req.Context().Done():
 					return
 				case <-ticker.C:
-					h.handleNewMachineCommon(writer, req, registerRequest, machineKey)
+					h.handleNewMachineCommon(writer, registerRequest, machineKey)
 
 					return
 				}
@@ -195,7 +195,7 @@ func (h *Headscale) handleRegisterCommon(
 			registerCacheExpiration,
 		)
 
-		h.handleNewMachineCommon(writer, req, registerRequest, machineKey)
+		h.handleNewMachineCommon(writer, registerRequest, machineKey)
 
 		return
 	}
@@ -212,7 +212,7 @@ func (h *Headscale) handleRegisterCommon(
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !registerRequest.Expiry.IsZero() &&
 				registerRequest.Expiry.UTC().Before(now) {
-				h.handleMachineLogOutCommon(writer, req, *machine, machineKey)
+				h.handleMachineLogOutCommon(writer, *machine, machineKey)
 
 				return
 			}
@@ -220,7 +220,7 @@ func (h *Headscale) handleRegisterCommon(
 			// If machine is not expired, and is register, we have a already accepted this machine,
 			// let it proceed with a valid registration
 			if !machine.isExpired() {
-				h.handleMachineValidRegistrationCommon(writer, req, *machine, machineKey)
+				h.handleMachineValidRegistrationCommon(writer, *machine, machineKey)
 
 				return
 			}
@@ -231,7 +231,6 @@ func (h *Headscale) handleRegisterCommon(
 			!machine.isExpired() {
 			h.handleMachineRefreshKeyCommon(
 				writer,
-				req,
 				registerRequest,
 				*machine,
 				machineKey,
@@ -241,7 +240,7 @@ func (h *Headscale) handleRegisterCommon(
 		}
 
 		// The machine has expired
-		h.handleMachineExpiredCommon(writer, req, registerRequest, *machine, machineKey)
+		h.handleMachineExpiredCommon(writer, registerRequest, *machine, machineKey)
 
 		machine.Expiry = &time.Time{}
 		h.registrationCache.Set(
@@ -261,7 +260,6 @@ func (h *Headscale) handleRegisterCommon(
 // TODO: check if any locks are needed around IP allocation.
 func (h *Headscale) handleAuthKeyCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
@@ -460,7 +458,6 @@ func (h *Headscale) handleAuthKeyCommon(
 // for authorizing the machine. This url is then showed to the user by the local Tailscale client.
 func (h *Headscale) handleNewMachineCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
@@ -516,7 +513,6 @@ func (h *Headscale) handleNewMachineCommon(
 
 func (h *Headscale) handleMachineLogOutCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	machine Machine,
 	machineKey key.MachinePublic,
 ) {
@@ -575,7 +571,6 @@ func (h *Headscale) handleMachineLogOutCommon(
 
 func (h *Headscale) handleMachineValidRegistrationCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	machine Machine,
 	machineKey key.MachinePublic,
 ) {
@@ -629,7 +624,6 @@ func (h *Headscale) handleMachineValidRegistrationCommon(
 
 func (h *Headscale) handleMachineRefreshKeyCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 	machineKey key.MachinePublic,
@@ -692,7 +686,6 @@ func (h *Headscale) handleMachineRefreshKeyCommon(
 
 func (h *Headscale) handleMachineExpiredCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machine Machine,
 	machineKey key.MachinePublic,
@@ -707,7 +700,7 @@ func (h *Headscale) handleMachineExpiredCommon(
 		Msg("Machine registration has expired. Sending a authurl to register")
 
 	if registerRequest.Auth.AuthKey != "" {
-		h.handleAuthKeyCommon(writer, req, registerRequest, machineKey)
+		h.handleAuthKeyCommon(writer, registerRequest, machineKey)
 
 		return
 	}
