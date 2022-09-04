@@ -105,7 +105,7 @@ func (h *Headscale) handleRegisterCommon(
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the machine has AuthKey set, handle registration via PreAuthKeys
 		if registerRequest.Auth.AuthKey != "" {
-			h.handleAuthKeyCommon(writer, req, registerRequest, machineKey)
+			h.handleAuthKeyCommon(writer, registerRequest, machineKey)
 
 			return
 		}
@@ -134,7 +134,7 @@ func (h *Headscale) handleRegisterCommon(
 				case <-req.Context().Done():
 					return
 				case <-ticker.C:
-					h.handleNewMachineCommon(writer, req, registerRequest, machineKey)
+					h.handleNewMachineCommon(writer, registerRequest, machineKey)
 
 					return
 				}
@@ -190,7 +190,7 @@ func (h *Headscale) handleRegisterCommon(
 			registerCacheExpiration,
 		)
 
-		h.handleNewMachineCommon(writer, req, registerRequest, machineKey)
+		h.handleNewMachineCommon(writer, registerRequest, machineKey)
 
 		return
 	}
@@ -207,7 +207,7 @@ func (h *Headscale) handleRegisterCommon(
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !registerRequest.Expiry.IsZero() &&
 				registerRequest.Expiry.UTC().Before(now) {
-				h.handleMachineLogOutCommon(writer, req, *machine, machineKey)
+				h.handleMachineLogOutCommon(writer, *machine, machineKey)
 
 				return
 			}
@@ -256,7 +256,6 @@ func (h *Headscale) handleRegisterCommon(
 // TODO: check if any locks are needed around IP allocation.
 func (h *Headscale) handleAuthKeyCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
@@ -455,7 +454,6 @@ func (h *Headscale) handleAuthKeyCommon(
 // for authorizing the machine. This url is then showed to the user by the local Tailscale client.
 func (h *Headscale) handleNewMachineCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
@@ -511,7 +509,6 @@ func (h *Headscale) handleNewMachineCommon(
 
 func (h *Headscale) handleMachineLogOutCommon(
 	writer http.ResponseWriter,
-	req *http.Request,
 	machine Machine,
 	machineKey key.MachinePublic,
 ) {
@@ -699,7 +696,7 @@ func (h *Headscale) handleMachineExpiredCommon(
 		Msg("Machine registration has expired. Sending a authurl to register")
 
 	if registerRequest.Auth.AuthKey != "" {
-		h.handleAuthKeyCommon(writer, req, registerRequest, machineKey)
+		h.handleAuthKeyCommon(writer, registerRequest, machineKey)
 
 		return
 	}
