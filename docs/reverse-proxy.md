@@ -29,8 +29,17 @@ server {
     ssl_certificate_key <PATH_CERT_KEY>;
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    map $http_upgrade $connection_upgrade { 
+        default      keep-alive;
+        'websocket'  upgrade; 
+        ''           close;
+    }
+
     location / {
         proxy_pass http://<IP:PORT>;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $server_name;
         proxy_redirect http:// https://;
         proxy_buffering off;
