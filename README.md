@@ -1,4 +1,4 @@
-# headscale
+![./docs/logo/headscale3_header_stacked_left.png](headscale logo)
 
 ![ci](https://github.com/juanfont/headscale/actions/workflows/test.yml/badge.svg)
 
