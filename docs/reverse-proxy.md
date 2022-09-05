@@ -2,6 +2,10 @@
 
 Running Headscale behind a reverse proxy is suitable for container-based deployments. This is especially useful on a server were port 443 is already being used for other web services.
 
+### Web Sockets
+The reverse proxy _must_ be configured to support websockets if you are running headscale 0.17.x+ and tailscale v1.30+.
+
+### TLS
 Headscale can be configured not to use TLS, leaving it to the reverse proxy to handle. Add the following configuration values to your headscale config file.
 
 ```yaml
