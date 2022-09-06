@@ -24,6 +24,12 @@ tls_key_path: ""
 The following example configuration can be used in your nginx setup, substituting values as necessary. `<IP:PORT>` should be the IP address and port where headscale is running. In most cases, this will be `http://localhost:8080`.
 
 ```Nginx
+map $http_upgrade $connection_upgrade { 
+    default      keep-alive;
+    'websocket'  upgrade; 
+    ''           close;
+}
+
 server {
     listen 80;
 	listen [::]:80;
@@ -36,12 +42,6 @@ server {
     ssl_certificate <PATH_TO_CERT>;
     ssl_certificate_key <PATH_CERT_KEY>;
     ssl_protocols TLSv1.2 TLSv1.3;
-
-    map $http_upgrade $connection_upgrade { 
-        default      keep-alive;
-        'websocket'  upgrade; 
-        ''           close;
-    }
 
     location / {
         proxy_pass http://<IP:PORT>;
