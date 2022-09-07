@@ -66,7 +66,6 @@ db_path: /etc/headscale/db.sqlite
 docker run \
   --name headscale \
   --detach \
-  --rm \
   --volume $(pwd)/config:/etc/headscale/ \
   --publish 127.0.0.1:8080:8080 \
   --publish 127.0.0.1:9090:9090 \
