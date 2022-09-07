@@ -98,10 +98,9 @@ Use "headscale acl [command] --help" for more information about a command.
 
 ### acl get subcommand
 
-```console
-headscale acl get --help
-Get will retrieve the ACLs currently loaded in Headscale. Use the `-o json`
-option to retrieve a JSON version of the ACL's, default is HuJSON
+```console headscale acl get --help Get will retrieve the ACLs currently loaded
+in Headscale. Use the `-o json` option to retrieve a JSON version of the ACL's
+or `-o yaml` to retrieve a YAML version, default is HuJSON
 
 Usage:
   headscale acl get [flags]
