@@ -930,17 +930,16 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	return nil
 }
 
-// Enabled any routes advertised by a machine that match the ACL autoApprovers policy
-func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
+// Enabled any routes advertised by a machine that match the ACL autoApprovers policy.
+func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) {
 	if len(machine.IPAddresses) == 0 {
-		return nil // This machine has no IPAddresses, so can't possibly match any autoApprovers ACLs
+		return // This machine has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
 	approvedRoutes := make([]netip.Prefix, 0, len(machine.HostInfo.RoutableIPs))
 	thisMachine := []Machine{*machine}
 
 	for _, advertisedRoute := range machine.HostInfo.RoutableIPs {
-
 		if contains(machine.EnabledRoutes, advertisedRoute) {
 			continue // Skip routes that are already enabled for the node
 		}
@@ -953,7 +952,8 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 				Str("advertisedRoute", advertisedRoute.String()).
 				Uint64("machineId", machine.ID).
 				Msg("Failed to resolve autoApprovers for advertised route")
-			return err
+
+			return
 		}
 
 		for _, approvedAlias := range routeApprovers {
@@ -965,7 +965,8 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 					log.Err(err).
 						Str("alias", approvedAlias).
 						Msg("Failed to expand alias when processing autoApprovers policy")
-					return err
+
+					return
 				}
 
 				// approvedIPs should contain all of machine's IPs if it matches the rule, so check for first
@@ -985,8 +986,6 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 			machine.EnabledRoutes = append(machine.EnabledRoutes, approvedRoute)
 		}
 	}
-
-	return nil
 }
 
 func (machine *Machine) RoutesToProto() *v1.Routes {

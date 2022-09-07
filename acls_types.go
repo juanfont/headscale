@@ -109,7 +109,7 @@ func (policy ACLPolicy) IsZero() bool {
 	return false
 }
 
-// Returns the list of autoApproving namespaces, groups or tags for a given IPPrefix
+// Returns the list of autoApproving namespaces, groups or tags for a given IPPrefix.
 func (autoApprovers *AutoApprovers) GetRouteApprovers(
 	prefix netip.Prefix,
 ) ([]string, error) {
@@ -121,7 +121,6 @@ func (autoApprovers *AutoApprovers) GetRouteApprovers(
 
 	for autoApprovedPrefix, autoApproverAliases := range autoApprovers.Routes {
 		autoApprovedPrefix, err := netip.ParsePrefix(autoApprovedPrefix)
-
 		if err != nil {
 			return nil, err
 		}
