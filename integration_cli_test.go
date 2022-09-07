@@ -337,7 +337,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 
 	// Test that tags are present
 	for i := 0; i < count; i++ {
-		assert.Equals(listedPreAuthKeys[i].AclTags, []string{"tag:test1,", "tag:test2"})
+		assert.Equal(s.T(), listedPreAuthKeys[i].AclTags, []string{"tag:test1", "tag:test2"})
 	}
 
 	// Expire three keys

@@ -343,7 +343,6 @@ func (h *Headscale) handleAuthKeyCommon(
 		machine.NodeKey = nodeKey
 		machine.AuthKeyID = uint(pak.ID)
 		err := h.RefreshMachine(machine, registerRequest.Expiry)
-
 		if err != nil {
 			log.Error().
 				Caller().
@@ -372,7 +371,6 @@ func (h *Headscale) handleAuthKeyCommon(
 
 			return
 		}
-
 	} else {
 		now := time.Now().UTC()
 

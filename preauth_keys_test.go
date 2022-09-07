@@ -191,7 +191,7 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
 }
 
-func (*Suite) TestPreAuthKeyAclTags(c *check.C) {
+func (*Suite) TestPreAuthKeyACLTags(c *check.C) {
 	namespace, err := app.CreateNamespace("test8")
 	c.Assert(err, check.IsNil)
 

@@ -131,7 +131,7 @@ func (h *Headscale) initDB() error {
 		return err
 	}
 
-	err = db.AutoMigrate(&PreAuthKeyAclTag{})
+	err = db.AutoMigrate(&PreAuthKeyACLTag{})
 	if err != nil {
 		return err
 	}
