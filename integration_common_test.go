@@ -121,7 +121,7 @@ func ExecuteCommand(
 		return stdout.String(), nil
 	case <-time.After(execConfig.timeout):
 
-		return "", fmt.Errorf("command timed out after %s", execConfig.timeout)
+		return stderr.String(), fmt.Errorf("command timed out after %s", execConfig.timeout)
 	}
 }
 
