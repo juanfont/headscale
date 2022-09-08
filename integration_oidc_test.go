@@ -7,9 +7,11 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -237,7 +239,7 @@ oidc:
 	)
 	for hostname, tailscale := range s.tailscales {
 		s.joinWaitGroup.Add(1)
-		go s.Join(headscaleEndpoint, hostname, tailscale)
+		go s.AuthenticateOIDC(headscaleEndpoint, hostname, tailscale)
 	}
 
 	s.joinWaitGroup.Wait()
@@ -247,11 +249,39 @@ oidc:
 	time.Sleep(60 * time.Second)
 }
 
-func (s *IntegrationOIDCTestSuite) Join(
+func (s *IntegrationOIDCTestSuite) AuthenticateOIDC(
 	endpoint, hostname string,
 	tailscale dockertest.Resource,
 ) {
 	defer s.joinWaitGroup.Done()
+
+	loginURL, err := s.joinOIDC(endpoint, hostname, tailscale)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not join OIDC node: %s", err), "")
+	}
+
+	insecureTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: insecureTransport}
+	resp, err := client.Get(loginURL.String())
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not get login page: %s", err), "")
+	}
+	// read the body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not read login page: %s", err), "")
+	}
+
+	panic(string(body))
+
+}
+
+func (s *IntegrationOIDCTestSuite) joinOIDC(
+	endpoint, hostname string,
+	tailscale dockertest.Resource,
+) (*url.URL, error) {
 
 	command := []string{
 		"tailscale",
@@ -264,19 +294,26 @@ func (s *IntegrationOIDCTestSuite) Join(
 
 	log.Println("Join command:", command)
 	log.Printf("Running join command for %s\n", hostname)
-	result, err := ExecuteCommand(
+	result, _ := ExecuteCommand(
 		&tailscale,
 		command,
 		[]string{},
 	)
 
-	// https://github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/up.go#L584
-	url := strings.ReplaceAll(result, "\nTo authenticate, visit:\n\n\t", "")
-	url = strings.TrimSpace(url)
+	// This piece of code just gets the login URL out of the output of the tailscale client.
+	// See https://github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/up.go#L584.
+	urlStr := strings.ReplaceAll(result, "\nTo authenticate, visit:\n\n\t", "")
+	urlStr = strings.TrimSpace(urlStr)
 
-	log.Println(url)
-	assert.Nil(s.T(), err)
-	log.Printf("%s joined\n", hostname)
+	// parse URL
+	loginUrl, err := url.Parse(urlStr)
+	if err != nil {
+		log.Printf("Could not parse login URL: %s", err)
+		log.Printf("Original join command result: %s", result)
+		return nil, err
+	}
+
+	return loginUrl, nil
 }
 
 func (s *IntegrationOIDCTestSuite) tailscaleContainer(
