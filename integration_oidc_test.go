@@ -265,17 +265,16 @@ func (s *IntegrationOIDCTestSuite) AuthenticateOIDC(
 	}
 	client := &http.Client{Transport: insecureTransport}
 	resp, err := client.Get(loginURL.String())
-	if err != nil {
-		s.FailNow(fmt.Sprintf("Could not get login page: %s", err), "")
-	}
-	// read the body
+	assert.Nil(s.T(), err)
+
 	body, err := io.ReadAll(resp.Body)
+	assert.Nil(s.T(), err)
+
 	if err != nil {
 		s.FailNow(fmt.Sprintf("Could not read login page: %s", err), "")
 	}
 
-	panic(string(body))
-
+	log.Printf("Login page for %s: %s", hostname, string(body))
 }
 
 func (s *IntegrationOIDCTestSuite) joinOIDC(
@@ -435,41 +434,44 @@ func (s *IntegrationOIDCTestSuite) saveLog(
 	return nil
 }
 
-func (s *IntegrationOIDCTestSuite) TestPingAllPeersByHostname() {
-	hostnames, err := getDNSNames(&s.headscale)
-	assert.Nil(s.T(), err)
-
-	log.Printf("Hostnames: %#v\n", hostnames)
-
+func (s *IntegrationOIDCTestSuite) TestPingAllPeersByAddress() {
 	for hostname, tailscale := range s.tailscales {
-		for _, peername := range hostnames {
-			if strings.Contains(peername, hostname) {
-				continue
-			}
-			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
-				command := []string{
-					"tailscale", "ping",
-					"--timeout=10s",
-					"--c=5",
-					"--until-direct=false",
-					peername,
+		ips, err := getIPs(s.tailscales)
+		assert.Nil(s.T(), err)
+		for peername, peerIPs := range ips {
+			for i, ip := range peerIPs {
+				// We currently cant ping ourselves, so skip that.
+				if peername == hostname {
+					continue
 				}
+				s.T().
+					Run(fmt.Sprintf("%s-%s-%d", hostname, peername, i), func(t *testing.T) {
+						// We are only interested in "direct ping" which means what we
+						// might need a couple of more attempts before reaching the node.
+						command := []string{
+							"tailscale", "ping",
+							"--timeout=1s",
+							"--c=10",
+							"--until-direct=true",
+							ip.String(),
+						}
 
-				log.Printf(
-					"Pinging using hostname from %s to %s\n",
-					hostname,
-					peername,
-				)
-				log.Println(command)
-				result, err := ExecuteCommand(
-					&tailscale,
-					command,
-					[]string{},
-				)
-				assert.Nil(t, err)
-				log.Printf("Result for %s: %s\n", hostname, result)
-				assert.Contains(t, result, "via DERP(headscale)")
-			})
+						log.Printf(
+							"Pinging from %s to %s (%s)\n",
+							hostname,
+							peername,
+							ip,
+						)
+						result, err := ExecuteCommand(
+							&tailscale,
+							command,
+							[]string{},
+						)
+						assert.Nil(t, err)
+						log.Printf("Result for %s: %s\n", hostname, result)
+						assert.Contains(t, result, "pong")
+					})
+			}
 		}
 	}
 }
