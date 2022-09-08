@@ -25,8 +25,9 @@ import (
 )
 
 const (
-	oidcNamespaceName   = "oidcnamespace"
-	totalOidcContainers = 3
+	oidcHeadscaleHostname = "headscale"
+	oidcNamespaceName     = "oidcnamespace"
+	totalOidcContainers   = 3
 )
 
 type IntegrationOIDCTestSuite struct {
@@ -143,7 +144,7 @@ oidc:
 	err = os.WriteFile(configPath, []byte(config), 0644)
 
 	headscaleOptions := &dockertest.RunOptions{
-		Name: "headscale",
+		Name: oidcHeadscaleHostname,
 		Mounts: []string{
 			fmt.Sprintf(
 				"%s/integration_test/etc_oidc:/etc/headscale",
@@ -158,7 +159,7 @@ oidc:
 		},
 	}
 
-	err = s.pool.RemoveContainerByName("headscale")
+	err = s.pool.RemoveContainerByName(oidcHeadscaleHostname)
 	if err != nil {
 		s.FailNow(
 			fmt.Sprintf(
@@ -224,30 +225,6 @@ oidc:
 	)
 	log.Println("headscale create namespace result: ", result)
 	assert.Nil(s.T(), err)
-
-	// log.Printf("Creating pre auth key for %s\n", oidcNamespaceName)
-	// preAuthResult, err := ExecuteCommand(
-	// 	&s.headscale,
-	// 	[]string{
-	// 		"headscale",
-	// 		"--namespace",
-	// 		oidcNamespaceName,
-	// 		"preauthkeys",
-	// 		"create",
-	// 		"--reusable",
-	// 		"--expiration",
-	// 		"24h",
-	// 		"--output",
-	// 		"json",
-	// 	},
-	// 	[]string{"LOG_LEVEL=error"},
-	// )
-	// assert.Nil(s.T(), err)
-
-	// var preAuthKey v1.PreAuthKey
-	// err = json.Unmarshal([]byte(preAuthResult), &preAuthKey)
-	// assert.Nil(s.T(), err)
-	// assert.True(s.T(), preAuthKey.Reusable)
 
 	headscaleEndpoint := fmt.Sprintf(
 		"https://headscale:%s",
