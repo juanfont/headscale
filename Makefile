@@ -35,6 +35,9 @@ test_integration_derp:
 test_integration_general:
 	go test -failfast -tags integration_general,integration -timeout 30m -count=1 ./...
 
+test_integration_oidc:
+	go test -failfast -tags integration_oidc,integration -timeout 30m -count=1 ./...
+
 coverprofile_func:
 	go tool cover -func=coverage.out
 
