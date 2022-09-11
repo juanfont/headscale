@@ -5,6 +5,7 @@
 ### BREAKING
 
 - Log level option `log_level` was moved to a distinct `log` config section and renamed to `level` [#768](https://github.com/juanfont/headscale/pull/768)
+
 ### Changes
 
 - Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
