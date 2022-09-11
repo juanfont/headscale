@@ -172,8 +172,10 @@ tls_letsencrypt_listen: ":http"
 tls_cert_path: ""
 tls_key_path: ""
 
-log_level: info
-json_logs: false
+log:
+  # Output formatting for logs: text or json
+  format: text
+  level: info
 
 # Path to a file containg ACL policies.
 # ACLs can be defined as YAML or HUJSON.

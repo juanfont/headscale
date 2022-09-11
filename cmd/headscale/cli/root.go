@@ -47,7 +47,7 @@ func initConfig() {
 
 	machineOutput := HasMachineOutputFlag()
 
-	zerolog.SetGlobalLevel(cfg.LogLevel)
+	zerolog.SetGlobalLevel(cfg.Log.Level)
 
 	// If the user has requested a "machine" readable format,
 	// then disable login so the output remains valid.
@@ -55,7 +55,7 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	if cfg.JSONLogs {
+	if cfg.Log.Format == headscale.JSONLogFormat {
 		log.Logger = log.Output(os.Stdout)
 	}
 

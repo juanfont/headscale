@@ -28,8 +28,9 @@ ip_prefixes:
   - fd7a:115c:a1e0::/48
   - 100.64.0.0/10
 listen_addr: 0.0.0.0:8080
-log_level: disabled
-json_logs: false
+log:
+  format: text
+  level: disabled
 logtail:
   enabled: false
 metrics_listen_addr: 127.0.0.1:9090
