@@ -60,6 +60,7 @@ const (
 const (
 	AuthPrefix          = "Bearer "
 	Postgres            = "postgres"
+	Mysql               = "mysql"
 	Sqlite              = "sqlite3"
 	updateInterval      = 5000
 	HTTPReadTimeout     = 30 * time.Second
@@ -163,6 +164,33 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		if cfg.DBpass != "" {
 			dbString += fmt.Sprintf(" password=%s", cfg.DBpass)
 		}
+	case Mysql:
+		if cfg.DBhost != "" {
+			if cfg.DBport != 0 {
+				dbString = fmt.Sprintf(
+					"tcp(%s:%d)/%s",
+					cfg.DBhost,
+					cfg.DBport,
+					cfg.DBname,
+				)
+			} else {
+				dbString = fmt.Sprintf(
+					"tcp(%s)/%s",
+					cfg.DBhost,
+					cfg.DBname,
+				)
+			}
+		}
+
+		if cfg.DBuser != "" {
+			if cfg.DBpass != "" {
+				dbString = cfg.DBuser + ":" + cfg.DBpass + "@" + dbString
+			} else {
+				dbString = cfg.DBuser + "@" + dbString
+			}
+		}
+
+		dbString += "?parseTime=true"
 	case Sqlite:
 		dbString = cfg.DBpath
 	default:

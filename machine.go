@@ -96,25 +96,39 @@ func (ma MachineAddresses) ToStringSlice() []string {
 
 func (ma *MachineAddresses) Scan(destination interface{}) error {
 	switch value := destination.(type) {
-	case string:
-		addresses := strings.Split(value, ",")
-		*ma = (*ma)[:0]
-		for _, addr := range addresses {
-			if len(addr) < 1 {
-				continue
-			}
-			parsed, err := netip.ParseAddr(addr)
-			if err != nil {
-				return err
-			}
-			*ma = append(*ma, parsed)
+	case []uint8:
+		err := ma.ParseMachineAddresses(string(value))
+		if err != nil {
+			return err
 		}
-
-		return nil
+	case string:
+		err := ma.ParseMachineAddresses(value)
+		if err != nil {
+			return err
+		}
 
 	default:
 		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
 	}
+
+	return nil
+}
+
+func (ma *MachineAddresses) ParseMachineAddresses(value string) error {
+	addresses := strings.Split(value, ",")
+	*ma = (*ma)[:0]
+	for _, addr := range addresses {
+		if len(addr) < 1 {
+			continue
+		}
+		parsed, err := netip.ParseAddr(addr)
+		if err != nil {
+			return err
+		}
+		*ma = append(*ma, parsed)
+	}
+
+	return nil
 }
 
 // Value return json value, implement driver.Valuer interface.

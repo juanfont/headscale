@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gorm.io/driver/mysql"
 	"net/netip"
 	"time"
 
@@ -154,15 +155,20 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 		log = logger.Default.LogMode(logger.Silent)
 	}
 
+	var conf = &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true,
+		Logger:                                   log,
+	}
+
 	switch h.dbType {
+	case Postgres:
+		db, err = gorm.Open(postgres.Open(h.dbString), conf)
+
+	case Mysql:
+		db, err = gorm.Open(mysql.Open(h.dbString), conf)
+
 	case Sqlite:
-		db, err = gorm.Open(
-			sqlite.Open(h.dbString+"?_synchronous=1&_journal_mode=WAL"),
-			&gorm.Config{
-				DisableForeignKeyConstraintWhenMigrating: true,
-				Logger:                                   log,
-			},
-		)
+		db, err = gorm.Open(sqlite.Open(h.dbString+"?_synchronous=1&_journal_mode=WAL"), conf)
 
 		db.Exec("PRAGMA foreign_keys=ON")
 
@@ -173,12 +179,6 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 		sqlDB.SetMaxIdleConns(1)
 		sqlDB.SetMaxOpenConns(1)
 		sqlDB.SetConnMaxIdleTime(time.Hour)
-
-	case Postgres:
-		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
-			DisableForeignKeyConstraintWhenMigrating: true,
-			Logger:                                   log,
-		})
 	}
 
 	if err != nil {
