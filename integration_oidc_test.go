@@ -106,6 +106,8 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 	}
 	s.network = networks[0]
 
+	log.Printf("Network config: %v", s.network.Network.IPAM.Config[0])
+
 	s.Suite.T().Log("Setting up mock OIDC")
 	oidc, _ := mockoidc.NewServer(nil)
 	ln, _ := net.Listen("tcp", fmt.Sprintf("%s:0", s.network.Network.IPAM.Config[0].Gateway))
