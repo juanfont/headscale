@@ -139,18 +139,26 @@ oidc:
 		s.FailNow(fmt.Sprintf("Could not determine current path: %s", err), "")
 	}
 
-	baseConfig, _ := os.ReadFile("integration_test/etc_oidc/base_config.yaml")
+	baseConfig, err := os.ReadFile(
+		path.Join(currentPath, "integration_test/etc_oidc/base_config.yaml"))
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not read base config: %s", err), "")
+	}
 	config := string(baseConfig) + oidcCfg
+
+	log.Println(config)
 
 	configPath := path.Join(currentPath, "integration_test/etc_oidc/config.yaml")
 	err = os.WriteFile(configPath, []byte(config), 0644)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not write config: %s", err), "")
+	}
 
 	headscaleOptions := &dockertest.RunOptions{
 		Name: oidcHeadscaleHostname,
 		Mounts: []string{
-			fmt.Sprintf(
-				"%s/integration_test/etc_oidc:/etc/headscale",
-				currentPath,
+			path.Join(currentPath,
+				"integration_test/etc_oidc:/etc/headscale",
 			),
 		},
 		Cmd:          []string{"headscale", "serve"},
