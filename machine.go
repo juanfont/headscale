@@ -35,6 +35,11 @@ const (
 	maxHostnameLength = 255
 )
 
+var (
+	ExitRouteV4 = netip.MustParsePrefix("0.0.0.0/0")
+	ExitRouteV6 = netip.MustParsePrefix("::/0")
+)
+
 // Machine is a Headscale client.
 type Machine struct {
 	ID          uint64 `gorm:"primary_key"`
@@ -633,10 +638,17 @@ func (machine Machine) toNode(
 		[]netip.Prefix{},
 		addrs...) // we append the node own IP, as it is required by the clients
 
-	// TODO(kradalby): Needs investigation, We probably dont need this condition
-	// now that we dont have shared nodes
-	if includeRoutes {
-		allowedIPs = append(allowedIPs, machine.EnabledRoutes...)
+	allowedIPs = append(allowedIPs, machine.EnabledRoutes...)
+
+	primaryRoutes := []netip.Prefix{}
+	if len(machine.EnabledRoutes) > 0 {
+		for _, route := range machine.EnabledRoutes {
+			if route == ExitRouteV4 || route == ExitRouteV6 {
+				continue
+			}
+
+			primaryRoutes = append(primaryRoutes, route)
+		}
 	}
 
 	var derp string
@@ -691,6 +703,7 @@ func (machine Machine) toNode(
 		DiscoKey:   discoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
+		PrimaryRoutes: primaryRoutes,
 		Endpoints:  machine.Endpoints,
 		DERP:       derp,
 
