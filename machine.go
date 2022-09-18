@@ -642,6 +642,11 @@ func (machine Machine) toNode(
 
 	allowedIPs = append(allowedIPs, machine.EnabledRoutes...)
 
+	// TODO(kradalby): This is kind of a hack where we say that
+	// all the announced routes (except exit), is presented as primary
+	// routes. This might be problematic if two nodes expose the same route.
+	// This was added to address an issue where subnet routers stopped working
+	// when we only populated AllowedIPs.
 	primaryRoutes := []netip.Prefix{}
 	if len(machine.EnabledRoutes) > 0 {
 		for _, route := range machine.EnabledRoutes {
