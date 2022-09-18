@@ -26,9 +26,11 @@ const (
 	)
 	ErrCouldNotConvertMachineInterface = Error("failed to convert machine interface")
 	ErrHostnameTooLong                 = Error("Hostname too long")
-	ErrDifferentRegisteredNamespace    = Error("machine was previously registered with a different namespace")
-	MachineGivenNameHashLength         = 8
-	MachineGivenNameTrimSize           = 2
+	ErrDifferentRegisteredNamespace    = Error(
+		"machine was previously registered with a different namespace",
+	)
+	MachineGivenNameHashLength = 8
+	MachineGivenNameTrimSize   = 2
 )
 
 const (
@@ -695,17 +697,17 @@ func (machine Machine) toNode(
 		StableID: tailcfg.StableNodeID(
 			strconv.FormatUint(machine.ID, Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
-		Name:       hostname,
-		User:       tailcfg.UserID(machine.NamespaceID),
-		Key:        nodeKey,
-		KeyExpiry:  keyExpiry,
-		Machine:    machineKey,
-		DiscoKey:   discoKey,
-		Addresses:  addrs,
-		AllowedIPs: allowedIPs,
+		Name:          hostname,
+		User:          tailcfg.UserID(machine.NamespaceID),
+		Key:           nodeKey,
+		KeyExpiry:     keyExpiry,
+		Machine:       machineKey,
+		DiscoKey:      discoKey,
+		Addresses:     addrs,
+		AllowedIPs:    allowedIPs,
 		PrimaryRoutes: primaryRoutes,
-		Endpoints:  machine.Endpoints,
-		DERP:       derp,
+		Endpoints:     machine.Endpoints,
+		DERP:          derp,
 
 		Online:   &online,
 		Hostinfo: hostInfo.View(),
@@ -820,7 +822,8 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 			}
 
 			// Registration of expired machine with different namespace
-			if registrationMachine.ID != 0 && registrationMachine.NamespaceID != namespace.ID {
+			if registrationMachine.ID != 0 &&
+				registrationMachine.NamespaceID != namespace.ID {
 				return nil, ErrDifferentRegisteredNamespace
 			}
 
