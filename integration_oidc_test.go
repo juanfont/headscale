@@ -110,7 +110,10 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 
 	s.Suite.T().Log("Setting up mock OIDC")
 	oidc, _ := mockoidc.NewServer(nil)
-	ln, _ := net.Listen("tcp", fmt.Sprintf("%s:0", s.network.Network.IPAM.Config[0].Gateway))
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.network.Network.IPAM.Config[0].Gateway))
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not listen on port: %s", err), "")
+	}
 	oidc.Start(ln, nil)
 	s.oidc = oidc
 
