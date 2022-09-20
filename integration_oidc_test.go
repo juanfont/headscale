@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oauth2-proxy/mockoidc"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
@@ -36,10 +34,10 @@ type IntegrationOIDCTestSuite struct {
 	suite.Suite
 	stats *suite.SuiteInformation
 
-	oidc      *mockoidc.MockOIDC
 	pool      dockertest.Pool
 	network   dockertest.Network
 	headscale dockertest.Resource
+	mockOidc  dockertest.Resource
 	saveLogs  bool
 
 	tailscales    map[string]dockertest.Resource
@@ -75,6 +73,11 @@ func TestOIDCIntegrationTestSuite(t *testing.T) {
 				log.Printf("Could not save log: %s\n", err)
 			}
 		}
+
+		if err := s.pool.Purge(&s.mockOidc); err != nil {
+			log.Printf("Could not purge resource: %s\n", err)
+		}
+
 		if err := s.pool.Purge(&s.headscale); err != nil {
 			t.Logf("Could not purge resource: %s\n", err)
 		}
@@ -109,35 +112,42 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 	log.Printf("Network config: %v", s.network.Network.IPAM.Config[0])
 
 	s.Suite.T().Log("Setting up mock OIDC")
-	oidc, _ := mockoidc.NewServer(nil)
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.network.Network.IPAM.Config[0].Gateway))
-	if err != nil {
-		s.FailNow(fmt.Sprintf("Could not listen on port: %s", err), "")
+	mockOidcOptions := &dockertest.RunOptions{
+		Name:         "mockoidc",
+		Hostname:     "mockoidc",
+		Cmd:          []string{"headscale", "mockoidc"},
+		ExposedPorts: []string{"10000/tcp"},
+		Networks:     []*dockertest.Network{&s.network},
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"10000/tcp": {{HostPort: "10000"}},
+		},
+		Env: []string{
+			"MOCKOIDC_PORT=10000",
+			"MOCKOIDC_CLIENT_ID=superclient",
+			"MOCKOIDC_CLIENT_SECRET=supersecret",
+		},
 	}
-	oidc.Start(ln, nil)
-	s.oidc = oidc
-
-	// we now parse the Issuer URL and replace the host with the docker internal hostname
-	// urlIssuer, _ := url.Parse(s.oidc.Issuer())
-	// urlIssuer.Host = fmt.Sprintf("host-gateway:%s", urlIssuer.Port())
-	// issuer := urlIssuer.String()
-
-	oidcCfg := fmt.Sprintf(`
-oidc:
-  issuer: %s
-  client_id: %s
-  client_secret: %s
-  strip_email_domain: true`,
-		s.oidc.Issuer(),
-		s.oidc.Config().ClientID,
-		s.oidc.Config().ClientSecret)
-
-	fmt.Println(oidcCfg)
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile.debug",
 		ContextDir: ".",
 	}
+
+	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
+		headscaleBuildOptions,
+		mockOidcOptions,
+		DockerRestartPolicy); err == nil {
+		s.mockOidc = *pmockoidc
+	} else {
+		s.FailNow(fmt.Sprintf("Could not start mockOIDC container: %s", err), "")
+	}
+
+	oidcCfg := fmt.Sprintf(`
+oidc:
+  issuer: http://%s:10000/oidc
+  client_id: superclient
+  client_secret: supersecret
+  strip_email_domain: true`, s.mockOidc.GetIPInNetwork(&s.network))
 
 	currentPath, err := os.Getwd()
 	if err != nil {
@@ -160,7 +170,8 @@ oidc:
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-		Name: oidcHeadscaleHostname,
+		Name:     oidcHeadscaleHostname,
+		Networks: []*dockertest.Network{&s.network},
 		Mounts: []string{
 			path.Join(currentPath,
 				"integration_test/etc_oidc:/etc/headscale",
@@ -368,8 +379,6 @@ func (s *IntegrationOIDCTestSuite) tailscaleContainer(
 }
 
 func (s *IntegrationOIDCTestSuite) TearDownSuite() {
-	s.oidc.Shutdown()
-
 	if !s.saveLogs {
 		for _, tailscale := range s.tailscales {
 			if err := s.pool.Purge(&tailscale); err != nil {
@@ -378,6 +387,10 @@ func (s *IntegrationOIDCTestSuite) TearDownSuite() {
 		}
 
 		if err := s.pool.Purge(&s.headscale); err != nil {
+			log.Printf("Could not purge resource: %s\n", err)
+		}
+
+		if err := s.pool.Purge(&s.mockOidc); err != nil {
 			log.Printf("Could not purge resource: %s\n", err)
 		}
 
