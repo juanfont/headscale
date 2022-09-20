@@ -31,7 +31,7 @@ var mockOidcCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		err := mockOIDC()
 		if err != nil {
-			fmt.Println(err)
+			log.Error().Err(err).Msgf("Error running mock OIDC server")
 			os.Exit(1)
 		}
 	},
