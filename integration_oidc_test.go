@@ -264,6 +264,7 @@ oidc:
 	for hostname, tailscale := range s.tailscales {
 		s.joinWaitGroup.Add(1)
 		go s.AuthenticateOIDC(headscaleEndpoint, hostname, tailscale)
+		time.Sleep(1 * time.Second)
 	}
 
 	s.joinWaitGroup.Wait()
