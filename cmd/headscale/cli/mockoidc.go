@@ -12,6 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	errMockOidcClientIDNotDefined     = Error("MOCKOIDC_CLIENT_ID not defined")
+	errMockOidcClientSecretNotDefined = Error("MOCKOIDC_CLIENT_SECRET not defined")
+	errMockOidcPortNotDefined         = Error("MOCKOIDC_PORT not defined")
+	accessTTL                         = 10 * time.Minute
+	refreshTTL                        = 60 * time.Minute
+)
+
 func init() {
 	rootCmd.AddCommand(mockOidcCmd)
 }
@@ -32,15 +40,15 @@ var mockOidcCmd = &cobra.Command{
 func mockOIDC() error {
 	clientID := os.Getenv("MOCKOIDC_CLIENT_ID")
 	if clientID == "" {
-		return fmt.Errorf("MOCKOIDC_CLIENT_ID not set")
+		return errMockOidcClientIDNotDefined
 	}
 	clientSecret := os.Getenv("MOCKOIDC_CLIENT_SECRET")
 	if clientSecret == "" {
-		return fmt.Errorf("MOCKOIDC_CLIENT_SECRET not set")
+		return errMockOidcClientSecretNotDefined
 	}
 	portStr := os.Getenv("MOCKOIDC_PORT")
 	if portStr == "" {
-		return fmt.Errorf("MOCKOIDC_PORT not set")
+		return errMockOidcPortNotDefined
 	}
 
 	port, err := strconv.Atoi(portStr)
@@ -53,13 +61,16 @@ func mockOIDC() error {
 		return err
 	}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("mockoidc:%d", port))
+	listener, err := net.Listen("tcp", fmt.Sprintf("mockoidc:%d", port))
 	if err != nil {
 		return err
 	}
 
-	mock.Start(ln, nil)
-	log.Info().Msgf("Mock OIDC server listening on %s", ln.Addr().String())
+	err = mock.Start(listener, nil)
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("Mock OIDC server listening on %s", listener.Addr().String())
 	log.Info().Msgf("Issuer: %s", mock.Issuer())
 	c := make(chan struct{})
 	<-c
@@ -76,8 +87,8 @@ func getMockOIDC(clientID string, clientSecret string) (*mockoidc.MockOIDC, erro
 	mock := mockoidc.MockOIDC{
 		ClientID:                      clientID,
 		ClientSecret:                  clientSecret,
-		AccessTTL:                     time.Duration(10) * time.Minute,
-		RefreshTTL:                    time.Duration(60) * time.Minute,
+		AccessTTL:                     accessTTL,
+		RefreshTTL:                    refreshTTL,
 		CodeChallengeMethodsSupported: []string{"plain", "S256"},
 		Keypair:                       keypair,
 		SessionStore:                  mockoidc.NewSessionStore(),

@@ -225,7 +225,7 @@ oidc:
 		client := &http.Client{Transport: insecureTransport}
 		resp, err := client.Get(url)
 		if err != nil {
-			fmt.Printf("headscale for embedded OIDC tests is not ready: %s\n", err)
+			log.Printf("headscale for embedded OIDC tests is not ready: %s\n", err)
 			return err
 		}
 
