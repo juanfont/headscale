@@ -264,6 +264,8 @@ oidc:
 	for hostname, tailscale := range s.tailscales {
 		s.joinWaitGroup.Add(1)
 		go s.AuthenticateOIDC(headscaleEndpoint, hostname, tailscale)
+
+		// TODO(juan): Workaround for https://github.com/juanfont/headscale/issues/814
 		time.Sleep(1 * time.Second)
 	}
 
