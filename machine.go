@@ -26,13 +26,20 @@ const (
 	)
 	ErrCouldNotConvertMachineInterface = Error("failed to convert machine interface")
 	ErrHostnameTooLong                 = Error("Hostname too long")
-	ErrDifferentRegisteredNamespace    = Error("machine was previously registered with a different namespace")
-	MachineGivenNameHashLength         = 8
-	MachineGivenNameTrimSize           = 2
+	ErrDifferentRegisteredNamespace    = Error(
+		"machine was previously registered with a different namespace",
+	)
+	MachineGivenNameHashLength = 8
+	MachineGivenNameTrimSize   = 2
 )
 
 const (
 	maxHostnameLength = 255
+)
+
+var (
+	ExitRouteV4 = netip.MustParsePrefix("0.0.0.0/0")
+	ExitRouteV6 = netip.MustParsePrefix("::/0")
 )
 
 // Machine is a Headscale client.
@@ -566,12 +573,11 @@ func (machines MachinesP) String() string {
 func (machines Machines) toNodes(
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
-	includeRoutes bool,
 ) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(machines))
 
 	for index, machine := range machines {
-		node, err := machine.toNode(baseDomain, dnsConfig, includeRoutes)
+		node, err := machine.toNode(baseDomain, dnsConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -587,7 +593,6 @@ func (machines Machines) toNodes(
 func (machine Machine) toNode(
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
-	includeRoutes bool,
 ) (*tailcfg.Node, error) {
 	var nodeKey key.NodePublic
 	err := nodeKey.UnmarshalText([]byte(NodePublicKeyEnsurePrefix(machine.NodeKey)))
@@ -633,10 +638,22 @@ func (machine Machine) toNode(
 		[]netip.Prefix{},
 		addrs...) // we append the node own IP, as it is required by the clients
 
-	// TODO(kradalby): Needs investigation, We probably dont need this condition
-	// now that we dont have shared nodes
-	if includeRoutes {
-		allowedIPs = append(allowedIPs, machine.EnabledRoutes...)
+	allowedIPs = append(allowedIPs, machine.EnabledRoutes...)
+
+	// TODO(kradalby): This is kind of a hack where we say that
+	// all the announced routes (except exit), is presented as primary
+	// routes. This might be problematic if two nodes expose the same route.
+	// This was added to address an issue where subnet routers stopped working
+	// when we only populated AllowedIPs.
+	primaryRoutes := []netip.Prefix{}
+	if len(machine.EnabledRoutes) > 0 {
+		for _, route := range machine.EnabledRoutes {
+			if route == ExitRouteV4 || route == ExitRouteV6 {
+				continue
+			}
+
+			primaryRoutes = append(primaryRoutes, route)
+		}
 	}
 
 	var derp string
@@ -683,16 +700,17 @@ func (machine Machine) toNode(
 		StableID: tailcfg.StableNodeID(
 			strconv.FormatUint(machine.ID, Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
-		Name:       hostname,
-		User:       tailcfg.UserID(machine.NamespaceID),
-		Key:        nodeKey,
-		KeyExpiry:  keyExpiry,
-		Machine:    machineKey,
-		DiscoKey:   discoKey,
-		Addresses:  addrs,
-		AllowedIPs: allowedIPs,
-		Endpoints:  machine.Endpoints,
-		DERP:       derp,
+		Name:          hostname,
+		User:          tailcfg.UserID(machine.NamespaceID),
+		Key:           nodeKey,
+		KeyExpiry:     keyExpiry,
+		Machine:       machineKey,
+		DiscoKey:      discoKey,
+		Addresses:     addrs,
+		AllowedIPs:    allowedIPs,
+		PrimaryRoutes: primaryRoutes,
+		Endpoints:     machine.Endpoints,
+		DERP:          derp,
 
 		Online:   &online,
 		Hostinfo: hostInfo.View(),
@@ -807,7 +825,8 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 			}
 
 			// Registration of expired machine with different namespace
-			if registrationMachine.ID != 0 && registrationMachine.NamespaceID != namespace.ID {
+			if registrationMachine.ID != 0 &&
+				registrationMachine.NamespaceID != namespace.ID {
 				return nil, ErrDifferentRegisteredNamespace
 			}
 

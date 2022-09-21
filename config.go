@@ -22,6 +22,9 @@ import (
 const (
 	tlsALPN01ChallengeType = "TLS-ALPN-01"
 	http01ChallengeType    = "HTTP-01"
+
+	JSONLogFormat = "json"
+	TextLogFormat = "text"
 )
 
 // Config contains the initial Headscale configuration.
@@ -37,7 +40,7 @@ type Config struct {
 	PrivateKeyPath                 string
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
-	LogLevel                       zerolog.Level
+	Log                            LogConfig
 	DisableUpdateCheck             bool
 
 	DERP DERPConfig
@@ -124,6 +127,11 @@ type ACLConfig struct {
 	PolicyPath string
 }
 
+type LogConfig struct {
+	Format string
+	Level  zerolog.Level
+}
+
 func LoadConfig(path string, isFile bool) error {
 	if isFile {
 		viper.SetConfigFile(path)
@@ -147,7 +155,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tls_letsencrypt_challenge_type", http01ChallengeType)
 	viper.SetDefault("tls_client_auth_mode", "relaxed")
 
-	viper.SetDefault("log_level", "info")
+	viper.SetDefault("log.level", "info")
+	viper.SetDefault("log.format", TextLogFormat)
 
 	viper.SetDefault("dns_config", nil)
 
@@ -334,6 +343,34 @@ func GetACLConfig() ACLConfig {
 	}
 }
 
+func GetLogConfig() LogConfig {
+	logLevelStr := viper.GetString("log.level")
+	logLevel, err := zerolog.ParseLevel(logLevelStr)
+	if err != nil {
+		logLevel = zerolog.DebugLevel
+	}
+
+	logFormatOpt := viper.GetString("log.format")
+	var logFormat string
+	switch logFormatOpt {
+	case "json":
+		logFormat = JSONLogFormat
+	case "text":
+		logFormat = TextLogFormat
+	case "":
+		logFormat = TextLogFormat
+	default:
+		log.Error().
+			Str("func", "GetLogConfig").
+			Msgf("Could not parse log format: %s. Valid choices are 'json' or 'text'", logFormatOpt)
+	}
+
+	return LogConfig{
+		Format: logFormat,
+		Level:  logLevel,
+	}
+}
+
 func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	if viper.IsSet("dns_config") {
 		dnsConfig := &tailcfg.DNSConfig{}
@@ -430,12 +467,6 @@ func GetHeadscaleConfig() (*Config, error) {
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
 	parsedPrefixes := make([]netip.Prefix, 0, len(configuredPrefixes)+1)
 
-	logLevelStr := viper.GetString("log_level")
-	logLevel, err := zerolog.ParseLevel(logLevelStr)
-	if err != nil {
-		logLevel = zerolog.DebugLevel
-	}
-
 	legacyPrefixField := viper.GetString("ip_prefix")
 	if len(legacyPrefixField) > 0 {
 		log.
@@ -488,7 +519,6 @@ func GetHeadscaleConfig() (*Config, error) {
 		GRPCAddr:           viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
-		LogLevel:           logLevel,
 
 		IPPrefixes: prefixes,
 		PrivateKeyPath: AbsolutePathFromConfigPath(
@@ -550,5 +580,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		},
 
 		ACL: GetACLConfig(),
+
+		Log: GetLogConfig(),
 	}, nil
 }

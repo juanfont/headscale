@@ -2,11 +2,19 @@
 
 ## 0.17.0 (2022-XX-XX)
 
+### BREAKING
+
+- Log level option `log_level` was moved to a distinct `log` config section and renamed to `level` [#768](https://github.com/juanfont/headscale/pull/768)
+
+### Changes
+
 - Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
 - Add ability to specify config location via env var `HEADSCALE_CONFIG` [#674](https://github.com/juanfont/headscale/issues/674)
 - Target Go 1.19 for Headscale [#778](https://github.com/juanfont/headscale/pull/778)
 - Target Tailscale v1.30.0 to build Headscale [#780](https://github.com/juanfont/headscale/pull/780)
 - Give a warning when running Headscale with reverse proxy improperly configured for WebSockets [#788](https://github.com/juanfont/headscale/pull/788)
+- Fix subnet routers with Primary Routes [#811](https://github.com/juanfont/headscale/pull/811)
+- Added support for JSON logs [#653](https://github.com/juanfont/headscale/issues/653)
 
 ## 0.16.4 (2022-08-21)
 

@@ -1,4 +1,4 @@
-//go:build integration_derp
+//go:build integration_oidc
 
 package headscale
 
@@ -6,10 +6,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -17,43 +18,41 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/ccding/go-stun/stun"
 )
 
 const (
-	namespaceName   = "derpnamespace"
-	totalContainers = 3
+	oidcHeadscaleHostname = "headscale"
+	oidcNamespaceName     = "oidcnamespace"
+	totalOidcContainers   = 3
 )
 
-type IntegrationDERPTestSuite struct {
+type IntegrationOIDCTestSuite struct {
 	suite.Suite
 	stats *suite.SuiteInformation
 
 	pool      dockertest.Pool
-	networks  map[int]dockertest.Network // so we keep the containers isolated
+	network   dockertest.Network
 	headscale dockertest.Resource
+	mockOidc  dockertest.Resource
 	saveLogs  bool
 
 	tailscales    map[string]dockertest.Resource
 	joinWaitGroup sync.WaitGroup
 }
 
-func TestDERPIntegrationTestSuite(t *testing.T) {
+func TestOIDCIntegrationTestSuite(t *testing.T) {
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false
 	}
 
-	s := new(IntegrationDERPTestSuite)
+	s := new(IntegrationOIDCTestSuite)
 
 	s.tailscales = make(map[string]dockertest.Resource)
-	s.networks = make(map[int]dockertest.Network)
 	s.saveLogs = saveLogs
 
 	suite.Run(t, s)
@@ -74,49 +73,108 @@ func TestDERPIntegrationTestSuite(t *testing.T) {
 				log.Printf("Could not save log: %s\n", err)
 			}
 		}
-		if err := s.pool.Purge(&s.headscale); err != nil {
+
+		if err := s.pool.Purge(&s.mockOidc); err != nil {
 			log.Printf("Could not purge resource: %s\n", err)
 		}
 
-		for _, network := range s.networks {
-			if err := network.Close(); err != nil {
-				log.Printf("Could not close network: %s\n", err)
-			}
+		if err := s.pool.Purge(&s.headscale); err != nil {
+			t.Logf("Could not purge resource: %s\n", err)
+		}
+
+		if err := s.network.Close(); err != nil {
+			log.Printf("Could not close network: %s\n", err)
 		}
 	}
 }
 
-func (s *IntegrationDERPTestSuite) SetupSuite() {
+func (s *IntegrationOIDCTestSuite) SetupSuite() {
 	if ppool, err := dockertest.NewPool(""); err == nil {
 		s.pool = *ppool
 	} else {
 		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
-	for i := 0; i < totalContainers; i++ {
-		if pnetwork, err := s.pool.CreateNetwork(fmt.Sprintf("headscale-derp-%d", i)); err == nil {
-			s.networks[i] = *pnetwork
-		} else {
-			s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
-		}
+	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
+		s.network = *pnetwork
+	} else {
+		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
+	}
+
+	// Create does not give us an updated version of the resource, so we need to
+	// get it again.
+	networks, err := s.pool.NetworksByName("headscale-test")
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not get network: %s", err), "")
+	}
+	s.network = networks[0]
+
+	log.Printf("Network config: %v", s.network.Network.IPAM.Config[0])
+
+	s.Suite.T().Log("Setting up mock OIDC")
+	mockOidcOptions := &dockertest.RunOptions{
+		Name:         "mockoidc",
+		Hostname:     "mockoidc",
+		Cmd:          []string{"headscale", "mockoidc"},
+		ExposedPorts: []string{"10000/tcp"},
+		Networks:     []*dockertest.Network{&s.network},
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"10000/tcp": {{HostPort: "10000"}},
+		},
+		Env: []string{
+			"MOCKOIDC_PORT=10000",
+			"MOCKOIDC_CLIENT_ID=superclient",
+			"MOCKOIDC_CLIENT_SECRET=supersecret",
+		},
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile",
+		Dockerfile: "Dockerfile.debug",
 		ContextDir: ".",
 	}
+
+	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
+		headscaleBuildOptions,
+		mockOidcOptions,
+		DockerRestartPolicy); err == nil {
+		s.mockOidc = *pmockoidc
+	} else {
+		s.FailNow(fmt.Sprintf("Could not start mockOIDC container: %s", err), "")
+	}
+
+	oidcCfg := fmt.Sprintf(`
+oidc:
+  issuer: http://%s:10000/oidc
+  client_id: superclient
+  client_secret: supersecret
+  strip_email_domain: true`, s.mockOidc.GetIPInNetwork(&s.network))
 
 	currentPath, err := os.Getwd()
 	if err != nil {
 		s.FailNow(fmt.Sprintf("Could not determine current path: %s", err), "")
 	}
 
+	baseConfig, err := os.ReadFile(
+		path.Join(currentPath, "integration_test/etc_oidc/base_config.yaml"))
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not read base config: %s", err), "")
+	}
+	config := string(baseConfig) + oidcCfg
+
+	log.Println(config)
+
+	configPath := path.Join(currentPath, "integration_test/etc_oidc/config.yaml")
+	err = os.WriteFile(configPath, []byte(config), 0644)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not write config: %s", err), "")
+	}
+
 	headscaleOptions := &dockertest.RunOptions{
-		Name: headscaleHostname,
+		Name:     oidcHeadscaleHostname,
+		Networks: []*dockertest.Network{&s.network},
 		Mounts: []string{
-			fmt.Sprintf(
-				"%s/integration_test/etc_embedded_derp:/etc/headscale",
-				currentPath,
+			path.Join(currentPath,
+				"integration_test/etc_oidc:/etc/headscale",
 			),
 		},
 		Cmd:          []string{"headscale", "serve"},
@@ -127,7 +185,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		},
 	}
 
-	err = s.pool.RemoveContainerByName(headscaleHostname)
+	err = s.pool.RemoveContainerByName(oidcHeadscaleHostname)
 	if err != nil {
 		s.FailNow(
 			fmt.Sprintf(
@@ -138,27 +196,26 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		)
 	}
 
-	log.Println("Creating headscale container for DERP integration tests")
+	s.Suite.T().Logf("Creating headscale container for OIDC integration tests")
 	if pheadscale, err := s.pool.BuildAndRunWithBuildOptions(headscaleBuildOptions, headscaleOptions, DockerRestartPolicy); err == nil {
 		s.headscale = *pheadscale
 	} else {
 		s.FailNow(fmt.Sprintf("Could not start headscale container: %s", err), "")
 	}
-	log.Println("Created headscale container for embedded DERP tests")
+	s.Suite.T().Logf("Created headscale container for embedded OIDC tests")
 
-	log.Println("Creating tailscale containers for embedded DERP tests")
+	s.Suite.T().Logf("Creating tailscale containers for embedded OIDC tests")
 
-	for i := 0; i < totalContainers; i++ {
+	for i := 0; i < totalOidcContainers; i++ {
 		version := tailscaleVersions[i%len(tailscaleVersions)]
 		hostname, container := s.tailscaleContainer(
 			fmt.Sprint(i),
 			version,
-			s.networks[i],
 		)
 		s.tailscales[hostname] = *container
 	}
 
-	log.Println("Waiting for headscale to be ready for embedded DERP tests")
+	s.Suite.T().Logf("Waiting for headscale to be ready for embedded OIDC tests")
 	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8443/tcp"))
 
 	if err := s.pool.Retry(func() error {
@@ -168,7 +225,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		client := &http.Client{Transport: insecureTransport}
 		resp, err := client.Get(url)
 		if err != nil {
-			fmt.Printf("headscale for embedded DERP tests is not ready: %s\n", err)
+			log.Printf("headscale for embedded OIDC tests is not ready: %s\n", err)
 			return err
 		}
 
@@ -184,40 +241,16 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		// https://github.com/stretchr/testify/issues/849
 		return // fmt.Errorf("Could not connect to headscale: %s", err)
 	}
-	log.Println("headscale container is ready for embedded DERP tests")
+	s.Suite.T().Log("headscale container is ready for embedded OIDC tests")
 
-	log.Printf("Creating headscale namespace: %s\n", namespaceName)
+	s.Suite.T().Logf("Creating headscale namespace: %s\n", oidcNamespaceName)
 	result, _, err := ExecuteCommand(
 		&s.headscale,
-		[]string{"headscale", "namespaces", "create", namespaceName},
+		[]string{"headscale", "namespaces", "create", oidcNamespaceName},
 		[]string{},
 	)
 	log.Println("headscale create namespace result: ", result)
 	assert.Nil(s.T(), err)
-
-	log.Printf("Creating pre auth key for %s\n", namespaceName)
-	preAuthResult, _, err := ExecuteCommand(
-		&s.headscale,
-		[]string{
-			"headscale",
-			"--namespace",
-			namespaceName,
-			"preauthkeys",
-			"create",
-			"--reusable",
-			"--expiration",
-			"24h",
-			"--output",
-			"json",
-		},
-		[]string{"LOG_LEVEL=error"},
-	)
-	assert.Nil(s.T(), err)
-
-	var preAuthKey v1.PreAuthKey
-	err = json.Unmarshal([]byte(preAuthResult), &preAuthKey)
-	assert.Nil(s.T(), err)
-	assert.True(s.T(), preAuthKey.Reusable)
 
 	headscaleEndpoint := fmt.Sprintf(
 		"https://headscale:%s",
@@ -230,7 +263,10 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	)
 	for hostname, tailscale := range s.tailscales {
 		s.joinWaitGroup.Add(1)
-		go s.Join(headscaleEndpoint, preAuthKey.Key, hostname, tailscale)
+		go s.AuthenticateOIDC(headscaleEndpoint, hostname, tailscale)
+
+		// TODO(juan): Workaround for https://github.com/juanfont/headscale/issues/814
+		time.Sleep(1 * time.Second)
 	}
 
 	s.joinWaitGroup.Wait()
@@ -240,37 +276,74 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	time.Sleep(60 * time.Second)
 }
 
-func (s *IntegrationDERPTestSuite) Join(
-	endpoint, key, hostname string,
+func (s *IntegrationOIDCTestSuite) AuthenticateOIDC(
+	endpoint, hostname string,
 	tailscale dockertest.Resource,
 ) {
 	defer s.joinWaitGroup.Done()
+
+	loginURL, err := s.joinOIDC(endpoint, hostname, tailscale)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not join OIDC node: %s", err), "")
+	}
+
+	insecureTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: insecureTransport}
+	resp, err := client.Get(loginURL.String())
+	assert.Nil(s.T(), err)
+
+	body, err := io.ReadAll(resp.Body)
+	assert.Nil(s.T(), err)
+
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Could not read login page: %s", err), "")
+	}
+
+	log.Printf("Login page for %s: %s", hostname, string(body))
+}
+
+func (s *IntegrationOIDCTestSuite) joinOIDC(
+	endpoint, hostname string,
+	tailscale dockertest.Resource,
+) (*url.URL, error) {
 
 	command := []string{
 		"tailscale",
 		"up",
 		"-login-server",
 		endpoint,
-		"--authkey",
-		key,
 		"--hostname",
 		hostname,
 	}
 
 	log.Println("Join command:", command)
 	log.Printf("Running join command for %s\n", hostname)
-	_, _, err := ExecuteCommand(
+	_, stderr, _ := ExecuteCommand(
 		&tailscale,
 		command,
 		[]string{},
 	)
-	assert.Nil(s.T(), err)
-	log.Printf("%s joined\n", hostname)
+
+	// This piece of code just gets the login URL out of the stderr of the tailscale client.
+	// See https://github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/up.go#L584.
+	urlStr := strings.ReplaceAll(stderr, "\nTo authenticate, visit:\n\n\t", "")
+	urlStr = strings.TrimSpace(urlStr)
+
+	// parse URL
+	loginUrl, err := url.Parse(urlStr)
+	if err != nil {
+		log.Printf("Could not parse login URL: %s", err)
+		log.Printf("Original join command result: %s", stderr)
+		return nil, err
+	}
+
+	return loginUrl, nil
 }
 
-func (s *IntegrationDERPTestSuite) tailscaleContainer(
+func (s *IntegrationOIDCTestSuite) tailscaleContainer(
 	identifier, version string,
-	network dockertest.Network,
 ) (string, *dockertest.Resource) {
 	tailscaleBuildOptions := getDockerBuildOptions(version)
 
@@ -281,7 +354,7 @@ func (s *IntegrationDERPTestSuite) tailscaleContainer(
 	)
 	tailscaleOptions := &dockertest.RunOptions{
 		Name:     hostname,
-		Networks: []*dockertest.Network{&network},
+		Networks: []*dockertest.Network{&s.network},
 		Cmd: []string{
 			"tailscaled", "--tun=tsdev",
 		},
@@ -308,7 +381,7 @@ func (s *IntegrationDERPTestSuite) tailscaleContainer(
 	return hostname, pts
 }
 
-func (s *IntegrationDERPTestSuite) TearDownSuite() {
+func (s *IntegrationOIDCTestSuite) TearDownSuite() {
 	if !s.saveLogs {
 		for _, tailscale := range s.tailscales {
 			if err := s.pool.Purge(&tailscale); err != nil {
@@ -320,22 +393,24 @@ func (s *IntegrationDERPTestSuite) TearDownSuite() {
 			log.Printf("Could not purge resource: %s\n", err)
 		}
 
-		for _, network := range s.networks {
-			if err := network.Close(); err != nil {
-				log.Printf("Could not close network: %s\n", err)
-			}
+		if err := s.pool.Purge(&s.mockOidc); err != nil {
+			log.Printf("Could not purge resource: %s\n", err)
+		}
+
+		if err := s.network.Close(); err != nil {
+			log.Printf("Could not close network: %s\n", err)
 		}
 	}
 }
 
-func (s *IntegrationDERPTestSuite) HandleStats(
+func (s *IntegrationOIDCTestSuite) HandleStats(
 	suiteName string,
 	stats *suite.SuiteInformation,
 ) {
 	s.stats = stats
 }
 
-func (s *IntegrationDERPTestSuite) saveLog(
+func (s *IntegrationOIDCTestSuite) saveLog(
 	resource *dockertest.Resource,
 	basePath string,
 ) error {
@@ -388,51 +463,44 @@ func (s *IntegrationDERPTestSuite) saveLog(
 	return nil
 }
 
-func (s *IntegrationDERPTestSuite) TestPingAllPeersByHostname() {
-	hostnames, err := getDNSNames(&s.headscale)
-	assert.Nil(s.T(), err)
-
-	log.Printf("Hostnames: %#v\n", hostnames)
-
+func (s *IntegrationOIDCTestSuite) TestPingAllPeersByAddress() {
 	for hostname, tailscale := range s.tailscales {
-		for _, peername := range hostnames {
-			if strings.Contains(peername, hostname) {
-				continue
-			}
-			s.T().Run(fmt.Sprintf("%s-%s", hostname, peername), func(t *testing.T) {
-				command := []string{
-					"tailscale", "ping",
-					"--timeout=10s",
-					"--c=5",
-					"--until-direct=false",
-					peername,
+		ips, err := getIPs(s.tailscales)
+		assert.Nil(s.T(), err)
+		for peername, peerIPs := range ips {
+			for i, ip := range peerIPs {
+				// We currently cant ping ourselves, so skip that.
+				if peername == hostname {
+					continue
 				}
+				s.T().
+					Run(fmt.Sprintf("%s-%s-%d", hostname, peername, i), func(t *testing.T) {
+						// We are only interested in "direct ping" which means what we
+						// might need a couple of more attempts before reaching the node.
+						command := []string{
+							"tailscale", "ping",
+							"--timeout=1s",
+							"--c=10",
+							"--until-direct=true",
+							ip.String(),
+						}
 
-				log.Printf(
-					"Pinging using hostname from %s to %s\n",
-					hostname,
-					peername,
-				)
-				log.Println(command)
-				result, _, err := ExecuteCommand(
-					&tailscale,
-					command,
-					[]string{},
-				)
-				assert.Nil(t, err)
-				log.Printf("Result for %s: %s\n", hostname, result)
-				assert.Contains(t, result, "via DERP(headscale)")
-			})
+						log.Printf(
+							"Pinging from %s to %s (%s)\n",
+							hostname,
+							peername,
+							ip,
+						)
+						stdout, stderr, err := ExecuteCommand(
+							&tailscale,
+							command,
+							[]string{},
+						)
+						assert.Nil(t, err)
+						log.Printf("result for %s: stdout: %s, stderr: %s\n", hostname, stdout, stderr)
+						assert.Contains(t, stdout, "pong")
+					})
+			}
 		}
 	}
-}
-
-func (s *IntegrationDERPTestSuite) TestDERPSTUN() {
-	headscaleSTUNAddr := fmt.Sprintf("localhost:%s", s.headscale.GetPort("3478/udp"))
-	client := stun.NewClient()
-	client.SetVerbose(true)
-	client.SetVVerbose(true)
-	client.SetServerAddr(headscaleSTUNAddr)
-	_, _, err := client.Discover()
-	assert.Nil(s.T(), err)
 }
