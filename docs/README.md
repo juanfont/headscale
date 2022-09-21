@@ -28,6 +28,7 @@ written by community members. It is _not_ verified by `headscale` developers.
 
 - [Running headscale in a container](running-headscale-container.md)
 - [Running headscale on OpenBSD](running-headscale-openbsd.md)
+- [Running headscale behind a reverse proxy](reverse-proxy.md)
 
 ## Misc
 
