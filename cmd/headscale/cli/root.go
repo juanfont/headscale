@@ -15,6 +15,10 @@ import (
 var cfgFile string = ""
 
 func init() {
+	if len(os.Args) > 1 && os.Args[1] == "version" || os.Args[1] == "mockoidc" {
+		return
+	}
+
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().
 		StringVarP(&cfgFile, "config", "c", "", "config file (default is /etc/headscale/config.yaml)")
@@ -47,12 +51,16 @@ func initConfig() {
 
 	machineOutput := HasMachineOutputFlag()
 
-	zerolog.SetGlobalLevel(cfg.LogLevel)
+	zerolog.SetGlobalLevel(cfg.Log.Level)
 
 	// If the user has requested a "machine" readable format,
 	// then disable login so the output remains valid.
 	if machineOutput {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
+	}
+
+	if cfg.Log.Format == headscale.JSONLogFormat {
+		log.Logger = log.Output(os.Stdout)
 	}
 
 	if !cfg.DisableUpdateCheck && !machineOutput {

@@ -273,8 +273,6 @@ github.com/fzipp/gocyclo v0.3.1/go.mod h1:DJHO6AUmbdqj2ET4Z9iArSuwWgYDRryYt2wASx
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
 github.com/gin-contrib/sse v0.1.0 h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=
 github.com/gin-contrib/sse v0.1.0/go.mod h1:RHrZQHXnP2xjPF+u1gW/2HnVO7nvIa9PG3Gm+fLHvGI=
-github.com/gin-gonic/gin v1.6.3 h1:ahKqKTFpO5KTPHxWZjEdPScmYaGtLo8Y4DMHoEsnp14=
-github.com/gin-gonic/gin v1.6.3/go.mod h1:75u5sXoLsGZoRN5Sgbi1eraJ4GU3++wFwWzhwvtwp4M=
 github.com/glebarez/go-sqlite v1.17.3 h1:Rji9ROVSTTfjuWD6j5B+8DtkNvPILoUC3xRhkQzGxvk=
 github.com/glebarez/go-sqlite v1.17.3/go.mod h1:Hg+PQuhUy98XCxWEJEaWob8x7lhJzhNYF1nZbUiRGIY=
 github.com/glebarez/go-sqlite v1.18.1 h1:w0xtxKWktqYsUsXg//SQK+l1IcpKb3rGOQHmMptvL2U=

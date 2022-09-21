@@ -68,7 +68,7 @@ func ExecuteCommand(
 	cmd []string,
 	env []string,
 	options ...ExecuteCommandOption,
-) (string, error) {
+) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -78,7 +78,7 @@ func ExecuteCommand(
 
 	for _, opt := range options {
 		if err := opt(&execConfig); err != nil {
-			return "", fmt.Errorf("execute-command/options: %w", err)
+			return "", "", fmt.Errorf("execute-command/options: %w", err)
 		}
 	}
 
@@ -107,7 +107,7 @@ func ExecuteCommand(
 	select {
 	case res := <-resultChan:
 		if res.err != nil {
-			return "", res.err
+			return stdout.String(), stderr.String(), res.err
 		}
 
 		if res.exitCode != 0 {
@@ -115,13 +115,13 @@ func ExecuteCommand(
 			fmt.Println("stdout: ", stdout.String())
 			fmt.Println("stderr: ", stderr.String())
 
-			return "", fmt.Errorf("command failed with: %s", stderr.String())
+			return stdout.String(), stderr.String(), fmt.Errorf("command failed with: %s", stderr.String())
 		}
 
-		return stdout.String(), nil
+		return stdout.String(), stderr.String(), nil
 	case <-time.After(execConfig.timeout):
 
-		return "", fmt.Errorf("command timed out after %s", execConfig.timeout)
+		return stdout.String(), stderr.String(), fmt.Errorf("command timed out after %s", execConfig.timeout)
 	}
 }
 
@@ -200,7 +200,7 @@ func getIPs(
 	for hostname, tailscale := range tailscales {
 		command := []string{"tailscale", "ip"}
 
-		result, err := ExecuteCommand(
+		result, _, err := ExecuteCommand(
 			&tailscale,
 			command,
 			[]string{},
@@ -228,7 +228,7 @@ func getIPs(
 func getDNSNames(
 	headscale *dockertest.Resource,
 ) ([]string, error) {
-	listAllResult, err := ExecuteCommand(
+	listAllResult, _, err := ExecuteCommand(
 		headscale,
 		[]string{
 			"headscale",
@@ -261,7 +261,7 @@ func getDNSNames(
 func getMagicFQDN(
 	headscale *dockertest.Resource,
 ) ([]string, error) {
-	listAllResult, err := ExecuteCommand(
+	listAllResult, _, err := ExecuteCommand(
 		headscale,
 		[]string{
 			"headscale",

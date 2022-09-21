@@ -163,7 +163,7 @@ func (s *IntegrationTestSuite) Join(
 
 	log.Println("Join command:", command)
 	log.Printf("Running join command for %s\n", hostname)
-	_, err := ExecuteCommand(
+	_, _, err := ExecuteCommand(
 		&tailscale,
 		command,
 		[]string{},
@@ -305,7 +305,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 	for namespace, scales := range s.namespaces {
 		log.Printf("Creating headscale namespace: %s\n", namespace)
-		result, err := ExecuteCommand(
+		result, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{"headscale", "namespaces", "create", namespace},
 			[]string{},
@@ -314,7 +314,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		assert.Nil(s.T(), err)
 
 		log.Printf("Creating pre auth key for %s\n", namespace)
-		preAuthResult, err := ExecuteCommand(
+		preAuthResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -386,7 +386,7 @@ func (s *IntegrationTestSuite) HandleStats(
 func (s *IntegrationTestSuite) TestListNodes() {
 	for namespace, scales := range s.namespaces {
 		log.Println("Listing nodes")
-		result, err := ExecuteCommand(
+		result, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{"headscale", "--namespace", namespace, "nodes", "list"},
 			[]string{},
@@ -518,7 +518,7 @@ func (s *IntegrationTestSuite) TestPingAllPeersByAddress() {
 								peername,
 								ip,
 							)
-							result, err := ExecuteCommand(
+							result, _, err := ExecuteCommand(
 								&tailscale,
 								command,
 								[]string{},
@@ -552,7 +552,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 
 		for hostname, tailscale := range scales.tailscales {
 			command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", hostname)}
-			_, err := ExecuteCommand(
+			_, _, err := ExecuteCommand(
 				&tailscale,
 				command,
 				[]string{},
@@ -586,7 +586,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 							hostname,
 							peername,
 						)
-						_, err := ExecuteCommand(
+						_, _, err := ExecuteCommand(
 							&tailscale,
 							command,
 							[]string{},
@@ -606,7 +606,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 				"get",
 				"/tmp/",
 			}
-			_, err := ExecuteCommand(
+			_, _, err := ExecuteCommand(
 				&tailscale,
 				command,
 				[]string{},
@@ -628,7 +628,7 @@ func (s *IntegrationTestSuite) TestTailDrop() {
 						peername,
 						ip,
 					)
-					result, err := ExecuteCommand(
+					result, _, err := ExecuteCommand(
 						&tailscale,
 						command,
 						[]string{},
@@ -672,7 +672,7 @@ func (s *IntegrationTestSuite) TestPingAllPeersByHostname() {
 						hostname,
 						peername,
 					)
-					result, err := ExecuteCommand(
+					result, _, err := ExecuteCommand(
 						&tailscale,
 						command,
 						[]string{},
@@ -724,7 +724,7 @@ func (s *IntegrationTestSuite) TestMagicDNS() {
 							peername,
 							hostname,
 						)
-						result, err := ExecuteCommand(
+						result, _, err := ExecuteCommand(
 							&tailscale,
 							command,
 							[]string{},
@@ -757,7 +757,7 @@ func getAPIURLs(
 			"/run/tailscale/tailscaled.sock",
 			"http://localhost/localapi/v0/file-targets",
 		}
-		result, err := ExecuteCommand(
+		result, _, err := ExecuteCommand(
 			&tailscale,
 			command,
 			[]string{},
