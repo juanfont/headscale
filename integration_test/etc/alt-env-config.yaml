@@ -1,4 +1,5 @@
-log_level: trace
+log:
+  level: trace
 acl_policy_path: ""
 db_type: sqlite3
 ephemeral_node_inactivity_timeout: 30m
