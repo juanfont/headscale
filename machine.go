@@ -573,12 +573,11 @@ func (machines MachinesP) String() string {
 func (machines Machines) toNodes(
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
-	includeRoutes bool,
 ) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(machines))
 
 	for index, machine := range machines {
-		node, err := machine.toNode(baseDomain, dnsConfig, includeRoutes)
+		node, err := machine.toNode(baseDomain, dnsConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -594,7 +593,6 @@ func (machines Machines) toNodes(
 func (machine Machine) toNode(
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
-	includeRoutes bool,
 ) (*tailcfg.Node, error) {
 	var nodeKey key.NodePublic
 	err := nodeKey.UnmarshalText([]byte(NodePublicKeyEnsurePrefix(machine.NodeKey)))

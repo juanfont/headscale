@@ -129,7 +129,7 @@ func (s *IntegrationCLITestSuite) HandleStats(
 }
 
 func (s *IntegrationCLITestSuite) createNamespace(name string) (*v1.Namespace, error) {
-	result, err := ExecuteCommand(
+	result, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -172,7 +172,7 @@ func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
 	assert.Equal(s.T(), names[2], namespaces[2].Name)
 
 	// Test list namespaces
-	listResult, err := ExecuteCommand(
+	listResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -194,7 +194,7 @@ func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
 	assert.Equal(s.T(), names[2], listedNamespaces[2].Name)
 
 	// Test rename namespace
-	renameResult, err := ExecuteCommand(
+	renameResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -216,7 +216,7 @@ func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
 	assert.Equal(s.T(), renamedNamespace.Name, "newname")
 
 	// Test list after rename namespaces
-	listAfterRenameResult, err := ExecuteCommand(
+	listAfterRenameResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -247,7 +247,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 	assert.Nil(s.T(), err)
 
 	for i := 0; i < count; i++ {
-		preAuthResult, err := ExecuteCommand(
+		preAuthResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -275,7 +275,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 	assert.Len(s.T(), keys, 5)
 
 	// Test list of keys
-	listResult, err := ExecuteCommand(
+	listResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -335,7 +335,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 
 	// Expire three keys
 	for i := 0; i < 3; i++ {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -351,7 +351,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 	}
 
 	// Test list pre auth keys after expire
-	listAfterExpireResult, err := ExecuteCommand(
+	listAfterExpireResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -396,7 +396,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
 	namespace, err := s.createNamespace("pre-auth-key-without-exp-namespace")
 	assert.Nil(s.T(), err)
 
-	preAuthResult, err := ExecuteCommand(
+	preAuthResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -417,7 +417,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
 	assert.Nil(s.T(), err)
 
 	// Test list of keys
-	listResult, err := ExecuteCommand(
+	listResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -449,7 +449,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 	namespace, err := s.createNamespace("pre-auth-key-reus-ephm-namespace")
 	assert.Nil(s.T(), err)
 
-	preAuthReusableResult, err := ExecuteCommand(
+	preAuthReusableResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -472,7 +472,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 	assert.True(s.T(), preAuthReusableKey.GetReusable())
 	assert.False(s.T(), preAuthReusableKey.GetEphemeral())
 
-	preAuthEphemeralResult, err := ExecuteCommand(
+	preAuthEphemeralResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -514,7 +514,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 	// assert.NotNil(s.T(), err)
 
 	// Test list of keys
-	listResult, err := ExecuteCommand(
+	listResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -548,7 +548,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	assert.Nil(s.T(), err)
 
 	for index, machineKey := range machineKeys {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -567,7 +567,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, err := ExecuteCommand(
+		machineResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -592,7 +592,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	}
 	assert.Len(s.T(), machines, len(machineKeys))
 
-	addTagResult, err := ExecuteCommand(
+	addTagResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -612,7 +612,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	assert.Equal(s.T(), []string{"tag:test"}, machine.ForcedTags)
 
 	// try to set a wrong tag and retrieve the error
-	wrongTagResult, err := ExecuteCommand(
+	wrongTagResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -634,7 +634,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	assert.Contains(s.T(), errorOutput.Error, "tag must start with the string 'tag:'")
 
 	// Test list all nodes after added seconds
-	listAllResult, err := ExecuteCommand(
+	listAllResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -684,7 +684,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Nil(s.T(), err)
 
 	for index, machineKey := range machineKeys {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -703,7 +703,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, err := ExecuteCommand(
+		machineResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -730,7 +730,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Len(s.T(), machines, len(machineKeys))
 
 	// Test list all nodes after added seconds
-	listAllResult, err := ExecuteCommand(
+	listAllResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -769,7 +769,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Nil(s.T(), err)
 
 	for index, machineKey := range otherNamespaceMachineKeys {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -788,7 +788,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, err := ExecuteCommand(
+		machineResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -815,7 +815,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Len(s.T(), otherNamespaceMachines, len(otherNamespaceMachineKeys))
 
 	// Test list all nodes after added otherNamespace
-	listAllWithotherNamespaceResult, err := ExecuteCommand(
+	listAllWithotherNamespaceResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -845,7 +845,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Equal(s.T(), "otherNamespace-machine-2", listAllWithotherNamespace[6].Name)
 
 	// Test list all nodes after added otherNamespace
-	listOnlyotherNamespaceMachineNamespaceResult, err := ExecuteCommand(
+	listOnlyotherNamespaceMachineNamespaceResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -884,7 +884,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 
 	// Delete a machines
-	_, err = ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -902,7 +902,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Nil(s.T(), err)
 
 	// Test: list main namespace after machine is deleted
-	listOnlyMachineNamespaceAfterDeleteResult, err := ExecuteCommand(
+	listOnlyMachineNamespaceAfterDeleteResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -943,7 +943,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 	assert.Nil(s.T(), err)
 
 	for index, machineKey := range machineKeys {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -962,7 +962,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, err := ExecuteCommand(
+		machineResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -988,7 +988,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 
 	assert.Len(s.T(), machines, len(machineKeys))
 
-	listAllResult, err := ExecuteCommand(
+	listAllResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1014,7 +1014,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 	assert.True(s.T(), listAll[4].Expiry.AsTime().IsZero())
 
 	for i := 0; i < 3; i++ {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -1028,7 +1028,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 		assert.Nil(s.T(), err)
 	}
 
-	listAllAfterExpiryResult, err := ExecuteCommand(
+	listAllAfterExpiryResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1070,7 +1070,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 	assert.Nil(s.T(), err)
 
 	for index, machineKey := range machineKeys {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -1089,7 +1089,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, err := ExecuteCommand(
+		machineResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -1115,7 +1115,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 
 	assert.Len(s.T(), machines, len(machineKeys))
 
-	listAllResult, err := ExecuteCommand(
+	listAllResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1141,7 +1141,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 	assert.Contains(s.T(), listAll[4].GetGivenName(), "machine-5")
 
 	for i := 0; i < 3; i++ {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -1156,7 +1156,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 		assert.Nil(s.T(), err)
 	}
 
-	listAllAfterRenameResult, err := ExecuteCommand(
+	listAllAfterRenameResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1182,7 +1182,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 	assert.Contains(s.T(), listAllAfterRename[4].GetGivenName(), "machine-5")
 
 	// Test failure for too long names
-	result, err := ExecuteCommand(
+	result, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1197,7 +1197,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 	assert.Nil(s.T(), err)
 	assert.Contains(s.T(), result, "not be over 63 chars")
 
-	listAllAfterRenameAttemptResult, err := ExecuteCommand(
+	listAllAfterRenameAttemptResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1233,7 +1233,7 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	// Randomly generated machine keys
 	machineKey := "9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe"
 
-	_, err = ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1256,7 +1256,7 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	machineResult, err := ExecuteCommand(
+	machineResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1280,7 +1280,7 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	assert.Equal(s.T(), uint64(1), machine.Id)
 	assert.Equal(s.T(), "route-machine", machine.Name)
 
-	listAllResult, err := ExecuteCommand(
+	listAllResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1305,7 +1305,7 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 
 	assert.Empty(s.T(), listAll.EnabledRoutes)
 
-	enableTwoRoutesResult, err := ExecuteCommand(
+	enableTwoRoutesResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1337,7 +1337,7 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	assert.Contains(s.T(), enableTwoRoutes.EnabledRoutes, "192.168.1.0/24")
 
 	// Enable only one route, effectively disabling one of the routes
-	enableOneRouteResult, err := ExecuteCommand(
+	enableOneRouteResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1366,7 +1366,7 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	assert.Contains(s.T(), enableOneRoute.EnabledRoutes, "10.0.0.0/8")
 
 	// Enable only one route, effectively disabling one of the routes
-	failEnableNonAdvertisedRoute, err := ExecuteCommand(
+	failEnableNonAdvertisedRoute, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1390,7 +1390,7 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	)
 
 	// Enable all routes on host
-	enableAllRouteResult, err := ExecuteCommand(
+	enableAllRouteResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1425,7 +1425,7 @@ func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
 	keys := make([]string, count)
 
 	for i := 0; i < count; i++ {
-		apiResult, err := ExecuteCommand(
+		apiResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -1451,7 +1451,7 @@ func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
 	assert.Len(s.T(), keys, 5)
 
 	// Test list of keys
-	listResult, err := ExecuteCommand(
+	listResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1513,7 +1513,7 @@ func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
 
 	// Expire three keys
 	for i := 0; i < 3; i++ {
-		_, err := ExecuteCommand(
+		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -1530,7 +1530,7 @@ func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
 	}
 
 	// Test list pre auth keys after expire
-	listAfterExpireResult, err := ExecuteCommand(
+	listAfterExpireResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1573,7 +1573,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	// Randomly generated machine key
 	machineKey := "688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
 
-	_, err = ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1592,7 +1592,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	machineResult, err := ExecuteCommand(
+	machineResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1619,7 +1619,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 
 	machineId := fmt.Sprintf("%d", machine.Id)
 
-	moveToNewNSResult, err := ExecuteCommand(
+	moveToNewNSResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1641,7 +1641,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 
 	assert.Equal(s.T(), machine.Namespace, newNamespace)
 
-	listAllNodesResult, err := ExecuteCommand(
+	listAllNodesResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1664,7 +1664,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	assert.Equal(s.T(), allNodes[0].Namespace, machine.Namespace)
 	assert.Equal(s.T(), allNodes[0].Namespace, newNamespace)
 
-	moveToNonExistingNSResult, err := ExecuteCommand(
+	moveToNonExistingNSResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1688,7 +1688,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	)
 	assert.Equal(s.T(), machine.Namespace, newNamespace)
 
-	moveToOldNSResult, err := ExecuteCommand(
+	moveToOldNSResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1710,7 +1710,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 
 	assert.Equal(s.T(), machine.Namespace, oldNamespace)
 
-	moveToSameNSResult, err := ExecuteCommand(
+	moveToSameNSResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1742,7 +1742,7 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 	altEnvConfig, err := os.ReadFile("integration_test/etc/alt-env-config.dump.gold.yaml")
 	assert.Nil(s.T(), err)
 
-	_, err = ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1757,7 +1757,7 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 
 	assert.YAMLEq(s.T(), string(defaultConfig), string(defaultDumpConfig))
 
-	_, err = ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1774,7 +1774,7 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 
 	assert.YAMLEq(s.T(), string(altConfig), string(altDumpConfig))
 
-	_, err = ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1791,7 +1791,7 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 
 	assert.YAMLEq(s.T(), string(altEnvConfig), string(altEnvDumpConfig))
 
-	_, err = ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
