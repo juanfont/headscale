@@ -13,7 +13,7 @@ func (h *Headscale) generateMapResponse(
 		Str("func", "generateMapResponse").
 		Str("machine", mapRequest.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := machine.toNode(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
+	node, err := machine.toNode(h.cfg.BaseDomain, h.cfg.DNSConfig)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -37,7 +37,7 @@ func (h *Headscale) generateMapResponse(
 
 	profiles := getMapResponseUserProfiles(*machine, peers)
 
-	nodePeers, err := peers.toNodes(h.cfg.BaseDomain, h.cfg.DNSConfig, true)
+	nodePeers, err := peers.toNodes(h.cfg.BaseDomain, h.cfg.DNSConfig)
 	if err != nil {
 		log.Error().
 			Caller().

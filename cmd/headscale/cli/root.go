@@ -15,6 +15,10 @@ import (
 var cfgFile string = ""
 
 func init() {
+	if len(os.Args) > 1 && os.Args[1] == "version" || os.Args[1] == "mockoidc" {
+		return
+	}
+
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().
 		StringVarP(&cfgFile, "config", "c", "", "config file (default is /etc/headscale/config.yaml)")
