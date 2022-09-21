@@ -187,7 +187,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	log.Println("headscale container is ready for embedded DERP tests")
 
 	log.Printf("Creating headscale namespace: %s\n", namespaceName)
-	result, err := ExecuteCommand(
+	result, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{"headscale", "namespaces", "create", namespaceName},
 		[]string{},
@@ -196,7 +196,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	assert.Nil(s.T(), err)
 
 	log.Printf("Creating pre auth key for %s\n", namespaceName)
-	preAuthResult, err := ExecuteCommand(
+	preAuthResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -259,7 +259,7 @@ func (s *IntegrationDERPTestSuite) Join(
 
 	log.Println("Join command:", command)
 	log.Printf("Running join command for %s\n", hostname)
-	_, err := ExecuteCommand(
+	_, _, err := ExecuteCommand(
 		&tailscale,
 		command,
 		[]string{},
@@ -414,7 +414,7 @@ func (s *IntegrationDERPTestSuite) TestPingAllPeersByHostname() {
 					peername,
 				)
 				log.Println(command)
-				result, err := ExecuteCommand(
+				result, _, err := ExecuteCommand(
 					&tailscale,
 					command,
 					[]string{},

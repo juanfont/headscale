@@ -244,7 +244,7 @@ oidc:
 	s.Suite.T().Log("headscale container is ready for embedded OIDC tests")
 
 	s.Suite.T().Logf("Creating headscale namespace: %s\n", oidcNamespaceName)
-	result, err := ExecuteCommand(
+	result, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{"headscale", "namespaces", "create", oidcNamespaceName},
 		[]string{},
@@ -320,22 +320,22 @@ func (s *IntegrationOIDCTestSuite) joinOIDC(
 
 	log.Println("Join command:", command)
 	log.Printf("Running join command for %s\n", hostname)
-	result, _ := ExecuteCommand(
+	_, stderr, _ := ExecuteCommand(
 		&tailscale,
 		command,
 		[]string{},
 	)
 
-	// This piece of code just gets the login URL out of the output of the tailscale client.
+	// This piece of code just gets the login URL out of the stderr of the tailscale client.
 	// See https://github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/up.go#L584.
-	urlStr := strings.ReplaceAll(result, "\nTo authenticate, visit:\n\n\t", "")
+	urlStr := strings.ReplaceAll(stderr, "\nTo authenticate, visit:\n\n\t", "")
 	urlStr = strings.TrimSpace(urlStr)
 
 	// parse URL
 	loginUrl, err := url.Parse(urlStr)
 	if err != nil {
 		log.Printf("Could not parse login URL: %s", err)
-		log.Printf("Original join command result: %s", result)
+		log.Printf("Original join command result: %s", stderr)
 		return nil, err
 	}
 
@@ -491,14 +491,14 @@ func (s *IntegrationOIDCTestSuite) TestPingAllPeersByAddress() {
 							peername,
 							ip,
 						)
-						result, err := ExecuteCommand(
+						stdout, stderr, err := ExecuteCommand(
 							&tailscale,
 							command,
 							[]string{},
 						)
 						assert.Nil(t, err)
-						log.Printf("Result for %s: %s\n", hostname, result)
-						assert.Contains(t, result, "pong")
+						log.Printf("result for %s: stdout: %s, stderr: %s\n", hostname, stdout, stderr)
+						assert.Contains(t, stdout, "pong")
 					})
 			}
 		}
