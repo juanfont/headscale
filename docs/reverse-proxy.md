@@ -3,13 +3,13 @@
 Running headscale behind a reverse proxy is useful when running multiple applications on the same server, and you want to reuse the same external IP and port - usually tcp/443 for HTTPS.
 
 ### WebSockets
-The reverse proxy MUST be configured to support WebSockets, as it is needed for clients running Tailscale v1.30+. 
+
+The reverse proxy MUST be configured to support WebSockets, as it is needed for clients running Tailscale v1.30+.
 
 WebSockets support is required when using the headscale embedded DERP server. In this case, you will also need to expose the UDP port used for STUN (by default, udp/3478). Please check our [config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml).
 
-
-
 ### TLS
+
 Headscale can be configured not to use TLS, leaving it to the reverse proxy to handle. Add the following configuration values to your headscale config file.
 
 ```yaml
@@ -21,12 +21,13 @@ tls_key_path: ""
 ```
 
 ## nginx
+
 The following example configuration can be used in your nginx setup, substituting values as necessary. `<IP:PORT>` should be the IP address and port where headscale is running. In most cases, this will be `http://localhost:8080`.
 
 ```Nginx
-map $http_upgrade $connection_upgrade { 
+map $http_upgrade $connection_upgrade {
     default      keep-alive;
-    'websocket'  upgrade; 
+    'websocket'  upgrade;
     ''           close;
 }
 
