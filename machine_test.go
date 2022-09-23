@@ -1050,3 +1050,44 @@ func TestHeadscale_GenerateGivenName(t *testing.T) {
 		})
 	}
 }
+
+func (s *Suite) TestAutoApproveRoutes(c *check.C) {
+	err := app.LoadACLPolicy("./tests/acls/acl_policy_autoapprovers.hujson")
+	c.Assert(err, check.IsNil)
+
+	namespace, err := app.CreateNamespace("test")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	c.Assert(err, check.IsNil)
+
+	nodeKey := key.NewNode()
+
+	defaultRoute := netip.MustParsePrefix("0.0.0.0/0")
+	route1 := netip.MustParsePrefix("10.10.0.0/16")
+	route2 := netip.MustParsePrefix("10.11.0.0/16")
+
+	machine := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
+		DiscoKey:       "faa",
+		Hostname:       "test",
+		NamespaceID:    namespace.ID,
+		RegisterMethod: RegisterMethodAuthKey,
+		AuthKeyID:      uint(pak.ID),
+		HostInfo: HostInfo{
+			RequestTags: []string{"tag:exit"},
+			RoutableIPs: []netip.Prefix{defaultRoute, route1, route2},
+		},
+		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+	}
+
+	app.db.Save(&machine)
+
+	machine0ByID, err := app.GetMachineByID(0)
+	c.Assert(err, check.IsNil)
+
+	app.EnableAutoApprovedRoutes(machine0ByID)
+	c.Assert(machine0ByID.GetEnabledRoutes(), check.HasLen, 3)
+}

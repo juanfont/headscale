@@ -16,6 +16,7 @@
 - Fix subnet routers with Primary Routes [#811](https://github.com/juanfont/headscale/pull/811)
 - Added support for JSON logs [#653](https://github.com/juanfont/headscale/issues/653)
 - Add support for generating pre-auth keys with tags [#767](https://github.com/juanfont/headscale/pull/767)
+- Add support for evaluating `autoApprovers` ACL entries when a machine is registered [#763](https://github.com/juanfont/headscale/pull/763)
 
 ## 0.16.4 (2022-08-21)
 

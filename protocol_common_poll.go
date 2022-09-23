@@ -42,7 +42,11 @@ func (h *Headscale) handlePollCommon(
 				Str("machine", machine.Hostname).
 				Err(err)
 		}
+
+		// update routes with peer information
+		h.EnableAutoApprovedRoutes(machine)
 	}
+
 	// From Tailscale client:
 	//
 	// ReadOnly is whether the client just wants to fetch the MapResponse,
