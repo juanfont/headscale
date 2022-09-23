@@ -1,0 +1,24 @@
+// This ACL validates autoApprovers support for
+// exit nodes and advertised routes
+
+{
+    "tagOwners": {
+        "tag:exit": ["test"],
+    },
+
+    "groups": {
+        "group:test": ["test"]
+    },
+
+    "acls": [
+        {"action": "accept", "users": ["*"], "ports": ["*:*"]},
+    ],
+
+    "autoApprovers": {
+        "exitNode": ["tag:exit"],
+        "routes": {
+            "10.10.0.0/16": ["group:test"],
+            "10.11.0.0/16": ["test"],
+        }
+    }
+}

@@ -949,6 +949,64 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 	return nil
 }
 
+// Enabled any routes advertised by a machine that match the ACL autoApprovers policy.
+func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) {
+	if len(machine.IPAddresses) == 0 {
+		return // This machine has no IPAddresses, so can't possibly match any autoApprovers ACLs
+	}
+
+	approvedRoutes := make([]netip.Prefix, 0, len(machine.HostInfo.RoutableIPs))
+	thisMachine := []Machine{*machine}
+
+	for _, advertisedRoute := range machine.HostInfo.RoutableIPs {
+		if contains(machine.EnabledRoutes, advertisedRoute) {
+			continue // Skip routes that are already enabled for the node
+		}
+
+		routeApprovers, err := h.aclPolicy.AutoApprovers.GetRouteApprovers(
+			advertisedRoute,
+		)
+		if err != nil {
+			log.Err(err).
+				Str("advertisedRoute", advertisedRoute.String()).
+				Uint64("machineId", machine.ID).
+				Msg("Failed to resolve autoApprovers for advertised route")
+
+			return
+		}
+
+		for _, approvedAlias := range routeApprovers {
+			if approvedAlias == machine.Namespace.Name {
+				approvedRoutes = append(approvedRoutes, advertisedRoute)
+			} else {
+				approvedIps, err := expandAlias(thisMachine, *h.aclPolicy, approvedAlias, h.cfg.OIDC.StripEmaildomain)
+				if err != nil {
+					log.Err(err).
+						Str("alias", approvedAlias).
+						Msg("Failed to expand alias when processing autoApprovers policy")
+
+					return
+				}
+
+				// approvedIPs should contain all of machine's IPs if it matches the rule, so check for first
+				if contains(approvedIps, machine.IPAddresses[0].String()) {
+					approvedRoutes = append(approvedRoutes, advertisedRoute)
+				}
+			}
+		}
+	}
+
+	for _, approvedRoute := range approvedRoutes {
+		if !contains(machine.EnabledRoutes, approvedRoute) {
+			log.Info().
+				Str("route", approvedRoute.String()).
+				Uint64("client", machine.ID).
+				Msg("Enabling autoApproved route for client")
+			machine.EnabledRoutes = append(machine.EnabledRoutes, approvedRoute)
+		}
+	}
+}
+
 func (machine *Machine) RoutesToProto() *v1.Routes {
 	availableRoutes := machine.GetAdvertisedRoutes()
 
