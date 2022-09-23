@@ -11,7 +11,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "test_get_route_machine")
@@ -55,7 +55,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "test_enable_route_machine")

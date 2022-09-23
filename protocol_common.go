@@ -353,6 +353,24 @@ func (h *Headscale) handleAuthKeyCommon(
 
 			return
 		}
+
+		aclTags := pak.toProto().AclTags
+		if len(aclTags) > 0 {
+			// This conditional preserves the existing behaviour, although SaaS would reset the tags on auth-key login
+			err = h.SetTags(machine, aclTags)
+
+			if err != nil {
+				log.Error().
+					Caller().
+					Bool("noise", machineKey.IsZero()).
+					Str("machine", machine.Hostname).
+					Strs("aclTags", aclTags).
+					Err(err).
+					Msg("Failed to set tags after refreshing machine")
+
+				return
+			}
+		}
 	} else {
 		now := time.Now().UTC()
 
@@ -378,6 +396,7 @@ func (h *Headscale) handleAuthKeyCommon(
 			NodeKey:        nodeKey,
 			LastSeen:       &now,
 			AuthKeyID:      uint(pak.ID),
+			ForcedTags:     pak.toProto().AclTags,
 		}
 
 		machine, err = h.RegisterMachine(

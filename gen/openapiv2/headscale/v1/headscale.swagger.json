@@ -824,6 +824,12 @@
         "expiration": {
           "type": "string",
           "format": "date-time"
+        },
+        "aclTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -1102,6 +1108,12 @@
         "createdAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "aclTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

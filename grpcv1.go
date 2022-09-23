@@ -106,11 +106,21 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		expiration = request.GetExpiration().AsTime()
 	}
 
+	for _, tag := range request.AclTags {
+		err := validateTag(tag)
+		if err != nil {
+			return &v1.CreatePreAuthKeyResponse{
+				PreAuthKey: nil,
+			}, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
 	preAuthKey, err := api.h.CreatePreAuthKey(
 		request.GetNamespace(),
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
+		request.AclTags,
 	)
 	if err != nil {
 		return nil, err
