@@ -131,6 +131,11 @@ func (h *Headscale) initDB() error {
 		return err
 	}
 
+	err = db.AutoMigrate(&PreAuthKeyACLTag{})
+	if err != nil {
+		return err
+	}
+
 	_ = db.Migrator().DropTable("shared_machines")
 
 	err = db.AutoMigrate(&APIKey{})

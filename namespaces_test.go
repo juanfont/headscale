@@ -31,7 +31,7 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	err = app.DestroyNamespace("test")
@@ -44,7 +44,7 @@ func (s *Suite) TestDestroyNamespaceErrors(c *check.C) {
 	namespace, err = app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err = app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err = app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	machine := Machine{
@@ -107,6 +107,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		false,
 		false,
 		nil,
+		nil,
 	)
 	c.Assert(err, check.IsNil)
 
@@ -114,6 +115,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		namespaceShared2.Name,
 		false,
 		false,
+		nil,
 		nil,
 	)
 	c.Assert(err, check.IsNil)
@@ -123,6 +125,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		false,
 		false,
 		nil,
+		nil,
 	)
 	c.Assert(err, check.IsNil)
 
@@ -130,6 +133,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		namespaceShared1.Name,
 		false,
 		false,
+		nil,
 		nil,
 	)
 	c.Assert(err, check.IsNil)
@@ -380,7 +384,7 @@ func (s *Suite) TestSetMachineNamespace(c *check.C) {
 	newNamespace, err := app.CreateNamespace("new")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(oldNamespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(oldNamespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	machine := Machine{

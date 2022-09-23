@@ -126,6 +126,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		false,
 		false,
 		nil,
+		nil,
 	)
 	c.Assert(err, check.IsNil)
 
@@ -133,6 +134,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		namespaceShared2.Name,
 		false,
 		false,
+		nil,
 		nil,
 	)
 	c.Assert(err, check.IsNil)
@@ -142,6 +144,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		false,
 		false,
 		nil,
+		nil,
 	)
 	c.Assert(err, check.IsNil)
 
@@ -149,6 +152,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		namespaceShared1.Name,
 		false,
 		false,
+		nil,
 		nil,
 	)
 	c.Assert(err, check.IsNil)
@@ -269,6 +273,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		false,
 		false,
 		nil,
+		nil,
 	)
 	c.Assert(err, check.IsNil)
 
@@ -276,6 +281,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		namespaceShared2.Name,
 		false,
 		false,
+		nil,
 		nil,
 	)
 	c.Assert(err, check.IsNil)
@@ -285,6 +291,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		false,
 		false,
 		nil,
+		nil,
 	)
 	c.Assert(err, check.IsNil)
 
@@ -292,6 +299,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		namespaceShared1.Name,
 		false,
 		false,
+		nil,
 		nil,
 	)
 	c.Assert(err, check.IsNil)

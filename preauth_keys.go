@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -18,6 +19,7 @@ const (
 	ErrPreAuthKeyExpired           = Error("AuthKey expired")
 	ErrSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
 	ErrNamespaceMismatch           = Error("namespace mismatch")
+	ErrPreAuthKeyACLTagInvalid     = Error("AuthKey tag is invalid")
 )
 
 // PreAuthKey describes a pre-authorization key usable in a particular namespace.
@@ -29,9 +31,17 @@ type PreAuthKey struct {
 	Reusable    bool
 	Ephemeral   bool `gorm:"default:false"`
 	Used        bool `gorm:"default:false"`
+	ACLTags     []PreAuthKeyACLTag
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
+}
+
+// PreAuthKeyACLTag describes an autmatic tag applied to a node when registered with the associated PreAuthKey.
+type PreAuthKeyACLTag struct {
+	ID           uint64 `gorm:"primary_key"`
+	PreAuthKeyID uint64
+	Tag          string
 }
 
 // CreatePreAuthKey creates a new PreAuthKey in a namespace, and returns it.
@@ -40,10 +50,17 @@ func (h *Headscale) CreatePreAuthKey(
 	reusable bool,
 	ephemeral bool,
 	expiration *time.Time,
+	aclTags []string,
 ) (*PreAuthKey, error) {
 	namespace, err := h.GetNamespace(namespaceName)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, tag := range aclTags {
+		if !strings.HasPrefix(tag, "tag:") {
+			return nil, fmt.Errorf("%w: '%s' did not begin with 'tag:'", ErrPreAuthKeyACLTagInvalid, tag)
+		}
 	}
 
 	now := time.Now().UTC()
@@ -62,8 +79,32 @@ func (h *Headscale) CreatePreAuthKey(
 		Expiration:  expiration,
 	}
 
-	if err := h.db.Save(&key).Error; err != nil {
-		return nil, fmt.Errorf("failed to create key in the database: %w", err)
+	err = h.db.Transaction(func(db *gorm.DB) error {
+		if err := db.Save(&key).Error; err != nil {
+			return fmt.Errorf("failed to create key in the database: %w", err)
+		}
+
+		if len(aclTags) > 0 {
+			seenTags := map[string]bool{}
+
+			for _, tag := range aclTags {
+				if !seenTags[tag] {
+					if err := db.Save(&PreAuthKeyACLTag{PreAuthKeyID: key.ID, Tag: tag}).Error; err != nil {
+						return fmt.Errorf(
+							"failed to ceate key tag in the database: %w",
+							err,
+						)
+					}
+					seenTags[tag] = true
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	return &key, nil
@@ -77,7 +118,7 @@ func (h *Headscale) ListPreAuthKeys(namespaceName string) ([]PreAuthKey, error) 
 	}
 
 	keys := []PreAuthKey{}
-	if err := h.db.Preload("Namespace").Where(&PreAuthKey{NamespaceID: namespace.ID}).Find(&keys).Error; err != nil {
+	if err := h.db.Preload("Namespace").Preload("ACLTags").Where(&PreAuthKey{NamespaceID: namespace.ID}).Find(&keys).Error; err != nil {
 		return nil, err
 	}
 
@@ -101,11 +142,17 @@ func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, er
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the PreAuthKey
 // does not exist.
 func (h *Headscale) DestroyPreAuthKey(pak PreAuthKey) error {
-	if result := h.db.Unscoped().Delete(pak); result.Error != nil {
-		return result.Error
-	}
+	return h.db.Transaction(func(db *gorm.DB) error {
+		if result := db.Unscoped().Where(PreAuthKeyACLTag{PreAuthKeyID: pak.ID}).Delete(&PreAuthKeyACLTag{}); result.Error != nil {
+			return result.Error
+		}
 
-	return nil
+		if result := db.Unscoped().Delete(pak); result.Error != nil {
+			return result.Error
+		}
+
+		return nil
+	})
 }
 
 // MarkExpirePreAuthKey marks a PreAuthKey as expired.
@@ -131,7 +178,7 @@ func (h *Headscale) UsePreAuthKey(k *PreAuthKey) error {
 // If returns no error and a PreAuthKey, it can be used.
 func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 	pak := PreAuthKey{}
-	if result := h.db.Preload("Namespace").First(&pak, "key = ?", k); errors.Is(
+	if result := h.db.Preload("Namespace").Preload("ACLTags").First(&pak, "key = ?", k); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
@@ -176,6 +223,7 @@ func (key *PreAuthKey) toProto() *v1.PreAuthKey {
 		Ephemeral: key.Ephemeral,
 		Reusable:  key.Reusable,
 		Used:      key.Used,
+		AclTags:   make([]string, len(key.ACLTags)),
 	}
 
 	if key.Expiration != nil {
@@ -184,6 +232,10 @@ func (key *PreAuthKey) toProto() *v1.PreAuthKey {
 
 	if key.CreatedAt != nil {
 		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
+	}
+
+	for idx := range key.ACLTags {
+		protoKey.AclTags[idx] = key.ACLTags[idx].Tag
 	}
 
 	return &protoKey
