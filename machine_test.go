@@ -1058,7 +1058,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	namespace, err := app.CreateNamespace("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	nodeKey := key.NewNode()
