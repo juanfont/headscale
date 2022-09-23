@@ -234,10 +234,8 @@ func (key *PreAuthKey) toProto() *v1.PreAuthKey {
 		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
 	}
 
-	if len(key.ACLTags) > 0 {
-		for idx := range key.ACLTags {
-			protoKey.AclTags[idx] = key.ACLTags[idx].Tag
-		}
+	for idx := range key.ACLTags {
+		protoKey.AclTags[idx] = key.ACLTags[idx].Tag
 	}
 
 	return &protoKey
