@@ -126,6 +126,8 @@
           };
         in
         rec {
+          overlays.default = self.overlay;
+
           # `nix develop`
           devShell = pkgs.mkShell { buildInputs = devDeps; };
 
