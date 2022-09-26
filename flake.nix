@@ -11,7 +11,7 @@
       headscaleVersion = if (self ? shortRev) then self.shortRev else "dev";
     in
     {
-      overlay = final: prev:
+      overlay = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.system};
         in
