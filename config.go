@@ -90,14 +90,15 @@ type LetsEncryptConfig struct {
 }
 
 type OIDCConfig struct {
-	Issuer           string
-	ClientID         string
-	ClientSecret     string
-	Scope            []string
-	ExtraParams      map[string]string
-	AllowedDomains   []string
-	AllowedUsers     []string
-	StripEmaildomain bool
+	OnlyStartIfOIDCIsAvailable bool
+	Issuer                     string
+	ClientID                   string
+	ClientSecret               string
+	Scope                      []string
+	ExtraParams                map[string]string
+	AllowedDomains             []string
+	AllowedUsers               []string
+	StripEmaildomain           bool
 }
 
 type DERPConfig struct {
@@ -174,6 +175,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
+	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -559,6 +561,9 @@ func GetHeadscaleConfig() (*Config, error) {
 		UnixSocketPermission: GetFileMode("unix_socket_permission"),
 
 		OIDC: OIDCConfig{
+			OnlyStartIfOIDCIsAvailable: viper.GetBool(
+				"oidc.only_start_if_oidc_is_available",
+			),
 			Issuer:           viper.GetString("oidc.issuer"),
 			ClientID:         viper.GetString("oidc.client_id"),
 			ClientSecret:     viper.GetString("oidc.client_secret"),
