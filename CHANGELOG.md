@@ -17,6 +17,7 @@
 - Added support for JSON logs [#653](https://github.com/juanfont/headscale/issues/653)
 - Add support for generating pre-auth keys with tags [#767](https://github.com/juanfont/headscale/pull/767)
 - Add support for evaluating `autoApprovers` ACL entries when a machine is registered [#763](https://github.com/juanfont/headscale/pull/763)
+- Add config flag to allow Headscale to start if OIDC provider is down [#829](https://github.com/juanfont/headscale/pull/829)
 
 ## 0.16.4 (2022-08-21)
 

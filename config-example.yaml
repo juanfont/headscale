@@ -230,6 +230,7 @@ unix_socket_permission: "0770"
 # help us test it.
 # OpenID Connect
 # oidc:
+#   only_start_if_oidc_is_available: true
 #   issuer: "https://your-oidc.issuer.com/path"
 #   client_id: "your-oidc-client-id"
 #   client_secret: "your-oidc-client-secret"
