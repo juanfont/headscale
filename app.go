@@ -827,9 +827,9 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 				ReadTimeout: HTTPReadTimeout,
 			}
 
-			err := server.ListenAndServe()
 
 			go func() {
+				err := server.ListenAndServe()
 				log.Fatal().
 					Caller().
 					Err(err).
