@@ -194,10 +194,12 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 
 	if cfg.OIDC.Issuer != "" {
 		err = app.initOIDC()
-		if err != nil && cfg.OIDC.OnlyStartIfOIDCIsAvailable {
-			return nil, err
-		} else {
-			log.Warn().Err(err).Msg("failed to set up OIDC provider, falling back to CLI based authentication")
+		if err != nil {
+			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
+				return nil, err
+			} else {
+				log.Warn().Err(err).Msg("failed to set up OIDC provider, falling back to CLI based authentication")
+			}
 		}
 	}
 
