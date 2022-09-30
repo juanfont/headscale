@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
@@ -120,6 +121,16 @@ func (h *Headscale) UpdateACLRules() error {
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 	h.aclRules = rules
 
+	sshRules, err := h.generateSSHRules()
+	if err != nil {
+		return err
+	}
+	log.Trace().Interface("SSH", sshRules).Msg("SSH rules generated")
+	if h.sshPolicy == nil {
+		h.sshPolicy = &tailcfg.SSHPolicy{}
+	}
+	h.sshPolicy.Rules = sshRules
+
 	return nil
 }
 
@@ -185,6 +196,111 @@ func (h *Headscale) generateACLRules() ([]tailcfg.FilterRule, error) {
 	}
 
 	return rules, nil
+}
+
+func (h *Headscale) generateSSHRules() ([]*tailcfg.SSHRule, error) {
+	rules := []*tailcfg.SSHRule{}
+
+	if h.aclPolicy == nil {
+		return nil, errEmptyPolicy
+	}
+
+	machines, err := h.ListMachines()
+	if err != nil {
+		return nil, err
+	}
+
+	acceptAction := tailcfg.SSHAction{
+		Message:                  "",
+		Reject:                   false,
+		Accept:                   true,
+		SessionDuration:          0,
+		AllowAgentForwarding:     false,
+		HoldAndDelegate:          "",
+		AllowLocalPortForwarding: true,
+	}
+
+	rejectAction := tailcfg.SSHAction{
+		Message:                  "",
+		Reject:                   true,
+		Accept:                   false,
+		SessionDuration:          0,
+		AllowAgentForwarding:     false,
+		HoldAndDelegate:          "",
+		AllowLocalPortForwarding: false,
+	}
+
+	for index, sshACL := range h.aclPolicy.SSHs {
+		action := rejectAction
+		switch sshACL.Action {
+		case "accept":
+			action = acceptAction
+		case "check":
+			checkAction, err := sshCheckAction(sshACL.CheckPeriod)
+			if err != nil {
+				log.Error().
+					Msgf("Error parsing SSH %d, check action with unparsable duration '%s'", index, sshACL.CheckPeriod)
+			} else {
+				action = *checkAction
+			}
+		default:
+			log.Error().
+				Msgf("Error parsing SSH %d, unknown action '%s'", index, sshACL.Action)
+
+			return nil, err
+		}
+
+		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
+		for innerIndex, rawSrc := range sshACL.Sources {
+			expandedSrcs, err := expandAlias(
+				machines,
+				*h.aclPolicy,
+				rawSrc,
+				h.cfg.OIDC.StripEmaildomain,
+			)
+			if err != nil {
+				log.Error().
+					Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
+
+				return nil, err
+			}
+			for _, expandedSrc := range expandedSrcs {
+				principals = append(principals, &tailcfg.SSHPrincipal{
+					NodeIP: expandedSrc,
+				})
+			}
+		}
+
+		userMap := make(map[string]string, len(sshACL.Users))
+		for _, user := range sshACL.Users {
+			userMap[user] = "="
+		}
+		rules = append(rules, &tailcfg.SSHRule{
+			RuleExpires: nil,
+			Principals:  principals,
+			SSHUsers:    userMap,
+			Action:      &action,
+		})
+	}
+
+	return rules, nil
+}
+
+func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {
+	sessionLength, err := time.ParseDuration(duration)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tailcfg.SSHAction{
+		Message:                  "",
+		Reject:                   false,
+		Accept:                   true,
+		SessionDuration:          sessionLength,
+		AllowAgentForwarding:     false,
+		HoldAndDelegate:          "",
+		AllowLocalPortForwarding: true,
+	}, nil
 }
 
 func (h *Headscale) generateACLPolicySrcIP(

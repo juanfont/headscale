@@ -73,6 +73,79 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 	c.Assert(errors.Is(err, errInvalidAction), check.Equals, true)
 }
 
+func (s *Suite) TestSshRules(c *check.C) {
+	namespace, err := app.CreateNamespace("user1")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = app.GetMachine("user1", "testmachine")
+	c.Assert(err, check.NotNil)
+	hostInfo := tailcfg.Hostinfo{
+		OS:          "centos",
+		Hostname:    "testmachine",
+		RequestTags: []string{"tag:test"},
+	}
+
+	machine := Machine{
+		ID:             0,
+		MachineKey:     "foo",
+		NodeKey:        "bar",
+		DiscoKey:       "faa",
+		Hostname:       "testmachine",
+		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
+		NamespaceID:    namespace.ID,
+		RegisterMethod: RegisterMethodAuthKey,
+		AuthKeyID:      uint(pak.ID),
+		HostInfo:       HostInfo(hostInfo),
+	}
+	app.db.Save(&machine)
+
+	app.aclPolicy = &ACLPolicy{
+		Groups: Groups{
+			"group:test": []string{"user1"},
+		},
+		Hosts: Hosts{
+			"client": netip.PrefixFrom(netip.MustParseAddr("100.64.99.42"), 32),
+		},
+		ACLs: []ACL{
+			{
+				Action:       "accept",
+				Sources:      []string{"*"},
+				Destinations: []string{"*:*"},
+			},
+		},
+		SSHs: []SSH{
+			{
+				Action:       "accept",
+				Sources:      []string{"group:test"},
+				Destinations: []string{"client"},
+				Users:        []string{"autogroup:nonroot"},
+			},
+			{
+				Action:       "accept",
+				Sources:      []string{"*"},
+				Destinations: []string{"client"},
+				Users:        []string{"autogroup:nonroot"},
+			},
+		},
+	}
+
+	err = app.UpdateACLRules()
+
+	c.Assert(err, check.IsNil)
+	c.Assert(app.sshPolicy, check.NotNil)
+	c.Assert(app.sshPolicy.Rules, check.HasLen, 2)
+	c.Assert(app.sshPolicy.Rules[0].SSHUsers, check.HasLen, 1)
+	c.Assert(app.sshPolicy.Rules[0].Principals, check.HasLen, 1)
+	c.Assert(app.sshPolicy.Rules[0].Principals[0].NodeIP, check.Matches, "100.64.0.1")
+
+	c.Assert(app.sshPolicy.Rules[1].SSHUsers, check.HasLen, 1)
+	c.Assert(app.sshPolicy.Rules[1].Principals, check.HasLen, 1)
+	c.Assert(app.sshPolicy.Rules[1].Principals[0].NodeIP, check.Matches, "*")
+}
+
 func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
 	// this ACL is wrong because the group in Sources sections doesn't exist
 	app.aclPolicy = &ACLPolicy{

@@ -744,7 +744,11 @@ func (machine Machine) toNode(
 
 		KeepAlive:         true,
 		MachineAuthorized: !machine.isExpired(),
-		Capabilities:      []string{tailcfg.CapabilityFileSharing},
+		Capabilities: []string{
+			tailcfg.CapabilityFileSharing,
+			tailcfg.CapabilityAdmin,
+			tailcfg.CapabilitySSH,
+		},
 	}
 
 	return &node, nil
