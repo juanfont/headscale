@@ -122,6 +122,7 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 			"10000/tcp": {{HostPort: "10000"}},
 		},
 		Env: []string{
+			fmt.Sprintf("MOCKOIDC_ADDR=%s", oidcMockHostname),
 			"MOCKOIDC_PORT=10000",
 			"MOCKOIDC_CLIENT_ID=superclient",
 			"MOCKOIDC_CLIENT_SECRET=supersecret",
@@ -329,6 +330,8 @@ func (s *IntegrationOIDCTestSuite) AuthenticateOIDC(
 	client := &http.Client{Transport: insecureTransport}
 	resp, err := client.Get(loginURL.String())
 	assert.Nil(s.T(), err)
+
+	log.Printf("auth body, err: %#v, %s", resp, err)
 
 	body, err := io.ReadAll(resp.Body)
 	assert.Nil(s.T(), err)
