@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	headscaleDerpHostname = "headscale-derp"
 	namespaceName   = "derpnamespace"
 	totalContainers = 3
 )
@@ -112,7 +113,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-		Name: headscaleHostname,
+		Name: headscaleDerpHostname,
 		Mounts: []string{
 			fmt.Sprintf(
 				"%s/integration_test/etc_embedded_derp:/etc/headscale",
@@ -127,7 +128,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		},
 	}
 
-	err = s.pool.RemoveContainerByName(headscaleHostname)
+	err = s.pool.RemoveContainerByName(headscaleDerpHostname)
 	if err != nil {
 		s.FailNow(
 			fmt.Sprintf(

@@ -236,7 +236,7 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-		Name: "headscale",
+		Name: headscaleHostname,
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 		},
