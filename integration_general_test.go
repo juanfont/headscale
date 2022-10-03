@@ -191,7 +191,7 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		},
 	}
 
-	err = s.pool.RemoveContainerByName(hostname)
+	err := s.pool.RemoveContainerByName(hostname)
 	if err != nil {
 		s.FailNow(
 			fmt.Sprintf(
@@ -202,7 +202,7 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		)
 	}
 
-	pts, err := s.pool.BuildAndRunWithBuildOptions(
+	pts, err = s.pool.BuildAndRunWithBuildOptions(
 		tailscaleBuildOptions,
 		tailscaleOptions,
 		DockerRestartPolicy,
