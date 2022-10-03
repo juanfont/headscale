@@ -353,7 +353,7 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	namespace2, err := app.CreateNamespace("namespace-2")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace1.Name, false, false, nil)
+	pak, err := app.CreatePreAuthKey(namespace1.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("namespace-1", "testmachine")
