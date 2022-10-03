@@ -202,7 +202,7 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		)
 	}
 
-	pts, err = s.pool.BuildAndRunWithBuildOptions(
+	pts, err := s.pool.BuildAndRunWithBuildOptions(
 		tailscaleBuildOptions,
 		tailscaleOptions,
 		DockerRestartPolicy,
