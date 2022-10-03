@@ -191,6 +191,17 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		},
 	}
 
+	err = s.pool.RemoveContainerByName(hostname)
+	if err != nil {
+		s.FailNow(
+			fmt.Sprintf(
+				"Could not remove existing container before building test: %s",
+				err,
+			),
+			"",
+		)
+	}
+
 	pts, err := s.pool.BuildAndRunWithBuildOptions(
 		tailscaleBuildOptions,
 		tailscaleOptions,

@@ -61,7 +61,7 @@ func mockOIDC() error {
 		return err
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("mockoidc:%d", port))
+	listener, err := net.Listen("tcp", fmt.Sprintf("headscale-mock-oidc:%d", port))
 	if err != nil {
 		return err
 	}

@@ -144,7 +144,6 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 		)
 	}
 
-
 	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
 		mockOidcOptions,
@@ -153,6 +152,31 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 	} else {
 		s.FailNow(fmt.Sprintf("Could not start mockOIDC container: %s", err), "")
 	}
+
+	s.Suite.T().Logf("Waiting for headscale mock oidc to be ready for tests")
+	hostEndpoint := fmt.Sprintf("localhost:%s", s.mockOidc.GetPort("10000/tcp"))
+
+	if err := s.pool.Retry(func() error {
+		url := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Printf("headscale mock OIDC tests is not ready: %s\n", err)
+			return err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("status code not OK")
+		}
+
+		return nil
+	}); err != nil {
+		// TODO(kradalby): If we cannot access headscale, or any other fatal error during
+		// test setup, we need to abort and tear down. However, testify does not seem to
+		// support that at the moment:
+		// https://github.com/stretchr/testify/issues/849
+		return // fmt.Errorf("Could not connect to headscale: %s", err)
+	}
+	s.Suite.T().Log("headscale-mock-oidc container is ready for embedded OIDC tests")
 
 	oidcCfg := fmt.Sprintf(`
 oidc:
@@ -228,10 +252,10 @@ oidc:
 	}
 
 	s.Suite.T().Logf("Waiting for headscale to be ready for embedded OIDC tests")
-	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8443/tcp"))
+	hostMockEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8443/tcp"))
 
 	if err := s.pool.Retry(func() error {
-		url := fmt.Sprintf("https://%s/health", hostEndpoint)
+		url := fmt.Sprintf("https://%s/health", hostMockEndpoint)
 		insecureTransport := http.DefaultTransport.(*http.Transport).Clone()
 		insecureTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		client := &http.Client{Transport: insecureTransport}
