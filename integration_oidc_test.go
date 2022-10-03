@@ -25,7 +25,8 @@ import (
 )
 
 const (
-	oidcHeadscaleHostname = "headscale"
+	oidcHeadscaleHostname = "headscale-oidc"
+	oidcMockHostname = "headscale-mock-oidc"
 	oidcNamespaceName     = "oidcnamespace"
 	totalOidcContainers   = 3
 )
@@ -113,8 +114,7 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 
 	s.Suite.T().Log("Setting up mock OIDC")
 	mockOidcOptions := &dockertest.RunOptions{
-		Name:         "mockoidc",
-		Hostname:     "mockoidc",
+		Name:         oidcMockHostname,
 		Cmd:          []string{"headscale", "mockoidc"},
 		ExposedPorts: []string{"10000/tcp"},
 		Networks:     []*dockertest.Network{&s.network},
@@ -132,6 +132,18 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 		Dockerfile: "Dockerfile.debug",
 		ContextDir: ".",
 	}
+
+	err = s.pool.RemoveContainerByName(oidcMockHostname)
+	if err != nil {
+		s.FailNow(
+			fmt.Sprintf(
+				"Could not remove existing container before building test: %s",
+				err,
+			),
+			"",
+		)
+	}
+
 
 	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
