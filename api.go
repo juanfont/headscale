@@ -83,37 +83,8 @@ var registerWebAPITemplate = template.Must(
 </html>
 `))
 
-// MachineKeySanitizeMiddleware is a gorilla middleware handler routine to be registered in app.go
-// Basically just checks the content of the nkey field to ensure it is hexadecimal, and blocks any further processing if it fails.
-// Any attempts to sanitize the node key field should go here.
-
-func (h *Headscale) MachineKeySanitizeMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
-		vars := mux.Vars(req)
-		nodeKeyStr, _ := vars["nkey"]
-
-		if !NodePublicKeyRegex.Match([]byte(nodeKeyStr)) {
-			//Characters that are outside of the required set have been supplied, do not serve content.
-			log.Warn().Str("node_key", nodeKeyStr).Msg("Invalid node key passed to registration url")
-
-			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			writer.WriteHeader(http.StatusUnauthorized)
-			_, err := writer.Write([]byte("Unauthorized"))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-		} else {
-			//Allow processing of NodeKey to continue.
-			next.ServeHTTP(writer, req)
-		}
-	})
-}
-
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
-// Listens in /register/:nkey.
+// Listens in /register/:nodeKey.
 //
 // This is not part of the Tailscale control API, as we could send whatever URL
 // in the RegisterResponse.AuthURL field.
@@ -123,7 +94,7 @@ func (h *Headscale) RegisterWebAPI(
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-	nodeKeyStr, ok := vars["nkey"]
+	nodeKeyStr, ok := vars["nodeKey"]
 
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render

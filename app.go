@@ -15,12 +15,14 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	re "regexp"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	httpu "github.com/juanfont/headscale/http_utils"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -465,8 +467,9 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	}
 
 	regRouter := router.PathPrefix("/register").Subrouter()
-	regRouter.Use(h.MachineKeySanitizeMiddleware)
-	regRouter.HandleFunc("/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
+	//regRouter.Use(h.MachineKeySanitizeMiddleware)
+	regRouter.Use(httpu.CharWhitelistMiddlewareGenerator(re.MustCompile("[a-fA-F0-9]+"), "nodeKey", "invalid registration characters"))
+	regRouter.HandleFunc("/{nodeKey}", h.RegisterWebAPI).Methods(http.MethodGet)
 
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(h.httpAuthenticationMiddleware)
