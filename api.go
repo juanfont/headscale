@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog/log"
+	"tailscale.com/types/key"
 )
 
 const (
@@ -93,7 +94,34 @@ func (h *Headscale) RegisterWebAPI(
 ) {
 	vars := mux.Vars(req)
 	nodeKeyStr, ok := vars["nkey"]
-	if !ok || nodeKeyStr == "" {
+
+	if !NodePublicKeyRegex.Match([]byte(nodeKeyStr)) {
+		log.Warn().Str("node_key", nodeKeyStr).Msg("Invalid node key passed to registration url")
+
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.WriteHeader(http.StatusUnauthorized)
+		_, err := writer.Write([]byte("Unauthorized"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
+
+		return
+	}
+
+	// We need to make sure we dont open for XSS style injections, if the parameter that
+	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
+	// the template and log an error.
+	var nodeKey key.NodePublic
+	err := nodeKey.UnmarshalText(
+		[]byte(NodePublicKeyEnsurePrefix(nodeKeyStr)),
+	)
+
+	if !ok || nodeKeyStr == "" || err != nil {
+		log.Warn().Err(err).Msg("Failed to parse incoming nodekey")
+
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
 		_, err := writer.Write([]byte("Wrong params"))
@@ -130,7 +158,7 @@ func (h *Headscale) RegisterWebAPI(
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	_, err := writer.Write(content.Bytes())
+	_, err = writer.Write(content.Bytes())
 	if err != nil {
 		log.Error().
 			Caller().
