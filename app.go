@@ -53,8 +53,10 @@ const (
 	)
 
 	ErrFailedPrivateKey      = Error("failed to read or create private key")
-	ErrFailedNoisePrivateKey = Error("failed to read or create Noise protocol private key")
-	ErrSamePrivateKeys       = Error("private key and noise private key are the same")
+	ErrFailedNoisePrivateKey = Error(
+		"failed to read or create Noise protocol private key",
+	)
+	ErrSamePrivateKeys = Error("private key and noise private key are the same")
 )
 
 const (
@@ -193,7 +195,11 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 	if cfg.OIDC.Issuer != "" {
 		err = app.initOIDC()
 		if err != nil {
-			return nil, err
+			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
+				return nil, err
+			} else {
+				log.Warn().Err(err).Msg("failed to set up OIDC provider, falling back to CLI based authentication")
+			}
 		}
 	}
 
@@ -448,16 +454,20 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/register/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
-	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).Methods(http.MethodPost)
+	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).
+		Methods(http.MethodPost)
 	router.HandleFunc("/machine/{mkey}", h.RegistrationHandler).Methods(http.MethodPost)
 	router.HandleFunc("/oidc/register/{nkey}", h.RegisterOIDC).Methods(http.MethodGet)
 	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
-	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).Methods(http.MethodGet)
+	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
+		Methods(http.MethodGet)
 	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
-	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).Methods(http.MethodGet)
+	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
+		Methods(http.MethodGet)
 	router.HandleFunc("/swagger", SwaggerUI).Methods(http.MethodGet)
-	router.HandleFunc("/swagger/v1/openapiv2.json", SwaggerAPIv1).Methods(http.MethodGet)
+	router.HandleFunc("/swagger/v1/openapiv2.json", SwaggerAPIv1).
+		Methods(http.MethodGet)
 
 	if h.cfg.DERP.ServerEnabled {
 		router.HandleFunc("/derp", h.DERPHandler)
@@ -477,7 +487,8 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 func (h *Headscale) createNoiseMux() *mux.Router {
 	router := mux.NewRouter()
 
-	router.HandleFunc("/machine/register", h.NoiseRegistrationHandler).Methods(http.MethodPost)
+	router.HandleFunc("/machine/register", h.NoiseRegistrationHandler).
+		Methods(http.MethodPost)
 	router.HandleFunc("/machine/map", h.NoisePollNetMapHandler)
 
 	return router
@@ -827,9 +838,8 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 				ReadTimeout: HTTPReadTimeout,
 			}
 
-			err := server.ListenAndServe()
-
 			go func() {
+				err := server.ListenAndServe()
 				log.Fatal().
 					Caller().
 					Err(err).
