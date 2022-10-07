@@ -35,6 +35,7 @@ logtail:
   enabled: false
 metrics_listen_addr: 127.0.0.1:9090
 oidc:
+  only_start_if_oidc_is_available: true
   scope:
     - openid
     - profile

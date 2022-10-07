@@ -483,7 +483,7 @@ func (h *Headscale) handleNewMachineCommon(
 		Bool("noise", machineKey.IsZero()).
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Msg("The node seems to be new, sending auth url")
-	if h.cfg.OIDC.Issuer != "" {
+	if h.oauth2Config != nil {
 		resp.AuthURL = fmt.Sprintf(
 			"%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
@@ -716,7 +716,7 @@ func (h *Headscale) handleMachineExpiredCommon(
 		return
 	}
 
-	if h.cfg.OIDC.Issuer != "" {
+	if h.oauth2Config != nil {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
 			NodePublicKeyStripPrefix(registerRequest.NodeKey))
