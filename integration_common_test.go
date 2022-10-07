@@ -115,13 +115,19 @@ func ExecuteCommand(
 			fmt.Println("stdout: ", stdout.String())
 			fmt.Println("stderr: ", stderr.String())
 
-			return stdout.String(), stderr.String(), fmt.Errorf("command failed with: %s", stderr.String())
+			return stdout.String(), stderr.String(), fmt.Errorf(
+				"command failed with: %s",
+				stderr.String(),
+			)
 		}
 
 		return stdout.String(), stderr.String(), nil
 	case <-time.After(execConfig.timeout):
 
-		return stdout.String(), stderr.String(), fmt.Errorf("command timed out after %s", execConfig.timeout)
+		return stdout.String(), stderr.String(), fmt.Errorf(
+			"command timed out after %s",
+			execConfig.timeout,
+		)
 	}
 }
 
