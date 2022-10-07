@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	headscaleNetwork       = "headscale-test"
 	headscaleHostname      = "headscale"
 	DOCKER_EXECUTE_TIMEOUT = 10 * time.Second
 )

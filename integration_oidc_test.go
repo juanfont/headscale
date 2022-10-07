@@ -96,7 +96,7 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
-	network, err := GetFirstOrCreateNetwork(&s.pool, "headscale-test")
+	network, err := GetFirstOrCreateNetwork(&s.pool, headscaleNetwork)
 	if err != nil {
 		s.FailNow(fmt.Sprintf("Failed to create or get network: %s", err), "")
 	}

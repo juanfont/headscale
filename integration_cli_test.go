@@ -43,11 +43,11 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
-	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
-		s.network = *pnetwork
-	} else {
-		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
+	network, err := GetFirstOrCreateNetwork(&s.pool, headscaleNetwork)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Failed to create or get network: %s", err), "")
 	}
+	s.network = network
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile",
@@ -64,12 +64,12 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 		},
+		Cmd:          []string{"headscale", "serve"},
+		Networks:     []*dockertest.Network{&s.network},
 		ExposedPorts: []string{"8080/tcp"},
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			"8080/tcp": {{HostPort: "8080"}},
 		},
-		Networks: []*dockertest.Network{&s.network},
-		Cmd:      []string{"headscale", "serve"},
 	}
 
 	err = s.pool.RemoveContainerByName(headscaleHostname)

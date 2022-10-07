@@ -230,11 +230,11 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
-	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
-		s.network = *pnetwork
-	} else {
-		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
+	network, err := GetFirstOrCreateNetwork(&s.pool, headscaleNetwork)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Failed to create or get network: %s", err), "")
 	}
+	s.network = network
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile",
