@@ -412,7 +412,13 @@ func (s *IntegrationOIDCTestSuite) tailscaleContainer(
 		DockerAllowNetworkAdministration,
 	)
 	if err != nil {
-		log.Fatalf("Could not start tailscale container version %s: %s", version, err)
+		s.FailNow(
+			fmt.Sprintf(
+				"Could not start tailscale container version %s: %s",
+				version,
+				err,
+			),
+		)
 	}
 	log.Printf("Created %s container\n", hostname)
 
