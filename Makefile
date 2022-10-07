@@ -36,7 +36,9 @@ test_integration_general:
 	go test -failfast -tags integration_general,integration -timeout 30m -count=1 ./...
 
 test_integration_oidc:
-	go test -failfast -tags integration_oidc,integration -timeout 30m -count=1 ./...
+	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
+	docker network create headscale-test || true
+	docker run -it --rm --network headscale-test -v $$PWD:$$PWD -w $$PWD -v /var/run/docker.sock:/var/run/docker.sock golang:1 go test -failfast -tags integration_oidc,integration -timeout 30m -count=1 ./...
 
 coverprofile_func:
 	go tool cover -func=coverage.out

@@ -26,7 +26,7 @@ import (
 
 const (
 	oidcHeadscaleHostname = "headscale-oidc"
-	oidcMockHostname = "headscale-mock-oidc"
+	oidcMockHostname      = "headscale-mock-oidc"
 	oidcNamespaceName     = "oidcnamespace"
 	totalOidcContainers   = 3
 )
@@ -96,19 +96,11 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
-	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
-		s.network = *pnetwork
-	} else {
-		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
-	}
-
-	// Create does not give us an updated version of the resource, so we need to
-	// get it again.
-	networks, err := s.pool.NetworksByName("headscale-test")
+	network, err := GetFirstOrCreateNetwork(&s.pool, "headscale-test")
 	if err != nil {
-		s.FailNow(fmt.Sprintf("Could not get network: %s", err), "")
+		s.FailNow(fmt.Sprintf("Failed to create or get network: %s", err), "")
 	}
-	s.network = networks[0]
+	s.network = network
 
 	log.Printf("Network config: %v", s.network.Network.IPAM.Config[0])
 
@@ -155,7 +147,11 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 	}
 
 	s.Suite.T().Logf("Waiting for headscale mock oidc to be ready for tests")
-	hostEndpoint := fmt.Sprintf("localhost:%s", s.mockOidc.GetPort("10000/tcp"))
+	hostEndpoint := fmt.Sprintf(
+		"%s:%s",
+		s.mockOidc.GetIPInNetwork(&s.network),
+		s.mockOidc.GetPort("10000/tcp"),
+	)
 
 	if err := s.pool.Retry(func() error {
 		url := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
@@ -253,7 +249,11 @@ oidc:
 	}
 
 	s.Suite.T().Logf("Waiting for headscale to be ready for embedded OIDC tests")
-	hostMockEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8443/tcp"))
+	hostMockEndpoint := fmt.Sprintf(
+		"%s:%s",
+		s.headscale.GetIPInNetwork(&s.network),
+		s.headscale.GetPort("8443/tcp"),
+	)
 
 	if err := s.pool.Retry(func() error {
 		url := fmt.Sprintf("https://%s/health", hostMockEndpoint)
@@ -347,7 +347,6 @@ func (s *IntegrationOIDCTestSuite) joinOIDC(
 	endpoint, hostname string,
 	tailscale dockertest.Resource,
 ) (*url.URL, error) {
-
 	command := []string{
 		"tailscale",
 		"up",
@@ -536,7 +535,12 @@ func (s *IntegrationOIDCTestSuite) TestPingAllPeersByAddress() {
 							[]string{},
 						)
 						assert.Nil(t, err)
-						log.Printf("result for %s: stdout: %s, stderr: %s\n", hostname, stdout, stderr)
+						log.Printf(
+							"result for %s: stdout: %s, stderr: %s\n",
+							hostname,
+							stdout,
+							stderr,
+						)
 						assert.Contains(t, stdout, "pong")
 					})
 			}
