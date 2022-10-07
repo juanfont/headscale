@@ -189,10 +189,6 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		Cmd: []string{
 			"tailscaled", "--tun=tsdev",
 		},
-		ExposedPorts: []string{"8080/tcp"},
-		PortBindings: map[docker.Port][]docker.PortBinding{
-			"8080/tcp": {{HostPort: "8080"}},
-		},
 	}
 
 	err := s.pool.RemoveContainerByName(hostname)
@@ -254,6 +250,10 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		Name: headscaleHostname,
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
+		},
+		ExposedPorts: []string{"8080/tcp"},
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"8080/tcp": {{HostPort: "8080"}},
 		},
 		Networks: []*dockertest.Network{&s.network},
 		Cmd:      []string{"headscale", "serve"},
