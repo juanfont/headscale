@@ -289,7 +289,9 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	}
 
 	log.Println("Waiting for headscale to be ready for core integration tests")
-	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8080/tcp"))
+	hostEndpoint := fmt.Sprintf("%s:%s",
+		s.headscale.GetIPInNetwork(&s.network),
+		s.headscale.GetPort("8080/tcp"))
 
 	if err := s.pool.Retry(func() error {
 		url := fmt.Sprintf("http://%s/health", hostEndpoint)
