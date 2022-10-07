@@ -455,12 +455,9 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).
-		Methods(http.MethodPost)
-	router.HandleFunc("/machine/{mkey}", h.RegistrationHandler).Methods(http.MethodPost)
+	
+	
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
-	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
-		Methods(http.MethodGet)
 	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
 		Methods(http.MethodGet)
@@ -473,6 +470,18 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 		router.HandleFunc("/derp/probe", h.DERPProbeHandler)
 		router.HandleFunc("/bootstrap-dns", h.DERPBootstrapDNSHandler)
 	}
+
+	machRouter:= router.PathPrefix("/machine/").Subrouter()
+	machRouter.Use(httpu.CharWhitelistMiddlewareGenerator(re.MustCompile("[a-fA-F0-9]+"), "mkey", "invalid characters in machine key"))
+	//equivalent to "/machine/{mkey}/map"
+	machRouter.HandleFunc("{mkey}/map", h.PollNetMapHandler).Methods(http.MethodPost)
+	//equivalent to "/machine/{mkey}"
+	machRouter.HandleFunc("{mkey}", h.RegistrationHandler).Methods(http.MethodPost)
+
+	appleRouter := router.PathPrefix("/apple/").Subrouter()
+	appleRouter.Use(httpu.CharWhitelistMiddlewareGenerator(re.MustCompile("[macios]+"), "platform", "invalid characters in platform name"))
+	//equivalent to "/apple/{platform}"
+	appleRouter.HandleFunc("{platform}", h.ApplePlatformConfig).Methods(http.MethodGet)
 
 	regRouter := router.PathPrefix("/register").Subrouter()
 	regRouter.Use(httpu.CharWhitelistMiddlewareGenerator(re.MustCompile("[a-fA-F0-9]+"), "nodeKey", "invalid characters in registration key"))
