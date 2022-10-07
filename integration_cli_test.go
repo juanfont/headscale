@@ -13,6 +13,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
+	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -63,6 +64,10 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 		},
+		ExposedPorts: []string{"8080/tcp"},
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"8080/tcp": {{HostPort: "8080"}},
+		},
 		Networks: []*dockertest.Network{&s.network},
 		Cmd:      []string{"headscale", "serve"},
 	}
@@ -87,7 +92,9 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 	fmt.Println("Created headscale container for CLI tests")
 
 	fmt.Println("Waiting for headscale to be ready for CLI tests")
-	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8080/tcp"))
+	hostEndpoint := fmt.Sprintf("%s:%s",
+		s.headscale.GetIPInNetwork(&s.network),
+		s.headscale.GetPort("8080/tcp"))
 
 	if err := s.pool.Retry(func() error {
 		url := fmt.Sprintf("http://%s/health", hostEndpoint)

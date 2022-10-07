@@ -189,6 +189,10 @@ func (s *IntegrationTestSuite) tailscaleContainer(
 		Cmd: []string{
 			"tailscaled", "--tun=tsdev",
 		},
+		ExposedPorts: []string{"8080/tcp"},
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"8080/tcp": {{HostPort: "8080"}},
+		},
 	}
 
 	err := s.pool.RemoveContainerByName(hostname)

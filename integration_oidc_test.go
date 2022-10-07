@@ -109,10 +109,10 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 		Name:         oidcMockHostname,
 		Cmd:          []string{"headscale", "mockoidc"},
 		ExposedPorts: []string{"10000/tcp"},
-		Networks:     []*dockertest.Network{&s.network},
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			"10000/tcp": {{HostPort: "10000"}},
 		},
+		Networks: []*dockertest.Network{&s.network},
 		Env: []string{
 			fmt.Sprintf("MOCKOIDC_ADDR=%s", oidcMockHostname),
 			"MOCKOIDC_PORT=10000",
