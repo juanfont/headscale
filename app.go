@@ -458,8 +458,6 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router.HandleFunc("/machine/{mkey}/map", h.PollNetMapHandler).
 		Methods(http.MethodPost)
 	router.HandleFunc("/machine/{mkey}", h.RegistrationHandler).Methods(http.MethodPost)
-	router.HandleFunc("/oidc/register/{nkey}", h.RegisterOIDC).Methods(http.MethodGet)
-	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
 		Methods(http.MethodGet)
@@ -477,9 +475,17 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	}
 
 	regRouter := router.PathPrefix("/register").Subrouter()
-	//regRouter.Use(h.MachineKeySanitizeMiddleware)
-	regRouter.Use(httpu.CharWhitelistMiddlewareGenerator(re.MustCompile("[a-fA-F0-9]+"), "nodeKey", "invalid registration characters"))
+	regRouter.Use(httpu.CharWhitelistMiddlewareGenerator(re.MustCompile("[a-fA-F0-9]+"), "nodeKey", "invalid characters in registration key"))
+	//equivalent to "/register/{nodeKey}"
 	regRouter.HandleFunc("/{nodeKey}", h.RegisterWebAPI).Methods(http.MethodGet)
+
+	oidcRouter := router.PathPrefix("/oidc").Subrouter()
+	//equivalent to "/oidc/callback"
+	oidcRouter.HandleFunc("/callback", h.OIDCCallback).Methods(http.MethodGet)
+	oidcRegRouter := oidcRouter.PathPrefix("/register").Subrouter()
+	oidcRegRouter.Use(httpu.CharWhitelistMiddlewareGenerator(re.MustCompile("[a-fA-F0-9]+"), "nkey", "invalid characters in oidc registration key"))
+	//equivalent to "/oidc/register/{nkey}"
+	oidcRegRouter.HandleFunc("/{nkey}", h.RegisterOIDC).Methods(http.MethodGet)
 
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(h.httpAuthenticationMiddleware)
