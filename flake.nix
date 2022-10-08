@@ -128,7 +128,13 @@
       };
     in rec {
       # `nix develop`
-      devShell = pkgs.mkShell {buildInputs = devDeps;};
+      devShell = pkgs.mkShell {
+        buildInputs = devDeps;
+
+        shellHook = ''
+          export GOFLAGS=-tags="integration,integration_general,integration_oidc,integration_cli,integration_derp"
+        '';
+      };
 
       # `nix build`
       packages = with pkgs; {
