@@ -61,7 +61,10 @@ server {
 ```
 
 ## istio/envoy
-If you using [Istio](https://istio.io/) ingressgateway or [Envoy](https://www.envoyproxy.io/) as reverse proxy, there are some tips for you. 
+If you using [Istio](https://istio.io/) ingressgateway or [Envoy](https://www.envoyproxy.io/) as reverse proxy, there are some tips for you.  If not set, you may see some debug log in proxy as below:
+```log
+Sending local reply with details upgrade_failed
+```
 
 ### Envoy
 You need add a new upgrade_type named `tailscale-control-protocol`. [see detail](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#extensions-filters-network-http-connection-manager-v3-httpconnectionmanager-upgradeconfig)
