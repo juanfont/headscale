@@ -27,18 +27,20 @@ import (
 )
 
 const (
-	namespaceName   = "derpnamespace"
-	totalContainers = 3
+	headscaleDerpHostname = "headscale-derp"
+	namespaceName         = "derpnamespace"
+	totalContainers       = 3
 )
 
 type IntegrationDERPTestSuite struct {
 	suite.Suite
 	stats *suite.SuiteInformation
 
-	pool      dockertest.Pool
-	networks  map[int]dockertest.Network // so we keep the containers isolated
-	headscale dockertest.Resource
-	saveLogs  bool
+	pool              dockertest.Pool
+	network           dockertest.Network
+	containerNetworks map[int]dockertest.Network // so we keep the containers isolated
+	headscale         dockertest.Resource
+	saveLogs          bool
 
 	tailscales    map[string]dockertest.Resource
 	joinWaitGroup sync.WaitGroup
@@ -53,7 +55,7 @@ func TestDERPIntegrationTestSuite(t *testing.T) {
 	s := new(IntegrationDERPTestSuite)
 
 	s.tailscales = make(map[string]dockertest.Resource)
-	s.networks = make(map[int]dockertest.Network)
+	s.containerNetworks = make(map[int]dockertest.Network)
 	s.saveLogs = saveLogs
 
 	suite.Run(t, s)
@@ -78,7 +80,7 @@ func TestDERPIntegrationTestSuite(t *testing.T) {
 			log.Printf("Could not purge resource: %s\n", err)
 		}
 
-		for _, network := range s.networks {
+		for _, network := range s.containerNetworks {
 			if err := network.Close(); err != nil {
 				log.Printf("Could not close network: %s\n", err)
 			}
@@ -93,9 +95,15 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
+	network, err := GetFirstOrCreateNetwork(&s.pool, headscaleNetwork)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Failed to create or get network: %s", err), "")
+	}
+	s.network = network
+
 	for i := 0; i < totalContainers; i++ {
 		if pnetwork, err := s.pool.CreateNetwork(fmt.Sprintf("headscale-derp-%d", i)); err == nil {
-			s.networks[i] = *pnetwork
+			s.containerNetworks[i] = *pnetwork
 		} else {
 			s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
 		}
@@ -112,7 +120,8 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-		Name: headscaleHostname,
+
+		Name: headscaleDerpHostname,
 		Mounts: []string{
 			fmt.Sprintf(
 				"%s/integration_test/etc_embedded_derp:/etc/headscale",
@@ -120,6 +129,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 			),
 		},
 		Cmd:          []string{"headscale", "serve"},
+		Networks:     []*dockertest.Network{&s.network},
 		ExposedPorts: []string{"8443/tcp", "3478/udp"},
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			"8443/tcp": {{HostPort: "8443"}},
@@ -127,7 +137,7 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		},
 	}
 
-	err = s.pool.RemoveContainerByName(headscaleHostname)
+	err = s.pool.RemoveContainerByName(headscaleDerpHostname)
 	if err != nil {
 		s.FailNow(
 			fmt.Sprintf(
@@ -153,13 +163,15 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 		hostname, container := s.tailscaleContainer(
 			fmt.Sprint(i),
 			version,
-			s.networks[i],
+			s.containerNetworks[i],
 		)
 		s.tailscales[hostname] = *container
 	}
 
 	log.Println("Waiting for headscale to be ready for embedded DERP tests")
-	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8443/tcp"))
+	hostEndpoint := fmt.Sprintf("%s:%s",
+		s.headscale.GetIPInNetwork(&s.network),
+		s.headscale.GetPort("8443/tcp"))
 
 	if err := s.pool.Retry(func() error {
 		url := fmt.Sprintf("https://%s/health", hostEndpoint)
@@ -320,7 +332,7 @@ func (s *IntegrationDERPTestSuite) TearDownSuite() {
 			log.Printf("Could not purge resource: %s\n", err)
 		}
 
-		for _, network := range s.networks {
+		for _, network := range s.containerNetworks {
 			if err := network.Close(); err != nil {
 				log.Printf("Could not close network: %s\n", err)
 			}
@@ -428,7 +440,9 @@ func (s *IntegrationDERPTestSuite) TestPingAllPeersByHostname() {
 }
 
 func (s *IntegrationDERPTestSuite) TestDERPSTUN() {
-	headscaleSTUNAddr := fmt.Sprintf("localhost:%s", s.headscale.GetPort("3478/udp"))
+	headscaleSTUNAddr := fmt.Sprintf("%s:%s",
+		s.headscale.GetIPInNetwork(&s.network),
+		s.headscale.GetPort("3478/udp"))
 	client := stun.NewClient()
 	client.SetVerbose(true)
 	client.SetVVerbose(true)

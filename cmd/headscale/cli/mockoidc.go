@@ -46,6 +46,10 @@ func mockOIDC() error {
 	if clientSecret == "" {
 		return errMockOidcClientSecretNotDefined
 	}
+	addrStr := os.Getenv("MOCKOIDC_ADDR")
+	if addrStr == "" {
+		return errMockOidcPortNotDefined
+	}
 	portStr := os.Getenv("MOCKOIDC_PORT")
 	if portStr == "" {
 		return errMockOidcPortNotDefined
@@ -61,7 +65,7 @@ func mockOIDC() error {
 		return err
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("mockoidc:%d", port))
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", addrStr, port))
 	if err != nil {
 		return err
 	}
