@@ -30,24 +30,6 @@ jobs:
       - uses: cachix/install-nix-action@v16
         if: steps.changed-files.outputs.any_changed == 'true'
 
-      - name: Run CLI integration tests
-        if: steps.changed-files.outputs.any_changed == 'true'
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 240
-          max_attempts: 5
-          retry_on: error
-          command: nix develop --command -- make test_integration_cli
-
-      - name: Run Embedded DERP server integration tests
-        if: steps.changed-files.outputs.any_changed == 'true'
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 240
-          max_attempts: 5
-          retry_on: error
-          command: nix develop --command -- make test_integration_derp
-
       - name: Run OIDC integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: nick-fields/retry@v2
@@ -56,12 +38,3 @@ jobs:
           max_attempts: 5
           retry_on: error
           command: nix develop --command -- make test_integration_oidc
-
-      - name: Run general integration tests
-        if: steps.changed-files.outputs.any_changed == 'true'
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 240
-          max_attempts: 5
-          retry_on: error
-          command: nix develop --command -- make test_integration_general
