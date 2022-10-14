@@ -3,10 +3,24 @@ package integration
 import (
 	"testing"
 
+	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/tsic"
 )
 
+func IntegrationSkip(t *testing.T) {
+	t.Helper()
+
+	if !dockertestutil.IsRunningInContainer() {
+		t.Skip("not running in docker, skipping")
+	}
+
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+}
+
 func TestHeadscale(t *testing.T) {
+	IntegrationSkip(t)
 	var err error
 
 	scenario, err := NewScenario()
@@ -52,6 +66,8 @@ func TestHeadscale(t *testing.T) {
 }
 
 func TestCreateTailscale(t *testing.T) {
+	IntegrationSkip(t)
+
 	var scenario *Scenario
 	var err error
 
@@ -84,6 +100,8 @@ func TestCreateTailscale(t *testing.T) {
 }
 
 func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
+	IntegrationSkip(t)
+
 	var err error
 
 	namespace := "join-node-test"

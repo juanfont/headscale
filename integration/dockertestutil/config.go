@@ -1,6 +1,18 @@
 package dockertestutil
 
-import "github.com/ory/dockertest/v3/docker"
+import (
+	"os"
+
+	"github.com/ory/dockertest/v3/docker"
+)
+
+func IsRunningInContainer() bool {
+	if _, err := os.Stat("/.dockerenv"); err != nil {
+		return false
+	}
+
+	return true
+}
 
 func DockerRestartPolicy(config *docker.HostConfig) {
 	// set AutoRemove to true so that stopped container goes away by itself on error *immediately*.
