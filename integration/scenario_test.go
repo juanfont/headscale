@@ -27,6 +27,8 @@ func TestHeadscale(t *testing.T) {
 
 	var err error
 
+	namespace := "test-space"
+
 	scenario, err := NewScenario()
 	if err != nil {
 		t.Errorf("failed to create scenario: %s", err)
@@ -46,18 +48,18 @@ func TestHeadscale(t *testing.T) {
 	})
 
 	t.Run("create-namespace", func(t *testing.T) {
-		err := scenario.CreateNamespace("test-space")
+		err := scenario.CreateNamespace(namespace)
 		if err != nil {
 			t.Errorf("failed to create namespace: %s", err)
 		}
 
-		if _, ok := scenario.namespaces["test-space"]; !ok {
+		if _, ok := scenario.namespaces[namespace]; !ok {
 			t.Errorf("namespace is not in scenario")
 		}
 	})
 
 	t.Run("create-auth-key", func(t *testing.T) {
-		_, err := scenario.CreatePreAuthKey("test-space")
+		_, err := scenario.CreatePreAuthKey(namespace)
 		if err != nil {
 			t.Errorf("failed to create preauthkey: %s", err)
 		}
