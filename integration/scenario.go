@@ -61,6 +61,14 @@ func NewScenario() (*Scenario, error) {
 		return nil, fmt.Errorf("failed to create or get network: %w", err)
 	}
 
+	// We run the test suite in a docker container that calls a couple of endpoints for
+	// readiness checks, this ensures that we can run the tests with individual networks
+	// and have the client reach the different containers
+	err = dockertestutil.AddContainerToNetwork(pool, network, "headscale-test-suite")
+	if err != nil {
+		return nil, fmt.Errorf("failed to add test suite container to network: %w", err)
+	}
+
 	return &Scenario{
 		controlServers: make(map[string]ControlServer),
 		namespaces:     make(map[string]*Namespace),
@@ -88,11 +96,9 @@ func (s *Scenario) Shutdown() error {
 		}
 	}
 
-	// TODO(kradalby): This breaks the "we need to create a network before we start"
-	// part, since we now run the tests in a container...
-	// if err := s.pool.RemoveNetwork(s.network); err != nil {
-	// 	return fmt.Errorf("failed to remove network: %w", err)
-	// }
+	if err := s.pool.RemoveNetwork(s.network); err != nil {
+		return fmt.Errorf("failed to remove network: %w", err)
+	}
 
 	// TODO(kradalby): This seem redundant to the previous call
 	// if err := s.network.Close(); err != nil {
