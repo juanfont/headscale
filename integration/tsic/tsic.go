@@ -17,6 +17,7 @@ const tsicHashLength = 6
 const dockerContextPath = "../."
 
 var errTailscalePingFailed = errors.New("ping failed")
+var errTailscaleNotLoggedIn = errors.New("tailscale not logged in")
 
 type TailscaleInContainer struct {
 	version  string
@@ -102,14 +103,17 @@ func (t *TailscaleInContainer) Up(
 
 	log.Println("Join command:", command)
 	log.Printf("Running join command for %s\n", t.Hostname)
-	_, _, err := dockertestutil.ExecuteCommand(
+	stdout, stderr, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
 		[]string{},
 	)
 	if err != nil {
+		log.Printf("tailscale join stderr: %s\n", stderr)
+
 		return err
 	}
+	log.Printf("tailscale join stdout: %s\n", stdout)
 	log.Printf("%s joined\n", t.Hostname)
 
 	return nil
@@ -123,12 +127,18 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		"ip",
 	}
 
-	result, _, err := dockertestutil.ExecuteCommand(
+	result, stderr, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
 		[]string{},
 	)
 	if err != nil {
+		log.Printf("failed commands stderr: %s\n", stderr)
+
+		if strings.Contains(stderr, "NeedsLogin") {
+			return []netip.Addr{}, errTailscaleNotLoggedIn
+		}
+
 		return []netip.Addr{}, err
 	}
 
@@ -165,7 +175,7 @@ func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
 		return err
 	}
 
-	if !strings.Contains(result, "pong") {
+	if !strings.Contains(result, "pong") || !strings.Contains(result, "is local") {
 		return errTailscalePingFailed
 	}
 

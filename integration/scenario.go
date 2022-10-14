@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/netip"
 	"os"
 	"sync"
 
@@ -209,4 +210,21 @@ func (s *Scenario) RunTailscaleUp(
 	}
 
 	return fmt.Errorf("failed to up tailscale node: %w", errNoNamespaceAvailable)
+}
+
+func (s *Scenario) GetIPs(namespace string) ([]netip.Addr, error) {
+	var ips []netip.Addr
+	if ns, ok := s.namespaces[namespace]; ok {
+		for _, client := range ns.Clients {
+			clientIps, err := client.IPs()
+			if err != nil {
+				return ips, fmt.Errorf("failed to get ips: %w", err)
+			}
+			ips = append(ips, clientIps...)
+		}
+
+		return ips, nil
+	}
+
+	return ips, fmt.Errorf("failed to get ips: %w", errNoNamespaceAvailable)
 }
