@@ -21,6 +21,7 @@ func IntegrationSkip(t *testing.T) {
 
 func TestHeadscale(t *testing.T) {
 	IntegrationSkip(t)
+
 	var err error
 
 	scenario, err := NewScenario()
@@ -106,6 +107,8 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 
 	namespace := "join-node-test"
 
+	count := 1
+
 	scenario, err := NewScenario()
 	if err != nil {
 		t.Errorf("failed to create scenario: %s", err)
@@ -137,13 +140,13 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	})
 
 	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInNamespace(namespace, "1.32.0", 2)
+		err := scenario.CreateTailscaleNodesInNamespace(namespace, "1.30.2", count)
 		if err != nil {
 			t.Errorf("failed to add tailscale nodes: %s", err)
 		}
 
-		if clients := len(scenario.namespaces[namespace].Clients); clients != 2 {
-			t.Errorf("wrong number of tailscale clients: %d != %d", clients, 2)
+		if clients := len(scenario.namespaces[namespace].Clients); clients != count {
+			t.Errorf("wrong number of tailscale clients: %d != %d", clients, count)
 		}
 	})
 
@@ -157,7 +160,17 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 		if err != nil {
 			t.Errorf("failed to login: %s", err)
 		}
+	})
 
+	t.Run("get-ips", func(t *testing.T) {
+		ips, err := scenario.GetIPs(namespace)
+		if err != nil {
+			t.Errorf("failed to get tailscale ips: %s", err)
+		}
+
+		if len(ips) != count*2 {
+			t.Errorf("got the wrong amount of tailscale ips, %d != %d", len(ips), count*2)
+		}
 	})
 
 	err = scenario.Shutdown()
