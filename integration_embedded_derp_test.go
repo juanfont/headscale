@@ -1,5 +1,3 @@
-//go:build integration_derp
-
 package headscale
 
 import (
@@ -46,7 +44,7 @@ type IntegrationDERPTestSuite struct {
 	joinWaitGroup sync.WaitGroup
 }
 
-func TestDERPIntegrationTestSuite(t *testing.T) {
+func TestIntegrationDERPTestSuite(t *testing.T) {
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false

@@ -1,5 +1,3 @@
-//go:build integration_general
-
 package headscale
 
 import (
@@ -41,7 +39,7 @@ type IntegrationTestSuite struct {
 	joinWaitGroup sync.WaitGroup
 }
 
-func TestIntegrationTestSuite(t *testing.T) {
+func TestIntegrationGeneralTestSuite(t *testing.T) {
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false

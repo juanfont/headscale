@@ -1,5 +1,3 @@
-//go:build integration_cli
-
 package headscale
 
 import (
@@ -28,7 +26,7 @@ type IntegrationCLITestSuite struct {
 	env       []string
 }
 
-func TestCLIIntegrationTestSuite(t *testing.T) {
+func TestIntegrationCLITestSuite(t *testing.T) {
 	s := new(IntegrationCLITestSuite)
 
 	suite.Run(t, s)

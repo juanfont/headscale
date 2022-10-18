@@ -34,7 +34,7 @@ test_integration_cli:
 		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test -failfast -tags integration_cli,integration -timeout 30m -count=1 ./...
+		go test -failfast -timeout 30m -count=1 -run IntegrationCLI ./...
 
 test_integration_derp:
 	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
@@ -44,7 +44,7 @@ test_integration_derp:
 		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test -failfast -tags integration_derp,integration -timeout 30m -count=1 ./...
+		go test -failfast -timeout 30m -count=1 -run IntegrationDERP ./...
 
 test_integration_general:
 	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
@@ -54,7 +54,7 @@ test_integration_general:
 		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test -failfast -tags integration_general,integration -timeout 30m -count=1 ./...
+		go test -failfast -timeout 30m -count=1 -run IntegrationGeneral ./...
 
 test_integration_oidc:
 	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
@@ -64,7 +64,7 @@ test_integration_oidc:
 		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test -failfast -tags integration_oidc,integration -timeout 30m -count=1 ./...
+		go test -failfast -timeout 30m -count=1 -run IntegrationOIDC ./...
 
 coverprofile_func:
 	go tool cover -func=coverage.out

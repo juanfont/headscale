@@ -1,5 +1,3 @@
-//go:build integration_oidc
-
 package headscale
 
 import (
@@ -45,7 +43,7 @@ type IntegrationOIDCTestSuite struct {
 	joinWaitGroup sync.WaitGroup
 }
 
-func TestOIDCIntegrationTestSuite(t *testing.T) {
+func TestIntegrationOIDCTestSuite(t *testing.T) {
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false
