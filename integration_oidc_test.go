@@ -44,6 +44,10 @@ type IntegrationOIDCTestSuite struct {
 }
 
 func TestIntegrationOIDCTestSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false

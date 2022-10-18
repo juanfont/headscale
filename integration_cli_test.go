@@ -27,6 +27,10 @@ type IntegrationCLITestSuite struct {
 }
 
 func TestIntegrationCLITestSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+
 	s := new(IntegrationCLITestSuite)
 
 	suite.Run(t, s)

@@ -22,7 +22,7 @@ build:
 dev: lint test build
 
 test:
-	@go test -coverprofile=coverage.out ./...
+	@go test -short -coverprofile=coverage.out ./...
 
 test_integration: test_integration_cli test_integration_derp test_integration_oidc test_integration_general
 
