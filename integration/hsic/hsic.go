@@ -13,7 +13,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/ory/dockertest/v3"
-	"github.com/ory/dockertest/v3/docker"
 )
 
 const hsicHashLength = 6
@@ -46,7 +45,6 @@ func New(
 
 	hostname := fmt.Sprintf("hs-%s", hash)
 	portProto := fmt.Sprintf("%d/tcp", port)
-	dockerPort := docker.Port(portProto)
 
 	currentPath, err := os.Getwd()
 	if err != nil {
@@ -64,9 +62,6 @@ func New(
 		},
 		ExposedPorts: []string{portProto},
 		// TODO(kradalby): WHY do we need to bind these now that we run fully in docker?
-		PortBindings: map[docker.Port][]docker.PortBinding{
-			dockerPort: {{HostPort: fmt.Sprintf("%d", port)}},
-		},
 		Networks: []*dockertest.Network{network},
 		Cmd:      []string{"headscale", "serve"},
 	}
@@ -116,23 +111,25 @@ func (t *HeadscaleInContainer) GetPort() string {
 }
 
 func (t *HeadscaleInContainer) GetHealthEndpoint() string {
-	hostEndpoint := fmt.Sprintf("%s:%s",
+	hostEndpoint := fmt.Sprintf("%s:%d",
 		t.GetIP(),
-		t.GetPort())
+		t.port)
 
 	return fmt.Sprintf("http://%s/health", hostEndpoint)
 }
 
 func (t *HeadscaleInContainer) GetEndpoint() string {
-	hostEndpoint := fmt.Sprintf("%s:%s",
+	hostEndpoint := fmt.Sprintf("%s:%d",
 		t.GetIP(),
-		t.GetPort())
+		t.port)
 
 	return fmt.Sprintf("http://%s", hostEndpoint)
 }
 
 func (t *HeadscaleInContainer) WaitForReady() error {
 	url := t.GetHealthEndpoint()
+
+	log.Printf("waiting for headscale to be ready at %s", url)
 
 	return t.pool.Retry(func() error {
 		resp, err := http.Get(url)
