@@ -31,6 +31,7 @@ test_integration_cli:
 	docker network create headscale-test || true
 	docker run -t --rm \
 		--network headscale-test \
+		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
 		go test -failfast -tags integration_cli,integration -timeout 30m -count=1 ./...
@@ -40,6 +41,7 @@ test_integration_derp:
 	docker network create headscale-test || true
 	docker run -t --rm \
 		--network headscale-test \
+		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
 		go test -failfast -tags integration_derp,integration -timeout 30m -count=1 ./...
@@ -49,6 +51,7 @@ test_integration_general:
 	docker network create headscale-test || true
 	docker run -t --rm \
 		--network headscale-test \
+		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
 		go test -failfast -tags integration_general,integration -timeout 30m -count=1 ./...
@@ -58,6 +61,7 @@ test_integration_oidc:
 	docker network create headscale-test || true
 	docker run -t --rm \
 		--network headscale-test \
+		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
 		go test -failfast -tags integration_oidc,integration -timeout 30m -count=1 ./...
