@@ -1,16 +1,19 @@
 package tsic
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/netip"
 	"strings"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/juanfont/headscale"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"tailscale.com/ipn/ipnstate"
 )
 
 const tsicHashLength = 6
@@ -87,6 +90,10 @@ func (t *TailscaleInContainer) Shutdown() error {
 	return t.pool.Purge(t.container)
 }
 
+func (t *TailscaleInContainer) Version() string {
+	return t.version
+}
+
 func (t *TailscaleInContainer) Up(
 	loginServer, authKey string,
 ) error {
@@ -113,12 +120,17 @@ func (t *TailscaleInContainer) Up(
 
 		return err
 	}
-	log.Printf("tailscale join stdout: %s\n", stdout)
+
+	if stdout != "" {
+		log.Printf("tailscale join stdout: %s\n", stdout)
+	}
+
 	log.Printf("%s joined\n", t.Hostname)
 
 	return nil
 }
 
+// TODO(kradalby): Make cached/lazy
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	ips := make([]netip.Addr, 0)
 
@@ -157,13 +169,11 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	return ips, nil
 }
 
-func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
+func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 	command := []string{
-		"tailscale", "ping",
-		"--timeout=1s",
-		"--c=10",
-		"--until-direct=true",
-		ip.String(),
+		"tailscale",
+		"status",
+		"--json",
 	}
 
 	result, _, err := dockertestutil.ExecuteCommand(
@@ -172,14 +182,70 @@ func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
 		[]string{},
 	)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to execute tailscale status command: %w", err)
 	}
 
-	if !strings.Contains(result, "pong") || !strings.Contains(result, "is local") {
-		return errTailscalePingFailed
+	var status ipnstate.Status
+	err = json.Unmarshal([]byte(result), &status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tailscale status: %w", err)
 	}
 
-	return nil
+	return &status, err
+}
+
+func (t *TailscaleInContainer) WaitForPeers(expected int) error {
+	return t.pool.Retry(func() error {
+		status, err := t.Status()
+		if err != nil {
+			return fmt.Errorf("failed to fetch tailscale status: %w", err)
+		}
+
+		if peers := status.Peers(); len(peers) != expected {
+			return fmt.Errorf(
+				"tailscale client does not have the expected clients: %d out of %d",
+				len(peers),
+				expected,
+			)
+		}
+
+		return nil
+	})
+}
+
+// TODO(kradalby): Make multiping, go routine magic
+func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
+	return t.pool.Retry(func() error {
+		command := []string{
+			"tailscale", "ping",
+			"--timeout=1s",
+			"--c=10",
+			"--until-direct=true",
+			ip.String(),
+		}
+
+		result, _, err := dockertestutil.ExecuteCommand(
+			t.container,
+			command,
+			[]string{},
+		)
+		if err != nil {
+			log.Printf(
+				"failed to run ping command from %s to %s, err: %s",
+				t.Hostname,
+				ip.String(),
+				err,
+			)
+			return err
+		}
+
+		if !strings.Contains(result, "pong") && !strings.Contains(result, "is local") {
+			return backoff.Permanent(errTailscalePingFailed)
+		}
+
+		return nil
+	})
+
 }
 
 func createTailscaleBuildOptions(version string) *dockertest.BuildOptions {
