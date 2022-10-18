@@ -3,7 +3,7 @@ name: CI
 on: [pull_request]
 
 jobs:
-  integration-test:
+  integration-test-v2-general:
     runs-on: ubuntu-latest
 
     steps:
