@@ -51,7 +51,7 @@ func TestPingAll(t *testing.T) {
 		allClients = append(allClients, clients...)
 	}
 
-	scenario.WaitForTailscaleSync()
+	err = scenario.WaitForTailscaleSync()
 	if err != nil {
 		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
 	}

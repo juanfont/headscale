@@ -22,8 +22,9 @@ const (
 )
 
 var (
-	errTailscalePingFailed  = errors.New("ping failed")
-	errTailscaleNotLoggedIn = errors.New("tailscale not logged in")
+	errTailscalePingFailed     = errors.New("ping failed")
+	errTailscaleNotLoggedIn    = errors.New("tailscale not logged in")
+	errTailscaleWrongPeerCount = errors.New("wrong peer count")
 )
 
 type TailscaleInContainer struct {
@@ -207,11 +208,7 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 		}
 
 		if peers := status.Peers(); len(peers) != expected {
-			return fmt.Errorf(
-				"tailscale client does not have the expected clients: %d out of %d",
-				len(peers),
-				expected,
-			)
+			return errTailscaleWrongPeerCount
 		}
 
 		return nil
@@ -241,6 +238,7 @@ func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
 				ip.String(),
 				err,
 			)
+
 			return err
 		}
 

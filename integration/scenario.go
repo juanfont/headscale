@@ -18,6 +18,8 @@ import (
 )
 
 const scenarioHashLength = 6
+const maxWait = 60 * time.Second
+const headscalePort = 8080
 
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
@@ -75,7 +77,7 @@ func NewScenario() (*Scenario, error) {
 		return nil, fmt.Errorf("could not connect to docker: %w", err)
 	}
 
-	pool.MaxWait = 60 * time.Second
+	pool.MaxWait = maxWait
 
 	networkName := fmt.Sprintf("hs-%s", hash)
 	if overrideNetworkName := os.Getenv("HEADSCALE_TEST_NETWORK_NAME"); overrideNetworkName != "" {
@@ -139,7 +141,7 @@ func (s *Scenario) Shutdown() error {
 
 // TODO(kradalby): make port and headscale configurable, multiple instances support?
 func (s *Scenario) StartHeadscale() error {
-	headscale, err := hsic.New(s.pool, 8080, s.network)
+	headscale, err := hsic.New(s.pool, headscalePort, s.network)
 	if err != nil {
 		return fmt.Errorf("failed to create headscale container: %w", err)
 	}
@@ -150,6 +152,7 @@ func (s *Scenario) StartHeadscale() error {
 }
 
 func (s *Scenario) Headscale() *hsic.HeadscaleInContainer {
+	//nolint
 	return s.controlServers["headscale"].(*hsic.HeadscaleInContainer)
 }
 
@@ -186,33 +189,33 @@ func (s *Scenario) CreateNamespace(namespace string) error {
 /// Client related stuff
 
 func (s *Scenario) CreateTailscaleNodesInNamespace(
-	namespace string,
+	namespaceStr string,
 	requestedVersion string,
 	count int,
 ) error {
-	if ns, ok := s.namespaces[namespace]; ok {
+	if namespace, ok := s.namespaces[namespaceStr]; ok {
 		for i := 0; i < count; i++ {
 			version := requestedVersion
 			if requestedVersion == "all" {
 				version = TailscaleVersions[i%len(TailscaleVersions)]
 			}
 
-			ns.createWaitGroup.Add(1)
+			namespace.createWaitGroup.Add(1)
 
 			go func() {
-				defer ns.createWaitGroup.Done()
+				defer namespace.createWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
-				ts, err := tsic.New(s.pool, version, s.network)
+				tsClient, err := tsic.New(s.pool, version, s.network)
 				if err != nil {
 					// return fmt.Errorf("failed to add tailscale node: %w", err)
-					fmt.Printf("failed to add tailscale node: %s", err)
+					log.Printf("failed to add tailscale node: %s", err)
 				}
 
-				ns.Clients[ts.Hostname] = ts
+				namespace.Clients[tsClient.Hostname] = tsClient
 			}()
 		}
-		ns.createWaitGroup.Wait()
+		namespace.createWaitGroup.Wait()
 
 		return nil
 	}
@@ -221,20 +224,20 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 }
 
 func (s *Scenario) RunTailscaleUp(
-	namespace, loginServer, authKey string,
+	namespaceStr, loginServer, authKey string,
 ) error {
-	if ns, ok := s.namespaces[namespace]; ok {
-		for _, client := range ns.Clients {
-			ns.joinWaitGroup.Add(1)
+	if namespace, ok := s.namespaces[namespaceStr]; ok {
+		for _, client := range namespace.Clients {
+			namespace.joinWaitGroup.Add(1)
 
 			go func(c *tsic.TailscaleInContainer) {
-				defer ns.joinWaitGroup.Done()
+				defer namespace.joinWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
 				_ = c.Up(loginServer, authKey)
 			}(client)
 		}
-		ns.joinWaitGroup.Wait()
+		namespace.joinWaitGroup.Wait()
 
 		return nil
 	}
@@ -245,8 +248,8 @@ func (s *Scenario) RunTailscaleUp(
 func (s *Scenario) CountTailscale() int {
 	count := 0
 
-	for _, ns := range s.namespaces {
-		count += len(ns.Clients)
+	for _, namespace := range s.namespaces {
+		count += len(namespace.Clients)
 	}
 
 	return count
@@ -255,18 +258,18 @@ func (s *Scenario) CountTailscale() int {
 func (s *Scenario) WaitForTailscaleSync() error {
 	tsCount := s.CountTailscale()
 
-	for _, ns := range s.namespaces {
-		for _, client := range ns.Clients {
-			ns.syncWaitGroup.Add(1)
+	for _, namespace := range s.namespaces {
+		for _, client := range namespace.Clients {
+			namespace.syncWaitGroup.Add(1)
 
 			go func(c *tsic.TailscaleInContainer) {
-				defer ns.syncWaitGroup.Done()
+				defer namespace.syncWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
 				_ = c.WaitForPeers(tsCount)
 			}(client)
 		}
-		ns.syncWaitGroup.Wait()
+		namespace.syncWaitGroup.Wait()
 	}
 
 	return nil
