@@ -435,6 +435,10 @@ func (h *Headscale) handleAuthKeyCommon(
 
 	resp.MachineAuthorized = true
 	resp.User = *pak.Namespace.toUser()
+	// Provide LoginName when registering with pre-auth key
+	// Otherwise it will need to exec `tailscale up` twice to fetch the *LoginName*
+	resp.Login = *pak.Namespace.toLogin()
+
 	respBody, err := h.marshalResponse(resp, machineKey)
 	if err != nil {
 		log.Error().
