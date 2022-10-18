@@ -1,5 +1,4 @@
-//go:build integration_general
-
+//nolint
 package headscale
 
 import (
@@ -41,7 +40,11 @@ type IntegrationTestSuite struct {
 	joinWaitGroup sync.WaitGroup
 }
 
-func TestIntegrationTestSuite(t *testing.T) {
+func TestIntegrationGeneralTestSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false
@@ -504,7 +507,7 @@ func getIPsfromIPNstate(status ipnstate.Status) []netip.Addr {
 	return ips
 }
 
-// TODO: Adopt test for cross communication between namespaces
+// TODO: Adopt test for cross communication between namespaces.
 func (s *IntegrationTestSuite) TestPingAllPeersByAddress() {
 	for _, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)
