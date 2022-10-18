@@ -17,9 +17,11 @@ import (
 	"github.com/ory/dockertest/v3"
 )
 
-const scenarioHashLength = 6
-const maxWait = 60 * time.Second
-const headscalePort = 8080
+const (
+	scenarioHashLength = 6
+	maxWait            = 60 * time.Second
+	headscalePort      = 8080
+)
 
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
