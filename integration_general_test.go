@@ -1,3 +1,4 @@
+//nolint
 package headscale
 
 import (
@@ -506,7 +507,7 @@ func getIPsfromIPNstate(status ipnstate.Status) []netip.Addr {
 	return ips
 }
 
-// TODO: Adopt test for cross communication between namespaces
+// TODO: Adopt test for cross communication between namespaces.
 func (s *IntegrationTestSuite) TestPingAllPeersByAddress() {
 	for _, scales := range s.namespaces {
 		ips, err := getIPs(scales.tailscales)

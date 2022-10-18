@@ -1,3 +1,4 @@
+//nolint
 package headscale
 
 import (
@@ -326,7 +327,6 @@ func GetEnvBool(key string) (bool, error) {
 func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (dockertest.Network, error) {
 	networks, err := pool.NetworksByName(name)
 	if err != nil || len(networks) == 0 {
-
 		if _, err := pool.CreateNetwork(name); err == nil {
 			// Create does not give us an updated version of the resource, so we need to
 			// get it again.

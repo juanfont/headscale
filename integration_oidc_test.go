@@ -1,3 +1,4 @@
+//nolint
 package headscale
 
 import (
@@ -199,7 +200,7 @@ oidc:
 	log.Println(config)
 
 	configPath := path.Join(currentPath, "integration_test/etc_oidc/config.yaml")
-	err = os.WriteFile(configPath, []byte(config), 0644)
+	err = os.WriteFile(configPath, []byte(config), 0o644)
 	if err != nil {
 		s.FailNow(fmt.Sprintf("Could not write config: %s", err), "")
 	}

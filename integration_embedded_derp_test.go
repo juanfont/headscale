@@ -1,3 +1,4 @@
+//nolint
 package headscale
 
 import (
@@ -15,13 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ccding/go-stun/stun"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/ccding/go-stun/stun"
 )
 
 const (
@@ -122,7 +122,6 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-
 		Name: headscaleDerpHostname,
 		Mounts: []string{
 			fmt.Sprintf(
