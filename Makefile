@@ -68,7 +68,7 @@ test_integration_oidc:
 
 test_integration_v2_general:
 	docker run \
-		-it --rm \
+		-t --rm \
 		-v ~/.cache/hs-integration-go:/go \
 		--name headscale-test-suite \
 		-v $$PWD:$$PWD -w $$PWD \
