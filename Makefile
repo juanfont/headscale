@@ -71,7 +71,7 @@ test_integration_v2_general:
 		-t --rm \
 		-v ~/.cache/hs-integration-go:/go \
 		--name headscale-test-suite \
-		-v $$PWD:$$PWD -w $$PWD \
+		-v $$PWD:$$PWD -w $$PWD/integration \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		golang:1 \
 		go test ./... -timeout 15m -v
