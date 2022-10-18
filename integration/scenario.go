@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -20,12 +21,32 @@ const scenarioHashLength = 6
 
 var errNoHeadscaleAvailable = errors.New("no headscale available")
 var errNoNamespaceAvailable = errors.New("no namespace available")
+var TailscaleVersions = []string{
+	"head",
+	"unstable",
+	"1.32.0",
+	"1.30.2",
+	"1.28.0",
+	"1.26.2",
+	"1.24.2",
+	"1.22.2",
+	"1.20.4",
+	"1.18.2",
+	"1.16.2",
+
+	// These versions seem to fail when fetching from apt.
+	// "1.14.6",
+	// "1.12.4",
+	// "1.10.2",
+	// "1.8.7",
+}
 
 type Namespace struct {
 	Clients map[string]*tsic.TailscaleInContainer
 
 	createWaitGroup sync.WaitGroup
 	joinWaitGroup   sync.WaitGroup
+	syncWaitGroup   sync.WaitGroup
 }
 
 // TODO(kradalby): make control server configurable, test test correctness with
@@ -51,6 +72,8 @@ func NewScenario() (*Scenario, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to docker: %w", err)
 	}
+
+	pool.MaxWait = 60 * time.Second
 
 	networkName := fmt.Sprintf("hs-%s", hash)
 	if overrideNetworkName := os.Getenv("HEADSCALE_TEST_NETWORK_NAME"); overrideNetworkName != "" {
@@ -162,11 +185,16 @@ func (s *Scenario) CreateNamespace(namespace string) error {
 
 func (s *Scenario) CreateTailscaleNodesInNamespace(
 	namespace string,
-	version string,
+	requestedVersion string,
 	count int,
 ) error {
 	if ns, ok := s.namespaces[namespace]; ok {
 		for i := 0; i < count; i++ {
+			version := requestedVersion
+			if requestedVersion == "all" {
+				version = TailscaleVersions[i%len(TailscaleVersions)]
+			}
+
 			ns.createWaitGroup.Add(1)
 
 			go func() {
@@ -197,12 +225,12 @@ func (s *Scenario) RunTailscaleUp(
 		for _, client := range ns.Clients {
 			ns.joinWaitGroup.Add(1)
 
-			go func() {
+			go func(c *tsic.TailscaleInContainer) {
 				defer ns.joinWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
-				_ = client.Up(loginServer, authKey)
-			}()
+				_ = c.Up(loginServer, authKey)
+			}(client)
 		}
 		ns.joinWaitGroup.Wait()
 
@@ -210,6 +238,75 @@ func (s *Scenario) RunTailscaleUp(
 	}
 
 	return fmt.Errorf("failed to up tailscale node: %w", errNoNamespaceAvailable)
+}
+
+func (s *Scenario) CountTailscale() int {
+	count := 0
+
+	for _, ns := range s.namespaces {
+		count += len(ns.Clients)
+	}
+
+	return count
+}
+
+func (s *Scenario) WaitForTailscaleSync() error {
+	tsCount := s.CountTailscale()
+
+	for _, ns := range s.namespaces {
+		for _, client := range ns.Clients {
+			ns.syncWaitGroup.Add(1)
+
+			go func(c *tsic.TailscaleInContainer) {
+				defer ns.syncWaitGroup.Done()
+
+				// TODO(kradalby): error handle this
+				_ = c.WaitForPeers(tsCount)
+			}(client)
+		}
+		ns.syncWaitGroup.Wait()
+	}
+
+	return nil
+}
+
+// CreateHeadscaleEnv is a conventient method returning a set up Headcale
+// test environment with nodes of all versions, joined to the server with X
+// namespaces
+func (s *Scenario) CreateHeadscaleEnv(namespaces map[string]int) error {
+	err := s.StartHeadscale()
+	if err != nil {
+		return err
+	}
+
+	err = s.Headscale().WaitForReady()
+	if err != nil {
+		return err
+	}
+
+	for namespaceName, clientCount := range namespaces {
+		err = s.CreateNamespace(namespaceName)
+		if err != nil {
+			return err
+		}
+
+		err = s.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount)
+		if err != nil {
+			return err
+		}
+
+		key, err := s.CreatePreAuthKey(namespaceName)
+		if err != nil {
+			return err
+		}
+
+		err = s.RunTailscaleUp(namespaceName, s.Headscale().GetEndpoint(), key.GetKey())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *Scenario) GetIPs(namespace string) ([]netip.Addr, error) {
@@ -227,4 +324,17 @@ func (s *Scenario) GetIPs(namespace string) ([]netip.Addr, error) {
 	}
 
 	return ips, fmt.Errorf("failed to get ips: %w", errNoNamespaceAvailable)
+}
+
+func (s *Scenario) GetClients(namespace string) ([]*tsic.TailscaleInContainer, error) {
+	var clients []*tsic.TailscaleInContainer
+	if ns, ok := s.namespaces[namespace]; ok {
+		for _, client := range ns.Clients {
+			clients = append(clients, client)
+		}
+
+		return clients, nil
+	}
+
+	return clients, fmt.Errorf("failed to get clients: %w", errNoNamespaceAvailable)
 }

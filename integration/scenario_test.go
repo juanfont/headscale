@@ -74,12 +74,9 @@ func TestHeadscale(t *testing.T) {
 func TestCreateTailscale(t *testing.T) {
 	IntegrationSkip(t)
 
-	var scenario *Scenario
-	var err error
-
 	namespace := "only-create-containers"
 
-	scenario, err = NewScenario()
+	scenario, err := NewScenario()
 	if err != nil {
 		t.Errorf("failed to create scenario: %s", err)
 	}
@@ -89,7 +86,7 @@ func TestCreateTailscale(t *testing.T) {
 	}
 
 	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInNamespace(namespace, "1.32.0", 3)
+		err := scenario.CreateTailscaleNodesInNamespace(namespace, "all", 3)
 		if err != nil {
 			t.Errorf("failed to add tailscale nodes: %s", err)
 		}
@@ -97,6 +94,8 @@ func TestCreateTailscale(t *testing.T) {
 		if clients := len(scenario.namespaces[namespace].Clients); clients != 3 {
 			t.Errorf("wrong number of tailscale clients: %d != %d", clients, 3)
 		}
+
+		// TODO(kradalby): Test "all" version logic
 	})
 
 	err = scenario.Shutdown()
