@@ -44,7 +44,6 @@ func TestHeadscale(t *testing.T) {
 		if err != nil {
 			t.Errorf("headscale failed to become ready: %s", err)
 		}
-
 	})
 
 	t.Run("create-namespace", func(t *testing.T) {
@@ -129,7 +128,6 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 		if err != nil {
 			t.Errorf("headscale failed to become ready: %s", err)
 		}
-
 	})
 
 	t.Run("create-namespace", func(t *testing.T) {

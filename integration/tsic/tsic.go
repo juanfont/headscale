@@ -16,11 +16,15 @@ import (
 	"tailscale.com/ipn/ipnstate"
 )
 
-const tsicHashLength = 6
-const dockerContextPath = "../."
+const (
+	tsicHashLength    = 6
+	dockerContextPath = "../."
+)
 
-var errTailscalePingFailed = errors.New("ping failed")
-var errTailscaleNotLoggedIn = errors.New("tailscale not logged in")
+var (
+	errTailscalePingFailed  = errors.New("ping failed")
+	errTailscaleNotLoggedIn = errors.New("tailscale not logged in")
+)
 
 type TailscaleInContainer struct {
 	version  string
@@ -34,7 +38,8 @@ type TailscaleInContainer struct {
 func New(
 	pool *dockertest.Pool,
 	version string,
-	network *dockertest.Network) (*TailscaleInContainer, error) {
+	network *dockertest.Network,
+) (*TailscaleInContainer, error) {
 	hash, err := headscale.GenerateRandomStringDNSSafe(tsicHashLength)
 	if err != nil {
 		return nil, err
@@ -130,7 +135,7 @@ func (t *TailscaleInContainer) Up(
 	return nil
 }
 
-// TODO(kradalby): Make cached/lazy
+// TODO(kradalby): Make cached/lazy.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	ips := make([]netip.Addr, 0)
 
@@ -213,7 +218,7 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 	})
 }
 
-// TODO(kradalby): Make multiping, go routine magic
+// TODO(kradalby): Make multiping, go routine magic.
 func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
 	return t.pool.Retry(func() error {
 		command := []string{
@@ -245,7 +250,6 @@ func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
 
 		return nil
 	})
-
 }
 
 func createTailscaleBuildOptions(version string) *dockertest.BuildOptions {

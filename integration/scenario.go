@@ -19,27 +19,29 @@ import (
 
 const scenarioHashLength = 6
 
-var errNoHeadscaleAvailable = errors.New("no headscale available")
-var errNoNamespaceAvailable = errors.New("no namespace available")
-var TailscaleVersions = []string{
-	"head",
-	"unstable",
-	"1.32.0",
-	"1.30.2",
-	"1.28.0",
-	"1.26.2",
-	"1.24.2",
-	"1.22.2",
-	"1.20.4",
-	"1.18.2",
-	"1.16.2",
+var (
+	errNoHeadscaleAvailable = errors.New("no headscale available")
+	errNoNamespaceAvailable = errors.New("no namespace available")
+	TailscaleVersions       = []string{
+		"head",
+		"unstable",
+		"1.32.0",
+		"1.30.2",
+		"1.28.0",
+		"1.26.2",
+		"1.24.2",
+		"1.22.2",
+		"1.20.4",
+		"1.18.2",
+		"1.16.2",
 
-	// These versions seem to fail when fetching from apt.
-	// "1.14.6",
-	// "1.12.4",
-	// "1.10.2",
-	// "1.8.7",
-}
+		// These versions seem to fail when fetching from apt.
+		// "1.14.6",
+		// "1.12.4",
+		// "1.10.2",
+		// "1.8.7",
+	}
+)
 
 type Namespace struct {
 	Clients map[string]*tsic.TailscaleInContainer
@@ -272,7 +274,7 @@ func (s *Scenario) WaitForTailscaleSync() error {
 
 // CreateHeadscaleEnv is a conventient method returning a set up Headcale
 // test environment with nodes of all versions, joined to the server with X
-// namespaces
+// namespaces.
 func (s *Scenario) CreateHeadscaleEnv(namespaces map[string]int) error {
 	err := s.StartHeadscale()
 	if err != nil {

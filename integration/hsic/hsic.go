@@ -15,8 +15,10 @@ import (
 	"github.com/ory/dockertest/v3"
 )
 
-const hsicHashLength = 6
-const dockerContextPath = "../."
+const (
+	hsicHashLength    = 6
+	dockerContextPath = "../."
+)
 
 var errHeadscaleStatusCodeNotOk = errors.New("headscale status code not ok")
 
@@ -32,7 +34,8 @@ type HeadscaleInContainer struct {
 func New(
 	pool *dockertest.Pool,
 	port int,
-	network *dockertest.Network) (*HeadscaleInContainer, error) {
+	network *dockertest.Network,
+) (*HeadscaleInContainer, error) {
 	hash, err := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
 	if err != nil {
 		return nil, err
