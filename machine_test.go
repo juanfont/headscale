@@ -350,9 +350,6 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	namespace1, err := app.CreateNamespace("namespace-1")
 	c.Assert(err, check.IsNil)
 
-	namespace2, err := app.CreateNamespace("namespace-2")
-	c.Assert(err, check.IsNil)
-
 	pak, err := app.CreatePreAuthKey(namespace1.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
@@ -372,25 +369,25 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	}
 	app.db.Save(machine)
 
-	givenName, err := app.GenerateGivenName(namespace1.Name, "machine-key-2", "hostname-2")
+	givenName, err := app.GenerateGivenName("machine-key-2", "hostname-2")
 	comment := check.Commentf("Same namespace, unique machines, unique hostnames, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-2", comment)
 
-	givenName, err = app.GenerateGivenName(namespace1.Name, "machine-key-1", "hostname-1")
+	givenName, err = app.GenerateGivenName("machine-key-1", "hostname-1")
 	comment = check.Commentf("Same namespace, same machine, same hostname, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-1", comment)
 
-	givenName, err = app.GenerateGivenName(namespace1.Name, "machine-key-2", "hostname-1")
+	givenName, err = app.GenerateGivenName("machine-key-2", "hostname-1")
 	comment = check.Commentf("Same namespace, unique machines, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
 
-	givenName, err = app.GenerateGivenName(namespace2.Name, "machine-key-2", "hostname-1")
-	comment = check.Commentf("Unique namespaces, unique machines, same hostname, no conflict")
+	givenName, err = app.GenerateGivenName("machine-key-2", "hostname-1")
+	comment = check.Commentf("Unique namespaces, unique machines, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
-	c.Assert(givenName, check.Equals, "hostname-1", comment)
+	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
 }
 
 func (s *Suite) TestSetTags(c *check.C) {
