@@ -434,17 +434,17 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 		}
 
 		if viper.IsSet("dns_config.domains") {
-			dnsConfig.Domains = viper.GetStringSlice("dns_config.domains")
+			domains := viper.GetStringSlice("dns_config.domains")
+			if len(dnsConfig.Nameservers) > 0 {
+				dnsConfig.Domains = domains
+			} else if domains != nil {
+				log.Warn().
+					Msg("Warning: dns_config.domains is set, but no nameservers are configured. Ignoring domains.")
+			}
 		}
 
 		if viper.IsSet("dns_config.magic_dns") {
-			magicDNS := viper.GetBool("dns_config.magic_dns")
-			if len(dnsConfig.Nameservers) > 0 {
-				dnsConfig.Proxied = magicDNS
-			} else if magicDNS {
-				log.Warn().
-					Msg("Warning: dns_config.magic_dns is set, but no nameservers are configured. Ignoring magic_dns.")
-			}
+			dnsConfig.Proxied = viper.GetBool("dns_config.magic_dns")
 		}
 
 		var baseDomain string
