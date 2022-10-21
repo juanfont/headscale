@@ -69,10 +69,10 @@ func TestPingAllByIP(t *testing.T) {
 
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
-	// err = scenario.Shutdown()
-	// if err != nil {
-	// 	t.Errorf("failed to tear down scenario: %s", err)
-	// }
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
 }
 
 func TestPingAllByHostname(t *testing.T) {
@@ -94,6 +94,7 @@ func TestPingAllByHostname(t *testing.T) {
 	}
 
 	var allClients []*tsic.TailscaleInContainer
+	var allHostnames []string
 
 	for namespace := range spec {
 		clients, err := scenario.GetClients(namespace)
@@ -109,13 +110,22 @@ func TestPingAllByHostname(t *testing.T) {
 		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
 	}
 
+	for _, client := range allClients {
+		fqdn, err := client.FQDN()
+		if err != nil {
+			t.Errorf("failed to get fqdn of client %s: %s", t.Name(), err)
+		}
+
+		allHostnames = append(allHostnames, fqdn)
+	}
+
 	success := 0
 
 	for _, client := range allClients {
-		for _, peer := range allClients {
-			err := client.Ping(peer.Hostname)
+		for _, hostname := range allHostnames {
+			err := client.Ping(hostname)
 			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", peer.Hostname, client.Hostname, err)
+				t.Errorf("failed to ping %s from %s: %s", hostname, client.Hostname, err)
 			} else {
 				success++
 			}

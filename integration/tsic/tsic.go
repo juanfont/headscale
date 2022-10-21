@@ -204,6 +204,15 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 	return &status, err
 }
 
+func (t *TailscaleInContainer) FQDN() (string, error) {
+	status, err := t.Status()
+	if err != nil {
+		return "", fmt.Errorf("failed to get FQDN: %w", err)
+	}
+
+	return status.Self.DNSName, nil
+}
+
 func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
