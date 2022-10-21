@@ -66,6 +66,16 @@ test_integration_oidc:
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
 		go test -failfast -timeout 30m -count=1 -run IntegrationOIDC ./...
 
+test_integration_v2_general:
+	docker run \
+		-t --rm \
+		-v ~/.cache/hs-integration-go:/go \
+		--name headscale-test-suite \
+		-v $$PWD:$$PWD -w $$PWD/integration \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		golang:1 \
+		go test ./... -timeout 15m -v
+
 coverprofile_func:
 	go tool cover -func=coverage.out
 
