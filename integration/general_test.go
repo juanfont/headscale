@@ -58,7 +58,7 @@ func TestPingAll(t *testing.T) {
 
 	for _, client := range allClients {
 		for _, ip := range allIps {
-			err := client.Ping(ip)
+			err := client.Ping(ip.String())
 			if err != nil {
 				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
 			} else {

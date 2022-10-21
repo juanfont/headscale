@@ -46,7 +46,7 @@ func New(
 		return nil, err
 	}
 
-	hostname := fmt.Sprintf("ts-%s-%s", version, hash)
+	hostname := fmt.Sprintf("ts-%s-%s", strings.ReplaceAll(version, ".", "-"), hash)
 
 	// TODO(kradalby): figure out why we need to "refresh" the network here.
 	// network, err = dockertestutil.GetFirstOrCreateNetwork(pool, network.Network.Name)
@@ -220,14 +220,14 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 }
 
 // TODO(kradalby): Make multiping, go routine magic.
-func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
+func (t *TailscaleInContainer) Ping(hostnameOrIP string) error {
 	return t.pool.Retry(func() error {
 		command := []string{
 			"tailscale", "ping",
 			"--timeout=1s",
 			"--c=10",
 			"--until-direct=true",
-			ip.String(),
+			hostnameOrIP,
 		}
 
 		result, _, err := dockertestutil.ExecuteCommand(
@@ -238,8 +238,8 @@ func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
 		if err != nil {
 			log.Printf(
 				"failed to run ping command from %s to %s, err: %s",
-				t.hostname,
-				ip.String(),
+				t.Hostname(),
+				hostnameOrIP,
 				err,
 			)
 
