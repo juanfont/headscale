@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestPingAll(t *testing.T) {
+func TestPingAllByIP(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario, err := NewScenario()
