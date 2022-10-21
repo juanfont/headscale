@@ -59,3 +59,42 @@ server {
     }
 }
 ```
+
+## istio/envoy
+
+If you using [Istio](https://istio.io/) ingressgateway or [Envoy](https://www.envoyproxy.io/) as reverse proxy, there are some tips for you. If not set, you may see some debug log in proxy as below:
+
+```log
+Sending local reply with details upgrade_failed
+```
+
+### Envoy
+
+You need add a new upgrade_type named `tailscale-control-protocol`. [see detail](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#extensions-filters-network-http-connection-manager-v3-httpconnectionmanager-upgradeconfig)
+
+### Istio
+
+Same as envoy, we can use `EnvoyFilter` to add upgrade_type.
+
+```yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: headscale-behind-istio-ingress
+  namespace: istio-system
+spec:
+  configPatches:
+    - applyTo: NETWORK_FILTER
+      match:
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: MERGE
+        value:
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            upgrade_configs:
+              - upgrade_type: tailscale-control-protocol
+```
