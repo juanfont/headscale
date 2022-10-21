@@ -69,8 +69,8 @@ func TestPingAll(t *testing.T) {
 
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
-	err = scenario.Shutdown()
-	if err != nil {
-		t.Errorf("failed to tear down scenario: %s", err)
-	}
+	// err = scenario.Shutdown()
+	// if err != nil {
+	// 	t.Errorf("failed to tear down scenario: %s", err)
+	// }
 }
