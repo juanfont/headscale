@@ -332,6 +332,15 @@ func (h *Headscale) ListMachines() ([]Machine, error) {
 	return machines, nil
 }
 
+func (h *Headscale) ListMachinesByGivenName(givenName string) ([]Machine, error) {
+	machines := []Machine{}
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Find(&machines).Where("given_name = ?", givenName).Error; err != nil {
+		return nil, err
+	}
+
+	return machines, nil
+}
+
 // GetMachine finds a Machine by name and namespace and returns the Machine struct.
 func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) {
 	machines, err := h.ListMachinesInNamespace(namespace)
@@ -1061,21 +1070,27 @@ func (h *Headscale) generateGivenName(suppliedName string, randomSuffix bool) (s
 	return normalizedHostname, nil
 }
 
-func (h *Headscale) GenerateGivenName(namespace string, machineKey string, suppliedName string) (string, error) {
+func (h *Headscale) GenerateGivenName(machineKey string, suppliedName string) (string, error) {
 	givenName, err := h.generateGivenName(suppliedName, false)
 	if err != nil {
 		return "", err
 	}
 
 	// Tailscale rules (may differ) https://tailscale.com/kb/1098/machine-names/
-	machine, _ := h.GetMachineByGivenName(namespace, givenName)
-	if machine != nil && machine.MachineKey != machineKey && machine.GivenName == givenName {
-		postfixedName, err := h.generateGivenName(suppliedName, true)
-		if err != nil {
-			return "", err
-		}
+	machines, err := h.ListMachinesByGivenName(givenName)
+	if err != nil {
+		return "", err
+	}
 
-		givenName = postfixedName
+	for _, machine := range machines {
+		if machine.MachineKey != machineKey && machine.GivenName == givenName {
+			postfixedName, err := h.generateGivenName(suppliedName, true)
+			if err != nil {
+				return "", err
+			}
+
+			givenName = postfixedName
+		}
 	}
 
 	return givenName, nil

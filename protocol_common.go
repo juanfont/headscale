@@ -150,7 +150,10 @@ func (h *Headscale) handleRegisterCommon(
 			Bool("noise", machineKey.IsZero()).
 			Msg("New machine not yet in the database")
 
-		givenName, err := h.GenerateGivenName(machine.Namespace.Name, machine.MachineKey, registerRequest.Hostinfo.Hostname)
+		givenName, err := h.GenerateGivenName(
+			machineKey.String(),
+			registerRequest.Hostinfo.Hostname,
+		)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -374,7 +377,7 @@ func (h *Headscale) handleAuthKeyCommon(
 	} else {
 		now := time.Now().UTC()
 
-		givenName, err := h.GenerateGivenName(machine.Namespace.Name, MachinePublicKeyStripPrefix(machineKey), registerRequest.Hostinfo.Hostname)
+		givenName, err := h.GenerateGivenName(MachinePublicKeyStripPrefix(machineKey), registerRequest.Hostinfo.Hostname)
 		if err != nil {
 			log.Error().
 				Caller().
