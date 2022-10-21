@@ -1,0 +1,40 @@
+name: CI
+
+on: [pull_request]
+
+jobs:
+  integration-test-oidc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
+
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v14.1
+        with:
+          files: |
+            *.nix
+            go.*
+            **/*.go
+            integration_test/
+            config-example.yaml
+
+      - uses: cachix/install-nix-action@v16
+        if: steps.changed-files.outputs.any_changed == 'true'
+
+      - name: Run OIDC integration tests
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: nick-fields/retry@v2
+        with:
+          timeout_minutes: 240
+          max_attempts: 5
+          retry_on: error
+          command: nix develop --command -- make test_integration_oidc

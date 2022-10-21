@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -63,6 +64,8 @@ const (
 
 	ZstdCompression = "zstd"
 )
+
+var NodePublicKeyRegex = regexp.MustCompile("nodekey:[a-fA-F0-9]+")
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
 	return strings.TrimPrefix(machineKey.String(), machinePublicHexPrefix)
@@ -325,7 +328,9 @@ func GenerateRandomStringDNSSafe(size int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		str = strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""))
+		str = strings.ToLower(
+			strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""),
+		)
 	}
 
 	return str[:size], nil

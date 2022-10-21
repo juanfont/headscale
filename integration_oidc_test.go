@@ -1,5 +1,4 @@
-//go:build integration_oidc
-
+//nolint
 package headscale
 
 import (
@@ -25,7 +24,8 @@ import (
 )
 
 const (
-	oidcHeadscaleHostname = "headscale"
+	oidcHeadscaleHostname = "headscale-oidc"
+	oidcMockHostname      = "headscale-mock-oidc"
 	oidcNamespaceName     = "oidcnamespace"
 	totalOidcContainers   = 3
 )
@@ -44,7 +44,11 @@ type IntegrationOIDCTestSuite struct {
 	joinWaitGroup sync.WaitGroup
 }
 
-func TestOIDCIntegrationTestSuite(t *testing.T) {
+func TestIntegrationOIDCTestSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false
@@ -95,33 +99,25 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
-	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
-		s.network = *pnetwork
-	} else {
-		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
-	}
-
-	// Create does not give us an updated version of the resource, so we need to
-	// get it again.
-	networks, err := s.pool.NetworksByName("headscale-test")
+	network, err := GetFirstOrCreateNetwork(&s.pool, headscaleNetwork)
 	if err != nil {
-		s.FailNow(fmt.Sprintf("Could not get network: %s", err), "")
+		s.FailNow(fmt.Sprintf("Failed to create or get network: %s", err), "")
 	}
-	s.network = networks[0]
+	s.network = network
 
 	log.Printf("Network config: %v", s.network.Network.IPAM.Config[0])
 
 	s.Suite.T().Log("Setting up mock OIDC")
 	mockOidcOptions := &dockertest.RunOptions{
-		Name:         "mockoidc",
-		Hostname:     "mockoidc",
+		Name:         oidcMockHostname,
 		Cmd:          []string{"headscale", "mockoidc"},
 		ExposedPorts: []string{"10000/tcp"},
-		Networks:     []*dockertest.Network{&s.network},
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			"10000/tcp": {{HostPort: "10000"}},
 		},
+		Networks: []*dockertest.Network{&s.network},
 		Env: []string{
+			fmt.Sprintf("MOCKOIDC_ADDR=%s", oidcMockHostname),
 			"MOCKOIDC_PORT=10000",
 			"MOCKOIDC_CLIENT_ID=superclient",
 			"MOCKOIDC_CLIENT_SECRET=supersecret",
@@ -133,6 +129,17 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 		ContextDir: ".",
 	}
 
+	err = s.pool.RemoveContainerByName(oidcMockHostname)
+	if err != nil {
+		s.FailNow(
+			fmt.Sprintf(
+				"Could not remove existing container before building test: %s",
+				err,
+			),
+			"",
+		)
+	}
+
 	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
 		mockOidcOptions,
@@ -141,6 +148,35 @@ func (s *IntegrationOIDCTestSuite) SetupSuite() {
 	} else {
 		s.FailNow(fmt.Sprintf("Could not start mockOIDC container: %s", err), "")
 	}
+
+	s.Suite.T().Logf("Waiting for headscale mock oidc to be ready for tests")
+	hostEndpoint := fmt.Sprintf(
+		"%s:%s",
+		s.mockOidc.GetIPInNetwork(&s.network),
+		s.mockOidc.GetPort("10000/tcp"),
+	)
+
+	if err := s.pool.Retry(func() error {
+		url := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Printf("headscale mock OIDC tests is not ready: %s\n", err)
+			return err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("status code not OK")
+		}
+
+		return nil
+	}); err != nil {
+		// TODO(kradalby): If we cannot access headscale, or any other fatal error during
+		// test setup, we need to abort and tear down. However, testify does not seem to
+		// support that at the moment:
+		// https://github.com/stretchr/testify/issues/849
+		return // fmt.Errorf("Could not connect to headscale: %s", err)
+	}
+	s.Suite.T().Log("headscale-mock-oidc container is ready for embedded OIDC tests")
 
 	oidcCfg := fmt.Sprintf(`
 oidc:
@@ -164,7 +200,7 @@ oidc:
 	log.Println(config)
 
 	configPath := path.Join(currentPath, "integration_test/etc_oidc/config.yaml")
-	err = os.WriteFile(configPath, []byte(config), 0644)
+	err = os.WriteFile(configPath, []byte(config), 0o644)
 	if err != nil {
 		s.FailNow(fmt.Sprintf("Could not write config: %s", err), "")
 	}
@@ -216,10 +252,14 @@ oidc:
 	}
 
 	s.Suite.T().Logf("Waiting for headscale to be ready for embedded OIDC tests")
-	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8443/tcp"))
+	hostMockEndpoint := fmt.Sprintf(
+		"%s:%s",
+		s.headscale.GetIPInNetwork(&s.network),
+		s.headscale.GetPort("8443/tcp"),
+	)
 
 	if err := s.pool.Retry(func() error {
-		url := fmt.Sprintf("https://%s/health", hostEndpoint)
+		url := fmt.Sprintf("https://%s/health", hostMockEndpoint)
 		insecureTransport := http.DefaultTransport.(*http.Transport).Clone()
 		insecureTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		client := &http.Client{Transport: insecureTransport}
@@ -294,6 +334,8 @@ func (s *IntegrationOIDCTestSuite) AuthenticateOIDC(
 	resp, err := client.Get(loginURL.String())
 	assert.Nil(s.T(), err)
 
+	log.Printf("auth body, err: %#v, %s", resp, err)
+
 	body, err := io.ReadAll(resp.Body)
 	assert.Nil(s.T(), err)
 
@@ -308,7 +350,6 @@ func (s *IntegrationOIDCTestSuite) joinOIDC(
 	endpoint, hostname string,
 	tailscale dockertest.Resource,
 ) (*url.URL, error) {
-
 	command := []string{
 		"tailscale",
 		"up",
@@ -374,7 +415,13 @@ func (s *IntegrationOIDCTestSuite) tailscaleContainer(
 		DockerAllowNetworkAdministration,
 	)
 	if err != nil {
-		log.Fatalf("Could not start tailscale container version %s: %s", version, err)
+		s.FailNow(
+			fmt.Sprintf(
+				"Could not start tailscale container version %s: %s",
+				version,
+				err,
+			),
+		)
 	}
 	log.Printf("Created %s container\n", hostname)
 
@@ -497,7 +544,12 @@ func (s *IntegrationOIDCTestSuite) TestPingAllPeersByAddress() {
 							[]string{},
 						)
 						assert.Nil(t, err)
-						log.Printf("result for %s: stdout: %s, stderr: %s\n", hostname, stdout, stderr)
+						log.Printf(
+							"result for %s: stdout: %s, stderr: %s\n",
+							hostname,
+							stdout,
+							stderr,
+						)
 						assert.Contains(t, stdout, "pong")
 					})
 			}
