@@ -26,6 +26,9 @@
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
 
+          # Only run unit tests when testing a build
+          checkFlags = ["-short"];
+
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
           vendorSha256 = "sha256-DosFCSiQ5FURbIrt4NcPGkExc84t2MGMqe9XLxNHdIM=";

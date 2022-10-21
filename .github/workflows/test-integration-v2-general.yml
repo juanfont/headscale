@@ -3,7 +3,7 @@ name: CI
 on: [pull_request]
 
 jobs:
-  integration-test-general:
+  integration-test-v2-general:
     runs-on: ubuntu-latest
 
     steps:
@@ -37,4 +37,4 @@ jobs:
           timeout_minutes: 240
           max_attempts: 5
           retry_on: error
-          command: nix develop --command -- make test_integration_general
+          command: nix develop --command -- make test_integration_v2_general
