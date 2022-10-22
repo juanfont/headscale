@@ -129,8 +129,9 @@ type ACLConfig struct {
 }
 
 type LogConfig struct {
-	Format string
-	Level  zerolog.Level
+	Format   string
+	Level    zerolog.Level
+	Location string
 }
 
 func LoadConfig(path string, isFile bool) error {
@@ -158,6 +159,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", TextLogFormat)
+	viper.SetDefault("log.location", nil)
 
 	viper.SetDefault("dns_config", nil)
 
@@ -367,9 +369,15 @@ func GetLogConfig() LogConfig {
 			Msgf("Could not parse log format: %s. Valid choices are 'json' or 'text'", logFormatOpt)
 	}
 
+	var logLocation string
+	if viper.IsSet("log.location") {
+		logLocation = viper.GetString("log.location")
+	}
+
 	return LogConfig{
-		Format: logFormat,
-		Level:  logLevel,
+		Format:   logFormat,
+		Level:    logLevel,
+		Location: logLocation,
 	}
 }
 

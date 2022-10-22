@@ -176,6 +176,8 @@ log:
   # Output formatting for logs: text or json
   format: text
   level: info
+  # If enabled, logs will be written to the file specified in the path
+  # location: /var/log/headscale.log
 
 # Path to a file containg ACL policies.
 # ACLs can be defined as YAML or HUJSON.

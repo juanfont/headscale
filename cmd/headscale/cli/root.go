@@ -63,6 +63,20 @@ func initConfig() {
 		log.Logger = log.Output(os.Stdout)
 	}
 
+	if cfg.Log.Location != "" {
+		file, err := os.OpenFile(
+			cfg.Log.Location,
+			os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+			0664,
+		)
+		// Bail out early if we can't open the log file
+		if err != nil {
+			panic(err)
+		}
+
+		log.Logger = log.Output(file)
+	}
+
 	if !cfg.DisableUpdateCheck && !machineOutput {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			Version != "dev" {
