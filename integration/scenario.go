@@ -48,7 +48,7 @@ var (
 )
 
 type Namespace struct {
-	Clients map[string]*tsic.TailscaleInContainer
+	Clients map[string]TailscaleClient
 
 	createWaitGroup sync.WaitGroup
 	joinWaitGroup   sync.WaitGroup
@@ -118,7 +118,7 @@ func (s *Scenario) Shutdown() error {
 
 	for namespaceName, namespace := range s.namespaces {
 		for _, client := range namespace.Clients {
-			log.Printf("removing client %s in namespace %s", client.Hostname, namespaceName)
+			log.Printf("removing client %s in namespace %s", client.Hostname(), namespaceName)
 			err := client.Shutdown()
 			if err != nil {
 				return fmt.Errorf("failed to tear down client: %w", err)
@@ -179,7 +179,7 @@ func (s *Scenario) CreateNamespace(namespace string) error {
 		}
 
 		s.namespaces[namespace] = &Namespace{
-			Clients: make(map[string]*tsic.TailscaleInContainer),
+			Clients: make(map[string]TailscaleClient),
 		}
 
 		return nil
@@ -214,7 +214,7 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 					log.Printf("failed to add tailscale node: %s", err)
 				}
 
-				namespace.Clients[tsClient.Hostname] = tsClient
+				namespace.Clients[tsClient.Hostname()] = tsClient
 			}()
 		}
 		namespace.createWaitGroup.Wait()
@@ -232,7 +232,7 @@ func (s *Scenario) RunTailscaleUp(
 		for _, client := range namespace.Clients {
 			namespace.joinWaitGroup.Add(1)
 
-			go func(c *tsic.TailscaleInContainer) {
+			go func(c TailscaleClient) {
 				defer namespace.joinWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
@@ -264,7 +264,7 @@ func (s *Scenario) WaitForTailscaleSync() error {
 		for _, client := range namespace.Clients {
 			namespace.syncWaitGroup.Add(1)
 
-			go func(c *tsic.TailscaleInContainer) {
+			go func(c TailscaleClient) {
 				defer namespace.syncWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
@@ -333,8 +333,8 @@ func (s *Scenario) GetIPs(namespace string) ([]netip.Addr, error) {
 	return ips, fmt.Errorf("failed to get ips: %w", errNoNamespaceAvailable)
 }
 
-func (s *Scenario) GetClients(namespace string) ([]*tsic.TailscaleInContainer, error) {
-	var clients []*tsic.TailscaleInContainer
+func (s *Scenario) GetClients(namespace string) ([]TailscaleClient, error) {
+	var clients []TailscaleClient
 	if ns, ok := s.namespaces[namespace]; ok {
 		for _, client := range ns.Clients {
 			clients = append(clients, client)
