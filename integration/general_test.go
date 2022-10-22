@@ -3,8 +3,6 @@ package integration
 import (
 	"net/netip"
 	"testing"
-
-	"github.com/juanfont/headscale/integration/tsic"
 )
 
 func TestPingAll(t *testing.T) {
@@ -26,7 +24,7 @@ func TestPingAll(t *testing.T) {
 	}
 
 	var allIps []netip.Addr
-	var allClients []*tsic.TailscaleInContainer
+	var allClients []TailscaleClient
 
 	for namespace, count := range spec {
 		ips, err := scenario.GetIPs(namespace)
@@ -62,7 +60,7 @@ func TestPingAll(t *testing.T) {
 		for _, ip := range allIps {
 			err := client.Ping(ip)
 			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname, err)
+				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
 			} else {
 				success++
 			}
