@@ -29,7 +29,7 @@ var (
 
 type TailscaleInContainer struct {
 	version  string
-	Hostname string
+	hostname string
 
 	pool      *dockertest.Pool
 	container *dockertest.Resource
@@ -84,7 +84,7 @@ func New(
 
 	return &TailscaleInContainer{
 		version:  version,
-		Hostname: hostname,
+		hostname: hostname,
 
 		pool:      pool,
 		container: container,
@@ -94,6 +94,10 @@ func New(
 
 func (t *TailscaleInContainer) Shutdown() error {
 	return t.pool.Purge(t.container)
+}
+
+func (t *TailscaleInContainer) Hostname() string {
+	return t.hostname
 }
 
 func (t *TailscaleInContainer) Version() string {
@@ -111,11 +115,11 @@ func (t *TailscaleInContainer) Up(
 		"--authkey",
 		authKey,
 		"--hostname",
-		t.Hostname,
+		t.hostname,
 	}
 
 	log.Println("Join command:", command)
-	log.Printf("Running join command for %s\n", t.Hostname)
+	log.Printf("Running join command for %s\n", t.hostname)
 	stdout, stderr, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
@@ -131,7 +135,7 @@ func (t *TailscaleInContainer) Up(
 		log.Printf("tailscale join stdout: %s\n", stdout)
 	}
 
-	log.Printf("%s joined\n", t.Hostname)
+	log.Printf("%s joined\n", t.hostname)
 
 	return nil
 }
@@ -234,7 +238,7 @@ func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
 		if err != nil {
 			log.Printf(
 				"failed to run ping command from %s to %s, err: %s",
-				t.Hostname,
+				t.hostname,
 				ip.String(),
 				err,
 			)

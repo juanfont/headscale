@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
-	"github.com/juanfont/headscale/integration/tsic"
 )
 
 // This file is intendet to "test the test framework", by proxy it will also test
@@ -81,7 +80,7 @@ func TestCreateTailscale(t *testing.T) {
 	}
 
 	scenario.namespaces[namespace] = &Namespace{
-		Clients: make(map[string]*tsic.TailscaleInContainer),
+		Clients: make(map[string]TailscaleClient),
 	}
 
 	t.Run("create-tailscale", func(t *testing.T) {
