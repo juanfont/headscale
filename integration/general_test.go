@@ -94,8 +94,8 @@ func TestPingAllByHostname(t *testing.T) {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
 
-	var allClients []TailscaleClient
-	var allHostnames []string
+	allClients := make([]TailscaleClient, 0)
+	allHostnames := make([]string, 0)
 
 	for namespace := range spec {
 		clients, err := scenario.GetClients(namespace)
