@@ -199,7 +199,7 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
-func (t *HeadscaleInContainer) ListNodes(
+func (t *HeadscaleInContainer) ListMachinesInNamespace(
 	namespace string,
 ) ([]*v1.Machine, error) {
 	command := []string{"headscale", "--namespace", namespace, "nodes", "list", "--output", "json"}

@@ -12,7 +12,8 @@ type TailscaleClient interface {
 	Version() string
 	Up(loginServer, authKey string) error
 	IPs() ([]netip.Addr, error)
+	FQDN() (string, error)
 	Status() (*ipnstate.Status, error)
 	WaitForPeers(expected int) error
-	Ping(ip netip.Addr) error
+	Ping(hostnameOrIP string) error
 }
