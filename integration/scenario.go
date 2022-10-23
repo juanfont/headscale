@@ -138,6 +138,15 @@ func (s *Scenario) Shutdown() error {
 	return nil
 }
 
+func (s *Scenario) Namespaces() []string {
+	namespaces := make([]string, 0)
+	for namespace := range s.namespaces {
+		namespaces = append(namespaces, namespace)
+	}
+
+	return namespaces
+}
+
 /// Headscale related stuff
 // Note: These functions assume that there is a _single_ headscale instance for now
 
@@ -344,4 +353,62 @@ func (s *Scenario) GetClients(namespace string) ([]TailscaleClient, error) {
 	}
 
 	return clients, fmt.Errorf("failed to get clients: %w", errNoNamespaceAvailable)
+}
+
+func (s *Scenario) ListTailscaleClients(namespaces ...string) ([]TailscaleClient, error) {
+	var allClients []TailscaleClient
+
+	if len(namespaces) == 0 {
+		namespaces = s.Namespaces()
+	}
+
+	for _, namespace := range namespaces {
+		clients, err := s.GetClients(namespace)
+		if err != nil {
+			return nil, err
+		}
+
+		allClients = append(allClients, clients...)
+	}
+
+	return allClients, nil
+}
+
+func (s *Scenario) ListTailscaleClientsIPs(namespaces ...string) ([]netip.Addr, error) {
+	var allIps []netip.Addr
+
+	if len(namespaces) == 0 {
+		namespaces = s.Namespaces()
+	}
+
+	for _, namespace := range namespaces {
+		ips, err := s.GetIPs(namespace)
+		if err != nil {
+			return nil, err
+		}
+
+		allIps = append(allIps, ips...)
+	}
+
+	return allIps, nil
+}
+
+func (s *Scenario) ListTailscaleClientsFQDNs(namespaces ...string) ([]string, error) {
+	allFQDNs := make([]string, 0)
+
+	clients, err := s.ListTailscaleClients(namespaces...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, client := range clients {
+		fqdn, err := client.FQDN()
+		if err != nil {
+			return nil, err
+		}
+
+		allFQDNs = append(allFQDNs, fqdn)
+	}
+
+	return allFQDNs, nil
 }

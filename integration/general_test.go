@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"net/netip"
 	"testing"
 )
 
@@ -23,30 +22,14 @@ func TestPingAllByIP(t *testing.T) {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
 
-	var allIps []netip.Addr
-	var allClients []TailscaleClient
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
 
-	for namespace, count := range spec {
-		ips, err := scenario.GetIPs(namespace)
-		if err != nil {
-			t.Errorf("failed to get tailscale ips: %s", err)
-		}
-
-		if len(ips) != count*2 {
-			t.Errorf(
-				"got the wrong amount of tailscale ips, %d != %d",
-				len(ips),
-				count*2,
-			)
-		}
-
-		clients, err := scenario.GetClients(namespace)
-		if err != nil {
-			t.Errorf("failed to get tailscale clients: %s", err)
-		}
-
-		allIps = append(allIps, ips...)
-		allClients = append(allClients, clients...)
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
 	}
 
 	err = scenario.WaitForTailscaleSync()
@@ -94,16 +77,9 @@ func TestPingAllByHostname(t *testing.T) {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
 
-	allClients := make([]TailscaleClient, 0)
-	allHostnames := make([]string, 0)
-
-	for namespace := range spec {
-		clients, err := scenario.GetClients(namespace)
-		if err != nil {
-			t.Errorf("failed to get tailscale clients: %s", err)
-		}
-
-		allClients = append(allClients, clients...)
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
 	}
 
 	err = scenario.WaitForTailscaleSync()
@@ -111,13 +87,9 @@ func TestPingAllByHostname(t *testing.T) {
 		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
 	}
 
-	for _, client := range allClients {
-		fqdn, err := client.FQDN()
-		if err != nil {
-			t.Errorf("failed to get fqdn of client %s: %s", client.Hostname(), err)
-		}
-
-		allHostnames = append(allHostnames, fqdn)
+	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
+	if err != nil {
+		t.Errorf("failed to get FQDNs: %s", err)
 	}
 
 	success := 0
