@@ -84,8 +84,9 @@ func TestPingAllByHostname(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace3": len(TailscaleVersions),
-		"namespace4": len(TailscaleVersions),
+		// Omit 1.16.2 (-1) because it does not have the FQDN field
+		"namespace3": len(TailscaleVersions) - 1,
+		"namespace4": len(TailscaleVersions) - 1,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec)
@@ -113,7 +114,7 @@ func TestPingAllByHostname(t *testing.T) {
 	for _, client := range allClients {
 		fqdn, err := client.FQDN()
 		if err != nil {
-			t.Errorf("failed to get fqdn of client %s: %s", t.Name(), err)
+			t.Errorf("failed to get fqdn of client %s: %s", client.Hostname, err)
 		}
 
 		allHostnames = append(allHostnames, fqdn)
