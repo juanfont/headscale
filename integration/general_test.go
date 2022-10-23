@@ -94,7 +94,7 @@ func TestPingAllByHostname(t *testing.T) {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
 
-	var allClients []*tsic.TailscaleInContainer
+	var allClients []TailscaleClient
 	var allHostnames []string
 
 	for namespace := range spec {
@@ -114,7 +114,7 @@ func TestPingAllByHostname(t *testing.T) {
 	for _, client := range allClients {
 		fqdn, err := client.FQDN()
 		if err != nil {
-			t.Errorf("failed to get fqdn of client %s: %s", client.Hostname, err)
+			t.Errorf("failed to get fqdn of client %s: %s", client.Hostname(), err)
 		}
 
 		allHostnames = append(allHostnames, fqdn)
@@ -126,7 +126,7 @@ func TestPingAllByHostname(t *testing.T) {
 		for _, hostname := range allHostnames {
 			err := client.Ping(hostname)
 			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", hostname, client.Hostname, err)
+				t.Errorf("failed to ping %s from %s: %s", hostname, client.Hostname(), err)
 			} else {
 				success++
 			}
