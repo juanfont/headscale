@@ -32,5 +32,4 @@ jobs:
 
       - name: Run OIDC integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: nick-fields/retry@v2
         run: nix develop --command -- make test_integration_oidc
