@@ -2,6 +2,7 @@ package integration
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -247,6 +248,88 @@ func TestTaildrop(t *testing.T) {
 					)
 				}
 			})
+		}
+	}
+
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
+}
+
+func TestResolveMagicDNS(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario, err := NewScenario()
+	if err != nil {
+		t.Errorf("failed to create scenario: %s", err)
+	}
+
+	spec := map[string]int{
+		// Omit 1.16.2 (-1) because it does not have the FQDN field
+		"magicdns1": len(TailscaleVersions) - 1,
+		"magicdns2": len(TailscaleVersions) - 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec)
+	if err != nil {
+		t.Errorf("failed to create headscale environment: %s", err)
+	}
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	// Poor mans cache
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	if err != nil {
+		t.Errorf("failed to get FQDNs: %s", err)
+	}
+
+	_, err = scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get IPs: %s", err)
+	}
+
+	for _, client := range allClients {
+		for _, peer := range allClients {
+			// It is safe to ignore this error as we handled it when caching it
+			peerFQDN, _ := peer.FQDN()
+
+			command := []string{
+				"tailscale",
+				"ip", peerFQDN,
+			}
+			result, err := client.Execute(command)
+			if err != nil {
+				t.Errorf(
+					"failed to execute resolve/ip command %s from %s: %s",
+					peerFQDN,
+					client.Hostname(),
+					err,
+				)
+			}
+
+			ips, err := peer.IPs()
+			if err != nil {
+				t.Errorf(
+					"failed to get ips for %s: %s",
+					peer.Hostname(),
+					err,
+				)
+			}
+
+			for _, ip := range ips {
+				if !strings.Contains(result, ip.String()) {
+					t.Errorf("ip %s is not found in \n%s\n", ip.String(), result)
+				}
+			}
 		}
 	}
 
