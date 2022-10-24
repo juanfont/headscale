@@ -156,7 +156,6 @@ func (t *TailscaleInContainer) Up(
 	return nil
 }
 
-// TODO(kradalby): Make cached/lazy.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	if t.ips != nil && len(t.ips) != 0 {
 		return t.ips, nil
