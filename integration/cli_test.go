@@ -2,6 +2,7 @@ package integration
 
 import (
 	"encoding/json"
+	"sort"
 	"testing"
 	"time"
 
@@ -51,10 +52,13 @@ func TestNamespaceCommand(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
+	result := []string{listNamespaces[0].Name, listNamespaces[1].Name}
+	sort.Strings(result)
+
 	assert.Equal(
 		t,
 		[]string{"namespace1", "namespace2"},
-		[]string{listNamespaces[0].Name, listNamespaces[1].Name},
+		result,
 	)
 
 	_, err = scenario.Headscale().Execute(
@@ -83,10 +87,13 @@ func TestNamespaceCommand(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
+	result = []string{listAfterRenameNamespaces[0].Name, listAfterRenameNamespaces[1].Name}
+	sort.Strings(result)
+
 	assert.Equal(
 		t,
 		[]string{"namespace1", "newname"},
-		[]string{listAfterRenameNamespaces[0].Name, listAfterRenameNamespaces[1].Name},
+		result,
 	)
 
 	err = scenario.Shutdown()
