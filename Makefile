@@ -74,7 +74,7 @@ test_integration_v2_general:
 		-v $$PWD:$$PWD -w $$PWD/integration \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		golang:1 \
-		go test ./... -timeout 15m -v
+		go test ./... -timeout 30m
 
 coverprofile_func:
 	go tool cover -func=coverage.out
