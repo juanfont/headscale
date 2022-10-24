@@ -237,3 +237,141 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	err = scenario.Shutdown()
 	assert.NoError(t, err)
 }
+
+func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	namespace := "pre-auth-key-without-exp-namespace"
+
+	scenario, err := NewScenario()
+	assert.NoError(t, err)
+
+	spec := map[string]int{
+		namespace: 0,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec)
+	assert.NoError(t, err)
+
+	var preAuthKey v1.PreAuthKey
+	err = executeAndUnmarshal(
+		scenario.Headscale(),
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace,
+			"create",
+			"--reusable",
+			"--output",
+			"json",
+		},
+		&preAuthKey,
+	)
+	assert.NoError(t, err)
+
+	var listedPreAuthKeys []v1.PreAuthKey
+	err = executeAndUnmarshal(
+		scenario.Headscale(),
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace,
+			"list",
+			"--output",
+			"json",
+		},
+		&listedPreAuthKeys,
+	)
+	assert.NoError(t, err)
+
+	// There is one key created by "scenario.CreateHeadscaleEnv"
+	assert.Len(t, listedPreAuthKeys, 2)
+
+	assert.True(t, listedPreAuthKeys[1].Expiration.AsTime().After(time.Now()))
+	assert.True(
+		t,
+		listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Minute*70)),
+	)
+
+	err = scenario.Shutdown()
+	assert.NoError(t, err)
+}
+
+func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	namespace := "pre-auth-key-reus-ephm-namespace"
+
+	scenario, err := NewScenario()
+	assert.NoError(t, err)
+
+	spec := map[string]int{
+		namespace: 0,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec)
+	assert.NoError(t, err)
+
+	var preAuthReusableKey v1.PreAuthKey
+	err = executeAndUnmarshal(
+		scenario.Headscale(),
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace,
+			"create",
+			"--reusable=true",
+			"--output",
+			"json",
+		},
+		&preAuthReusableKey,
+	)
+	assert.NoError(t, err)
+
+	var preAuthEphemeralKey v1.PreAuthKey
+	err = executeAndUnmarshal(
+		scenario.Headscale(),
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace,
+			"create",
+			"--ephemeral=true",
+			"--output",
+			"json",
+		},
+		&preAuthEphemeralKey,
+	)
+	assert.NoError(t, err)
+
+	assert.True(t, preAuthEphemeralKey.GetEphemeral())
+	assert.False(t, preAuthEphemeralKey.GetReusable())
+
+	var listedPreAuthKeys []v1.PreAuthKey
+	err = executeAndUnmarshal(
+		scenario.Headscale(),
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--namespace",
+			namespace,
+			"list",
+			"--output",
+			"json",
+		},
+		&listedPreAuthKeys,
+	)
+	assert.NoError(t, err)
+
+	// There is one key created by "scenario.CreateHeadscaleEnv"
+	assert.Len(t, listedPreAuthKeys, 3)
+
+	err = scenario.Shutdown()
+	assert.NoError(t, err)
+}
