@@ -121,15 +121,15 @@ func (t *TailscaleInContainer) Execute(
 	if err != nil {
 		log.Printf("command stderr: %s\n", stderr)
 
+		if stdout != "" {
+			log.Printf("command stdout: %s\n", stdout)
+		}
+
 		if strings.Contains(stderr, "NeedsLogin") {
 			return "", errTailscaleNotLoggedIn
 		}
 
 		return "", err
-	}
-
-	if stdout != "" {
-		log.Printf("command stdout: %s\n", stdout)
 	}
 
 	return stdout, nil
