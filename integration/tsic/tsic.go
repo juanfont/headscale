@@ -121,15 +121,15 @@ func (t *TailscaleInContainer) Execute(
 	if err != nil {
 		log.Printf("command stderr: %s\n", stderr)
 
+		if stdout != "" {
+			log.Printf("command stdout: %s\n", stdout)
+		}
+
 		if strings.Contains(stderr, "NeedsLogin") {
 			return "", errTailscaleNotLoggedIn
 		}
 
 		return "", err
-	}
-
-	if stdout != "" {
-		log.Printf("command stdout: %s\n", stdout)
 	}
 
 	return stdout, nil
@@ -156,7 +156,6 @@ func (t *TailscaleInContainer) Up(
 	return nil
 }
 
-// TODO(kradalby): Make cached/lazy.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	if t.ips != nil && len(t.ips) != 0 {
 		return t.ips, nil
