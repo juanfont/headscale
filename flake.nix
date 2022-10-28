@@ -38,16 +38,16 @@
 
         golines = pkgs.buildGoModule rec {
           pname = "golines";
-          version = "0.9.0";
+          version = "0.11.0";
 
           src = pkgs.fetchFromGitHub {
             owner = "segmentio";
             repo = "golines";
             rev = "v${version}";
-            sha256 = "sha256-BUXEg+4r9L/gqe4DhTlhN55P3jWt7ZyWFQycO6QePrw=";
+            sha256 = "sha256-2K9KAg8iSubiTbujyFGN3yggrL+EDyeUCs9OOta/19A=";
           };
 
-          vendorSha256 = "sha256-nbPCCqGqBFtfbrCeT2WgtUZ+6DerV/bpYpkXtoRaCHE=";
+          vendorSha256 = "sha256-rxYuzn4ezAxaeDhxd8qdOzt+CKYIh03A9zKNdzILq18=";
 
           nativeBuildInputs = [pkgs.installShellFiles];
         };
