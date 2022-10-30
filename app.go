@@ -24,7 +24,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/puzpuzpuz/xsync"
+	"github.com/puzpuzpuz/xsync/v2"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/acme"
@@ -94,7 +94,7 @@ type Headscale struct {
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
 
-	lastStateChange *xsync.MapOf[time.Time]
+	lastStateChange *xsync.MapOf[string, time.Time]
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -884,7 +884,7 @@ func (h *Headscale) setLastStateChangeToNow() {
 
 	now := time.Now().UTC()
 
-	namespaces, err := h.ListNamespacesStr()
+	namespaces, err := h.ListNamespaces()
 	if err != nil {
 		log.Error().
 			Caller().
@@ -893,22 +893,22 @@ func (h *Headscale) setLastStateChangeToNow() {
 	}
 
 	for _, namespace := range namespaces {
-		lastStateUpdate.WithLabelValues(namespace, "headscale").Set(float64(now.Unix()))
+		lastStateUpdate.WithLabelValues(namespace.Name, "headscale").Set(float64(now.Unix()))
 		if h.lastStateChange == nil {
 			h.lastStateChange = xsync.NewMapOf[time.Time]()
 		}
-		h.lastStateChange.Store(namespace, now)
+		h.lastStateChange.Store(namespace.Name, now)
 	}
 }
 
-func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
+func (h *Headscale) getLastStateChange(namespaces ...Namespace) time.Time {
 	times := []time.Time{}
 
 	// getLastStateChange takes a list of namespaces as a "filter", if no namespaces
 	// are past, then use the entier list of namespaces and look for the last update
 	if len(namespaces) > 0 {
 		for _, namespace := range namespaces {
-			if lastChange, ok := h.lastStateChange.Load(namespace); ok {
+			if lastChange, ok := h.lastStateChange.Load(namespace.Name); ok {
 				times = append(times, lastChange)
 			}
 		}

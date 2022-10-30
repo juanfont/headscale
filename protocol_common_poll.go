@@ -449,7 +449,7 @@ func (h *Headscale) pollNetMapStream(
 					Bool("noise", isNoise).
 					Str("machine", machine.Hostname).
 					Time("last_successful_update", lastUpdate).
-					Time("last_state_change", h.getLastStateChange(machine.Namespace.Name)).
+					Time("last_state_change", h.getLastStateChange(machine.Namespace)).
 					Msgf("There has been updates since the last successful update to %s", machine.Hostname)
 				data, err := h.getMapResponseData(mapRequest, machine, false)
 				if err != nil {
@@ -549,7 +549,7 @@ func (h *Headscale) pollNetMapStream(
 					Bool("noise", isNoise).
 					Str("machine", machine.Hostname).
 					Time("last_successful_update", lastUpdate).
-					Time("last_state_change", h.getLastStateChange(machine.Namespace.Name)).
+					Time("last_state_change", h.getLastStateChange(machine.Namespace)).
 					Msgf("%s is up to date", machine.Hostname)
 			}
 
