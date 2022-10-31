@@ -19,6 +19,7 @@ import (
 
 const (
 	HeadscaleDateTimeFormat = "2006-01-02 15:04:05"
+	SocketWritePermissions  = 0o666
 )
 
 func getHeadscaleApp() (*headscale.Headscale, error) {
@@ -83,7 +84,7 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 
 		// Try to give the user better feedback if we cannot write to the headscale
 		// socket.
-		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, 0o666)
+		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, SocketWritePermissions)
 		if err != nil {
 			if os.IsPermission(err) {
 				log.Fatal().
