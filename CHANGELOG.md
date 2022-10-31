@@ -21,6 +21,7 @@
 - Add config flag to allow Headscale to start if OIDC provider is down [#829](https://github.com/juanfont/headscale/pull/829)
 - Random node DNS suffix only applied if names collide in namespace. [#766](https://github.com/juanfont/headscale/issues/766)
 - Remove `ip_prefix` configuration option and warning [#899](https://github.com/juanfont/headscale/pull/899)
+- Add `dns_config.override_local_dns` option [#905](https://github.com/juanfont/headscale/pull/905)
 
 ## 0.16.4 (2022-08-21)
 
