@@ -148,21 +148,6 @@ func (h *Headscale) ListNamespaces() ([]Namespace, error) {
 	return namespaces, nil
 }
 
-func (h *Headscale) ListNamespacesStr() ([]string, error) {
-	namespaces, err := h.ListNamespaces()
-	if err != nil {
-		return []string{}, err
-	}
-
-	namespaceStrs := make([]string, len(namespaces))
-
-	for index, namespace := range namespaces {
-		namespaceStrs[index] = namespace.Name
-	}
-
-	return namespaceStrs, nil
-}
-
 // ListMachinesInNamespace gets all the nodes in a given namespace.
 func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
 	err := CheckForFQDNRules(name)

@@ -469,22 +469,6 @@ func GetHeadscaleConfig() (*Config, error) {
 	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
 	parsedPrefixes := make([]netip.Prefix, 0, len(configuredPrefixes)+1)
 
-	legacyPrefixField := viper.GetString("ip_prefix")
-	if len(legacyPrefixField) > 0 {
-		log.
-			Warn().
-			Msgf(
-				"%s, %s",
-				"use of 'ip_prefix' for configuration is deprecated",
-				"please see 'ip_prefixes' in the shipped example.",
-			)
-		legacyPrefix, err := netip.ParsePrefix(legacyPrefixField)
-		if err != nil {
-			panic(fmt.Errorf("failed to parse ip_prefix: %w", err))
-		}
-		parsedPrefixes = append(parsedPrefixes, legacyPrefix)
-	}
-
 	for i, prefixInConfig := range configuredPrefixes {
 		prefix, err := netip.ParsePrefix(prefixInConfig)
 		if err != nil {

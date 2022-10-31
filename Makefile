@@ -24,7 +24,7 @@ dev: lint test build
 test:
 	@go test -short -coverprofile=coverage.out ./...
 
-test_integration: test_integration_cli test_integration_derp test_integration_oidc test_integration_general
+test_integration: test_integration_cli test_integration_derp test_integration_oidc test_integration_v2_general
 
 test_integration_cli:
 	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
@@ -46,16 +46,6 @@ test_integration_derp:
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
 		go test -failfast -timeout 30m -count=1 -run IntegrationDERP ./...
 
-test_integration_general:
-	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
-	docker network create headscale-test || true
-	docker run -t --rm \
-		--network headscale-test \
-		-v ~/.cache/hs-integration-go:/go \
-		-v $$PWD:$$PWD -w $$PWD \
-		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test -failfast -timeout 30m -count=1 -run IntegrationGeneral ./...
-
 test_integration_oidc:
 	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
 	docker network create headscale-test || true
@@ -74,7 +64,7 @@ test_integration_v2_general:
 		-v $$PWD:$$PWD -w $$PWD/integration \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		golang:1 \
-		go test ./... -timeout 15m -v
+		go test ./... -timeout 60m
 
 coverprofile_func:
 	go tool cover -func=coverage.out

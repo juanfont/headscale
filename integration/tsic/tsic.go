@@ -34,6 +34,10 @@ type TailscaleInContainer struct {
 	pool      *dockertest.Pool
 	container *dockertest.Resource
 	network   *dockertest.Network
+
+	// "cache"
+	ips  []netip.Addr
+	fqdn string
 }
 
 func New(
@@ -46,7 +50,7 @@ func New(
 		return nil, err
 	}
 
-	hostname := fmt.Sprintf("ts-%s-%s", version, hash)
+	hostname := fmt.Sprintf("ts-%s-%s", strings.ReplaceAll(version, ".", "-"), hash)
 
 	// TODO(kradalby): figure out why we need to "refresh" the network here.
 	// network, err = dockertestutil.GetFirstOrCreateNetwork(pool, network.Network.Name)
@@ -104,6 +108,33 @@ func (t *TailscaleInContainer) Version() string {
 	return t.version
 }
 
+func (t *TailscaleInContainer) Execute(
+	command []string,
+) (string, error) {
+	log.Println("command", command)
+	log.Printf("running command for %s\n", t.hostname)
+	stdout, stderr, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		log.Printf("command stderr: %s\n", stderr)
+
+		if stdout != "" {
+			log.Printf("command stdout: %s\n", stdout)
+		}
+
+		if strings.Contains(stderr, "NeedsLogin") {
+			return "", errTailscaleNotLoggedIn
+		}
+
+		return "", err
+	}
+
+	return stdout, nil
+}
+
 func (t *TailscaleInContainer) Up(
 	loginServer, authKey string,
 ) error {
@@ -118,30 +149,18 @@ func (t *TailscaleInContainer) Up(
 		t.hostname,
 	}
 
-	log.Println("Join command:", command)
-	log.Printf("Running join command for %s\n", t.hostname)
-	stdout, stderr, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
-	if err != nil {
-		log.Printf("tailscale join stderr: %s\n", stderr)
-
-		return err
+	if _, err := t.Execute(command); err != nil {
+		return fmt.Errorf("failed to join tailscale client: %w", err)
 	}
-
-	if stdout != "" {
-		log.Printf("tailscale join stdout: %s\n", stdout)
-	}
-
-	log.Printf("%s joined\n", t.hostname)
 
 	return nil
 }
 
-// TODO(kradalby): Make cached/lazy.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
+	if t.ips != nil && len(t.ips) != 0 {
+		return t.ips, nil
+	}
+
 	ips := make([]netip.Addr, 0)
 
 	command := []string{
@@ -149,19 +168,9 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		"ip",
 	}
 
-	result, stderr, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	result, err := t.Execute(command)
 	if err != nil {
-		log.Printf("failed commands stderr: %s\n", stderr)
-
-		if strings.Contains(stderr, "NeedsLogin") {
-			return []netip.Addr{}, errTailscaleNotLoggedIn
-		}
-
-		return []netip.Addr{}, err
+		return []netip.Addr{}, fmt.Errorf("failed to join tailscale client: %w", err)
 	}
 
 	for _, address := range strings.Split(result, "\n") {
@@ -186,11 +195,7 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 		"--json",
 	}
 
-	result, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
+	result, err := t.Execute(command)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute tailscale status command: %w", err)
 	}
@@ -202,6 +207,19 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 	}
 
 	return &status, err
+}
+
+func (t *TailscaleInContainer) FQDN() (string, error) {
+	if t.fqdn != "" {
+		return t.fqdn, nil
+	}
+
+	status, err := t.Status()
+	if err != nil {
+		return "", fmt.Errorf("failed to get FQDN: %w", err)
+	}
+
+	return status.Self.DNSName, nil
 }
 
 func (t *TailscaleInContainer) WaitForPeers(expected int) error {
@@ -220,26 +238,22 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 }
 
 // TODO(kradalby): Make multiping, go routine magic.
-func (t *TailscaleInContainer) Ping(ip netip.Addr) error {
+func (t *TailscaleInContainer) Ping(hostnameOrIP string) error {
 	return t.pool.Retry(func() error {
 		command := []string{
 			"tailscale", "ping",
 			"--timeout=1s",
 			"--c=10",
 			"--until-direct=true",
-			ip.String(),
+			hostnameOrIP,
 		}
 
-		result, _, err := dockertestutil.ExecuteCommand(
-			t.container,
-			command,
-			[]string{},
-		)
+		result, err := t.Execute(command)
 		if err != nil {
 			log.Printf(
 				"failed to run ping command from %s to %s, err: %s",
-				t.hostname,
-				ip.String(),
+				t.Hostname(),
+				hostnameOrIP,
 				err,
 			)
 

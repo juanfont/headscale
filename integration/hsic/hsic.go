@@ -103,6 +103,29 @@ func (t *HeadscaleInContainer) Shutdown() error {
 	return t.pool.Purge(t.container)
 }
 
+func (t *HeadscaleInContainer) Execute(
+	command []string,
+) (string, error) {
+	log.Println("command", command)
+	log.Printf("running command for %s\n", t.hostname)
+	stdout, stderr, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		log.Printf("command stderr: %s\n", stderr)
+
+		return "", err
+	}
+
+	if stdout != "" {
+		log.Printf("command stdout: %s\n", stdout)
+	}
+
+	return stdout, nil
+}
+
 func (t *HeadscaleInContainer) GetIP() string {
 	return t.container.GetIPInNetwork(t.network)
 }
@@ -199,7 +222,7 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
-func (t *HeadscaleInContainer) ListNodes(
+func (t *HeadscaleInContainer) ListMachinesInNamespace(
 	namespace string,
 ) ([]*v1.Machine, error) {
 	command := []string{"headscale", "--namespace", namespace, "nodes", "list", "--output", "json"}
