@@ -14,6 +14,7 @@ derp:
   urls:
     - https://controlplane.tailscale.com/derpmap/default
 dns_config:
+  override_local_dns: true
   base_domain: headscale.net
   domains: []
   magic_dns: true

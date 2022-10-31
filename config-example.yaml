@@ -192,6 +192,9 @@ acl_policy_path: ""
 # - https://tailscale.com/blog/2021-09-private-dns-with-magicdns/
 #
 dns_config:
+  # Whether to prefer using Headscale provided DNS or use local.
+  override_local_dns: true
+
   # List of DNS servers to expose to clients.
   nameservers:
     - 1.1.1.1
