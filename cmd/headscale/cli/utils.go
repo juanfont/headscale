@@ -81,6 +81,19 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 
 		address = cfg.UnixSocket
 
+		// Try to give the user better feedback if we cannot write to the headscale
+		// socket.
+		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, 0o666)
+		if err != nil {
+			if os.IsPermission(err) {
+				log.Fatal().
+					Err(err).
+					Str("socket", cfg.UnixSocket).
+					Msgf("Unable to read/write to headscale socket, do you have the correct permissions?")
+			}
+		}
+		socket.Close()
+
 		grpcOptions = append(
 			grpcOptions,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
