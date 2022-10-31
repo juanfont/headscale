@@ -160,6 +160,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("log.format", TextLogFormat)
 
 	viper.SetDefault("dns_config", nil)
+	viper.SetDefault("dns_config.override_local_dns", true)
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
@@ -377,6 +378,8 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	if viper.IsSet("dns_config") {
 		dnsConfig := &tailcfg.DNSConfig{}
 
+		overrideLocalDNS := viper.GetBool("dns_config.override_local_dns")
+
 		if viper.IsSet("dns_config.nameservers") {
 			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
 
@@ -399,7 +402,12 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			}
 
 			dnsConfig.Nameservers = nameservers
-			dnsConfig.Resolvers = resolvers
+
+			if overrideLocalDNS {
+				dnsConfig.Resolvers = resolvers
+			} else {
+				dnsConfig.FallbackResolvers = resolvers
+			}
 		}
 
 		if viper.IsSet("dns_config.restricted_nameservers") {
