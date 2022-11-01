@@ -1132,7 +1132,8 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 
 	defaultRoute := netip.MustParsePrefix("0.0.0.0/0")
 	route1 := netip.MustParsePrefix("10.10.0.0/16")
-	route2 := netip.MustParsePrefix("10.11.0.0/16")
+	// Check if a subprefix of an autoapproved route is approved
+	route2 := netip.MustParsePrefix("10.11.0.0/24")
 
 	machine := Machine{
 		ID:             0,

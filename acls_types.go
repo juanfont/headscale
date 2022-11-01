@@ -125,7 +125,7 @@ func (autoApprovers *AutoApprovers) GetRouteApprovers(
 			return nil, err
 		}
 
-		if autoApprovedPrefix.Bits() >= prefix.Bits() &&
+		if prefix.Bits() >= autoApprovedPrefix.Bits() &&
 			autoApprovedPrefix.Contains(prefix.Masked().Addr()) {
 			approverAliases = append(approverAliases, autoApproverAliases...)
 		}
