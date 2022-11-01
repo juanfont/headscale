@@ -26,25 +26,28 @@
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
 
+          # Only run unit tests when testing a build
+          checkFlags = ["-short"];
+
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorSha256 = "sha256-DosFCSiQ5FURbIrt4NcPGkExc84t2MGMqe9XLxNHdIM=";
+          vendorSha256 = "sha256-Cq0WipTQ+kGcvnfP0kjyvjyonl2OC9W7Tj0MCuB1lDU=";
 
           ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
         };
 
         golines = pkgs.buildGoModule rec {
           pname = "golines";
-          version = "0.9.0";
+          version = "0.11.0";
 
           src = pkgs.fetchFromGitHub {
             owner = "segmentio";
             repo = "golines";
             rev = "v${version}";
-            sha256 = "sha256-BUXEg+4r9L/gqe4DhTlhN55P3jWt7ZyWFQycO6QePrw=";
+            sha256 = "sha256-2K9KAg8iSubiTbujyFGN3yggrL+EDyeUCs9OOta/19A=";
           };
 
-          vendorSha256 = "sha256-sEzWUeVk5GB0H41wrp12P8sBWRjg0FHUX6ABDEEBqK8=";
+          vendorSha256 = "sha256-rxYuzn4ezAxaeDhxd8qdOzt+CKYIh03A9zKNdzILq18=";
 
           nativeBuildInputs = [pkgs.installShellFiles];
         };

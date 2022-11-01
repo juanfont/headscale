@@ -1,5 +1,4 @@
-//go:build integration_derp
-
+//nolint
 package headscale
 
 import (
@@ -17,13 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ccding/go-stun/stun"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/ccding/go-stun/stun"
 )
 
 const (
@@ -46,7 +44,11 @@ type IntegrationDERPTestSuite struct {
 	joinWaitGroup sync.WaitGroup
 }
 
-func TestDERPIntegrationTestSuite(t *testing.T) {
+func TestIntegrationDERPTestSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false
@@ -120,7 +122,6 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	}
 
 	headscaleOptions := &dockertest.RunOptions{
-
 		Name: headscaleDerpHostname,
 		Mounts: []string{
 			fmt.Sprintf(

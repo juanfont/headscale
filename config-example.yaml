@@ -164,7 +164,7 @@ tls_letsencrypt_cache_dir: /var/lib/headscale/cache
 # See [docs/tls.md](docs/tls.md) for more information
 tls_letsencrypt_challenge_type: HTTP-01
 # When HTTP-01 challenge is chosen, letsencrypt must set up a
-# verification endpoint, and it will be listning on:
+# verification endpoint, and it will be listening on:
 # :http = port 80
 tls_letsencrypt_listen: ":http"
 
@@ -192,6 +192,9 @@ acl_policy_path: ""
 # - https://tailscale.com/blog/2021-09-private-dns-with-magicdns/
 #
 dns_config:
+  # Whether to prefer using Headscale provided DNS or use local.
+  override_local_dns: true
+
   # List of DNS servers to expose to clients.
   nameservers:
     - 1.1.1.1

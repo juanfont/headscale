@@ -1,5 +1,4 @@
-//go:build integration_oidc
-
+//nolint
 package headscale
 
 import (
@@ -45,7 +44,11 @@ type IntegrationOIDCTestSuite struct {
 	joinWaitGroup sync.WaitGroup
 }
 
-func TestOIDCIntegrationTestSuite(t *testing.T) {
+func TestIntegrationOIDCTestSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+
 	saveLogs, err := GetEnvBool("HEADSCALE_INTEGRATION_SAVE_LOG")
 	if err != nil {
 		saveLogs = false
@@ -197,7 +200,7 @@ oidc:
 	log.Println(config)
 
 	configPath := path.Join(currentPath, "integration_test/etc_oidc/config.yaml")
-	err = os.WriteFile(configPath, []byte(config), 0644)
+	err = os.WriteFile(configPath, []byte(config), 0o644)
 	if err != nil {
 		s.FailNow(fmt.Sprintf("Could not write config: %s", err), "")
 	}

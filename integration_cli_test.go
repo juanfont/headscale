@@ -1,5 +1,4 @@
-//go:build integration_cli
-
+//nolint
 package headscale
 
 import (
@@ -28,7 +27,11 @@ type IntegrationCLITestSuite struct {
 	env       []string
 }
 
-func TestCLIIntegrationTestSuite(t *testing.T) {
+func TestIntegrationCLITestSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+
 	s := new(IntegrationCLITestSuite)
 
 	suite.Run(t, s)

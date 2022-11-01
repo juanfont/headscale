@@ -20,6 +20,10 @@
 - Add support for evaluating `autoApprovers` ACL entries when a machine is registered [#763](https://github.com/juanfont/headscale/pull/763)
 - Add config flag to allow Headscale to start if OIDC provider is down [#829](https://github.com/juanfont/headscale/pull/829)
 - Fix prefix length comparison bug in AutoApprovers route evaluation [#862](https://github.com/juanfont/headscale/pull/862)
+- Random node DNS suffix only applied if names collide in namespace. [#766](https://github.com/juanfont/headscale/issues/766)
+- Remove `ip_prefix` configuration option and warning [#899](https://github.com/juanfont/headscale/pull/899)
+- Add `dns_config.override_local_dns` option [#905](https://github.com/juanfont/headscale/pull/905)
+- Fix some DNS config issues [#660](https://github.com/juanfont/headscale/issues/660)
 
 ## 0.16.4 (2022-08-21)
 

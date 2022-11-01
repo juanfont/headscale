@@ -3,7 +3,7 @@ name: CI
 on: [pull_request]
 
 jobs:
-  integration-test:
+  integration-test-v2-general:
     runs-on: ubuntu-latest
 
     steps:
@@ -32,9 +32,4 @@ jobs:
 
       - name: Run general integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 240
-          max_attempts: 5
-          retry_on: error
-          command: nix develop --command -- make test_integration_general
+        run: nix develop --command -- make test_integration_v2_general
