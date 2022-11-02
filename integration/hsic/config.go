@@ -1,16 +1,7 @@
 package hsic
 
 import (
-	"net/netip"
-	"net/url"
-	"os"
-	"path"
 	"time"
-
-	"github.com/juanfont/headscale"
-	"github.com/rs/zerolog"
-	"tailscale.com/tailcfg"
-	"tailscale.com/types/dnstype"
 )
 
 const (
@@ -18,57 +9,59 @@ const (
 	defaultNodeUpdateCheckInterval        = time.Second * 10
 )
 
-func DefaultConfig() headscale.Config {
-	derpMap, _ := url.Parse("https://controlplane.tailscale.com/derpmap/default")
-
-	config := headscale.Config{
-		Log: headscale.LogConfig{
-			Level: zerolog.TraceLevel,
-		},
-		ACL:                            headscale.GetACLConfig(),
-		DBtype:                         "sqlite3",
-		EphemeralNodeInactivityTimeout: defaultEphemeralNodeInactivityTimeout,
-		NodeUpdateCheckInterval:        defaultNodeUpdateCheckInterval,
-		IPPrefixes: []netip.Prefix{
-			netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
-			netip.MustParsePrefix("100.64.0.0/10"),
-		},
-		DNSConfig: &tailcfg.DNSConfig{
-			Proxied: true,
-			Nameservers: []netip.Addr{
-				netip.MustParseAddr("127.0.0.11"),
-				netip.MustParseAddr("1.1.1.1"),
-			},
-			Resolvers: []*dnstype.Resolver{
-				{
-					Addr: "127.0.0.11",
-				},
-				{
-					Addr: "1.1.1.1",
-				},
-			},
-		},
-		BaseDomain: "headscale.net",
-
-		DBpath: "/tmp/integration_test_db.sqlite3",
-
-		PrivateKeyPath:      "/tmp/integration_private.key",
-		NoisePrivateKeyPath: "/tmp/noise_integration_private.key",
-		Addr:                "0.0.0.0:8080",
-		MetricsAddr:         "127.0.0.1:9090",
-		ServerURL:           "http://headscale:8080",
-
-		DERP: headscale.DERPConfig{
-			URLs: []url.URL{
-				*derpMap,
-			},
-			AutoUpdate:      false,
-			UpdateFrequency: 1 * time.Minute,
-		},
-	}
-
-	return config
-}
+// TODO(kradalby): This approach doesnt work because we cannot
+// serialise our config object to YAML or JSON.
+// func DefaultConfig() headscale.Config {
+// 	derpMap, _ := url.Parse("https://controlplane.tailscale.com/derpmap/default")
+//
+// 	config := headscale.Config{
+// 		Log: headscale.LogConfig{
+// 			Level: zerolog.TraceLevel,
+// 		},
+// 		ACL:                            headscale.GetACLConfig(),
+// 		DBtype:                         "sqlite3",
+// 		EphemeralNodeInactivityTimeout: defaultEphemeralNodeInactivityTimeout,
+// 		NodeUpdateCheckInterval:        defaultNodeUpdateCheckInterval,
+// 		IPPrefixes: []netip.Prefix{
+// 			netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
+// 			netip.MustParsePrefix("100.64.0.0/10"),
+// 		},
+// 		DNSConfig: &tailcfg.DNSConfig{
+// 			Proxied: true,
+// 			Nameservers: []netip.Addr{
+// 				netip.MustParseAddr("127.0.0.11"),
+// 				netip.MustParseAddr("1.1.1.1"),
+// 			},
+// 			Resolvers: []*dnstype.Resolver{
+// 				{
+// 					Addr: "127.0.0.11",
+// 				},
+// 				{
+// 					Addr: "1.1.1.1",
+// 				},
+// 			},
+// 		},
+// 		BaseDomain: "headscale.net",
+//
+// 		DBpath: "/tmp/integration_test_db.sqlite3",
+//
+// 		PrivateKeyPath:      "/tmp/integration_private.key",
+// 		NoisePrivateKeyPath: "/tmp/noise_integration_private.key",
+// 		Addr:                "0.0.0.0:8080",
+// 		MetricsAddr:         "127.0.0.1:9090",
+// 		ServerURL:           "http://headscale:8080",
+//
+// 		DERP: headscale.DERPConfig{
+// 			URLs: []url.URL{
+// 				*derpMap,
+// 			},
+// 			AutoUpdate:      false,
+// 			UpdateFrequency: 1 * time.Minute,
+// 		},
+// 	}
+//
+// 	return config
+// }
 
 // TODO: Reuse the actual configuration object above.
 func DefaultConfigYAML() string {
@@ -105,18 +98,4 @@ derp:
 `
 
 	return yaml
-}
-
-func TempConfigPath(name string, config string) (string, error) {
-	tempDir, err := os.CreateTemp("", name)
-	if err != nil {
-		return "", err
-	}
-
-	err = os.WriteFile(path.Join(tempDir.Name(), "config.yaml"), []byte(config), 0644)
-	if err != nil {
-		return "", err
-	}
-
-	return tempDir.Name(), nil
 }
