@@ -65,7 +65,7 @@ const (
 	ZstdCompression = "zstd"
 )
 
-var NodePublicKeyRegex = regexp.MustCompile("nodekey:[a-fA-F0-9]+")
+var NodePublicKeyRegex = regexp.MustCompile("(nodekey:)?[a-fA-F0-9]+")
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
 	return strings.TrimPrefix(machineKey.String(), machinePublicHexPrefix)
