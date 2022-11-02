@@ -42,7 +42,7 @@ func New(
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile",
+		Dockerfile: "Dockerfile.debug",
 		ContextDir: dockerContextPath,
 	}
 
