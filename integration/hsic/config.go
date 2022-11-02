@@ -102,7 +102,7 @@ derp:
     - https://controlplane.tailscale.com/derpmap/default
   auto_update_enabled: false
   update_frequency: 1m
-	`
+`
 
 	return yaml
 }
