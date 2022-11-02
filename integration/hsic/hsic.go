@@ -21,6 +21,7 @@ import (
 const (
 	hsicHashLength    = 6
 	dockerContextPath = "../."
+	aclPolicyPath     = "/etc/headscale/acl.hujson"
 )
 
 var errHeadscaleStatusCodeNotOk = errors.New("headscale status code not ok")
@@ -32,25 +33,66 @@ type HeadscaleInContainer struct {
 	pool      *dockertest.Pool
 	container *dockertest.Resource
 	network   *dockertest.Network
+
+	// optional config
+	aclPolicy *headscale.ACLPolicy
+	env       []string
+}
+
+type Option = func(c *HeadscaleInContainer)
+
+func WithACLPolicy(acl *headscale.ACLPolicy) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.aclPolicy = acl
+	}
+}
+
+func WithConfigEnv(configEnv map[string]string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		env := []string{}
+
+		for key, value := range configEnv {
+			env = append(env, fmt.Sprintf("%s=%s", key, value))
+		}
+
+		hsic.env = env
+	}
 }
 
 func New(
 	pool *dockertest.Pool,
 	port int,
 	network *dockertest.Network,
+	opts ...Option,
 ) (*HeadscaleInContainer, error) {
 	hash, err := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
 	if err != nil {
 		return nil, err
 	}
 
+	hostname := fmt.Sprintf("hs-%s", hash)
+	portProto := fmt.Sprintf("%d/tcp", port)
+
+	hsic := &HeadscaleInContainer{
+		hostname: hostname,
+		port:     port,
+
+		pool:    pool,
+		network: network,
+	}
+
+	for _, opt := range opts {
+		opt(hsic)
+	}
+
+	if hsic.aclPolicy != nil {
+		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_ACL_POLICY_PATH=%s", aclPolicyPath))
+	}
+
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile.debug",
 		ContextDir: dockerContextPath,
 	}
-
-	hostname := fmt.Sprintf("hs-%s", hash)
-	portProto := fmt.Sprintf("%d/tcp", port)
 
 	runOptions := &dockertest.RunOptions{
 		Name:         hostname,
@@ -60,6 +102,7 @@ func New(
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
 		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; headscale serve"},
+		Env:        hsic.env,
 	}
 
 	// dockertest isnt very good at handling containers that has already
@@ -82,18 +125,23 @@ func New(
 	}
 	log.Printf("Created %s container\n", hostname)
 
-	hsic := &HeadscaleInContainer{
-		hostname: hostname,
-		port:     port,
-
-		pool:      pool,
-		container: container,
-		network:   network,
-	}
+	hsic.container = container
 
 	err = hsic.WriteFile("/etc/headscale/config.yaml", []byte(DefaultConfigYAML()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to write headscale config to container: %w", err)
+	}
+
+	if hsic.aclPolicy != nil {
+		data, err := json.Marshal(hsic.aclPolicy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal ACL Policy to JSON: %w", err)
+		}
+
+		err = hsic.WriteFile(aclPolicyPath, data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write ACL policy to container: %w", err)
+		}
 	}
 
 	return hsic, nil
