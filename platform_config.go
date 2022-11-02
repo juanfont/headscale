@@ -283,24 +283,33 @@ func (h *Headscale) ApplePlatformConfig(
 
 	var payload bytes.Buffer
 
-	switch platform {
-	case "macos":
-		if err := macosTemplate.Execute(&payload, platformConfig); err != nil {
+	handleMacError := func(ierr error) {
+		log.Error().
+			Str("handler", "ApplePlatformConfig").
+			Err(ierr).
+			Msg("Could not render Apple macOS template")
+
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.WriteHeader(http.StatusInternalServerError)
+		_, err := writer.Write([]byte("Could not render Apple macOS template"))
+		if err != nil {
 			log.Error().
-				Str("handler", "ApplePlatformConfig").
+				Caller().
 				Err(err).
-				Msg("Could not render Apple macOS template")
+				Msg("Failed to write response")
+		}
 
-			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			writer.WriteHeader(http.StatusInternalServerError)
-			_, err := writer.Write([]byte("Could not render Apple macOS template"))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
+	}
 
+	switch platform {
+	case "macos-standlone":
+		if err := macosStandloneTemplate.Execute(&payload, platformConfig); err != nil {
+			handleMacError(err)
+			return
+		}
+	case "macos-app-store":
+		if err := macosAppStoreTemplate.Execute(&payload, platformConfig); err != nil {
+			handleMacError(err)
 			return
 		}
 	case "ios":
@@ -444,7 +453,7 @@ var iosTemplate = textTemplate.Must(textTemplate.New("iosTemplate").Parse(`
     </dict>
 `))
 
-var macosTemplate = template.Must(template.New("macosTemplate").Parse(`
+var macosAppStoreTemplate = template.Must(template.New("macosAppStoreTemplate").Parse(`
     <dict>
         <key>PayloadType</key>
         <string>io.tailscale.ipn.macos</string>
@@ -457,6 +466,23 @@ var macosTemplate = template.Must(template.New("macosTemplate").Parse(`
         <key>PayloadEnabled</key>
         <true/>
 
+        <key>ControlURL</key>
+        <string>{{.URL}}</string>
+    </dict>
+`))
+
+var macosStandloneTemplate = template.Must(template.New("macosStandloneTemplate").Parse(`
+    <dict>
+        <key>PayloadType</key>
+        <string>io.tailscale.ipn.macsys</string>
+        <key>PayloadUUID</key>
+        <string>{{.UUID}}</string>
+        <key>PayloadIdentifier</key>
+        <string>com.github.juanfont.headscale</string>
+        <key>PayloadVersion</key>
+        <integer>1</integer>
+        <key>PayloadEnabled</key>
+        <true/>
         <key>ControlURL</key>
         <string>{{.URL}}</string>
     </dict>
