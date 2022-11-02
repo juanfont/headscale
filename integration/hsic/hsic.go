@@ -52,24 +52,14 @@ func New(
 	hostname := fmt.Sprintf("hs-%s", hash)
 	portProto := fmt.Sprintf("%d/tcp", port)
 
-	currentPath, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("could not determine current path: %w", err)
-	}
-
-	integrationConfigPath := path.Join(currentPath, "..", "integration_test", "etc")
-
 	runOptions := &dockertest.RunOptions{
-		Name: hostname,
-		// TODO(kradalby): Do something clever here, can we ditch the config repo?
-		// Always generate the config from code?
-		Mounts: []string{
-			fmt.Sprintf("%s:/etc/headscale", integrationConfigPath),
-		},
+		Name:         hostname,
 		ExposedPorts: []string{portProto},
-		// TODO(kradalby): WHY do we need to bind these now that we run fully in docker?
-		Networks: []*dockertest.Network{network},
-		Cmd:      []string{"headscale", "serve"},
+		Networks:     []*dockertest.Network{network},
+		// Cmd:          []string{"headscale", "serve"},
+		// TODO(kradalby): Get rid of this hack, we currently need to give us some
+		// to inject the headscale configuration further down.
+		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; headscale serve"},
 	}
 
 	// dockertest isnt very good at handling containers that has already
@@ -92,14 +82,21 @@ func New(
 	}
 	log.Printf("Created %s container\n", hostname)
 
-	return &HeadscaleInContainer{
+	hsic := &HeadscaleInContainer{
 		hostname: hostname,
 		port:     port,
 
 		pool:      pool,
 		container: container,
 		network:   network,
-	}, nil
+	}
+
+	err = hsic.WriteFile("/etc/headscale/config.yaml", []byte(DefaultConfigYAML()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to write headscale config to container: %w", err)
+	}
+
+	return hsic, nil
 }
 
 func (t *HeadscaleInContainer) Shutdown() error {
