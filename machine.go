@@ -839,37 +839,38 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 	namespaceName string,
 	registrationMethod string,
 ) (*Machine, error) {
-	if machineInterface, ok := h.registrationCache.Get(nodeKeyStr); ok {
-		if registrationMachine, ok := machineInterface.(Machine); ok {
-			namespace, err := h.GetNamespace(namespaceName)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to find namespace in register machine from auth callback, %w",
-					err,
-				)
-			}
+	nodeKey := key.NodePublic{}
+	err := nodeKey.UnmarshalText([]byte(nodeKeyStr))
+	if err != nil {
+		log.Error().Msg("Error unmarshalling node key")
+	}
 
-			// Registration of expired machine with different namespace
-			if registrationMachine.ID != 0 &&
-				registrationMachine.NamespaceID != namespace.ID {
-				return nil, ErrDifferentRegisteredNamespace
-			}
-
-			registrationMachine.NamespaceID = namespace.ID
-			registrationMachine.RegisterMethod = registrationMethod
-
-			machine, err := h.RegisterMachine(
-				registrationMachine,
+	if registrationMachine, ok := h.machineCache.Get(nodeKey); ok {
+		namespace, err := h.GetNamespace(namespaceName)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to find namespace in register machine from auth callback, %w",
+				err,
 			)
-
-			if err == nil {
-				h.registrationCache.Delete(nodeKeyStr)
-			}
-
-			return machine, err
-		} else {
-			return nil, ErrCouldNotConvertMachineInterface
 		}
+
+		// Registration of expired machine with different namespace
+		if registrationMachine.ID != 0 &&
+			registrationMachine.NamespaceID != namespace.ID {
+			return nil, ErrDifferentRegisteredNamespace
+		}
+
+		registrationMachine.NamespaceID = namespace.ID
+		registrationMachine.RegisterMethod = registrationMethod
+
+		machine, err := h.RegisterMachine(
+			registrationMachine,
+		)
+
+		if err == nil {
+			h.machineCache.Delete(nodeKey)
+		}
+		return machine, err
 	}
 
 	return nil, ErrMachineNotFoundRegistrationCache

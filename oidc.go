@@ -103,7 +103,7 @@ func (h *Headscale) RegisterOIDC(
 	stateStr := hex.EncodeToString(randomBlob)[:32]
 
 	// place the node key into the state cache, so it can be retrieved later
-	h.registrationCache.Set(stateStr, nodeKeyStr, registerCacheExpiration)
+	h.oidcCache.Set(stateStr, nodeKeyStr, registerCacheExpiration)
 
 	// Add any extra parameter provided in the configuration to the Authorize Endpoint request
 	extras := make([]oauth2.AuthCodeOption, 0, len(h.cfg.OIDC.ExtraParams))
@@ -405,7 +405,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 	claims *IDTokenClaims,
 ) (*key.NodePublic, bool, error) {
 	// retrieve machinekey from state cache
-	machineKeyIf, machineKeyFound := h.registrationCache.Get(state)
+	machineKeyIf, machineKeyFound := h.oidcCache.Get(state)
 	if !machineKeyFound {
 		log.Error().
 			Msg("requested machine state key expired before authorisation completed")

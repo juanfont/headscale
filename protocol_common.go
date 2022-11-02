@@ -119,7 +119,7 @@ func (h *Headscale) handleRegisterCommon(
 		// is that the client will hammer headscale with requests until it gets a
 		// successful RegisterResponse.
 		if registerRequest.Followup != "" {
-			if _, ok := h.registrationCache.Get(NodePublicKeyStripPrefix(registerRequest.NodeKey)); ok {
+			if _, ok := h.machineCache.Get(registerRequest.NodeKey); ok {
 				log.Debug().
 					Caller().
 					Str("machine", registerRequest.Hostinfo.Hostname).
@@ -187,11 +187,7 @@ func (h *Headscale) handleRegisterCommon(
 			newMachine.Expiry = &registerRequest.Expiry
 		}
 
-		h.registrationCache.Set(
-			newMachine.NodeKey,
-			newMachine,
-			registerCacheExpiration,
-		)
+		h.machineCache.Set(registerRequest.NodeKey, newMachine)
 
 		h.handleNewMachineCommon(writer, registerRequest, machineKey)
 
@@ -241,11 +237,7 @@ func (h *Headscale) handleRegisterCommon(
 		h.handleMachineExpiredCommon(writer, registerRequest, *machine, machineKey)
 
 		machine.Expiry = &time.Time{}
-		h.registrationCache.Set(
-			NodePublicKeyStripPrefix(registerRequest.NodeKey),
-			*machine,
-			registerCacheExpiration,
-		)
+		h.machineCache.Set(registerRequest.NodeKey, *machine)
 
 		return
 	}
@@ -495,7 +487,7 @@ func (h *Headscale) handleNewMachineCommon(
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			NodePublicKeyStripPrefix(registerRequest.NodeKey))
+			registerRequest.NodeKey)
 	}
 
 	respBody, err := h.marshalResponse(resp, machineKey)

@@ -68,8 +68,7 @@ const (
 	HTTPShutdownTimeout = 3 * time.Second
 	privateKeyFileMode  = 0o600
 
-	registerCacheExpiration = time.Minute * 15
-	registerCacheCleanup    = time.Minute * 20
+	registerCacheCleanup = time.Minute * 20
 
 	DisabledClientAuth = "disabled"
 	RelaxedClientAuth  = "relaxed"
@@ -98,8 +97,9 @@ type Headscale struct {
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
+	oidcCache    *cache.Cache
 
-	registrationCache *cache.Cache
+	machineCache *registrationCache
 
 	ipAllocationMutex sync.Mutex
 
@@ -170,11 +170,7 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 	default:
 		return nil, errUnsupportedDatabase
 	}
-
-	registrationCache := cache.New(
-		registerCacheExpiration,
-		registerCacheCleanup,
-	)
+	oidcCache := cache.New(registerCacheExpiration, registerCacheCleanup)
 
 	app := Headscale{
 		cfg:                cfg,
@@ -183,7 +179,8 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		privateKey:         privateKey,
 		noisePrivateKey:    noisePrivateKey,
 		aclRules:           tailcfg.FilterAllowAll, // default allowall
-		registrationCache:  registrationCache,
+		oidcCache:          oidcCache,
+		machineCache:       newRegistrationCache(),
 		pollNetMapStreamWG: sync.WaitGroup{},
 	}
 
