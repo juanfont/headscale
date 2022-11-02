@@ -1,18 +1,21 @@
 package hsic
 
 import (
+	"archive/tar"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"os"
-	"path"
+	"path/filepath"
 
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/ory/dockertest/v3"
+	"github.com/ory/dockertest/v3/docker"
 )
 
 const (
@@ -243,4 +246,58 @@ func (t *HeadscaleInContainer) ListMachinesInNamespace(
 	}
 
 	return nodes, nil
+}
+
+func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
+	dirPath, fileName := filepath.Split(path)
+
+	file := bytes.NewReader(data)
+
+	buf := bytes.NewBuffer([]byte{})
+
+	tarWriter := tar.NewWriter(buf)
+
+	header := &tar.Header{
+		Name: fileName,
+		Size: file.Size(),
+		// Mode:    int64(stat.Mode()),
+		// ModTime: stat.ModTime(),
+	}
+
+	err := tarWriter.WriteHeader(header)
+	if err != nil {
+		return fmt.Errorf("failed write file header to tar: %w", err)
+	}
+
+	_, err = io.Copy(tarWriter, file)
+	if err != nil {
+		return fmt.Errorf("failed to copy file to tar: %w", err)
+	}
+
+	err = tarWriter.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close tar: %w", err)
+	}
+
+	log.Printf("tar: %s", buf.String())
+
+	// Ensure the directory is present inside the container
+	_, err = t.Execute([]string{"mkdir", "-p", dirPath})
+	if err != nil {
+		return fmt.Errorf("failed to ensure directory: %w", err)
+	}
+
+	err = t.pool.Client.UploadToContainer(
+		t.container.Container.ID,
+		docker.UploadToContainerOptions{
+			NoOverwriteDirNonDir: false,
+			Path:                 dirPath,
+			InputStream:          bytes.NewReader(buf.Bytes()),
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
