@@ -839,7 +839,13 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 	namespaceName string,
 	registrationMethod string,
 ) (*Machine, error) {
-	if machineInterface, ok := h.registrationCache.Get(nodeKeyStr); ok {
+	nodeKey := key.NodePublic{}
+	err := nodeKey.UnmarshalText([]byte(nodeKeyStr))
+	if err != nil {
+		return nil, err
+	}
+
+	if machineInterface, ok := h.registrationCache.Get(NodePublicKeyStripPrefix(nodeKey)); ok {
 		if registrationMachine, ok := machineInterface.(Machine); ok {
 			namespace, err := h.GetNamespace(namespaceName)
 			if err != nil {
