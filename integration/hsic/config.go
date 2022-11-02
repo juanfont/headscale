@@ -1,13 +1,9 @@
 package hsic
 
-import (
-	"time"
-)
-
-const (
-	defaultEphemeralNodeInactivityTimeout = time.Second * 30
-	defaultNodeUpdateCheckInterval        = time.Second * 10
-)
+// const (
+// 	defaultEphemeralNodeInactivityTimeout = time.Second * 30
+// 	defaultNodeUpdateCheckInterval        = time.Second * 10
+// )
 
 // TODO(kradalby): This approach doesnt work because we cannot
 // serialise our config object to YAML or JSON.

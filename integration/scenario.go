@@ -55,8 +55,7 @@ type Namespace struct {
 	syncWaitGroup   sync.WaitGroup
 }
 
-// TODO(kradalby): make control server configurable, test test correctness with
-// Tailscale SaaS.
+// TODO(kradalby): make control server configurable, test correctness with Tailscale SaaS.
 type Scenario struct {
 	// TODO(kradalby): support multiple headcales for later, currently only
 	// use one.
