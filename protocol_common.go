@@ -726,7 +726,7 @@ func (h *Headscale) handleMachineExpiredCommon(
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			registerRequest.NodeKey.String())
+			registerRequest.NodeKey)
 	}
 
 	respBody, err := h.marshalResponse(resp, machineKey)
