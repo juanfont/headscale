@@ -170,10 +170,7 @@ func (t *TailscaleInContainer) UpWithLoginURL(
 		t.hostname,
 	}
 
-	_, stderr, err := t.Execute(command)
-	if err != errTailscaleNotLoggedIn {
-		return nil, errTailscaleCannotUpWithoutAuthkey
-	}
+	_, stderr, _ := t.Execute(command)
 
 	urlStr := strings.ReplaceAll(stderr, "\nTo authenticate, visit:\n\n\t", "")
 	urlStr = strings.TrimSpace(urlStr)
