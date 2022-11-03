@@ -11,7 +11,7 @@ type TailscaleClient interface {
 	Hostname() string
 	Shutdown() error
 	Version() string
-	Execute(command []string) (string, error)
+	Execute(command []string) (string, string, error)
 	Up(loginServer, authKey string) error
 	UpWithLoginURL(loginServer string) (*url.URL, error)
 	IPs() ([]netip.Addr, error)
