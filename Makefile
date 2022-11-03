@@ -68,6 +68,17 @@ test_integration_v2_general:
 		golang:1 \
 		go test $(TAGS) -failfast ./... -timeout 60m -parallel 6
 
+
+test_integration_v2_auth_web_flow:
+	docker run \
+		-t --rm \
+		-v ~/.cache/hs-integration-go:/go \
+		--name headscale-test-suite \
+		-v $$PWD:$$PWD -w $$PWD/integration \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		golang:1 \
+		go test ./... -timeout 60m -parallel 6 -run TestAuthWebFlow
+
 coverprofile_func:
 	go tool cover -func=coverage.out
 
