@@ -1,9 +1,9 @@
-name: CI
+name: Integration Test v2
 
 on: [pull_request]
 
 jobs:
-  integration-test-v2-general:
+  integration-test-v2:
     runs-on: ubuntu-latest
 
     steps:
