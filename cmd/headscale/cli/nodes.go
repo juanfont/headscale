@@ -134,7 +134,7 @@ var registerNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Machine, "Machine register", output)
+		SuccessOutput(response.Machine, "Machine registered", output)
 	},
 }
 
