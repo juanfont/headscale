@@ -1,15 +1,14 @@
 package integration
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
-
-	"log"
+	"time"
 )
 
 type AuthWebFlowScenario struct {
@@ -127,7 +126,6 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 				if err != nil {
 					log.Printf("failed to register client: %s", err)
 				}
-
 			}(client)
 		}
 		namespace.joinWaitGroup.Wait()
@@ -143,10 +141,9 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 	loginURL.Host = fmt.Sprintf("%s:8080", s.Headscale().GetIP())
 	loginURL.Scheme = "http"
 
-	insecureTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	httpClient := &http.Client{
+		Timeout: time.Second * 10,
 	}
-	httpClient := &http.Client{Transport: insecureTransport}
 
 	resp, err := httpClient.Get(loginURL.String())
 	if err != nil {
@@ -158,21 +155,23 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 		return err
 	}
 
+	defer resp.Body.Close()
+
 	// see api.go HTML template
 	code := strings.Split(string(body), "</code>")[0]
 	key := strings.Split(code, "key ")[1]
 	if headscale, ok := s.controlServers["headscale"]; ok {
-		_, err = headscale.Execute([]string{
-			"headscale", "-n", namespaceStr, "nodes", "register", "--key", key})
+		_, err = headscale.Execute([]string{"headscale", "-n", namespaceStr, "nodes", "register", "--key", key})
 		if err != nil {
 			log.Printf("failed to register node: %s", err)
+
 			return err
 		}
 
 		log.Printf("registered node %s", key)
+
 		return nil
 	}
 
 	return fmt.Errorf("failed to find headscale: %w", errNoHeadscaleAvailable)
-
 }

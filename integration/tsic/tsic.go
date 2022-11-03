@@ -23,10 +23,9 @@ const (
 )
 
 var (
-	errTailscalePingFailed             = errors.New("ping failed")
-	errTailscaleNotLoggedIn            = errors.New("tailscale not logged in")
-	errTailscaleWrongPeerCount         = errors.New("wrong peer count")
-	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
+	errTailscalePingFailed     = errors.New("ping failed")
+	errTailscaleNotLoggedIn    = errors.New("tailscale not logged in")
+	errTailscaleWrongPeerCount = errors.New("wrong peer count")
 )
 
 type TailscaleInContainer struct {
@@ -176,14 +175,15 @@ func (t *TailscaleInContainer) UpWithLoginURL(
 	urlStr = strings.TrimSpace(urlStr)
 
 	// parse URL
-	loginUrl, err := url.Parse(urlStr)
+	loginURL, err := url.Parse(urlStr)
 	if err != nil {
 		log.Printf("Could not parse login URL: %s", err)
 		log.Printf("Original join command result: %s", stderr)
+
 		return nil, err
 	}
 
-	return loginUrl, nil
+	return loginURL, nil
 }
 
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
