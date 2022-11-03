@@ -1,4 +1,4 @@
-name: Integration Test v2
+name: Integration Test Authentication v2
 
 on: [pull_request]
 
@@ -30,6 +30,6 @@ jobs:
       - uses: cachix/install-nix-action@v16
         if: steps.changed-files.outputs.any_changed == 'true'
 
-      - name: Run general integration tests
+      - name: Run web flow integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
         run: nix develop --command -- make test_integration_v2_auth_web_flow
