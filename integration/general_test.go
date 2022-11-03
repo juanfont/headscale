@@ -168,7 +168,7 @@ func TestTaildrop(t *testing.T) {
 	for _, client := range allClients {
 		command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", client.Hostname())}
 
-		if _, err := client.Execute(command); err != nil {
+		if _, _, err := client.Execute(command); err != nil {
 			t.Errorf("failed to create taildrop file on %s, err: %s", client.Hostname(), err)
 		}
 
@@ -193,7 +193,7 @@ func TestTaildrop(t *testing.T) {
 						client.Hostname(),
 						peer.Hostname(),
 					)
-					_, err := client.Execute(command)
+					_, _, err := client.Execute(command)
 
 					return err
 				})
@@ -214,7 +214,7 @@ func TestTaildrop(t *testing.T) {
 			"get",
 			"/tmp/",
 		}
-		if _, err := client.Execute(command); err != nil {
+		if _, _, err := client.Execute(command); err != nil {
 			t.Errorf("failed to get taildrop file on %s, err: %s", client.Hostname(), err)
 		}
 
@@ -234,7 +234,7 @@ func TestTaildrop(t *testing.T) {
 					peer.Hostname(),
 				)
 
-				result, err := client.Execute(command)
+				result, _, err := client.Execute(command)
 				if err != nil {
 					t.Errorf("failed to execute command to ls taildrop: %s", err)
 				}
@@ -306,7 +306,7 @@ func TestResolveMagicDNS(t *testing.T) {
 				"tailscale",
 				"ip", peerFQDN,
 			}
-			result, err := client.Execute(command)
+			result, _, err := client.Execute(command)
 			if err != nil {
 				t.Errorf(
 					"failed to execute resolve/ip command %s from %s: %s",
