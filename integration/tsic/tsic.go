@@ -111,7 +111,7 @@ func (t *TailscaleInContainer) Version() string {
 
 func (t *TailscaleInContainer) Execute(
 	command []string,
-) (string, error) {
+) (string, string, error) {
 	log.Println("command", command)
 	log.Printf("running command for %s\n", t.hostname)
 	stdout, stderr, err := dockertestutil.ExecuteCommand(
@@ -127,13 +127,13 @@ func (t *TailscaleInContainer) Execute(
 		}
 
 		if strings.Contains(stderr, "NeedsLogin") {
-			return "", errTailscaleNotLoggedIn
+			return stdout, stderr, errTailscaleNotLoggedIn
 		}
 
-		return "", err
+		return stdout, stderr, err
 	}
 
-	return stdout, nil
+	return stdout, stderr, nil
 }
 
 func (t *TailscaleInContainer) Up(
@@ -150,7 +150,7 @@ func (t *TailscaleInContainer) Up(
 		t.hostname,
 	}
 
-	if _, err := t.Execute(command); err != nil {
+	if _, _, err := t.Execute(command); err != nil {
 		return fmt.Errorf("failed to join tailscale client: %w", err)
 	}
 
@@ -169,7 +169,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		"ip",
 	}
 
-	result, err := t.Execute(command)
+	result, _, err := t.Execute(command)
 	if err != nil {
 		return []netip.Addr{}, fmt.Errorf("failed to join tailscale client: %w", err)
 	}
@@ -196,7 +196,7 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 		"--json",
 	}
 
-	result, err := t.Execute(command)
+	result, _, err := t.Execute(command)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute tailscale status command: %w", err)
 	}
@@ -264,7 +264,7 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string) error {
 			hostnameOrIP,
 		}
 
-		result, err := t.Execute(command)
+		result, _, err := t.Execute(command)
 		if err != nil {
 			log.Printf(
 				"failed to run ping command from %s to %s, err: %s",
