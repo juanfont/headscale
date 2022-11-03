@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -10,8 +11,8 @@ import (
 )
 
 const (
-	keyLength             = 64
-	errPreAuthKeyTooShort = Error("key too short, must be 64 hexadecimal characters")
+	keyLength              = 64
+	errPreAuthKeyMalformed = Error("key is malformed. expected 64 hex characters with `nodekey` prefix")
 )
 
 // Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
@@ -87,8 +88,8 @@ var createNodeCmd = &cobra.Command{
 
 			return
 		}
-		if len(machineKey) != keyLength {
-			err = errPreAuthKeyTooShort
+		if !headscale.NodePublicKeyRegex.Match([]byte(machineKey)) {
+			err = errPreAuthKeyMalformed
 			ErrorOutput(
 				err,
 				fmt.Sprintf("Error: %s", err),
