@@ -2,6 +2,7 @@ package integration
 
 import (
 	"net/netip"
+	"net/url"
 
 	"tailscale.com/ipn/ipnstate"
 )
@@ -12,6 +13,7 @@ type TailscaleClient interface {
 	Version() string
 	Execute(command []string) (string, string, error)
 	Up(loginServer, authKey string) error
+	UpWithLoginURL(loginServer string) (*url.URL, error)
 	IPs() ([]netip.Addr, error)
 	FQDN() (string, error)
 	Status() (*ipnstate.Status, error)

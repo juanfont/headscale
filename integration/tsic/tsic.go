@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"net/url"
 	"strings"
 
 	"github.com/cenkalti/backoff/v4"
@@ -22,10 +23,11 @@ const (
 )
 
 var (
-	errTailscalePingFailed     = errors.New("ping failed")
-	errTailscaleNotLoggedIn    = errors.New("tailscale not logged in")
-	errTailscaleWrongPeerCount = errors.New("wrong peer count")
-	errTailscaleNotConnected   = errors.New("tailscale not connected")
+	errTailscalePingFailed             = errors.New("ping failed")
+	errTailscaleNotLoggedIn            = errors.New("tailscale not logged in")
+	errTailscaleWrongPeerCount         = errors.New("wrong peer count")
+	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
+	errTailscaleNotConnected           = errors.New("tailscale not connected")
 )
 
 type TailscaleInContainer struct {
@@ -155,6 +157,37 @@ func (t *TailscaleInContainer) Up(
 	}
 
 	return nil
+}
+
+func (t *TailscaleInContainer) UpWithLoginURL(
+	loginServer string,
+) (*url.URL, error) {
+	command := []string{
+		"tailscale",
+		"up",
+		"-login-server",
+		loginServer,
+		"--hostname",
+		t.hostname,
+	}
+
+	_, stderr, err := t.Execute(command)
+	if err != errTailscaleNotLoggedIn {
+		return nil, errTailscaleCannotUpWithoutAuthkey
+	}
+
+	urlStr := strings.ReplaceAll(stderr, "\nTo authenticate, visit:\n\n\t", "")
+	urlStr = strings.TrimSpace(urlStr)
+
+	// parse URL
+	loginUrl, err := url.Parse(urlStr)
+	if err != nil {
+		log.Printf("Could not parse login URL: %s", err)
+		log.Printf("Original join command result: %s", stderr)
+		return nil, err
+	}
+
+	return loginUrl, nil
 }
 
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
