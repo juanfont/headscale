@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	keyLength              = 64
 	errPreAuthKeyMalformed = Error("key is malformed. expected 64 hex characters with `nodekey` prefix")
 )
 
