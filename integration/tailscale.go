@@ -10,7 +10,7 @@ type TailscaleClient interface {
 	Hostname() string
 	Shutdown() error
 	Version() string
-	Execute(command []string) (string, error)
+	Execute(command []string) (string, string, error)
 	Up(loginServer, authKey string) error
 	IPs() ([]netip.Addr, error)
 	FQDN() (string, error)
