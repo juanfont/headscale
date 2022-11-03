@@ -2,21 +2,20 @@ package headscale
 
 import (
 	"bytes"
+	_ "embed"
 	"html/template"
 	"net/http"
 	textTemplate "text/template"
-
-	_ "embed"
 
 	"github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog/log"
 )
 
-//go:embed static/apple.html
+//go:embed template/apple.html
 var appleTemplate string
 
-//go:embed static/windows.html
+//go:embed template/windows.html
 var windowsTemplate string
 
 // WindowsConfigMessage shows a simple message in the browser for how to configure the Windows Tailscale client.
@@ -218,18 +217,19 @@ func (h *Headscale) ApplePlatformConfig(
 				Err(err).
 				Msg("Failed to write response")
 		}
-
 	}
 
 	switch platform {
 	case "macos-standlone":
 		if err := macosStandloneTemplate.Execute(&payload, platformConfig); err != nil {
 			handleMacError(err)
+
 			return
 		}
 	case "macos-app-store":
 		if err := macosAppStoreTemplate.Execute(&payload, platformConfig); err != nil {
 			handleMacError(err)
+
 			return
 		}
 	case "ios":
