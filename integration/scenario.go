@@ -151,7 +151,19 @@ func (s *Scenario) Namespaces() []string {
 
 // TODO(kradalby): make port and headscale configurable, multiple instances support?
 func (s *Scenario) StartHeadscale() error {
-	headscale, err := hsic.New(s.pool, headscalePort, s.network)
+	headscale, err := hsic.New(s.pool, headscalePort, s.network,
+		hsic.WithACLPolicy(
+			&headscale.ACLPolicy{
+				ACLs: []headscale.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+			},
+		),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create headscale container: %w", err)
 	}
