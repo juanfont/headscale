@@ -26,6 +26,8 @@
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
 
+          tags = ["ts2019"];
+
           # Only run unit tests when testing a build
           checkFlags = ["-short"];
 
