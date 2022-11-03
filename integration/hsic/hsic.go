@@ -179,9 +179,7 @@ func (t *HeadscaleInContainer) GetIP() string {
 }
 
 func (t *HeadscaleInContainer) GetPort() string {
-	portProto := fmt.Sprintf("%d/tcp", t.port)
-
-	return t.container.GetPort(portProto)
+	return fmt.Sprintf("%d", t.port)
 }
 
 func (t *HeadscaleInContainer) GetHealthEndpoint() string {
