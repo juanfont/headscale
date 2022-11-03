@@ -12,10 +12,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-//go:embed template/apple.html
+//go:embed templates/apple.html
 var appleTemplate string
 
-//go:embed template/windows.html
+//go:embed templates/windows.html
 var windowsTemplate string
 
 // WindowsConfigMessage shows a simple message in the browser for how to configure the Windows Tailscale client.
