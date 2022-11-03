@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -8,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 )
 
 type AuthWebFlowScenario struct {
@@ -141,11 +141,10 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 	loginURL.Host = fmt.Sprintf("%s:8080", s.Headscale().GetIP())
 	loginURL.Scheme = "http"
 
-	httpClient := &http.Client{
-		Timeout: time.Second * 10,
-	}
-
-	resp, err := httpClient.Get(loginURL.String())
+	httpClient := &http.Client{}
+	ctx := context.Background()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
