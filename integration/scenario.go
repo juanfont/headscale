@@ -55,8 +55,7 @@ type Namespace struct {
 	syncWaitGroup   sync.WaitGroup
 }
 
-// TODO(kradalby): make control server configurable, test the test correctness with
-// Tailscale SaaS.
+// TODO(kradalby): make control server configurable, test correctness with Tailscale SaaS.
 type Scenario struct {
 	// TODO(kradalby): support multiple headcales for later, currently only
 	// use one.
@@ -152,7 +151,19 @@ func (s *Scenario) Namespaces() []string {
 
 // TODO(kradalby): make port and headscale configurable, multiple instances support?
 func (s *Scenario) StartHeadscale() error {
-	headscale, err := hsic.New(s.pool, headscalePort, s.network)
+	headscale, err := hsic.New(s.pool, headscalePort, s.network,
+		hsic.WithACLPolicy(
+			&headscale.ACLPolicy{
+				ACLs: []headscale.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+			},
+		),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create headscale container: %w", err)
 	}

@@ -1,4 +1,4 @@
-name: CI
+name: Integration Test CLI
 
 on: [pull_request]
 

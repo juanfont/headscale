@@ -1,4 +1,4 @@
-name: CI
+name: Integration Test OIDC
 
 on: [pull_request]
 

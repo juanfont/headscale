@@ -1,4 +1,4 @@
-name: CI
+name: Integration Test DERP
 
 on: [pull_request]
 
