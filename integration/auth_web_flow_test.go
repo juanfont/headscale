@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rs/zerolog/log"
+	"log"
 )
 
 type AuthWebFlowScenario struct {
@@ -86,6 +86,7 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(namespaces map[string]int) erro
 	}
 
 	for namespaceName, clientCount := range namespaces {
+		log.Printf("creating namespace %s with %d clients", namespaceName, clientCount)
 		err = s.CreateNamespace(namespaceName)
 		if err != nil {
 			return err
@@ -108,28 +109,28 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(namespaces map[string]int) erro
 func (s *AuthWebFlowScenario) runTailscaleUp(
 	namespaceStr, loginServer string,
 ) error {
+	log.Printf("running tailscale up's for namespace %s", namespaceStr)
 	if namespace, ok := s.namespaces[namespaceStr]; ok {
 		for _, client := range namespace.Clients {
-			// namespace.joinWaitGroup.Add(1)
+			namespace.joinWaitGroup.Add(1)
 
-			// go func(c TailscaleClient) error {
-			// defer namespace.joinWaitGroup.Done()
+			go func(c TailscaleClient) {
+				defer namespace.joinWaitGroup.Done()
 
-			// TODO(juanfont): error handle this
+				// TODO(juanfont): error handle this
+				loginURL, err := c.UpWithLoginURL(loginServer)
+				if err != nil {
+					log.Printf("failed to run tailscale up: %s", err)
+				}
 
-			loginURL, err := client.UpWithLoginURL(loginServer)
-			if err != nil {
-				return err
-			}
+				err = s.runHeadscaleRegister(namespaceStr, loginURL)
+				if err != nil {
+					log.Printf("failed to register client: %s", err)
+				}
 
-			err = s.runHeadscaleRegister(namespaceStr, loginURL)
-			if err != nil {
-				return err
-			}
-
-			// }(client)
+			}(client)
 		}
-		// namespace.joinWaitGroup.Wait()
+		namespace.joinWaitGroup.Wait()
 
 		return nil
 	}
@@ -138,7 +139,10 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 }
 
 func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL *url.URL) error {
-	log.Info().Msgf("loginURL: %s", loginURL)
+	log.Printf("loginURL: %s", loginURL)
+	loginURL.Host = fmt.Sprintf("%s:8080", s.Headscale().GetIP())
+	loginURL.Scheme = "http"
+
 	insecureTransport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
@@ -155,15 +159,20 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 	}
 
 	// see api.go HTML template
-	key := strings.Split(strings.Split(string(body), "</code>")[0], "--key ")[1]
+	code := strings.Split(string(body), "</code>")[0]
+	key := strings.Split(code, "key ")[1]
 	if headscale, ok := s.controlServers["headscale"]; ok {
 		_, err = headscale.Execute([]string{
-			"headscale", "-n", namespaceStr, "register", "--key", key})
+			"headscale", "-n", namespaceStr, "nodes", "register", "--key", key})
 		if err != nil {
+			log.Printf("failed to register node: %s", err)
 			return err
 		}
+
+		log.Printf("registered node %s", key)
+		return nil
 	}
 
-	return fmt.Errorf("failed to register client: %w", errNoHeadscaleAvailable)
+	return fmt.Errorf("failed to find headscale: %w", errNoHeadscaleAvailable)
 
 }
