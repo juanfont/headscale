@@ -24,6 +24,7 @@
 - Remove `ip_prefix` configuration option and warning [#899](https://github.com/juanfont/headscale/pull/899)
 - Add `dns_config.override_local_dns` option [#905](https://github.com/juanfont/headscale/pull/905)
 - Fix some DNS config issues [#660](https://github.com/juanfont/headscale/issues/660)
+- Make it possible to disable TS2019 with build flag [#928](https://github.com/juanfont/headscale/pull/928)
 
 ## 0.16.4 (2022-08-21)
 
