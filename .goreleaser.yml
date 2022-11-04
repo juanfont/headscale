@@ -20,6 +20,8 @@ builds:
       - -mod=readonly
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
+    tags:
+      - ts2019
 
   - id: darwin-arm64
     main: ./cmd/headscale/headscale.go
@@ -34,6 +36,8 @@ builds:
       - -mod=readonly
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
+    tags:
+      - ts2019
 
   - id: linux-amd64
     mod_timestamp: "{{ .CommitTimestamp }}"
@@ -46,6 +50,8 @@ builds:
     main: ./cmd/headscale/headscale.go
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
+    tags:
+      - ts2019
 
   - id: linux-arm64
     mod_timestamp: "{{ .CommitTimestamp }}"
@@ -58,6 +64,8 @@ builds:
     main: ./cmd/headscale/headscale.go
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
+    tags:
+      - ts2019
 
 archives:
   - id: golang-cross

@@ -137,7 +137,7 @@
         buildInputs = devDeps;
 
         shellHook = ''
-          export GOFLAGS=-tags="integration,integration_general,integration_oidc,integration_cli,integration_derp"
+          export GOFLAGS=-tags="ts2019"
         '';
       };
 

@@ -10,7 +10,7 @@ ifeq ($(filter $(GOOS), openbsd netbsd soloaris plan9), )
 else
 endif
 
-TAGS = -tags "ts2019"
+TAGS = -tags ts2019
 
 # GO_SOURCES = $(wildcard *.go)
 # PROTO_SOURCES = $(wildcard **/*.proto)
@@ -66,7 +66,7 @@ test_integration_v2_general:
 		-v $$PWD:$$PWD -w $$PWD/integration \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		golang:1 \
-		go test $(TAGS) ./... -timeout 60m -parallel 6
+		go test $(TAGS) -failfast ./... -timeout 60m -parallel 6
 
 coverprofile_func:
 	go tool cover -func=coverage.out

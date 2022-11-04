@@ -454,6 +454,8 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/register/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
+	h.addLegacyHandlers(router)
+
 	router.HandleFunc("/oidc/register/{nkey}", h.RegisterOIDC).Methods(http.MethodGet)
 	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
@@ -465,8 +467,6 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router.HandleFunc("/swagger", SwaggerUI).Methods(http.MethodGet)
 	router.HandleFunc("/swagger/v1/openapiv2.json", SwaggerAPIv1).
 		Methods(http.MethodGet)
-
-	h.addLegacyHandlers(router)
 
 	if h.cfg.DERP.ServerEnabled {
 		router.HandleFunc("/derp", h.DERPHandler)
