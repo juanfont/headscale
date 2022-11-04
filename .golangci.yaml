@@ -26,6 +26,7 @@ linters:
     - ireturn
     - execinquery
     - exhaustruct
+    - nolintlint
 
     # We should strive to enable these:
     - wrapcheck
