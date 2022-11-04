@@ -10,6 +10,8 @@ ifeq ($(filter $(GOOS), openbsd netbsd soloaris plan9), )
 else
 endif
 
+TAGS = -tags ts2019
+
 # GO_SOURCES = $(wildcard *.go)
 # PROTO_SOURCES = $(wildcard **/*.proto)
 GO_SOURCES = $(call rwildcard,,*.go)
@@ -17,12 +19,12 @@ PROTO_SOURCES = $(call rwildcard,,*.proto)
 
 
 build:
-	GOOS=$(GOOS) CGO_ENABLED=0 go build -trimpath $(pieflags) -mod=readonly -ldflags "-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$(version)" cmd/headscale/headscale.go
+	nix build
 
 dev: lint test build
 
 test:
-	@go test -short -coverprofile=coverage.out ./...
+	@go test $(TAGS) -short -coverprofile=coverage.out ./...
 
 test_integration: test_integration_cli test_integration_derp test_integration_oidc test_integration_v2_general
 
@@ -34,7 +36,7 @@ test_integration_cli:
 		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test -failfast -timeout 30m -count=1 -run IntegrationCLI ./...
+		go test $(TAGS) -failfast -timeout 30m -count=1 -run IntegrationCLI ./...
 
 test_integration_derp:
 	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
@@ -44,7 +46,7 @@ test_integration_derp:
 		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test -failfast -timeout 30m -count=1 -run IntegrationDERP ./...
+		go test $(TAGS) -failfast -timeout 30m -count=1 -run IntegrationDERP ./...
 
 test_integration_oidc:
 	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
@@ -54,7 +56,7 @@ test_integration_oidc:
 		-v ~/.cache/hs-integration-go:/go \
 		-v $$PWD:$$PWD -w $$PWD \
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test -failfast -timeout 30m -count=1 -run IntegrationOIDC ./...
+		go test $(TAGS) -failfast -timeout 30m -count=1 -run IntegrationOIDC ./...
 
 test_integration_v2_general:
 	docker run \
@@ -64,7 +66,7 @@ test_integration_v2_general:
 		-v $$PWD:$$PWD -w $$PWD/integration \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		golang:1 \
-		go test ./... -timeout 60m -parallel 6
+		go test $(TAGS) -failfast ./... -timeout 60m -parallel 6
 
 
 test_integration_v2_auth_web_flow:

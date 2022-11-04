@@ -347,7 +347,7 @@ func IsStringInSlice(slice []string, str string) bool {
 }
 
 func AbsolutePathFromConfigPath(path string) string {
-	// If a relative path is provided, prefix it with the the directory where
+	// If a relative path is provided, prefix it with the directory where
 	// the config file was found.
 	if (path != "") && !strings.HasPrefix(path, string(os.PathSeparator)) {
 		dir, _ := filepath.Split(viper.ConfigFileUsed())
