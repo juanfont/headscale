@@ -111,7 +111,7 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(namespaces map[string]int) erro
 func (s *AuthWebFlowScenario) runTailscaleUp(
 	namespaceStr, loginServer string,
 ) error {
-	log.Printf("running tailscale up's for namespace %s", namespaceStr)
+	log.Printf("running tailscale up for namespace %s", namespaceStr)
 	if namespace, ok := s.namespaces[namespaceStr]; ok {
 		for _, client := range namespace.Clients {
 			namespace.joinWaitGroup.Add(1)
