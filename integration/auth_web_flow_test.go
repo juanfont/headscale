@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 )
+
+var errParseAuthPage = errors.New("failed to parse auth page")
 
 type AuthWebFlowScenario struct {
 	*Scenario
@@ -157,8 +160,18 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 	defer resp.Body.Close()
 
 	// see api.go HTML template
-	code := strings.Split(string(body), "</code>")[0]
-	key := strings.Split(code, "key ")[1]
+	codeSep := strings.Split(string(body), "</code>")
+	if len(codeSep) != 2 {
+		return errParseAuthPage
+	}
+
+	keySep := strings.Split(codeSep[0], "key ")
+	if len(keySep) != 2 {
+		return errParseAuthPage
+	}
+	key := keySep[1]
+	log.Printf("registering node %s", key)
+
 	if headscale, ok := s.controlServers["headscale"]; ok {
 		_, err = headscale.Execute([]string{"headscale", "-n", namespaceStr, "nodes", "register", "--key", key})
 		if err != nil {
@@ -166,8 +179,6 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 
 			return err
 		}
-
-		log.Printf("registered node %s", key)
 
 		return nil
 	}
