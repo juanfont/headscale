@@ -26,6 +26,8 @@
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
 
+          tags = ["ts2019"];
+
           # Only run unit tests when testing a build
           checkFlags = ["-short"];
 
@@ -135,7 +137,7 @@
         buildInputs = devDeps;
 
         shellHook = ''
-          export GOFLAGS=-tags="integration,integration_general,integration_oidc,integration_cli,integration_derp"
+          export GOFLAGS=-tags="ts2019"
         '';
       };
 
