@@ -21,6 +21,7 @@ server_url: https://headscale:443
 tls_cert_path: "/etc/headscale/tls/server.crt"
 tls_key_path: "/etc/headscale/tls/server.key"
 tls_client_auth_mode: disabled
+
 derp:
   server:
     enabled: true

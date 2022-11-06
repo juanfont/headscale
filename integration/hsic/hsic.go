@@ -63,7 +63,7 @@ func WithACLPolicy(acl *headscale.ACLPolicy) Option {
 
 func WithTLS() Option {
 	return func(hsic *HeadscaleInContainer) {
-		cert, key, err := createCertificate()
+		cert, key, err := createCertificate(hsic.hostname)
 		if err != nil {
 			log.Fatalf("failed to create certificates for headscale test: %s", err)
 		}
@@ -79,18 +79,20 @@ func WithTLS() Option {
 
 func WithConfigEnv(configEnv map[string]string) Option {
 	return func(hsic *HeadscaleInContainer) {
-		env := []string{}
-
 		for key, value := range configEnv {
-			env = append(env, fmt.Sprintf("%s=%s", key, value))
+			hsic.env = append(hsic.env, fmt.Sprintf("%s=%s", key, value))
 		}
-
-		hsic.env = env
 	}
 }
 
 func WithPort(port int) Option {
 	return func(hsic *HeadscaleInContainer) {
+		// TODO(kradalby): This isnt always HTTPS
+		hsic.env = append(
+			hsic.env,
+			fmt.Sprintf("HEADSCALE_SERVER_URL=https://%s:%d", hsic.hostname, port),
+		)
+		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_LISTEN_ADDR=0.0.0.0:%d", port))
 		hsic.port = port
 	}
 }
@@ -371,7 +373,7 @@ func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
 }
 
 // nolint
-func createCertificate() ([]byte, []byte, error) {
+func createCertificate(hostname string) ([]byte, []byte, error) {
 	// From:
 	// https://shaneutt.com/blog/golang-ca-and-signed-cert-go/
 
@@ -406,6 +408,7 @@ func createCertificate() ([]byte, []byte, error) {
 			Locality:     []string{"Leiden"},
 		},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+		DNSNames:     []string{hostname},
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().Add(30 * time.Minute),
 		SubjectKeyId: []byte{1, 2, 3, 4, 6},

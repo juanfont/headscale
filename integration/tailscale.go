@@ -20,4 +20,5 @@ type TailscaleClient interface {
 	WaitForReady() error
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string) error
+	PingViaDERP(hostnameOrIP string) error
 }

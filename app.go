@@ -483,6 +483,13 @@ func (h *Headscale) Serve() error {
 		go h.ServeSTUN()
 	}
 
+	log.Trace().Interface("derpMap", h.DERPMap).Msg("DERPMap loaded")
+
+	if len(h.DERPMap.Regions) == 0 {
+		log.Warn().
+			Msg("DERP map is empty, not a single DERP map datasource was loaded correctly or contained a region")
+	}
+
 	if h.cfg.DERP.AutoUpdate {
 		derpMapCancelChannel := make(chan struct{})
 		defer func() { derpMapCancelChannel <- struct{}{} }()

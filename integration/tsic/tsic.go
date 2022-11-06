@@ -86,7 +86,6 @@ func WithHeadscaleName(hsName string) Option {
 func New(
 	pool *dockertest.Pool,
 	version string,
-	network *dockertest.Network,
 	opts ...Option,
 ) (*TailscaleInContainer, error) {
 	hash, err := headscale.GenerateRandomStringDNSSafe(tsicHashLength)
@@ -100,8 +99,7 @@ func New(
 		version:  version,
 		hostname: hostname,
 
-		pool:    pool,
-		network: network,
+		pool: pool,
 	}
 
 	for _, opt := range opts {
@@ -110,7 +108,7 @@ func New(
 
 	tailscaleOptions := &dockertest.RunOptions{
 		Name:     hostname,
-		Networks: []*dockertest.Network{network},
+		Networks: []*dockertest.Network{tsic.network},
 		// Cmd: []string{
 		// 	"tailscaled", "--tun=tsdev",
 		// },
@@ -165,6 +163,12 @@ func (t *TailscaleInContainer) hasTLS() bool {
 }
 
 func (t *TailscaleInContainer) Shutdown() error {
+	if strings.Contains(t.network.Network.Name, "ts-") {
+		if err := t.pool.RemoveNetwork(t.network); err != nil {
+			return fmt.Errorf("failed to remove container specific network: %w", err)
+		}
+	}
+
 	return t.pool.Purge(t.container)
 }
 
@@ -374,6 +378,38 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string) error {
 		}
 
 		if !strings.Contains(result, "pong") && !strings.Contains(result, "is local") {
+			return backoff.Permanent(errTailscalePingFailed)
+		}
+
+		return nil
+	})
+}
+
+// TODO(kradalby): Make multiping, go routine magic.
+func (t *TailscaleInContainer) PingViaDERP(hostnameOrIP string) error {
+	return t.pool.Retry(func() error {
+		command := []string{
+			"tailscale", "ping",
+			"--timeout=10s",
+			"--c=5",
+			"--until-direct=false",
+			hostnameOrIP,
+		}
+
+		result, _, err := t.Execute(command)
+		if err != nil {
+			log.Printf(
+				"failed to run ping command from %s to %s, err: %s",
+				t.Hostname(),
+				hostnameOrIP,
+				err,
+			)
+
+			return err
+		}
+
+		if !strings.Contains(result, "via DERP(headscale)") &&
+			!strings.Contains(result, "is local") {
 			return backoff.Permanent(errTailscalePingFailed)
 		}
 

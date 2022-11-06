@@ -254,7 +254,7 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
-					s.network,
+					tsic.WithOrCreateNetwork(s.network),
 					tsic.WithHeadscaleTLS(cert),
 					tsic.WithHeadscaleName(hostname),
 				)
