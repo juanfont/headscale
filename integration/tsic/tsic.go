@@ -12,6 +12,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/juanfont/headscale"
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"tailscale.com/ipn/ipnstate"
@@ -20,6 +21,7 @@ import (
 const (
 	tsicHashLength    = 6
 	dockerContextPath = "../."
+	headscaleCertPath = "/usr/local/share/ca-certificates/headscale.crt"
 )
 
 var (
@@ -41,12 +43,51 @@ type TailscaleInContainer struct {
 	// "cache"
 	ips  []netip.Addr
 	fqdn string
+
+	// optional config
+	headscaleCert     []byte
+	headscaleHostname string
+}
+
+type Option = func(c *TailscaleInContainer)
+
+func WithHeadscaleTLS(cert []byte) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.headscaleCert = cert
+	}
+}
+
+func WithOrCreateNetwork(network *dockertest.Network) Option {
+	return func(tsic *TailscaleInContainer) {
+		if network != nil {
+			tsic.network = network
+
+			return
+		}
+
+		network, err := dockertestutil.GetFirstOrCreateNetwork(
+			tsic.pool,
+			fmt.Sprintf("%s-network", tsic.hostname),
+		)
+		if err != nil {
+			log.Fatalf("failed to create network: %s", err)
+		}
+
+		tsic.network = network
+	}
+}
+
+func WithHeadscaleName(hsName string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.headscaleHostname = hsName
+	}
 }
 
 func New(
 	pool *dockertest.Pool,
 	version string,
 	network *dockertest.Network,
+	opts ...Option,
 ) (*TailscaleInContainer, error) {
 	hash, err := headscale.GenerateRandomStringDNSSafe(tsicHashLength)
 	if err != nil {
@@ -55,18 +96,36 @@ func New(
 
 	hostname := fmt.Sprintf("ts-%s-%s", strings.ReplaceAll(version, ".", "-"), hash)
 
-	// TODO(kradalby): figure out why we need to "refresh" the network here.
-	// network, err = dockertestutil.GetFirstOrCreateNetwork(pool, network.Network.Name)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	tsic := &TailscaleInContainer{
+		version:  version,
+		hostname: hostname,
+
+		pool:    pool,
+		network: network,
+	}
+
+	for _, opt := range opts {
+		opt(tsic)
+	}
 
 	tailscaleOptions := &dockertest.RunOptions{
 		Name:     hostname,
 		Networks: []*dockertest.Network{network},
-		Cmd: []string{
-			"tailscaled", "--tun=tsdev",
+		// Cmd: []string{
+		// 	"tailscaled", "--tun=tsdev",
+		// },
+		Entrypoint: []string{
+			"/bin/bash",
+			"-c",
+			"/bin/sleep 3 ; update-ca-certificates ; tailscaled --tun=tsdev",
 		},
+	}
+
+	if tsic.headscaleHostname != "" {
+		tailscaleOptions.ExtraHosts = []string{
+			"host.docker.internal:host-gateway",
+			fmt.Sprintf("%s:host-gateway", tsic.headscaleHostname),
+		}
 	}
 
 	// dockertest isnt very good at handling containers that has already
@@ -89,14 +148,20 @@ func New(
 	}
 	log.Printf("Created %s container\n", hostname)
 
-	return &TailscaleInContainer{
-		version:  version,
-		hostname: hostname,
+	tsic.container = container
 
-		pool:      pool,
-		container: container,
-		network:   network,
-	}, nil
+	if tsic.hasTLS() {
+		err = tsic.WriteFile(headscaleCertPath, tsic.headscaleCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+		}
+	}
+
+	return tsic, nil
+}
+
+func (t *TailscaleInContainer) hasTLS() bool {
+	return len(t.headscaleCert) != 0
 }
 
 func (t *TailscaleInContainer) Shutdown() error {
@@ -109,6 +174,19 @@ func (t *TailscaleInContainer) Hostname() string {
 
 func (t *TailscaleInContainer) Version() string {
 	return t.version
+}
+
+func (t *TailscaleInContainer) WaitForReady() error {
+	return t.pool.Retry(func() error {
+		// If tailscaled has not started yet, this will return a non-zero
+		// status code
+		_, err := t.Execute([]string{"tailscale", "status"})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 func (t *TailscaleInContainer) Execute(
@@ -316,6 +394,10 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string) error {
 
 		return nil
 	})
+}
+
+func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
+	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
 }
 
 func createTailscaleBuildOptions(version string) *dockertest.BuildOptions {
