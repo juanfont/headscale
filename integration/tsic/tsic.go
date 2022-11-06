@@ -176,6 +176,19 @@ func (t *TailscaleInContainer) Version() string {
 	return t.version
 }
 
+func (t *TailscaleInContainer) WaitForReady() error {
+	return t.pool.Retry(func() error {
+		// If tailscaled has not started yet, this will return a non-zero
+		// status code
+		_, err := t.Execute([]string{"tailscale", "status"})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
 func (t *TailscaleInContainer) Execute(
 	command []string,
 ) (string, string, error) {
