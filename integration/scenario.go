@@ -150,20 +150,8 @@ func (s *Scenario) Namespaces() []string {
 // Note: These functions assume that there is a _single_ headscale instance for now
 
 // TODO(kradalby): make port and headscale configurable, multiple instances support?
-func (s *Scenario) StartHeadscale() error {
-	headscale, err := hsic.New(s.pool, headscalePort, s.network,
-		hsic.WithACLPolicy(
-			&headscale.ACLPolicy{
-				ACLs: []headscale.ACL{
-					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
-					},
-				},
-			},
-		),
-	)
+func (s *Scenario) StartHeadscale(opts ...hsic.Option) error {
+	headscale, err := hsic.New(s.pool, s.network, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create headscale container: %w", err)
 	}
@@ -228,10 +216,22 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 				defer namespace.createWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
-				tsClient, err := tsic.New(s.pool, version, s.network)
+				tsClient, err := tsic.New(
+					s.pool,
+					version,
+					s.network,
+					tsic.WithHeadscaleTLS(s.Headscale().GetCert()),
+					tsic.WithHeadscaleName(s.Headscale().GetHostname()),
+				)
 				if err != nil {
 					// return fmt.Errorf("failed to add tailscale node: %w", err)
-					log.Printf("failed to add tailscale node: %s", err)
+					log.Printf("failed to create tailscale node: %s", err)
+				}
+
+				err = tsClient.WaitForReady()
+				if err != nil {
+					// return fmt.Errorf("failed to add tailscale node: %w", err)
+					log.Printf("failed to wait for tailscaled: %s", err)
 				}
 
 				namespace.Clients[tsClient.Hostname()] = tsClient
@@ -306,8 +306,8 @@ func (s *Scenario) WaitForTailscaleSync() error {
 // CreateHeadscaleEnv is a conventient method returning a set up Headcale
 // test environment with nodes of all versions, joined to the server with X
 // namespaces.
-func (s *Scenario) CreateHeadscaleEnv(namespaces map[string]int) error {
-	err := s.StartHeadscale()
+func (s *Scenario) CreateHeadscaleEnv(namespaces map[string]int, opts ...hsic.Option) error {
+	err := s.StartHeadscale(opts...)
 	if err != nil {
 		return err
 	}
