@@ -214,6 +214,18 @@ dns_config:
   nameservers:
     - 1.1.1.1
 
+  # NextDNS (see https://tailscale.com/kb/1218/nextdns/).
+  # "abc123" is example NextDNS ID, replace with yours.
+  #
+  # With metadata sharing:
+  # nameservers:
+  #   - https://dns.nextdns.io/abc123
+  #
+  # Without metadata sharing:
+  # nameservers:
+  #   - 2a07:a8c0::ab:c123
+  #   - 2a07:a8c1::ab:c123
+
   # Split DNS (see https://tailscale.com/kb/1054/dns/),
   # list of search domains and the DNS to query for each one.
   #

@@ -383,10 +383,21 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 		if viper.IsSet("dns_config.nameservers") {
 			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
 
-			nameservers := make([]netip.Addr, len(nameserversStr))
-			resolvers := make([]*dnstype.Resolver, len(nameserversStr))
+			nameservers := []netip.Addr{}
+			resolvers := []*dnstype.Resolver{}
 
-			for index, nameserverStr := range nameserversStr {
+			for _, nameserverStr := range nameserversStr {
+				// Search for explicit DNS-over-HTTPS resolvers
+				if strings.HasPrefix(nameserverStr, "https://") {
+					resolvers = append(resolvers, &dnstype.Resolver{
+						Addr: nameserverStr,
+					})
+
+					// This nameserver can not be parsed as an IP address
+					continue
+				}
+
+				// Parse nameserver as a regular IP
 				nameserver, err := netip.ParseAddr(nameserverStr)
 				if err != nil {
 					log.Error().
@@ -395,10 +406,10 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 						Msgf("Could not parse nameserver IP: %s", nameserverStr)
 				}
 
-				nameservers[index] = nameserver
-				resolvers[index] = &dnstype.Resolver{
+				nameservers = append(nameservers, nameserver)
+				resolvers = append(resolvers, &dnstype.Resolver{
 					Addr: nameserver.String(),
-				}
+				})
 			}
 
 			dnsConfig.Nameservers = nameservers
