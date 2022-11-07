@@ -3,11 +3,13 @@ package headscale
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"strings"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/dnstype"
 	"tailscale.com/util/dnsname"
 )
 
@@ -18,6 +20,10 @@ const (
 const (
 	ipv4AddressLength = 32
 	ipv6AddressLength = 128
+)
+
+const (
+	nextDNSDoHPrefix = "https://dns.nextdns.io"
 )
 
 // generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
@@ -152,16 +158,39 @@ func generateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	return fqdns
 }
 
+// If any nextdns DoH resolvers are present in the list of resolvers it will
+// take metadata from the machine metadata and instruct tailscale to add it
+// to the requests. This makes it possible to identify from which device the
+// requests come in the NextDNS dashboard.
+//
+// This will produce a resolver like:
+// `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
+func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine Machine) {
+	for _, resolver := range resolvers {
+		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
+			attrs := url.Values{
+				"device_name":  []string{machine.Hostname},
+				"device_model": []string{machine.HostInfo.OS},
+			}
+
+			if len(machine.IPAddresses) > 0 {
+				attrs.Add("device_ip", machine.IPAddresses[0].String())
+			}
+
+			resolver.Addr = fmt.Sprintf("%s?%s", resolver.Addr, attrs.Encode())
+		}
+	}
+}
+
 func getMapResponseDNSConfig(
 	dnsConfigOrig *tailcfg.DNSConfig,
 	baseDomain string,
 	machine Machine,
 	peers Machines,
 ) *tailcfg.DNSConfig {
-	var dnsConfig *tailcfg.DNSConfig
+	var dnsConfig *tailcfg.DNSConfig = dnsConfigOrig.Clone()
 	if dnsConfigOrig != nil && dnsConfigOrig.Proxied { // if MagicDNS is enabled
 		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
-		dnsConfig = dnsConfigOrig.Clone()
 		dnsConfig.Domains = append(
 			dnsConfig.Domains,
 			fmt.Sprintf(
@@ -183,6 +212,8 @@ func getMapResponseDNSConfig(
 	} else {
 		dnsConfig = dnsConfigOrig
 	}
+
+	addNextDNSMetadata(dnsConfig.Resolvers, machine)
 
 	return dnsConfig
 }
