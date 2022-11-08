@@ -6,7 +6,7 @@ import (
 	"github.com/juanfont/headscale/integration/dockertestutil"
 )
 
-// This file is intendet to "test the test framework", by proxy it will also test
+// This file is intended to "test the test framework", by proxy it will also test
 // some Headcsale/Tailscale stuff, but mostly in very simple ways.
 
 func IntegrationSkip(t *testing.T) {
