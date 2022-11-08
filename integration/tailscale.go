@@ -7,6 +7,7 @@ import (
 	"tailscale.com/ipn/ipnstate"
 )
 
+//nolint
 type TailscaleClient interface {
 	Hostname() string
 	Shutdown() error
