@@ -769,6 +769,8 @@ func (machine *Machine) toProto() *v1.Machine {
 		CreatedAt: timestamppb.New(machine.CreatedAt),
 	}
 
+	machineProto.HostInfo = machine.HostInfo.toProto()
+
 	if machine.AuthKey != nil {
 		machineProto.PreAuthKey = machine.AuthKey.toProto()
 	}

@@ -44,6 +44,7 @@ message Machine {
     repeated string invalid_tags = 19;
     repeated string valid_tags   = 20;
     string          given_name   = 21;
+    HostInfo host_info           = 22;
 }
 
 message RegisterMachineRequest {
@@ -122,4 +123,50 @@ message DebugCreateMachineRequest {
 
 message DebugCreateMachineResponse {
     Machine machine = 1;
+}
+
+message HostInfo {
+    // version of this code (in version.Long format)
+    string ipn_version = 1;
+    // logtail ID of frontend instance
+    string frontend_log_id          = 2;
+    // logtail ID of backend instance
+    string backend_log_id           = 3;
+    // operating system the client runs on (a version.OS value)
+    string os = 4;
+
+    // OSVersion is the version of the OS, if available.
+    //
+    // For Android, it's like "10", "11", "12", etc. For iOS and macOS it's like
+    // "15.6.1" or "12.4.0". For Windows it's like "10.0.19044.1889". For
+    // FreeBSD it's like "12.3-STABLE".
+    //
+    // For Linux, prior to Tailscale 1.32, we jammed a bunch of fields into this
+    // string on Linux, like "Debian 10.4; kernel=xxx; container; env=kn" and so
+    // on. As of Tailscale 1.32, this is simply the kernel version on Linux, like
+    // "5.10.0-17-amd64".
+    string os_version = 5;
+    bool container = 6;
+    string env = 7;
+    string distro = 8;
+    string distro_version = 9;
+    string distro_codename = 10;
+    bool desktop = 11;
+    string package = 12;
+    string device_model = 13;
+    string hostname = 14;
+    bool shields_up = 15;
+    bool sharee_node = 16;
+    bool no_logs_no_support = 17;
+    string go_arch = 18;
+    string go_version = 19;
+    repeated string routeable_ips = 20;
+    repeated string request_tags = 21;
+    // @todo When services is implemented, add it here
+    // services = 22;
+    // @todo netinfo, code 23
+    repeated string ssh_host_keys = 24;
+    string cloud = 25;
+    bool userspace_version = 26;
+    bool userspace_router = 27;
 }

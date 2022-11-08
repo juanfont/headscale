@@ -940,6 +940,101 @@
         }
       }
     },
+    "v1HostInfo": {
+      "type": "object",
+      "properties": {
+        "ipnVersion": {
+          "type": "string",
+          "title": "version of this code (in version.Long format)"
+        },
+        "frontendLogId": {
+          "type": "string",
+          "title": "logtail ID of frontend instance"
+        },
+        "backendLogId": {
+          "type": "string",
+          "title": "logtail ID of backend instance"
+        },
+        "os": {
+          "type": "string",
+          "title": "operating system the client runs on (a version.OS value)"
+        },
+        "osVersion": {
+          "type": "string",
+          "description": "OSVersion is the version of the OS, if available.\n\nFor Android, it's like \"10\", \"11\", \"12\", etc. For iOS and macOS it's like\n\"15.6.1\" or \"12.4.0\". For Windows it's like \"10.0.19044.1889\". For\nFreeBSD it's like \"12.3-STABLE\".\n\nFor Linux, prior to Tailscale 1.32, we jammed a bunch of fields into this\nstring on Linux, like \"Debian 10.4; kernel=xxx; container; env=kn\" and so\non. As of Tailscale 1.32, this is simply the kernel version on Linux, like\n\"5.10.0-17-amd64\"."
+        },
+        "container": {
+          "type": "boolean"
+        },
+        "env": {
+          "type": "string"
+        },
+        "distro": {
+          "type": "string"
+        },
+        "distroVersion": {
+          "type": "string"
+        },
+        "distroCodename": {
+          "type": "string"
+        },
+        "desktop": {
+          "type": "boolean"
+        },
+        "package": {
+          "type": "string"
+        },
+        "deviceModel": {
+          "type": "string"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "shieldsUp": {
+          "type": "boolean"
+        },
+        "shareeNode": {
+          "type": "boolean"
+        },
+        "noLogsNoSupport": {
+          "type": "boolean"
+        },
+        "goArch": {
+          "type": "string"
+        },
+        "goVersion": {
+          "type": "string"
+        },
+        "routeableIps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requestTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sshHostKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "@todo When services is implemented, add it here\nservices = 22;\n@todo netinfo, code 23"
+        },
+        "cloud": {
+          "type": "string"
+        },
+        "userspaceVersion": {
+          "type": "boolean"
+        },
+        "userspaceRouter": {
+          "type": "boolean"
+        }
+      }
+    },
     "v1ListApiKeysResponse": {
       "type": "object",
       "properties": {
@@ -1054,6 +1149,9 @@
         },
         "givenName": {
           "type": "string"
+        },
+        "hostInfo": {
+          "$ref": "#/definitions/v1HostInfo"
         }
       }
     },

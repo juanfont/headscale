@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"net/netip"
 	"time"
 
@@ -243,6 +244,52 @@ func (h *Headscale) pingDB(ctx context.Context) error {
 // the code and not have to marshal/unmarshal and error
 // check all over the code.
 type HostInfo tailcfg.Hostinfo
+
+func (host_info *HostInfo) toProto() *v1.HostInfo {
+	ret := &v1.HostInfo{
+		IpnVersion:       host_info.IPNVersion,
+		FrontendLogId:    host_info.FrontendLogID,
+		BackendLogId:     host_info.BackendLogID,
+		Os:               host_info.OS,
+		OsVersion:        host_info.OSVersion,
+		Container:        false,
+		Env:              host_info.Env,
+		Distro:           host_info.Distro,
+		DistroVersion:    host_info.DistroVersion,
+		DistroCodename:   host_info.DistroCodeName,
+		Desktop:          false,
+		Package:          host_info.Package,
+		DeviceModel:      host_info.DeviceModel,
+		Hostname:         host_info.Hostname,
+		ShieldsUp:        host_info.ShieldsUp,
+		ShareeNode:       host_info.ShareeNode,
+		NoLogsNoSupport:  host_info.NoLogsNoSupport,
+		GoArch:           host_info.GoArch,
+		GoVersion:        host_info.GoVersion,
+		RouteableIps:     nil,
+		RequestTags:      host_info.RequestTags,
+		SshHostKeys:      host_info.SSH_HostKeys,
+		Cloud:            host_info.Cloud,
+		UserspaceVersion: false,
+		UserspaceRouter:  false,
+	}
+	if host_info.Container == "true" {
+		ret.Container = true
+	}
+	if host_info.Desktop == "true" {
+		ret.Desktop = true
+	}
+	if host_info.UserspaceRouter == "true" {
+		ret.UserspaceRouter = true
+	}
+	if host_info.RoutableIPs != nil {
+		for _, ip := range host_info.RoutableIPs {
+			ret.RouteableIps = append(ret.RouteableIps, ip.String())
+		}
+	}
+
+	return ret
+}
 
 func (hi *HostInfo) Scan(destination interface{}) error {
 	switch value := destination.(type) {
