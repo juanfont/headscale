@@ -146,27 +146,44 @@ message HostInfo {
     // on. As of Tailscale 1.32, this is simply the kernel version on Linux, like
     // "5.10.0-17-amd64".
     string os_version = 5;
+
+    // whether the client is running in a container
     bool container = 6;
+    // a hostinfo.EnvType in string form
     string env = 7;
+    // "debian", "ubuntu", "nixos", ...
     string distro = 8;
+    // "20.04", ...
     string distro_version = 9;
+    // "jammy", "bullseye", ...
     string distro_codename = 10;
+    // if a desktop was detected on Linux
     bool desktop = 11;
+    // Tailscale package to disambiguate ("choco", "appstore", etc; "" for unknown)
     string package = 12;
+    // mobile phone model ("Pixel 3a", "iPhone12,3")
     string device_model = 13;
+    // name of the host the client runs on
     string hostname = 14;
+    // indicates whether the host is blocking incoming connections
     bool shields_up = 15;
+    // indicates this node exists in netmap because it's owned by a shared-to user
     bool sharee_node = 16;
+    // indicates that the user has opted out of sending logs and support
     bool no_logs_no_support = 17;
+    // the host's GOARCH value (of the running binary)
     string go_arch = 18;
+    // Go version binary was built with
     string go_version = 19;
+    // set of IP ranges this client can route
     repeated string routeable_ips = 20;
+    // set of ACL tags this node wants to claim
     repeated string request_tags = 21;
-    // @todo When services is implemented, add it here
-    // services = 22;
-    // @todo netinfo, code 23
+    // if advertised
     repeated string ssh_host_keys = 24;
     string cloud = 25;
+    // if the client is running in userspace (netstack) mode
     bool userspace_version = 26;
+    // if the client's subnet router is running in userspace (netstack) mode
     bool userspace_router = 27;
 }
