@@ -362,6 +362,7 @@ func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
 }
 
+//nolint
 func createCertificate() ([]byte, []byte, error) {
 	// From:
 	// https://shaneutt.com/blog/golang-ca-and-signed-cert-go/
@@ -388,11 +389,6 @@ func createCertificate() ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-
-	// caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, &caPrivKey.PublicKey, caPrivKey)
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	cert := &x509.Certificate{
 		SerialNumber: big.NewInt(1658),
@@ -444,11 +440,6 @@ func createCertificate() ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-
-	// serverCert, err := tls.X509KeyPair(certPEM.Bytes(), certPrivKeyPEM.Bytes())
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	return certPEM.Bytes(), certPrivKeyPEM.Bytes(), nil
 }
