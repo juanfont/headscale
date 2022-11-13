@@ -26,6 +26,7 @@ var (
 	errTailscalePingFailed     = errors.New("ping failed")
 	errTailscaleNotLoggedIn    = errors.New("tailscale not logged in")
 	errTailscaleWrongPeerCount = errors.New("wrong peer count")
+	errTailscaleNotConnected   = errors.New("tailscale not connected")
 )
 
 type TailscaleInContainer struct {
@@ -250,6 +251,21 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 	}
 
 	return status.Self.DNSName, nil
+}
+
+func (t *TailscaleInContainer) WaitForReady() error {
+	return t.pool.Retry(func() error {
+		status, err := t.Status()
+		if err != nil {
+			return fmt.Errorf("failed to fetch tailscale status: %w", err)
+		}
+
+		if status.CurrentTailnet != nil {
+			return nil
+		}
+
+		return errTailscaleNotConnected
+	})
 }
 
 func (t *TailscaleInContainer) WaitForPeers(expected int) error {
