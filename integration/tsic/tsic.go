@@ -172,7 +172,7 @@ func (t *TailscaleInContainer) UpWithLoginURL(
 	}
 
 	_, stderr, err := t.Execute(command)
-	if err != errTailscaleNotLoggedIn {
+	if errors.Is(err, errTailscaleNotLoggedIn) {
 		return nil, errTailscaleCannotUpWithoutAuthkey
 	}
 
@@ -180,14 +180,15 @@ func (t *TailscaleInContainer) UpWithLoginURL(
 	urlStr = strings.TrimSpace(urlStr)
 
 	// parse URL
-	loginUrl, err := url.Parse(urlStr)
+	loginURL, err := url.Parse(urlStr)
 	if err != nil {
 		log.Printf("Could not parse login URL: %s", err)
 		log.Printf("Original join command result: %s", stderr)
+
 		return nil, err
 	}
 
-	return loginUrl, nil
+	return loginURL, nil
 }
 
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
