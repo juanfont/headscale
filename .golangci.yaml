@@ -36,6 +36,9 @@ linters:
     - makezero
     - maintidx
 
+    # Limits the methods of an interface to 10. We have more in integration tests
+    - interfacebloat
+
     # We might want to enable this, but it might be a lot of work
     - cyclop
     - nestif
