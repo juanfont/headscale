@@ -1,6 +1,8 @@
 ---
 run:
   timeout: 10m
+  build-tags:
+    - ts2019
 
 issues:
   skip-dirs:
