@@ -604,7 +604,6 @@ func (h *Headscale) registerMachineForOIDCCallback(
 	namespace *Namespace,
 	nodeKey *key.NodePublic,
 ) error {
-
 	if _, err := h.RegisterMachineFromAuthCallback(
 		nodeKey.String(),
 		namespace.Name,
