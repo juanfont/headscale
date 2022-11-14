@@ -26,25 +26,35 @@ const (
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
 	errNoNamespaceAvailable = errors.New("no namespace available")
-	TailscaleVersions       = []string{
+	tailscaleVersions2021   = []string{
 		"head",
 		"unstable",
 		"1.32.1",
 		"1.30.2",
 		"1.28.0",
 		"1.26.2",
+	}
+
+	tailscaleVersions2019 = []string{
 		"1.24.2",
 		"1.22.2",
 		"1.20.4",
 		"1.18.2",
 		"1.16.2",
-
-		// These versions seem to fail when fetching from apt.
-		// "1.14.6",
-		// "1.12.4",
-		// "1.10.2",
-		// "1.8.7",
 	}
+
+	// tailscaleVersionsUnavailable = []string{
+	// 	// These versions seem to fail when fetching from apt.
+	// 	"1.14.6",
+	// 	"1.12.4",
+	// 	"1.10.2",
+	// 	"1.8.7",
+	// }
+
+	TailscaleVersions = append(
+		tailscaleVersions2021,
+		tailscaleVersions2019...,
+	)
 )
 
 type Namespace struct {
