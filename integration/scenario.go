@@ -26,16 +26,19 @@ const (
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
 	errNoNamespaceAvailable = errors.New("no namespace available")
-	tailscaleVersions2021   = []string{
+
+	// Tailscale started adding TS2021 support in CapabilityVersion>=28 (v1.24.0), but
+	// proper support in Headscale was only added for CapabilityVersion>=39 clients (v1.30.0).
+	tailscaleVersions2021 = []string{
 		"head",
 		"unstable",
 		"1.32.1",
 		"1.30.2",
-		"1.28.0",
-		"1.26.2",
 	}
 
 	tailscaleVersions2019 = []string{
+		"1.28.0",
+		"1.26.2",
 		"1.24.2",
 		"1.22.2",
 		"1.20.4",
