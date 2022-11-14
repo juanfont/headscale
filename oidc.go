@@ -451,7 +451,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 				Msg("Failed to write response")
 		}
 
-		return nil, false, errOIDCInvalidMachineState
+		return nil, false, errOIDCNodeKeyMissing
 	}
 
 	var nodeKey key.NodePublic
