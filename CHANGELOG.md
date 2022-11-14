@@ -5,6 +5,7 @@
 ### BREAKING
 
 - Log level option `log_level` was moved to a distinct `log` config section and renamed to `level` [#768](https://github.com/juanfont/headscale/pull/768)
+- Removed Alpine Linux container image [#962](https://github.com/juanfont/headscale/pull/962)
 
 ### Changes
 
