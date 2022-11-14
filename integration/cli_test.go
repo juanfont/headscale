@@ -39,8 +39,11 @@ func TestNamespaceCommand(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec)
 	assert.NoError(t, err)
 
+	headscale, err := scenario.Headscale()
+	assert.NoError(t, err)
+
 	var listNamespaces []v1.Namespace
-	err = executeAndUnmarshal(scenario.MustHeadscale(),
+	err = executeAndUnmarshal(headscale,
 		[]string{
 			"headscale",
 			"namespaces",
@@ -61,7 +64,7 @@ func TestNamespaceCommand(t *testing.T) {
 		result,
 	)
 
-	_, err = scenario.MustHeadscale().Execute(
+	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"namespaces",
@@ -75,7 +78,7 @@ func TestNamespaceCommand(t *testing.T) {
 	assert.NoError(t, err)
 
 	var listAfterRenameNamespaces []v1.Namespace
-	err = executeAndUnmarshal(scenario.MustHeadscale(),
+	err = executeAndUnmarshal(headscale,
 		[]string{
 			"headscale",
 			"namespaces",
@@ -117,13 +120,16 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec)
 	assert.NoError(t, err)
 
+	headscale, err := scenario.Headscale()
+	assert.NoError(t, err)
+
 	keys := make([]*v1.PreAuthKey, count)
 	assert.NoError(t, err)
 
 	for index := 0; index < count; index++ {
 		var preAuthKey v1.PreAuthKey
 		err := executeAndUnmarshal(
-			scenario.MustHeadscale(),
+			headscale,
 			[]string{
 				"headscale",
 				"preauthkeys",
@@ -149,7 +155,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 	var listedPreAuthKeys []v1.PreAuthKey
 	err = executeAndUnmarshal(
-		scenario.MustHeadscale(),
+		headscale,
 		[]string{
 			"headscale",
 			"preauthkeys",
@@ -202,7 +208,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	}
 
 	// Test key expiry
-	_, err = scenario.MustHeadscale().Execute(
+	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"preauthkeys",
@@ -216,7 +222,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 	var listedPreAuthKeysAfterExpire []v1.PreAuthKey
 	err = executeAndUnmarshal(
-		scenario.MustHeadscale(),
+		headscale,
 		[]string{
 			"headscale",
 			"preauthkeys",
@@ -254,9 +260,12 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec)
 	assert.NoError(t, err)
 
+	headscale, err := scenario.Headscale()
+	assert.NoError(t, err)
+
 	var preAuthKey v1.PreAuthKey
 	err = executeAndUnmarshal(
-		scenario.MustHeadscale(),
+		headscale,
 		[]string{
 			"headscale",
 			"preauthkeys",
@@ -273,7 +282,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 
 	var listedPreAuthKeys []v1.PreAuthKey
 	err = executeAndUnmarshal(
-		scenario.MustHeadscale(),
+		headscale,
 		[]string{
 			"headscale",
 			"preauthkeys",
@@ -316,9 +325,12 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec)
 	assert.NoError(t, err)
 
+	headscale, err := scenario.Headscale()
+	assert.NoError(t, err)
+
 	var preAuthReusableKey v1.PreAuthKey
 	err = executeAndUnmarshal(
-		scenario.MustHeadscale(),
+		headscale,
 		[]string{
 			"headscale",
 			"preauthkeys",
@@ -335,7 +347,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 	var preAuthEphemeralKey v1.PreAuthKey
 	err = executeAndUnmarshal(
-		scenario.MustHeadscale(),
+		headscale,
 		[]string{
 			"headscale",
 			"preauthkeys",
@@ -355,7 +367,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 	var listedPreAuthKeys []v1.PreAuthKey
 	err = executeAndUnmarshal(
-		scenario.MustHeadscale(),
+		headscale,
 		[]string{
 			"headscale",
 			"preauthkeys",

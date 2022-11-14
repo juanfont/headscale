@@ -34,12 +34,12 @@ func TestHeadscale(t *testing.T) {
 	}
 
 	t.Run("start-headscale", func(t *testing.T) {
-		err = scenario.StartHeadscale()
+		headscale, err := scenario.Headscale()
 		if err != nil {
 			t.Errorf("failed to create start headcale: %s", err)
 		}
 
-		err = scenario.MustHeadscale().WaitForReady()
+		err = headscale.WaitForReady()
 		if err != nil {
 			t.Errorf("headscale failed to become ready: %s", err)
 		}
@@ -117,12 +117,11 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	}
 
 	t.Run("start-headscale", func(t *testing.T) {
-		err = scenario.StartHeadscale()
+		headscale, err := scenario.Headscale()
 		if err != nil {
 			t.Errorf("failed to create start headcale: %s", err)
 		}
 
-		headscale := scenario.MustHeadscale()
 		err = headscale.WaitForReady()
 		if err != nil {
 			t.Errorf("headscale failed to become ready: %s", err)
@@ -157,7 +156,16 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 			t.Errorf("failed to create preauthkey: %s", err)
 		}
 
-		err = scenario.RunTailscaleUp(namespace, scenario.MustHeadscale().GetEndpoint(), key.GetKey())
+		headscale, err := scenario.Headscale()
+		if err != nil {
+			t.Errorf("failed to create start headcale: %s", err)
+		}
+
+		err = scenario.RunTailscaleUp(
+			namespace,
+			headscale.GetEndpoint(),
+			key.GetKey(),
+		)
 		if err != nil {
 			t.Errorf("failed to login: %s", err)
 		}
