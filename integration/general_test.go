@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/rs/zerolog/log"
 )
 
@@ -22,7 +23,7 @@ func TestPingAllByIP(t *testing.T) {
 		"namespace2": len(TailscaleVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec)
+	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("pingallbyip"))
 	if err != nil {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
@@ -77,7 +78,7 @@ func TestPingAllByHostname(t *testing.T) {
 		"namespace4": len(TailscaleVersions) - 1,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec)
+	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("pingallbyname"))
 	if err != nil {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
@@ -144,7 +145,7 @@ func TestTaildrop(t *testing.T) {
 		"taildrop": len(TailscaleVersions) - 1,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec)
+	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("taildrop"))
 	if err != nil {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
@@ -271,7 +272,7 @@ func TestResolveMagicDNS(t *testing.T) {
 		"magicdns2": len(TailscaleVersions) - 1,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec)
+	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("magicdns"))
 	if err != nil {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}

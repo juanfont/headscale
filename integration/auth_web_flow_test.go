@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/juanfont/headscale/integration/hsic"
 )
 
 var errParseAuthPage = errors.New("failed to parse auth page")
@@ -35,7 +37,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 		"namespace2": len(TailscaleVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec)
+	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("webauthping"))
 	if err != nil {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
@@ -76,8 +78,11 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	}
 }
 
-func (s *AuthWebFlowScenario) CreateHeadscaleEnv(namespaces map[string]int) error {
-	headscale, err := s.Headscale()
+func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
+	namespaces map[string]int,
+	opts ...hsic.Option,
+) error {
+	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
 	}

@@ -96,6 +96,15 @@ func WithPort(port int) Option {
 	}
 }
 
+func WithTestName(testName string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hash, _ := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
+
+		hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
+		hsic.hostname = hostname
+	}
+}
+
 func New(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
@@ -120,6 +129,8 @@ func New(
 		opt(hsic)
 	}
 
+	log.Println("NAME: ", hsic.hostname)
+
 	portProto := fmt.Sprintf("%d/tcp", hsic.port)
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
@@ -128,7 +139,7 @@ func New(
 	}
 
 	runOptions := &dockertest.RunOptions{
-		Name:         hostname,
+		Name:         hsic.hostname,
 		ExposedPorts: []string{portProto},
 		Networks:     []*dockertest.Network{network},
 		// Cmd:          []string{"headscale", "serve"},
@@ -141,7 +152,7 @@ func New(
 	// dockertest isnt very good at handling containers that has already
 	// been created, this is an attempt to make sure this container isnt
 	// present.
-	err = pool.RemoveContainerByName(hostname)
+	err = pool.RemoveContainerByName(hsic.hostname)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +167,7 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("could not start headscale container: %w", err)
 	}
-	log.Printf("Created %s container\n", hostname)
+	log.Printf("Created %s container\n", hsic.hostname)
 
 	hsic.container = container
 
