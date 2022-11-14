@@ -528,6 +528,7 @@ func (h *Headscale) handleNewMachineCommon(
 	log.Info().
 		Caller().
 		Bool("noise", machineKey.IsZero()).
+		Str("AuthURL", resp.AuthURL).
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Msg("Successfully sent auth url")
 }
