@@ -82,7 +82,7 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(namespaces map[string]int) erro
 		return err
 	}
 
-	err = s.Headscale().WaitForReady()
+	err = s.MustHeadscale().WaitForReady()
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(namespaces map[string]int) erro
 			return err
 		}
 
-		err = s.runTailscaleUp(namespaceName, s.Headscale().GetEndpoint())
+		err = s.runTailscaleUp(namespaceName, s.MustHeadscale().GetEndpoint())
 		if err != nil {
 			return err
 		}
@@ -146,7 +146,7 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 
 func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL *url.URL) error {
 	log.Printf("loginURL: %s", loginURL)
-	loginURL.Host = fmt.Sprintf("%s:8080", s.Headscale().GetIP())
+	loginURL.Host = fmt.Sprintf("%s:8080", s.MustHeadscale().GetIP())
 	loginURL.Scheme = "http"
 
 	httpClient := &http.Client{}
@@ -178,7 +178,9 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 	log.Printf("registering node %s", key)
 
 	if headscale, ok := s.controlServers["headscale"]; ok {
-		_, err = headscale.Execute([]string{"headscale", "-n", namespaceStr, "nodes", "register", "--key", key})
+		_, err = headscale.Execute(
+			[]string{"headscale", "-n", namespaceStr, "nodes", "register", "--key", key},
+		)
 		if err != nil {
 			log.Printf("failed to register node: %s", err)
 
