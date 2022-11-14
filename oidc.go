@@ -77,9 +77,10 @@ func (h *Headscale) RegisterOIDC(
 	vars := mux.Vars(req)
 	nodeKeyStr, ok := vars["nkey"]
 
-	log.Trace().
+	log.Debug().
 		Caller().
 		Str("node_key", nodeKeyStr).
+		Bool("ok", ok).
 		Msg("Received oidc register call")
 
 	if !NodePublicKeyRegex.Match([]byte(nodeKeyStr)) {
@@ -107,7 +108,9 @@ func (h *Headscale) RegisterOIDC(
 	)
 
 	if !ok || nodeKeyStr == "" || err != nil {
-		log.Warn().Err(err).Msg("Failed to parse incoming nodekey")
+		log.Warn().
+			Err(err).
+			Msg("Failed to parse incoming nodekey in OIDC registration")
 
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
