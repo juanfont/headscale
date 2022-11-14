@@ -21,7 +21,6 @@ import (
 const (
 	scenarioHashLength = 6
 	maxWait            = 60 * time.Second
-	headscalePort      = 8080
 )
 
 var (
@@ -50,7 +49,7 @@ var (
 	// 	"1.12.4",
 	// 	"1.10.2",
 	// 	"1.8.7",
-	// }
+	// }.
 
 	TailscaleVersions = append(
 		tailscaleVersions2021,
