@@ -203,8 +203,6 @@ func (t *HeadscaleInContainer) Shutdown() error {
 func (t *HeadscaleInContainer) Execute(
 	command []string,
 ) (string, error) {
-	log.Println("command", command)
-	log.Printf("running command for %s\n", t.hostname)
 	stdout, stderr, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
@@ -213,11 +211,11 @@ func (t *HeadscaleInContainer) Execute(
 	if err != nil {
 		log.Printf("command stderr: %s\n", stderr)
 
-		return "", err
-	}
+		if stdout != "" {
+			log.Printf("command stdout: %s\n", stdout)
+		}
 
-	if stdout != "" {
-		log.Printf("command stdout: %s\n", stdout)
+		return "", err
 	}
 
 	return stdout, nil
