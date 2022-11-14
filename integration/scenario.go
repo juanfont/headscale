@@ -15,6 +15,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
+	"github.com/puzpuzpuz/xsync/v2"
 )
 
 const (
@@ -69,12 +70,14 @@ type Namespace struct {
 type Scenario struct {
 	// TODO(kradalby): support multiple headcales for later, currently only
 	// use one.
-	controlServers map[string]ControlServer
+	controlServers *xsync.MapOf[string, ControlServer]
 
 	namespaces map[string]*Namespace
 
 	pool    *dockertest.Pool
 	network *dockertest.Network
+
+	headscaleLock sync.Mutex
 }
 
 func NewScenario() (*Scenario, error) {
@@ -109,7 +112,7 @@ func NewScenario() (*Scenario, error) {
 	}
 
 	return &Scenario{
-		controlServers: make(map[string]ControlServer),
+		controlServers: xsync.NewMapOf[ControlServer](),
 		namespaces:     make(map[string]*Namespace),
 
 		pool:    pool,
@@ -118,12 +121,17 @@ func NewScenario() (*Scenario, error) {
 }
 
 func (s *Scenario) Shutdown() error {
-	for _, control := range s.controlServers {
+	s.controlServers.Range(func(_ string, control ControlServer) bool {
 		err := control.Shutdown()
 		if err != nil {
-			return fmt.Errorf("failed to tear down control: %w", err)
+			log.Printf(
+				"Failed to shut down control: %s",
+				fmt.Errorf("failed to tear down control: %w", err),
+			)
 		}
-	}
+
+		return true
+	})
 
 	for namespaceName, namespace := range s.namespaces {
 		for _, client := range namespace.Clients {
@@ -160,31 +168,31 @@ func (s *Scenario) Namespaces() []string {
 // Note: These functions assume that there is a _single_ headscale instance for now
 
 // TODO(kradalby): make port and headscale configurable, multiple instances support?
-func (s *Scenario) StartHeadscale(opts ...hsic.Option) error {
+func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
+	s.headscaleLock.Lock()
+	defer s.headscaleLock.Unlock()
+
+	if headscale, ok := s.controlServers.Load("headscale"); ok {
+		return headscale, nil
+	}
+
 	headscale, err := hsic.New(s.pool, s.network, opts...)
 	if err != nil {
-		return fmt.Errorf("failed to create headscale container: %w", err)
+		return nil, fmt.Errorf("failed to create headscale container: %w", err)
 	}
 
 	err = headscale.WaitForReady()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed reach headscale container: %w", err)
 	}
 
-	s.controlServers["headscale"] = headscale
+	s.controlServers.Store("headscale", headscale)
 
-	return nil
-}
-
-// MustHeadscale returns the headscale unit of a scenario, it will crash if it
-// is not available.
-func (s *Scenario) MustHeadscale() *hsic.HeadscaleInContainer {
-	//nolint
-	return s.controlServers["headscale"].(*hsic.HeadscaleInContainer)
+	return headscale, nil
 }
 
 func (s *Scenario) CreatePreAuthKey(namespace string) (*v1.PreAuthKey, error) {
-	if headscale, ok := s.controlServers["headscale"]; ok {
+	if headscale, err := s.Headscale(); err == nil {
 		key, err := headscale.CreateAuthKey(namespace)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create namespace: %w", err)
@@ -197,7 +205,7 @@ func (s *Scenario) CreatePreAuthKey(namespace string) (*v1.PreAuthKey, error) {
 }
 
 func (s *Scenario) CreateNamespace(namespace string) error {
-	if headscale, ok := s.controlServers["headscale"]; ok {
+	if headscale, err := s.Headscale(); err == nil {
 		err := headscale.CreateNamespace(namespace)
 		if err != nil {
 			return fmt.Errorf("failed to create namespace: %w", err)
@@ -227,6 +235,14 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 				version = TailscaleVersions[i%len(TailscaleVersions)]
 			}
 
+			headscale, err := s.Headscale()
+			if err != nil {
+				return fmt.Errorf("failed to create tailscale node: %w", err)
+			}
+
+			cert := headscale.GetCert()
+			hostname := headscale.GetHostname()
+
 			namespace.createWaitGroup.Add(1)
 
 			go func() {
@@ -237,8 +253,8 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 					s.pool,
 					version,
 					s.network,
-					tsic.WithHeadscaleTLS(s.MustHeadscale().GetCert()),
-					tsic.WithHeadscaleName(s.MustHeadscale().GetHostname()),
+					tsic.WithHeadscaleTLS(cert),
+					tsic.WithHeadscaleName(hostname),
 				)
 				if err != nil {
 					// return fmt.Errorf("failed to add tailscale node: %w", err)
@@ -324,7 +340,7 @@ func (s *Scenario) WaitForTailscaleSync() error {
 // test environment with nodes of all versions, joined to the server with X
 // namespaces.
 func (s *Scenario) CreateHeadscaleEnv(namespaces map[string]int, opts ...hsic.Option) error {
-	err := s.StartHeadscale(opts...)
+	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
 	}
@@ -345,7 +361,7 @@ func (s *Scenario) CreateHeadscaleEnv(namespaces map[string]int, opts ...hsic.Op
 			return err
 		}
 
-		err = s.RunTailscaleUp(namespaceName, s.MustHeadscale().GetEndpoint(), key.GetKey())
+		err = s.RunTailscaleUp(namespaceName, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
 			return err
 		}

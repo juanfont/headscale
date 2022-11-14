@@ -13,4 +13,7 @@ type ControlServer interface {
 	CreateNamespace(namespace string) error
 	CreateAuthKey(namespace string) (*v1.PreAuthKey, error)
 	ListMachinesInNamespace(namespace string) ([]*v1.Machine, error)
+	GetCert() []byte
+	GetHostname() string
+	GetIP() string
 }

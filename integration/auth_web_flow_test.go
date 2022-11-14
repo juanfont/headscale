@@ -77,12 +77,12 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 }
 
 func (s *AuthWebFlowScenario) CreateHeadscaleEnv(namespaces map[string]int) error {
-	err := s.StartHeadscale()
+	headscale, err := s.Headscale()
 	if err != nil {
 		return err
 	}
 
-	err = s.MustHeadscale().WaitForReady()
+	err = headscale.WaitForReady()
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(namespaces map[string]int) erro
 			return err
 		}
 
-		err = s.runTailscaleUp(namespaceName, s.MustHeadscale().GetEndpoint())
+		err = s.runTailscaleUp(namespaceName, headscale.GetEndpoint())
 		if err != nil {
 			return err
 		}
@@ -145,8 +145,13 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 }
 
 func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL *url.URL) error {
+	headscale, err := s.Headscale()
+	if err != nil {
+		return err
+	}
+
 	log.Printf("loginURL: %s", loginURL)
-	loginURL.Host = fmt.Sprintf("%s:8080", s.MustHeadscale().GetIP())
+	loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetIP())
 	loginURL.Scheme = "http"
 
 	httpClient := &http.Client{}
@@ -177,7 +182,7 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 	key := keySep[1]
 	log.Printf("registering node %s", key)
 
-	if headscale, ok := s.controlServers["headscale"]; ok {
+	if headscale, err := s.Headscale(); err == nil {
 		_, err = headscale.Execute(
 			[]string{"headscale", "-n", namespaceStr, "nodes", "register", "--key", key},
 		)
