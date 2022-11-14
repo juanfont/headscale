@@ -179,8 +179,6 @@ func (t *TailscaleInContainer) Version() string {
 func (t *TailscaleInContainer) Execute(
 	command []string,
 ) (string, string, error) {
-	log.Println("command", command)
-	log.Printf("running command for %s\n", t.hostname)
 	stdout, stderr, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
