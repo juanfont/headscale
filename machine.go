@@ -208,6 +208,12 @@ func getFilteredByACLPeers(
 				matchSourceAndDestinationWithRule(
 					rule.SrcIPs,
 					dst,
+					peer.IPAddresses.ToStringSlice(),
+					[]string{"*"},
+				) || // match return path for source and all destination
+				matchSourceAndDestinationWithRule(
+					rule.SrcIPs,
+					dst,
 					[]string{"*"},
 					[]string{"*"},
 				) || // match source and all destination
