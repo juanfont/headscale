@@ -3,10 +3,13 @@ package integration
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/juanfont/headscale"
@@ -19,7 +22,10 @@ import (
 const (
 	dockerContextPath      = "../."
 	hsicOIDCMockHashLength = 6
+	oidcServerPort         = 10000
 )
+
+var errStatusCodeNotOK = errors.New("status code not OK")
 
 type AuthOIDCScenario struct {
 	*Scenario
@@ -181,19 +187,24 @@ func (s *AuthOIDCScenario) runMockOIDC() (*headscale.OIDCConfig, error) {
 	hostEndpoint := fmt.Sprintf(
 		"%s:%s",
 		s.mockOIDC.GetIPInNetwork(s.network),
-		s.mockOIDC.GetPort("10000/tcp"),
+		s.mockOIDC.GetPort(fmt.Sprintf("%d/tcp", oidcServerPort)),
 	)
 
 	if err := s.pool.Retry(func() error {
-		url := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
-		resp, err := http.Get(url)
+		oidcConfigURL := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
+		httpClient := &http.Client{}
+		ctx := context.Background()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, oidcConfigURL, nil)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			log.Printf("headscale mock OIDC tests is not ready: %s\n", err)
+
 			return err
 		}
+		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("status code not OK")
+			return errStatusCodeNotOK
 		}
 
 		return nil
@@ -204,7 +215,8 @@ func (s *AuthOIDCScenario) runMockOIDC() (*headscale.OIDCConfig, error) {
 	log.Printf("headscale mock oidc is ready for tests at %s", hostEndpoint)
 
 	return &headscale.OIDCConfig{
-		Issuer:           fmt.Sprintf("http://%s:10000/oidc", s.mockOIDC.GetIPInNetwork(s.network)),
+		Issuer: fmt.Sprintf("http://%s/oidc",
+			net.JoinHostPort(s.mockOIDC.GetIPInNetwork(s.network), strconv.Itoa(oidcServerPort))),
 		ClientID:         "superclient",
 		ClientSecret:     "supersecret",
 		StripEmaildomain: true,
@@ -237,10 +249,10 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 				loginURL.Scheme = "http"
 
 				insecureTransport := &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
 				}
 
-				fmt.Printf("login url: %s\n", loginURL.String())
+				log.Printf("login url: %s\n", loginURL.String())
 
 				httpClient := &http.Client{Transport: insecureTransport}
 				ctx := context.Background()
@@ -248,12 +260,16 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 				resp, err := httpClient.Do(req)
 				if err != nil {
 					log.Printf("failed to get login url: %s", err)
+
 					return
 				}
+
+				defer resp.Body.Close()
 
 				_, err = io.ReadAll(resp.Body)
 				if err != nil {
 					log.Printf("failed to read response body: %s", err)
+
 					return
 				}
 
