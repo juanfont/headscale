@@ -41,7 +41,6 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 
 	spec := map[string]int{
 		"namespace1": len(TailscaleVersions),
-		"namespace2": len(TailscaleVersions),
 	}
 
 	oidcConfig, err := scenario.runMockOIDC()
@@ -61,6 +60,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		spec,
 		hsic.WithTestName("oidcauthping"),
 		hsic.WithConfigEnv(oidcMap),
+		hsic.WithHostnameAsServerURL(),
 	)
 	if err != nil {
 		t.Errorf("failed to create headscale environment: %s", err)
@@ -201,6 +201,8 @@ func (s *AuthOIDCScenario) runMockOIDC() (*headscale.OIDCConfig, error) {
 		return nil, err
 	}
 
+	log.Printf("headscale mock oidc is ready for tests at %s", hostEndpoint)
+
 	return &headscale.OIDCConfig{
 		Issuer:           fmt.Sprintf("http://%s:10000/oidc", s.mockOIDC.GetIPInNetwork(s.network)),
 		ClientID:         "superclient",
@@ -237,11 +239,15 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 				insecureTransport := &http.Transport{
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				}
+
+				fmt.Printf("login url: %s\n", loginURL.String())
+
 				httpClient := &http.Client{Transport: insecureTransport}
 				ctx := context.Background()
 				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
 				resp, err := httpClient.Do(req)
 				if err != nil {
+					log.Printf("failed to get login url: %s", err)
 					return
 				}
 
