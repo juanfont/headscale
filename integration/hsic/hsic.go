@@ -105,6 +105,17 @@ func WithTestName(testName string) Option {
 	}
 }
 
+func WithHostnameAsServerURL() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env = append(
+			hsic.env,
+			fmt.Sprintf("HEADSCALE_SERVER_URL=http://%s:%d",
+				hsic.GetHostname(),
+				hsic.port,
+			))
+	}
+}
+
 func New(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
@@ -371,7 +382,7 @@ func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
 }
 
-//nolint
+// nolint
 func createCertificate() ([]byte, []byte, error) {
 	// From:
 	// https://shaneutt.com/blog/golang-ca-and-signed-cert-go/
