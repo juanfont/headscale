@@ -66,6 +66,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha
+            type=raw,value=develop
       - name: Login to DockerHub
         uses: docker/login-action@v1
         with:
@@ -130,6 +131,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha
+            type=raw,value=develop
       - name: Login to DockerHub
         uses: docker/login-action@v1
         with:
