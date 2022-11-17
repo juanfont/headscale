@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"net/url"
 	"strings"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/juanfont/headscale"
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"tailscale.com/ipn/ipnstate"
@@ -19,12 +21,15 @@ import (
 const (
 	tsicHashLength    = 6
 	dockerContextPath = "../."
+	headscaleCertPath = "/usr/local/share/ca-certificates/headscale.crt"
 )
 
 var (
-	errTailscalePingFailed     = errors.New("ping failed")
-	errTailscaleNotLoggedIn    = errors.New("tailscale not logged in")
-	errTailscaleWrongPeerCount = errors.New("wrong peer count")
+	errTailscalePingFailed             = errors.New("ping failed")
+	errTailscaleNotLoggedIn            = errors.New("tailscale not logged in")
+	errTailscaleWrongPeerCount         = errors.New("wrong peer count")
+	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
+	errTailscaleNotConnected           = errors.New("tailscale not connected")
 )
 
 type TailscaleInContainer struct {
@@ -38,12 +43,51 @@ type TailscaleInContainer struct {
 	// "cache"
 	ips  []netip.Addr
 	fqdn string
+
+	// optional config
+	headscaleCert     []byte
+	headscaleHostname string
+}
+
+type Option = func(c *TailscaleInContainer)
+
+func WithHeadscaleTLS(cert []byte) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.headscaleCert = cert
+	}
+}
+
+func WithOrCreateNetwork(network *dockertest.Network) Option {
+	return func(tsic *TailscaleInContainer) {
+		if network != nil {
+			tsic.network = network
+
+			return
+		}
+
+		network, err := dockertestutil.GetFirstOrCreateNetwork(
+			tsic.pool,
+			fmt.Sprintf("%s-network", tsic.hostname),
+		)
+		if err != nil {
+			log.Fatalf("failed to create network: %s", err)
+		}
+
+		tsic.network = network
+	}
+}
+
+func WithHeadscaleName(hsName string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.headscaleHostname = hsName
+	}
 }
 
 func New(
 	pool *dockertest.Pool,
 	version string,
 	network *dockertest.Network,
+	opts ...Option,
 ) (*TailscaleInContainer, error) {
 	hash, err := headscale.GenerateRandomStringDNSSafe(tsicHashLength)
 	if err != nil {
@@ -52,18 +96,36 @@ func New(
 
 	hostname := fmt.Sprintf("ts-%s-%s", strings.ReplaceAll(version, ".", "-"), hash)
 
-	// TODO(kradalby): figure out why we need to "refresh" the network here.
-	// network, err = dockertestutil.GetFirstOrCreateNetwork(pool, network.Network.Name)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	tsic := &TailscaleInContainer{
+		version:  version,
+		hostname: hostname,
+
+		pool:    pool,
+		network: network,
+	}
+
+	for _, opt := range opts {
+		opt(tsic)
+	}
 
 	tailscaleOptions := &dockertest.RunOptions{
 		Name:     hostname,
 		Networks: []*dockertest.Network{network},
-		Cmd: []string{
-			"tailscaled", "--tun=tsdev",
+		// Cmd: []string{
+		// 	"tailscaled", "--tun=tsdev",
+		// },
+		Entrypoint: []string{
+			"/bin/bash",
+			"-c",
+			"/bin/sleep 3 ; update-ca-certificates ; tailscaled --tun=tsdev",
 		},
+	}
+
+	if tsic.headscaleHostname != "" {
+		tailscaleOptions.ExtraHosts = []string{
+			"host.docker.internal:host-gateway",
+			fmt.Sprintf("%s:host-gateway", tsic.headscaleHostname),
+		}
 	}
 
 	// dockertest isnt very good at handling containers that has already
@@ -86,14 +148,20 @@ func New(
 	}
 	log.Printf("Created %s container\n", hostname)
 
-	return &TailscaleInContainer{
-		version:  version,
-		hostname: hostname,
+	tsic.container = container
 
-		pool:      pool,
-		container: container,
-		network:   network,
-	}, nil
+	if tsic.hasTLS() {
+		err = tsic.WriteFile(headscaleCertPath, tsic.headscaleCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+		}
+	}
+
+	return tsic, nil
+}
+
+func (t *TailscaleInContainer) hasTLS() bool {
+	return len(t.headscaleCert) != 0
 }
 
 func (t *TailscaleInContainer) Shutdown() error {
@@ -110,9 +178,7 @@ func (t *TailscaleInContainer) Version() string {
 
 func (t *TailscaleInContainer) Execute(
 	command []string,
-) (string, error) {
-	log.Println("command", command)
-	log.Printf("running command for %s\n", t.hostname)
+) (string, string, error) {
 	stdout, stderr, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
@@ -126,13 +192,13 @@ func (t *TailscaleInContainer) Execute(
 		}
 
 		if strings.Contains(stderr, "NeedsLogin") {
-			return "", errTailscaleNotLoggedIn
+			return stdout, stderr, errTailscaleNotLoggedIn
 		}
 
-		return "", err
+		return stdout, stderr, err
 	}
 
-	return stdout, nil
+	return stdout, stderr, nil
 }
 
 func (t *TailscaleInContainer) Up(
@@ -149,11 +215,43 @@ func (t *TailscaleInContainer) Up(
 		t.hostname,
 	}
 
-	if _, err := t.Execute(command); err != nil {
+	if _, _, err := t.Execute(command); err != nil {
 		return fmt.Errorf("failed to join tailscale client: %w", err)
 	}
 
 	return nil
+}
+
+func (t *TailscaleInContainer) UpWithLoginURL(
+	loginServer string,
+) (*url.URL, error) {
+	command := []string{
+		"tailscale",
+		"up",
+		"-login-server",
+		loginServer,
+		"--hostname",
+		t.hostname,
+	}
+
+	_, stderr, err := t.Execute(command)
+	if errors.Is(err, errTailscaleNotLoggedIn) {
+		return nil, errTailscaleCannotUpWithoutAuthkey
+	}
+
+	urlStr := strings.ReplaceAll(stderr, "\nTo authenticate, visit:\n\n\t", "")
+	urlStr = strings.TrimSpace(urlStr)
+
+	// parse URL
+	loginURL, err := url.Parse(urlStr)
+	if err != nil {
+		log.Printf("Could not parse login URL: %s", err)
+		log.Printf("Original join command result: %s", stderr)
+
+		return nil, err
+	}
+
+	return loginURL, nil
 }
 
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
@@ -168,7 +266,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		"ip",
 	}
 
-	result, err := t.Execute(command)
+	result, _, err := t.Execute(command)
 	if err != nil {
 		return []netip.Addr{}, fmt.Errorf("failed to join tailscale client: %w", err)
 	}
@@ -195,7 +293,7 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 		"--json",
 	}
 
-	result, err := t.Execute(command)
+	result, _, err := t.Execute(command)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute tailscale status command: %w", err)
 	}
@@ -220,6 +318,21 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 	}
 
 	return status.Self.DNSName, nil
+}
+
+func (t *TailscaleInContainer) WaitForReady() error {
+	return t.pool.Retry(func() error {
+		status, err := t.Status()
+		if err != nil {
+			return fmt.Errorf("failed to fetch tailscale status: %w", err)
+		}
+
+		if status.CurrentTailnet != nil {
+			return nil
+		}
+
+		return errTailscaleNotConnected
+	})
 }
 
 func (t *TailscaleInContainer) WaitForPeers(expected int) error {
@@ -248,7 +361,7 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string) error {
 			hostnameOrIP,
 		}
 
-		result, err := t.Execute(command)
+		result, _, err := t.Execute(command)
 		if err != nil {
 			log.Printf(
 				"failed to run ping command from %s to %s, err: %s",
@@ -266,6 +379,10 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string) error {
 
 		return nil
 	})
+}
+
+func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
+	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
 }
 
 func createTailscaleBuildOptions(version string) *dockertest.BuildOptions {

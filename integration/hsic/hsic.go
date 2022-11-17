@@ -1,49 +1,80 @@
 package hsic
 
 import (
-	"archive/tar"
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"log"
+	"math/big"
+	"net"
 	"net/http"
-	"path/filepath"
+	"time"
 
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
-	"github.com/ory/dockertest/v3/docker"
 )
 
 const (
-	hsicHashLength    = 6
-	dockerContextPath = "../."
-	aclPolicyPath     = "/etc/headscale/acl.hujson"
+	hsicHashLength       = 6
+	dockerContextPath    = "../."
+	aclPolicyPath        = "/etc/headscale/acl.hujson"
+	tlsCertPath          = "/etc/headscale/tls.cert"
+	tlsKeyPath           = "/etc/headscale/tls.key"
+	headscaleDefaultPort = 8080
 )
 
 var errHeadscaleStatusCodeNotOk = errors.New("headscale status code not ok")
 
 type HeadscaleInContainer struct {
 	hostname string
-	port     int
 
 	pool      *dockertest.Pool
 	container *dockertest.Resource
 	network   *dockertest.Network
 
 	// optional config
+	port      int
 	aclPolicy *headscale.ACLPolicy
 	env       []string
+	tlsCert   []byte
+	tlsKey    []byte
 }
 
 type Option = func(c *HeadscaleInContainer)
 
 func WithACLPolicy(acl *headscale.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
+		// TODO(kradalby): Move somewhere appropriate
+		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_ACL_POLICY_PATH=%s", aclPolicyPath))
+
 		hsic.aclPolicy = acl
+	}
+}
+
+func WithTLS() Option {
+	return func(hsic *HeadscaleInContainer) {
+		cert, key, err := createCertificate()
+		if err != nil {
+			log.Fatalf("failed to create certificates for headscale test: %s", err)
+		}
+
+		// TODO(kradalby): Move somewhere appropriate
+		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_TLS_CERT_PATH=%s", tlsCertPath))
+		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_TLS_KEY_PATH=%s", tlsKeyPath))
+		hsic.env = append(hsic.env, "HEADSCALE_TLS_CLIENT_AUTH_MODE=disabled")
+
+		hsic.tlsCert = cert
+		hsic.tlsKey = key
 	}
 }
 
@@ -59,9 +90,23 @@ func WithConfigEnv(configEnv map[string]string) Option {
 	}
 }
 
+func WithPort(port int) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.port = port
+	}
+}
+
+func WithTestName(testName string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hash, _ := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
+
+		hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
+		hsic.hostname = hostname
+	}
+}
+
 func New(
 	pool *dockertest.Pool,
-	port int,
 	network *dockertest.Network,
 	opts ...Option,
 ) (*HeadscaleInContainer, error) {
@@ -71,11 +116,10 @@ func New(
 	}
 
 	hostname := fmt.Sprintf("hs-%s", hash)
-	portProto := fmt.Sprintf("%d/tcp", port)
 
 	hsic := &HeadscaleInContainer{
 		hostname: hostname,
-		port:     port,
+		port:     headscaleDefaultPort,
 
 		pool:    pool,
 		network: network,
@@ -85,9 +129,9 @@ func New(
 		opt(hsic)
 	}
 
-	if hsic.aclPolicy != nil {
-		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_ACL_POLICY_PATH=%s", aclPolicyPath))
-	}
+	log.Println("NAME: ", hsic.hostname)
+
+	portProto := fmt.Sprintf("%d/tcp", hsic.port)
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile.debug",
@@ -95,7 +139,7 @@ func New(
 	}
 
 	runOptions := &dockertest.RunOptions{
-		Name:         hostname,
+		Name:         hsic.hostname,
 		ExposedPorts: []string{portProto},
 		Networks:     []*dockertest.Network{network},
 		// Cmd:          []string{"headscale", "serve"},
@@ -108,7 +152,7 @@ func New(
 	// dockertest isnt very good at handling containers that has already
 	// been created, this is an attempt to make sure this container isnt
 	// present.
-	err = pool.RemoveContainerByName(hostname)
+	err = pool.RemoveContainerByName(hsic.hostname)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +167,7 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("could not start headscale container: %w", err)
 	}
-	log.Printf("Created %s container\n", hostname)
+	log.Printf("Created %s container\n", hsic.hostname)
 
 	hsic.container = container
 
@@ -144,7 +188,23 @@ func New(
 		}
 	}
 
+	if hsic.hasTLS() {
+		err = hsic.WriteFile(tlsCertPath, hsic.tlsCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+		}
+
+		err = hsic.WriteFile(tlsKeyPath, hsic.tlsKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write TLS key to container: %w", err)
+		}
+	}
+
 	return hsic, nil
+}
+
+func (t *HeadscaleInContainer) hasTLS() bool {
+	return len(t.tlsCert) != 0 && len(t.tlsKey) != 0
 }
 
 func (t *HeadscaleInContainer) Shutdown() error {
@@ -154,8 +214,6 @@ func (t *HeadscaleInContainer) Shutdown() error {
 func (t *HeadscaleInContainer) Execute(
 	command []string,
 ) (string, error) {
-	log.Println("command", command)
-	log.Printf("running command for %s\n", t.hostname)
 	stdout, stderr, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
@@ -164,11 +222,11 @@ func (t *HeadscaleInContainer) Execute(
 	if err != nil {
 		log.Printf("command stderr: %s\n", stderr)
 
-		return "", err
-	}
+		if stdout != "" {
+			log.Printf("command stdout: %s\n", stdout)
+		}
 
-	if stdout != "" {
-		log.Printf("command stdout: %s\n", stdout)
+		return "", err
 	}
 
 	return stdout, nil
@@ -179,17 +237,11 @@ func (t *HeadscaleInContainer) GetIP() string {
 }
 
 func (t *HeadscaleInContainer) GetPort() string {
-	portProto := fmt.Sprintf("%d/tcp", t.port)
-
-	return t.container.GetPort(portProto)
+	return fmt.Sprintf("%d", t.port)
 }
 
 func (t *HeadscaleInContainer) GetHealthEndpoint() string {
-	hostEndpoint := fmt.Sprintf("%s:%d",
-		t.GetIP(),
-		t.port)
-
-	return fmt.Sprintf("http://%s/health", hostEndpoint)
+	return fmt.Sprintf("%s/health", t.GetEndpoint())
 }
 
 func (t *HeadscaleInContainer) GetEndpoint() string {
@@ -197,7 +249,19 @@ func (t *HeadscaleInContainer) GetEndpoint() string {
 		t.GetIP(),
 		t.port)
 
+	if t.hasTLS() {
+		return fmt.Sprintf("https://%s", hostEndpoint)
+	}
+
 	return fmt.Sprintf("http://%s", hostEndpoint)
+}
+
+func (t *HeadscaleInContainer) GetCert() []byte {
+	return t.tlsCert
+}
+
+func (t *HeadscaleInContainer) GetHostname() string {
+	return t.hostname
 }
 
 func (t *HeadscaleInContainer) WaitForReady() error {
@@ -205,9 +269,19 @@ func (t *HeadscaleInContainer) WaitForReady() error {
 
 	log.Printf("waiting for headscale to be ready at %s", url)
 
+	client := &http.Client{}
+
+	if t.hasTLS() {
+		insecureTransport := http.DefaultTransport.(*http.Transport).Clone()      //nolint
+		insecureTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint
+		client = &http.Client{Transport: insecureTransport}
+	}
+
 	return t.pool.Retry(func() error {
-		resp, err := http.Get(url) //nolint
+		resp, err := client.Get(url) //nolint
 		if err != nil {
+			log.Printf("ready err: %s", err)
+
 			return fmt.Errorf("headscale is not ready: %w", err)
 		}
 
@@ -294,55 +368,87 @@ func (t *HeadscaleInContainer) ListMachinesInNamespace(
 }
 
 func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
-	dirPath, fileName := filepath.Split(path)
+	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
+}
 
-	file := bytes.NewReader(data)
+//nolint
+func createCertificate() ([]byte, []byte, error) {
+	// From:
+	// https://shaneutt.com/blog/golang-ca-and-signed-cert-go/
 
-	buf := bytes.NewBuffer([]byte{})
-
-	tarWriter := tar.NewWriter(buf)
-
-	header := &tar.Header{
-		Name: fileName,
-		Size: file.Size(),
-		// Mode:    int64(stat.Mode()),
-		// ModTime: stat.ModTime(),
-	}
-
-	err := tarWriter.WriteHeader(header)
-	if err != nil {
-		return fmt.Errorf("failed write file header to tar: %w", err)
-	}
-
-	_, err = io.Copy(tarWriter, file)
-	if err != nil {
-		return fmt.Errorf("failed to copy file to tar: %w", err)
-	}
-
-	err = tarWriter.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close tar: %w", err)
-	}
-
-	log.Printf("tar: %s", buf.String())
-
-	// Ensure the directory is present inside the container
-	_, err = t.Execute([]string{"mkdir", "-p", dirPath})
-	if err != nil {
-		return fmt.Errorf("failed to ensure directory: %w", err)
-	}
-
-	err = t.pool.Client.UploadToContainer(
-		t.container.Container.ID,
-		docker.UploadToContainerOptions{
-			NoOverwriteDirNonDir: false,
-			Path:                 dirPath,
-			InputStream:          bytes.NewReader(buf.Bytes()),
+	ca := &x509.Certificate{
+		SerialNumber: big.NewInt(2019),
+		Subject: pkix.Name{
+			Organization: []string{"Headscale testing INC"},
+			Country:      []string{"NL"},
+			Locality:     []string{"Leiden"},
 		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().Add(30 * time.Minute),
+		IsCA:      true,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
+
+	caPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cert := &x509.Certificate{
+		SerialNumber: big.NewInt(1658),
+		Subject: pkix.Name{
+			Organization: []string{"Headscale testing INC"},
+			Country:      []string{"NL"},
+			Locality:     []string{"Leiden"},
+		},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(30 * time.Minute),
+		SubjectKeyId: []byte{1, 2, 3, 4, 6},
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+
+	certPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certBytes, err := x509.CreateCertificate(
+		rand.Reader,
+		cert,
+		ca,
+		&certPrivKey.PublicKey,
+		caPrivKey,
 	)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	return nil
+	certPEM := new(bytes.Buffer)
+
+	err = pem.Encode(certPEM, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certBytes,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certPrivKeyPEM := new(bytes.Buffer)
+
+	err = pem.Encode(certPrivKeyPEM, &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return certPEM.Bytes(), certPrivKeyPEM.Bytes(), nil
 }
