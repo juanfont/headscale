@@ -196,6 +196,39 @@ func (h *Headscale) getAvailableIP(ipPrefix netip.Prefix) (*netip.Addr, error) {
 	}
 }
 
+func (h *Headscale) getRandomAvailableIP(ipPrefix netip.Prefix) (*netip.Addr, error) {
+	usedIps, err := h.getUsedIPs()
+	if err != nil {
+		return nil, err
+	}
+
+	ipPrefixNetworkAddress, ipPrefixBroadcastAddress := GetIPPrefixEndpoints(ipPrefix)
+
+	// Get a random ip address in range
+	index := rand.Intn(len(ipPrefixNetworkAddress))
+	ip := ipPrefixNetworkAddress[index]
+
+	for {
+		if !ipPrefix.Contains(ip) {
+			return nil, ErrCouldNotAllocateIP
+		}
+
+		switch {
+		case ip.Compare(ipPrefixBroadcastAddress) == 0:
+			fallthrough
+		case usedIps.Contains(ip):
+			fallthrough
+		case ip == netip.Addr{} || ip.IsLoopback():
+			ip = ip.Next()
+
+			continue
+
+		default:
+			return &ip, nil
+		}
+	}
+}
+
 func (h *Headscale) getUsedIPs() (*netipx.IPSet, error) {
 	// FIXME: This really deserves a better data model,
 	// but this was quick to get running and it should be enough
