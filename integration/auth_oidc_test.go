@@ -252,14 +252,14 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
 				}
 
-				log.Printf("login url: %s\n", loginURL.String())
+				log.Printf("%s login url: %s\n", c.Hostname(), loginURL.String())
 
 				httpClient := &http.Client{Transport: insecureTransport}
 				ctx := context.Background()
 				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
 				resp, err := httpClient.Do(req)
 				if err != nil {
-					log.Printf("failed to get login url: %s", err)
+					log.Printf("%s failed to get login url %s: %s", c.Hostname(), loginURL, err)
 
 					return
 				}
@@ -268,17 +268,20 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 
 				_, err = io.ReadAll(resp.Body)
 				if err != nil {
-					log.Printf("failed to read response body: %s", err)
+					log.Printf("%s failed to read response body: %s", c.Hostname(), err)
 
 					return
 				}
 
-				err = c.WaitForReady()
-				if err != nil {
-					log.Printf("error waiting for client %s to be ready: %s", c.Hostname(), err)
-				}
+				log.Printf("client %s is ready", c.Hostname())
 			}(client)
+
+			err = client.WaitForReady()
+			if err != nil {
+				log.Printf("error waiting for client %s to be ready: %s", client.Hostname(), err)
+			}
 		}
+
 		namespace.joinWaitGroup.Wait()
 
 		return nil
