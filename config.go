@@ -597,6 +597,13 @@ func GetHeadscaleConfig() (*Config, error) {
 
 		ACL: GetACLConfig(),
 
+		CLI: CLIConfig{
+			Address:  viper.GetString("cli.address"),
+			APIKey:   viper.GetString("cli.api_key"),
+			Timeout:  viper.GetDuration("cli.timeout"),
+			Insecure: viper.GetBool("cli.insecure"),
+		},
+
 		Log: GetLogConfig(),
 	}, nil
 }
