@@ -407,15 +407,40 @@ func generateACLPolicyDest(
 	needsWildcard bool,
 	stripEmaildomain bool,
 ) ([]tailcfg.NetPortRange, error) {
-	tokens := strings.Split(dest, ":")
+	var tokens []string
+
+	log.Trace().Str("destination", dest).Msg("generating policy destination")
+
+	// Check if there is a IPv4/6:Port combination, IPv6 has more than
+	// three ":".
+	tokens = strings.Split(dest, ":")
 	if len(tokens) < expectedTokenItems || len(tokens) > 3 {
-		return nil, errInvalidPortFormat
+		port := tokens[len(tokens)-1]
+
+		maybeIPv6Str := strings.TrimSuffix(dest, ":"+port)
+		log.Trace().Str("maybeIPv6Str", maybeIPv6Str).Msg("")
+
+		if maybeIPv6, err := netip.ParseAddr(maybeIPv6Str); err != nil && !maybeIPv6.Is6() {
+			log.Trace().Err(err).Msg("trying to parse as IPv6")
+
+			return nil, fmt.Errorf(
+				"failed to parse destination, tokens %v: %w",
+				tokens,
+				errInvalidPortFormat,
+			)
+		} else {
+			tokens = []string{maybeIPv6Str, port}
+		}
 	}
+
+	log.Trace().Strs("tokens", tokens).Msg("generating policy destination")
 
 	var alias string
 	// We can have here stuff like:
 	// git-server:*
 	// 192.168.1.0/24:22
+	// fd7a:115c:a1e0::2:22
+	// fd7a:115c:a1e0::2/128:22
 	// tag:montreal-webserver:80,443
 	// tag:api-server:443
 	// example-host-1:*
@@ -666,6 +691,7 @@ func expandPorts(portsStr string, needsWildcard bool) (*[]tailcfg.PortRange, err
 
 	ports := []tailcfg.PortRange{}
 	for _, portStr := range strings.Split(portsStr, ",") {
+		log.Trace().Msgf("parsing portstring: %s", portStr)
 		rang := strings.Split(portStr, "-")
 		switch len(rang) {
 		case 1:
