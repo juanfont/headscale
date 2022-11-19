@@ -273,13 +273,15 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 					return
 				}
 
-				log.Printf("client %s is ready", c.Hostname())
+				log.Printf("Finished request for %s to join tailnet", c.Hostname())
 			}(client)
 
 			err = client.WaitForReady()
 			if err != nil {
 				log.Printf("error waiting for client %s to be ready: %s", client.Hostname(), err)
 			}
+
+			log.Printf("client %s is ready", client.Hostname())
 		}
 
 		namespace.joinWaitGroup.Wait()
