@@ -188,6 +188,10 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("node_update_check_interval", "10s")
 
+	if IsCLIConfigured() {
+		return nil
+	}
+
 	if err := viper.ReadInConfig(); err != nil {
 		log.Warn().Err(err).Msg("Failed to read configuration from disk")
 
@@ -483,6 +487,17 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 }
 
 func GetHeadscaleConfig() (*Config, error) {
+	if IsCLIConfigured() {
+		return &Config{
+			CLI: CLIConfig{
+				Address:  viper.GetString("cli.address"),
+				APIKey:   viper.GetString("cli.api_key"),
+				Timeout:  viper.GetDuration("cli.timeout"),
+				Insecure: viper.GetBool("cli.insecure"),
+			},
+		}, nil
+	}
+
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
@@ -584,6 +599,8 @@ func GetHeadscaleConfig() (*Config, error) {
 		LogTail:             logConfig,
 		RandomizeClientPort: randomizeClientPort,
 
+		ACL: GetACLConfig(),
+
 		CLI: CLIConfig{
 			Address:  viper.GetString("cli.address"),
 			APIKey:   viper.GetString("cli.api_key"),
@@ -591,8 +608,10 @@ func GetHeadscaleConfig() (*Config, error) {
 			Insecure: viper.GetBool("cli.insecure"),
 		},
 
-		ACL: GetACLConfig(),
-
 		Log: GetLogConfig(),
 	}, nil
+}
+
+func IsCLIConfigured() bool {
+	return viper.GetString("cli.address") != "" && viper.GetString("cli.api_key") != ""
 }
