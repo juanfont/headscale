@@ -18,6 +18,17 @@ func (s *Suite) TestGetAvailableIp(c *check.C) {
 	c.Assert(ips[0].String(), check.Equals, expected.String())
 }
 
+func (s *Suite) TestGetRandomAvailableIp(c *check.C) {
+	ips, err := app.getRandomAvailableIPs()
+
+	c.Assert(err, check.IsNil)
+
+	expected := netip.MustParseAddr("10.27.0.1")
+
+	c.Assert(len(ips), check.Equals, 1)
+	c.Assert(ips[0].String(), check.Equals, expected.String())
+}
+
 func (s *Suite) TestGetUsedIps(c *check.C) {
 	ips, err := app.getAvailableIPs()
 	c.Assert(err, check.IsNil)
