@@ -248,6 +248,8 @@ func (h *Headscale) getUsedIPs() (*netipx.IPSet, error) {
 }
 
 func shuffleIPs(ips MachineAddresses) {
+	// Seeding needed to ensure random order between runs.
+	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(ips), func(i, j int) {
 		ips[i], ips[j] = ips[j], ips[i]
 	})

@@ -897,9 +897,13 @@ func (h *Headscale) RegisterMachine(machine Machine,
 	h.ipAllocationMutex.Lock()
 	defer h.ipAllocationMutex.Unlock()
 
-	ips, err := h.getAvailableIPs()
+	var ips MachineAddresses
+	var err error
+
 	if h.cfg.RandomizeIP {
 		ips, err = h.getRandomAvailableIPs()
+	} else {
+		ips, err = h.getAvailableIPs()
 	}
 
 	if err != nil {
