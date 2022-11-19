@@ -134,12 +134,12 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 				if err != nil {
 					log.Printf("failed to register client: %s", err)
 				}
-
-				err = c.WaitForReady()
-				if err != nil {
-					log.Printf("error waiting for client %s to be ready: %s", c.Hostname(), err)
-				}
 			}(client)
+
+			err := client.WaitForReady()
+			if err != nil {
+				log.Printf("error waiting for client %s to be ready: %s", client.Hostname(), err)
+			}
 		}
 		namespace.joinWaitGroup.Wait()
 
