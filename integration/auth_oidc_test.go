@@ -55,11 +55,11 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	}
 
 	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
-		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
-		"HEADSCALE_OIDC_CLIENT_SECRET":      oidcConfig.ClientSecret,
-		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": fmt.Sprintf("%t", oidcConfig.StripEmaildomain),
-		"ONLY_START_IF_OIDC_IS_AVAILABLE":   "true",
+		"HEADSCALE_OIDC_ISSUER":                     oidcConfig.Issuer,
+		"HEADSCALE_OIDC_CLIENT_ID":                  oidcConfig.ClientID,
+		"HEADSCALE_OIDC_CLIENT_SECRET":              oidcConfig.ClientSecret,
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN":         fmt.Sprintf("%t", oidcConfig.StripEmaildomain),
+		"HEADSCALE_ONLY_START_IF_OIDC_IS_AVAILABLE": "true",
 	}
 
 	err = scenario.CreateHeadscaleEnv(
