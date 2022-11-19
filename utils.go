@@ -155,6 +155,23 @@ func (h *Headscale) getAvailableIPs() (MachineAddresses, error) {
 	return ips, err
 }
 
+func (h *Headscale) getRandomAvailableIPs() (MachineAddresses, error) {
+	var ips MachineAddresses
+	var err error
+	ipPrefixes := h.cfg.IPPrefixes
+	for _, ipPrefix := range ipPrefixes {
+		var ip *netip.Addr
+		ip, err = h.getAvailableIP(ipPrefix)
+		if err != nil {
+			return shuffleIPs(ips), err
+		}
+		ips = append(ips, *ip)
+	}
+
+	return shuffleIPs(ips), err
+}
+
+
 func GetIPPrefixEndpoints(na netip.Prefix) (netip.Addr, netip.Addr) {
 	var network, broadcast netip.Addr
 	ipRange := netipx.RangeOfPrefix(na)
@@ -174,39 +191,6 @@ func (h *Headscale) getAvailableIP(ipPrefix netip.Prefix) (*netip.Addr, error) {
 
 	// Get the first IP in our prefix
 	ip := ipPrefixNetworkAddress.Next()
-
-	for {
-		if !ipPrefix.Contains(ip) {
-			return nil, ErrCouldNotAllocateIP
-		}
-
-		switch {
-		case ip.Compare(ipPrefixBroadcastAddress) == 0:
-			fallthrough
-		case usedIps.Contains(ip):
-			fallthrough
-		case ip == netip.Addr{} || ip.IsLoopback():
-			ip = ip.Next()
-
-			continue
-
-		default:
-			return &ip, nil
-		}
-	}
-}
-
-func (h *Headscale) getRandomAvailableIP(ipPrefix netip.Prefix) (*netip.Addr, error) {
-	usedIps, err := h.getUsedIPs()
-	if err != nil {
-		return nil, err
-	}
-
-	ipPrefixNetworkAddress, ipPrefixBroadcastAddress := GetIPPrefixEndpoints(ipPrefix)
-
-	// Get a random ip address in range
-	index := rand.Intn(len(ipPrefixNetworkAddress))
-	ip := ipPrefixNetworkAddress[index]
 
 	for {
 		if !ipPrefix.Contains(ip) {
@@ -261,6 +245,14 @@ func (h *Headscale) getUsedIPs() (*netipx.IPSet, error) {
 	}
 
 	return ipSet, nil
+}
+
+func shuffleIPs(ips MachineAddresses) {
+	rand.Shuffle(len(ips), func(i, j int) {
+		ips[i], ips[j] = ips[j], ips[i]
+	})
+
+	return ips
 }
 
 func tailNodesToString(nodes []*tailcfg.Node) string {

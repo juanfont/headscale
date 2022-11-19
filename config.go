@@ -37,6 +37,7 @@ type Config struct {
 	EphemeralNodeInactivityTimeout time.Duration
 	NodeUpdateCheckInterval        time.Duration
 	IPPrefixes                     []netip.Prefix
+	RandomizeIP                    bool
 	PrivateKeyPath                 string
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
@@ -164,6 +165,8 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
+
+	viper.SetDefault("randomize_ip", false)
 
 	viper.SetDefault("unix_socket", "/var/run/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
@@ -525,7 +528,8 @@ func GetHeadscaleConfig() (*Config, error) {
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 
-		IPPrefixes: prefixes,
+		IPPrefixes:  prefixes,
+		RandomizeIP: viper.GetBool("randomize_ip"),
 		PrivateKeyPath: AbsolutePathFromConfigPath(
 			viper.GetString("private_key_path"),
 		),
