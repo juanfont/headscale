@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	mrand "math/rand"
 	"net"
 	"net/netip"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -171,7 +173,6 @@ func (h *Headscale) getRandomAvailableIPs() (MachineAddresses, error) {
 	return shuffleIPs(ips), err
 }
 
-
 func GetIPPrefixEndpoints(na netip.Prefix) (netip.Addr, netip.Addr) {
 	var network, broadcast netip.Addr
 	ipRange := netipx.RangeOfPrefix(na)
@@ -247,10 +248,10 @@ func (h *Headscale) getUsedIPs() (*netipx.IPSet, error) {
 	return ipSet, nil
 }
 
-func shuffleIPs(ips MachineAddresses) {
+func shuffleIPs(ips MachineAddresses) MachineAddresses {
 	// Seeding needed to ensure random order between runs.
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(ips), func(i, j int) {
+	mrand.Seed(time.Now().UnixNano())
+	mrand.Shuffle(len(ips), func(i, j int) {
 		ips[i], ips[j] = ips[j], ips[i]
 	})
 
