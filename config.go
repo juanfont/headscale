@@ -1,7 +1,6 @@
 package headscale
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -75,9 +74,8 @@ type Config struct {
 }
 
 type TLSConfig struct {
-	CertPath       string
-	KeyPath        string
-	ClientAuthMode tls.ClientAuthType
+	CertPath string
+	KeyPath  string
 
 	LetsEncrypt LetsEncryptConfig
 }
@@ -154,7 +152,6 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", http01ChallengeType)
-	viper.SetDefault("tls_client_auth_mode", "relaxed")
 
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", TextLogFormat)
@@ -224,19 +221,6 @@ func LoadConfig(path string, isFile bool) error {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
 
-	_, authModeValid := LookupTLSClientAuthMode(
-		viper.GetString("tls_client_auth_mode"),
-	)
-
-	if !authModeValid {
-		errorText += fmt.Sprintf(
-			"Invalid tls_client_auth_mode supplied: %s. Accepted values: %s, %s, %s.",
-			viper.GetString("tls_client_auth_mode"),
-			DisabledClientAuth,
-			RelaxedClientAuth,
-			EnforcedClientAuth)
-	}
-
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
 	// to avoid races
 	minInactivityTimeout, _ := time.ParseDuration("65s")
@@ -266,10 +250,6 @@ func LoadConfig(path string, isFile bool) error {
 }
 
 func GetTLSConfig() TLSConfig {
-	tlsClientAuthMode, _ := LookupTLSClientAuthMode(
-		viper.GetString("tls_client_auth_mode"),
-	)
-
 	return TLSConfig{
 		LetsEncrypt: LetsEncryptConfig{
 			Hostname: viper.GetString("tls_letsencrypt_hostname"),
@@ -285,7 +265,6 @@ func GetTLSConfig() TLSConfig {
 		KeyPath: AbsolutePathFromConfigPath(
 			viper.GetString("tls_key_path"),
 		),
-		ClientAuthMode: tlsClientAuthMode,
 	}
 }
 

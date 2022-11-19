@@ -71,7 +71,6 @@ func WithTLS() Option {
 		// TODO(kradalby): Move somewhere appropriate
 		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_TLS_CERT_PATH=%s", tlsCertPath))
 		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_TLS_KEY_PATH=%s", tlsKeyPath))
-		hsic.env = append(hsic.env, "HEADSCALE_TLS_CLIENT_AUTH_MODE=disabled")
 
 		hsic.tlsCert = cert
 		hsic.tlsKey = key
@@ -371,7 +370,7 @@ func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
 }
 
-//nolint
+// nolint
 func createCertificate() ([]byte, []byte, error) {
 	// From:
 	// https://shaneutt.com/blog/golang-ca-and-signed-cert-go/
