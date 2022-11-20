@@ -69,7 +69,7 @@ ip_prefixes:
 
 # Whether to randomize the ip address assignemnt or to
 # assign sequentially.
-randomize_address: false
+randomize_ip: false
 
 # DERP is a relay system that Tailscale uses when a direct
 # connection cannot be established.
