@@ -104,6 +104,17 @@ func WithTestName(testName string) Option {
 	}
 }
 
+func WithHostnameAsServerURL() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env = append(
+			hsic.env,
+			fmt.Sprintf("HEADSCALE_SERVER_URL=http://%s:%d",
+				hsic.GetHostname(),
+				hsic.port,
+			))
+	}
+}
+
 func New(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
