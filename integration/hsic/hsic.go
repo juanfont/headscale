@@ -290,8 +290,6 @@ func (t *HeadscaleInContainer) WaitForReady() error {
 	return t.pool.Retry(func() error {
 		resp, err := client.Get(url) //nolint
 		if err != nil {
-			log.Printf("ready err: %s", err)
-
 			return fmt.Errorf("headscale is not ready: %w", err)
 		}
 
