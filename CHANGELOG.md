@@ -29,6 +29,7 @@
 - Fix OIDC registration issues [#960](https://github.com/juanfont/headscale/pull/960) and [#971](https://github.com/juanfont/headscale/pull/971)
 - Add support for specifying NextDNS DNS-over-HTTPS resolver [#940](https://github.com/juanfont/headscale/pull/940)
 - Make more sslmode available for postgresql connection [#927](https://github.com/juanfont/headscale/pull/927)
+- Add support for [SSH ACL](https://tailscale.com/kb/1018/acls/#tailscale-ssh) blocks [#847](https://github.com/juanfont/headscale/pull/847)
 
 ## 0.16.4 (2022-08-21)
 
