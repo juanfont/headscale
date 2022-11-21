@@ -2,6 +2,7 @@ package integration
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -465,7 +466,7 @@ func assertSSHHostname(t *testing.T, client TailscaleClient, peer TailscaleClien
 	result, _, err := doSSH(t, client, peer)
 	assert.NoError(t, err)
 
-	assert.Contains(t, peer.ID(), result)
+	assert.Contains(t, peer.ID(), strings.ReplaceAll(result, "\n", ""))
 }
 
 func assertSSHPermissionDenied(t *testing.T, client TailscaleClient, peer TailscaleClient) {
