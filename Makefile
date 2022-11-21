@@ -48,16 +48,6 @@ test_integration_derp:
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
 		go test $(TAGS) -failfast -timeout 30m -count=1 -run IntegrationDERP ./...
 
-test_integration_oidc:
-	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
-	docker network create headscale-test || true
-	docker run -t --rm \
-		--network headscale-test \
-		-v ~/.cache/hs-integration-go:/go \
-		-v $$PWD:$$PWD -w $$PWD \
-		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go test $(TAGS) -failfast -timeout 30m -count=1 -run IntegrationOIDC ./...
-
 test_integration_v2_general:
 	docker run \
 		-t --rm \
