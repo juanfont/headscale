@@ -28,6 +28,13 @@ var retry = func(times int, sleepInterval time.Duration,
 		if err == nil {
 			return result, stderr, nil
 		}
+
+		// If we get a permission denied error, we can fail immediately
+		// since that is something we wont recover from by retrying.
+		if err != nil && strings.Contains(stderr, "Permission denied (tailscale)") {
+			return result, stderr, err
+		}
+
 		time.Sleep(sleepInterval)
 	}
 
