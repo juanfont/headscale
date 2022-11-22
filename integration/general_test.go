@@ -12,6 +12,7 @@ import (
 
 func TestPingAllByIP(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	scenario, err := NewScenario()
 	if err != nil {
@@ -66,6 +67,7 @@ func TestPingAllByIP(t *testing.T) {
 
 func TestPingAllByHostname(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	scenario, err := NewScenario()
 	if err != nil {
@@ -121,6 +123,7 @@ func TestPingAllByHostname(t *testing.T) {
 
 func TestTaildrop(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	retry := func(times int, sleepInverval time.Duration, doWork func() error) error {
 		var err error
@@ -260,6 +263,7 @@ func TestTaildrop(t *testing.T) {
 
 func TestResolveMagicDNS(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	scenario, err := NewScenario()
 	if err != nil {

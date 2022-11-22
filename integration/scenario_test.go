@@ -23,6 +23,7 @@ func IntegrationSkip(t *testing.T) {
 
 func TestHeadscale(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	var err error
 
@@ -71,6 +72,7 @@ func TestHeadscale(t *testing.T) {
 
 func TestCreateTailscale(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	namespace := "only-create-containers"
 
@@ -104,6 +106,7 @@ func TestCreateTailscale(t *testing.T) {
 
 func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	var err error
 
