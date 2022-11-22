@@ -22,6 +22,7 @@ type AuthWebFlowScenario struct {
 
 func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	baseScenario, err := NewScenario()
 	if err != nil {

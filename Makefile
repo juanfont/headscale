@@ -56,7 +56,7 @@ test_integration_v2_general:
 		-v $$PWD:$$PWD -w $$PWD/integration \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		golang:1 \
-		go test $(TAGS) -failfast ./... -timeout 120m -parallel 6
+		go test $(TAGS) -failfast ./... -timeout 120m -parallel 8
 
 coverprofile_func:
 	go tool cover -func=coverage.out
