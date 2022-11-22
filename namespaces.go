@@ -211,7 +211,10 @@ func (n *Namespace) toLogin() *tailcfg.Login {
 	return &login
 }
 
-func getMapResponseUserProfiles(machine Machine, peers Machines) []tailcfg.UserProfile {
+func (h *Headscale) getMapResponseUserProfiles(
+	machine Machine,
+	peers Machines,
+) []tailcfg.UserProfile {
 	namespaceMap := make(map[string]Namespace)
 	namespaceMap[machine.Namespace.Name] = machine.Namespace
 	for _, peer := range peers {
@@ -220,11 +223,17 @@ func getMapResponseUserProfiles(machine Machine, peers Machines) []tailcfg.UserP
 
 	profiles := []tailcfg.UserProfile{}
 	for _, namespace := range namespaceMap {
+		displayName := namespace.Name
+
+		if h.cfg.BaseDomain != "" {
+			displayName = fmt.Sprintf("%s@%s", namespace.Name, h.cfg.BaseDomain)
+		}
+
 		profiles = append(profiles,
 			tailcfg.UserProfile{
 				ID:          tailcfg.UserID(namespace.ID),
 				LoginName:   namespace.Name,
-				DisplayName: namespace.Name,
+				DisplayName: displayName,
 			})
 	}
 

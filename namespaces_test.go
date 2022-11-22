@@ -209,7 +209,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	peersOfMachine1InShared1, err := app.getPeers(machineInShared1)
 	c.Assert(err, check.IsNil)
 
-	userProfiles := getMapResponseUserProfiles(
+	userProfiles := app.getMapResponseUserProfiles(
 		*machineInShared1,
 		peersOfMachine1InShared1,
 	)

@@ -35,7 +35,7 @@ func (h *Headscale) generateMapResponse(
 		return nil, err
 	}
 
-	profiles := getMapResponseUserProfiles(*machine, peers)
+	profiles := h.getMapResponseUserProfiles(*machine, peers)
 
 	nodePeers, err := peers.toNodes(h.cfg.BaseDomain, h.cfg.DNSConfig)
 	if err != nil {
