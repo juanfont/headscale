@@ -35,6 +35,7 @@ type AuthOIDCScenario struct {
 
 func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	baseScenario, err := NewScenario()
 	if err != nil {
