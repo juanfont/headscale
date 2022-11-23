@@ -3,11 +3,25 @@ package headscale
 import (
 	"fmt"
 	"net/netip"
+
+	"gorm.io/gorm"
 )
 
 const (
 	ErrRouteIsNotAvailable = Error("route is not available")
 )
+
+type Route struct {
+	gorm.Model
+
+	MachineID uint64
+	Machine   Machine
+	Prefix    IPPrefix
+
+	Advertised bool
+	Enabled    bool
+	IsPrimary  bool
+}
 
 // Deprecated: use machine function instead
 // GetAdvertisedNodeRoutes returns the subnet routes advertised by a node (identified by
