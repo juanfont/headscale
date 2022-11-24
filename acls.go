@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"gopkg.in/yaml.v3"
+	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 )
 
@@ -54,6 +55,8 @@ const (
 	protocolSCTP     = 132 // Stream Control Transmission Protocol
 	ProtocolFC       = 133 // Fibre Channel
 )
+
+var featureEnableSSH = envknob.RegisterBool("HEADSCALE_FEATURE_SSH")
 
 // LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules.
 func (h *Headscale) LoadACLPolicy(path string) error {
@@ -121,15 +124,19 @@ func (h *Headscale) UpdateACLRules() error {
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 	h.aclRules = rules
 
-	sshRules, err := h.generateSSHRules()
-	if err != nil {
-		return err
+	if featureEnableSSH() {
+		sshRules, err := h.generateSSHRules()
+		if err != nil {
+			return err
+		}
+		log.Trace().Interface("SSH", sshRules).Msg("SSH rules generated")
+		if h.sshPolicy == nil {
+			h.sshPolicy = &tailcfg.SSHPolicy{}
+		}
+		h.sshPolicy.Rules = sshRules
+	} else if h.aclPolicy != nil && len(h.aclPolicy.SSHs) > 0 {
+		log.Info().Msg("SSH ACLs has been defined, but HEADSCALE_FEATURE_SSH is not enabled, this is a unstable feature, check docs before activating")
 	}
-	log.Trace().Interface("SSH", sshRules).Msg("SSH rules generated")
-	if h.sshPolicy == nil {
-		h.sshPolicy = &tailcfg.SSHPolicy{}
-	}
-	h.sshPolicy.Rules = sshRules
 
 	return nil
 }
