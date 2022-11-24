@@ -11,6 +11,11 @@ const (
 	ErrRouteIsNotAvailable = Error("route is not available")
 )
 
+var (
+	ExitRouteV4 = netip.MustParsePrefix("0.0.0.0/0")
+	ExitRouteV6 = netip.MustParsePrefix("::/0")
+)
+
 type Route struct {
 	gorm.Model
 
@@ -35,6 +40,18 @@ func (rs Routes) toPrefixes() []netip.Prefix {
 		prefixes[i] = netip.Prefix(r.Prefix)
 	}
 	return prefixes
+}
+
+// isUniquePrefix returns if there is another machine providing the same route already
+func (h *Headscale) isUniquePrefix(route Route) bool {
+	var count int64
+	h.db.
+		Model(&Route{}).
+		Where("prefix = ? AND machine_id != ? AND advertised = ? AND enabled = ?",
+			route.Prefix,
+			route.MachineID,
+			true, true).Count(&count)
+	return count == 0
 }
 
 // getMachinePrimaryRoutes returns the routes that are enabled and marked as primary (for subnet failover)
