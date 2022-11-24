@@ -56,7 +56,7 @@ const (
 	ProtocolFC       = 133 // Fibre Channel
 )
 
-var featureEnableSSH = envknob.RegisterBool("HEADSCALE_FEATURE_SSH")
+var featureEnableSSH = envknob.RegisterBool("HEADSCALE_EXPERIMENTAL_FEATURE_SSH")
 
 // LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules.
 func (h *Headscale) LoadACLPolicy(path string) error {
@@ -135,7 +135,7 @@ func (h *Headscale) UpdateACLRules() error {
 		}
 		h.sshPolicy.Rules = sshRules
 	} else if h.aclPolicy != nil && len(h.aclPolicy.SSHs) > 0 {
-		log.Info().Msg("SSH ACLs has been defined, but HEADSCALE_FEATURE_SSH is not enabled, this is a unstable feature, check docs before activating")
+		log.Info().Msg("SSH ACLs has been defined, but HEADSCALE_EXPERIMENTAL_FEATURE_SSH is not enabled, this is a unstable feature, check docs before activating")
 	}
 
 	return nil
