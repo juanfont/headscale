@@ -128,8 +128,8 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 			cfg.DBuser,
 		)
 
-		if s, err := strconv.ParseBool(cfg.DBssl); err == nil {
-			if !s {
+		if sslEnabled, err := strconv.ParseBool(cfg.DBssl); err == nil {
+			if !sslEnabled {
 				dbString += " sslmode=disable"
 			}
 		} else {
