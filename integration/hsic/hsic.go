@@ -79,13 +79,9 @@ func WithTLS() Option {
 
 func WithConfigEnv(configEnv map[string]string) Option {
 	return func(hsic *HeadscaleInContainer) {
-		env := []string{}
-
 		for key, value := range configEnv {
-			env = append(env, fmt.Sprintf("%s=%s", key, value))
+			hsic.env = append(hsic.env, fmt.Sprintf("%s=%s", key, value))
 		}
-
-		hsic.env = env
 	}
 }
 
