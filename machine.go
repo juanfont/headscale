@@ -138,6 +138,17 @@ func (machine Machine) isExpired() bool {
 	return time.Now().UTC().After(*machine.Expiry)
 }
 
+// isOnline returns if the machine is connected to Headscale.
+// This is really a naive implementation, as we don't really see
+// if there is a working connection between the client and the server.
+func (machine *Machine) isOnline() bool {
+	if machine.LastSeen == nil {
+		return false
+	}
+
+	return machine.LastSeen.After(time.Now().Add(-keepAliveInterval))
+}
+
 func containsAddresses(inputs []string, addrs []string) bool {
 	for _, addr := range addrs {
 		if contains(inputs, addr) {
@@ -708,9 +719,7 @@ func (h *Headscale) toNode(
 
 	hostInfo := machine.GetHostInfo()
 
-	// A node is Online if it is connected to the control server,
-	// and we now we update LastSeen every keepAliveInterval duration at least.
-	online := machine.LastSeen.After(time.Now().Add(-keepAliveInterval))
+	online := machine.isOnline()
 
 	node := tailcfg.Node{
 		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
@@ -1023,7 +1032,7 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 
 			// Mark already as primary if there is only this node offering this subnet
 			// (and is not an exit route)
-			if prefix != ExitRouteV4 && prefix != ExitRouteV6 {
+			if !route.isExitRoute() {
 				route.IsPrimary = h.isUniquePrefix(route)
 			}
 
