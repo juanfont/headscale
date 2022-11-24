@@ -374,7 +374,7 @@ func (api headscaleV1APIServer) GetMachineRoute(
 	}
 
 	return &v1.GetMachineRouteResponse{
-		Routes: machine.RoutesToProto(),
+		Routes: api.h.RoutesToProto(machine),
 	}, nil
 }
 
@@ -393,7 +393,7 @@ func (api headscaleV1APIServer) EnableMachineRoutes(
 	}
 
 	return &v1.EnableMachineRoutesResponse{
-		Routes: machine.RoutesToProto(),
+		Routes: api.h.RoutesToProto(machine),
 	}, nil
 }
 
