@@ -79,7 +79,7 @@ func TestSSHOneNamespaceAllToAll(t *testing.T) {
 			},
 		),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_FEATURE_SSH": "1",
+			"HEADSCALE_EXPERIMENTAL_FEATURE_SSH": "1",
 		}),
 	)
 	if err != nil {
@@ -156,7 +156,7 @@ func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
 			},
 		),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_FEATURE_SSH": "1",
+			"HEADSCALE_EXPERIMENTAL_FEATURE_SSH": "1",
 		}),
 	)
 	if err != nil {
@@ -232,7 +232,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 		),
 		hsic.WithTestName("sshnoneconfigured"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_FEATURE_SSH": "1",
+			"HEADSCALE_EXPERIMENTAL_FEATURE_SSH": "1",
 		}),
 	)
 	if err != nil {
@@ -309,7 +309,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 		),
 		hsic.WithTestName("sshisblockedinacl"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_FEATURE_SSH": "1",
+			"HEADSCALE_EXPERIMENTAL_FEATURE_SSH": "1",
 		}),
 	)
 	if err != nil {
@@ -394,7 +394,7 @@ func TestSSNamespaceOnlyIsolation(t *testing.T) {
 		),
 		hsic.WithTestName("sshtwonamespaceaclblock"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_FEATURE_SSH": "1",
+			"HEADSCALE_EXPERIMENTAL_FEATURE_SSH": "1",
 		}),
 	)
 	if err != nil {
