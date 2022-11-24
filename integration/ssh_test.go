@@ -43,6 +43,7 @@ var retry = func(times int, sleepInterval time.Duration,
 
 func TestSSHOneNamespaceAllToAll(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	scenario, err := NewScenario()
 	if err != nil {
@@ -115,6 +116,7 @@ func TestSSHOneNamespaceAllToAll(t *testing.T) {
 
 func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	scenario, err := NewScenario()
 	if err != nil {
@@ -194,6 +196,7 @@ func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
 
 func TestSSHNoSSHConfigured(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	scenario, err := NewScenario()
 	if err != nil {
@@ -260,6 +263,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 
 func TestSSHIsBlockedInACL(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	scenario, err := NewScenario()
 	if err != nil {
@@ -333,6 +337,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 
 func TestSSNamespaceOnlyIsolation(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	scenario, err := NewScenario()
 	if err != nil {
