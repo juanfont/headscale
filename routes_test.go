@@ -37,17 +37,17 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	}
 	app.db.Save(&machine)
 
-	advertisedRoutes, err := app.GetAdvertisedNodeRoutes(
-		"test",
-		"test_get_route_machine",
-	)
+	err = app.processMachineRoutes(&machine)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(*advertisedRoutes), check.Equals, 1)
 
-	err = app.EnableNodeRoute("test", "test_get_route_machine", "192.168.0.0/24")
+	advertisedRoutes, err := app.GetAdvertisedRoutes(&machine)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(advertisedRoutes), check.Equals, 1)
+
+	err = app.EnableRoutes(&machine, "192.168.0.0/24")
 	c.Assert(err, check.NotNil)
 
-	err = app.EnableNodeRoute("test", "test_get_route_machine", "10.0.0.0/24")
+	err = app.EnableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 }
 
@@ -88,48 +88,40 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	}
 	app.db.Save(&machine)
 
-	availableRoutes, err := app.GetAdvertisedNodeRoutes(
-		"test",
-		"test_enable_route_machine",
-	)
+	err = app.processMachineRoutes(&machine)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(*availableRoutes), check.Equals, 2)
 
-	noEnabledRoutes, err := app.GetEnabledNodeRoutes(
-		"test",
-		"test_enable_route_machine",
-	)
+	availableRoutes, err := app.GetAdvertisedRoutes(&machine)
+	c.Assert(err, check.IsNil)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(availableRoutes), check.Equals, 2)
+
+	noEnabledRoutes, err := app.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(noEnabledRoutes), check.Equals, 0)
 
-	err = app.EnableNodeRoute("test", "test_enable_route_machine", "192.168.0.0/24")
+	err = app.EnableRoutes(&machine, "192.168.0.0/24")
 	c.Assert(err, check.NotNil)
 
-	err = app.EnableNodeRoute("test", "test_enable_route_machine", "10.0.0.0/24")
+	err = app.EnableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes, err := app.GetEnabledNodeRoutes("test", "test_enable_route_machine")
+	enabledRoutes, err := app.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes), check.Equals, 1)
 
 	// Adding it twice will just let it pass through
-	err = app.EnableNodeRoute("test", "test_enable_route_machine", "10.0.0.0/24")
+	err = app.EnableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 
-	enableRoutesAfterDoubleApply, err := app.GetEnabledNodeRoutes(
-		"test",
-		"test_enable_route_machine",
-	)
+	enableRoutesAfterDoubleApply, err := app.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enableRoutesAfterDoubleApply), check.Equals, 1)
 
-	err = app.EnableNodeRoute("test", "test_enable_route_machine", "150.0.10.0/25")
+	err = app.EnableRoutes(&machine, "150.0.10.0/25")
 	c.Assert(err, check.IsNil)
 
-	enabledRoutesWithAdditionalRoute, err := app.GetEnabledNodeRoutes(
-		"test",
-		"test_enable_route_machine",
-	)
+	enabledRoutesWithAdditionalRoute, err := app.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutesWithAdditionalRoute), check.Equals, 2)
 }
