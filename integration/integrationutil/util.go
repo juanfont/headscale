@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"path/filepath"
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -48,8 +47,6 @@ func WriteFileToContainer(
 	if err != nil {
 		return fmt.Errorf("failed to close tar: %w", err)
 	}
-
-	log.Printf("tar: %s", buf.String())
 
 	// Ensure the directory is present inside the container
 	_, _, err = dockertestutil.ExecuteCommand(

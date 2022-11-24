@@ -1,7 +1,6 @@
 package headscale
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -75,9 +74,8 @@ type Config struct {
 }
 
 type TLSConfig struct {
-	CertPath       string
-	KeyPath        string
-	ClientAuthMode tls.ClientAuthType
+	CertPath string
+	KeyPath  string
 
 	LetsEncrypt LetsEncryptConfig
 }
@@ -154,7 +152,6 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", http01ChallengeType)
-	viper.SetDefault("tls_client_auth_mode", "relaxed")
 
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", TextLogFormat)
@@ -184,6 +181,10 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
 	viper.SetDefault("node_update_check_interval", "10s")
+
+	if IsCLIConfigured() {
+		return nil
+	}
 
 	if err := viper.ReadInConfig(); err != nil {
 		log.Warn().Err(err).Msg("Failed to read configuration from disk")
@@ -220,19 +221,6 @@ func LoadConfig(path string, isFile bool) error {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
 	}
 
-	_, authModeValid := LookupTLSClientAuthMode(
-		viper.GetString("tls_client_auth_mode"),
-	)
-
-	if !authModeValid {
-		errorText += fmt.Sprintf(
-			"Invalid tls_client_auth_mode supplied: %s. Accepted values: %s, %s, %s.",
-			viper.GetString("tls_client_auth_mode"),
-			DisabledClientAuth,
-			RelaxedClientAuth,
-			EnforcedClientAuth)
-	}
-
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
 	// to avoid races
 	minInactivityTimeout, _ := time.ParseDuration("65s")
@@ -262,10 +250,6 @@ func LoadConfig(path string, isFile bool) error {
 }
 
 func GetTLSConfig() TLSConfig {
-	tlsClientAuthMode, _ := LookupTLSClientAuthMode(
-		viper.GetString("tls_client_auth_mode"),
-	)
-
 	return TLSConfig{
 		LetsEncrypt: LetsEncryptConfig{
 			Hostname: viper.GetString("tls_letsencrypt_hostname"),
@@ -281,7 +265,6 @@ func GetTLSConfig() TLSConfig {
 		KeyPath: AbsolutePathFromConfigPath(
 			viper.GetString("tls_key_path"),
 		),
-		ClientAuthMode: tlsClientAuthMode,
 	}
 }
 
@@ -383,10 +366,21 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 		if viper.IsSet("dns_config.nameservers") {
 			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
 
-			nameservers := make([]netip.Addr, len(nameserversStr))
-			resolvers := make([]*dnstype.Resolver, len(nameserversStr))
+			nameservers := []netip.Addr{}
+			resolvers := []*dnstype.Resolver{}
 
-			for index, nameserverStr := range nameserversStr {
+			for _, nameserverStr := range nameserversStr {
+				// Search for explicit DNS-over-HTTPS resolvers
+				if strings.HasPrefix(nameserverStr, "https://") {
+					resolvers = append(resolvers, &dnstype.Resolver{
+						Addr: nameserverStr,
+					})
+
+					// This nameserver can not be parsed as an IP address
+					continue
+				}
+
+				// Parse nameserver as a regular IP
 				nameserver, err := netip.ParseAddr(nameserverStr)
 				if err != nil {
 					log.Error().
@@ -395,10 +389,10 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 						Msgf("Could not parse nameserver IP: %s", nameserverStr)
 				}
 
-				nameservers[index] = nameserver
-				resolvers[index] = &dnstype.Resolver{
+				nameservers = append(nameservers, nameserver)
+				resolvers = append(resolvers, &dnstype.Resolver{
 					Addr: nameserver.String(),
-				}
+				})
 			}
 
 			dnsConfig.Nameservers = nameservers
@@ -469,6 +463,17 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 }
 
 func GetHeadscaleConfig() (*Config, error) {
+	if IsCLIConfigured() {
+		return &Config{
+			CLI: CLIConfig{
+				Address:  viper.GetString("cli.address"),
+				APIKey:   viper.GetString("cli.api_key"),
+				Timeout:  viper.GetDuration("cli.timeout"),
+				Insecure: viper.GetBool("cli.insecure"),
+			},
+		}, nil
+	}
+
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
@@ -569,6 +574,8 @@ func GetHeadscaleConfig() (*Config, error) {
 		LogTail:             logConfig,
 		RandomizeClientPort: randomizeClientPort,
 
+		ACL: GetACLConfig(),
+
 		CLI: CLIConfig{
 			Address:  viper.GetString("cli.address"),
 			APIKey:   viper.GetString("cli.api_key"),
@@ -576,8 +583,10 @@ func GetHeadscaleConfig() (*Config, error) {
 			Insecure: viper.GetBool("cli.insecure"),
 		},
 
-		ACL: GetACLConfig(),
-
 		Log: GetLogConfig(),
 	}, nil
+}
+
+func IsCLIConfigured() bool {
+	return viper.GetString("cli.address") != "" && viper.GetString("cli.api_key") != ""
 }

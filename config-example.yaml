@@ -161,13 +161,6 @@ acme_email: ""
 # Domain name to request a TLS certificate for:
 tls_letsencrypt_hostname: ""
 
-# Client (Tailscale/Browser) authentication mode (mTLS)
-# Acceptable values:
-# - disabled: client authentication disabled
-# - relaxed: client certificate is required but not verified
-# - enforced: client certificate is required and verified
-tls_client_auth_mode: relaxed
-
 # Path to store certificates and metadata needed by
 # letsencrypt
 # For production:
@@ -213,6 +206,18 @@ dns_config:
   # List of DNS servers to expose to clients.
   nameservers:
     - 1.1.1.1
+
+  # NextDNS (see https://tailscale.com/kb/1218/nextdns/).
+  # "abc123" is example NextDNS ID, replace with yours.
+  #
+  # With metadata sharing:
+  # nameservers:
+  #   - https://dns.nextdns.io/abc123
+  #
+  # Without metadata sharing:
+  # nameservers:
+  #   - 2a07:a8c0::ab:c123
+  #   - 2a07:a8c1::ab:c123
 
   # Split DNS (see https://tailscale.com/kb/1054/dns/),
   # list of search domains and the DNS to query for each one.
