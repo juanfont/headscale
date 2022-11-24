@@ -38,11 +38,6 @@ const (
 	maxHostnameLength = 255
 )
 
-var (
-	ExitRouteV4 = netip.MustParsePrefix("0.0.0.0/0")
-	ExitRouteV6 = netip.MustParsePrefix("::/0")
-)
-
 // Machine is a Headscale client.
 type Machine struct {
 	ID          uint64 `gorm:"primary_key"`
@@ -1025,6 +1020,13 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 			First(&route).Error
 		if err == nil {
 			route.Enabled = true
+
+			// Mark already as primary if there is only this node offering this subnet
+			// (and is not an exit route)
+			if prefix != ExitRouteV4 && prefix != ExitRouteV6 {
+				route.IsPrimary = h.isUniquePrefix(route)
+			}
+
 			err = h.db.Save(&route).Error
 			if err != nil {
 				return fmt.Errorf("failed to enable route: %w", err)
