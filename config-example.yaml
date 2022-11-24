@@ -137,14 +137,15 @@ db_path: ./db.sqlite
 
 # # Postgres config
 # If using a Unix socket to connect to Postgres, set the socket path in the 'host' field and leave 'port' blank.
-# Also if other 'sslmode' is required instead of 'require(true)' and 'disabled(false)', set the 'sslmode' you need
-# in the 'db_ssl' field. Refers to https://www.postgresql.org/docs/current/libpq-ssl.html Table 34.1.
 # db_type: postgres
 # db_host: localhost
 # db_port: 5432
 # db_name: headscale
 # db_user: foo
 # db_pass: bar
+
+# If other 'sslmode' is required instead of 'require(true)' and 'disabled(false)', set the 'sslmode' you need
+# in the 'db_ssl' field. Refers to https://www.postgresql.org/docs/current/libpq-ssl.html Table 34.1.
 # db_ssl: false
 
 ### TLS configuration
