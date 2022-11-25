@@ -9,7 +9,16 @@
 
   <body>
     <h1>headscale</h1>
-    <h2>Apple configuration profiles</h2>
+    <h2>Recent Tailscale versions (1.34.0 and higher)</h2>
+    <p>
+      Tailscale added Fast User Switching in version 1.34 and you can now use
+      the new login command to connect to one or more headscale (and Tailscale)
+      servers. The previously used profiles does not have an effect anymore.
+    </p>
+    <p>Use Tailscale's login command to add your profile:</p>
+    <pre><code>tailscale login --login-server {{.URL}}</code></pre>
+
+    <h2>Apple configuration profiles (1.32.0 and lower)</h2>
     <p>
       This page provides
       <a href="https://support.apple.com/guide/mdm/mdm-overview-mdmbf9e668/web">
