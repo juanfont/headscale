@@ -2,24 +2,47 @@ syntax = "proto3";
 package headscale.v1;
 option  go_package = "github.com/juanfont/headscale/gen/go/v1";
 
-message Routes {
-    repeated string advertised_routes = 1;
-    repeated string enabled_routes    = 2;
+import "google/protobuf/timestamp.proto";
+import "headscale/v1/machine.proto";
+
+message Route {
+    uint64  id          = 1;
+    Machine machine     = 2;
+    string  prefix      = 3;
+    bool    advertised   = 4;
+    bool    enabled     = 5;
+    bool    is_primary  = 6;
+
+    google.protobuf.Timestamp created_at = 7;
+    google.protobuf.Timestamp updated_at = 8;
+    google.protobuf.Timestamp deleted_at = 9;
 }
 
-message GetMachineRouteRequest {
+message GetRoutesRequest {
+}
+
+message GetRoutesResponse {
+    repeated Route routes = 1;
+}
+
+message EnableRouteRequest {
+    uint64 route_id = 1;
+}
+
+message EnableRouteResponse {
+}
+
+message DisableRouteRequest {
+    uint64 route_id = 1;
+}
+
+message DisableRouteResponse {
+}
+
+message GetMachineRoutesRequest {
     uint64 machine_id = 1;
 }
 
-message GetMachineRouteResponse {
-    Routes routes = 1;
-}
-
-message EnableMachineRoutesRequest {
-    uint64          machine_id = 1;
-    repeated string routes     = 2;
-}
-
-message EnableMachineRoutesResponse {
-    Routes routes = 1;
+message GetMachineRoutesResponse {
+    repeated Route routes = 1;
 }

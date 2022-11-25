@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/netip"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 )
 
@@ -47,6 +49,64 @@ func (rs Routes) toPrefixes() []netip.Prefix {
 	}
 
 	return prefixes
+}
+
+func (h *Headscale) GetRoutes() ([]Route, error) {
+	var routes []Route
+	err := h.db.Preload("Machine").Find(&routes).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return routes, nil
+}
+
+func (h *Headscale) GetMachineRoutes(m *Machine) ([]Route, error) {
+	var routes []Route
+	err := h.db.
+		Preload("Machine").
+		Where("machine_id = ?", m.ID).
+		Find(&routes).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	return routes, nil
+}
+
+func (h *Headscale) GetRoute(id uint64) (*Route, error) {
+	var route Route
+	err := h.db.Preload("Machine").First(&route, id).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &route, nil
+}
+
+func (h *Headscale) EnableRoute(id uint64) error {
+	route, err := h.GetRoute(id)
+	if err != nil {
+		return err
+	}
+
+	return h.EnableRoutes(&route.Machine, netip.Prefix(route.Prefix).String())
+}
+
+func (h *Headscale) DisableRoute(id uint64) error {
+	route, err := h.GetRoute(id)
+	if err != nil {
+		return err
+	}
+
+	route.Enabled = false
+	route.IsPrimary = false
+	err = h.db.Save(route).Error
+	if err != nil {
+		return err
+	}
+
+	return h.handlePrimarySubnetFailover()
 }
 
 // isUniquePrefix returns if there is another machine providing the same route already.
@@ -163,6 +223,10 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 		if !route.IsPrimary {
 			_, err := h.getPrimaryRoute(netip.Prefix(route.Prefix))
 			if h.isUniquePrefix(route) || errors.Is(err, gorm.ErrRecordNotFound) {
+				log.Info().
+					Str("prefix", netip.Prefix(route.Prefix).String()).
+					Str("machine", route.Machine.GivenName).
+					Msg("Setting primary route")
 				routes[pos].IsPrimary = true
 				err := h.db.Save(&routes[pos]).Error
 				if err != nil {
@@ -246,4 +310,29 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 	}
 
 	return nil
+}
+
+func (rs Routes) toProto() []*v1.Route {
+	protoRoutes := []*v1.Route{}
+
+	for _, route := range rs {
+		protoRoute := v1.Route{
+			Id:         uint64(route.ID),
+			Machine:    route.Machine.toProto(),
+			Prefix:     netip.Prefix(route.Prefix).String(),
+			Advertised: route.Advertised,
+			Enabled:    route.Enabled,
+			IsPrimary:  route.IsPrimary,
+			CreatedAt:  timestamppb.New(route.CreatedAt),
+			UpdatedAt:  timestamppb.New(route.UpdatedAt),
+		}
+
+		if route.DeletedAt.Valid {
+			protoRoute.DeletedAt = timestamppb.New(route.DeletedAt.Time)
+		}
+
+		protoRoutes = append(protoRoutes, &protoRoute)
+	}
+
+	return protoRoutes
 }
