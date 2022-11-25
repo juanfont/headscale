@@ -106,20 +106,20 @@ func (h *Headscale) processMachineRoutes(machine *Machine) error {
 		advertisedRoutes[prefix] = false
 	}
 
-	for _, route := range currentRoutes {
+	for pos, route := range currentRoutes {
 		if _, ok := advertisedRoutes[netip.Prefix(route.Prefix)]; ok {
 			if !route.Advertised {
-				route.Advertised = true
-				err := h.db.Save(&route).Error
+				currentRoutes[pos].Advertised = true
+				err := h.db.Save(&currentRoutes[pos]).Error
 				if err != nil {
 					return err
 				}
 			}
 			advertisedRoutes[netip.Prefix(route.Prefix)] = true
 		} else if route.Advertised {
-			route.Advertised = false
-			route.Enabled = false
-			err := h.db.Save(&route).Error
+			currentRoutes[pos].Advertised = false
+			currentRoutes[pos].Enabled = false
+			err := h.db.Save(&currentRoutes[pos]).Error
 			if err != nil {
 				return err
 			}
@@ -155,7 +155,7 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 		log.Error().Err(err).Msg("error getting routes")
 	}
 
-	for _, route := range routes {
+	for pos, route := range routes {
 		if route.isExitRoute() {
 			continue
 		}
@@ -163,8 +163,8 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 		if !route.IsPrimary {
 			_, err := h.getPrimaryRoute(netip.Prefix(route.Prefix))
 			if h.isUniquePrefix(route) || errors.Is(err, gorm.ErrRecordNotFound) {
-				route.IsPrimary = true
-				err := h.db.Save(&route).Error
+				routes[pos].IsPrimary = true
+				err := h.db.Save(&routes[pos]).Error
 				if err != nil {
 					log.Error().Err(err).Msg("error marking route as primary")
 
@@ -202,9 +202,9 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 			}
 
 			var newPrimaryRoute *Route
-			for _, r := range newPrimaryRoutes {
+			for pos, r := range newPrimaryRoutes {
 				if r.Machine.isOnline() {
-					newPrimaryRoute = &r
+					newPrimaryRoute = &newPrimaryRoutes[pos]
 
 					break
 				}
@@ -226,8 +226,8 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 				Msgf("found new primary route")
 
 			// disable the old primary route
-			route.IsPrimary = false
-			err = h.db.Save(&route).Error
+			routes[pos].IsPrimary = false
+			err = h.db.Save(&routes[pos]).Error
 			if err != nil {
 				log.Error().Err(err).Msg("error disabling old primary route")
 
