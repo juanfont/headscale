@@ -213,6 +213,16 @@ func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 	}
 }
 
+func (h *Headscale) failoverSubnetRoutes(milliSeconds int64) {
+	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
+	for range ticker.C {
+		err := h.handlePrimarySubnetFailover()
+		if err != nil {
+			log.Error().Err(err).Msg("failed to handle primary subnet failover")
+		}
+	}
+}
+
 func (h *Headscale) expireEphemeralNodesWorker() {
 	namespaces, err := h.ListNamespaces()
 	if err != nil {
@@ -490,6 +500,8 @@ func (h *Headscale) Serve() error {
 	}
 
 	go h.expireEphemeralNodes(updateInterval)
+
+	go h.failoverSubnetRoutes(updateInterval)
 
 	if zl.GlobalLevel() == zl.TraceLevel {
 		zerolog.RespLog = true
