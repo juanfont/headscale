@@ -1159,7 +1159,9 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	machine0ByID, err := app.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 
-	app.EnableAutoApprovedRoutes(machine0ByID)
+	err = app.EnableAutoApprovedRoutes(machine0ByID)
+	c.Assert(err, check.IsNil)
+
 	enabledRoutes, err := app.GetEnabledRoutes(machine0ByID)
 	c.Assert(err, check.IsNil)
 	c.Assert(enabledRoutes, check.HasLen, 3)

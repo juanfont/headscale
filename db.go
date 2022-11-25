@@ -106,6 +106,7 @@ func (h *Headscale) initDB() error {
 						Err(err).
 						Str("enabled_route", prefix.String()).
 						Msg("Error parsing enabled_route")
+
 					continue
 				}
 
@@ -114,6 +115,7 @@ func (h *Headscale) initDB() error {
 					log.Info().
 						Str("enabled_route", prefix.String()).
 						Msg("Route already migrated to new table, skipping")
+
 					continue
 				}
 
@@ -335,6 +337,7 @@ func (i *IPPrefix) Scan(destination interface{}) error {
 			return err
 		}
 		*i = IPPrefix(prefix)
+
 		return nil
 	default:
 		return fmt.Errorf("%w: unexpected data type %T", ErrCannotParsePrefix, destination)
@@ -344,6 +347,7 @@ func (i *IPPrefix) Scan(destination interface{}) error {
 // Value return json value, implement driver.Valuer interface.
 func (i IPPrefix) Value() (driver.Value, error) {
 	prefixStr := netip.Prefix(i).String()
+
 	return prefixStr, nil
 }
 
