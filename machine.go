@@ -1105,9 +1105,9 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 		}
 	}
 
-	for _, approvedRoute := range approvedRoutes {
-		approvedRoute.Enabled = true
-		err = h.db.Save(&approvedRoute).Error
+	for i, approvedRoute := range approvedRoutes {
+		approvedRoutes[i].Enabled = true
+		err = h.db.Save(&approvedRoutes[i]).Error
 		if err != nil {
 			log.Err(err).
 				Str("approvedRoute", approvedRoute.String()).
