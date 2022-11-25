@@ -941,6 +941,7 @@ func (h *Headscale) GetAdvertisedRoutes(machine *Machine) ([]netip.Prefix, error
 			Err(err).
 			Str("machine", machine.Hostname).
 			Msg("Could not get advertised routes for machine")
+
 		return nil, err
 	}
 
@@ -966,6 +967,7 @@ func (h *Headscale) GetEnabledRoutes(machine *Machine) ([]netip.Prefix, error) {
 			Err(err).
 			Str("machine", machine.Hostname).
 			Msg("Could not get enabled routes for machine")
+
 		return nil, err
 	}
 
@@ -986,6 +988,7 @@ func (h *Headscale) IsRoutesEnabled(machine *Machine, routeStr string) bool {
 	enabledRoutes, err := h.GetEnabledRoutes(machine)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not get enabled routes")
+
 		return false
 	}
 
@@ -1106,9 +1109,9 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 		}
 	}
 
-	for _, approvedRoute := range approvedRoutes {
-		approvedRoute.Enabled = true
-		err = h.db.Save(&approvedRoute).Error
+	for i, approvedRoute := range approvedRoutes {
+		approvedRoutes[i].Enabled = true
+		err = h.db.Save(&approvedRoutes[i]).Error
 		if err != nil {
 			log.Err(err).
 				Str("approvedRoute", approvedRoute.String()).
@@ -1120,25 +1123,6 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 	}
 
 	return nil
-}
-
-func (h *Headscale) RoutesToProto(machine *Machine) *v1.Routes {
-	availableRoutes, err := h.GetAdvertisedRoutes(machine)
-	if err != nil {
-		log.Error().Err(err).Msg("Could not get advertised routes")
-		return nil
-	}
-
-	enabledRoutes, err := h.GetEnabledRoutes(machine)
-	if err != nil {
-		log.Error().Err(err).Msg("Could not get enabled routes")
-		return nil
-	}
-
-	return &v1.Routes{
-		AdvertisedRoutes: ipPrefixToString(availableRoutes),
-		EnabledRoutes:    ipPrefixToString(enabledRoutes),
-	}
 }
 
 func (h *Headscale) generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
