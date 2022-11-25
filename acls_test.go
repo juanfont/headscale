@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gopkg.in/check.v1"
+	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 )
 
@@ -74,6 +75,8 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 }
 
 func (s *Suite) TestSshRules(c *check.C) {
+	envknob.Setenv("HEADSCALE_EXPERIMENTAL_FEATURE_SSH", "1")
+
 	namespace, err := app.CreateNamespace("user1")
 	c.Assert(err, check.IsNil)
 
