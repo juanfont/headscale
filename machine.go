@@ -1121,27 +1121,6 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 	return nil
 }
 
-func (h *Headscale) RoutesToProto(machine *Machine) *v1.Routes {
-	availableRoutes, err := h.GetAdvertisedRoutes(machine)
-	if err != nil {
-		log.Error().Err(err).Msg("Could not get advertised routes")
-
-		return nil
-	}
-
-	enabledRoutes, err := h.GetEnabledRoutes(machine)
-	if err != nil {
-		log.Error().Err(err).Msg("Could not get enabled routes")
-
-		return nil
-	}
-
-	return &v1.Routes{
-		AdvertisedRoutes: ipPrefixToString(availableRoutes),
-		EnabledRoutes:    ipPrefixToString(enabledRoutes),
-	}
-}
-
 func (h *Headscale) generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 	normalizedHostname, err := NormalizeToFQDNRules(
 		suppliedName,
