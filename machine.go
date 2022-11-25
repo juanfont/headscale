@@ -937,6 +937,7 @@ func (h *Headscale) GetAdvertisedRoutes(machine *Machine) ([]netip.Prefix, error
 			Err(err).
 			Str("machine", machine.Hostname).
 			Msg("Could not get advertised routes for machine")
+
 		return nil, err
 	}
 
@@ -962,6 +963,7 @@ func (h *Headscale) GetEnabledRoutes(machine *Machine) ([]netip.Prefix, error) {
 			Err(err).
 			Str("machine", machine.Hostname).
 			Msg("Could not get enabled routes for machine")
+
 		return nil, err
 	}
 
@@ -982,6 +984,7 @@ func (h *Headscale) IsRoutesEnabled(machine *Machine, routeStr string) bool {
 	enabledRoutes, err := h.GetEnabledRoutes(machine)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not get enabled routes")
+
 		return false
 	}
 
@@ -1122,12 +1125,14 @@ func (h *Headscale) RoutesToProto(machine *Machine) *v1.Routes {
 	availableRoutes, err := h.GetAdvertisedRoutes(machine)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not get advertised routes")
+
 		return nil
 	}
 
 	enabledRoutes, err := h.GetEnabledRoutes(machine)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not get enabled routes")
+
 		return nil
 	}
 
