@@ -28,6 +28,7 @@
 - Make it possible to disable TS2019 with build flag [#928](https://github.com/juanfont/headscale/pull/928)
 - Fix OIDC registration issues [#960](https://github.com/juanfont/headscale/pull/960) and [#971](https://github.com/juanfont/headscale/pull/971)
 - Add support for specifying NextDNS DNS-over-HTTPS resolver [#940](https://github.com/juanfont/headscale/pull/940)
+- Make more sslmode available for postgresql connection [#927](https://github.com/juanfont/headscale/pull/927)
 
 ## 0.16.4 (2022-08-21)
 

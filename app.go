@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -127,8 +128,12 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 			cfg.DBuser,
 		)
 
-		if !cfg.DBssl {
-			dbString += " sslmode=disable"
+		if sslEnabled, err := strconv.ParseBool(cfg.DBssl); err == nil {
+			if !sslEnabled {
+				dbString += " sslmode=disable"
+			}
+		} else {
+			dbString += fmt.Sprintf(" sslmode=%s", cfg.DBssl)
 		}
 
 		if cfg.DBport != 0 {
