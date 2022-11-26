@@ -13,27 +13,22 @@ import (
 
 func init() {
 	rootCmd.AddCommand(routesCmd)
-
 	listRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err := listRoutesCmd.MarkFlagRequired("identifier")
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
 	routesCmd.AddCommand(listRoutesCmd)
 
-	enableRouteCmd.Flags().
-		StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to enable")
-	enableRouteCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	enableRouteCmd.Flags().BoolP("all", "a", false, "All routes from host")
-
-	err = enableRouteCmd.MarkFlagRequired("identifier")
+	enableRouteCmd.Flags().Uint64P("route", "r", 0, "Route identifier (ID)")
+	err := enableRouteCmd.MarkFlagRequired("route")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-
 	routesCmd.AddCommand(enableRouteCmd)
 
-	nodeCmd.AddCommand(routesCmd)
+	disableRouteCmd.Flags().Uint64P("route", "r", 0, "Route identifier (ID)")
+	err = disableRouteCmd.MarkFlagRequired("route")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	routesCmd.AddCommand(disableRouteCmd)
 }
 
 var routesCmd = &cobra.Command{
@@ -44,7 +39,7 @@ var routesCmd = &cobra.Command{
 
 var listRoutesCmd = &cobra.Command{
 	Use:     "list",
-	Short:   "List routes advertised and enabled by a given node",
+	Short:   "List all routes",
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
@@ -64,28 +59,39 @@ var listRoutesCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.GetMachineRouteRequest{
-			MachineId: machineID,
+		var routes []*v1.Route
+
+		if machineID == 0 {
+			response, err := client.GetRoutes(ctx, &v1.GetRoutesRequest{})
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
+					output,
+				)
+
+				return
+			}
+
+			routes = response.Routes
+		} else {
+			response, err := client.GetMachineRoutes(ctx, &v1.GetMachineRoutesRequest{
+				MachineId: machineID,
+			})
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Cannot get routes for machine %d: %s", machineID, status.Convert(err).Message()),
+					output,
+				)
+
+				return
+			}
+
+			routes = response.Routes
 		}
 
-		response, err := client.GetMachineRoute(ctx, request)
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
-				output,
-			)
-
-			return
-		}
-
-		if output != "" {
-			SuccessOutput(response.Routes, "", output)
-
-			return
-		}
-
-		tableData := routesToPtables(response.Routes)
+		tableData := routesToPtables(routes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
@@ -107,16 +113,12 @@ var listRoutesCmd = &cobra.Command{
 
 var enableRouteCmd = &cobra.Command{
 	Use:   "enable",
-	Short: "Set the enabled routes for a given node",
-	Long: `This command will take a list of routes that will _replace_ 
-the current set of routes on a given node.
-If you would like to disable a route, simply run the command again, but 
-omit the route you do not want to enable.
-	`,
+	Short: "Set a route as enabled",
+	Long:  `This command will make as enabled a given route.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		machineID, err := cmd.Flags().GetUint64("identifier")
+		routeID, err := cmd.Flags().GetUint64("route")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -131,52 +133,13 @@ omit the route you do not want to enable.
 		defer cancel()
 		defer conn.Close()
 
-		var routes []string
-
-		isAll, _ := cmd.Flags().GetBool("all")
-		if isAll {
-			response, err := client.GetMachineRoute(ctx, &v1.GetMachineRouteRequest{
-				MachineId: machineID,
-			})
-			if err != nil {
-				ErrorOutput(
-					err,
-					fmt.Sprintf(
-						"Cannot get machine routes: %s\n",
-						status.Convert(err).Message(),
-					),
-					output,
-				)
-
-				return
-			}
-			routes = response.GetRoutes().GetAdvertisedRoutes()
-		} else {
-			routes, err = cmd.Flags().GetStringSlice("route")
-			if err != nil {
-				ErrorOutput(
-					err,
-					fmt.Sprintf("Error getting routes from flag: %s", err),
-					output,
-				)
-
-				return
-			}
-		}
-
-		request := &v1.EnableMachineRoutesRequest{
-			MachineId: machineID,
-			Routes:    routes,
-		}
-
-		response, err := client.EnableMachineRoutes(ctx, request)
+		response, err := client.EnableRoute(ctx, &v1.EnableRouteRequest{
+			RouteId: routeID,
+		})
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf(
-					"Cannot register machine: %s\n",
-					status.Convert(err).Message(),
-				),
+				fmt.Sprintf("Cannot enable route %d: %s", routeID, status.Convert(err).Message()),
 				output,
 			)
 
@@ -184,25 +147,50 @@ omit the route you do not want to enable.
 		}
 
 		if output != "" {
-			SuccessOutput(response.Routes, "", output)
+			SuccessOutput(response, "", output)
 
 			return
 		}
+	},
+}
 
-		tableData := routesToPtables(response.Routes)
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+var disableRouteCmd = &cobra.Command{
+	Use:   "disable",
+	Short: "Set as disabled a given route",
+	Long:  `This command will make as disabled a given route.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
 
-			return
-		}
-
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		routeID, err := cmd.Flags().GetUint64("route")
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
+				fmt.Sprintf("Error getting machine id from flag: %s", err),
 				output,
 			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		response, err := client.DisableRoute(ctx, &v1.DisableRouteRequest{
+			RouteId: routeID,
+		})
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot enable route %d: %s", routeID, status.Convert(err).Message()),
+				output,
+			)
+
+			return
+		}
+
+		if output != "" {
+			SuccessOutput(response, "", output)
 
 			return
 		}
@@ -210,24 +198,20 @@ omit the route you do not want to enable.
 }
 
 // routesToPtables converts the list of routes to a nice table.
-func routesToPtables(routes *v1.Routes) pterm.TableData {
-	tableData := pterm.TableData{{"Route", "Enabled"}}
+func routesToPtables(routes []*v1.Route) pterm.TableData {
+	tableData := pterm.TableData{{"ID", "Machine", "Prefix", "Advertised", "Enabled", "Primary"}}
 
-	for _, route := range routes.GetAdvertisedRoutes() {
-		enabled := isStringInSlice(routes.EnabledRoutes, route)
-
-		tableData = append(tableData, []string{route, strconv.FormatBool(enabled)})
+	for _, route := range routes {
+		tableData = append(tableData,
+			[]string{
+				strconv.FormatUint(route.Id, 10),
+				route.Machine.GivenName,
+				route.Prefix,
+				strconv.FormatBool(route.Advertised),
+				strconv.FormatBool(route.Enabled),
+				strconv.FormatBool(route.IsPrimary),
+			})
 	}
 
 	return tableData
-}
-
-func isStringInSlice(strs []string, s string) bool {
-	for _, s2 := range strs {
-		if s == s2 {
-			return true
-		}
-	}
-
-	return false
 }
