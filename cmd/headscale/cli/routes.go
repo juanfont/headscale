@@ -11,6 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	Base10 = 10
+)
+
 func init() {
 	rootCmd.AddCommand(routesCmd)
 	listRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
@@ -204,7 +208,7 @@ func routesToPtables(routes []*v1.Route) pterm.TableData {
 	for _, route := range routes {
 		tableData = append(tableData,
 			[]string{
-				strconv.FormatUint(route.Id, 10),
+				strconv.FormatUint(route.Id, Base10),
 				route.Machine.GivenName,
 				route.Prefix,
 				strconv.FormatBool(route.Advertised),
