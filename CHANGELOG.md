@@ -29,7 +29,14 @@
 - Fix OIDC registration issues [#960](https://github.com/juanfont/headscale/pull/960) and [#971](https://github.com/juanfont/headscale/pull/971)
 - Add support for specifying NextDNS DNS-over-HTTPS resolver [#940](https://github.com/juanfont/headscale/pull/940)
 - Make more sslmode available for postgresql connection [#927](https://github.com/juanfont/headscale/pull/927)
-- Add support for [SSH ACL](https://tailscale.com/kb/1018/acls/#tailscale-ssh) blocks [#847](https://github.com/juanfont/headscale/pull/847)
+- Add experimental support for [SSH ACL](https://tailscale.com/kb/1018/acls/#tailscale-ssh) (see docs for limitations) [#847](https://github.com/juanfont/headscale/pull/847)
+  - Please note that this support should be considered _partially_ implemented
+  - SSH ACLs status:
+    - Support `accept` and `check` (SSH can be enabled and used for connecting and authentication)
+    - Rejecting connections **are not supported**, meaning that if you enable SSH, then assume that _all_ `ssh` connections **will be allowed**.
+    - If you decied to try this feature, please carefully managed permissions by blocking port `22` with regular ACLs or do _not_ set `--ssh` on your clients.
+    - We are currently improving our testing of the SSH ACLs, help us get an overview by testing and giving feedback.
+  - This feature should be considered dangerous and it is disabled by default. Enable by setting `HEADSCALE_EXPERIMENTAL_FEATURE_SSH=1`.
 
 ## 0.16.4 (2022-08-21)
 
