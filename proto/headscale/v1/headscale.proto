@@ -126,17 +126,31 @@ service HeadscaleService {
     // --- Machine end ---
 
     // --- Route start ---
-    rpc GetMachineRoute(GetMachineRouteRequest) returns (GetMachineRouteResponse) {
+    rpc GetRoutes(GetRoutesRequest) returns (GetRoutesResponse) {
+        option (google.api.http) = {
+            get: "/api/v1/routes"
+        };
+    }
+
+    rpc EnableRoute(EnableRouteRequest) returns (EnableRouteResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/routes/{route_id}/enable"
+        };
+    }
+
+    rpc DisableRoute(DisableRouteRequest) returns (DisableRouteResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/routes/{route_id}/disable"
+        };
+    }
+
+
+    rpc GetMachineRoutes(GetMachineRoutesRequest) returns (GetMachineRoutesResponse) {
         option (google.api.http) = {
             get: "/api/v1/machine/{machine_id}/routes"
         };
     }
 
-    rpc EnableMachineRoutes(EnableMachineRoutesRequest) returns (EnableMachineRoutesResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/machine/{machine_id}/routes"
-        };
-    }
     // --- Route end ---
 
     // --- ApiKeys start ---
