@@ -254,16 +254,6 @@ func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
 	return d.DialContext(ctx, "unix", addr)
 }
 
-func ipPrefixToString(prefixes []netip.Prefix) []string {
-	result := make([]string, len(prefixes))
-
-	for index, prefix := range prefixes {
-		result[index] = prefix.String()
-	}
-
-	return result
-}
-
 func stringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
 	result := make([]netip.Prefix, len(prefixes))
 
