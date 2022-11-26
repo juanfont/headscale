@@ -367,13 +367,12 @@
     },
     "/api/v1/machine/{machineId}/routes": {
       "get": {
-        "summary": "--- Route start ---",
-        "operationId": "HeadscaleService_GetMachineRoute",
+        "operationId": "HeadscaleService_GetMachineRoutes",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1GetMachineRouteResponse"
+              "$ref": "#/definitions/v1GetMachineRoutesResponse"
             }
           },
           "default": {
@@ -390,45 +389,6 @@
             "required": true,
             "type": "string",
             "format": "uint64"
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      },
-      "post": {
-        "operationId": "HeadscaleService_EnableMachineRoutes",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1EnableMachineRoutesResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "machineId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "uint64"
-          },
-          {
-            "name": "routes",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "collectionFormat": "multi"
           }
         ],
         "tags": [
@@ -722,6 +682,91 @@
           "HeadscaleService"
         ]
       }
+    },
+    "/api/v1/routes": {
+      "get": {
+        "summary": "--- Route start ---",
+        "operationId": "HeadscaleService_GetRoutes",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetRoutesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
+    "/api/v1/routes/{routeId}/disable": {
+      "post": {
+        "operationId": "HeadscaleService_DisableRoute",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DisableRouteResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "routeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
+    "/api/v1/routes/{routeId}/enable": {
+      "post": {
+        "operationId": "HeadscaleService_EnableRoute",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1EnableRouteResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "routeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -875,13 +920,11 @@
     "v1DeleteNamespaceResponse": {
       "type": "object"
     },
-    "v1EnableMachineRoutesResponse": {
-      "type": "object",
-      "properties": {
-        "routes": {
-          "$ref": "#/definitions/v1Routes"
-        }
-      }
+    "v1DisableRouteResponse": {
+      "type": "object"
+    },
+    "v1EnableRouteResponse": {
+      "type": "object"
     },
     "v1ExpireApiKeyRequest": {
       "type": "object",
@@ -924,11 +967,14 @@
         }
       }
     },
-    "v1GetMachineRouteResponse": {
+    "v1GetMachineRoutesResponse": {
       "type": "object",
       "properties": {
         "routes": {
-          "$ref": "#/definitions/v1Routes"
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/v1Route"
+          }
         }
       }
     },
@@ -937,6 +983,17 @@
       "properties": {
         "namespace": {
           "$ref": "#/definitions/v1Namespace"
+        }
+      }
+    },
+    "v1GetRoutesResponse": {
+      "type": "object",
+      "properties": {
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/v1Route"
+          }
         }
       }
     },
@@ -1151,20 +1208,39 @@
         }
       }
     },
-    "v1Routes": {
+    "v1Route": {
       "type": "object",
       "properties": {
-        "advertisedRoutes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "id": {
+          "type": "string",
+          "format": "uint64"
         },
-        "enabledRoutes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "machine": {
+          "$ref": "#/definitions/v1Machine"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "advertised": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "isPrimary": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "deletedAt": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },

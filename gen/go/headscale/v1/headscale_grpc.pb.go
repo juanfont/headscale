@@ -43,8 +43,10 @@ type HeadscaleServiceClient interface {
 	ListMachines(ctx context.Context, in *ListMachinesRequest, opts ...grpc.CallOption) (*ListMachinesResponse, error)
 	MoveMachine(ctx context.Context, in *MoveMachineRequest, opts ...grpc.CallOption) (*MoveMachineResponse, error)
 	// --- Route start ---
-	GetMachineRoute(ctx context.Context, in *GetMachineRouteRequest, opts ...grpc.CallOption) (*GetMachineRouteResponse, error)
-	EnableMachineRoutes(ctx context.Context, in *EnableMachineRoutesRequest, opts ...grpc.CallOption) (*EnableMachineRoutesResponse, error)
+	GetRoutes(ctx context.Context, in *GetRoutesRequest, opts ...grpc.CallOption) (*GetRoutesResponse, error)
+	EnableRoute(ctx context.Context, in *EnableRouteRequest, opts ...grpc.CallOption) (*EnableRouteResponse, error)
+	DisableRoute(ctx context.Context, in *DisableRouteRequest, opts ...grpc.CallOption) (*DisableRouteResponse, error)
+	GetMachineRoutes(ctx context.Context, in *GetMachineRoutesRequest, opts ...grpc.CallOption) (*GetMachineRoutesResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error)
 	ExpireApiKey(ctx context.Context, in *ExpireApiKeyRequest, opts ...grpc.CallOption) (*ExpireApiKeyResponse, error)
@@ -212,18 +214,36 @@ func (c *headscaleServiceClient) MoveMachine(ctx context.Context, in *MoveMachin
 	return out, nil
 }
 
-func (c *headscaleServiceClient) GetMachineRoute(ctx context.Context, in *GetMachineRouteRequest, opts ...grpc.CallOption) (*GetMachineRouteResponse, error) {
-	out := new(GetMachineRouteResponse)
-	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/GetMachineRoute", in, out, opts...)
+func (c *headscaleServiceClient) GetRoutes(ctx context.Context, in *GetRoutesRequest, opts ...grpc.CallOption) (*GetRoutesResponse, error) {
+	out := new(GetRoutesResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/GetRoutes", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) EnableMachineRoutes(ctx context.Context, in *EnableMachineRoutesRequest, opts ...grpc.CallOption) (*EnableMachineRoutesResponse, error) {
-	out := new(EnableMachineRoutesResponse)
-	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/EnableMachineRoutes", in, out, opts...)
+func (c *headscaleServiceClient) EnableRoute(ctx context.Context, in *EnableRouteRequest, opts ...grpc.CallOption) (*EnableRouteResponse, error) {
+	out := new(EnableRouteResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/EnableRoute", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *headscaleServiceClient) DisableRoute(ctx context.Context, in *DisableRouteRequest, opts ...grpc.CallOption) (*DisableRouteResponse, error) {
+	out := new(DisableRouteResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/DisableRoute", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *headscaleServiceClient) GetMachineRoutes(ctx context.Context, in *GetMachineRoutesRequest, opts ...grpc.CallOption) (*GetMachineRoutesResponse, error) {
+	out := new(GetMachineRoutesResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/GetMachineRoutes", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +302,10 @@ type HeadscaleServiceServer interface {
 	ListMachines(context.Context, *ListMachinesRequest) (*ListMachinesResponse, error)
 	MoveMachine(context.Context, *MoveMachineRequest) (*MoveMachineResponse, error)
 	// --- Route start ---
-	GetMachineRoute(context.Context, *GetMachineRouteRequest) (*GetMachineRouteResponse, error)
-	EnableMachineRoutes(context.Context, *EnableMachineRoutesRequest) (*EnableMachineRoutesResponse, error)
+	GetRoutes(context.Context, *GetRoutesRequest) (*GetRoutesResponse, error)
+	EnableRoute(context.Context, *EnableRouteRequest) (*EnableRouteResponse, error)
+	DisableRoute(context.Context, *DisableRouteRequest) (*DisableRouteResponse, error)
+	GetMachineRoutes(context.Context, *GetMachineRoutesRequest) (*GetMachineRoutesResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error)
 	ExpireApiKey(context.Context, *ExpireApiKeyRequest) (*ExpireApiKeyResponse, error)
@@ -346,11 +368,17 @@ func (UnimplementedHeadscaleServiceServer) ListMachines(context.Context, *ListMa
 func (UnimplementedHeadscaleServiceServer) MoveMachine(context.Context, *MoveMachineRequest) (*MoveMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MoveMachine not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) GetMachineRoute(context.Context, *GetMachineRouteRequest) (*GetMachineRouteResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetMachineRoute not implemented")
+func (UnimplementedHeadscaleServiceServer) GetRoutes(context.Context, *GetRoutesRequest) (*GetRoutesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRoutes not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) EnableMachineRoutes(context.Context, *EnableMachineRoutesRequest) (*EnableMachineRoutesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method EnableMachineRoutes not implemented")
+func (UnimplementedHeadscaleServiceServer) EnableRoute(context.Context, *EnableRouteRequest) (*EnableRouteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EnableRoute not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) DisableRoute(context.Context, *DisableRouteRequest) (*DisableRouteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DisableRoute not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) GetMachineRoutes(context.Context, *GetMachineRoutesRequest) (*GetMachineRoutesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMachineRoutes not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateApiKey not implemented")
@@ -680,38 +708,74 @@ func _HeadscaleService_MoveMachine_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_GetMachineRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetMachineRouteRequest)
+func _HeadscaleService_GetRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRoutesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).GetMachineRoute(ctx, in)
+		return srv.(HeadscaleServiceServer).GetRoutes(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/headscale.v1.HeadscaleService/GetMachineRoute",
+		FullMethod: "/headscale.v1.HeadscaleService/GetRoutes",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).GetMachineRoute(ctx, req.(*GetMachineRouteRequest))
+		return srv.(HeadscaleServiceServer).GetRoutes(ctx, req.(*GetRoutesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_EnableMachineRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(EnableMachineRoutesRequest)
+func _HeadscaleService_EnableRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnableRouteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).EnableMachineRoutes(ctx, in)
+		return srv.(HeadscaleServiceServer).EnableRoute(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/headscale.v1.HeadscaleService/EnableMachineRoutes",
+		FullMethod: "/headscale.v1.HeadscaleService/EnableRoute",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).EnableMachineRoutes(ctx, req.(*EnableMachineRoutesRequest))
+		return srv.(HeadscaleServiceServer).EnableRoute(ctx, req.(*EnableRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HeadscaleService_DisableRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DisableRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).DisableRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/DisableRoute",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).DisableRoute(ctx, req.(*DisableRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HeadscaleService_GetMachineRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMachineRoutesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).GetMachineRoutes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/GetMachineRoutes",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).GetMachineRoutes(ctx, req.(*GetMachineRoutesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -846,12 +910,20 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _HeadscaleService_MoveMachine_Handler,
 		},
 		{
-			MethodName: "GetMachineRoute",
-			Handler:    _HeadscaleService_GetMachineRoute_Handler,
+			MethodName: "GetRoutes",
+			Handler:    _HeadscaleService_GetRoutes_Handler,
 		},
 		{
-			MethodName: "EnableMachineRoutes",
-			Handler:    _HeadscaleService_EnableMachineRoutes_Handler,
+			MethodName: "EnableRoute",
+			Handler:    _HeadscaleService_EnableRoute_Handler,
+		},
+		{
+			MethodName: "DisableRoute",
+			Handler:    _HeadscaleService_DisableRoute_Handler,
+		},
+		{
+			MethodName: "GetMachineRoutes",
+			Handler:    _HeadscaleService_GetMachineRoutes_Handler,
 		},
 		{
 			MethodName: "CreateApiKey",
