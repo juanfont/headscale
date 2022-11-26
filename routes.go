@@ -223,6 +223,10 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 		if !route.IsPrimary {
 			_, err := h.getPrimaryRoute(netip.Prefix(route.Prefix))
 			if h.isUniquePrefix(route) || errors.Is(err, gorm.ErrRecordNotFound) {
+				log.Info().
+					Str("prefix", netip.Prefix(route.Prefix).String()).
+					Str("machine", route.Machine.GivenName).
+					Msg("Setting primary route")
 				routes[pos].IsPrimary = true
 				err := h.db.Save(&routes[pos]).Error
 				if err != nil {
