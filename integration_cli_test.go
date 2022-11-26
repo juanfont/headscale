@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -1305,24 +1306,22 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 			"list",
 			"--output",
 			"json",
-			"--identifier",
-			"0",
 		},
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
 
-	var listAll v1.Routes
-	err = json.Unmarshal([]byte(listAllResult), &listAll)
+	var routes []v1.Route
+	err = json.Unmarshal([]byte(listAllResult), &routes)
 	assert.Nil(s.T(), err)
 
-	assert.Len(s.T(), listAll.AdvertisedRoutes, 2)
-	assert.Contains(s.T(), listAll.AdvertisedRoutes, "10.0.0.0/8")
-	assert.Contains(s.T(), listAll.AdvertisedRoutes, "192.168.1.0/24")
+	assert.Len(s.T(), routes, 2)
+	assert.Equal(s.T(), routes[0].Enabled, false)
+	assert.Equal(s.T(), routes[1].Enabled, false)
 
-	assert.Empty(s.T(), listAll.EnabledRoutes)
+	routeIDToEnable := routes[1].Id
 
-	enableTwoRoutesResult, _, err := ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1330,110 +1329,86 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 			"enable",
 			"--output",
 			"json",
-			"--identifier",
-			"0",
 			"--route",
-			"10.0.0.0/8",
-			"--route",
-			"192.168.1.0/24",
+			strconv.FormatUint(routeIDToEnable, 10),
 		},
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
 
-	var enableTwoRoutes v1.Routes
-	err = json.Unmarshal([]byte(enableTwoRoutesResult), &enableTwoRoutes)
+	listAllResult, _, err = ExecuteCommand(
+		&s.headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		[]string{},
+	)
 	assert.Nil(s.T(), err)
 
-	assert.Len(s.T(), enableTwoRoutes.AdvertisedRoutes, 2)
-	assert.Contains(s.T(), enableTwoRoutes.AdvertisedRoutes, "10.0.0.0/8")
-	assert.Contains(s.T(), enableTwoRoutes.AdvertisedRoutes, "192.168.1.0/24")
+	assert.Nil(s.T(), err)
 
-	assert.Len(s.T(), enableTwoRoutes.EnabledRoutes, 2)
-	assert.Contains(s.T(), enableTwoRoutes.EnabledRoutes, "10.0.0.0/8")
-	assert.Contains(s.T(), enableTwoRoutes.EnabledRoutes, "192.168.1.0/24")
+	err = json.Unmarshal([]byte(listAllResult), &routes)
+	assert.Nil(s.T(), err)
+
+	assert.Len(s.T(), routes, 2)
+
+	for _, route := range routes {
+		if route.Id == routeIDToEnable {
+			assert.Equal(s.T(), route.Enabled, true)
+			assert.Equal(s.T(), route.IsPrimary, true)
+		} else {
+			assert.Equal(s.T(), route.Enabled, false)
+		}
+	}
 
 	// Enable only one route, effectively disabling one of the routes
-	enableOneRouteResult, _, err := ExecuteCommand(
+	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
 			"routes",
-			"enable",
+			"disable",
 			"--output",
 			"json",
-			"--identifier",
-			"0",
 			"--route",
-			"10.0.0.0/8",
+			strconv.FormatUint(routeIDToEnable, 10),
 		},
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
 
-	var enableOneRoute v1.Routes
-	err = json.Unmarshal([]byte(enableOneRouteResult), &enableOneRoute)
-	assert.Nil(s.T(), err)
-
-	assert.Len(s.T(), enableOneRoute.AdvertisedRoutes, 2)
-	assert.Contains(s.T(), enableOneRoute.AdvertisedRoutes, "10.0.0.0/8")
-	assert.Contains(s.T(), enableOneRoute.AdvertisedRoutes, "192.168.1.0/24")
-
-	assert.Len(s.T(), enableOneRoute.EnabledRoutes, 1)
-	assert.Contains(s.T(), enableOneRoute.EnabledRoutes, "10.0.0.0/8")
-
-	// Enable only one route, effectively disabling one of the routes
-	failEnableNonAdvertisedRoute, _, err := ExecuteCommand(
+	listAllResult, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
 			"routes",
-			"enable",
+			"list",
 			"--output",
 			"json",
-			"--identifier",
-			"0",
-			"--route",
-			"11.0.0.0/8",
 		},
 		[]string{},
 	)
 	assert.Nil(s.T(), err)
 
-	assert.Contains(
-		s.T(),
-		string(failEnableNonAdvertisedRoute),
-		"route (route-machine) is not available on node",
-	)
-
-	// Enable all routes on host
-	enableAllRouteResult, _, err := ExecuteCommand(
-		&s.headscale,
-		[]string{
-			"headscale",
-			"routes",
-			"enable",
-			"--output",
-			"json",
-			"--identifier",
-			"0",
-			"--all",
-		},
-		[]string{},
-	)
 	assert.Nil(s.T(), err)
 
-	var enableAllRoute v1.Routes
-	err = json.Unmarshal([]byte(enableAllRouteResult), &enableAllRoute)
+	err = json.Unmarshal([]byte(listAllResult), &routes)
 	assert.Nil(s.T(), err)
 
-	assert.Len(s.T(), enableAllRoute.AdvertisedRoutes, 2)
-	assert.Contains(s.T(), enableAllRoute.AdvertisedRoutes, "10.0.0.0/8")
-	assert.Contains(s.T(), enableAllRoute.AdvertisedRoutes, "192.168.1.0/24")
+	assert.Len(s.T(), routes, 2)
 
-	assert.Len(s.T(), enableAllRoute.EnabledRoutes, 2)
-	assert.Contains(s.T(), enableAllRoute.EnabledRoutes, "10.0.0.0/8")
-	assert.Contains(s.T(), enableAllRoute.EnabledRoutes, "192.168.1.0/24")
+	for _, route := range routes {
+		if route.Id == routeIDToEnable {
+			assert.Equal(s.T(), route.Enabled, false)
+			assert.Equal(s.T(), route.IsPrimary, false)
+		} else {
+			assert.Equal(s.T(), route.Enabled, false)
+		}
+	}
 }
 
 func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
