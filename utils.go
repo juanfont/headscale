@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"regexp"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -63,6 +64,8 @@ const (
 
 	ZstdCompression = "zstd"
 )
+
+var NodePublicKeyRegex = regexp.MustCompile("nodekey:[a-fA-F0-9]+")
 
 func MachinePublicKeyStripPrefix(machineKey key.MachinePublic) string {
 	return strings.TrimPrefix(machineKey.String(), machinePublicHexPrefix)
