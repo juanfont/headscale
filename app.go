@@ -88,6 +88,7 @@ type Headscale struct {
 	privateKey      *key.MachinePrivate
 	noisePrivateKey *key.MachinePrivate
 
+	mainRouter *mux.Router
 	noiseMux *mux.Router
 
 	DERPMap    *tailcfg.DERPMap
@@ -670,7 +671,7 @@ func (h *Headscale) Serve() error {
 	//
 	// This is the regular router that we expose
 	// over our main Addr. It also serves the legacy Tailcale API
-	router := h.createRouter(grpcGatewayMux)
+	h.mainRouter = h.createRouter(grpcGatewayMux)
 
 	// This router is served only over the Noise connection, and exposes only the new API.
 	//
@@ -680,7 +681,7 @@ func (h *Headscale) Serve() error {
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
-		Handler:     router,
+		Handler:     h.mainRouter,
 		ReadTimeout: HTTPReadTimeout,
 		// Go does not handle timeouts in HTTP very well, and there is
 		// no good way to handle streaming timeouts, therefore we need to
