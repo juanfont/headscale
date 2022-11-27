@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,7 +27,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/puzpuzpuz/xsync"
+	"github.com/puzpuzpuz/xsync/v2"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/acme"
@@ -53,12 +54,6 @@ const (
 	errUnsupportedLetsEncryptChallengeType = Error(
 		"unknown value for Lets Encrypt challenge type",
 	)
-
-	ErrFailedPrivateKey      = Error("failed to read or create private key")
-	ErrFailedNoisePrivateKey = Error(
-		"failed to read or create Noise protocol private key",
-	)
-	ErrSamePrivateKeys = Error("private key and noise private key are the same")
 )
 
 const (
@@ -96,8 +91,9 @@ type Headscale struct {
 
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
+	sshPolicy *tailcfg.SSHPolicy
 
-	lastStateChange *xsync.MapOf[time.Time]
+	lastStateChange *xsync.MapOf[string, time.Time]
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -110,41 +106,20 @@ type Headscale struct {
 	pollNetMapStreamWG sync.WaitGroup
 }
 
-// Look up the TLS constant relative to user-supplied TLS client
-// authentication mode. If an unknown mode is supplied, the default
-// value, tls.RequireAnyClientCert, is returned. The returned boolean
-// indicates if the supplied mode was valid.
-func LookupTLSClientAuthMode(mode string) (tls.ClientAuthType, bool) {
-	switch mode {
-	case DisabledClientAuth:
-		// Client cert is _not_ required.
-		return tls.NoClientCert, true
-	case RelaxedClientAuth:
-		// Client cert required, but _not verified_.
-		return tls.RequireAnyClientCert, true
-	case EnforcedClientAuth:
-		// Client cert is _required and verified_.
-		return tls.RequireAndVerifyClientCert, true
-	default:
-		// Return the default when an unknown value is supplied.
-		return tls.RequireAnyClientCert, false
-	}
-}
-
 func NewHeadscale(cfg *Config) (*Headscale, error) {
 	privateKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
-		return nil, ErrFailedPrivateKey
+		return nil, fmt.Errorf("failed to read or create private key: %w", err)
 	}
 
 	// TS2021 requires to have a different key from the legacy protocol.
 	noisePrivateKey, err := readOrCreatePrivateKey(cfg.NoisePrivateKeyPath)
 	if err != nil {
-		return nil, ErrFailedNoisePrivateKey
+		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
 	if privateKey.Equal(*noisePrivateKey) {
-		return nil, ErrSamePrivateKeys
+		return nil, fmt.Errorf("private key and noise private key are the same: %w", err)
 	}
 
 	var dbString string
@@ -157,8 +132,12 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 			cfg.DBuser,
 		)
 
-		if !cfg.DBssl {
-			dbString += " sslmode=disable"
+		if sslEnabled, err := strconv.ParseBool(cfg.DBssl); err == nil {
+			if !sslEnabled {
+				dbString += " sslmode=disable"
+			}
+		} else {
+			dbString += fmt.Sprintf(" sslmode=%s", cfg.DBssl)
 		}
 
 		if cfg.DBport != 0 {
@@ -456,8 +435,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	
-	
+	h.addLegacyHandlers(router)
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
@@ -884,12 +862,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
 		}
 
-		log.Info().Msg(fmt.Sprintf(
-			"Client authentication (mTLS) is \"%s\". See the docs to learn about configuring this setting.",
-			h.cfg.TLS.ClientAuthMode))
-
 		tlsConfig := &tls.Config{
-			ClientAuth:   h.cfg.TLS.ClientAuthMode,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: make([]tls.Certificate, 1),
 			MinVersion:   tls.VersionTLS12,
@@ -906,7 +879,7 @@ func (h *Headscale) setLastStateChangeToNow() {
 
 	now := time.Now().UTC()
 
-	namespaces, err := h.ListNamespacesStr()
+	namespaces, err := h.ListNamespaces()
 	if err != nil {
 		log.Error().
 			Caller().
@@ -915,22 +888,22 @@ func (h *Headscale) setLastStateChangeToNow() {
 	}
 
 	for _, namespace := range namespaces {
-		lastStateUpdate.WithLabelValues(namespace, "headscale").Set(float64(now.Unix()))
+		lastStateUpdate.WithLabelValues(namespace.Name, "headscale").Set(float64(now.Unix()))
 		if h.lastStateChange == nil {
 			h.lastStateChange = xsync.NewMapOf[time.Time]()
 		}
-		h.lastStateChange.Store(namespace, now)
+		h.lastStateChange.Store(namespace.Name, now)
 	}
 }
 
-func (h *Headscale) getLastStateChange(namespaces ...string) time.Time {
+func (h *Headscale) getLastStateChange(namespaces ...Namespace) time.Time {
 	times := []time.Time{}
 
 	// getLastStateChange takes a list of namespaces as a "filter", if no namespaces
 	// are past, then use the entier list of namespaces and look for the last update
 	if len(namespaces) > 0 {
 		for _, namespace := range namespaces {
-			if lastChange, ok := h.lastStateChange.Load(namespace); ok {
+			if lastChange, ok := h.lastStateChange.Load(namespace.Name); ok {
 				times = append(times, lastChange)
 			}
 		}

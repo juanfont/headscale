@@ -1,5 +1,4 @@
-//go:build integration
-
+//nolint
 package headscale
 
 import (
@@ -19,7 +18,8 @@ import (
 )
 
 const (
-	headscaleHostname      = "headscale-derp"
+	headscaleNetwork       = "headscale-test"
+	headscaleHostname      = "headscale"
 	DOCKER_EXECUTE_TIMEOUT = 10 * time.Second
 )
 
@@ -30,9 +30,10 @@ var (
 	IpPrefix6 = netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 
 	tailscaleVersions = []string{
-		// "head",
-		// "unstable",
-		"1.30.0",
+		"head",
+		"unstable",
+		"1.32.0",
+		"1.30.2",
 		"1.28.0",
 		"1.26.2",
 		"1.24.2",
@@ -115,13 +116,19 @@ func ExecuteCommand(
 			fmt.Println("stdout: ", stdout.String())
 			fmt.Println("stderr: ", stderr.String())
 
-			return stdout.String(), stderr.String(), fmt.Errorf("command failed with: %s", stderr.String())
+			return stdout.String(), stderr.String(), fmt.Errorf(
+				"command failed with: %s",
+				stderr.String(),
+			)
 		}
 
 		return stdout.String(), stderr.String(), nil
 	case <-time.After(execConfig.timeout):
 
-		return stdout.String(), stderr.String(), fmt.Errorf("command timed out after %s", execConfig.timeout)
+		return stdout.String(), stderr.String(), fmt.Errorf(
+			"command timed out after %s",
+			execConfig.timeout,
+		)
 	}
 }
 
@@ -315,4 +322,22 @@ func GetEnvBool(key string) (bool, error) {
 	}
 
 	return v, nil
+}
+
+func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (dockertest.Network, error) {
+	networks, err := pool.NetworksByName(name)
+	if err != nil || len(networks) == 0 {
+		if _, err := pool.CreateNetwork(name); err == nil {
+			// Create does not give us an updated version of the resource, so we need to
+			// get it again.
+			networks, err := pool.NetworksByName(name)
+			if err != nil {
+				return dockertest.Network{}, err
+			}
+
+			return networks[0], nil
+		}
+	}
+
+	return networks[0], nil
 }

@@ -17,6 +17,7 @@ type ACLPolicy struct {
 	ACLs          []ACL         `json:"acls"          yaml:"acls"`
 	Tests         []ACLTest     `json:"tests"         yaml:"tests"`
 	AutoApprovers AutoApprovers `json:"autoApprovers" yaml:"autoApprovers"`
+	SSHs          []SSH         `json:"ssh"           yaml:"ssh"`
 }
 
 // ACL is a basic rule for the ACL Policy.
@@ -48,6 +49,15 @@ type ACLTest struct {
 type AutoApprovers struct {
 	Routes   map[string][]string `json:"routes"   yaml:"routes"`
 	ExitNode []string            `json:"exitNode" yaml:"exitNode"`
+}
+
+// SSH controls who can ssh into which machines.
+type SSH struct {
+	Action       string   `json:"action"                yaml:"action"`
+	Sources      []string `json:"src"                   yaml:"src"`
+	Destinations []string `json:"dst"                   yaml:"dst"`
+	Users        []string `json:"users"                 yaml:"users"`
+	CheckPeriod  string   `json:"checkPeriod,omitempty" yaml:"checkPeriod,omitempty"`
 }
 
 // UnmarshalJSON allows to parse the Hosts directly into netip objects.
@@ -125,7 +135,7 @@ func (autoApprovers *AutoApprovers) GetRouteApprovers(
 			return nil, err
 		}
 
-		if autoApprovedPrefix.Bits() >= prefix.Bits() &&
+		if prefix.Bits() >= autoApprovedPrefix.Bits() &&
 			autoApprovedPrefix.Contains(prefix.Masked().Addr()) {
 			approverAliases = append(approverAliases, autoApproverAliases...)
 		}

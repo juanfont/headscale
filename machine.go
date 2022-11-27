@@ -332,6 +332,15 @@ func (h *Headscale) ListMachines() ([]Machine, error) {
 	return machines, nil
 }
 
+func (h *Headscale) ListMachinesByGivenName(givenName string) ([]Machine, error) {
+	machines := []Machine{}
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Find(&machines).Where("given_name = ?", givenName).Error; err != nil {
+		return nil, err
+	}
+
+	return machines, nil
+}
+
 // GetMachine finds a Machine by name and namespace and returns the Machine struct.
 func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) {
 	machines, err := h.ListMachinesInNamespace(namespace)
@@ -341,6 +350,22 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 
 	for _, m := range machines {
 		if m.Hostname == name {
+			return &m, nil
+		}
+	}
+
+	return nil, ErrMachineNotFound
+}
+
+// GetMachineByGivenName finds a Machine by given name and namespace and returns the Machine struct.
+func (h *Headscale) GetMachineByGivenName(namespace string, givenName string) (*Machine, error) {
+	machines, err := h.ListMachinesInNamespace(namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, m := range machines {
+		if m.GivenName == givenName {
 			return &m, nil
 		}
 	}
@@ -719,7 +744,11 @@ func (machine Machine) toNode(
 
 		KeepAlive:         true,
 		MachineAuthorized: !machine.isExpired(),
-		Capabilities:      []string{tailcfg.CapabilityFileSharing},
+		Capabilities: []string{
+			tailcfg.CapabilityFileSharing,
+			tailcfg.CapabilityAdmin,
+			tailcfg.CapabilitySSH,
+		},
 	}
 
 	return &node, nil
@@ -814,7 +843,13 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 	namespaceName string,
 	registrationMethod string,
 ) (*Machine, error) {
-	if machineInterface, ok := h.registrationCache.Get(nodeKeyStr); ok {
+	nodeKey := key.NodePublic{}
+	err := nodeKey.UnmarshalText([]byte(nodeKeyStr))
+	if err != nil {
+		return nil, err
+	}
+
+	if machineInterface, ok := h.registrationCache.Get(NodePublicKeyStripPrefix(nodeKey)); ok {
 		if registrationMachine, ok := machineInterface.(Machine); ok {
 			namespace, err := h.GetNamespace(namespaceName)
 			if err != nil {
@@ -1018,11 +1053,7 @@ func (machine *Machine) RoutesToProto() *v1.Routes {
 	}
 }
 
-func (h *Headscale) GenerateGivenName(suppliedName string) (string, error) {
-	// If a hostname is or will be longer than 63 chars after adding the hash,
-	// it needs to be trimmed.
-	trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - MachineGivenNameTrimSize
-
+func (h *Headscale) generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 	normalizedHostname, err := NormalizeToFQDNRules(
 		suppliedName,
 		h.cfg.OIDC.StripEmaildomain,
@@ -1031,18 +1062,46 @@ func (h *Headscale) GenerateGivenName(suppliedName string) (string, error) {
 		return "", err
 	}
 
-	postfix, err := GenerateRandomStringDNSSafe(MachineGivenNameHashLength)
+	if randomSuffix {
+		// Trim if a hostname will be longer than 63 chars after adding the hash.
+		trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - MachineGivenNameTrimSize
+		if len(normalizedHostname) > trimmedHostnameLength {
+			normalizedHostname = normalizedHostname[:trimmedHostnameLength]
+		}
+
+		suffix, err := GenerateRandomStringDNSSafe(MachineGivenNameHashLength)
+		if err != nil {
+			return "", err
+		}
+
+		normalizedHostname += "-" + suffix
+	}
+
+	return normalizedHostname, nil
+}
+
+func (h *Headscale) GenerateGivenName(machineKey string, suppliedName string) (string, error) {
+	givenName, err := h.generateGivenName(suppliedName, false)
 	if err != nil {
 		return "", err
 	}
 
-	// Verify that that the new unique name is shorter than the maximum allowed
-	// DNS segment.
-	if len(normalizedHostname) <= trimmedHostnameLength {
-		normalizedHostname = fmt.Sprintf("%s-%s", normalizedHostname, postfix)
-	} else {
-		normalizedHostname = fmt.Sprintf("%s-%s", normalizedHostname[:trimmedHostnameLength], postfix)
+	// Tailscale rules (may differ) https://tailscale.com/kb/1098/machine-names/
+	machines, err := h.ListMachinesByGivenName(givenName)
+	if err != nil {
+		return "", err
 	}
 
-	return normalizedHostname, nil
+	for _, machine := range machines {
+		if machine.MachineKey != machineKey && machine.GivenName == givenName {
+			postfixedName, err := h.generateGivenName(suppliedName, true)
+			if err != nil {
+				return "", err
+			}
+
+			givenName = postfixedName
+		}
+	}
+
+	return givenName, nil
 }

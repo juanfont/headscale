@@ -1,5 +1,4 @@
-//go:build integration_cli
-
+// nolint
 package headscale
 
 import (
@@ -13,6 +12,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
+	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -27,7 +27,11 @@ type IntegrationCLITestSuite struct {
 	env       []string
 }
 
-func TestCLIIntegrationTestSuite(t *testing.T) {
+func TestIntegrationCLITestSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration tests due to short flag")
+	}
+
 	s := new(IntegrationCLITestSuite)
 
 	suite.Run(t, s)
@@ -42,11 +46,11 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		s.FailNow(fmt.Sprintf("Could not connect to docker: %s", err), "")
 	}
 
-	if pnetwork, err := s.pool.CreateNetwork("headscale-test"); err == nil {
-		s.network = *pnetwork
-	} else {
-		s.FailNow(fmt.Sprintf("Could not create network: %s", err), "")
+	network, err := GetFirstOrCreateNetwork(&s.pool, headscaleNetwork)
+	if err != nil {
+		s.FailNow(fmt.Sprintf("Failed to create or get network: %s", err), "")
 	}
+	s.network = network
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile",
@@ -63,8 +67,12 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 		Mounts: []string{
 			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
 		},
-		Networks: []*dockertest.Network{&s.network},
-		Cmd:      []string{"headscale", "serve"},
+		Cmd:          []string{"headscale", "serve"},
+		Networks:     []*dockertest.Network{&s.network},
+		ExposedPorts: []string{"8080/tcp"},
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"8080/tcp": {{HostPort: "8080"}},
+		},
 	}
 
 	err = s.pool.RemoveContainerByName(headscaleHostname)
@@ -87,7 +95,9 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 	fmt.Println("Created headscale container for CLI tests")
 
 	fmt.Println("Waiting for headscale to be ready for CLI tests")
-	hostEndpoint := fmt.Sprintf("localhost:%s", s.headscale.GetPort("8080/tcp"))
+	hostEndpoint := fmt.Sprintf("%s:%s",
+		s.headscale.GetIPInNetwork(&s.network),
+		s.headscale.GetPort("8080/tcp"))
 
 	if err := s.pool.Retry(func() error {
 		url := fmt.Sprintf("http://%s/health", hostEndpoint)
@@ -548,8 +558,8 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	assert.Nil(s.T(), err)
 
 	machineKeys := []string{
-		"9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 	}
 	machines := make([]*v1.Machine, len(machineKeys))
 	assert.Nil(s.T(), err)
@@ -681,11 +691,11 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 
 	// Randomly generated machine keys
 	machineKeys := []string{
-		"9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
 	machines := make([]*v1.Machine, len(machineKeys))
 	assert.Nil(s.T(), err)
@@ -769,8 +779,8 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Equal(s.T(), "machine-5", listAll[4].Name)
 
 	otherNamespaceMachineKeys := []string{
-		"b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
-		"dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
+		"nodekey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
+		"nodekey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
 	}
 	otherNamespaceMachines := make([]*v1.Machine, len(otherNamespaceMachineKeys))
 	assert.Nil(s.T(), err)
@@ -940,11 +950,11 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 
 	// Randomly generated machine keys
 	machineKeys := []string{
-		"9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
 	machines := make([]*v1.Machine, len(machineKeys))
 	assert.Nil(s.T(), err)
@@ -1067,11 +1077,11 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 
 	// Randomly generated machine keys
 	machineKeys := []string{
-		"cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-		"8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 	}
 	machines := make([]*v1.Machine, len(machineKeys))
 	assert.Nil(s.T(), err)
@@ -1238,7 +1248,7 @@ func (s *IntegrationCLITestSuite) TestRouteCommand() {
 	assert.Nil(s.T(), err)
 
 	// Randomly generated machine keys
-	machineKey := "9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe"
+	machineKey := "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe"
 
 	_, _, err = ExecuteCommand(
 		&s.headscale,
@@ -1578,7 +1588,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	assert.Nil(s.T(), err)
 
 	// Randomly generated machine key
-	machineKey := "688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
+	machineKey := "nodekey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
 
 	_, _, err = ExecuteCommand(
 		&s.headscale,

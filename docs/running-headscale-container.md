@@ -48,15 +48,17 @@ Modify the config file to your preferences before launching Docker container.
 Here are some settings that you likely want:
 
 ```yaml
-server_url: http://your-host-name:8080 # Change to your hostname or host IP
+# Change to your hostname or host IP
+server_url: http://your-host-name:8080
 # Listen to 0.0.0.0 so it's accessible outside the container
 metrics_listen_addr: 0.0.0.0:9090
 # The default /var/lib/headscale path is not writable in the container
 private_key_path: /etc/headscale/private.key
 # The default /var/lib/headscale path is not writable in the container
 noise:
-  private_key_path: /var/lib/headscale/noise_private.key
+  private_key_path: /etc/headscale/noise_private.key
 # The default /var/lib/headscale path is not writable  in the container
+db_type: sqlite3
 db_path: /etc/headscale/db.sqlite
 ```
 

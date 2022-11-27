@@ -14,6 +14,7 @@ derp:
   urls:
     - https://controlplane.tailscale.com/derpmap/default
 dns_config:
+  override_local_dns: true
   base_domain: headscale.net
   domains: []
   magic_dns: true
@@ -44,7 +45,6 @@ private_key_path: private.key
 noise:
   private_key_path: noise_private.key
 server_url: http://headscale:18080
-tls_client_auth_mode: relaxed
 tls_letsencrypt_cache_dir: /var/www/.cache
 tls_letsencrypt_challenge_type: HTTP-01
 unix_socket: /var/run/headscale.sock

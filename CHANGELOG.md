@@ -5,10 +5,22 @@
 ### BREAKING
 
 - Log level option `log_level` was moved to a distinct `log` config section and renamed to `level` [#768](https://github.com/juanfont/headscale/pull/768)
+- Removed Alpine Linux container image [#962](https://github.com/juanfont/headscale/pull/962)
+
+### Important Changes
+
+- Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
+- Add experimental support for [SSH ACL](https://tailscale.com/kb/1018/acls/#tailscale-ssh) (see docs for limitations) [#847](https://github.com/juanfont/headscale/pull/847)
+  - Please note that this support should be considered _partially_ implemented
+  - SSH ACLs status:
+    - Support `accept` and `check` (SSH can be enabled and used for connecting and authentication)
+    - Rejecting connections **are not supported**, meaning that if you enable SSH, then assume that _all_ `ssh` connections **will be allowed**.
+    - If you decied to try this feature, please carefully managed permissions by blocking port `22` with regular ACLs or do _not_ set `--ssh` on your clients.
+    - We are currently improving our testing of the SSH ACLs, help us get an overview by testing and giving feedback.
+  - This feature should be considered dangerous and it is disabled by default. Enable by setting `HEADSCALE_EXPERIMENTAL_FEATURE_SSH=1`.
 
 ### Changes
 
-- Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
 - Add ability to specify config location via env var `HEADSCALE_CONFIG` [#674](https://github.com/juanfont/headscale/issues/674)
 - Target Go 1.19 for Headscale [#778](https://github.com/juanfont/headscale/pull/778)
 - Target Tailscale v1.30.0 to build Headscale [#780](https://github.com/juanfont/headscale/pull/780)
@@ -19,6 +31,15 @@
 - Add support for generating pre-auth keys with tags [#767](https://github.com/juanfont/headscale/pull/767)
 - Add support for evaluating `autoApprovers` ACL entries when a machine is registered [#763](https://github.com/juanfont/headscale/pull/763)
 - Add config flag to allow Headscale to start if OIDC provider is down [#829](https://github.com/juanfont/headscale/pull/829)
+- Fix prefix length comparison bug in AutoApprovers route evaluation [#862](https://github.com/juanfont/headscale/pull/862)
+- Random node DNS suffix only applied if names collide in namespace. [#766](https://github.com/juanfont/headscale/issues/766)
+- Remove `ip_prefix` configuration option and warning [#899](https://github.com/juanfont/headscale/pull/899)
+- Add `dns_config.override_local_dns` option [#905](https://github.com/juanfont/headscale/pull/905)
+- Fix some DNS config issues [#660](https://github.com/juanfont/headscale/issues/660)
+- Make it possible to disable TS2019 with build flag [#928](https://github.com/juanfont/headscale/pull/928)
+- Fix OIDC registration issues [#960](https://github.com/juanfont/headscale/pull/960) and [#971](https://github.com/juanfont/headscale/pull/971)
+- Add support for specifying NextDNS DNS-over-HTTPS resolver [#940](https://github.com/juanfont/headscale/pull/940)
+- Make more sslmode available for postgresql connection [#927](https://github.com/juanfont/headscale/pull/927)
 
 ## 0.16.4 (2022-08-21)
 

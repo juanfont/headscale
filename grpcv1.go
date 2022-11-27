@@ -1,4 +1,4 @@
-//nolint
+// nolint
 package headscale
 
 import (
@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 type headscaleV1APIServer struct { // v1.HeadscaleServiceServer
@@ -479,7 +480,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		Hostname:    "DebugTestMachine",
 	}
 
-	givenName, err := api.h.GenerateGivenName(request.GetName())
+	givenName, err := api.h.GenerateGivenName(request.GetKey(), request.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -496,9 +497,14 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 
 		HostInfo: HostInfo(hostinfo),
 	}
+	nodeKey := key.NodePublic{}
+	err = nodeKey.UnmarshalText([]byte(request.GetKey()))
+	if err != nil {
+		log.Panic().Msg("can not add machine for debug. invalid node key")
+	}
 
 	api.h.registrationCache.Set(
-		request.GetKey(),
+		NodePublicKeyStripPrefix(nodeKey),
 		newMachine,
 		registerCacheExpiration,
 	)

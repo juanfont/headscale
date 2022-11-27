@@ -19,6 +19,7 @@ import (
 
 const (
 	HeadscaleDateTimeFormat = "2006-01-02 15:04:05"
+	SocketWritePermissions  = 0o666
 )
 
 func getHeadscaleApp() (*headscale.Headscale, error) {
@@ -80,6 +81,19 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 			Msgf("HEADSCALE_CLI_ADDRESS environment is not set, connecting to unix socket.")
 
 		address = cfg.UnixSocket
+
+		// Try to give the user better feedback if we cannot write to the headscale
+		// socket.
+		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, SocketWritePermissions) //nolint
+		if err != nil {
+			if os.IsPermission(err) {
+				log.Fatal().
+					Err(err).
+					Str("socket", cfg.UnixSocket).
+					Msgf("Unable to read/write to headscale socket, do you have the correct permissions?")
+			}
+		}
+		socket.Close()
 
 		grpcOptions = append(
 			grpcOptions,
