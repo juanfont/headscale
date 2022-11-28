@@ -2,7 +2,9 @@ package integration
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -388,4 +390,145 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 	err = scenario.Shutdown()
 	assert.NoError(t, err)
+}
+
+func TestEnablingRoutes(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	namespace := "enable-routing"
+
+	scenario, err := NewScenario()
+	assert.NoError(t, err)
+
+	spec := map[string]int{
+		namespace: 3,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
+	assert.NoError(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	headscale, err := scenario.Headscale()
+	assert.NoError(t, err)
+
+	// advertise routes using the up command
+	for i, client := range allClients {
+		routeStr := fmt.Sprintf("10.0.%d.0/24", i)
+		hostname, _ := client.FQDN()
+		_, _, err = client.Execute([]string{
+			"tailscale",
+			"up",
+			fmt.Sprintf("--advertise-routes=%s", routeStr),
+			"-login-server", headscale.GetEndpoint(),
+			"--hostname", hostname,
+		})
+		assert.NoError(t, err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	var routes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&routes,
+	)
+
+	assert.NoError(t, err)
+	assert.Len(t, routes, 3)
+
+	for _, route := range routes {
+		assert.Equal(t, route.Advertised, true)
+		assert.Equal(t, route.Enabled, false)
+		assert.Equal(t, route.IsPrimary, false)
+	}
+
+	for _, route := range routes {
+		_, err = headscale.Execute(
+			[]string{
+				"headscale",
+				"routes",
+				"enable",
+				"--route",
+				strconv.Itoa(int(route.Id)),
+			})
+		assert.NoError(t, err)
+	}
+
+	var enablingRoutes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&enablingRoutes,
+	)
+	assert.NoError(t, err)
+
+	for _, route := range enablingRoutes {
+		assert.Equal(t, route.Advertised, true)
+		assert.Equal(t, route.Enabled, true)
+		assert.Equal(t, route.IsPrimary, true)
+	}
+
+	routeIDToBeDisabled := enablingRoutes[0].Id
+
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"routes",
+			"disable",
+			"--route",
+			strconv.Itoa(int(routeIDToBeDisabled)),
+		})
+	assert.NoError(t, err)
+
+	var disablingRoutes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&disablingRoutes,
+	)
+	assert.NoError(t, err)
+
+	for _, route := range disablingRoutes {
+		assert.Equal(t, true, route.Advertised)
+
+		if route.Id == routeIDToBeDisabled {
+			assert.Equal(t, route.Enabled, false)
+			assert.Equal(t, route.IsPrimary, false)
+		} else {
+			assert.Equal(t, route.Enabled, true)
+			assert.Equal(t, route.IsPrimary, true)
+		}
+	}
 }
