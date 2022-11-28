@@ -521,6 +521,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 
 		HostInfo: HostInfo(hostinfo),
 	}
+
 	nodeKey := key.NodePublic{}
 	err = nodeKey.UnmarshalText([]byte(request.GetKey()))
 	if err != nil {

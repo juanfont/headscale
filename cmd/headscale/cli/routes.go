@@ -77,6 +77,12 @@ var listRoutesCmd = &cobra.Command{
 				return
 			}
 
+			if output != "" {
+				SuccessOutput(response.Routes, "", output)
+
+				return
+			}
+
 			routes = response.Routes
 		} else {
 			response, err := client.GetMachineRoutes(ctx, &v1.GetMachineRoutesRequest{
@@ -88,6 +94,12 @@ var listRoutesCmd = &cobra.Command{
 					fmt.Sprintf("Cannot get routes for machine %d: %s", machineID, status.Convert(err).Message()),
 					output,
 				)
+
+				return
+			}
+
+			if output != "" {
+				SuccessOutput(response.Routes, "", output)
 
 				return
 			}
