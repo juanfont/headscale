@@ -21,7 +21,7 @@ func IntegrationSkip(t *testing.T) {
 	}
 }
 
-func TestHeadscale(t *testing.T) {
+func TestHeadscale(t *testing.T) { // nolint
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -70,7 +70,7 @@ func TestHeadscale(t *testing.T) {
 	}
 }
 
-func TestCreateTailscale(t *testing.T) {
+func TestCreateTailscale(t *testing.T) { // nolint
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -104,7 +104,7 @@ func TestCreateTailscale(t *testing.T) {
 	}
 }
 
-func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
+func TestTailscaleNodesJoiningHeadcale(t *testing.T) { // nolint
 	IntegrationSkip(t)
 	t.Parallel()
 

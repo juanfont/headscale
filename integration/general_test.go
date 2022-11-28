@@ -122,9 +122,9 @@ func TestPingAllByHostname(t *testing.T) {
 	}
 }
 
-func TestTaildrop(t *testing.T) {
+func TestTaildrop(t *testing.T) { // nolint
 	IntegrationSkip(t)
-	t.Parallel()
+	t.Parallel() // nolint
 
 	retry := func(times int, sleepInverval time.Duration, doWork func() error) error {
 		var err error
