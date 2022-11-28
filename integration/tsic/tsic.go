@@ -47,6 +47,7 @@ type TailscaleInContainer struct {
 	// optional config
 	headscaleCert     []byte
 	headscaleHostname string
+	withSSH           bool
 }
 
 type Option = func(c *TailscaleInContainer)
@@ -80,6 +81,12 @@ func WithOrCreateNetwork(network *dockertest.Network) Option {
 func WithHeadscaleName(hsName string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.headscaleHostname = hsName
+	}
+}
+
+func WithSSH() Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withSSH = true
 	}
 }
 
@@ -176,6 +183,10 @@ func (t *TailscaleInContainer) Version() string {
 	return t.version
 }
 
+func (t *TailscaleInContainer) ID() string {
+	return t.container.Container.ID
+}
+
 func (t *TailscaleInContainer) Execute(
 	command []string,
 ) (string, string, error) {
@@ -213,6 +224,10 @@ func (t *TailscaleInContainer) Up(
 		authKey,
 		"--hostname",
 		t.hostname,
+	}
+
+	if t.withSSH {
+		command = append(command, "--ssh")
 	}
 
 	if _, _, err := t.Execute(command); err != nil {

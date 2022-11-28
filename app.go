@@ -88,6 +88,7 @@ type Headscale struct {
 
 	aclPolicy *ACLPolicy
 	aclRules  []tailcfg.FilterRule
+	sshPolicy *tailcfg.SSHPolicy
 
 	lastStateChange *xsync.MapOf[string, time.Time]
 

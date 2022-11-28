@@ -229,6 +229,7 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 	namespaceStr string,
 	requestedVersion string,
 	count int,
+	opts ...tsic.Option,
 ) error {
 	if namespace, ok := s.namespaces[namespaceStr]; ok {
 		for i := 0; i < count; i++ {
@@ -247,6 +248,11 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 
 			namespace.createWaitGroup.Add(1)
 
+			opts = append(opts,
+				tsic.WithHeadscaleTLS(cert),
+				tsic.WithHeadscaleName(hostname),
+			)
+
 			go func() {
 				defer namespace.createWaitGroup.Done()
 
@@ -255,8 +261,7 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 					s.pool,
 					version,
 					s.network,
-					tsic.WithHeadscaleTLS(cert),
-					tsic.WithHeadscaleName(hostname),
+					opts...,
 				)
 				if err != nil {
 					// return fmt.Errorf("failed to add tailscale node: %w", err)
@@ -341,7 +346,11 @@ func (s *Scenario) WaitForTailscaleSync() error {
 // CreateHeadscaleEnv is a conventient method returning a set up Headcale
 // test environment with nodes of all versions, joined to the server with X
 // namespaces.
-func (s *Scenario) CreateHeadscaleEnv(namespaces map[string]int, opts ...hsic.Option) error {
+func (s *Scenario) CreateHeadscaleEnv(
+	namespaces map[string]int,
+	tsOpts []tsic.Option,
+	opts ...hsic.Option,
+) error {
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
@@ -353,7 +362,7 @@ func (s *Scenario) CreateHeadscaleEnv(namespaces map[string]int, opts ...hsic.Op
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount)
+		err = s.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount, tsOpts...)
 		if err != nil {
 			return err
 		}
