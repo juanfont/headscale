@@ -405,7 +405,7 @@ func TestEnablingRoutes(t *testing.T) {
 		namespace: 3,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("clienableroute"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
 	assert.NoError(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
