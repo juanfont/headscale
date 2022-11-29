@@ -23,6 +23,9 @@ build:
 
 dev: lint test build
 
+legacy_build:
+	@go build ./cmd/headscale/headscale.go
+
 test:
 	@go test $(TAGS) -short -coverprofile=coverage.out ./...
 

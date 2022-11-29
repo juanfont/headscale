@@ -430,7 +430,9 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 
 func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
-
+	router.NotFoundHandler = httpu.Handler404
+	router.HandleFunc("/", httpu.Handler404)
+	router.HandleFunc("", httpu.Handler404)
 	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost)
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
@@ -457,6 +459,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	appleRouter.HandleFunc("{platform}", h.ApplePlatformConfig).Methods(http.MethodGet)
 
 	regRouter := router.PathPrefix("/register").Subrouter()
+	regRouter.NotFoundHandler = http.HandlerFunc(httpu.Do404)
 	regRouter.Use(httpu.CharWhitelistMiddlewareGenerator(re.MustCompile("[a-fA-F0-9]+"), "nodeKey", "invalid characters in registration key"))
 	//equivalent to "/register/{nodeKey}"
 	regRouter.HandleFunc("/{nodeKey}", h.RegisterWebAPI).Methods(http.MethodGet)
@@ -473,7 +476,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	apiRouter.Use(h.httpAuthenticationMiddleware)
 	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
 
-	router.PathPrefix("/").HandlerFunc(stdoutHandler)
+	//router.PathPrefix("/").HandlerFunc(stdoutHandler)
 
 	return router
 }
