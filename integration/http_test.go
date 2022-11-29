@@ -51,10 +51,10 @@ func TestRouterPaths(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions),
+	//	"namespace1": len(TailscaleVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("testRouterPaths"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("testrouterpaths"))
 	if err != nil {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
