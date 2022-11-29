@@ -220,8 +220,8 @@ func (h *Headscale) ApplePlatformConfig(
 	}
 
 	switch platform {
-	case "macos-standlone":
-		if err := macosStandloneTemplate.Execute(&payload, platformConfig); err != nil {
+	case "macos-standalone":
+		if err := macosStandaloneTemplate.Execute(&payload, platformConfig); err != nil {
 			handleMacError(err)
 
 			return
@@ -390,7 +390,7 @@ var macosAppStoreTemplate = template.Must(template.New("macosTemplate").Parse(`
     </dict>
 `))
 
-var macosStandloneTemplate = template.Must(template.New("macosStandloneTemplate").Parse(`
+var macosStandaloneTemplate = template.Must(template.New("macosStandaloneTemplate").Parse(`
     <dict>
         <key>PayloadType</key>
         <string>io.tailscale.ipn.macsys</string>
