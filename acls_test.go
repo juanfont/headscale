@@ -54,7 +54,7 @@ func (s *Suite) TestBasicRule(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_1.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := app.generateACLRules()
+	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 }
@@ -411,7 +411,7 @@ func (s *Suite) TestPortRange(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_range.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := app.generateACLRules()
+	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -425,7 +425,7 @@ func (s *Suite) TestProtocolParsing(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_protocols.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := app.generateACLRules()
+	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -439,7 +439,7 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := app.generateACLRules()
+	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -455,7 +455,7 @@ func (s *Suite) TestPortWildcardYAML(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.yaml")
 	c.Assert(err, check.IsNil)
 
-	rules, err := app.generateACLRules()
+	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -495,7 +495,10 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	rules, err := app.generateACLRules()
+	machines, err := app.ListMachines()
+	c.Assert(err, check.IsNil)
+
+	rules, err := generateACLRules(machines, *app.aclPolicy, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -535,7 +538,10 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	err = app.LoadACLPolicy("./tests/acls/acl_policy_basic_groups.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := app.generateACLRules()
+	machines, err := app.ListMachines()
+	c.Assert(err, check.IsNil)
+
+	rules, err := generateACLRules(machines, *app.aclPolicy, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
