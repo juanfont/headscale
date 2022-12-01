@@ -122,6 +122,10 @@ func TestPingAllByHostname(t *testing.T) {
 	}
 }
 
+// If subtests are parallel, then they will start before setup is run.
+// This might mean we approach setup slightly wrong, but for now, ignore
+// the linter
+// nolint:tparallel
 func TestTaildrop(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
