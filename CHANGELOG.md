@@ -1,9 +1,10 @@
 # CHANGELOG
 
-## 0.17.0 (2022-XX-XX)
+## 0.17.0 (2022-11-26)
 
 ### BREAKING
 
+- `noise.private_key_path` has been added and is required for the new noise protocol.
 - Log level option `log_level` was moved to a distinct `log` config section and renamed to `level` [#768](https://github.com/juanfont/headscale/pull/768)
 - Removed Alpine Linux container image [#962](https://github.com/juanfont/headscale/pull/962)
 
