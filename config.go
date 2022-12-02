@@ -448,6 +448,20 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			}
 		}
 
+		if viper.IsSet("dns_config.extra_records") {
+			var extraRecords []tailcfg.DNSRecord
+
+			err := viper.UnmarshalKey("dns_config.extra_records", &extraRecords)
+			if err != nil {
+				log.Error().
+					Str("func", "getDNSConfig").
+					Err(err).
+					Msgf("Could not parse dns_config.extra_records")
+			}
+
+			dnsConfig.ExtraRecords = extraRecords
+		}
+
 		if viper.IsSet("dns_config.magic_dns") {
 			dnsConfig.Proxied = viper.GetBool("dns_config.magic_dns")
 		}
