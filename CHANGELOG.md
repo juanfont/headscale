@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.17.1 (2022-x-x)
+
+### Changes
+
+- Correct typo on macOS standalone profile link [#1028](https://github.com/juanfont/headscale/pull/1028)
+
 ## 0.17.0 (2022-11-26)
 
 ### BREAKING
