@@ -15,8 +15,21 @@
       the new login command to connect to one or more headscale (and Tailscale)
       servers. The previously used profiles does not have an effect anymore.
     </p>
+    <h3>Command line</h3>
     <p>Use Tailscale's login command to add your profile:</p>
     <pre><code>tailscale login --login-server {{.URL}}</code></pre>
+
+    <h3>GUI</h3>
+    <ol>
+      <li>
+        ALT + Click the Tailscale icon in the menu and hover over the Debug menu
+      </li>
+      <li>Under "Custm Login Server", select "Add Account..."</li>
+      <li>
+        Enter "{{.URL}}" of the headscale instance and press "Add Account"
+      </li>
+      <li>Follow the login procedure in the browser</li>
+    </ol>
 
     <h2>Apple configuration profiles (1.32.0 and lower)</h2>
     <p>
