@@ -386,12 +386,7 @@ func generateACLPolicyDest(
 func parseProtocol(protocol string) ([]int, bool, error) {
 	switch protocol {
 	case "":
-		return []int{
-			protocolICMP,
-			protocolIPv6ICMP,
-			protocolTCP,
-			protocolUDP,
-		}, false, nil
+		return nil, false, nil
 	case "igmp":
 		return []int{protocolIGMP}, true, nil
 	case "ipv4", "ip-in-ip":
