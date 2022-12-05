@@ -1,6 +1,8 @@
 # CHANGELOG
 
-## 0.1x.x (2022-xx-xx)
+## 0.18.x (2022-xx-xx)
+
+- Reworked routing and added support for subnet router failover [#1024](https://github.com/juanfont/headscale/pull/1024)
 
 ### Changes
 
