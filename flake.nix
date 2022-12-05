@@ -147,14 +147,13 @@
         inherit headscale;
         inherit headscale-docker;
       };
-
       defaultPackage = pkgs.headscale;
 
       # `nix run`
       apps.headscale = flake-utils.lib.mkApp {
         drv = packages.headscale;
       };
-      defaultApp = apps.headscale;
+      apps.default = apps.headscale;
 
       checks = {
         format =
