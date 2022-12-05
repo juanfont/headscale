@@ -5,6 +5,7 @@
 ### Changes
 
 - Correct typo on macOS standalone profile link [#1028](https://github.com/juanfont/headscale/pull/1028)
+- Update platform docs with Fast User Switching [#1016](https://github.com/juanfont/headscale/pull/1016)
 
 ## 0.17.0 (2022-11-26)
 
@@ -47,7 +48,6 @@
 - Fix OIDC registration issues [#960](https://github.com/juanfont/headscale/pull/960) and [#971](https://github.com/juanfont/headscale/pull/971)
 - Add support for specifying NextDNS DNS-over-HTTPS resolver [#940](https://github.com/juanfont/headscale/pull/940)
 - Make more sslmode available for postgresql connection [#927](https://github.com/juanfont/headscale/pull/927)
-- Update platform docs with Fast User Switching [#1016](https://github.com/juanfont/headscale/pull/1016)
 
 ## 0.16.4 (2022-08-21)
 
