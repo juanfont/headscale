@@ -109,6 +109,7 @@
           golangci-lint
           golines
           nodePackages.prettier
+          goreleaser
 
           # Protobuf dependencies
           protobuf

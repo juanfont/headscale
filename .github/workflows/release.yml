@@ -9,27 +9,17 @@ on:
 
 jobs:
   goreleaser:
-    runs-on: ubuntu-18.04 # due to CGO we need to user an older version
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: 1.19.0
 
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y gcc-aarch64-linux-gnu
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v2
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release --rm-dist
+      - uses: cachix/install-nix-action@v16
+
+      - name: Run goreleaser
+        run: nix develop --command -- goreleaser release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
