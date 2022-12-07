@@ -172,6 +172,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
 
+	viper.SetDefault("db_ssl", false)
+
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)

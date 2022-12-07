@@ -15,6 +15,7 @@ dns_config:
   nameservers:
     - 1.1.1.1
 db_path: /tmp/integration_test_db.sqlite3
+db_ssl: false
 private_key_path: private.key
 noise:
   private_key_path: noise_private.key

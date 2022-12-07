@@ -3,6 +3,7 @@ cli:
   insecure: false
   timeout: 5s
 db_path: /tmp/integration_test_db.sqlite3
+db_ssl: false
 db_type: sqlite3
 derp:
   auto_update_enabled: false
