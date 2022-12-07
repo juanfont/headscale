@@ -96,6 +96,7 @@ type OIDCConfig struct {
 	ExtraParams                map[string]string
 	AllowedDomains             []string
 	AllowedUsers               []string
+	AllowedGroups              []string
 	StripEmaildomain           bool
 }
 
@@ -568,6 +569,7 @@ func GetHeadscaleConfig() (*Config, error) {
 			ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
 			AllowedDomains:   viper.GetStringSlice("oidc.allowed_domains"),
 			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
+			AllowedGroups:    viper.GetStringSlice("oidc.allowed_groups"),
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 		},
 

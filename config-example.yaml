@@ -273,6 +273,9 @@ unix_socket_permission: "0770"
 #
 #   allowed_domains:
 #     - example.com
+# Groups from keycloak have a leading '/'
+#   allowed_groups:
+#     - /headscale
 #   allowed_users:
 #     - alice@example.com
 #

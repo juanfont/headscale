@@ -2,6 +2,7 @@
 
 ## 0.18.x (2022-xx-xx)
 
+- Added an OIDC AllowGroups Configuration options and authorization check [#1041](https://github.com/juanfont/headscale/pull/1041)
 - Reworked routing and added support for subnet router failover [#1024](https://github.com/juanfont/headscale/pull/1024)
 
 ### Changes
