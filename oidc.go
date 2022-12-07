@@ -25,6 +25,7 @@ const (
 	errEmptyOIDCCallbackParams = Error("empty OIDC callback params")
 	errNoOIDCIDToken           = Error("could not extract ID Token for OIDC callback")
 	errOIDCAllowedDomains      = Error("authenticated principal does not match any allowed domain")
+	errOIDCAllowedGroups       = Error("authenticated principal is not in any allowed group")
 	errOIDCAllowedUsers        = Error("authenticated principal does not match any allowed user")
 	errOIDCInvalidMachineState = Error("requested machine state key expired before authorisation completed")
 	errOIDCNodeKeyMissing      = Error("could not get node key from cache")
@@ -206,6 +207,10 @@ func (h *Headscale) OIDCCallback(
 	}
 
 	if err := validateOIDCAllowedDomains(writer, h.cfg.OIDC.AllowedDomains, claims); err != nil {
+		return
+	}
+
+	if err := validateOIDCAllowedGroups(writer, h.cfg.OIDC.AllowedGroups, claims); err != nil {
 		return
 	}
 
@@ -399,6 +404,39 @@ func validateOIDCAllowedDomains(
 
 			return errOIDCAllowedDomains
 		}
+	}
+
+	return nil
+}
+
+// validateOIDCAllowedGroups checks if AllowedGroups is provided,
+// and that the user has one group in the list.
+// claims.Groups can be populated by adding a client scope named
+// 'groups' that contains group membership.
+func validateOIDCAllowedGroups(
+	writer http.ResponseWriter,
+	allowedGroups []string,
+	claims *IDTokenClaims,
+) error {
+	if len(allowedGroups) > 0 {
+		for _, group := range allowedGroups {
+			if IsStringInSlice(claims.Groups, group) {
+				return nil
+			}
+		}
+
+		log.Error().Msg("authenticated principal not in any allowed groups")
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.WriteHeader(http.StatusBadRequest)
+		_, err := writer.Write([]byte("unauthorized principal (allowed groups)"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
+
+		return errOIDCAllowedGroups
 	}
 
 	return nil
