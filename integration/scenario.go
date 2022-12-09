@@ -44,11 +44,11 @@ var (
 		"1.22.2",
 		"1.20.4",
 		"1.18.2",
-		"1.16.2",
 	}
 
 	// tailscaleVersionsUnavailable = []string{
 	// 	// These versions seem to fail when fetching from apt.
+	// 	"1.16.2",
 	// 	"1.14.6",
 	// 	"1.12.4",
 	// 	"1.10.2",
