@@ -21,7 +21,7 @@ import (
 // only after their first request (marked with the ReadOnly field).
 //
 // At this moment the updates are sent in a quite horrendous way, but they kinda work.
-func (h *Headscale) NoisePollNetMapHandler(
+func (t *ts2021App) NoisePollNetMapHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
@@ -41,7 +41,7 @@ func (h *Headscale) NoisePollNetMapHandler(
 		return
 	}
 
-	machine, err := h.GetMachineByAnyNodeKey(mapRequest.NodeKey, key.NodePublic{})
+	machine, err := t.headscale.GetMachineByAnyKey(t.conn.Peer(), mapRequest.NodeKey, key.NodePublic{})
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
@@ -63,5 +63,5 @@ func (h *Headscale) NoisePollNetMapHandler(
 		Str("machine", machine.Hostname).
 		Msg("A machine is entering polling via the Noise protocol")
 
-	h.handlePollCommon(writer, req.Context(), machine, mapRequest, true)
+	t.headscale.handlePollCommon(writer, req.Context(), machine, mapRequest, true)
 }

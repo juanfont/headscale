@@ -7,11 +7,10 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/key"
 )
 
 // // NoiseRegistrationHandler handles the actual registration process of a machine.
-func (h *Headscale) NoiseRegistrationHandler(
+func (t *ts2021App) NoiseRegistrationHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
@@ -34,5 +33,5 @@ func (h *Headscale) NoiseRegistrationHandler(
 		return
 	}
 
-	h.handleRegisterCommon(writer, req, registerRequest, key.MachinePublic{})
+	t.headscale.handleRegisterCommon(writer, req, registerRequest, t.conn.Peer(), true)
 }

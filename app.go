@@ -81,8 +81,6 @@ type Headscale struct {
 	privateKey      *key.MachinePrivate
 	noisePrivateKey *key.MachinePrivate
 
-	noiseMux *mux.Router
-
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *DERPServer
 
@@ -472,16 +470,6 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	return router
 }
 
-func (h *Headscale) createNoiseMux() *mux.Router {
-	router := mux.NewRouter()
-
-	router.HandleFunc("/machine/register", h.NoiseRegistrationHandler).
-		Methods(http.MethodPost)
-	router.HandleFunc("/machine/map", h.NoisePollNetMapHandler)
-
-	return router
-}
-
 // Serve launches a GIN server with the Headscale API.
 func (h *Headscale) Serve() error {
 	var err error
@@ -640,12 +628,6 @@ func (h *Headscale) Serve() error {
 	// This is the regular router that we expose
 	// over our main Addr. It also serves the legacy Tailcale API
 	router := h.createRouter(grpcGatewayMux)
-
-	// This router is served only over the Noise connection, and exposes only the new API.
-	//
-	// The HTTP2 server that exposes this router is created for
-	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
-	h.noiseMux = h.createNoiseMux()
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,

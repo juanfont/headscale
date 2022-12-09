@@ -3,9 +3,11 @@ package headscale
 import (
 	"net/http"
 
+	"github.com/gorilla/mux"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	"tailscale.com/control/controlbase"
 	"tailscale.com/control/controlhttp"
 	"tailscale.com/net/netutil"
 )
@@ -14,6 +16,12 @@ const (
 	// ts2021UpgradePath is the path that the server listens on for the WebSockets upgrade.
 	ts2021UpgradePath = "/ts2021"
 )
+
+type ts2021App struct {
+	headscale *Headscale
+
+	conn *controlbase.Conn
+}
 
 // NoiseUpgradeHandler is to upgrade the connection and hijack the net.Conn
 // in order to use the Noise-based TS2021 protocol. Listens in /ts2021.
@@ -44,10 +52,25 @@ func (h *Headscale) NoiseUpgradeHandler(
 		return
 	}
 
+	ts2021App := ts2021App{
+		headscale: h,
+		conn:      noiseConn,
+	}
+
+	// This router is served only over the Noise connection, and exposes only the new API.
+	//
+	// The HTTP2 server that exposes this router is created for
+	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
+	router := mux.NewRouter()
+
+	router.HandleFunc("/machine/register", ts2021App.NoiseRegistrationHandler).
+		Methods(http.MethodPost)
+	router.HandleFunc("/machine/map", ts2021App.NoisePollNetMapHandler)
+
 	server := http.Server{
 		ReadTimeout: HTTPReadTimeout,
 	}
-	server.Handler = h2c.NewHandler(h.noiseMux, &http2.Server{})
+	server.Handler = h2c.NewHandler(router, &http2.Server{})
 	err = server.Serve(netutil.NewOneConnListener(noiseConn, nil))
 	if err != nil {
 		log.Info().Err(err).Msg("The HTTP2 server was closed")

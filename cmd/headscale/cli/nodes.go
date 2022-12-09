@@ -469,6 +469,7 @@ func nodesToPtables(
 		"ID",
 		"Hostname",
 		"Name",
+		"MachineKey",
 		"NodeKey",
 		"Namespace",
 		"IP addresses",
@@ -504,8 +505,16 @@ func nodesToPtables(
 			expiry = machine.Expiry.AsTime()
 		}
 
+		var machineKey key.MachinePublic
+		err := machineKey.UnmarshalText(
+			[]byte(headscale.MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+		)
+		if err != nil {
+			machineKey = key.MachinePublic{}
+		}
+
 		var nodeKey key.NodePublic
-		err := nodeKey.UnmarshalText(
+		err = nodeKey.UnmarshalText(
 			[]byte(headscale.NodePublicKeyEnsurePrefix(machine.NodeKey)),
 		)
 		if err != nil {
@@ -568,6 +577,7 @@ func nodesToPtables(
 			strconv.FormatUint(machine.Id, headscale.Base10),
 			machine.Name,
 			machine.GetGivenName(),
+			machineKey.ShortString(),
 			nodeKey.ShortString(),
 			namespace,
 			strings.Join([]string{IPV4Address, IPV6Address}, ", "),

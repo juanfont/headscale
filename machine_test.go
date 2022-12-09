@@ -77,10 +77,11 @@ func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
 
 	machine := Machine{
 		ID:             0,
-		MachineKey:     "foo",
+		MachineKey:     MachinePublicKeyStripPrefix(machineKey.Public()),
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
@@ -107,9 +108,11 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 	nodeKey := key.NewNode()
 	oldNodeKey := key.NewNode()
 
+	machineKey := key.NewMachine()
+
 	machine := Machine{
 		ID:             0,
-		MachineKey:     "foo",
+		MachineKey:     MachinePublicKeyStripPrefix(machineKey.Public()),
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
@@ -119,7 +122,7 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 	}
 	app.db.Save(&machine)
 
-	_, err = app.GetMachineByAnyNodeKey(nodeKey.Public(), oldNodeKey.Public())
+	_, err = app.GetMachineByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
 	c.Assert(err, check.IsNil)
 }
 

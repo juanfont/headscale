@@ -21,7 +21,7 @@ func (h *Headscale) getMapResponseData(
 	}
 
 	if isNoise {
-		return h.marshalMapResponse(mapResponse, key.MachinePublic{}, mapRequest.Compress)
+		return h.marshalMapResponse(mapResponse, key.MachinePublic{}, mapRequest.Compress, isNoise)
 	}
 
 	var machineKey key.MachinePublic
@@ -35,7 +35,7 @@ func (h *Headscale) getMapResponseData(
 		return nil, err
 	}
 
-	return h.marshalMapResponse(mapResponse, machineKey, mapRequest.Compress)
+	return h.marshalMapResponse(mapResponse, machineKey, mapRequest.Compress, isNoise)
 }
 
 func (h *Headscale) getMapKeepAliveResponseData(
@@ -48,7 +48,7 @@ func (h *Headscale) getMapKeepAliveResponseData(
 	}
 
 	if isNoise {
-		return h.marshalMapResponse(keepAliveResponse, key.MachinePublic{}, mapRequest.Compress)
+		return h.marshalMapResponse(keepAliveResponse, key.MachinePublic{}, mapRequest.Compress, isNoise)
 	}
 
 	var machineKey key.MachinePublic
@@ -62,12 +62,13 @@ func (h *Headscale) getMapKeepAliveResponseData(
 		return nil, err
 	}
 
-	return h.marshalMapResponse(keepAliveResponse, machineKey, mapRequest.Compress)
+	return h.marshalMapResponse(keepAliveResponse, machineKey, mapRequest.Compress, isNoise)
 }
 
 func (h *Headscale) marshalResponse(
 	resp interface{},
 	machineKey key.MachinePublic,
+	isNoise bool,
 ) ([]byte, error) {
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
@@ -79,7 +80,7 @@ func (h *Headscale) marshalResponse(
 		return nil, err
 	}
 
-	if machineKey.IsZero() { // if Noise
+	if isNoise {
 		return jsonBody, nil
 	}
 
@@ -90,6 +91,7 @@ func (h *Headscale) marshalMapResponse(
 	resp interface{},
 	machineKey key.MachinePublic,
 	compression string,
+	isNoise bool,
 ) ([]byte, error) {
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
@@ -103,11 +105,11 @@ func (h *Headscale) marshalMapResponse(
 	if compression == ZstdCompression {
 		encoder, _ := zstd.NewWriter(nil)
 		respBody = encoder.EncodeAll(jsonBody, nil)
-		if !machineKey.IsZero() { // if legacy protocol
+		if !isNoise { // if legacy protocol
 			respBody = h.privateKey.SealTo(machineKey, respBody)
 		}
 	} else {
-		if !machineKey.IsZero() { // if legacy protocol
+		if !isNoise { // if legacy protocol
 			respBody = h.privateKey.SealTo(machineKey, jsonBody)
 		} else {
 			respBody = jsonBody
