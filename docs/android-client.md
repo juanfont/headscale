@@ -6,9 +6,9 @@ This documentation has the goal of showing how a user can use the official Andro
 
 ## Installation
 
-Install the official Tailscale Android client from the [Google Play Store](https://play.google.com/store/apps/details?id=com.tailscale.ipn) or [F-Droid](https://f-droid.org/packages/com.tailscale.ipn/).
+### The recent Tailscale v1.34 release has broken the ability to change the control server URL in the Android Client.
 
-Ensure that the installed version is at least 1.30.0, as that is the first release to support custom URLs.
+The feature was introduced at v1.30.0, and broke with the release of v1.33.299. At the moment the both the Play Store and F-Droid carry a broken version. However with F-Droid, you can scroll to the bottom of the page, and choose to install [Version 1.33.97-t81fd25913](https://f-droid.org/repo/com.tailscale.ipn_135.apk)
 
 ## Configuring the headscale URL
 

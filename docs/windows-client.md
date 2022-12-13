@@ -19,7 +19,7 @@ For a guide on how to edit registry keys, [check out Computer Hope](https://www.
 
 ## Installation
 
-Download the [Official Windows Client](https://tailscale.com/download/windows) and install it.
+### The recent Tailscale v1.34 release has broken the ability to change the control server URL in the Windows Client. Currently the latest version that carries the functionality is [tailscale-setup-1.32.3-amd64.msi](https://pkgs.tailscale.com/stable/tailscale-setup-1.32.3-amd64.msi)
 
 When the installation has finished, start Tailscale and log in (you might have to click the icon in the system tray).
 
