@@ -44,6 +44,7 @@ message Machine {
     repeated string invalid_tags = 19;
     repeated string valid_tags   = 20;
     string          given_name   = 21;
+    bool            online       = 22;
 }
 
 message RegisterMachineRequest {
