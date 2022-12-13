@@ -513,9 +513,7 @@ func nodesToPtables(
 		}
 
 		var online string
-		if lastSeen.After(
-			time.Now().Add(-5 * time.Minute),
-		) { // TODO: Find a better way to reliably show if online
+		if machine.Online {
 			online = pterm.LightGreen("online")
 		} else {
 			online = pterm.LightRed("offline")

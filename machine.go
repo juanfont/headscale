@@ -767,6 +767,7 @@ func (machine *Machine) toProto() *v1.Machine {
 		GivenName:   machine.GivenName,
 		Namespace:   machine.Namespace.toProto(),
 		ForcedTags:  machine.ForcedTags,
+		Online:      machine.isOnline(),
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
