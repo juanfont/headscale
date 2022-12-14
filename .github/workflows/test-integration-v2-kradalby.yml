@@ -27,8 +27,8 @@ jobs:
       - name: Clean up Docker
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
-          docker kill $(docker ps -q)
-          docker network prune -f
+          docker kill $(docker ps -q) || true
+          docker network prune -f || true
 
       - name: Run general integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
