@@ -582,3 +582,64 @@ func TestResolveMagicDNS(t *testing.T) {
 		t.Errorf("failed to tear down scenario: %s", err)
 	}
 }
+
+// Test for https://github.com/juanfont/headscale/issues/1050
+func TestPingAllByIPCustomPrefix(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	if err != nil {
+		t.Errorf("failed to create scenario: %s", err)
+	}
+
+	spec := map[string]int{
+		"namespace1": len(TailscaleVersions),
+		"namespace2": len(TailscaleVersions),
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("pingallbyipprefix"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_IP_PREFIXES": "172.19.0.0/23",
+		}),
+	)
+	if err != nil {
+		t.Errorf("failed to create headscale environment: %s", err)
+	}
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	success := 0
+
+	for _, client := range allClients {
+		for _, ip := range allIps {
+			err := client.Ping(ip.String())
+			if err != nil {
+				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
+			} else {
+				success++
+			}
+		}
+	}
+
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
+}
