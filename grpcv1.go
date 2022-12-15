@@ -176,6 +176,7 @@ func (api headscaleV1APIServer) RegisterMachine(
 	machine, err := api.h.RegisterMachineFromAuthCallback(
 		request.GetKey(),
 		request.GetNamespace(),
+		nil,
 		RegisterMethodCLI,
 	)
 	if err != nil {
