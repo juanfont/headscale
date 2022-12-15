@@ -217,6 +217,15 @@ func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 	}
 }
 
+// expireExpiredMachines expires machines that have an explicit expiry set
+// after that expiry time has passed.
+func (h *Headscale) expireExpiredMachines(milliSeconds int64) {
+	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
+	for range ticker.C {
+		h.expireExpiredMachinesWorker()
+	}
+}
+
 func (h *Headscale) failoverSubnetRoutes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 	for range ticker.C {
@@ -263,6 +272,53 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 						Err(err).
 						Str("machine", machine.Hostname).
 						Msg("🤮 Cannot delete ephemeral machine from the database")
+				}
+			}
+		}
+
+		if expiredFound {
+			h.setLastStateChangeToNow()
+		}
+	}
+}
+
+func (h *Headscale) expireExpiredMachinesWorker() {
+	namespaces, err := h.ListNamespaces()
+	if err != nil {
+		log.Error().Err(err).Msg("Error listing namespaces")
+
+		return
+	}
+
+	for _, namespace := range namespaces {
+		machines, err := h.ListMachinesInNamespace(namespace.Name)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("namespace", namespace.Name).
+				Msg("Error listing machines in namespace")
+
+			return
+		}
+
+		expiredFound := false
+		for index, machine := range machines {
+			if machine.isExpired() &&
+				machine.Expiry.After(h.getLastStateChange(namespace)) {
+				expiredFound = true
+
+				err := h.ExpireMachine(&machines[index])
+				if err != nil {
+					log.Error().
+						Err(err).
+						Str("machine", machine.Hostname).
+						Str("name", machine.GivenName).
+						Msg("🤮 Cannot expire machine")
+				} else {
+					log.Info().
+						Str("machine", machine.Hostname).
+						Str("name", machine.GivenName).
+						Msg("Machine successfully expired")
 				}
 			}
 		}
@@ -494,6 +550,7 @@ func (h *Headscale) Serve() error {
 	}
 
 	go h.expireEphemeralNodes(updateInterval)
+	go h.expireExpiredMachines(updateInterval)
 
 	go h.failoverSubnetRoutes(updateInterval)
 
