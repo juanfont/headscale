@@ -236,7 +236,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	if err := h.registerMachineForOIDCCallback(writer, namespace, nodeKey); err != nil {
+	if err := h.registerMachineForOIDCCallback(writer, namespace, nodeKey, idToken.Expiry); err != nil {
 		return
 	}
 
@@ -679,10 +679,12 @@ func (h *Headscale) registerMachineForOIDCCallback(
 	writer http.ResponseWriter,
 	namespace *Namespace,
 	nodeKey *key.NodePublic,
+	expiry time.Time,
 ) error {
 	if _, err := h.RegisterMachineFromAuthCallback(
 		nodeKey.String(),
 		namespace.Name,
+		&expiry,
 		RegisterMethodOIDC,
 	); err != nil {
 		log.Error().
