@@ -73,7 +73,7 @@ one of the maintainers.
 | OpenBSD | Yes                                                                      |
 | FreeBSD | Yes                                                                      |
 | macOS   | Yes (see `/apple` on your headscale for more information)                |
-| Windows | Yes (Currently requires >v1.34 see [docs](./docs/windows-client.md))     |
+| Windows | Yes [docs](./docs/windows-client.md))     |
 | Android | Yes (Currently requires >v1.32.299 see [docs](./docs/android-client.md)) |
 | iOS     | Not yet                                                                  |
 

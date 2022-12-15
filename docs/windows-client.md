@@ -4,7 +4,25 @@
 
 This documentation has the goal of showing how a user can use the official Windows [Tailscale](https://tailscale.com) client with `headscale`.
 
-## Add registry keys
+## Installation
+
+Download the [Official Windows Client](https://tailscale.com/download/windows) and install it.
+
+When the installation has finished, start Tailscale and log in (you might have to click the icon in the system tray).
+
+The log in should open a browser Window and direct you to your `headscale` instance.
+
+Tailscale added Fast User Switching in version 1.34 and you can now use
+the new login command to connect to one or more headscale (and Tailscale)
+servers. The previously used profiles does not have an effect anymore.
+
+Use Tailscale's login command to add your profile:
+
+```
+tailscale login --login-server <server_URL>
+```
+
+## Add registry keys (Only Required for 1.32.0 and lower)
 
 To make the Windows client behave as expected and to run well with `headscale`, two registry keys **must** be set:
 
@@ -16,14 +34,6 @@ To make the Windows client behave as expected and to run well with `headscale`, 
 The Tailscale Windows client has been observed to reset its configuration on logout/reboot and these two keys [resolves that issue](https://github.com/tailscale/tailscale/issues/2798).
 
 For a guide on how to edit registry keys, [check out Computer Hope](https://www.computerhope.com/issues/ch001348.htm).
-
-## Installation
-
-### The recent Tailscale v1.34 release has broken the ability to change the control server URL in the Windows Client. Currently the latest version that carries the functionality is [tailscale-setup-1.32.3-amd64.msi](https://pkgs.tailscale.com/stable/tailscale-setup-1.32.3-amd64.msi)
-
-When the installation has finished, start Tailscale and log in (you might have to click the icon in the system tray).
-
-The log in should open a browser Window and direct you to your `headscale` instance.
 
 ## Troubleshooting
 
