@@ -146,6 +146,10 @@ func (machine *Machine) isOnline() bool {
 		return false
 	}
 
+	if machine.isExpired() {
+		return false
+	}
+
 	return machine.LastSeen.After(time.Now().Add(-keepAliveInterval))
 }
 
