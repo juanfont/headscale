@@ -7,7 +7,7 @@ import (
 	"tailscale.com/ipn/ipnstate"
 )
 
-//nolint
+// nolint
 type TailscaleClient interface {
 	Hostname() string
 	Shutdown() error
@@ -19,6 +19,7 @@ type TailscaleClient interface {
 	FQDN() (string, error)
 	Status() (*ipnstate.Status, error)
 	WaitForReady() error
+	WaitForLogout() error
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string) error
 	ID() string
