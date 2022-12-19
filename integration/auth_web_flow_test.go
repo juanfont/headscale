@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -59,7 +60,6 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	}
 
 	success := 0
-
 	for _, client := range allClients {
 		for _, ip := range allIps {
 			err := client.Ping(ip.String())
@@ -72,6 +72,151 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	}
 
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
+}
+
+func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	baseScenario, err := NewScenario()
+	if err != nil {
+		t.Errorf("failed to create scenario: %s", err)
+	}
+
+	scenario := AuthWebFlowScenario{
+		Scenario: baseScenario,
+	}
+
+	spec := map[string]int{
+		"namespace1": len(TailscaleVersions),
+		"namespace2": len(TailscaleVersions),
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("weblogout"))
+	if err != nil {
+		t.Errorf("failed to create headscale environment: %s", err)
+	}
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	success := 0
+	for _, client := range allClients {
+		for _, ip := range allIps {
+			err := client.Ping(ip.String())
+			if err != nil {
+				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
+			} else {
+				success++
+			}
+		}
+	}
+
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	clientIPs := make(map[TailscaleClient][]netip.Addr)
+	for _, client := range allClients {
+		ips, err := client.IPs()
+		if err != nil {
+			t.Errorf("failed to get IPs for client %s: %s", client.Hostname(), err)
+		}
+		clientIPs[client] = ips
+	}
+
+	for _, client := range allClients {
+		_, _, err = client.Execute([]string{"tailscale", "logout"})
+		if err != nil {
+			t.Errorf("failed to logout client %s: %s", client.Hostname(), err)
+		}
+	}
+
+	scenario.waitForTailscaleLogout()
+
+	t.Logf("all clients logged out")
+
+	headscale, err := scenario.Headscale()
+	if err != nil {
+		t.Errorf("failed to get headscale server: %s", err)
+	}
+
+	for namespaceName := range spec {
+		err = scenario.runTailscaleUp(namespaceName, headscale.GetEndpoint())
+		if err != nil {
+			t.Errorf("failed to run tailscale up: %s", err)
+		}
+	}
+
+	t.Logf("all clients logged in again")
+
+	allClients, err = scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	allIps, err = scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	success = 0
+	for _, client := range allClients {
+		for _, ip := range allIps {
+			err := client.Ping(ip.String())
+			if err != nil {
+				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
+			} else {
+				success++
+			}
+		}
+	}
+
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	for _, client := range allClients {
+		ips, err := client.IPs()
+		if err != nil {
+			t.Errorf("failed to get IPs for client %s: %s", client.Hostname(), err)
+		}
+
+		// lets check if the IPs are the same
+		if len(ips) != len(clientIPs[client]) {
+			t.Errorf("IPs changed for client %s", client.Hostname())
+		}
+
+		for _, ip := range ips {
+			found := false
+			for _, oldIP := range clientIPs[client] {
+				if ip == oldIP {
+					found = true
+
+					break
+				}
+			}
+
+			if !found {
+				t.Errorf("IPs changed for client %s. Used to be %v now %v", client.Hostname(), clientIPs[client], ips)
+			}
+		}
+	}
+
+	t.Logf("all clients IPs are the same")
 
 	err = scenario.Shutdown()
 	if err != nil {
@@ -112,6 +257,22 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
 	}
 
 	return nil
+}
+
+func (s *AuthWebFlowScenario) waitForTailscaleLogout() {
+	for _, namespace := range s.namespaces {
+		for _, client := range namespace.Clients {
+			namespace.syncWaitGroup.Add(1)
+
+			go func(c TailscaleClient) {
+				defer namespace.syncWaitGroup.Done()
+
+				// TODO(kradalby): error handle this
+				_ = c.WaitForLogout()
+			}(client)
+		}
+		namespace.syncWaitGroup.Wait()
+	}
 }
 
 func (s *AuthWebFlowScenario) runTailscaleUp(
