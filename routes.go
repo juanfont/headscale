@@ -237,6 +237,7 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 				}
 
 				routesChanged = true
+
 				continue
 			}
 		}
@@ -316,6 +317,7 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 	if routesChanged {
 		h.setLastStateChangeToNow()
 	}
+
 	return nil
 }
 
