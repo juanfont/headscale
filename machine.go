@@ -675,18 +675,13 @@ func (h *Headscale) toNode(
 		[]netip.Prefix{},
 		addrs...) // we append the node own IP, as it is required by the clients
 
-	enabledRoutes, err := h.GetEnabledRoutes(&machine)
-	if err != nil {
-		return nil, err
-	}
-
-	allowedIPs = append(allowedIPs, enabledRoutes...)
-
 	primaryRoutes, err := h.getMachinePrimaryRoutes(&machine)
 	if err != nil {
 		return nil, err
 	}
 	primaryPrefixes := Routes(primaryRoutes).toPrefixes()
+
+	allowedIPs = append(allowedIPs, primaryPrefixes...)
 
 	var derp string
 	if machine.HostInfo.NetInfo != nil {
@@ -1057,6 +1052,7 @@ func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
 		}
 	}
 
+	h.setLastStateChangeToNow()
 	return nil
 }
 
