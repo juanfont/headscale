@@ -270,6 +270,15 @@ func (t *TailscaleInContainer) UpWithLoginURL(
 	return loginURL, nil
 }
 
+func (t *TailscaleInContainer) Logout() error {
+	_, _, err := t.Execute([]string{"tailscale", "logout"})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	if t.ips != nil && len(t.ips) != 0 {
 		return t.ips, nil

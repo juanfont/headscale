@@ -141,7 +141,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	}
 
 	for _, client := range allClients {
-		_, _, err = client.Execute([]string{"tailscale", "logout"})
+		err := client.Logout()
 		if err != nil {
 			t.Errorf("failed to logout client %s: %s", client.Hostname(), err)
 		}
