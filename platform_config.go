@@ -255,7 +255,7 @@ func (h *Headscale) ApplePlatformConfig(
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
 		_, err := writer.Write(
-			[]byte("Invalid platform, only ios and macos is supported"),
+			[]byte("Invalid platform. Only ios, macos-app-store and macos-standalone are supported"),
 		)
 		if err != nil {
 			log.Error().
