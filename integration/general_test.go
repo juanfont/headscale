@@ -2,6 +2,7 @@ package integration
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +60,136 @@ func TestPingAllByIP(t *testing.T) {
 	}
 
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
+}
+
+func TestAuthKeyLogoutAndRelogin(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	if err != nil {
+		t.Errorf("failed to create scenario: %s", err)
+	}
+
+	spec := map[string]int{
+		"namespace1": len(TailscaleVersions),
+		"namespace2": len(TailscaleVersions),
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
+	if err != nil {
+		t.Errorf("failed to create headscale environment: %s", err)
+	}
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	clientIPs := make(map[TailscaleClient][]netip.Addr)
+	for _, client := range allClients {
+		ips, err := client.IPs()
+		if err != nil {
+			t.Errorf("failed to get IPs for client %s: %s", client.Hostname(), err)
+		}
+		clientIPs[client] = ips
+	}
+
+	for _, client := range allClients {
+		err := client.Logout()
+		if err != nil {
+			t.Errorf("failed to logout client %s: %s", client.Hostname(), err)
+		}
+	}
+
+	scenario.WaitForTailscaleLogout()
+
+	t.Logf("all clients logged out")
+
+	headscale, err := scenario.Headscale()
+	if err != nil {
+		t.Errorf("failed to get headscale server: %s", err)
+	}
+
+	for namespaceName := range spec {
+		key, err := scenario.CreatePreAuthKey(namespaceName)
+		if err != nil {
+			t.Errorf("failed to create pre-auth key for namespace %s: %s", namespaceName, err)
+		}
+
+		err = scenario.RunTailscaleUp(namespaceName, headscale.GetEndpoint(), key.GetKey())
+		if err != nil {
+			t.Errorf("failed to run tailscale up for namespace %s: %s", namespaceName, err)
+		}
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	allClients, err = scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	success := 0
+	for _, client := range allClients {
+		for _, ip := range allIps {
+			err := client.Ping(ip.String())
+			if err != nil {
+				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
+			} else {
+				success++
+			}
+		}
+	}
+
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	for _, client := range allClients {
+		ips, err := client.IPs()
+		if err != nil {
+			t.Errorf("failed to get IPs for client %s: %s", client.Hostname(), err)
+		}
+
+		// lets check if the IPs are the same
+		if len(ips) != len(clientIPs[client]) {
+			t.Errorf("IPs changed for client %s", client.Hostname())
+		}
+
+		for _, ip := range ips {
+			found := false
+			for _, oldIP := range clientIPs[client] {
+				if ip == oldIP {
+					found = true
+
+					break
+				}
+			}
+
+			if !found {
+				t.Errorf("IPs changed for client %s. Used to be %v now %v", client.Hostname(), clientIPs[client], ips)
+			}
+		}
+	}
+
+	t.Logf("all clients IPs are the same")
 
 	err = scenario.Shutdown()
 	if err != nil {
