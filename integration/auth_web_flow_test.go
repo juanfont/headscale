@@ -147,7 +147,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 		}
 	}
 
-	scenario.waitForTailscaleLogout()
+	scenario.WaitForTailscaleLogout()
 
 	t.Logf("all clients logged out")
 
@@ -257,22 +257,6 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
 	}
 
 	return nil
-}
-
-func (s *AuthWebFlowScenario) waitForTailscaleLogout() {
-	for _, namespace := range s.namespaces {
-		for _, client := range namespace.Clients {
-			namespace.syncWaitGroup.Add(1)
-
-			go func(c TailscaleClient) {
-				defer namespace.syncWaitGroup.Done()
-
-				// TODO(kradalby): error handle this
-				_ = c.WaitForLogout()
-			}(client)
-		}
-		namespace.syncWaitGroup.Wait()
-	}
 }
 
 func (s *AuthWebFlowScenario) runTailscaleUp(
