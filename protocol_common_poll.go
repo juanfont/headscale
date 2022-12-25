@@ -664,7 +664,11 @@ func (h *Headscale) scheduledPollWorker(
 				Str("machine", machine.Hostname).
 				Bool("noise", isNoise).
 				Msg("Sending keepalive")
-			keepAliveChan <- data
+			select {
+			case keepAliveChan <- data:
+			case <-ctx.Done():
+				return
+			}
 
 		case <-updateCheckerTicker.C:
 			log.Debug().
@@ -674,7 +678,11 @@ func (h *Headscale) scheduledPollWorker(
 				Msg("Sending update request")
 			updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "scheduled-update").
 				Inc()
-			updateChan <- struct{}{}
+			select {
+			case updateChan <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}
 }
