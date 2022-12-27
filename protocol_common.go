@@ -622,6 +622,20 @@ func (h *Headscale) handleMachineLogOutCommon(
 			Caller().
 			Err(err).
 			Msg("Failed to write response")
+
+		return
+	}
+
+	if machine.isEphemeral() {
+		err = h.HardDeleteMachine(&machine)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("machine", machine.Hostname).
+				Msg("Cannot delete ephemeral machine from the database")
+		}
+
+		return
 	}
 
 	log.Info().
