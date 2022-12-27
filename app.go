@@ -257,8 +257,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 
 		expiredFound := false
 		for _, machine := range machines {
-			if machine.AuthKey != nil && machine.LastSeen != nil &&
-				machine.AuthKey.Ephemeral &&
+			if machine.isEphemeral() && machine.LastSeen != nil &&
 				time.Now().
 					After(machine.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
 				expiredFound = true
