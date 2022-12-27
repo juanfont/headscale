@@ -153,6 +153,12 @@ func (machine *Machine) isOnline() bool {
 	return machine.LastSeen.After(time.Now().Add(-keepAliveInterval))
 }
 
+// isEphemeral returns if the machine is registered as an Ephemeral node.
+// https://tailscale.com/kb/1111/ephemeral-nodes/
+func (machine *Machine) isEphemeral() bool {
+	return machine.AuthKey != nil && machine.AuthKey.Ephemeral
+}
+
 func containsAddresses(inputs []string, addrs []string) bool {
 	for _, addr := range addrs {
 		if containsStr(inputs, addr) {
