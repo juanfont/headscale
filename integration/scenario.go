@@ -194,9 +194,9 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 	return headscale, nil
 }
 
-func (s *Scenario) CreatePreAuthKey(namespace string) (*v1.PreAuthKey, error) {
+func (s *Scenario) CreatePreAuthKey(namespace string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error) {
 	if headscale, err := s.Headscale(); err == nil {
-		key, err := headscale.CreateAuthKey(namespace)
+		key, err := headscale.CreateAuthKey(namespace, reusable, ephemeral)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create namespace: %w", err)
 		}
@@ -368,7 +368,7 @@ func (s *Scenario) CreateHeadscaleEnv(
 			return err
 		}
 
-		key, err := s.CreatePreAuthKey(namespaceName)
+		key, err := s.CreatePreAuthKey(namespaceName, true, false)
 		if err != nil {
 			return err
 		}
