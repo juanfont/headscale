@@ -316,6 +316,8 @@ func (t *HeadscaleInContainer) CreateNamespace(
 
 func (t *HeadscaleInContainer) CreateAuthKey(
 	namespace string,
+	reusable bool,
+	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
 	command := []string{
 		"headscale",
@@ -323,11 +325,18 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 		namespace,
 		"preauthkeys",
 		"create",
-		"--reusable",
 		"--expiration",
 		"24h",
 		"--output",
 		"json",
+	}
+
+	if reusable {
+		command = append(command, "--reusable")
+	}
+
+	if ephemeral {
+		command = append(command, "--ephemeral")
 	}
 
 	result, _, err := dockertestutil.ExecuteCommand(

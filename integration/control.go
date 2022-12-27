@@ -11,7 +11,7 @@ type ControlServer interface {
 	GetEndpoint() string
 	WaitForReady() error
 	CreateNamespace(namespace string) error
-	CreateAuthKey(namespace string) (*v1.PreAuthKey, error)
+	CreateAuthKey(namespace string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
 	ListMachinesInNamespace(namespace string) ([]*v1.Machine, error)
 	GetCert() []byte
 	GetHostname() string

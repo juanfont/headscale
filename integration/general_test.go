@@ -122,7 +122,7 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	}
 
 	for namespaceName := range spec {
-		key, err := scenario.CreatePreAuthKey(namespaceName)
+		key, err := scenario.CreatePreAuthKey(namespaceName, true, false)
 		if err != nil {
 			t.Errorf("failed to create pre-auth key for namespace %s: %s", namespaceName, err)
 		}
@@ -190,6 +190,109 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	}
 
 	t.Logf("all clients IPs are the same")
+
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
+}
+
+func TestEphemeral(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	if err != nil {
+		t.Errorf("failed to create scenario: %s", err)
+	}
+
+	spec := map[string]int{
+		"namespace1": len(TailscaleVersions),
+		"namespace2": len(TailscaleVersions),
+	}
+
+	headscale, err := scenario.Headscale(hsic.WithTestName("ephemeral"))
+	if err != nil {
+		t.Errorf("failed to create headscale environment: %s", err)
+	}
+
+	for namespaceName, clientCount := range spec {
+		err = scenario.CreateNamespace(namespaceName)
+		if err != nil {
+			t.Errorf("failed to create namespace %s: %s", namespaceName, err)
+		}
+
+		err = scenario.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount, []tsic.Option{}...)
+		if err != nil {
+			t.Errorf("failed to create tailscale nodes in namespace %s: %s", namespaceName, err)
+		}
+
+		key, err := scenario.CreatePreAuthKey(namespaceName, true, true)
+		if err != nil {
+			t.Errorf("failed to create pre-auth key for namespace %s: %s", namespaceName, err)
+		}
+
+		err = scenario.RunTailscaleUp(namespaceName, headscale.GetEndpoint(), key.GetKey())
+		if err != nil {
+			t.Errorf("failed to run tailscale up for namespace %s: %s", namespaceName, err)
+		}
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	success := 0
+	for _, client := range allClients {
+		for _, ip := range allIps {
+			err := client.Ping(ip.String())
+			if err != nil {
+				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
+			} else {
+				success++
+			}
+		}
+	}
+
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	for _, client := range allClients {
+		err := client.Logout()
+		if err != nil {
+			t.Errorf("failed to logout client %s: %s", client.Hostname(), err)
+		}
+	}
+
+	scenario.WaitForTailscaleLogout()
+
+	t.Logf("all clients logged out")
+
+	for namespaceName := range spec {
+		machines, err := headscale.ListMachinesInNamespace(namespaceName)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("namespace", namespaceName).
+				Msg("Error listing machines in namespace")
+
+			return
+		}
+
+		if len(machines) != 0 {
+			t.Errorf("expected no machines, got %d in namespace %s", len(machines), namespaceName)
+		}
+	}
 
 	err = scenario.Shutdown()
 	if err != nil {
