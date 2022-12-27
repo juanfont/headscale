@@ -408,7 +408,7 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 		}
 
 		if viper.IsSet("dns_config.restricted_nameservers") {
-			if len(dnsConfig.Nameservers) > 0 {
+			if len(dnsConfig.Resolvers) > 0 {
 				dnsConfig.Routes = make(map[string][]*dnstype.Resolver)
 				restrictedDNS := viper.GetStringMapStringSlice(
 					"dns_config.restricted_nameservers",
@@ -440,7 +440,7 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 
 		if viper.IsSet("dns_config.domains") {
 			domains := viper.GetStringSlice("dns_config.domains")
-			if len(dnsConfig.Nameservers) > 0 {
+			if len(dnsConfig.Resolvers) > 0 {
 				dnsConfig.Domains = domains
 			} else if domains != nil {
 				log.Warn().
