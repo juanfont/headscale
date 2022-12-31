@@ -9,6 +9,7 @@
 - Set `db_ssl` to false by default [#1052](https://github.com/juanfont/headscale/pull/1052)
 - Fix duplicate nodes due to incorrect implementation of the protocol [#1058](https://github.com/juanfont/headscale/pull/1058)
 - Report if a machine is online in CLI more accurately [#1062](https://github.com/juanfont/headscale/pull/1062)
+- Added config option for custom DNS records [#1035](https://github.com/juanfont/headscale/pull/1035)
 
 ## 0.17.1 (2022-12-05)
 
