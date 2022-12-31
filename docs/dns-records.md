@@ -7,7 +7,7 @@ An example usecase is to serve apps on the same host via a reverse proxy like NG
 
 ## Setup
 
-### Change the configuration
+### 1. Change the configuration
 
 1. Change the `config.yaml` to contain the desired records like so:
 
@@ -25,11 +25,11 @@ dns_config:
   ...
 ```
 
-Restart your headscale instance.
+2. Restart your headscale instance.
 
 Beware of the limitations listed later on!
 
-### Verify that the records are set
+### 2. Verify that the records are set
 
 You can use a DNS querying tool of your choice on one of your hosts to verify that your newly set records are actually available in MagicDNS, here we used [`dig`](https://man.archlinux.org/man/dig.1.en):
 
@@ -56,7 +56,7 @@ grafana.myvpn.example.com.  593     IN      A       100.64.0.3
 ;; MSG SIZE  rcvd: 66
 ```
 
-### Optional: Setup the reverse proxy
+### 3. Optional: Setup the reverse proxy
 
 The motivating example here was to be able to access internal monitoring services on the same host without specifying a port:
 
