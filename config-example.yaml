@@ -235,6 +235,17 @@ dns_config:
   # Search domains to inject.
   domains: []
 
+  # Extra DNS records
+  # so far only A-records are supported (on the tailscale side)
+  # See https://github.com/juanfont/headscale/blob/main/docs/dns-records.md#Limitations
+  # extra_records:
+  #   - name: "grafana.myvpn.example.com"
+  #     type: "A"
+  #     value: "100.64.0.3"
+  #
+  #   # you can also put it in one line
+  #   - { name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.3" }
+
   # Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
   # Only works if there is at least a nameserver defined.
   magic_dns: true
