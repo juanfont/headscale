@@ -2,8 +2,8 @@
 
 ## Goal
 
-This documentation has the goal of showing how a user can set custom DNS records client with `headscale`s magic dns.
-An example usecase is to serve apps on the same host via a reverse proxy like NGinX, in this case a prometheus monitoring stack. This allows to nicely access the service with "http://grafana.myvpn.example.com" instead of the hostname and portnum combination "http://hostname-in-magic-dns.myvpn.example.com:3000".
+This documentation has the goal of showing how a user can set custom DNS records with `headscale`s magic dns.
+An example use case is to serve apps on the same host via a reverse proxy like NGINX, in this case a Prometheus monitoring stack. This allows to nicely access the service with "http://grafana.myvpn.example.com" instead of the hostname and portnum combination "http://hostname-in-magic-dns.myvpn.example.com:3000".
 
 ## Setup
 
@@ -80,4 +80,4 @@ server {
 
 ## Limitations
 
-[Not all types of Records are Supported](https://github.com/tailscale/tailscale/blob/main/ipn/ipnlocal/local.go#L2891-L2909), especially no CNAME records.
+[Not all types of records are supported](https://github.com/tailscale/tailscale/blob/main/ipn/ipnlocal/local.go#L2891-L2909), especially no CNAME records.
