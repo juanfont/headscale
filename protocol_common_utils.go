@@ -3,9 +3,11 @@ package headscale
 import (
 	"encoding/binary"
 	"encoding/json"
+	"sync"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
+	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -103,8 +105,7 @@ func (h *Headscale) marshalMapResponse(
 
 	var respBody []byte
 	if compression == ZstdCompression {
-		encoder, _ := zstd.NewWriter(nil)
-		respBody = encoder.EncodeAll(jsonBody, nil)
+		respBody = zstdEncode(jsonBody)
 		if !isNoise { // if legacy protocol
 			respBody = h.privateKey.SealTo(machineKey, respBody)
 		}
@@ -121,4 +122,29 @@ func (h *Headscale) marshalMapResponse(
 	data = append(data, respBody...)
 
 	return data, nil
+}
+
+func zstdEncode(in []byte) []byte {
+	encoder, ok := zstdEncoderPool.Get().(*zstd.Encoder)
+	if !ok {
+		panic("invalid type in sync pool")
+	}
+	out := encoder.EncodeAll(in, nil)
+	_ = encoder.Close()
+	zstdEncoderPool.Put(encoder)
+
+	return out
+}
+
+var zstdEncoderPool = &sync.Pool{
+	New: func() any {
+		encoder, err := smallzstd.NewEncoder(
+			nil,
+			zstd.WithEncoderLevel(zstd.SpeedFastest))
+		if err != nil {
+			panic(err)
+		}
+
+		return encoder
+	},
 }
