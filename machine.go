@@ -155,7 +155,7 @@ func (machine *Machine) isOnline() bool {
 
 func containsAddresses(inputs []string, addrs []string) bool {
 	for _, addr := range addrs {
-		if contains(inputs, addr) {
+		if containsStr(inputs, addr) {
 			return true
 		}
 	}
