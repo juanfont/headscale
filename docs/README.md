@@ -12,6 +12,7 @@ please ask on [Discord](https://discord.gg/c84AZQhmpx) instead of opening an Iss
 - [Running headscale on Linux](running-headscale-linux.md)
 - [Control headscale remotely](remote-cli.md)
 - [Using a Windows client with headscale](windows-client.md)
+- [Configuring OIDC](oidc.md)
 
 ### References
 
