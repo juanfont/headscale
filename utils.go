@@ -269,6 +269,16 @@ func stringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
 	return result, nil
 }
 
+func containsStr(ts []string, t string) bool {
+	for _, v := range ts {
+		if v == t {
+			return true
+		}
+	}
+
+	return false
+}
+
 func contains[T string | netip.Prefix](ts []T, t T) bool {
 	for _, v := range ts {
 		if reflect.DeepEqual(v, t) {
