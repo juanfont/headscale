@@ -852,6 +852,7 @@ func getTags(
 func (h *Headscale) RegisterMachineFromAuthCallback(
 	nodeKeyStr string,
 	namespaceName string,
+	machineExpiry *time.Time,
 	registrationMethod string,
 ) (*Machine, error) {
 	nodeKey := key.NodePublic{}
@@ -884,6 +885,10 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 
 			registrationMachine.NamespaceID = namespace.ID
 			registrationMachine.RegisterMethod = registrationMethod
+
+			if machineExpiry != nil {
+				registrationMachine.Expiry = machineExpiry
+			}
 
 			machine, err := h.RegisterMachine(
 				registrationMachine,

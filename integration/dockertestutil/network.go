@@ -2,6 +2,7 @@ package dockertestutil
 
 import (
 	"errors"
+	"net"
 
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
@@ -59,4 +60,21 @@ func AddContainerToNetwork(
 	// }
 
 	return nil
+}
+
+// RandomFreeHostPort asks the kernel for a free open port that is ready to use.
+// (from https://github.com/phayes/freeport)
+func RandomFreeHostPort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0, err
+	}
+
+	listener, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer listener.Close()
+	//nolint:forcetypeassert
+	return listener.Addr().(*net.TCPAddr).Port, nil
 }

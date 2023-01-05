@@ -16,9 +16,10 @@ const (
 	errMockOidcClientIDNotDefined     = Error("MOCKOIDC_CLIENT_ID not defined")
 	errMockOidcClientSecretNotDefined = Error("MOCKOIDC_CLIENT_SECRET not defined")
 	errMockOidcPortNotDefined         = Error("MOCKOIDC_PORT not defined")
-	accessTTL                         = 10 * time.Minute
 	refreshTTL                        = 60 * time.Minute
 )
+
+var accessTTL = 2 * time.Minute
 
 func init() {
 	rootCmd.AddCommand(mockOidcCmd)
@@ -54,6 +55,16 @@ func mockOIDC() error {
 	if portStr == "" {
 		return errMockOidcPortNotDefined
 	}
+	accessTTLOverride := os.Getenv("MOCKOIDC_ACCESS_TTL")
+	if accessTTLOverride != "" {
+		newTTL, err := time.ParseDuration(accessTTLOverride)
+		if err != nil {
+			return err
+		}
+		accessTTL = newTTL
+	}
+
+	log.Info().Msgf("Access token TTL: %s", accessTTL)
 
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
