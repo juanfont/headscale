@@ -6,6 +6,7 @@ import (
 
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 func (s *Suite) TestGetRoutes(c *check.C) {
@@ -351,4 +352,103 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	routes, err = app.getMachinePrimaryRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 2)
+}
+
+// TestAllowedIPRoutes tests that the AllowedIPs are correctly set for a node,
+// including both the primary routes the node is responsible for, and the
+// exit node routes if enabled.
+func (s *Suite) TestAllowedIPRoutes(c *check.C) {
+	namespace, err := app.CreateNamespace("test")
+	c.Assert(err, check.IsNil)
+
+	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	c.Assert(err, check.IsNil)
+
+	_, err = app.GetMachine("test", "test_enable_route_machine")
+	c.Assert(err, check.NotNil)
+
+	prefix, err := netip.ParsePrefix(
+		"10.0.0.0/24",
+	)
+	c.Assert(err, check.IsNil)
+
+	prefix2, err := netip.ParsePrefix(
+		"150.0.10.0/25",
+	)
+	c.Assert(err, check.IsNil)
+
+	prefixExitNodeV4, err := netip.ParsePrefix(
+		"0.0.0.0/0",
+	)
+	c.Assert(err, check.IsNil)
+
+	prefixExitNodeV6, err := netip.ParsePrefix(
+		"::/0",
+	)
+	c.Assert(err, check.IsNil)
+
+	hostInfo1 := tailcfg.Hostinfo{
+		RoutableIPs: []netip.Prefix{prefix, prefix2, prefixExitNodeV4, prefixExitNodeV6},
+	}
+
+	nodeKey := key.NewNode()
+	discoKey := key.NewDisco()
+	machineKey := key.NewMachine()
+
+	now := time.Now()
+	machine1 := Machine{
+		ID:             1,
+		MachineKey:     MachinePublicKeyStripPrefix(machineKey.Public()),
+		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
+		DiscoKey:       DiscoPublicKeyStripPrefix(discoKey.Public()),
+		Hostname:       "test_enable_route_machine",
+		NamespaceID:    namespace.ID,
+		RegisterMethod: RegisterMethodAuthKey,
+		AuthKeyID:      uint(pak.ID),
+		HostInfo:       HostInfo(hostInfo1),
+		LastSeen:       &now,
+	}
+	app.db.Save(&machine1)
+
+	err = app.processMachineRoutes(&machine1)
+	c.Assert(err, check.IsNil)
+
+	err = app.EnableRoutes(&machine1, prefix.String())
+	c.Assert(err, check.IsNil)
+
+	// We do not enable this one on purpose to test that it is not enabled
+	// err = app.EnableRoutes(&machine1, prefix2.String())
+	// c.Assert(err, check.IsNil)
+
+	err = app.EnableRoutes(&machine1, prefixExitNodeV4.String())
+	c.Assert(err, check.IsNil)
+
+	err = app.EnableRoutes(&machine1, prefixExitNodeV6.String())
+	c.Assert(err, check.IsNil)
+
+	err = app.handlePrimarySubnetFailover()
+	c.Assert(err, check.IsNil)
+
+	enabledRoutes1, err := app.GetEnabledRoutes(&machine1)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(enabledRoutes1), check.Equals, 3)
+
+	peer, err := app.toNode(machine1, "headscale.net", nil)
+	c.Assert(err, check.IsNil)
+
+	c.Assert(len(peer.AllowedIPs), check.Equals, 3)
+
+	foundExitNodeV4 := false
+	foundExitNodeV6 := false
+	for _, allowedIP := range peer.AllowedIPs {
+		if allowedIP == prefixExitNodeV4 {
+			foundExitNodeV4 = true
+		}
+		if allowedIP == prefixExitNodeV6 {
+			foundExitNodeV6 = true
+		}
+	}
+
+	c.Assert(foundExitNodeV4, check.Equals, true)
+	c.Assert(foundExitNodeV6, check.Equals, true)
 }

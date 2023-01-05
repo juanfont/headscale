@@ -683,7 +683,15 @@ func (h *Headscale) toNode(
 	}
 	primaryPrefixes := Routes(primaryRoutes).toPrefixes()
 
-	allowedIPs = append(allowedIPs, primaryPrefixes...)
+	machineRoutes, err := h.GetMachineRoutes(&machine)
+	if err != nil {
+		return nil, err
+	}
+	for _, route := range machineRoutes {
+		if route.Enabled && (route.IsPrimary || route.isExitRoute()) {
+			allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix))
+		}
+	}
 
 	var derp string
 	if machine.HostInfo.NetInfo != nil {
