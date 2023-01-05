@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -45,7 +46,7 @@ type HeadscaleInContainer struct {
 	// optional config
 	port      int
 	aclPolicy *headscale.ACLPolicy
-	env       []string
+	env       map[string]string
 	tlsCert   []byte
 	tlsKey    []byte
 }
@@ -55,7 +56,7 @@ type Option = func(c *HeadscaleInContainer)
 func WithACLPolicy(acl *headscale.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		// TODO(kradalby): Move somewhere appropriate
-		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_ACL_POLICY_PATH=%s", aclPolicyPath))
+		hsic.env["HEADSCALE_ACL_POLICY_PATH"] = aclPolicyPath
 
 		hsic.aclPolicy = acl
 	}
@@ -69,8 +70,8 @@ func WithTLS() Option {
 		}
 
 		// TODO(kradalby): Move somewhere appropriate
-		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_TLS_CERT_PATH=%s", tlsCertPath))
-		hsic.env = append(hsic.env, fmt.Sprintf("HEADSCALE_TLS_KEY_PATH=%s", tlsKeyPath))
+		hsic.env["HEADSCALE_TLS_CERT_PATH"] = tlsCertPath
+		hsic.env["HEADSCALE_TLS_KEY_PATH"] = tlsKeyPath
 
 		hsic.tlsCert = cert
 		hsic.tlsKey = key
@@ -80,7 +81,7 @@ func WithTLS() Option {
 func WithConfigEnv(configEnv map[string]string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		for key, value := range configEnv {
-			hsic.env = append(hsic.env, fmt.Sprintf("%s=%s", key, value))
+			hsic.env[key] = value
 		}
 	}
 }
@@ -102,12 +103,10 @@ func WithTestName(testName string) Option {
 
 func WithHostnameAsServerURL() Option {
 	return func(hsic *HeadscaleInContainer) {
-		hsic.env = append(
-			hsic.env,
-			fmt.Sprintf("HEADSCALE_SERVER_URL=http://%s:%d",
-				hsic.GetHostname(),
-				hsic.port,
-			))
+		hsic.env["HEADSCALE_SERVER_URL"] = fmt.Sprintf("http://%s",
+			net.JoinHostPort(hsic.GetHostname(),
+				fmt.Sprintf("%d", hsic.port)),
+		)
 	}
 }
 
@@ -129,6 +128,8 @@ func New(
 
 		pool:    pool,
 		network: network,
+
+		env: DefaultConfigEnv(),
 	}
 
 	for _, opt := range opts {
@@ -144,6 +145,13 @@ func New(
 		ContextDir: dockerContextPath,
 	}
 
+	env := []string{}
+	for key, value := range hsic.env {
+		env = append(env, fmt.Sprintf("%s=%s", key, value))
+	}
+
+	log.Printf("ENV: \n%s", spew.Sdump(hsic.env))
+
 	runOptions := &dockertest.RunOptions{
 		Name:         hsic.hostname,
 		ExposedPorts: []string{portProto},
@@ -152,7 +160,7 @@ func New(
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
 		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; headscale serve"},
-		Env:        hsic.env,
+		Env:        env,
 	}
 
 	// dockertest isnt very good at handling containers that has already
@@ -177,7 +185,7 @@ func New(
 
 	hsic.container = container
 
-	err = hsic.WriteFile("/etc/headscale/config.yaml", []byte(DefaultConfigYAML()))
+	err = hsic.WriteFile("/etc/headscale/config.yaml", []byte(MinimumConfigYAML()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to write headscale config to container: %w", err)
 	}

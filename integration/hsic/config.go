@@ -60,6 +60,8 @@ package hsic
 // }
 
 // TODO: Reuse the actual configuration object above.
+// Deprecated: use env function instead as it is easier to
+// override.
 func DefaultConfigYAML() string {
 	yaml := `
 log:
@@ -94,4 +96,36 @@ derp:
 `
 
 	return yaml
+}
+
+func MinimumConfigYAML() string {
+	return `
+private_key_path: /tmp/private.key
+noise:
+  private_key_path: /tmp/noise_private.key
+`
+}
+
+func DefaultConfigEnv() map[string]string {
+	return map[string]string{
+		"HEADSCALE_LOG_LEVEL":                         "trace",
+		"HEADSCALE_ACL_POLICY_PATH":                   "",
+		"HEADSCALE_DB_TYPE":                           "sqlite3",
+		"HEADSCALE_DB_PATH":                           "/tmp/integration_test_db.sqlite3",
+		"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": "30m",
+		"HEADSCALE_NODE_UPDATE_CHECK_INTERVAL":        "10s",
+		"HEADSCALE_IP_PREFIXES":                       "fd7a:115c:a1e0::/48 100.64.0.0/10",
+		"HEADSCALE_DNS_CONFIG_BASE_DOMAIN":            "headscale.net",
+		"HEADSCALE_DNS_CONFIG_MAGIC_DNS":              "true",
+		"HEADSCALE_DNS_CONFIG_DOMAINS":                "",
+		"HEADSCALE_DNS_CONFIG_NAMESERVERS":            "127.0.0.11 1.1.1.1",
+		"HEADSCALE_PRIVATE_KEY_PATH":                  "/tmp/private.key",
+		"HEADSCALE_NOISE_PRIVATE_KEY_PATH":            "/tmp/noise_private.key",
+		"HEADSCALE_LISTEN_ADDR":                       "0.0.0.0:8080",
+		"HEADSCALE_METRICS_LISTEN_ADDR":               "127.0.0.1:9090",
+		"HEADSCALE_SERVER_URL":                        "http://headscale:8080",
+		"HEADSCALE_DERP_URLS":                         "https://controlplane.tailscale.com/derpmap/default",
+		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":          "false",
+		"HEADSCALE_DERP_UPDATE_FREQUENCY":             "1m",
+	}
 }
