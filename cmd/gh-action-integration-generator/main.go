@@ -45,23 +45,6 @@ jobs:
 
       - name: Run general integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
-<<<<<<< HEAD:integration/github_ci_jobs.go
-        run: >
-            nix develop --command --
-            docker run
-                --tty --rm
-                --volume ~/.cache/hs-integration-go:/go
-                --name headscale-test-suite
-                --volume $$PWD:$$PWD -w $$PWD/integration
-                --volume /var/run/docker.sock:/var/run/docker.sock
-                golang:1
-                	go test ./...
-						-tags ts2019
-						-failfast
-						-timeout 120m
-						-parallel 1
-						-run {{.Name}}
-=======
         run: |
             nix develop --command -- docker run \
               --tty --rm \
@@ -76,7 +59,6 @@ jobs:
                   -timeout 120m \
                   -parallel 1 \
                   -run {{.Name}}
->>>>>>> dd5c2cd (move):cmd/gh-action-integration-generator/main.go
 `))
 )
 
