@@ -58,7 +58,7 @@ jobs:
                   -failfast \
                   -timeout 120m \
                   -parallel 1 \
-                  -run {{.Name}}
+                  -run "^{{.Name}}$"
 `))
 )
 
