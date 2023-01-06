@@ -82,6 +82,7 @@ func main() {
 		"TestOIDCExpireNodes",
 		"TestPingAllByHostname",
 		"TestPingAllByIP",
+		"TestPingAllByIPCustomPrefix",
 		"TestPreAuthKeyCommand",
 		"TestPreAuthKeyCommandReusableEphemeral",
 		"TestPreAuthKeyCommandWithoutExpiry",
