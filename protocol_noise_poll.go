@@ -65,6 +65,11 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 		return
 	}
+
+	// Dynamically update the host specified in this request,
+	// for use as context lower in the stack
+	machine.RequestedHost = req.Host
+
 	log.Debug().
 		Str("handler", "NoisePollNetMap").
 		Str("machine", machine.Hostname).

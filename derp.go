@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -154,4 +156,46 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 			h.setLastStateChangeToNow()
 		}
 	}
+}
+
+func (h *Headscale) individuatedDERPMap(machine *Machine) (derpMap *tailcfg.DERPMap) {
+	derpMap = h.DERPMap
+
+	if h.DERPServer == nil {
+		return
+	}
+
+	if len(machine.RequestedHost) == 0 {
+		log.Warn().Msg("individuatedDERPMap requested for machine with no host specified. Returning default DERPMap")
+		return
+	}
+
+	derpMap = h.DERPMap.Clone()
+
+	embeddedDERPRegion := derpMap.Regions[h.DERPServer.region.RegionID]
+	if embeddedDERPRegion == nil {
+		log.Warn().Msg("individuatedDERPMap requested but embedded derp region not present in map. Returning default DERPMap")
+		return
+	}
+	if len(embeddedDERPRegion.Nodes) != 1 {
+		log.Warn().Msg("individuatedDERPMap requested but embedded derp region doesnt have 1 node. Returning default DERPMap")
+		return
+	}
+
+	host, portStr, err := net.SplitHostPort(machine.RequestedHost)
+	if err == nil {
+		portNum, err := strconv.Atoi(portStr)
+		if err != nil {
+			log.Warn().Str("portStr", portStr).Msg("individuatedDERPMap non-numeric port")
+			return
+		}
+		embeddedDERPRegion.Nodes[0].HostName = host
+		embeddedDERPRegion.Nodes[0].DERPPort = portNum
+	} else {
+		// No port present in Host, so leave default 443
+		embeddedDERPRegion.Nodes[0].HostName = machine.RequestedHost
+		embeddedDERPRegion.Nodes[0].DERPPort = 0
+	}
+
+	return
 }

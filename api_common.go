@@ -64,7 +64,7 @@ func (h *Headscale) generateMapResponse(
 		Node:      node,
 
 		// TODO: Only send if updated
-		DERPMap: h.DERPMap,
+		DERPMap: h.individuatedDERPMap(machine),
 
 		// TODO: Only send if updated
 		Peers: nodePeers,

@@ -52,6 +52,13 @@ type Machine struct {
 	// client during registration
 	Hostname string
 
+	// The server Host specified in the URL used by the Machine
+	// to connect. May in form domain:port or just domain.
+	//
+	// Unlike other attributes in Machine, RequestedHost is
+	// dynamically updated in each request
+	RequestedHost string
+
 	// Givenname represents either:
 	// a DNS normalized version of Hostname
 	// a valid name set by the User

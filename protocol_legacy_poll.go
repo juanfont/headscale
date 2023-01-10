@@ -86,6 +86,10 @@ func (h *Headscale) PollNetMapHandler(
 		return
 	}
 
+	// Dynamically update the host specified in this request,
+	// for use as context lower in the stack
+	machine.RequestedHost = req.Host
+
 	log.Trace().
 		Str("handler", "PollNetMap").
 		Str("id", machineKeyStr).
