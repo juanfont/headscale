@@ -60,7 +60,8 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	oidcMap := map[string]string{
 		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
 		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
-		"HEADSCALE_OIDC_CLIENT_SECRET":      oidcConfig.ClientSecret,
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
 		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": fmt.Sprintf("%t", oidcConfig.StripEmaildomain),
 	}
 
@@ -69,6 +70,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		hsic.WithTestName("oidcauthping"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithHostnameAsServerURL(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
 	)
 	if err != nil {
 		t.Errorf("failed to create headscale environment: %s", err)
