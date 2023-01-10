@@ -10,6 +10,12 @@
 #
 # https://myheadscale.example.com:443
 #
+# You may optionaly specify a path prefix such as:
+# https://myheadscale.example.com:443/myheadscaleapp.
+# Note that in order to match the implementation in tailscale client,
+# the /myheadscaleapp prefix will NOT apply to the noise upgade path at /ts2021
+# the derp server at /derp.
+# The admin API at /api is also not affected by path prefix.
 server_url: http://127.0.0.1:8080
 
 # Address to listen to / bind to on the server

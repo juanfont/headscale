@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sort"
@@ -489,26 +490,37 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
-func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
+func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) (*mux.Router, error) {
 	router := mux.NewRouter()
 
 	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost)
 
-	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
-	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/register/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
-	h.addLegacyHandlers(router)
+	// NOTE(github.com/juanfont/headscale/issues/1125): when Tailscale client is given
+	// a URL with a path like https://example.com/foo, certain API calls prepend this path,
+	// so Headscale should prepend these same paths in the server.
+	serverURL, err := url.Parse(h.cfg.ServerURL)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to parse server URL")
 
-	router.HandleFunc("/oidc/register/{nkey}", h.RegisterOIDC).Methods(http.MethodGet)
-	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
-	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
-	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
+		return nil, err
+	}
+	pathRouter := router.PathPrefix(serverURL.Path).Subrouter()
+
+	pathRouter.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
+	pathRouter.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
+	pathRouter.HandleFunc("/register/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
+	h.addLegacyHandlers(pathRouter)
+
+	pathRouter.HandleFunc("/oidc/register/{nkey}", h.RegisterOIDC).Methods(http.MethodGet)
+	pathRouter.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
+	pathRouter.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
+	pathRouter.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
 		Methods(http.MethodGet)
-	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
-	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
+	pathRouter.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
+	pathRouter.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
 		Methods(http.MethodGet)
-	router.HandleFunc("/swagger", SwaggerUI).Methods(http.MethodGet)
-	router.HandleFunc("/swagger/v1/openapiv2.json", SwaggerAPIv1).
+	pathRouter.HandleFunc("/swagger", SwaggerUI).Methods(http.MethodGet)
+	pathRouter.HandleFunc("/swagger/v1/openapiv2.json", SwaggerAPIv1).
 		Methods(http.MethodGet)
 
 	if h.cfg.DERP.ServerEnabled {
@@ -517,13 +529,16 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 		router.HandleFunc("/bootstrap-dns", h.DERPBootstrapDNSHandler)
 	}
 
+	// The admin API utilizes codegen handlers which assume /api path root
+	// Since API is not usually accessed behind reverse proxy, exclude
+	// from configured prefix.
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(h.httpAuthenticationMiddleware)
 	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
 
 	router.PathPrefix("/").HandlerFunc(notFoundHandler)
 
-	return router
+	return router, nil
 }
 
 // Serve launches a GIN server with the Headscale API.
@@ -684,7 +699,10 @@ func (h *Headscale) Serve() error {
 	//
 	// This is the regular router that we expose
 	// over our main Addr. It also serves the legacy Tailcale API
-	router := h.createRouter(grpcGatewayMux)
+	router, err := h.createRouter(grpcGatewayMux)
+	if err != nil {
+		return err
+	}
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,

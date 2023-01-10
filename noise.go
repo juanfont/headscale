@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog/log"
@@ -89,11 +90,22 @@ func (h *Headscale) NoiseUpgradeHandler(
 	noiseServer.machineKey = noiseServer.conn.Peer()
 	noiseServer.protocolVersion = noiseServer.conn.ProtocolVersion()
 
+	// NOTE(github.com/juanfont/headscale/issues/1125): when Tailscale client is given
+	// a URL with a path like https://example.com/foo, certain API calls prepend this path,
+	// so Headscale should prepend these same paths in the server.
+	serverURL, err := url.Parse(h.cfg.ServerURL)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to parse server URL")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+		return
+	}
+
 	// This router is served only over the Noise connection, and exposes only the new API.
 	//
 	// The HTTP2 server that exposes this router is created for
 	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
-	router := mux.NewRouter()
+	router := mux.NewRouter().PathPrefix(serverURL.Path).Subrouter()
 
 	router.HandleFunc("/machine/register", noiseServer.NoiseRegistrationHandler).
 		Methods(http.MethodPost)

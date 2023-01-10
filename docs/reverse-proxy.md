@@ -15,6 +15,42 @@ The reverse proxy MUST be configured to support WebSockets, as it is needed for 
 
 WebSockets support is required when using the headscale embedded DERP server. In this case, you will also need to expose the UDP port used for STUN (by default, udp/3478). Please check our [config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml).
 
+### Path prefix
+
+Headscale can be configured to host the tailscale API endpoints at specified HTTP path. This can be useful
+for reverse proxies where both headscale and another backend service sits behind the same reverse proxy.
+
+```yaml
+server_url: https://<YOUR_SERVER_NAME>/<PATH_PREFIX>
+```
+
+You would then use this path when connecting tailscale
+
+
+```sh
+tailscale login --login-server https://<YOUR_SERVER_NAME>/<PATH_PREFIX>
+```
+
+Note that in order to match the implementation in the tailscale client, the following paths will NOT
+use the PATH_PREFIX:
+* `/derp`
+* `/bootstrap-dns`
+* `/ts2021`
+* `/api` (the Headscale-specific admin API. You may wish to exclude this from your reverse proxy config for security)
+
+For example, to configure a reverse proxy for a Headscale app with configured `server_url: https://<YOUR_SERVER_NAME>/foo>`
+and WITHOUT forwarding the admin API, use the following regex for paths to forward to headscale:
+
+```
+\/(foo|derp|bootstrap-dns|ts2021).*
+```
+
+Or to also foward the admin API:
+
+```
+\/(foo|derp|bootstrap-dns|ts2021|api).*
+```
+
 ### TLS
 
 Headscale can be configured not to use TLS, leaving it to the reverse proxy to handle. Add the following configuration values to your headscale config file.
