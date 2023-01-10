@@ -162,6 +162,7 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		aclRules:           tailcfg.FilterAllowAll, // default allowall
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
+		lastStateChange:    xsync.NewMapOf[time.Time](),
 	}
 
 	err = app.initDB()
