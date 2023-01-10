@@ -36,6 +36,11 @@ const (
 
 var errHeadscaleStatusCodeNotOk = errors.New("headscale status code not ok")
 
+type fileInContainer struct {
+	path     string
+	contents []byte
+}
+
 type HeadscaleInContainer struct {
 	hostname string
 
@@ -44,11 +49,12 @@ type HeadscaleInContainer struct {
 	network   *dockertest.Network
 
 	// optional config
-	port      int
-	aclPolicy *headscale.ACLPolicy
-	env       map[string]string
-	tlsCert   []byte
-	tlsKey    []byte
+	port             int
+	aclPolicy        *headscale.ACLPolicy
+	env              map[string]string
+	tlsCert          []byte
+	tlsKey           []byte
+	filesInContainer []fileInContainer
 }
 
 type Option = func(c *HeadscaleInContainer)
@@ -110,6 +116,16 @@ func WithHostnameAsServerURL() Option {
 	}
 }
 
+func WithFileInContainer(path string, contents []byte) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.filesInContainer = append(hsic.filesInContainer,
+			fileInContainer{
+				path:     path,
+				contents: contents,
+			})
+	}
+}
+
 func New(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
@@ -129,7 +145,8 @@ func New(
 		pool:    pool,
 		network: network,
 
-		env: DefaultConfigEnv(),
+		env:              DefaultConfigEnv(),
+		filesInContainer: []fileInContainer{},
 	}
 
 	for _, opt := range opts {
@@ -211,6 +228,12 @@ func New(
 		err = hsic.WriteFile(tlsKeyPath, hsic.tlsKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to write TLS key to container: %w", err)
+		}
+	}
+
+	for _, f := range hsic.filesInContainer {
+		if err := hsic.WriteFile(f.path, f.contents); err != nil {
+			return nil, fmt.Errorf("failed to write %q: %w", f.path, err)
 		}
 	}
 

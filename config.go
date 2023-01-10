@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/netip"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ const (
 	JSONLogFormat = "json"
 	TextLogFormat = "text"
 )
+
+var errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
 
 // Config contains the initial Headscale configuration.
 type Config struct {
@@ -528,6 +531,19 @@ func GetHeadscaleConfig() (*Config, error) {
 			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
 	}
 
+	oidcClientSecret := viper.GetString("oidc.client_secret")
+	oidcClientSecretPath := viper.GetString("oidc.client_secret_path")
+	if oidcClientSecretPath != "" && oidcClientSecret != "" {
+		return nil, errOidcMutuallyExclusive
+	}
+	if oidcClientSecretPath != "" {
+		secretBytes, err := os.ReadFile(os.ExpandEnv(oidcClientSecretPath))
+		if err != nil {
+			return nil, err
+		}
+		oidcClientSecret = string(secretBytes)
+	}
+
 	return &Config{
 		ServerURL:          viper.GetString("server_url"),
 		Addr:               viper.GetString("listen_addr"),
@@ -580,7 +596,7 @@ func GetHeadscaleConfig() (*Config, error) {
 			),
 			Issuer:           viper.GetString("oidc.issuer"),
 			ClientID:         viper.GetString("oidc.client_id"),
-			ClientSecret:     viper.GetString("oidc.client_secret"),
+			ClientSecret:     oidcClientSecret,
 			Scope:            viper.GetStringSlice("oidc.scope"),
 			ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
 			AllowedDomains:   viper.GetStringSlice("oidc.allowed_domains"),
