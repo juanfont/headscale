@@ -475,6 +475,7 @@ func nodesToPtables(
 		"IP addresses",
 		"Ephemeral",
 		"Last seen",
+		"Expiration",
 		"Online",
 		"Expired",
 	}
@@ -501,8 +502,12 @@ func nodesToPtables(
 		}
 
 		var expiry time.Time
+		var expiryTime string
 		if machine.Expiry != nil {
 			expiry = machine.Expiry.AsTime()
+			expiryTime = expiry.Format("2006-01-02 15:04:05")
+		} else {
+			expiryTime = "N/A"
 		}
 
 		var machineKey key.MachinePublic
@@ -583,6 +588,7 @@ func nodesToPtables(
 			strings.Join([]string{IPV4Address, IPV6Address}, ", "),
 			strconv.FormatBool(ephemeral),
 			lastSeenTime,
+			expiryTime,
 			online,
 			expired,
 		}
