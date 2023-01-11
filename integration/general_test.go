@@ -184,7 +184,12 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 			}
 
 			if !found {
-				t.Errorf("IPs changed for client %s. Used to be %v now %v", client.Hostname(), clientIPs[client], ips)
+				t.Errorf(
+					"IPs changed for client %s. Used to be %v now %v",
+					client.Hostname(),
+					clientIPs[client],
+					ips,
+				)
 			}
 		}
 	}
@@ -222,7 +227,11 @@ func TestEphemeral(t *testing.T) {
 			t.Errorf("failed to create namespace %s: %s", namespaceName, err)
 		}
 
-		err = scenario.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount, []tsic.Option{}...)
+		err = scenario.CreateTailscaleNodesInNamespace(
+			namespaceName,
+			"all",
+			clientCount,
+			[]tsic.Option{}...)
 		if err != nil {
 			t.Errorf("failed to create tailscale nodes in namespace %s: %s", namespaceName, err)
 		}
@@ -601,7 +610,7 @@ func TestPingAllByIPCustomPrefix(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
 		hsic.WithTestName("pingallbyipprefix"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_IP_PREFIXES": "172.19.0.0/23",
+			"HEADSCALE_IP_PREFIXES": "10.10.10.0/27",
 		}),
 	)
 	if err != nil {
