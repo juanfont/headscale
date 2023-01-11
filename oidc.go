@@ -218,7 +218,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	nodeKey, machineExists, err := h.validateMachineForOIDCCallback(writer, state, claims)
+	nodeKey, machineExists, err := h.validateMachineForOIDCCallback(writer, state, claims, idToken.Expiry)
 	if err != nil || machineExists {
 		return
 	}
@@ -476,6 +476,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 	writer http.ResponseWriter,
 	state string,
 	claims *IDTokenClaims,
+	expiry time.Time,
 ) (*key.NodePublic, bool, error) {
 	// retrieve machinekey from state cache
 	nodeKeyIf, nodeKeyFound := h.registrationCache.Get(state)
@@ -546,7 +547,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 			Str("machine", machine.Hostname).
 			Msg("machine already registered, reauthenticating")
 
-		err := h.RefreshMachine(machine, time.Time{})
+		err := h.RefreshMachine(machine, expiry)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -560,6 +561,10 @@ func (h *Headscale) validateMachineForOIDCCallback(
 
 			return nil, true, err
 		}
+		log.Debug().
+			Str("machine", machine.Hostname).
+			Str("expiresAt", fmt.Sprintf("%v", expiry)).
+			Msg("successfully refreshed machine")
 
 		var content bytes.Buffer
 		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{

@@ -873,6 +873,7 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 		Str("nodeKey", nodeKey.ShortString()).
 		Str("namespaceName", namespaceName).
 		Str("registrationMethod", registrationMethod).
+		Str("expiresAt", fmt.Sprintf("%v", machineExpiry)).
 		Msg("Registering machine from API/CLI or auth callback")
 
 	if machineInterface, ok := h.registrationCache.Get(NodePublicKeyStripPrefix(nodeKey)); ok {
