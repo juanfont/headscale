@@ -194,6 +194,7 @@ func getFilteredByACLPeers(
 	peers := make(map[uint64]Machine)
 	// Aclfilter peers here. We are itering through machines in all namespaces and search through the computed aclRules
 	// for match between rule SrcIPs and DstPorts. If the rule is a match we allow the machine to be viewable.
+	machineIPs := machine.IPAddresses.ToStringSlice()
 	for _, peer := range machines {
 		if peer.ID == machine.ID {
 			continue
@@ -203,22 +204,23 @@ func getFilteredByACLPeers(
 			for _, d := range rule.DstPorts {
 				dst = append(dst, d.IP)
 			}
+			peerIPs := peer.IPAddresses.ToStringSlice()
 			if matchSourceAndDestinationWithRule(
 				rule.SrcIPs,
 				dst,
-				machine.IPAddresses.ToStringSlice(),
-				peer.IPAddresses.ToStringSlice(),
+				machineIPs,
+				peerIPs,
 			) || // match source and destination
 				matchSourceAndDestinationWithRule(
 					rule.SrcIPs,
 					dst,
-					peer.IPAddresses.ToStringSlice(),
-					machine.IPAddresses.ToStringSlice(),
+					peerIPs,
+					machineIPs,
 				) || // match return path
 				matchSourceAndDestinationWithRule(
 					rule.SrcIPs,
 					dst,
-					machine.IPAddresses.ToStringSlice(),
+					machineIPs,
 					[]string{"*"},
 				) || // match source and all destination
 				matchSourceAndDestinationWithRule(
@@ -231,13 +233,13 @@ func getFilteredByACLPeers(
 					rule.SrcIPs,
 					dst,
 					[]string{"*"},
-					peer.IPAddresses.ToStringSlice(),
+					peerIPs,
 				) || // match source and all destination
 				matchSourceAndDestinationWithRule(
 					rule.SrcIPs,
 					dst,
 					[]string{"*"},
-					machine.IPAddresses.ToStringSlice(),
+					machineIPs,
 				) { // match all sources and source
 				peers[peer.ID] = peer
 			}
