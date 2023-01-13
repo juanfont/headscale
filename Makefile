@@ -26,7 +26,7 @@ dev: lint test build
 test:
 	@go test $(TAGS) -short -coverprofile=coverage.out ./...
 
-test_integration: test_integration_cli test_integration_derp test_integration_oidc test_integration_v2_general
+test_integration: test_integration_cli test_integration_derp test_integration_v2_general
 
 test_integration_cli:
 	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
