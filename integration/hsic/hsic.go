@@ -328,10 +328,10 @@ func (t *HeadscaleInContainer) WaitForReady() error {
 	})
 }
 
-func (t *HeadscaleInContainer) CreateNamespace(
-	namespace string,
+func (t *HeadscaleInContainer) CreateUser(
+	user string,
 ) error {
-	command := []string{"headscale", "namespaces", "create", namespace}
+	command := []string{"headscale", "users", "create", user}
 
 	_, _, err := dockertestutil.ExecuteCommand(
 		t.container,
@@ -346,14 +346,14 @@ func (t *HeadscaleInContainer) CreateNamespace(
 }
 
 func (t *HeadscaleInContainer) CreateAuthKey(
-	namespace string,
+	user string,
 	reusable bool,
 	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
 	command := []string{
 		"headscale",
-		"--namespace",
-		namespace,
+		"--user",
+		user,
 		"preauthkeys",
 		"create",
 		"--expiration",
@@ -388,10 +388,10 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
-func (t *HeadscaleInContainer) ListMachinesInNamespace(
-	namespace string,
+func (t *HeadscaleInContainer) ListMachinesInUser(
+	user string,
 ) ([]*v1.Machine, error) {
-	command := []string{"headscale", "--namespace", namespace, "nodes", "list", "--output", "json"}
+	command := []string{"headscale", "--user", user, "nodes", "list", "--output", "json"}
 
 	result, _, err := dockertestutil.ExecuteCommand(
 		t.container,

@@ -138,12 +138,12 @@ func (s *IntegrationCLITestSuite) HandleStats(
 	s.stats = stats
 }
 
-func (s *IntegrationCLITestSuite) createNamespace(name string) (*v1.Namespace, error) {
+func (s *IntegrationCLITestSuite) createUser(name string) (*v1.User, error) {
 	result, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
-			"namespaces",
+			"users",
 			"create",
 			name,
 			"--output",
@@ -155,38 +155,38 @@ func (s *IntegrationCLITestSuite) createNamespace(name string) (*v1.Namespace, e
 		return nil, err
 	}
 
-	var namespace v1.Namespace
-	err = json.Unmarshal([]byte(result), &namespace)
+	var user v1.User
+	err = json.Unmarshal([]byte(result), &user)
 	if err != nil {
 		return nil, err
 	}
 
-	return &namespace, nil
+	return &user, nil
 }
 
-func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
-	names := []string{"namespace1", "otherspace", "tasty"}
-	namespaces := make([]*v1.Namespace, len(names))
+func (s *IntegrationCLITestSuite) TestUserCommand() {
+	names := []string{"user1", "otherspace", "tasty"}
+	users := make([]*v1.User, len(names))
 
-	for index, namespaceName := range names {
-		namespace, err := s.createNamespace(namespaceName)
+	for index, userName := range names {
+		user, err := s.createUser(userName)
 		assert.Nil(s.T(), err)
 
-		namespaces[index] = namespace
+		users[index] = user
 	}
 
-	assert.Len(s.T(), namespaces, len(names))
+	assert.Len(s.T(), users, len(names))
 
-	assert.Equal(s.T(), names[0], namespaces[0].Name)
-	assert.Equal(s.T(), names[1], namespaces[1].Name)
-	assert.Equal(s.T(), names[2], namespaces[2].Name)
+	assert.Equal(s.T(), names[0], users[0].Name)
+	assert.Equal(s.T(), names[1], users[1].Name)
+	assert.Equal(s.T(), names[2], users[2].Name)
 
-	// Test list namespaces
+	// Test list users
 	listResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
-			"namespaces",
+			"users",
 			"list",
 			"--output",
 			"json",
@@ -195,20 +195,20 @@ func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listedNamespaces []v1.Namespace
-	err = json.Unmarshal([]byte(listResult), &listedNamespaces)
+	var listedUsers []v1.User
+	err = json.Unmarshal([]byte(listResult), &listedUsers)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), names[0], listedNamespaces[0].Name)
-	assert.Equal(s.T(), names[1], listedNamespaces[1].Name)
-	assert.Equal(s.T(), names[2], listedNamespaces[2].Name)
+	assert.Equal(s.T(), names[0], listedUsers[0].Name)
+	assert.Equal(s.T(), names[1], listedUsers[1].Name)
+	assert.Equal(s.T(), names[2], listedUsers[2].Name)
 
-	// Test rename namespace
+	// Test rename user
 	renameResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
-			"namespaces",
+			"users",
 			"rename",
 			"--output",
 			"json",
@@ -219,18 +219,18 @@ func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var renamedNamespace v1.Namespace
-	err = json.Unmarshal([]byte(renameResult), &renamedNamespace)
+	var renamedUser v1.User
+	err = json.Unmarshal([]byte(renameResult), &renamedUser)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), renamedNamespace.Name, "newname")
+	assert.Equal(s.T(), renamedUser.Name, "newname")
 
-	// Test list after rename namespaces
+	// Test list after rename users
 	listAfterRenameResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
-			"namespaces",
+			"users",
 			"list",
 			"--output",
 			"json",
@@ -239,19 +239,19 @@ func (s *IntegrationCLITestSuite) TestNamespaceCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listedAfterRenameNamespaces []v1.Namespace
-	err = json.Unmarshal([]byte(listAfterRenameResult), &listedAfterRenameNamespaces)
+	var listedAfterRenameUsers []v1.User
+	err = json.Unmarshal([]byte(listAfterRenameResult), &listedAfterRenameUsers)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), names[0], listedAfterRenameNamespaces[0].Name)
-	assert.Equal(s.T(), names[1], listedAfterRenameNamespaces[1].Name)
-	assert.Equal(s.T(), "newname", listedAfterRenameNamespaces[2].Name)
+	assert.Equal(s.T(), names[0], listedAfterRenameUsers[0].Name)
+	assert.Equal(s.T(), names[1], listedAfterRenameUsers[1].Name)
+	assert.Equal(s.T(), "newname", listedAfterRenameUsers[2].Name)
 }
 
 func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 	count := 5
 
-	namespace, err := s.createNamespace("pre-auth-key-namespace")
+	user, err := s.createUser("pre-auth-key-user")
 
 	keys := make([]*v1.PreAuthKey, count)
 	assert.Nil(s.T(), err)
@@ -262,8 +262,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 			[]string{
 				"headscale",
 				"preauthkeys",
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"create",
 				"--reusable",
 				"--expiration",
@@ -292,8 +292,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace.Name,
+			"--user",
+			user.Name,
 			"list",
 			"--output",
 			"json",
@@ -357,8 +357,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 			[]string{
 				"headscale",
 				"preauthkeys",
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"expire",
 				listedPreAuthKeys[i].Key,
 			},
@@ -373,8 +373,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace.Name,
+			"--user",
+			user.Name,
 			"list",
 			"--output",
 			"json",
@@ -410,7 +410,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommand() {
 }
 
 func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
-	namespace, err := s.createNamespace("pre-auth-key-without-exp-namespace")
+	user, err := s.createUser("pre-auth-key-without-exp-user")
 	assert.Nil(s.T(), err)
 
 	preAuthResult, _, err := ExecuteCommand(
@@ -418,8 +418,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace.Name,
+			"--user",
+			user.Name,
 			"create",
 			"--reusable",
 			"--output",
@@ -439,8 +439,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace.Name,
+			"--user",
+			user.Name,
 			"list",
 			"--output",
 			"json",
@@ -463,7 +463,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandWithoutExpiry() {
 }
 
 func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
-	namespace, err := s.createNamespace("pre-auth-key-reus-ephm-namespace")
+	user, err := s.createUser("pre-auth-key-reus-ephm-user")
 	assert.Nil(s.T(), err)
 
 	preAuthReusableResult, _, err := ExecuteCommand(
@@ -471,8 +471,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace.Name,
+			"--user",
+			user.Name,
 			"create",
 			"--reusable=true",
 			"--output",
@@ -494,8 +494,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace.Name,
+			"--user",
+			user.Name,
 			"create",
 			"--ephemeral=true",
 			"--output",
@@ -518,8 +518,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 	// 	[]string{
 	// 		"headscale",
 	// 		"preauthkeys",
-	// 		"--namespace",
-	// 		namespace.Name,
+	// 		"--user",
+	// 		user.Name,
 	// 		"create",
 	// 		"--ephemeral",
 	// 		"--reusable",
@@ -536,8 +536,8 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace.Name,
+			"--user",
+			user.Name,
 			"list",
 			"--output",
 			"json",
@@ -554,7 +554,7 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 }
 
 func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
-	namespace, err := s.createNamespace("machine-namespace")
+	user, err := s.createUser("machine-user")
 	assert.Nil(s.T(), err)
 
 	machineKeys := []string{
@@ -573,8 +573,8 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 				"create-node",
 				"--name",
 				fmt.Sprintf("machine-%d", index+1),
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"--key",
 				machineKey,
 				"--output",
@@ -589,8 +589,8 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 			[]string{
 				"headscale",
 				"nodes",
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"register",
 				"--key",
 				machineKey,
@@ -683,10 +683,10 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 }
 
 func (s *IntegrationCLITestSuite) TestNodeCommand() {
-	namespace, err := s.createNamespace("machine-namespace")
+	user, err := s.createUser("machine-user")
 	assert.Nil(s.T(), err)
 
-	secondNamespace, err := s.createNamespace("other-namespace")
+	secondUser, err := s.createUser("other-user")
 	assert.Nil(s.T(), err)
 
 	// Randomly generated machine keys
@@ -709,8 +709,8 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				"create-node",
 				"--name",
 				fmt.Sprintf("machine-%d", index+1),
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"--key",
 				machineKey,
 				"--output",
@@ -725,8 +725,8 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 			[]string{
 				"headscale",
 				"nodes",
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"register",
 				"--key",
 				machineKey,
@@ -778,14 +778,14 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Equal(s.T(), "machine-4", listAll[3].Name)
 	assert.Equal(s.T(), "machine-5", listAll[4].Name)
 
-	otherNamespaceMachineKeys := []string{
+	otherUserMachineKeys := []string{
 		"nodekey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
 		"nodekey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
 	}
-	otherNamespaceMachines := make([]*v1.Machine, len(otherNamespaceMachineKeys))
+	otherUserMachines := make([]*v1.Machine, len(otherUserMachineKeys))
 	assert.Nil(s.T(), err)
 
-	for index, machineKey := range otherNamespaceMachineKeys {
+	for index, machineKey := range otherUserMachineKeys {
 		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -793,9 +793,9 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("otherNamespace-machine-%d", index+1),
-				"--namespace",
-				secondNamespace.Name,
+				fmt.Sprintf("otherUser-machine-%d", index+1),
+				"--user",
+				secondUser.Name,
 				"--key",
 				machineKey,
 				"--output",
@@ -810,8 +810,8 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 			[]string{
 				"headscale",
 				"nodes",
-				"--namespace",
-				secondNamespace.Name,
+				"--user",
+				secondUser.Name,
 				"register",
 				"--key",
 				machineKey,
@@ -826,13 +826,13 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		err = json.Unmarshal([]byte(machineResult), &machine)
 		assert.Nil(s.T(), err)
 
-		otherNamespaceMachines[index] = &machine
+		otherUserMachines[index] = &machine
 	}
 
-	assert.Len(s.T(), otherNamespaceMachines, len(otherNamespaceMachineKeys))
+	assert.Len(s.T(), otherUserMachines, len(otherUserMachineKeys))
 
-	// Test list all nodes after added otherNamespace
-	listAllWithotherNamespaceResult, _, err := ExecuteCommand(
+	// Test list all nodes after added otherUser
+	listAllWithotherUserResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -845,31 +845,31 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAllWithotherNamespace []v1.Machine
+	var listAllWithotherUser []v1.Machine
 	err = json.Unmarshal(
-		[]byte(listAllWithotherNamespaceResult),
-		&listAllWithotherNamespace,
+		[]byte(listAllWithotherUserResult),
+		&listAllWithotherUser,
 	)
 	assert.Nil(s.T(), err)
 
-	// All nodes, machines + otherNamespace
-	assert.Len(s.T(), listAllWithotherNamespace, 7)
+	// All nodes, machines + otherUser
+	assert.Len(s.T(), listAllWithotherUser, 7)
 
-	assert.Equal(s.T(), uint64(6), listAllWithotherNamespace[5].Id)
-	assert.Equal(s.T(), uint64(7), listAllWithotherNamespace[6].Id)
+	assert.Equal(s.T(), uint64(6), listAllWithotherUser[5].Id)
+	assert.Equal(s.T(), uint64(7), listAllWithotherUser[6].Id)
 
-	assert.Equal(s.T(), "otherNamespace-machine-1", listAllWithotherNamespace[5].Name)
-	assert.Equal(s.T(), "otherNamespace-machine-2", listAllWithotherNamespace[6].Name)
+	assert.Equal(s.T(), "otherUser-machine-1", listAllWithotherUser[5].Name)
+	assert.Equal(s.T(), "otherUser-machine-2", listAllWithotherUser[6].Name)
 
-	// Test list all nodes after added otherNamespace
-	listOnlyotherNamespaceMachineNamespaceResult, _, err := ExecuteCommand(
+	// Test list all nodes after added otherUser
+	listOnlyotherUserMachineUserResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
 			"nodes",
 			"list",
-			"--namespace",
-			secondNamespace.Name,
+			"--user",
+			secondUser.Name,
 			"--output",
 			"json",
 		},
@@ -877,27 +877,27 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listOnlyotherNamespaceMachineNamespace []v1.Machine
+	var listOnlyotherUserMachineUser []v1.Machine
 	err = json.Unmarshal(
-		[]byte(listOnlyotherNamespaceMachineNamespaceResult),
-		&listOnlyotherNamespaceMachineNamespace,
+		[]byte(listOnlyotherUserMachineUserResult),
+		&listOnlyotherUserMachineUser,
 	)
 	assert.Nil(s.T(), err)
 
-	assert.Len(s.T(), listOnlyotherNamespaceMachineNamespace, 2)
+	assert.Len(s.T(), listOnlyotherUserMachineUser, 2)
 
-	assert.Equal(s.T(), uint64(6), listOnlyotherNamespaceMachineNamespace[0].Id)
-	assert.Equal(s.T(), uint64(7), listOnlyotherNamespaceMachineNamespace[1].Id)
+	assert.Equal(s.T(), uint64(6), listOnlyotherUserMachineUser[0].Id)
+	assert.Equal(s.T(), uint64(7), listOnlyotherUserMachineUser[1].Id)
 
 	assert.Equal(
 		s.T(),
-		"otherNamespace-machine-1",
-		listOnlyotherNamespaceMachineNamespace[0].Name,
+		"otherUser-machine-1",
+		listOnlyotherUserMachineUser[0].Name,
 	)
 	assert.Equal(
 		s.T(),
-		"otherNamespace-machine-2",
-		listOnlyotherNamespaceMachineNamespace[1].Name,
+		"otherUser-machine-2",
+		listOnlyotherUserMachineUser[1].Name,
 	)
 
 	// Delete a machines
@@ -918,15 +918,15 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	// Test: list main namespace after machine is deleted
-	listOnlyMachineNamespaceAfterDeleteResult, _, err := ExecuteCommand(
+	// Test: list main user after machine is deleted
+	listOnlyMachineUserAfterDeleteResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
 			"nodes",
 			"list",
-			"--namespace",
-			namespace.Name,
+			"--user",
+			user.Name,
 			"--output",
 			"json",
 		},
@@ -934,18 +934,18 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listOnlyMachineNamespaceAfterDelete []v1.Machine
+	var listOnlyMachineUserAfterDelete []v1.Machine
 	err = json.Unmarshal(
-		[]byte(listOnlyMachineNamespaceAfterDeleteResult),
-		&listOnlyMachineNamespaceAfterDelete,
+		[]byte(listOnlyMachineUserAfterDeleteResult),
+		&listOnlyMachineUserAfterDelete,
 	)
 	assert.Nil(s.T(), err)
 
-	assert.Len(s.T(), listOnlyMachineNamespaceAfterDelete, 4)
+	assert.Len(s.T(), listOnlyMachineUserAfterDelete, 4)
 }
 
 func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
-	namespace, err := s.createNamespace("machine-expire-namespace")
+	user, err := s.createUser("machine-expire-user")
 	assert.Nil(s.T(), err)
 
 	// Randomly generated machine keys
@@ -968,8 +968,8 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 				"create-node",
 				"--name",
 				fmt.Sprintf("machine-%d", index+1),
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"--key",
 				machineKey,
 				"--output",
@@ -984,8 +984,8 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 			[]string{
 				"headscale",
 				"nodes",
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"register",
 				"--key",
 				machineKey,
@@ -1072,7 +1072,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 }
 
 func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
-	namespace, err := s.createNamespace("machine-rename-command")
+	user, err := s.createUser("machine-rename-command")
 	assert.Nil(s.T(), err)
 
 	// Randomly generated machine keys
@@ -1095,8 +1095,8 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 				"create-node",
 				"--name",
 				fmt.Sprintf("machine-%d", index+1),
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"--key",
 				machineKey,
 				"--output",
@@ -1111,8 +1111,8 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 			[]string{
 				"headscale",
 				"nodes",
-				"--namespace",
-				namespace.Name,
+				"--user",
+				user.Name,
 				"register",
 				"--key",
 				machineKey,
@@ -1389,9 +1389,9 @@ func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
 }
 
 func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
-	oldNamespace, err := s.createNamespace("old-namespace")
+	oldUser, err := s.createUser("old-user")
 	assert.Nil(s.T(), err)
-	newNamespace, err := s.createNamespace("new-namespace")
+	newUser, err := s.createUser("new-user")
 	assert.Nil(s.T(), err)
 
 	// Randomly generated machine key
@@ -1405,8 +1405,8 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"create-node",
 			"--name",
 			"nomad-machine",
-			"--namespace",
-			oldNamespace.Name,
+			"--user",
+			oldUser.Name,
 			"--key",
 			machineKey,
 			"--output",
@@ -1421,8 +1421,8 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 		[]string{
 			"headscale",
 			"nodes",
-			"--namespace",
-			oldNamespace.Name,
+			"--user",
+			oldUser.Name,
 			"register",
 			"--key",
 			machineKey,
@@ -1439,7 +1439,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 
 	assert.Equal(s.T(), uint64(1), machine.Id)
 	assert.Equal(s.T(), "nomad-machine", machine.Name)
-	assert.Equal(s.T(), machine.Namespace.Name, oldNamespace.Name)
+	assert.Equal(s.T(), machine.User.Name, oldUser.Name)
 
 	machineId := fmt.Sprintf("%d", machine.Id)
 
@@ -1451,8 +1451,8 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"move",
 			"--identifier",
 			machineId,
-			"--namespace",
-			newNamespace.Name,
+			"--user",
+			newUser.Name,
 			"--output",
 			"json",
 		},
@@ -1463,7 +1463,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	err = json.Unmarshal([]byte(moveToNewNSResult), &machine)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), machine.Namespace, newNamespace)
+	assert.Equal(s.T(), machine.User, newUser)
 
 	listAllNodesResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1485,8 +1485,8 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	assert.Len(s.T(), allNodes, 1)
 
 	assert.Equal(s.T(), allNodes[0].Id, machine.Id)
-	assert.Equal(s.T(), allNodes[0].Namespace, machine.Namespace)
-	assert.Equal(s.T(), allNodes[0].Namespace, newNamespace)
+	assert.Equal(s.T(), allNodes[0].User, machine.User)
+	assert.Equal(s.T(), allNodes[0].User, newUser)
 
 	moveToNonExistingNSResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1496,8 +1496,8 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"move",
 			"--identifier",
 			machineId,
-			"--namespace",
-			"non-existing-namespace",
+			"--user",
+			"non-existing-user",
 			"--output",
 			"json",
 		},
@@ -1508,9 +1508,9 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	assert.Contains(
 		s.T(),
 		string(moveToNonExistingNSResult),
-		"Namespace not found",
+		"User not found",
 	)
-	assert.Equal(s.T(), machine.Namespace, newNamespace)
+	assert.Equal(s.T(), machine.User, newUser)
 
 	moveToOldNSResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1520,8 +1520,8 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"move",
 			"--identifier",
 			machineId,
-			"--namespace",
-			oldNamespace.Name,
+			"--user",
+			oldUser.Name,
 			"--output",
 			"json",
 		},
@@ -1532,7 +1532,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	err = json.Unmarshal([]byte(moveToOldNSResult), &machine)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), machine.Namespace, oldNamespace)
+	assert.Equal(s.T(), machine.User, oldUser)
 
 	moveToSameNSResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1542,8 +1542,8 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"move",
 			"--identifier",
 			machineId,
-			"--namespace",
-			oldNamespace.Name,
+			"--user",
+			oldUser.Name,
 			"--output",
 			"json",
 		},
@@ -1554,7 +1554,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	err = json.Unmarshal([]byte(moveToSameNSResult), &machine)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), machine.Namespace, oldNamespace)
+	assert.Equal(s.T(), machine.User, oldUser)
 }
 
 func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {

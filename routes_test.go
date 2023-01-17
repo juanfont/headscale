@@ -10,10 +10,10 @@ import (
 )
 
 func (s *Suite) TestGetRoutes(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "test_get_route_machine")
@@ -32,7 +32,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_get_route_machine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -54,10 +54,10 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 }
 
 func (s *Suite) TestGetEnableRoutes(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "test_enable_route_machine")
@@ -83,7 +83,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -129,10 +129,10 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 }
 
 func (s *Suite) TestIsUniquePrefix(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "test_enable_route_machine")
@@ -157,7 +157,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo1),
@@ -182,7 +182,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo2),
@@ -213,10 +213,10 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 }
 
 func (s *Suite) TestSubnetFailover(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "test_enable_route_machine")
@@ -243,7 +243,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo1),
@@ -280,7 +280,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo2),
@@ -358,10 +358,10 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 // including both the primary routes the node is responsible for, and the
 // exit node routes if enabled.
 func (s *Suite) TestAllowedIPRoutes(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "test_enable_route_machine")
@@ -402,7 +402,7 @@ func (s *Suite) TestAllowedIPRoutes(c *check.C) {
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       DiscoPublicKeyStripPrefix(discoKey.Public()),
 		Hostname:       "test_enable_route_machine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo1),

@@ -18,16 +18,16 @@ const (
 	ErrPreAuthKeyNotFound          = Error("AuthKey not found")
 	ErrPreAuthKeyExpired           = Error("AuthKey expired")
 	ErrSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
-	ErrNamespaceMismatch           = Error("namespace mismatch")
+	ErrUserMismatch           = Error("user mismatch")
 	ErrPreAuthKeyACLTagInvalid     = Error("AuthKey tag is invalid")
 )
 
-// PreAuthKey describes a pre-authorization key usable in a particular namespace.
+// PreAuthKey describes a pre-authorization key usable in a particular user.
 type PreAuthKey struct {
 	ID          uint64 `gorm:"primary_key"`
 	Key         string
-	NamespaceID uint
-	Namespace   Namespace
+	UserID uint
+	User   User
 	Reusable    bool
 	Ephemeral   bool `gorm:"default:false"`
 	Used        bool `gorm:"default:false"`
@@ -44,15 +44,15 @@ type PreAuthKeyACLTag struct {
 	Tag          string
 }
 
-// CreatePreAuthKey creates a new PreAuthKey in a namespace, and returns it.
+// CreatePreAuthKey creates a new PreAuthKey in a user, and returns it.
 func (h *Headscale) CreatePreAuthKey(
-	namespaceName string,
+	userName string,
 	reusable bool,
 	ephemeral bool,
 	expiration *time.Time,
 	aclTags []string,
 ) (*PreAuthKey, error) {
-	namespace, err := h.GetNamespace(namespaceName)
+	user, err := h.GetUser(userName)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +71,8 @@ func (h *Headscale) CreatePreAuthKey(
 
 	key := PreAuthKey{
 		Key:         kstr,
-		NamespaceID: namespace.ID,
-		Namespace:   *namespace,
+		UserID: user.ID,
+		User:   *user,
 		Reusable:    reusable,
 		Ephemeral:   ephemeral,
 		CreatedAt:   &now,
@@ -110,15 +110,15 @@ func (h *Headscale) CreatePreAuthKey(
 	return &key, nil
 }
 
-// ListPreAuthKeys returns the list of PreAuthKeys for a namespace.
-func (h *Headscale) ListPreAuthKeys(namespaceName string) ([]PreAuthKey, error) {
-	namespace, err := h.GetNamespace(namespaceName)
+// ListPreAuthKeys returns the list of PreAuthKeys for a user.
+func (h *Headscale) ListPreAuthKeys(userName string) ([]PreAuthKey, error) {
+	user, err := h.GetUser(userName)
 	if err != nil {
 		return nil, err
 	}
 
 	keys := []PreAuthKey{}
-	if err := h.db.Preload("Namespace").Preload("ACLTags").Where(&PreAuthKey{NamespaceID: namespace.ID}).Find(&keys).Error; err != nil {
+	if err := h.db.Preload("User").Preload("ACLTags").Where(&PreAuthKey{UserID: user.ID}).Find(&keys).Error; err != nil {
 		return nil, err
 	}
 
@@ -126,14 +126,14 @@ func (h *Headscale) ListPreAuthKeys(namespaceName string) ([]PreAuthKey, error) 
 }
 
 // GetPreAuthKey returns a PreAuthKey for a given key.
-func (h *Headscale) GetPreAuthKey(namespace string, key string) (*PreAuthKey, error) {
+func (h *Headscale) GetPreAuthKey(user string, key string) (*PreAuthKey, error) {
 	pak, err := h.checkKeyValidity(key)
 	if err != nil {
 		return nil, err
 	}
 
-	if pak.Namespace.Name != namespace {
-		return nil, ErrNamespaceMismatch
+	if pak.User.Name != user {
+		return nil, ErrUserMismatch
 	}
 
 	return pak, nil
@@ -178,7 +178,7 @@ func (h *Headscale) UsePreAuthKey(k *PreAuthKey) error {
 // If returns no error and a PreAuthKey, it can be used.
 func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 	pak := PreAuthKey{}
-	if result := h.db.Preload("Namespace").Preload("ACLTags").First(&pak, "key = ?", k); errors.Is(
+	if result := h.db.Preload("User").Preload("ACLTags").First(&pak, "key = ?", k); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
@@ -217,7 +217,7 @@ func (h *Headscale) generateKey() (string, error) {
 
 func (key *PreAuthKey) toProto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
-		Namespace: key.Namespace.Name,
+		User: key.User.Name,
 		Id:        strconv.FormatUint(key.ID, Base10),
 		Key:       key.Key,
 		Ephemeral: key.Ephemeral,

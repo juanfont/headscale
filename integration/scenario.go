@@ -25,7 +25,7 @@ const (
 
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
-	errNoNamespaceAvailable = errors.New("no namespace available")
+	errNoUserAvailable = errors.New("no user available")
 
 	// Tailscale started adding TS2021 support in CapabilityVersion>=28 (v1.24.0), but
 	// proper support in Headscale was only added for CapabilityVersion>=39 clients (v1.30.0).
@@ -61,7 +61,7 @@ var (
 	)
 )
 
-type Namespace struct {
+type User struct {
 	Clients map[string]TailscaleClient
 
 	createWaitGroup sync.WaitGroup
@@ -75,7 +75,7 @@ type Scenario struct {
 	// use one.
 	controlServers *xsync.MapOf[string, ControlServer]
 
-	namespaces map[string]*Namespace
+	users map[string]*User
 
 	pool    *dockertest.Pool
 	network *dockertest.Network
@@ -116,7 +116,7 @@ func NewScenario() (*Scenario, error) {
 
 	return &Scenario{
 		controlServers: xsync.NewMapOf[ControlServer](),
-		namespaces:     make(map[string]*Namespace),
+		users:     make(map[string]*User),
 
 		pool:    pool,
 		network: network,
@@ -136,9 +136,9 @@ func (s *Scenario) Shutdown() error {
 		return true
 	})
 
-	for namespaceName, namespace := range s.namespaces {
-		for _, client := range namespace.Clients {
-			log.Printf("removing client %s in namespace %s", client.Hostname(), namespaceName)
+	for userName, user := range s.users {
+		for _, client := range user.Clients {
+			log.Printf("removing client %s in user %s", client.Hostname(), userName)
 			err := client.Shutdown()
 			if err != nil {
 				return fmt.Errorf("failed to tear down client: %w", err)
@@ -158,13 +158,13 @@ func (s *Scenario) Shutdown() error {
 	return nil
 }
 
-func (s *Scenario) Namespaces() []string {
-	namespaces := make([]string, 0)
-	for namespace := range s.namespaces {
-		namespaces = append(namespaces, namespace)
+func (s *Scenario) Users() []string {
+	users := make([]string, 0)
+	for user := range s.users {
+		users = append(users, user)
 	}
 
-	return namespaces
+	return users
 }
 
 /// Headscale related stuff
@@ -194,45 +194,45 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 	return headscale, nil
 }
 
-func (s *Scenario) CreatePreAuthKey(namespace string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error) {
+func (s *Scenario) CreatePreAuthKey(user string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error) {
 	if headscale, err := s.Headscale(); err == nil {
-		key, err := headscale.CreateAuthKey(namespace, reusable, ephemeral)
+		key, err := headscale.CreateAuthKey(user, reusable, ephemeral)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create namespace: %w", err)
+			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 
 		return key, nil
 	}
 
-	return nil, fmt.Errorf("failed to create namespace: %w", errNoHeadscaleAvailable)
+	return nil, fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
 }
 
-func (s *Scenario) CreateNamespace(namespace string) error {
+func (s *Scenario) CreateUser(user string) error {
 	if headscale, err := s.Headscale(); err == nil {
-		err := headscale.CreateNamespace(namespace)
+		err := headscale.CreateUser(user)
 		if err != nil {
-			return fmt.Errorf("failed to create namespace: %w", err)
+			return fmt.Errorf("failed to create user: %w", err)
 		}
 
-		s.namespaces[namespace] = &Namespace{
+		s.users[user] = &User{
 			Clients: make(map[string]TailscaleClient),
 		}
 
 		return nil
 	}
 
-	return fmt.Errorf("failed to create namespace: %w", errNoHeadscaleAvailable)
+	return fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
 }
 
 /// Client related stuff
 
-func (s *Scenario) CreateTailscaleNodesInNamespace(
-	namespaceStr string,
+func (s *Scenario) CreateTailscaleNodesInUser(
+	userStr string,
 	requestedVersion string,
 	count int,
 	opts ...tsic.Option,
 ) error {
-	if namespace, ok := s.namespaces[namespaceStr]; ok {
+	if user, ok := s.users[userStr]; ok {
 		for i := 0; i < count; i++ {
 			version := requestedVersion
 			if requestedVersion == "all" {
@@ -247,7 +247,7 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 			cert := headscale.GetCert()
 			hostname := headscale.GetHostname()
 
-			namespace.createWaitGroup.Add(1)
+			user.createWaitGroup.Add(1)
 
 			opts = append(opts,
 				tsic.WithHeadscaleTLS(cert),
@@ -255,7 +255,7 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 			)
 
 			go func() {
-				defer namespace.createWaitGroup.Done()
+				defer user.createWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
 				tsClient, err := tsic.New(
@@ -275,26 +275,26 @@ func (s *Scenario) CreateTailscaleNodesInNamespace(
 					log.Printf("failed to wait for tailscaled: %s", err)
 				}
 
-				namespace.Clients[tsClient.Hostname()] = tsClient
+				user.Clients[tsClient.Hostname()] = tsClient
 			}()
 		}
-		namespace.createWaitGroup.Wait()
+		user.createWaitGroup.Wait()
 
 		return nil
 	}
 
-	return fmt.Errorf("failed to add tailscale node: %w", errNoNamespaceAvailable)
+	return fmt.Errorf("failed to add tailscale node: %w", errNoUserAvailable)
 }
 
 func (s *Scenario) RunTailscaleUp(
-	namespaceStr, loginServer, authKey string,
+	userStr, loginServer, authKey string,
 ) error {
-	if namespace, ok := s.namespaces[namespaceStr]; ok {
-		for _, client := range namespace.Clients {
-			namespace.joinWaitGroup.Add(1)
+	if user, ok := s.users[userStr]; ok {
+		for _, client := range user.Clients {
+			user.joinWaitGroup.Add(1)
 
 			go func(c TailscaleClient) {
-				defer namespace.joinWaitGroup.Done()
+				defer user.joinWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
 				_ = c.Up(loginServer, authKey)
@@ -306,19 +306,19 @@ func (s *Scenario) RunTailscaleUp(
 			}
 		}
 
-		namespace.joinWaitGroup.Wait()
+		user.joinWaitGroup.Wait()
 
 		return nil
 	}
 
-	return fmt.Errorf("failed to up tailscale node: %w", errNoNamespaceAvailable)
+	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
 }
 
 func (s *Scenario) CountTailscale() int {
 	count := 0
 
-	for _, namespace := range s.namespaces {
-		count += len(namespace.Clients)
+	for _, user := range s.users {
+		count += len(user.Clients)
 	}
 
 	return count
@@ -327,18 +327,18 @@ func (s *Scenario) CountTailscale() int {
 func (s *Scenario) WaitForTailscaleSync() error {
 	tsCount := s.CountTailscale()
 
-	for _, namespace := range s.namespaces {
-		for _, client := range namespace.Clients {
-			namespace.syncWaitGroup.Add(1)
+	for _, user := range s.users {
+		for _, client := range user.Clients {
+			user.syncWaitGroup.Add(1)
 
 			go func(c TailscaleClient) {
-				defer namespace.syncWaitGroup.Done()
+				defer user.syncWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
 				_ = c.WaitForPeers(tsCount)
 			}(client)
 		}
-		namespace.syncWaitGroup.Wait()
+		user.syncWaitGroup.Wait()
 	}
 
 	return nil
@@ -346,9 +346,9 @@ func (s *Scenario) WaitForTailscaleSync() error {
 
 // CreateHeadscaleEnv is a conventient method returning a set up Headcale
 // test environment with nodes of all versions, joined to the server with X
-// namespaces.
+// users.
 func (s *Scenario) CreateHeadscaleEnv(
-	namespaces map[string]int,
+	users map[string]int,
 	tsOpts []tsic.Option,
 	opts ...hsic.Option,
 ) error {
@@ -357,23 +357,23 @@ func (s *Scenario) CreateHeadscaleEnv(
 		return err
 	}
 
-	for namespaceName, clientCount := range namespaces {
-		err = s.CreateNamespace(namespaceName)
+	for userName, clientCount := range users {
+		err = s.CreateUser(userName)
 		if err != nil {
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount, tsOpts...)
+		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount, tsOpts...)
 		if err != nil {
 			return err
 		}
 
-		key, err := s.CreatePreAuthKey(namespaceName, true, false)
+		key, err := s.CreatePreAuthKey(userName, true, false)
 		if err != nil {
 			return err
 		}
 
-		err = s.RunTailscaleUp(namespaceName, headscale.GetEndpoint(), key.GetKey())
+		err = s.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
 			return err
 		}
@@ -382,9 +382,9 @@ func (s *Scenario) CreateHeadscaleEnv(
 	return nil
 }
 
-func (s *Scenario) GetIPs(namespace string) ([]netip.Addr, error) {
+func (s *Scenario) GetIPs(user string) ([]netip.Addr, error) {
 	var ips []netip.Addr
-	if ns, ok := s.namespaces[namespace]; ok {
+	if ns, ok := s.users[user]; ok {
 		for _, client := range ns.Clients {
 			clientIps, err := client.IPs()
 			if err != nil {
@@ -396,12 +396,12 @@ func (s *Scenario) GetIPs(namespace string) ([]netip.Addr, error) {
 		return ips, nil
 	}
 
-	return ips, fmt.Errorf("failed to get ips: %w", errNoNamespaceAvailable)
+	return ips, fmt.Errorf("failed to get ips: %w", errNoUserAvailable)
 }
 
-func (s *Scenario) GetClients(namespace string) ([]TailscaleClient, error) {
+func (s *Scenario) GetClients(user string) ([]TailscaleClient, error) {
 	var clients []TailscaleClient
-	if ns, ok := s.namespaces[namespace]; ok {
+	if ns, ok := s.users[user]; ok {
 		for _, client := range ns.Clients {
 			clients = append(clients, client)
 		}
@@ -409,18 +409,18 @@ func (s *Scenario) GetClients(namespace string) ([]TailscaleClient, error) {
 		return clients, nil
 	}
 
-	return clients, fmt.Errorf("failed to get clients: %w", errNoNamespaceAvailable)
+	return clients, fmt.Errorf("failed to get clients: %w", errNoUserAvailable)
 }
 
-func (s *Scenario) ListTailscaleClients(namespaces ...string) ([]TailscaleClient, error) {
+func (s *Scenario) ListTailscaleClients(users ...string) ([]TailscaleClient, error) {
 	var allClients []TailscaleClient
 
-	if len(namespaces) == 0 {
-		namespaces = s.Namespaces()
+	if len(users) == 0 {
+		users = s.Users()
 	}
 
-	for _, namespace := range namespaces {
-		clients, err := s.GetClients(namespace)
+	for _, user := range users {
+		clients, err := s.GetClients(user)
 		if err != nil {
 			return nil, err
 		}
@@ -431,15 +431,15 @@ func (s *Scenario) ListTailscaleClients(namespaces ...string) ([]TailscaleClient
 	return allClients, nil
 }
 
-func (s *Scenario) ListTailscaleClientsIPs(namespaces ...string) ([]netip.Addr, error) {
+func (s *Scenario) ListTailscaleClientsIPs(users ...string) ([]netip.Addr, error) {
 	var allIps []netip.Addr
 
-	if len(namespaces) == 0 {
-		namespaces = s.Namespaces()
+	if len(users) == 0 {
+		users = s.Users()
 	}
 
-	for _, namespace := range namespaces {
-		ips, err := s.GetIPs(namespace)
+	for _, user := range users {
+		ips, err := s.GetIPs(user)
 		if err != nil {
 			return nil, err
 		}
@@ -450,10 +450,10 @@ func (s *Scenario) ListTailscaleClientsIPs(namespaces ...string) ([]netip.Addr, 
 	return allIps, nil
 }
 
-func (s *Scenario) ListTailscaleClientsFQDNs(namespaces ...string) ([]string, error) {
+func (s *Scenario) ListTailscaleClientsFQDNs(users ...string) ([]string, error) {
 	allFQDNs := make([]string, 0)
 
-	clients, err := s.ListTailscaleClients(namespaces...)
+	clients, err := s.ListTailscaleClients(users...)
 	if err != nil {
 		return nil, err
 	}
@@ -471,17 +471,17 @@ func (s *Scenario) ListTailscaleClientsFQDNs(namespaces ...string) ([]string, er
 }
 
 func (s *Scenario) WaitForTailscaleLogout() {
-	for _, namespace := range s.namespaces {
-		for _, client := range namespace.Clients {
-			namespace.syncWaitGroup.Add(1)
+	for _, user := range s.users {
+		for _, client := range user.Clients {
+			user.syncWaitGroup.Add(1)
 
 			go func(c TailscaleClient) {
-				defer namespace.syncWaitGroup.Done()
+				defer user.syncWaitGroup.Done()
 
 				// TODO(kradalby): error handle this
 				_ = c.WaitForLogout()
 			}(client)
 		}
-		namespace.syncWaitGroup.Wait()
+		user.syncWaitGroup.Wait()
 	}
 }

@@ -22,8 +22,8 @@ func TestPingAllByIP(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions),
-		"namespace2": len(TailscaleVersions),
+		"user1": len(TailscaleVersions),
+		"user2": len(TailscaleVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
@@ -77,8 +77,8 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions),
-		"namespace2": len(TailscaleVersions),
+		"user1": len(TailscaleVersions),
+		"user2": len(TailscaleVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
@@ -121,15 +121,15 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 		t.Errorf("failed to get headscale server: %s", err)
 	}
 
-	for namespaceName := range spec {
-		key, err := scenario.CreatePreAuthKey(namespaceName, true, false)
+	for userName := range spec {
+		key, err := scenario.CreatePreAuthKey(userName, true, false)
 		if err != nil {
-			t.Errorf("failed to create pre-auth key for namespace %s: %s", namespaceName, err)
+			t.Errorf("failed to create pre-auth key for user %s: %s", userName, err)
 		}
 
-		err = scenario.RunTailscaleUp(namespaceName, headscale.GetEndpoint(), key.GetKey())
+		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
-			t.Errorf("failed to run tailscale up for namespace %s: %s", namespaceName, err)
+			t.Errorf("failed to run tailscale up for user %s: %s", userName, err)
 		}
 	}
 
@@ -207,8 +207,8 @@ func TestEphemeral(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions),
-		"namespace2": len(TailscaleVersions),
+		"user1": len(TailscaleVersions),
+		"user2": len(TailscaleVersions),
 	}
 
 	headscale, err := scenario.Headscale(hsic.WithTestName("ephemeral"))
@@ -216,25 +216,25 @@ func TestEphemeral(t *testing.T) {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
 
-	for namespaceName, clientCount := range spec {
-		err = scenario.CreateNamespace(namespaceName)
+	for userName, clientCount := range spec {
+		err = scenario.CreateUser(userName)
 		if err != nil {
-			t.Errorf("failed to create namespace %s: %s", namespaceName, err)
+			t.Errorf("failed to create user %s: %s", userName, err)
 		}
 
-		err = scenario.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount, []tsic.Option{}...)
+		err = scenario.CreateTailscaleNodesInUser(userName, "all", clientCount, []tsic.Option{}...)
 		if err != nil {
-			t.Errorf("failed to create tailscale nodes in namespace %s: %s", namespaceName, err)
+			t.Errorf("failed to create tailscale nodes in user %s: %s", userName, err)
 		}
 
-		key, err := scenario.CreatePreAuthKey(namespaceName, true, true)
+		key, err := scenario.CreatePreAuthKey(userName, true, true)
 		if err != nil {
-			t.Errorf("failed to create pre-auth key for namespace %s: %s", namespaceName, err)
+			t.Errorf("failed to create pre-auth key for user %s: %s", userName, err)
 		}
 
-		err = scenario.RunTailscaleUp(namespaceName, headscale.GetEndpoint(), key.GetKey())
+		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
-			t.Errorf("failed to run tailscale up for namespace %s: %s", namespaceName, err)
+			t.Errorf("failed to run tailscale up for user %s: %s", userName, err)
 		}
 	}
 
@@ -278,19 +278,19 @@ func TestEphemeral(t *testing.T) {
 
 	t.Logf("all clients logged out")
 
-	for namespaceName := range spec {
-		machines, err := headscale.ListMachinesInNamespace(namespaceName)
+	for userName := range spec {
+		machines, err := headscale.ListMachinesInUser(userName)
 		if err != nil {
 			log.Error().
 				Err(err).
-				Str("namespace", namespaceName).
-				Msg("Error listing machines in namespace")
+				Str("user", userName).
+				Msg("Error listing machines in user")
 
 			return
 		}
 
 		if len(machines) != 0 {
-			t.Errorf("expected no machines, got %d in namespace %s", len(machines), namespaceName)
+			t.Errorf("expected no machines, got %d in user %s", len(machines), userName)
 		}
 	}
 
@@ -311,8 +311,8 @@ func TestPingAllByHostname(t *testing.T) {
 
 	spec := map[string]int{
 		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"namespace3": len(TailscaleVersions) - 1,
-		"namespace4": len(TailscaleVersions) - 1,
+		"user3": len(TailscaleVersions) - 1,
+		"user4": len(TailscaleVersions) - 1,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyname"))

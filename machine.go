@@ -27,8 +27,8 @@ const (
 	)
 	ErrCouldNotConvertMachineInterface = Error("failed to convert machine interface")
 	ErrHostnameTooLong                 = Error("Hostname too long")
-	ErrDifferentRegisteredNamespace    = Error(
-		"machine was previously registered with a different namespace",
+	ErrDifferentRegisteredUser    = Error(
+		"machine was previously registered with a different user",
 	)
 	MachineGivenNameHashLength = 8
 	MachineGivenNameTrimSize   = 2
@@ -57,8 +57,8 @@ type Machine struct {
 	// GivenName is the name used in all DNS related
 	// parts of headscale.
 	GivenName   string `gorm:"type:varchar(63);unique_index"`
-	NamespaceID uint
-	Namespace   Namespace `gorm:"foreignKey:NamespaceID"`
+	UserID uint
+	User   User `gorm:"foreignKey:UserID"`
 
 	RegisterMethod string
 
@@ -192,7 +192,7 @@ func getFilteredByACLPeers(
 		Msg("Finding peers filtered by ACLs")
 
 	peers := make(map[uint64]Machine)
-	// Aclfilter peers here. We are itering through machines in all namespaces and search through the computed aclRules
+	// Aclfilter peers here. We are itering through machines in all users and search through the computed aclRules
 	// for match between rule SrcIPs and DstPorts. If the rule is a match we allow the machine to be viewable.
 	machineIPs := machine.IPAddresses.ToStringSlice()
 	for _, peer := range machines {
@@ -270,7 +270,7 @@ func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
 		Msg("Finding direct peers")
 
 	machines := Machines{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where("node_key <> ?",
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where("node_key <> ?",
 		machine.NodeKey).Find(&machines).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
@@ -292,7 +292,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 	var err error
 
 	// If ACLs rules are defined, filter visible host list with the ACLs
-	// else use the classic namespace scope
+	// else use the classic user scope
 	if h.aclPolicy != nil {
 		var machines []Machine
 		machines, err = h.ListMachines()
@@ -343,7 +343,7 @@ func (h *Headscale) getValidPeers(machine *Machine) (Machines, error) {
 
 func (h *Headscale) ListMachines() ([]Machine, error) {
 	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Find(&machines).Error; err != nil {
 		return nil, err
 	}
 
@@ -352,16 +352,16 @@ func (h *Headscale) ListMachines() ([]Machine, error) {
 
 func (h *Headscale) ListMachinesByGivenName(givenName string) ([]Machine, error) {
 	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Find(&machines).Where("given_name = ?", givenName).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Find(&machines).Where("given_name = ?", givenName).Error; err != nil {
 		return nil, err
 	}
 
 	return machines, nil
 }
 
-// GetMachine finds a Machine by name and namespace and returns the Machine struct.
-func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) {
-	machines, err := h.ListMachinesInNamespace(namespace)
+// GetMachine finds a Machine by name and user and returns the Machine struct.
+func (h *Headscale) GetMachine(user string, name string) (*Machine, error) {
+	machines, err := h.ListMachinesByUser(user)
 	if err != nil {
 		return nil, err
 	}
@@ -375,9 +375,9 @@ func (h *Headscale) GetMachine(namespace string, name string) (*Machine, error) 
 	return nil, ErrMachineNotFound
 }
 
-// GetMachineByGivenName finds a Machine by given name and namespace and returns the Machine struct.
-func (h *Headscale) GetMachineByGivenName(namespace string, givenName string) (*Machine, error) {
-	machines, err := h.ListMachinesInNamespace(namespace)
+// GetMachineByGivenName finds a Machine by given name and user and returns the Machine struct.
+func (h *Headscale) GetMachineByGivenName(user string, givenName string) (*Machine, error) {
+	machines, err := h.ListMachinesByUser(user)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +394,7 @@ func (h *Headscale) GetMachineByGivenName(namespace string, givenName string) (*
 // GetMachineByID finds a Machine by ID and returns the Machine struct.
 func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
 	m := Machine{}
-	if result := h.db.Preload("AuthKey").Preload("Namespace").Find(&Machine{ID: id}).First(&m); result.Error != nil {
+	if result := h.db.Preload("AuthKey").Preload("User").Find(&Machine{ID: id}).First(&m); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -406,7 +406,7 @@ func (h *Headscale) GetMachineByMachineKey(
 	machineKey key.MachinePublic,
 ) (*Machine, error) {
 	m := Machine{}
-	if result := h.db.Preload("AuthKey").Preload("Namespace").First(&m, "machine_key = ?", MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
+	if result := h.db.Preload("AuthKey").Preload("User").First(&m, "machine_key = ?", MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -418,7 +418,7 @@ func (h *Headscale) GetMachineByNodeKey(
 	nodeKey key.NodePublic,
 ) (*Machine, error) {
 	machine := Machine{}
-	if result := h.db.Preload("AuthKey").Preload("Namespace").First(&machine, "node_key = ?",
+	if result := h.db.Preload("AuthKey").Preload("User").First(&machine, "node_key = ?",
 		NodePublicKeyStripPrefix(nodeKey)); result.Error != nil {
 		return nil, result.Error
 	}
@@ -431,7 +431,7 @@ func (h *Headscale) GetMachineByAnyKey(
 	machineKey key.MachinePublic, nodeKey key.NodePublic, oldNodeKey key.NodePublic,
 ) (*Machine, error) {
 	machine := Machine{}
-	if result := h.db.Preload("AuthKey").Preload("Namespace").First(&machine, "machine_key = ? OR node_key = ? OR node_key = ?",
+	if result := h.db.Preload("AuthKey").Preload("User").First(&machine, "machine_key = ? OR node_key = ? OR node_key = ?",
 		MachinePublicKeyStripPrefix(machineKey),
 		NodePublicKeyStripPrefix(nodeKey),
 		NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
@@ -570,9 +570,9 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 		return true
 	}
 
-	// Get the last update from all headscale namespaces to compare with our nodes
+	// Get the last update from all headscale users to compare with our nodes
 	// last update.
-	// TODO(kradalby): Only request updates from namespaces where we can talk to nodes
+	// TODO(kradalby): Only request updates from users where we can talk to nodes
 	// This would mostly be for a bit of performance, and can be calculated based on
 	// ACLs.
 	lastChange := h.getLastStateChange()
@@ -720,7 +720,7 @@ func (h *Headscale) toNode(
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
 			machine.GivenName,
-			machine.Namespace.Name,
+			machine.User.Name,
 			baseDomain,
 		)
 		if len(hostname) > maxHostnameLength {
@@ -744,7 +744,7 @@ func (h *Headscale) toNode(
 			strconv.FormatUint(machine.ID, Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name:          hostname,
-		User:          tailcfg.UserID(machine.NamespaceID),
+		User:          tailcfg.UserID(machine.UserID),
 		Key:           nodeKey,
 		KeyExpiry:     keyExpiry,
 		Machine:       machineKey,
@@ -782,7 +782,7 @@ func (machine *Machine) toProto() *v1.Machine {
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Hostname,
 		GivenName:   machine.GivenName,
-		Namespace:   machine.Namespace.toProto(),
+		User:   machine.User.toProto(),
 		ForcedTags:  machine.ForcedTags,
 		Online:      machine.isOnline(),
 
@@ -837,7 +837,7 @@ func getTags(
 		}
 		var found bool
 		for _, owner := range owners {
-			if machine.Namespace.Name == owner {
+			if machine.User.Name == owner {
 				found = true
 			}
 		}
@@ -859,7 +859,7 @@ func getTags(
 
 func (h *Headscale) RegisterMachineFromAuthCallback(
 	nodeKeyStr string,
-	namespaceName string,
+	userName string,
 	machineExpiry *time.Time,
 	registrationMethod string,
 ) (*Machine, error) {
@@ -871,28 +871,28 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 
 	log.Debug().
 		Str("nodeKey", nodeKey.ShortString()).
-		Str("namespaceName", namespaceName).
+		Str("userName", userName).
 		Str("registrationMethod", registrationMethod).
 		Str("expiresAt", fmt.Sprintf("%v", machineExpiry)).
 		Msg("Registering machine from API/CLI or auth callback")
 
 	if machineInterface, ok := h.registrationCache.Get(NodePublicKeyStripPrefix(nodeKey)); ok {
 		if registrationMachine, ok := machineInterface.(Machine); ok {
-			namespace, err := h.GetNamespace(namespaceName)
+			user, err := h.GetUser(userName)
 			if err != nil {
 				return nil, fmt.Errorf(
-					"failed to find namespace in register machine from auth callback, %w",
+					"failed to find user in register machine from auth callback, %w",
 					err,
 				)
 			}
 
-			// Registration of expired machine with different namespace
+			// Registration of expired machine with different user
 			if registrationMachine.ID != 0 &&
-				registrationMachine.NamespaceID != namespace.ID {
-				return nil, ErrDifferentRegisteredNamespace
+				registrationMachine.UserID != user.ID {
+				return nil, ErrDifferentRegisteredUser
 			}
 
-			registrationMachine.NamespaceID = namespace.ID
+			registrationMachine.UserID = user.ID
 			registrationMachine.RegisterMethod = registrationMethod
 
 			if machineExpiry != nil {
@@ -923,7 +923,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 		Str("machine", machine.Hostname).
 		Str("machine_key", machine.MachineKey).
 		Str("node_key", machine.NodeKey).
-		Str("namespace", machine.Namespace.Name).
+		Str("user", machine.User.Name).
 		Msg("Registering machine")
 
 	// If the machine exists and we had already IPs for it, we just save it
@@ -939,7 +939,7 @@ func (h *Headscale) RegisterMachine(machine Machine,
 			Str("machine", machine.Hostname).
 			Str("machine_key", machine.MachineKey).
 			Str("node_key", machine.NodeKey).
-			Str("namespace", machine.Namespace.Name).
+			Str("user", machine.User.Name).
 			Msg("Machine authorized again")
 
 		return &machine, nil
@@ -1137,7 +1137,7 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 		}
 
 		for _, approvedAlias := range routeApprovers {
-			if approvedAlias == machine.Namespace.Name {
+			if approvedAlias == machine.User.Name {
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
 				approvedIps, err := expandAlias([]Machine{*machine}, *h.aclPolicy, approvedAlias, h.cfg.OIDC.StripEmaildomain)

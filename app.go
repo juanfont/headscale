@@ -238,20 +238,20 @@ func (h *Headscale) failoverSubnetRoutes(milliSeconds int64) {
 }
 
 func (h *Headscale) expireEphemeralNodesWorker() {
-	namespaces, err := h.ListNamespaces()
+	users, err := h.ListUsers()
 	if err != nil {
-		log.Error().Err(err).Msg("Error listing namespaces")
+		log.Error().Err(err).Msg("Error listing users")
 
 		return
 	}
 
-	for _, namespace := range namespaces {
-		machines, err := h.ListMachinesInNamespace(namespace.Name)
+	for _, user := range users {
+		machines, err := h.ListMachinesByUser(user.Name)
 		if err != nil {
 			log.Error().
 				Err(err).
-				Str("namespace", namespace.Name).
-				Msg("Error listing machines in namespace")
+				Str("user", user.Name).
+				Msg("Error listing machines in user")
 
 			return
 		}
@@ -283,20 +283,20 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 }
 
 func (h *Headscale) expireExpiredMachinesWorker() {
-	namespaces, err := h.ListNamespaces()
+	users, err := h.ListUsers()
 	if err != nil {
-		log.Error().Err(err).Msg("Error listing namespaces")
+		log.Error().Err(err).Msg("Error listing users")
 
 		return
 	}
 
-	for _, namespace := range namespaces {
-		machines, err := h.ListMachinesInNamespace(namespace.Name)
+	for _, user := range users {
+		machines, err := h.ListMachinesByUser(user.Name)
 		if err != nil {
 			log.Error().
 				Err(err).
-				Str("namespace", namespace.Name).
-				Msg("Error listing machines in namespace")
+				Str("user", user.Name).
+				Msg("Error listing machines in user")
 
 			return
 		}
@@ -304,7 +304,7 @@ func (h *Headscale) expireExpiredMachinesWorker() {
 		expiredFound := false
 		for index, machine := range machines {
 			if machine.isExpired() &&
-				machine.Expiry.After(h.getLastStateChange(namespace)) {
+				machine.Expiry.After(h.getLastStateChange(user)) {
 				expiredFound = true
 
 				err := h.ExpireMachine(&machines[index])
@@ -908,31 +908,31 @@ func (h *Headscale) setLastStateChangeToNow() {
 
 	now := time.Now().UTC()
 
-	namespaces, err := h.ListNamespaces()
+	users, err := h.ListUsers()
 	if err != nil {
 		log.Error().
 			Caller().
 			Err(err).
-			Msg("failed to fetch all namespaces, failing to update last changed state.")
+			Msg("failed to fetch all users, failing to update last changed state.")
 	}
 
-	for _, namespace := range namespaces {
-		lastStateUpdate.WithLabelValues(namespace.Name, "headscale").Set(float64(now.Unix()))
+	for _, user := range users {
+		lastStateUpdate.WithLabelValues(user.Name, "headscale").Set(float64(now.Unix()))
 		if h.lastStateChange == nil {
 			h.lastStateChange = xsync.NewMapOf[time.Time]()
 		}
-		h.lastStateChange.Store(namespace.Name, now)
+		h.lastStateChange.Store(user.Name, now)
 	}
 }
 
-func (h *Headscale) getLastStateChange(namespaces ...Namespace) time.Time {
+func (h *Headscale) getLastStateChange(users ...User) time.Time {
 	times := []time.Time{}
 
-	// getLastStateChange takes a list of namespaces as a "filter", if no namespaces
-	// are past, then use the entier list of namespaces and look for the last update
-	if len(namespaces) > 0 {
-		for _, namespace := range namespaces {
-			if lastChange, ok := h.lastStateChange.Load(namespace.Name); ok {
+	// getLastStateChange takes a list of users as a "filter", if no users
+	// are past, then use the entier list of users and look for the last update
+	if len(users) > 0 {
+		for _, user := range users {
+			if lastChange, ok := h.lastStateChange.Load(user.Name); ok {
 				times = append(times, lastChange)
 			}
 		}

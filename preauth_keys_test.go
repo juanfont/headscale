@@ -11,36 +11,36 @@ func (*Suite) TestCreatePreAuthKey(c *check.C) {
 
 	c.Assert(err, check.NotNil)
 
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	key, err := app.CreatePreAuthKey(namespace.Name, true, false, nil, nil)
+	key, err := app.CreatePreAuthKey(user.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	// Did we get a valid key?
 	c.Assert(key.Key, check.NotNil)
 	c.Assert(len(key.Key), check.Equals, 48)
 
-	// Make sure the Namespace association is populated
-	c.Assert(key.Namespace.Name, check.Equals, namespace.Name)
+	// Make sure the User association is populated
+	c.Assert(key.User.Name, check.Equals, user.Name)
 
 	_, err = app.ListPreAuthKeys("bogus")
 	c.Assert(err, check.NotNil)
 
-	keys, err := app.ListPreAuthKeys(namespace.Name)
+	keys, err := app.ListPreAuthKeys(user.Name)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(keys), check.Equals, 1)
 
-	// Make sure the Namespace association is populated
-	c.Assert((keys)[0].Namespace.Name, check.Equals, namespace.Name)
+	// Make sure the User association is populated
+	c.Assert((keys)[0].User.Name, check.Equals, user.Name)
 }
 
 func (*Suite) TestExpiredPreAuthKey(c *check.C) {
-	namespace, err := app.CreateNamespace("test2")
+	user, err := app.CreateUser("test2")
 	c.Assert(err, check.IsNil)
 
 	now := time.Now()
-	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, &now, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, true, false, &now, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
@@ -55,10 +55,10 @@ func (*Suite) TestPreAuthKeyDoesNotExist(c *check.C) {
 }
 
 func (*Suite) TestValidateKeyOk(c *check.C) {
-	namespace, err := app.CreateNamespace("test3")
+	user, err := app.CreateUser("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
@@ -67,10 +67,10 @@ func (*Suite) TestValidateKeyOk(c *check.C) {
 }
 
 func (*Suite) TestAlreadyUsedKey(c *check.C) {
-	namespace, err := app.CreateNamespace("test4")
+	user, err := app.CreateUser("test4")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	machine := Machine{
@@ -79,7 +79,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testest",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -91,10 +91,10 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 }
 
 func (*Suite) TestReusableBeingUsedKey(c *check.C) {
-	namespace, err := app.CreateNamespace("test5")
+	user, err := app.CreateUser("test5")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	machine := Machine{
@@ -103,7 +103,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testest",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -115,10 +115,10 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 }
 
 func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
-	namespace, err := app.CreateNamespace("test6")
+	user, err := app.CreateUser("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := app.checkKeyValidity(pak.Key)
@@ -127,10 +127,10 @@ func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
 }
 
 func (*Suite) TestEphemeralKey(c *check.C) {
-	namespace, err := app.CreateNamespace("test7")
+	user, err := app.CreateUser("test7")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, true, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, true, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	now := time.Now()
@@ -140,7 +140,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testest",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		LastSeen:       &now,
 		AuthKeyID:      uint(pak.ID),
@@ -162,10 +162,10 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 }
 
 func (*Suite) TestExpirePreauthKey(c *check.C) {
-	namespace, err := app.CreateNamespace("test3")
+	user, err := app.CreateUser("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, true, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 	c.Assert(pak.Expiration, check.IsNil)
 
@@ -179,10 +179,10 @@ func (*Suite) TestExpirePreauthKey(c *check.C) {
 }
 
 func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
-	namespace, err := app.CreateNamespace("test6")
+	user, err := app.CreateUser("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 	pak.Used = true
 	app.db.Save(&pak)
@@ -192,15 +192,15 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 }
 
 func (*Suite) TestPreAuthKeyACLTags(c *check.C) {
-	namespace, err := app.CreateNamespace("test8")
+	user, err := app.CreateUser("test8")
 	c.Assert(err, check.IsNil)
 
-	_, err = app.CreatePreAuthKey(namespace.Name, false, false, nil, []string{"badtag"})
+	_, err = app.CreatePreAuthKey(user.Name, false, false, nil, []string{"badtag"})
 	c.Assert(err, check.NotNil) // Confirm that malformed tags are rejected
 
 	tags := []string{"tag:test1", "tag:test2"}
 	tagsWithDuplicate := []string{"tag:test1", "tag:test2", "tag:test2"}
-	_, err = app.CreatePreAuthKey(namespace.Name, false, false, nil, tagsWithDuplicate)
+	_, err = app.CreatePreAuthKey(user.Name, false, false, nil, tagsWithDuplicate)
 	c.Assert(err, check.IsNil)
 
 	listedPaks, err := app.ListPreAuthKeys("test8")

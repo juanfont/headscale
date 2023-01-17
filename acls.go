@@ -424,7 +424,7 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 }
 
 // expandalias has an input of either
-// - a namespace
+// - a user
 // - a group
 // - a tag
 // and transform these in IPAddresses.
@@ -444,12 +444,12 @@ func expandAlias(
 		Msg("Expanding")
 
 	if strings.HasPrefix(alias, "group:") {
-		namespaces, err := expandGroup(aclPolicy, alias, stripEmailDomain)
+		users, err := expandGroup(aclPolicy, alias, stripEmailDomain)
 		if err != nil {
 			return ips, err
 		}
-		for _, n := range namespaces {
-			nodes := filterMachinesByNamespace(machines, n)
+		for _, n := range users {
+			nodes := filterMachinesByUser(machines, n)
 			for _, node := range nodes {
 				ips = append(ips, node.IPAddresses.ToStringSlice()...)
 			}
@@ -485,8 +485,8 @@ func expandAlias(
 		}
 
 		// filter out machines per tag owner
-		for _, namespace := range owners {
-			machines := filterMachinesByNamespace(machines, namespace)
+		for _, user := range owners {
+			machines := filterMachinesByUser(machines, user)
 			for _, machine := range machines {
 				hi := machine.GetHostInfo()
 				if contains(hi.RequestTags, alias) {
@@ -498,8 +498,8 @@ func expandAlias(
 		return ips, nil
 	}
 
-	// if alias is a namespace
-	nodes := filterMachinesByNamespace(machines, alias)
+	// if alias is a user
+	nodes := filterMachinesByUser(machines, alias)
 	nodes = excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias, stripEmailDomain)
 
 	for _, n := range nodes {
@@ -532,20 +532,20 @@ func expandAlias(
 }
 
 // excludeCorrectlyTaggedNodes will remove from the list of input nodes the ones
-// that are correctly tagged since they should not be listed as being in the namespace
-// we assume in this function that we only have nodes from 1 namespace.
+// that are correctly tagged since they should not be listed as being in the user
+// we assume in this function that we only have nodes from 1 user.
 func excludeCorrectlyTaggedNodes(
 	aclPolicy ACLPolicy,
 	nodes []Machine,
-	namespace string,
+	user string,
 	stripEmailDomain bool,
 ) []Machine {
 	out := []Machine{}
 	tags := []string{}
 	for tag := range aclPolicy.TagOwners {
-		owners, _ := expandTagOwners(aclPolicy, namespace, stripEmailDomain)
-		ns := append(owners, namespace)
-		if contains(ns, namespace) {
+		owners, _ := expandTagOwners(aclPolicy, user, stripEmailDomain)
+		ns := append(owners, user)
+		if contains(ns, user) {
 			tags = append(tags, tag)
 		}
 	}
@@ -619,10 +619,10 @@ func expandPorts(portsStr string, needsWildcard bool) (*[]tailcfg.PortRange, err
 	return &ports, nil
 }
 
-func filterMachinesByNamespace(machines []Machine, namespace string) []Machine {
+func filterMachinesByUser(machines []Machine, user string) []Machine {
 	out := []Machine{}
 	for _, machine := range machines {
-		if machine.Namespace.Name == namespace {
+		if machine.User.Name == user {
 			out = append(out, machine)
 		}
 	}
@@ -630,7 +630,7 @@ func filterMachinesByNamespace(machines []Machine, namespace string) []Machine {
 	return out
 }
 
-// expandTagOwners will return a list of namespace. An owner can be either a namespace or a group
+// expandTagOwners will return a list of user. An owner can be either a user or a group
 // a group cannot be composed of groups.
 func expandTagOwners(
 	aclPolicy ACLPolicy,
@@ -661,7 +661,7 @@ func expandTagOwners(
 	return owners, nil
 }
 
-// expandGroup will return the list of namespace inside the group
+// expandGroup will return the list of user inside the group
 // after some validation.
 func expandGroup(
 	aclPolicy ACLPolicy,

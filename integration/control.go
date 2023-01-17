@@ -10,9 +10,9 @@ type ControlServer interface {
 	GetHealthEndpoint() string
 	GetEndpoint() string
 	WaitForReady() error
-	CreateNamespace(namespace string) error
-	CreateAuthKey(namespace string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
-	ListMachinesInNamespace(namespace string) ([]*v1.Machine, error)
+	CreateUser(user string) error
+	CreateAuthKey(user string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
+	ListMachinesInUser(user string) ([]*v1.Machine, error)
 	GetCert() []byte
 	GetHostname() string
 	GetIP() string

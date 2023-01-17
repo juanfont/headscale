@@ -34,7 +34,7 @@ type Groups map[string][]string
 // Hosts are alias for IP addresses or subnets.
 type Hosts map[string]netip.Prefix
 
-// TagOwners specify what users (namespaces?) are allow to use certain tags.
+// TagOwners specify what users (users?) are allow to use certain tags.
 type TagOwners map[string][]string
 
 // ACLTest is not implemented, but should be use to check if a certain rule is allowed.
@@ -44,7 +44,7 @@ type ACLTest struct {
 	Deny   []string `json:"deny,omitempty" yaml:"deny,omitempty"`
 }
 
-// AutoApprovers specify which users (namespaces?), groups or tags have their advertised routes
+// AutoApprovers specify which users (users?), groups or tags have their advertised routes
 // or exit node status automatically enabled.
 type AutoApprovers struct {
 	Routes   map[string][]string `json:"routes"   yaml:"routes"`
@@ -119,7 +119,7 @@ func (policy ACLPolicy) IsZero() bool {
 	return false
 }
 
-// Returns the list of autoApproving namespaces, groups or tags for a given IPPrefix.
+// Returns the list of autoApproving users, groups or tags for a given IPPrefix.
 func (autoApprovers *AutoApprovers) GetRouteApprovers(
 	prefix netip.Prefix,
 ) ([]string, error) {

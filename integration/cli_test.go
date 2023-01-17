@@ -28,7 +28,7 @@ func executeAndUnmarshal[T any](headscale ControlServer, command []string, resul
 	return nil
 }
 
-func TestNamespaceCommand(t *testing.T) {
+func TestUserCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -36,8 +36,8 @@ func TestNamespaceCommand(t *testing.T) {
 	assert.NoError(t, err)
 
 	spec := map[string]int{
-		"namespace1": 0,
-		"namespace2": 0,
+		"user1": 0,
+		"user2": 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -46,60 +46,60 @@ func TestNamespaceCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assert.NoError(t, err)
 
-	var listNamespaces []v1.Namespace
+	var listUsers []v1.User
 	err = executeAndUnmarshal(headscale,
 		[]string{
 			"headscale",
-			"namespaces",
+			"users",
 			"list",
 			"--output",
 			"json",
 		},
-		&listNamespaces,
+		&listUsers,
 	)
 	assert.NoError(t, err)
 
-	result := []string{listNamespaces[0].Name, listNamespaces[1].Name}
+	result := []string{listUsers[0].Name, listUsers[1].Name}
 	sort.Strings(result)
 
 	assert.Equal(
 		t,
-		[]string{"namespace1", "namespace2"},
+		[]string{"user1", "user2"},
 		result,
 	)
 
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
-			"namespaces",
+			"users",
 			"rename",
 			"--output",
 			"json",
-			"namespace2",
+			"user2",
 			"newname",
 		},
 	)
 	assert.NoError(t, err)
 
-	var listAfterRenameNamespaces []v1.Namespace
+	var listAfterRenameUsers []v1.User
 	err = executeAndUnmarshal(headscale,
 		[]string{
 			"headscale",
-			"namespaces",
+			"users",
 			"list",
 			"--output",
 			"json",
 		},
-		&listAfterRenameNamespaces,
+		&listAfterRenameUsers,
 	)
 	assert.NoError(t, err)
 
-	result = []string{listAfterRenameNamespaces[0].Name, listAfterRenameNamespaces[1].Name}
+	result = []string{listAfterRenameUsers[0].Name, listAfterRenameUsers[1].Name}
 	sort.Strings(result)
 
 	assert.Equal(
 		t,
-		[]string{"namespace1", "newname"},
+		[]string{"user1", "newname"},
 		result,
 	)
 
@@ -111,14 +111,14 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	namespace := "preauthkeyspace"
+	user := "preauthkeyspace"
 	count := 3
 
 	scenario, err := NewScenario()
 	assert.NoError(t, err)
 
 	spec := map[string]int{
-		namespace: 0,
+		user: 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipak"))
@@ -137,8 +137,8 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			[]string{
 				"headscale",
 				"preauthkeys",
-				"--namespace",
-				namespace,
+				"--user",
+				user,
 				"create",
 				"--reusable",
 				"--expiration",
@@ -163,8 +163,8 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace,
+			"--user",
+			user,
 			"list",
 			"--output",
 			"json",
@@ -216,8 +216,8 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace,
+			"--user",
+			user,
 			"expire",
 			listedPreAuthKeys[1].Key,
 		},
@@ -230,8 +230,8 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace,
+			"--user",
+			user,
 			"list",
 			"--output",
 			"json",
@@ -252,13 +252,13 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	namespace := "pre-auth-key-without-exp-namespace"
+	user := "pre-auth-key-without-exp-user"
 
 	scenario, err := NewScenario()
 	assert.NoError(t, err)
 
 	spec := map[string]int{
-		namespace: 0,
+		user: 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipaknaexp"))
@@ -273,8 +273,8 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace,
+			"--user",
+			user,
 			"create",
 			"--reusable",
 			"--output",
@@ -290,8 +290,8 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace,
+			"--user",
+			user,
 			"list",
 			"--output",
 			"json",
@@ -317,13 +317,13 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	namespace := "pre-auth-key-reus-ephm-namespace"
+	user := "pre-auth-key-reus-ephm-user"
 
 	scenario, err := NewScenario()
 	assert.NoError(t, err)
 
 	spec := map[string]int{
-		namespace: 0,
+		user: 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipakresueeph"))
@@ -338,8 +338,8 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace,
+			"--user",
+			user,
 			"create",
 			"--reusable=true",
 			"--output",
@@ -355,8 +355,8 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace,
+			"--user",
+			user,
 			"create",
 			"--ephemeral=true",
 			"--output",
@@ -375,8 +375,8 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--namespace",
-			namespace,
+			"--user",
+			user,
 			"list",
 			"--output",
 			"json",
@@ -396,13 +396,13 @@ func TestEnablingRoutes(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	namespace := "enable-routing"
+	user := "enable-routing"
 
 	scenario, err := NewScenario()
 	assert.NoError(t, err)
 
 	spec := map[string]int{
-		namespace: 3,
+		user: 3,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))

@@ -47,7 +47,7 @@ var (
 	}
 )
 
-type TestNamespace struct {
+type TestUser struct {
 	count      int
 	tailscales map[string]dockertest.Resource
 }
@@ -296,7 +296,7 @@ func getMagicFQDN(
 		hostnames[index] = fmt.Sprintf(
 			"%s.%s.headscale.net",
 			listAll[index].GetGivenName(),
-			listAll[index].GetNamespace().GetName(),
+			listAll[index].GetUser().GetName(),
 		)
 	}
 

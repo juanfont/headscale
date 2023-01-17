@@ -171,7 +171,7 @@ var oidcCallbackTemplate = template.Must(
 )
 
 // OIDCCallback handles the callback from the OIDC endpoint
-// Retrieves the nkey from the state cache and adds the machine to the users email namespace
+// Retrieves the nkey from the state cache and adds the machine to the users email user
 // TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
 // TODO: Add groups information from OIDC tokens into machine HostInfo
 // Listens in /oidc/callback.
@@ -223,7 +223,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	namespaceName, err := getNamespaceName(writer, claims, h.cfg.OIDC.StripEmaildomain)
+	userName, err := getUserName(writer, claims, h.cfg.OIDC.StripEmaildomain)
 	if err != nil {
 		return
 	}
@@ -231,12 +231,12 @@ func (h *Headscale) OIDCCallback(
 	// register the machine if it's new
 	log.Debug().Msg("Registering new machine after successful callback")
 
-	namespace, err := h.findOrCreateNewNamespaceForOIDCCallback(writer, namespaceName)
+	user, err := h.findOrCreateNewUserForOIDCCallback(writer, userName)
 	if err != nil {
 		return
 	}
 
-	if err := h.registerMachineForOIDCCallback(writer, namespace, nodeKey, idToken.Expiry); err != nil {
+	if err := h.registerMachineForOIDCCallback(writer, user, nodeKey, idToken.Expiry); err != nil {
 		return
 	}
 
@@ -606,12 +606,12 @@ func (h *Headscale) validateMachineForOIDCCallback(
 	return &nodeKey, false, nil
 }
 
-func getNamespaceName(
+func getUserName(
 	writer http.ResponseWriter,
 	claims *IDTokenClaims,
 	stripEmaildomain bool,
 ) (string, error) {
-	namespaceName, err := NormalizeToFQDNRules(
+	userName, err := NormalizeToFQDNRules(
 		claims.Email,
 		stripEmaildomain,
 	)
@@ -630,25 +630,25 @@ func getNamespaceName(
 		return "", err
 	}
 
-	return namespaceName, nil
+	return userName, nil
 }
 
-func (h *Headscale) findOrCreateNewNamespaceForOIDCCallback(
+func (h *Headscale) findOrCreateNewUserForOIDCCallback(
 	writer http.ResponseWriter,
-	namespaceName string,
-) (*Namespace, error) {
-	namespace, err := h.GetNamespace(namespaceName)
-	if errors.Is(err, ErrNamespaceNotFound) {
-		namespace, err = h.CreateNamespace(namespaceName)
+	userName string,
+) (*User, error) {
+	user, err := h.GetUser(userName)
+	if errors.Is(err, ErrUserNotFound) {
+		user, err = h.CreateUser(userName)
 
 		if err != nil {
 			log.Error().
 				Err(err).
 				Caller().
-				Msgf("could not create new namespace '%s'", namespaceName)
+				Msgf("could not create new user '%s'", userName)
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			writer.WriteHeader(http.StatusInternalServerError)
-			_, werr := writer.Write([]byte("could not create namespace"))
+			_, werr := writer.Write([]byte("could not create user"))
 			if werr != nil {
 				log.Error().
 					Caller().
@@ -662,11 +662,11 @@ func (h *Headscale) findOrCreateNewNamespaceForOIDCCallback(
 		log.Error().
 			Caller().
 			Err(err).
-			Str("namespace", namespaceName).
-			Msg("could not find or create namespace")
+			Str("user", userName).
+			Msg("could not find or create user")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		_, werr := writer.Write([]byte("could not find or create namespace"))
+		_, werr := writer.Write([]byte("could not find or create user"))
 		if werr != nil {
 			log.Error().
 				Caller().
@@ -677,18 +677,18 @@ func (h *Headscale) findOrCreateNewNamespaceForOIDCCallback(
 		return nil, err
 	}
 
-	return namespace, nil
+	return user, nil
 }
 
 func (h *Headscale) registerMachineForOIDCCallback(
 	writer http.ResponseWriter,
-	namespace *Namespace,
+	user *User,
 	nodeKey *key.NodePublic,
 	expiry time.Time,
 ) error {
 	if _, err := h.RegisterMachineFromAuthCallback(
 		nodeKey.String(),
-		namespace.Name,
+		user.Name,
 		&expiry,
 		RegisterMethodOIDC,
 	); err != nil {

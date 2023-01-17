@@ -31,7 +31,7 @@ func TestHeadscale(t *testing.T) {
 
 	var err error
 
-	namespace := "test-space"
+	user := "test-space"
 
 	scenario, err := NewScenario()
 	if err != nil {
@@ -50,19 +50,19 @@ func TestHeadscale(t *testing.T) {
 		}
 	})
 
-	t.Run("create-namespace", func(t *testing.T) {
-		err := scenario.CreateNamespace(namespace)
+	t.Run("create-user", func(t *testing.T) {
+		err := scenario.CreateUser(user)
 		if err != nil {
-			t.Errorf("failed to create namespace: %s", err)
+			t.Errorf("failed to create user: %s", err)
 		}
 
-		if _, ok := scenario.namespaces[namespace]; !ok {
-			t.Errorf("namespace is not in scenario")
+		if _, ok := scenario.users[user]; !ok {
+			t.Errorf("user is not in scenario")
 		}
 	})
 
 	t.Run("create-auth-key", func(t *testing.T) {
-		_, err := scenario.CreatePreAuthKey(namespace, true, false)
+		_, err := scenario.CreatePreAuthKey(user, true, false)
 		if err != nil {
 			t.Errorf("failed to create preauthkey: %s", err)
 		}
@@ -82,24 +82,24 @@ func TestCreateTailscale(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	namespace := "only-create-containers"
+	user := "only-create-containers"
 
 	scenario, err := NewScenario()
 	if err != nil {
 		t.Errorf("failed to create scenario: %s", err)
 	}
 
-	scenario.namespaces[namespace] = &Namespace{
+	scenario.users[user] = &User{
 		Clients: make(map[string]TailscaleClient),
 	}
 
 	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInNamespace(namespace, "all", 3)
+		err := scenario.CreateTailscaleNodesInUser(user, "all", 3)
 		if err != nil {
 			t.Errorf("failed to add tailscale nodes: %s", err)
 		}
 
-		if clients := len(scenario.namespaces[namespace].Clients); clients != 3 {
+		if clients := len(scenario.users[user].Clients); clients != 3 {
 			t.Errorf("wrong number of tailscale clients: %d != %d", clients, 3)
 		}
 
@@ -122,7 +122,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 
 	var err error
 
-	namespace := "join-node-test"
+	user := "join-node-test"
 
 	count := 1
 
@@ -143,30 +143,30 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 		}
 	})
 
-	t.Run("create-namespace", func(t *testing.T) {
-		err := scenario.CreateNamespace(namespace)
+	t.Run("create-user", func(t *testing.T) {
+		err := scenario.CreateUser(user)
 		if err != nil {
-			t.Errorf("failed to create namespace: %s", err)
+			t.Errorf("failed to create user: %s", err)
 		}
 
-		if _, ok := scenario.namespaces[namespace]; !ok {
-			t.Errorf("namespace is not in scenario")
+		if _, ok := scenario.users[user]; !ok {
+			t.Errorf("user is not in scenario")
 		}
 	})
 
 	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInNamespace(namespace, "1.30.2", count)
+		err := scenario.CreateTailscaleNodesInUser(user, "1.30.2", count)
 		if err != nil {
 			t.Errorf("failed to add tailscale nodes: %s", err)
 		}
 
-		if clients := len(scenario.namespaces[namespace].Clients); clients != count {
+		if clients := len(scenario.users[user].Clients); clients != count {
 			t.Errorf("wrong number of tailscale clients: %d != %d", clients, count)
 		}
 	})
 
 	t.Run("join-headscale", func(t *testing.T) {
-		key, err := scenario.CreatePreAuthKey(namespace, true, false)
+		key, err := scenario.CreatePreAuthKey(user, true, false)
 		if err != nil {
 			t.Errorf("failed to create preauthkey: %s", err)
 		}
@@ -177,7 +177,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 		}
 
 		err = scenario.RunTailscaleUp(
-			namespace,
+			user,
 			headscale.GetEndpoint(),
 			key.GetKey(),
 		)
@@ -187,7 +187,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	})
 
 	t.Run("get-ips", func(t *testing.T) {
-		ips, err := scenario.GetIPs(namespace)
+		ips, err := scenario.GetIPs(user)
 		if err != nil {
 			t.Errorf("failed to get tailscale ips: %s", err)
 		}

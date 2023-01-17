@@ -26,7 +26,7 @@ import (
 
 const (
 	headscaleDerpHostname = "headscale-derp"
-	namespaceName         = "derpnamespace"
+	userName         = "derpuser"
 	totalContainers       = 3
 )
 
@@ -199,22 +199,22 @@ func (s *IntegrationDERPTestSuite) SetupSuite() {
 	}
 	log.Println("headscale container is ready for embedded DERP tests")
 
-	log.Printf("Creating headscale namespace: %s\n", namespaceName)
+	log.Printf("Creating headscale user: %s\n", userName)
 	result, _, err := ExecuteCommand(
 		&s.headscale,
-		[]string{"headscale", "namespaces", "create", namespaceName},
+		[]string{"headscale", "users", "create", userName},
 		[]string{},
 	)
-	log.Println("headscale create namespace result: ", result)
+	log.Println("headscale create user result: ", result)
 	assert.Nil(s.T(), err)
 
-	log.Printf("Creating pre auth key for %s\n", namespaceName)
+	log.Printf("Creating pre auth key for %s\n", userName)
 	preAuthResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
-			"--namespace",
-			namespaceName,
+			"--user",
+			userName,
 			"preauthkeys",
 			"create",
 			"--reusable",

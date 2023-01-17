@@ -22,10 +22,10 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	ips, err := app.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
-	namespace, err := app.CreateNamespace("test-ip")
+	user, err := app.CreateUser("test-ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "testmachine")
@@ -37,7 +37,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		IPAddresses:    ips,
@@ -64,7 +64,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 }
 
 func (s *Suite) TestGetMultiIp(c *check.C) {
-	namespace, err := app.CreateNamespace("test-ip-multi")
+	user, err := app.CreateUser("test-ip-multi")
 	c.Assert(err, check.IsNil)
 
 	for index := 1; index <= 350; index++ {
@@ -73,7 +73,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		ips, err := app.getAvailableIPs()
 		c.Assert(err, check.IsNil)
 
-		pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+		pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 
 		_, err = app.GetMachine("test", "testmachine")
@@ -85,7 +85,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 			NodeKey:        "bar",
 			DiscoKey:       "faa",
 			Hostname:       "testmachine",
-			NamespaceID:    namespace.ID,
+			UserID:    user.ID,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 			IPAddresses:    ips,
@@ -160,10 +160,10 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 	c.Assert(len(ips), check.Equals, 1)
 	c.Assert(ips[0].String(), check.Equals, expected.String())
 
-	namespace, err := app.CreateNamespace("test-ip")
+	user, err := app.CreateUser("test-ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "testmachine")
@@ -175,7 +175,7 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
