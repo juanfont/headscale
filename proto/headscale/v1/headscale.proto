@@ -4,7 +4,7 @@ option  go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 import "google/api/annotations.proto";
 
-import "headscale/v1/namespace.proto";
+import "headscale/v1/user.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/machine.proto";
 import "headscale/v1/routes.proto";
@@ -12,165 +12,164 @@ import "headscale/v1/apikey.proto";
 // import "headscale/v1/device.proto";
 
 service HeadscaleService {
-    // --- Namespace start ---
-    rpc GetNamespace(GetNamespaceRequest) returns (GetNamespaceResponse) {
-        option (google.api.http) = {
-            get: "/api/v1/namespace/{name}"
+    // --- User start ---
+    rpc GetUser(GetUserRequest) returns(GetUserResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/user/{name}"
         };
     }
 
-    rpc CreateNamespace(CreateNamespaceRequest) returns (CreateNamespaceResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/namespace"
-            body: "*"
+    rpc CreateUser(CreateUserRequest) returns(CreateUserResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/user"
+            body : "*"
         };
     }
 
-    rpc RenameNamespace(RenameNamespaceRequest) returns (RenameNamespaceResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/namespace/{old_name}/rename/{new_name}"
+    rpc RenameUser(RenameUserRequest) returns(RenameUserResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/user/{old_name}/rename/{new_name}"
         };
     }
 
-    rpc DeleteNamespace(DeleteNamespaceRequest) returns (DeleteNamespaceResponse) {
-        option (google.api.http) = {
-            delete: "/api/v1/namespace/{name}"
+    rpc DeleteUser(DeleteUserRequest) returns(DeleteUserResponse) {
+        option(google.api.http) = {
+            delete : "/api/v1/user/{name}"
         };
     }
 
-    rpc ListNamespaces(ListNamespacesRequest) returns (ListNamespacesResponse) {
-        option (google.api.http) = {
-            get: "/api/v1/namespace"
+    rpc ListUsers(ListUsersRequest) returns(ListUsersResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/user"
         };
     }
-    // --- Namespace end ---
+    // --- User end ---
 
     // --- PreAuthKeys start ---
-    rpc CreatePreAuthKey(CreatePreAuthKeyRequest) returns (CreatePreAuthKeyResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/preauthkey"
-            body: "*"
+    rpc CreatePreAuthKey(CreatePreAuthKeyRequest) returns(CreatePreAuthKeyResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/preauthkey"
+            body : "*"
         };
     }
 
-    rpc ExpirePreAuthKey(ExpirePreAuthKeyRequest) returns (ExpirePreAuthKeyResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/preauthkey/expire"
-            body: "*"
+    rpc ExpirePreAuthKey(ExpirePreAuthKeyRequest) returns(ExpirePreAuthKeyResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/preauthkey/expire"
+            body : "*"
         };
     }
 
-    rpc ListPreAuthKeys(ListPreAuthKeysRequest) returns (ListPreAuthKeysResponse) {
-        option (google.api.http) = {
-            get: "/api/v1/preauthkey"
+    rpc ListPreAuthKeys(ListPreAuthKeysRequest) returns(ListPreAuthKeysResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/preauthkey"
         };
     }
     // --- PreAuthKeys end ---
 
     // --- Machine start ---
-    rpc DebugCreateMachine(DebugCreateMachineRequest) returns (DebugCreateMachineResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/debug/machine"
-            body: "*"
+    rpc DebugCreateMachine(DebugCreateMachineRequest) returns(DebugCreateMachineResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/debug/machine"
+            body : "*"
         };
     }
 
-    rpc GetMachine(GetMachineRequest) returns (GetMachineResponse) {
-        option (google.api.http) = {
-            get: "/api/v1/machine/{machine_id}"
+    rpc GetMachine(GetMachineRequest) returns(GetMachineResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/machine/{machine_id}"
         };
     }
 
-    rpc SetTags(SetTagsRequest) returns (SetTagsResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/machine/{machine_id}/tags"
-            body: "*"
+    rpc SetTags(SetTagsRequest) returns(SetTagsResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/machine/{machine_id}/tags"
+            body : "*"
         };
     }
 
-    rpc RegisterMachine(RegisterMachineRequest) returns (RegisterMachineResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/machine/register"
+    rpc RegisterMachine(RegisterMachineRequest) returns(RegisterMachineResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/machine/register"
         };
     }
 
-    rpc DeleteMachine(DeleteMachineRequest) returns (DeleteMachineResponse) {
-        option (google.api.http) = {
-            delete: "/api/v1/machine/{machine_id}"
+    rpc DeleteMachine(DeleteMachineRequest) returns(DeleteMachineResponse) {
+        option(google.api.http) = {
+            delete : "/api/v1/machine/{machine_id}"
         };
     }
 
-    rpc ExpireMachine(ExpireMachineRequest) returns (ExpireMachineResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/machine/{machine_id}/expire"
+    rpc ExpireMachine(ExpireMachineRequest) returns(ExpireMachineResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/machine/{machine_id}/expire"
         };
     }
 
-    rpc RenameMachine(RenameMachineRequest) returns (RenameMachineResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/machine/{machine_id}/rename/{new_name}"
+    rpc RenameMachine(RenameMachineRequest) returns(RenameMachineResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/machine/{machine_id}/rename/{new_name}"
         };
     }
 
-    rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse) {
-        option (google.api.http) = {
-            get: "/api/v1/machine"
+    rpc ListMachines(ListMachinesRequest) returns(ListMachinesResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/machine"
         };
     }
 
-    rpc MoveMachine(MoveMachineRequest) returns (MoveMachineResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/machine/{machine_id}/namespace"
+    rpc MoveMachine(MoveMachineRequest) returns(MoveMachineResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/machine/{machine_id}/user"
         };
     }
     // --- Machine end ---
 
     // --- Route start ---
-    rpc GetRoutes(GetRoutesRequest) returns (GetRoutesResponse) {
-        option (google.api.http) = {
-            get: "/api/v1/routes"
+    rpc GetRoutes(GetRoutesRequest) returns(GetRoutesResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/routes"
         };
     }
 
-    rpc EnableRoute(EnableRouteRequest) returns (EnableRouteResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/routes/{route_id}/enable"
+    rpc EnableRoute(EnableRouteRequest) returns(EnableRouteResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/routes/{route_id}/enable"
         };
     }
 
-    rpc DisableRoute(DisableRouteRequest) returns (DisableRouteResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/routes/{route_id}/disable"
+    rpc DisableRoute(DisableRouteRequest) returns(DisableRouteResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/routes/{route_id}/disable"
         };
     }
 
-
-    rpc GetMachineRoutes(GetMachineRoutesRequest) returns (GetMachineRoutesResponse) {
-        option (google.api.http) = {
-            get: "/api/v1/machine/{machine_id}/routes"
+    rpc GetMachineRoutes(GetMachineRoutesRequest) returns(GetMachineRoutesResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/machine/{machine_id}/routes"
         };
     }
 
     // --- Route end ---
 
     // --- ApiKeys start ---
-    rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/apikey"
-            body: "*"
+    rpc CreateApiKey(CreateApiKeyRequest) returns(CreateApiKeyResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/apikey"
+            body : "*"
         };
     }
 
-    rpc ExpireApiKey(ExpireApiKeyRequest) returns (ExpireApiKeyResponse) {
-        option (google.api.http) = {
-            post: "/api/v1/apikey/expire"
-            body: "*"
+    rpc ExpireApiKey(ExpireApiKeyRequest) returns(ExpireApiKeyResponse) {
+        option(google.api.http) = {
+            post : "/api/v1/apikey/expire"
+            body : "*"
         };
     }
 
-    rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse) {
-        option (google.api.http) = {
-            get: "/api/v1/apikey"
+    rpc ListApiKeys(ListApiKeysRequest) returns(ListApiKeysResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/apikey"
         };
     }
     // --- ApiKeys end ---
