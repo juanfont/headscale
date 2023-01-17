@@ -25,11 +25,14 @@ import (
 
 // Suppress "imported and not used" errors
 var _ codes.Code
-var _ io.Reader
-var _ status.Status
-var _ = runtime.String
-var _ = utilities.NewDoubleArray
-var _ = metadata.Join
+
+var (
+	_ io.Reader
+	_ status.Status
+	_ = runtime.String
+	_ = utilities.NewDoubleArray
+	_ = metadata.Join
+)
 
 func request_HeadscaleService_GetUser_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq GetUserRequest
@@ -54,7 +57,6 @@ func request_HeadscaleService_GetUser_0(ctx context.Context, marshaler runtime.M
 
 	msg, err := client.GetUser(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_GetUser_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -80,7 +82,6 @@ func local_request_HeadscaleService_GetUser_0(ctx context.Context, marshaler run
 
 	msg, err := server.GetUser(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_CreateUser_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -97,7 +98,6 @@ func request_HeadscaleService_CreateUser_0(ctx context.Context, marshaler runtim
 
 	msg, err := client.CreateUser(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_CreateUser_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -114,7 +114,6 @@ func local_request_HeadscaleService_CreateUser_0(ctx context.Context, marshaler 
 
 	msg, err := server.CreateUser(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_RenameUser_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -150,7 +149,6 @@ func request_HeadscaleService_RenameUser_0(ctx context.Context, marshaler runtim
 
 	msg, err := client.RenameUser(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_RenameUser_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -186,7 +184,6 @@ func local_request_HeadscaleService_RenameUser_0(ctx context.Context, marshaler 
 
 	msg, err := server.RenameUser(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_DeleteUser_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -212,7 +209,6 @@ func request_HeadscaleService_DeleteUser_0(ctx context.Context, marshaler runtim
 
 	msg, err := client.DeleteUser(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_DeleteUser_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -238,7 +234,6 @@ func local_request_HeadscaleService_DeleteUser_0(ctx context.Context, marshaler 
 
 	msg, err := server.DeleteUser(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_ListUsers_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -247,7 +242,6 @@ func request_HeadscaleService_ListUsers_0(ctx context.Context, marshaler runtime
 
 	msg, err := client.ListUsers(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_ListUsers_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -256,7 +250,6 @@ func local_request_HeadscaleService_ListUsers_0(ctx context.Context, marshaler r
 
 	msg, err := server.ListUsers(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_CreatePreAuthKey_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -273,7 +266,6 @@ func request_HeadscaleService_CreatePreAuthKey_0(ctx context.Context, marshaler 
 
 	msg, err := client.CreatePreAuthKey(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_CreatePreAuthKey_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -290,7 +282,6 @@ func local_request_HeadscaleService_CreatePreAuthKey_0(ctx context.Context, mars
 
 	msg, err := server.CreatePreAuthKey(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_ExpirePreAuthKey_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -307,7 +298,6 @@ func request_HeadscaleService_ExpirePreAuthKey_0(ctx context.Context, marshaler 
 
 	msg, err := client.ExpirePreAuthKey(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_ExpirePreAuthKey_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -324,12 +314,9 @@ func local_request_HeadscaleService_ExpirePreAuthKey_0(ctx context.Context, mars
 
 	msg, err := server.ExpirePreAuthKey(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
-var (
-	filter_HeadscaleService_ListPreAuthKeys_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
-)
+var filter_HeadscaleService_ListPreAuthKeys_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 
 func request_HeadscaleService_ListPreAuthKeys_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq ListPreAuthKeysRequest
@@ -344,7 +331,6 @@ func request_HeadscaleService_ListPreAuthKeys_0(ctx context.Context, marshaler r
 
 	msg, err := client.ListPreAuthKeys(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_ListPreAuthKeys_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -360,7 +346,6 @@ func local_request_HeadscaleService_ListPreAuthKeys_0(ctx context.Context, marsh
 
 	msg, err := server.ListPreAuthKeys(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_DebugCreateMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -377,7 +362,6 @@ func request_HeadscaleService_DebugCreateMachine_0(ctx context.Context, marshale
 
 	msg, err := client.DebugCreateMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_DebugCreateMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -394,7 +378,6 @@ func local_request_HeadscaleService_DebugCreateMachine_0(ctx context.Context, ma
 
 	msg, err := server.DebugCreateMachine(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_GetMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -420,7 +403,6 @@ func request_HeadscaleService_GetMachine_0(ctx context.Context, marshaler runtim
 
 	msg, err := client.GetMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_GetMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -446,7 +428,6 @@ func local_request_HeadscaleService_GetMachine_0(ctx context.Context, marshaler 
 
 	msg, err := server.GetMachine(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_SetTags_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -480,7 +461,6 @@ func request_HeadscaleService_SetTags_0(ctx context.Context, marshaler runtime.M
 
 	msg, err := client.SetTags(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_SetTags_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -514,12 +494,9 @@ func local_request_HeadscaleService_SetTags_0(ctx context.Context, marshaler run
 
 	msg, err := server.SetTags(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
-var (
-	filter_HeadscaleService_RegisterMachine_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
-)
+var filter_HeadscaleService_RegisterMachine_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 
 func request_HeadscaleService_RegisterMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq RegisterMachineRequest
@@ -534,7 +511,6 @@ func request_HeadscaleService_RegisterMachine_0(ctx context.Context, marshaler r
 
 	msg, err := client.RegisterMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_RegisterMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -550,7 +526,6 @@ func local_request_HeadscaleService_RegisterMachine_0(ctx context.Context, marsh
 
 	msg, err := server.RegisterMachine(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_DeleteMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -576,7 +551,6 @@ func request_HeadscaleService_DeleteMachine_0(ctx context.Context, marshaler run
 
 	msg, err := client.DeleteMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_DeleteMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -602,7 +576,6 @@ func local_request_HeadscaleService_DeleteMachine_0(ctx context.Context, marshal
 
 	msg, err := server.DeleteMachine(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_ExpireMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -628,7 +601,6 @@ func request_HeadscaleService_ExpireMachine_0(ctx context.Context, marshaler run
 
 	msg, err := client.ExpireMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_ExpireMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -654,7 +626,6 @@ func local_request_HeadscaleService_ExpireMachine_0(ctx context.Context, marshal
 
 	msg, err := server.ExpireMachine(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_RenameMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -690,7 +661,6 @@ func request_HeadscaleService_RenameMachine_0(ctx context.Context, marshaler run
 
 	msg, err := client.RenameMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_RenameMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -726,12 +696,9 @@ func local_request_HeadscaleService_RenameMachine_0(ctx context.Context, marshal
 
 	msg, err := server.RenameMachine(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
-var (
-	filter_HeadscaleService_ListMachines_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
-)
+var filter_HeadscaleService_ListMachines_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 
 func request_HeadscaleService_ListMachines_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq ListMachinesRequest
@@ -746,7 +713,6 @@ func request_HeadscaleService_ListMachines_0(ctx context.Context, marshaler runt
 
 	msg, err := client.ListMachines(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_ListMachines_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -762,12 +728,9 @@ func local_request_HeadscaleService_ListMachines_0(ctx context.Context, marshale
 
 	msg, err := server.ListMachines(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
-var (
-	filter_HeadscaleService_MoveMachine_0 = &utilities.DoubleArray{Encoding: map[string]int{"machine_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
-)
+var filter_HeadscaleService_MoveMachine_0 = &utilities.DoubleArray{Encoding: map[string]int{"machine_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 
 func request_HeadscaleService_MoveMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq MoveMachineRequest
@@ -799,7 +762,6 @@ func request_HeadscaleService_MoveMachine_0(ctx context.Context, marshaler runti
 
 	msg, err := client.MoveMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_MoveMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -832,7 +794,6 @@ func local_request_HeadscaleService_MoveMachine_0(ctx context.Context, marshaler
 
 	msg, err := server.MoveMachine(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_GetRoutes_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -841,7 +802,6 @@ func request_HeadscaleService_GetRoutes_0(ctx context.Context, marshaler runtime
 
 	msg, err := client.GetRoutes(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_GetRoutes_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -850,7 +810,6 @@ func local_request_HeadscaleService_GetRoutes_0(ctx context.Context, marshaler r
 
 	msg, err := server.GetRoutes(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_EnableRoute_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -876,7 +835,6 @@ func request_HeadscaleService_EnableRoute_0(ctx context.Context, marshaler runti
 
 	msg, err := client.EnableRoute(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_EnableRoute_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -902,7 +860,6 @@ func local_request_HeadscaleService_EnableRoute_0(ctx context.Context, marshaler
 
 	msg, err := server.EnableRoute(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_DisableRoute_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -928,7 +885,6 @@ func request_HeadscaleService_DisableRoute_0(ctx context.Context, marshaler runt
 
 	msg, err := client.DisableRoute(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_DisableRoute_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -954,7 +910,6 @@ func local_request_HeadscaleService_DisableRoute_0(ctx context.Context, marshale
 
 	msg, err := server.DisableRoute(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_GetMachineRoutes_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -980,7 +935,6 @@ func request_HeadscaleService_GetMachineRoutes_0(ctx context.Context, marshaler 
 
 	msg, err := client.GetMachineRoutes(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_GetMachineRoutes_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -1006,7 +960,6 @@ func local_request_HeadscaleService_GetMachineRoutes_0(ctx context.Context, mars
 
 	msg, err := server.GetMachineRoutes(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_CreateApiKey_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -1023,7 +976,6 @@ func request_HeadscaleService_CreateApiKey_0(ctx context.Context, marshaler runt
 
 	msg, err := client.CreateApiKey(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_CreateApiKey_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -1040,7 +992,6 @@ func local_request_HeadscaleService_CreateApiKey_0(ctx context.Context, marshale
 
 	msg, err := server.CreateApiKey(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_ExpireApiKey_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -1057,7 +1008,6 @@ func request_HeadscaleService_ExpireApiKey_0(ctx context.Context, marshaler runt
 
 	msg, err := client.ExpireApiKey(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_ExpireApiKey_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -1074,7 +1024,6 @@ func local_request_HeadscaleService_ExpireApiKey_0(ctx context.Context, marshale
 
 	msg, err := server.ExpireApiKey(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_HeadscaleService_ListApiKeys_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -1083,7 +1032,6 @@ func request_HeadscaleService_ListApiKeys_0(ctx context.Context, marshaler runti
 
 	msg, err := client.ListApiKeys(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_HeadscaleService_ListApiKeys_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -1092,7 +1040,6 @@ func local_request_HeadscaleService_ListApiKeys_0(ctx context.Context, marshaler
 
 	msg, err := server.ListApiKeys(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 // RegisterHeadscaleServiceHandlerServer registers the http handlers for service HeadscaleService to "mux".
@@ -1100,7 +1047,6 @@ func local_request_HeadscaleService_ListApiKeys_0(ctx context.Context, marshaler
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
 // Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterHeadscaleServiceHandlerFromEndpoint instead.
 func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server HeadscaleServiceServer) error {
-
 	mux.Handle("GET", pattern_HeadscaleService_GetUser_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1123,7 +1069,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_GetUser_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_CreateUser_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1148,7 +1093,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_CreateUser_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_RenameUser_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1173,7 +1117,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_RenameUser_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("DELETE", pattern_HeadscaleService_DeleteUser_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1198,7 +1141,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_DeleteUser_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_ListUsers_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1223,7 +1165,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ListUsers_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_CreatePreAuthKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1248,7 +1189,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_CreatePreAuthKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_ExpirePreAuthKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1273,7 +1213,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ExpirePreAuthKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_ListPreAuthKeys_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1298,7 +1237,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ListPreAuthKeys_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_DebugCreateMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1323,7 +1261,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_DebugCreateMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_GetMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1348,7 +1285,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_GetMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_SetTags_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1373,7 +1309,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_SetTags_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_RegisterMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1398,7 +1333,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_RegisterMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("DELETE", pattern_HeadscaleService_DeleteMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1423,7 +1357,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_DeleteMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_ExpireMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1448,7 +1381,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ExpireMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_RenameMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1473,7 +1405,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_RenameMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_ListMachines_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1498,7 +1429,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ListMachines_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_MoveMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1523,7 +1453,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_MoveMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_GetRoutes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1548,7 +1477,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_GetRoutes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_EnableRoute_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1573,7 +1501,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_EnableRoute_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_DisableRoute_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1598,7 +1525,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_DisableRoute_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_GetMachineRoutes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1623,7 +1549,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_GetMachineRoutes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_CreateApiKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1648,7 +1573,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_CreateApiKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_ExpireApiKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1673,7 +1597,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ExpireApiKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_ListApiKeys_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1698,7 +1621,6 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ListApiKeys_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	return nil
@@ -1741,7 +1663,6 @@ func RegisterHeadscaleServiceHandler(ctx context.Context, mux *runtime.ServeMux,
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
 // "HeadscaleServiceClient" to call the correct interceptors.
 func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client HeadscaleServiceClient) error {
-
 	mux.Handle("GET", pattern_HeadscaleService_GetUser_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1761,7 +1682,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_GetUser_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_CreateUser_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1783,7 +1703,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_CreateUser_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_RenameUser_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1805,7 +1724,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_RenameUser_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("DELETE", pattern_HeadscaleService_DeleteUser_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1827,7 +1745,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_DeleteUser_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_ListUsers_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1849,7 +1766,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ListUsers_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_CreatePreAuthKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1871,7 +1787,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_CreatePreAuthKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_ExpirePreAuthKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1893,7 +1808,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ExpirePreAuthKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_ListPreAuthKeys_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1915,7 +1829,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ListPreAuthKeys_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_DebugCreateMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1937,7 +1850,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_DebugCreateMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_GetMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1959,7 +1871,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_GetMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_SetTags_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1981,7 +1892,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_SetTags_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_RegisterMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2003,7 +1913,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_RegisterMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("DELETE", pattern_HeadscaleService_DeleteMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2025,7 +1934,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_DeleteMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_ExpireMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2047,7 +1955,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ExpireMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_RenameMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2069,7 +1976,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_RenameMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_ListMachines_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2091,7 +1997,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ListMachines_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_MoveMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2113,7 +2018,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_MoveMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_GetRoutes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2135,7 +2039,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_GetRoutes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_EnableRoute_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2157,7 +2060,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_EnableRoute_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_DisableRoute_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2179,7 +2081,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_DisableRoute_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_GetMachineRoutes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2201,7 +2102,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_GetMachineRoutes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_CreateApiKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2223,7 +2123,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_CreateApiKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("POST", pattern_HeadscaleService_ExpireApiKey_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2245,7 +2144,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ExpireApiKey_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	mux.Handle("GET", pattern_HeadscaleService_ListApiKeys_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -2267,7 +2165,6 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 
 		forward_HeadscaleService_ListApiKeys_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
 	return nil

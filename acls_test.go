@@ -98,7 +98,7 @@ func (s *Suite) TestSshRules(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -208,7 +208,7 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -258,7 +258,7 @@ func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -308,7 +308,7 @@ func (s *Suite) TestInvalidTagValidUser(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -357,7 +357,7 @@ func (s *Suite) TestValidTagInvalidUser(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "webserver",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -376,7 +376,7 @@ func (s *Suite) TestValidTagInvalidUser(c *check.C) {
 		DiscoKey:       "faab",
 		Hostname:       "user",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo2),
@@ -483,7 +483,7 @@ func (s *Suite) TestPortUser(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		IPAddresses:    ips,
 		AuthKeyID:      uint(pak.ID),
@@ -528,7 +528,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		IPAddresses:    ips,
 		AuthKeyID:      uint(pak.ID),
@@ -845,8 +845,8 @@ func Test_expandPorts(t *testing.T) {
 
 func Test_listMachinesInUser(t *testing.T) {
 	type args struct {
-		machines  []Machine
-		user string
+		machines []Machine
+		user     string
 	}
 	tests := []struct {
 		name string
@@ -1160,14 +1160,14 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User:  User{Name: "joe"},
+						User:       User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User:  User{Name: "joe"},
+						User:       User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
@@ -1198,7 +1198,7 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User:  User{Name: "joe"},
+						User:       User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
@@ -1308,7 +1308,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 	type args struct {
 		aclPolicy        ACLPolicy
 		nodes            []Machine
-		user        string
+		user             string
 		stripEmailDomain bool
 	}
 	tests := []struct {
@@ -1353,13 +1353,13 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						User: User{Name: "joe"},
 					},
 				},
-				user:        "joe",
+				user:             "joe",
 				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					User:   User{Name: "joe"},
+					User:        User{Name: "joe"},
 				},
 			},
 		},
@@ -1404,13 +1404,13 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						User: User{Name: "joe"},
 					},
 				},
-				user:        "joe",
+				user:             "joe",
 				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					User:   User{Name: "joe"},
+					User:        User{Name: "joe"},
 				},
 			},
 		},
@@ -1436,7 +1436,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User:  User{Name: "joe"},
+						User:       User{Name: "joe"},
 						ForcedTags: []string{"tag:accountant-webserver"},
 					},
 					{
@@ -1446,13 +1446,13 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						User: User{Name: "joe"},
 					},
 				},
-				user:        "joe",
+				user:             "joe",
 				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					User:   User{Name: "joe"},
+					User:        User{Name: "joe"},
 				},
 			},
 		},
@@ -1492,7 +1492,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						User: User{Name: "joe"},
 					},
 				},
-				user:        "joe",
+				user:             "joe",
 				stripEmailDomain: true,
 			},
 			want: []Machine{

@@ -7,11 +7,12 @@
 package v1
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -554,20 +555,22 @@ func file_headscale_v1_routes_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_routes_proto_rawDescData
 }
 
-var file_headscale_v1_routes_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
-var file_headscale_v1_routes_proto_goTypes = []interface{}{
-	(*Route)(nil),                    // 0: headscale.v1.Route
-	(*GetRoutesRequest)(nil),         // 1: headscale.v1.GetRoutesRequest
-	(*GetRoutesResponse)(nil),        // 2: headscale.v1.GetRoutesResponse
-	(*EnableRouteRequest)(nil),       // 3: headscale.v1.EnableRouteRequest
-	(*EnableRouteResponse)(nil),      // 4: headscale.v1.EnableRouteResponse
-	(*DisableRouteRequest)(nil),      // 5: headscale.v1.DisableRouteRequest
-	(*DisableRouteResponse)(nil),     // 6: headscale.v1.DisableRouteResponse
-	(*GetMachineRoutesRequest)(nil),  // 7: headscale.v1.GetMachineRoutesRequest
-	(*GetMachineRoutesResponse)(nil), // 8: headscale.v1.GetMachineRoutesResponse
-	(*Machine)(nil),                  // 9: headscale.v1.Machine
-	(*timestamppb.Timestamp)(nil),    // 10: google.protobuf.Timestamp
-}
+var (
+	file_headscale_v1_routes_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+	file_headscale_v1_routes_proto_goTypes  = []interface{}{
+		(*Route)(nil),                    // 0: headscale.v1.Route
+		(*GetRoutesRequest)(nil),         // 1: headscale.v1.GetRoutesRequest
+		(*GetRoutesResponse)(nil),        // 2: headscale.v1.GetRoutesResponse
+		(*EnableRouteRequest)(nil),       // 3: headscale.v1.EnableRouteRequest
+		(*EnableRouteResponse)(nil),      // 4: headscale.v1.EnableRouteResponse
+		(*DisableRouteRequest)(nil),      // 5: headscale.v1.DisableRouteRequest
+		(*DisableRouteResponse)(nil),     // 6: headscale.v1.DisableRouteResponse
+		(*GetMachineRoutesRequest)(nil),  // 7: headscale.v1.GetMachineRoutesRequest
+		(*GetMachineRoutesResponse)(nil), // 8: headscale.v1.GetMachineRoutesResponse
+		(*Machine)(nil),                  // 9: headscale.v1.Machine
+		(*timestamppb.Timestamp)(nil),    // 10: google.protobuf.Timestamp
+	}
+)
 var file_headscale_v1_routes_proto_depIdxs = []int32{
 	9,  // 0: headscale.v1.Route.machine:type_name -> headscale.v1.Machine
 	10, // 1: headscale.v1.Route.created_at:type_name -> google.protobuf.Timestamp

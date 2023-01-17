@@ -110,10 +110,10 @@ var createNodeCmd = &cobra.Command{
 		}
 
 		request := &v1.DebugCreateMachineRequest{
-			Key:       machineKey,
-			Name:      name,
-			User: user,
-			Routes:    routes,
+			Key:    machineKey,
+			Name:   name,
+			User:   user,
+			Routes: routes,
 		}
 
 		response, err := client.DebugCreateMachine(ctx, request)

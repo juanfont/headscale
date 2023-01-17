@@ -27,7 +27,7 @@ const (
 	)
 	ErrCouldNotConvertMachineInterface = Error("failed to convert machine interface")
 	ErrHostnameTooLong                 = Error("Hostname too long")
-	ErrDifferentRegisteredUser    = Error(
+	ErrDifferentRegisteredUser         = Error(
 		"machine was previously registered with a different user",
 	)
 	MachineGivenNameHashLength = 8
@@ -56,9 +56,9 @@ type Machine struct {
 	//
 	// GivenName is the name used in all DNS related
 	// parts of headscale.
-	GivenName   string `gorm:"type:varchar(63);unique_index"`
-	UserID uint
-	User   User `gorm:"foreignKey:UserID"`
+	GivenName string `gorm:"type:varchar(63);unique_index"`
+	UserID    uint
+	User      User `gorm:"foreignKey:UserID"`
 
 	RegisterMethod string
 
@@ -782,7 +782,7 @@ func (machine *Machine) toProto() *v1.Machine {
 		IpAddresses: machine.IPAddresses.ToStringSlice(),
 		Name:        machine.Hostname,
 		GivenName:   machine.GivenName,
-		User:   machine.User.toProto(),
+		User:        machine.User.toProto(),
 		ForcedTags:  machine.ForcedTags,
 		Online:      machine.isOnline(),
 

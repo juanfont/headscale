@@ -30,7 +30,7 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -56,7 +56,7 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -85,7 +85,7 @@ func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -116,7 +116,7 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -135,7 +135,7 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
@@ -157,7 +157,7 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine3",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
@@ -187,7 +187,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 			NodeKey:        "bar" + strconv.Itoa(index),
 			DiscoKey:       "faa" + strconv.Itoa(index),
 			Hostname:       "testmachine" + strconv.Itoa(index),
-			UserID:    user.ID,
+			UserID:         user.ID,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 		}
@@ -209,7 +209,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	type base struct {
 		user *User
-		key       *PreAuthKey
+		key  *PreAuthKey
 	}
 
 	stor := make([]base, 0)
@@ -235,7 +235,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 				netip.MustParseAddr(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1))),
 			},
 			Hostname:       "testmachine" + strconv.Itoa(index),
-			UserID:    stor[index%2].user.ID,
+			UserID:         stor[index%2].user.ID,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(stor[index%2].key.ID),
 		}
@@ -309,7 +309,7 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		Expiry:         &time.Time{},
@@ -366,7 +366,7 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 		DiscoKey:       "disco-key-1",
 		Hostname:       "hostname-1",
 		GivenName:      "hostname-1",
-		UserID:    user1.ID,
+		UserID:         user1.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -409,7 +409,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -635,19 +635,19 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          1,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-					User:   User{Name: "joe"},
+					User:        User{Name: "joe"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					User:   User{Name: "marc"},
+					User:        User{Name: "marc"},
 				},
 				{
 					ID:          3,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
-					User:   User{Name: "mickael"},
+					User:        User{Name: "mickael"},
 				},
 			},
 		},
@@ -688,14 +688,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          1,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-					User:   User{Name: "joe"},
+					User:        User{Name: "joe"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					User:   User{Name: "marc"},
+					User:        User{Name: "marc"},
 				},
 			},
 		},
@@ -736,14 +736,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					User:   User{Name: "marc"},
+					User:        User{Name: "marc"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          3,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
-					User:   User{Name: "mickael"},
+					User:        User{Name: "mickael"},
 				},
 			},
 		},
@@ -895,7 +895,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					User:   User{Name: "marc"},
+					User:        User{Name: "marc"},
 				},
 			},
 			want: Machines{
@@ -909,7 +909,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				{
 					ID:          3,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
-					User:   User{Name: "mickael"},
+					User:        User{Name: "mickael"},
 				},
 			},
 		},
@@ -944,7 +944,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					User:   User{Name: "marc"},
+					User:        User{Name: "marc"},
 				},
 			},
 			want: Machines{},
@@ -1144,7 +1144,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "test",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo: HostInfo{

@@ -1,4 +1,4 @@
-//nolint
+// nolint
 package headscale
 
 import (
@@ -26,7 +26,7 @@ import (
 
 const (
 	headscaleDerpHostname = "headscale-derp"
-	userName         = "derpuser"
+	userName              = "derpuser"
 	totalContainers       = 3
 )
 

@@ -79,7 +79,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testest",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -103,7 +103,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testest",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -140,7 +140,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testest",
-		UserID:    user.ID,
+		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		LastSeen:       &now,
 		AuthKeyID:      uint(pak.ID),
