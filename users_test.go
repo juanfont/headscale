@@ -363,7 +363,7 @@ func TestCheckForFQDNRules(t *testing.T) {
 		{
 			name: "invalid: too long name for user",
 			args: args{
-				name: "super-long-user-name-that-should-be-a-little-more-than-63-chars",
+				name: "super-long-useruseruser-name-that-should-be-a-little-more-than-63-chars",
 			},
 			wantErr: true,
 		},

@@ -10,7 +10,7 @@
         {
             "action": "accept",
             "src": [
-                "testnamespace",
+                "testuser",
             ],
             "dst": [
                 "host-1:*",
