@@ -116,10 +116,10 @@ Verify `headscale` is available:
 curl http://127.0.0.1:9090/metrics
 ```
 
-6. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+6. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
 ```shell
-headscale namespaces create myfirstnamespace
+headscale users create myfirstuser
 ```
 
 ### Register a machine (normal login)
@@ -133,7 +133,7 @@ tailscale up --login-server YOUR_HEADSCALE_URL
 Register the machine:
 
 ```shell
-headscale --namespace myfirstnamespace nodes register --key <YOU_+MACHINE_KEY>
+headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -141,7 +141,7 @@ headscale --namespace myfirstnamespace nodes register --key <YOU_+MACHINE_KEY>
 Generate a key using the command line:
 
 ```shell
-headscale --namespace myfirstnamespace preauthkeys create --reusable --expiration 24h
+headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:

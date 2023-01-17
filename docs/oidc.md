@@ -44,9 +44,9 @@ oidc:
     - alice@example.com
 
   # If `strip_email_domain` is set to `true`, the domain part of the username email address will be removed.
-  # This will transform `first-name.last-name@example.com` to the namespace `first-name.last-name`
+  # This will transform `first-name.last-name@example.com` to the user `first-name.last-name`
   # If `strip_email_domain` is set to `false` the domain part will NOT be removed resulting to the following
-  # namespace: `first-name.last-name.example.com`
+  # user: `first-name.last-name.example.com`
   strip_email_domain: true
 ```
 

@@ -39,12 +39,12 @@ written by community members. It is _not_ verified by `headscale` developers.
 Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-hosted environment.
 
 For instance, instead of referring to users when defining groups you must
-use namespaces (which are the equivalent to user/logins in Tailscale.com).
+use users (which are the equivalent to user/logins in Tailscale.com).
 
 Please check https://tailscale.com/kb/1018/acls/, and `./tests/acls/` in this repo for working examples.
 
-When using ACL's the Namespace borders are no longer applied. All machines
-whichever the Namespace have the ability to communicate with other hosts as
+When using ACL's the User borders are no longer applied. All machines
+whichever the User have the ability to communicate with other hosts as
 long as the ACL's permits this exchange.
 
 The [ACLs](acls.md) document should help understand a fictional case of setting

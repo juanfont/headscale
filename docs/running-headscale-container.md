@@ -101,11 +101,11 @@ Verify `headscale` is available:
 curl http://127.0.0.1:9090/metrics
 ```
 
-6. Create a namespace ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+6. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
 ```shell
 docker exec headscale \
-  headscale namespaces create myfirstnamespace
+  headscale users create myfirstuser
 ```
 
 ### Register a machine (normal login)
@@ -120,7 +120,7 @@ To register a machine when running `headscale` in a container, take the headscal
 
 ```shell
 docker exec headscale \
-  headscale --namespace myfirstnamespace nodes register --key <YOU_+MACHINE_KEY>
+  headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -129,7 +129,7 @@ Generate a key using the command line:
 
 ```shell
 docker exec headscale \
-  headscale --namespace myfirstnamespace preauthkeys create --reusable --expiration 24h
+  headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
