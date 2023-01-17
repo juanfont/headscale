@@ -13,26 +13,26 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(namespaceCmd)
-	namespaceCmd.AddCommand(createNamespaceCmd)
-	namespaceCmd.AddCommand(listNamespacesCmd)
-	namespaceCmd.AddCommand(destroyNamespaceCmd)
-	namespaceCmd.AddCommand(renameNamespaceCmd)
+	rootCmd.AddCommand(userCmd)
+	userCmd.AddCommand(createUserCmd)
+	userCmd.AddCommand(listUsersCmd)
+	userCmd.AddCommand(destroyUserCmd)
+	userCmd.AddCommand(renameUserCmd)
 }
 
 const (
 	errMissingParameter = headscale.Error("missing parameters")
 )
 
-var namespaceCmd = &cobra.Command{
-	Use:     "namespaces",
-	Short:   "Manage the namespaces of Headscale",
-	Aliases: []string{"namespace", "ns", "user", "users"},
+var userCmd = &cobra.Command{
+	Use:     "users",
+	Short:   "Manage the users of Headscale",
+	Aliases: []string{"user", "ns", "user", "users"},
 }
 
-var createNamespaceCmd = &cobra.Command{
+var createUserCmd = &cobra.Command{
 	Use:     "create NAME",
-	Short:   "Creates a new namespace",
+	Short:   "Creates a new user",
 	Aliases: []string{"c", "new"},
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
@@ -44,7 +44,7 @@ var createNamespaceCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		namespaceName := args[0]
+		userName := args[0]
 
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
@@ -52,15 +52,15 @@ var createNamespaceCmd = &cobra.Command{
 
 		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
 
-		request := &v1.CreateNamespaceRequest{Name: namespaceName}
+		request := &v1.CreateUserRequest{Name: userName}
 
-		log.Trace().Interface("request", request).Msg("Sending CreateNamespace request")
-		response, err := client.CreateNamespace(ctx, request)
+		log.Trace().Interface("request", request).Msg("Sending CreateUser request")
+		response, err := client.CreateUser(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
 				fmt.Sprintf(
-					"Cannot create namespace: %s",
+					"Cannot create user: %s",
 					status.Convert(err).Message(),
 				),
 				output,
@@ -69,13 +69,13 @@ var createNamespaceCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Namespace, "Namespace created", output)
+		SuccessOutput(response.User, "User created", output)
 	},
 }
 
-var destroyNamespaceCmd = &cobra.Command{
+var destroyUserCmd = &cobra.Command{
 	Use:     "destroy NAME",
-	Short:   "Destroys a namespace",
+	Short:   "Destroys a user",
 	Aliases: []string{"delete"},
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
@@ -87,17 +87,17 @@ var destroyNamespaceCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		namespaceName := args[0]
+		userName := args[0]
 
-		request := &v1.GetNamespaceRequest{
-			Name: namespaceName,
+		request := &v1.GetUserRequest{
+			Name: userName,
 		}
 
 		ctx, client, conn, cancel := getHeadscaleCLIClient()
 		defer cancel()
 		defer conn.Close()
 
-		_, err := client.GetNamespace(ctx, request)
+		_, err := client.GetUser(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -113,8 +113,8 @@ var destroyNamespaceCmd = &cobra.Command{
 		if !force {
 			prompt := &survey.Confirm{
 				Message: fmt.Sprintf(
-					"Do you want to remove the namespace '%s' and any associated preauthkeys?",
-					namespaceName,
+					"Do you want to remove the user '%s' and any associated preauthkeys?",
+					userName,
 				),
 			}
 			err := survey.AskOne(prompt, &confirm)
@@ -124,14 +124,14 @@ var destroyNamespaceCmd = &cobra.Command{
 		}
 
 		if confirm || force {
-			request := &v1.DeleteNamespaceRequest{Name: namespaceName}
+			request := &v1.DeleteUserRequest{Name: userName}
 
-			response, err := client.DeleteNamespace(ctx, request)
+			response, err := client.DeleteUser(ctx, request)
 			if err != nil {
 				ErrorOutput(
 					err,
 					fmt.Sprintf(
-						"Cannot destroy namespace: %s",
+						"Cannot destroy user: %s",
 						status.Convert(err).Message(),
 					),
 					output,
@@ -139,16 +139,16 @@ var destroyNamespaceCmd = &cobra.Command{
 
 				return
 			}
-			SuccessOutput(response, "Namespace destroyed", output)
+			SuccessOutput(response, "User destroyed", output)
 		} else {
-			SuccessOutput(map[string]string{"Result": "Namespace not destroyed"}, "Namespace not destroyed", output)
+			SuccessOutput(map[string]string{"Result": "User not destroyed"}, "User not destroyed", output)
 		}
 	},
 }
 
-var listNamespacesCmd = &cobra.Command{
+var listUsersCmd = &cobra.Command{
 	Use:     "list",
-	Short:   "List all the namespaces",
+	Short:   "List all the users",
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
@@ -157,13 +157,13 @@ var listNamespacesCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.ListNamespacesRequest{}
+		request := &v1.ListUsersRequest{}
 
-		response, err := client.ListNamespaces(ctx, request)
+		response, err := client.ListUsers(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Cannot get namespaces: %s", status.Convert(err).Message()),
+				fmt.Sprintf("Cannot get users: %s", status.Convert(err).Message()),
 				output,
 			)
 
@@ -171,19 +171,19 @@ var listNamespacesCmd = &cobra.Command{
 		}
 
 		if output != "" {
-			SuccessOutput(response.Namespaces, "", output)
+			SuccessOutput(response.Users, "", output)
 
 			return
 		}
 
 		tableData := pterm.TableData{{"ID", "Name", "Created"}}
-		for _, namespace := range response.GetNamespaces() {
+		for _, user := range response.GetUsers() {
 			tableData = append(
 				tableData,
 				[]string{
-					namespace.GetId(),
-					namespace.GetName(),
-					namespace.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+					user.GetId(),
+					user.GetName(),
+					user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
 				},
 			)
 		}
@@ -200,9 +200,9 @@ var listNamespacesCmd = &cobra.Command{
 	},
 }
 
-var renameNamespaceCmd = &cobra.Command{
+var renameUserCmd = &cobra.Command{
 	Use:     "rename OLD_NAME NEW_NAME",
-	Short:   "Renames a namespace",
+	Short:   "Renames a user",
 	Aliases: []string{"mv"},
 	Args: func(cmd *cobra.Command, args []string) error {
 		expectedArguments := 2
@@ -219,17 +219,17 @@ var renameNamespaceCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.RenameNamespaceRequest{
+		request := &v1.RenameUserRequest{
 			OldName: args[0],
 			NewName: args[1],
 		}
 
-		response, err := client.RenameNamespace(ctx, request)
+		response, err := client.RenameUser(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
 				fmt.Sprintf(
-					"Cannot rename namespace: %s",
+					"Cannot rename user: %s",
 					status.Convert(err).Message(),
 				),
 				output,
@@ -238,6 +238,6 @@ var renameNamespaceCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Namespace, "Namespace renamed", output)
+		SuccessOutput(response.User, "User renamed", output)
 	},
 }

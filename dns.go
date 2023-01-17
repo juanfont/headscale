@@ -190,23 +190,23 @@ func getMapResponseDNSConfig(
 ) *tailcfg.DNSConfig {
 	var dnsConfig *tailcfg.DNSConfig = dnsConfigOrig.Clone()
 	if dnsConfigOrig != nil && dnsConfigOrig.Proxied { // if MagicDNS is enabled
-		// Only inject the Search Domain of the current namespace - shared nodes should use their full FQDN
+		// Only inject the Search Domain of the current user - shared nodes should use their full FQDN
 		dnsConfig.Domains = append(
 			dnsConfig.Domains,
 			fmt.Sprintf(
 				"%s.%s",
-				machine.Namespace.Name,
+				machine.User.Name,
 				baseDomain,
 			),
 		)
 
-		namespaceSet := mapset.NewSet[Namespace]()
-		namespaceSet.Add(machine.Namespace)
+		userSet := mapset.NewSet[User]()
+		userSet.Add(machine.User)
 		for _, p := range peers {
-			namespaceSet.Add(p.Namespace)
+			userSet.Add(p.User)
 		}
-		for _, namespace := range namespaceSet.ToSlice() {
-			dnsRoute := fmt.Sprintf("%v.%v", namespace.Name, baseDomain)
+		for _, user := range userSet.ToSlice() {
+			dnsRoute := fmt.Sprintf("%v.%v", user.Name, baseDomain)
 			dnsConfig.Routes[dnsRoute] = nil
 		}
 	} else {

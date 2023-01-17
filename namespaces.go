@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	ErrNamespaceExists          = Error("Namespace already exists")
-	ErrNamespaceNotFound        = Error("Namespace not found")
-	ErrNamespaceNotEmptyOfNodes = Error("Namespace not empty: node(s) found")
-	ErrInvalidNamespaceName     = Error("Invalid namespace name")
+	ErrUserExists        = Error("User already exists")
+	ErrUserNotFound      = Error("User not found")
+	ErrUserStillHasNodes = Error("User not empty: node(s) found")
+	ErrInvalidUserName   = Error("Invalid user name")
 )
 
 const (
@@ -27,55 +27,55 @@ const (
 	labelHostnameLength = 63
 )
 
-var invalidCharsInNamespaceRegex = regexp.MustCompile("[^a-z0-9-.]+")
+var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
-// Namespace is the way Headscale implements the concept of users in Tailscale
+// User is the way Headscale implements the concept of users in Tailscale
 //
-// At the end of the day, users in Tailscale are some kind of 'bubbles' or namespaces
+// At the end of the day, users in Tailscale are some kind of 'bubbles' or users
 // that contain our machines.
-type Namespace struct {
+type User struct {
 	gorm.Model
 	Name string `gorm:"unique"`
 }
 
-// CreateNamespace creates a new Namespace. Returns error if could not be created
-// or another namespace already exists.
-func (h *Headscale) CreateNamespace(name string) (*Namespace, error) {
+// CreateUser creates a new User. Returns error if could not be created
+// or another user already exists.
+func (h *Headscale) CreateUser(name string) (*User, error) {
 	err := CheckForFQDNRules(name)
 	if err != nil {
 		return nil, err
 	}
-	namespace := Namespace{}
-	if err := h.db.Where("name = ?", name).First(&namespace).Error; err == nil {
-		return nil, ErrNamespaceExists
+	user := User{}
+	if err := h.db.Where("name = ?", name).First(&user).Error; err == nil {
+		return nil, ErrUserExists
 	}
-	namespace.Name = name
-	if err := h.db.Create(&namespace).Error; err != nil {
+	user.Name = name
+	if err := h.db.Create(&user).Error; err != nil {
 		log.Error().
-			Str("func", "CreateNamespace").
+			Str("func", "CreateUser").
 			Err(err).
 			Msg("Could not create row")
 
 		return nil, err
 	}
 
-	return &namespace, nil
+	return &user, nil
 }
 
-// DestroyNamespace destroys a Namespace. Returns error if the Namespace does
+// DestroyUser destroys a User. Returns error if the User does
 // not exist or if there are machines associated with it.
-func (h *Headscale) DestroyNamespace(name string) error {
-	namespace, err := h.GetNamespace(name)
+func (h *Headscale) DestroyUser(name string) error {
+	user, err := h.GetUser(name)
 	if err != nil {
-		return ErrNamespaceNotFound
+		return ErrUserNotFound
 	}
 
-	machines, err := h.ListMachinesInNamespace(name)
+	machines, err := h.ListMachinesByUser(name)
 	if err != nil {
 		return err
 	}
 	if len(machines) > 0 {
-		return ErrNamespaceNotEmptyOfNodes
+		return ErrUserStillHasNodes
 	}
 
 	keys, err := h.ListPreAuthKeys(name)
@@ -89,18 +89,18 @@ func (h *Headscale) DestroyNamespace(name string) error {
 		}
 	}
 
-	if result := h.db.Unscoped().Delete(&namespace); result.Error != nil {
+	if result := h.db.Unscoped().Delete(&user); result.Error != nil {
 		return result.Error
 	}
 
 	return nil
 }
 
-// RenameNamespace renames a Namespace. Returns error if the Namespace does
-// not exist or if another Namespace exists with the new name.
-func (h *Headscale) RenameNamespace(oldName, newName string) error {
+// RenameUser renames a User. Returns error if the User does
+// not exist or if another User exists with the new name.
+func (h *Headscale) RenameUser(oldName, newName string) error {
 	var err error
-	oldNamespace, err := h.GetNamespace(oldName)
+	oldUser, err := h.GetUser(oldName)
 	if err != nil {
 		return err
 	}
@@ -108,76 +108,76 @@ func (h *Headscale) RenameNamespace(oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	_, err = h.GetNamespace(newName)
+	_, err = h.GetUser(newName)
 	if err == nil {
-		return ErrNamespaceExists
+		return ErrUserExists
 	}
-	if !errors.Is(err, ErrNamespaceNotFound) {
+	if !errors.Is(err, ErrUserNotFound) {
 		return err
 	}
 
-	oldNamespace.Name = newName
+	oldUser.Name = newName
 
-	if result := h.db.Save(&oldNamespace); result.Error != nil {
+	if result := h.db.Save(&oldUser); result.Error != nil {
 		return result.Error
 	}
 
 	return nil
 }
 
-// GetNamespace fetches a namespace by name.
-func (h *Headscale) GetNamespace(name string) (*Namespace, error) {
-	namespace := Namespace{}
-	if result := h.db.First(&namespace, "name = ?", name); errors.Is(
+// GetUser fetches a user by name.
+func (h *Headscale) GetUser(name string) (*User, error) {
+	user := User{}
+	if result := h.db.First(&user, "name = ?", name); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
-		return nil, ErrNamespaceNotFound
+		return nil, ErrUserNotFound
 	}
 
-	return &namespace, nil
+	return &user, nil
 }
 
-// ListNamespaces gets all the existing namespaces.
-func (h *Headscale) ListNamespaces() ([]Namespace, error) {
-	namespaces := []Namespace{}
-	if err := h.db.Find(&namespaces).Error; err != nil {
+// ListUsers gets all the existing users.
+func (h *Headscale) ListUsers() ([]User, error) {
+	users := []User{}
+	if err := h.db.Find(&users).Error; err != nil {
 		return nil, err
 	}
 
-	return namespaces, nil
+	return users, nil
 }
 
-// ListMachinesInNamespace gets all the nodes in a given namespace.
-func (h *Headscale) ListMachinesInNamespace(name string) ([]Machine, error) {
+// ListMachinesByUser gets all the nodes in a given user.
+func (h *Headscale) ListMachinesByUser(name string) ([]Machine, error) {
 	err := CheckForFQDNRules(name)
 	if err != nil {
 		return nil, err
 	}
-	namespace, err := h.GetNamespace(name)
+	user, err := h.GetUser(name)
 	if err != nil {
 		return nil, err
 	}
 
 	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.Namespace").Preload("Namespace").Where(&Machine{NamespaceID: namespace.ID}).Find(&machines).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&Machine{UserID: user.ID}).Find(&machines).Error; err != nil {
 		return nil, err
 	}
 
 	return machines, nil
 }
 
-// SetMachineNamespace assigns a Machine to a namespace.
-func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) error {
-	err := CheckForFQDNRules(namespaceName)
+// SetMachineUser assigns a Machine to a user.
+func (h *Headscale) SetMachineUser(machine *Machine, username string) error {
+	err := CheckForFQDNRules(username)
 	if err != nil {
 		return err
 	}
-	namespace, err := h.GetNamespace(namespaceName)
+	user, err := h.GetUser(username)
 	if err != nil {
 		return err
 	}
-	machine.Namespace = *namespace
+	machine.User = *user
 	if result := h.db.Save(&machine); result.Error != nil {
 		return result.Error
 	}
@@ -185,7 +185,7 @@ func (h *Headscale) SetMachineNamespace(machine *Machine, namespaceName string) 
 	return nil
 }
 
-func (n *Namespace) toUser() *tailcfg.User {
+func (n *User) toTailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
 		ID:            tailcfg.UserID(n.ID),
 		LoginName:     n.Name,
@@ -199,7 +199,7 @@ func (n *Namespace) toUser() *tailcfg.User {
 	return &user
 }
 
-func (n *Namespace) toLogin() *tailcfg.Login {
+func (n *User) toTailscaleLogin() *tailcfg.Login {
 	login := tailcfg.Login{
 		ID:            tailcfg.LoginID(n.ID),
 		LoginName:     n.Name,
@@ -215,24 +215,24 @@ func (h *Headscale) getMapResponseUserProfiles(
 	machine Machine,
 	peers Machines,
 ) []tailcfg.UserProfile {
-	namespaceMap := make(map[string]Namespace)
-	namespaceMap[machine.Namespace.Name] = machine.Namespace
+	userMap := make(map[string]User)
+	userMap[machine.User.Name] = machine.User
 	for _, peer := range peers {
-		namespaceMap[peer.Namespace.Name] = peer.Namespace // not worth checking if already is there
+		userMap[peer.User.Name] = peer.User // not worth checking if already is there
 	}
 
 	profiles := []tailcfg.UserProfile{}
-	for _, namespace := range namespaceMap {
-		displayName := namespace.Name
+	for _, user := range userMap {
+		displayName := user.Name
 
 		if h.cfg.BaseDomain != "" {
-			displayName = fmt.Sprintf("%s@%s", namespace.Name, h.cfg.BaseDomain)
+			displayName = fmt.Sprintf("%s@%s", user.Name, h.cfg.BaseDomain)
 		}
 
 		profiles = append(profiles,
 			tailcfg.UserProfile{
-				ID:          tailcfg.UserID(namespace.ID),
-				LoginName:   namespace.Name,
+				ID:          tailcfg.UserID(user.ID),
+				LoginName:   user.Name,
 				DisplayName: displayName,
 			})
 	}
@@ -240,16 +240,16 @@ func (h *Headscale) getMapResponseUserProfiles(
 	return profiles
 }
 
-func (n *Namespace) toProto() *v1.Namespace {
-	return &v1.Namespace{
+func (n *User) toProto() *v1.User {
+	return &v1.User{
 		Id:        strconv.FormatUint(uint64(n.ID), Base10),
 		Name:      n.Name,
 		CreatedAt: timestamppb.New(n.CreatedAt),
 	}
 }
 
-// NormalizeToFQDNRules will replace forbidden chars in namespace
-// it can also return an error if the namespace doesn't respect RFC 952 and 1123.
+// NormalizeToFQDNRules will replace forbidden chars in user
+// it can also return an error if the user doesn't respect RFC 952 and 1123.
 func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, "'", "")
@@ -259,14 +259,14 @@ func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
 	} else {
 		name = strings.ReplaceAll(name, "@", ".")
 	}
-	name = invalidCharsInNamespaceRegex.ReplaceAllString(name, "-")
+	name = invalidCharsInUserRegex.ReplaceAllString(name, "-")
 
 	for _, elt := range strings.Split(name, ".") {
 		if len(elt) > labelHostnameLength {
 			return "", fmt.Errorf(
 				"label %v is more than 63 chars: %w",
 				elt,
-				ErrInvalidNamespaceName,
+				ErrInvalidUserName,
 			)
 		}
 	}
@@ -279,21 +279,21 @@ func CheckForFQDNRules(name string) error {
 		return fmt.Errorf(
 			"DNS segment must not be over 63 chars. %v doesn't comply with this rule: %w",
 			name,
-			ErrInvalidNamespaceName,
+			ErrInvalidUserName,
 		)
 	}
 	if strings.ToLower(name) != name {
 		return fmt.Errorf(
 			"DNS segment should be lowercase. %v doesn't comply with this rule: %w",
 			name,
-			ErrInvalidNamespaceName,
+			ErrInvalidUserName,
 		)
 	}
-	if invalidCharsInNamespaceRegex.MatchString(name) {
+	if invalidCharsInUserRegex.MatchString(name) {
 		return fmt.Errorf(
 			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
 			name,
-			ErrInvalidNamespaceName,
+			ErrInvalidUserName,
 		)
 	}
 

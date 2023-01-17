@@ -29,7 +29,7 @@ type APIKey struct {
 	LastSeen   *time.Time
 }
 
-// CreateAPIKey creates a new ApiKey in a namespace, and returns it.
+// CreateAPIKey creates a new ApiKey in a user, and returns it.
 func (h *Headscale) CreateAPIKey(
 	expiration *time.Time,
 ) (string, *APIKey, error) {
@@ -64,7 +64,7 @@ func (h *Headscale) CreateAPIKey(
 	return keyStr, &key, nil
 }
 
-// ListAPIKeys returns the list of ApiKeys for a namespace.
+// ListAPIKeys returns the list of ApiKeys for a user.
 func (h *Headscale) ListAPIKeys() ([]APIKey, error) {
 	keys := []APIKey{}
 	if err := h.db.Find(&keys).Error; err != nil {

@@ -26,76 +26,76 @@ func newHeadscaleV1APIServer(h *Headscale) v1.HeadscaleServiceServer {
 	}
 }
 
-func (api headscaleV1APIServer) GetNamespace(
+func (api headscaleV1APIServer) GetUser(
 	ctx context.Context,
-	request *v1.GetNamespaceRequest,
-) (*v1.GetNamespaceResponse, error) {
-	namespace, err := api.h.GetNamespace(request.GetName())
+	request *v1.GetUserRequest,
+) (*v1.GetUserResponse, error) {
+	user, err := api.h.GetUser(request.GetName())
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.GetNamespaceResponse{Namespace: namespace.toProto()}, nil
+	return &v1.GetUserResponse{User: user.toProto()}, nil
 }
 
-func (api headscaleV1APIServer) CreateNamespace(
+func (api headscaleV1APIServer) CreateUser(
 	ctx context.Context,
-	request *v1.CreateNamespaceRequest,
-) (*v1.CreateNamespaceResponse, error) {
-	namespace, err := api.h.CreateNamespace(request.GetName())
+	request *v1.CreateUserRequest,
+) (*v1.CreateUserResponse, error) {
+	user, err := api.h.CreateUser(request.GetName())
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.CreateNamespaceResponse{Namespace: namespace.toProto()}, nil
+	return &v1.CreateUserResponse{User: user.toProto()}, nil
 }
 
-func (api headscaleV1APIServer) RenameNamespace(
+func (api headscaleV1APIServer) RenameUser(
 	ctx context.Context,
-	request *v1.RenameNamespaceRequest,
-) (*v1.RenameNamespaceResponse, error) {
-	err := api.h.RenameNamespace(request.GetOldName(), request.GetNewName())
+	request *v1.RenameUserRequest,
+) (*v1.RenameUserResponse, error) {
+	err := api.h.RenameUser(request.GetOldName(), request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
 
-	namespace, err := api.h.GetNamespace(request.GetNewName())
+	user, err := api.h.GetUser(request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.RenameNamespaceResponse{Namespace: namespace.toProto()}, nil
+	return &v1.RenameUserResponse{User: user.toProto()}, nil
 }
 
-func (api headscaleV1APIServer) DeleteNamespace(
+func (api headscaleV1APIServer) DeleteUser(
 	ctx context.Context,
-	request *v1.DeleteNamespaceRequest,
-) (*v1.DeleteNamespaceResponse, error) {
-	err := api.h.DestroyNamespace(request.GetName())
+	request *v1.DeleteUserRequest,
+) (*v1.DeleteUserResponse, error) {
+	err := api.h.DestroyUser(request.GetName())
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.DeleteNamespaceResponse{}, nil
+	return &v1.DeleteUserResponse{}, nil
 }
 
-func (api headscaleV1APIServer) ListNamespaces(
+func (api headscaleV1APIServer) ListUsers(
 	ctx context.Context,
-	request *v1.ListNamespacesRequest,
-) (*v1.ListNamespacesResponse, error) {
-	namespaces, err := api.h.ListNamespaces()
+	request *v1.ListUsersRequest,
+) (*v1.ListUsersResponse, error) {
+	users, err := api.h.ListUsers()
 	if err != nil {
 		return nil, err
 	}
 
-	response := make([]*v1.Namespace, len(namespaces))
-	for index, namespace := range namespaces {
-		response[index] = namespace.toProto()
+	response := make([]*v1.User, len(users))
+	for index, user := range users {
+		response[index] = user.toProto()
 	}
 
-	log.Trace().Caller().Interface("namespaces", response).Msg("")
+	log.Trace().Caller().Interface("users", response).Msg("")
 
-	return &v1.ListNamespacesResponse{Namespaces: response}, nil
+	return &v1.ListUsersResponse{Users: response}, nil
 }
 
 func (api headscaleV1APIServer) CreatePreAuthKey(
@@ -117,7 +117,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 	}
 
 	preAuthKey, err := api.h.CreatePreAuthKey(
-		request.GetNamespace(),
+		request.GetUser(),
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
@@ -134,7 +134,7 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	ctx context.Context,
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
-	preAuthKey, err := api.h.GetPreAuthKey(request.GetNamespace(), request.Key)
+	preAuthKey, err := api.h.GetPreAuthKey(request.GetUser(), request.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
 ) (*v1.ListPreAuthKeysResponse, error) {
-	preAuthKeys, err := api.h.ListPreAuthKeys(request.GetNamespace())
+	preAuthKeys, err := api.h.ListPreAuthKeys(request.GetUser())
 	if err != nil {
 		return nil, err
 	}
@@ -169,13 +169,13 @@ func (api headscaleV1APIServer) RegisterMachine(
 	request *v1.RegisterMachineRequest,
 ) (*v1.RegisterMachineResponse, error) {
 	log.Trace().
-		Str("namespace", request.GetNamespace()).
+		Str("user", request.GetUser()).
 		Str("node_key", request.GetKey()).
 		Msg("Registering machine")
 
 	machine, err := api.h.RegisterMachineFromAuthCallback(
 		request.GetKey(),
-		request.GetNamespace(),
+		request.GetUser(),
 		nil,
 		RegisterMethodCLI,
 	)
@@ -313,8 +313,8 @@ func (api headscaleV1APIServer) ListMachines(
 	ctx context.Context,
 	request *v1.ListMachinesRequest,
 ) (*v1.ListMachinesResponse, error) {
-	if request.GetNamespace() != "" {
-		machines, err := api.h.ListMachinesInNamespace(request.GetNamespace())
+	if request.GetUser() != "" {
+		machines, err := api.h.ListMachinesByUser(request.GetUser())
 		if err != nil {
 			return nil, err
 		}
@@ -357,7 +357,7 @@ func (api headscaleV1APIServer) MoveMachine(
 		return nil, err
 	}
 
-	err = api.h.SetMachineNamespace(machine, request.GetNamespace())
+	err = api.h.SetMachineUser(machine, request.GetUser())
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +483,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 	ctx context.Context,
 	request *v1.DebugCreateMachineRequest,
 ) (*v1.DebugCreateMachineResponse, error) {
-	namespace, err := api.h.GetNamespace(request.GetNamespace())
+	user, err := api.h.GetUser(request.GetUser())
 	if err != nil {
 		return nil, err
 	}
@@ -514,7 +514,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		MachineKey: request.GetKey(),
 		Hostname:   request.GetName(),
 		GivenName:  givenName,
-		Namespace:  *namespace,
+		User:       *user,
 
 		Expiry:               &time.Time{},
 		LastSeen:             &time.Time{},

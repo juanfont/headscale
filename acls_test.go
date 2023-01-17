@@ -77,10 +77,10 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 func (s *Suite) TestSshRules(c *check.C) {
 	envknob.Setenv("HEADSCALE_EXPERIMENTAL_FEATURE_SSH", "1")
 
-	namespace, err := app.CreateNamespace("user1")
+	user, err := app.CreateUser("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "testmachine")
@@ -98,7 +98,7 @@ func (s *Suite) TestSshRules(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -187,10 +187,10 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 // match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
 // the tag is matched in the Sources section.
 func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
-	namespace, err := app.CreateNamespace("user1")
+	user, err := app.CreateUser("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "testmachine")
@@ -208,7 +208,7 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -237,10 +237,10 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 // match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
 // the tag is matched in the Destinations section.
 func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
-	namespace, err := app.CreateNamespace("user1")
+	user, err := app.CreateUser("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "testmachine")
@@ -258,7 +258,7 @@ func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -284,13 +284,13 @@ func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 }
 
 // need a test with:
-// tag on a host that isn't owned by a tag owners. So the namespace
+// tag on a host that isn't owned by a tag owners. So the user
 // of the host should be valid.
-func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
-	namespace, err := app.CreateNamespace("user1")
+func (s *Suite) TestInvalidTagValidUser(c *check.C) {
+	user, err := app.CreateUser("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "testmachine")
@@ -308,7 +308,7 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -333,13 +333,13 @@ func (s *Suite) TestInvalidTagValidNamespace(c *check.C) {
 }
 
 // tag on a host is owned by a tag owner, the tag is valid.
-// an ACL rule is matching the tag to a namespace. It should not be valid since the
+// an ACL rule is matching the tag to a user. It should not be valid since the
 // host should be tied to the tag now.
-func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
-	namespace, err := app.CreateNamespace("user1")
+func (s *Suite) TestValidTagInvalidUser(c *check.C) {
+	user, err := app.CreateUser("user1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("user1", "webserver")
@@ -357,7 +357,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		DiscoKey:       "faa",
 		Hostname:       "webserver",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo),
@@ -376,7 +376,7 @@ func (s *Suite) TestValidTagInvalidNamespace(c *check.C) {
 		DiscoKey:       "faab",
 		Hostname:       "user",
 		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo:       HostInfo(hostInfo2),
@@ -467,14 +467,14 @@ func (s *Suite) TestPortWildcardYAML(c *check.C) {
 	c.Assert(rules[0].SrcIPs[0], check.Equals, "*")
 }
 
-func (s *Suite) TestPortNamespace(c *check.C) {
-	namespace, err := app.CreateNamespace("testnamespace")
+func (s *Suite) TestPortUser(c *check.C) {
+	user, err := app.CreateUser("testuser")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("testnamespace", "testmachine")
+	_, err = app.GetMachine("testuser", "testmachine")
 	c.Assert(err, check.NotNil)
 	ips, _ := app.getAvailableIPs()
 	machine := Machine{
@@ -483,7 +483,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		IPAddresses:    ips,
 		AuthKeyID:      uint(pak.ID),
@@ -491,7 +491,7 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 	app.db.Save(&machine)
 
 	err = app.LoadACLPolicy(
-		"./tests/acls/acl_policy_basic_namespace_as_user.hujson",
+		"./tests/acls/acl_policy_basic_user_as_user.hujson",
 	)
 	c.Assert(err, check.IsNil)
 
@@ -513,13 +513,13 @@ func (s *Suite) TestPortNamespace(c *check.C) {
 }
 
 func (s *Suite) TestPortGroup(c *check.C) {
-	namespace, err := app.CreateNamespace("testnamespace")
+	user, err := app.CreateUser("testuser")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("testnamespace", "testmachine")
+	_, err = app.GetMachine("testuser", "testmachine")
 	c.Assert(err, check.NotNil)
 	ips, _ := app.getAvailableIPs()
 	machine := Machine{
@@ -528,7 +528,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		IPAddresses:    ips,
 		AuthKeyID:      uint(pak.ID),
@@ -689,7 +689,7 @@ func Test_expandTagOwners(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "expand with namespace and group",
+			name: "expand with user and group",
 			args: args{
 				aclPolicy: ACLPolicy{
 					Groups:    Groups{"group:foo": []string{"user1", "user2"}},
@@ -843,10 +843,10 @@ func Test_expandPorts(t *testing.T) {
 	}
 }
 
-func Test_listMachinesInNamespace(t *testing.T) {
+func Test_listMachinesInUser(t *testing.T) {
 	type args struct {
 		machines  []Machine
-		namespace string
+		user string
 	}
 	tests := []struct {
 		name string
@@ -854,54 +854,54 @@ func Test_listMachinesInNamespace(t *testing.T) {
 		want []Machine
 	}{
 		{
-			name: "1 machine in namespace",
+			name: "1 machine in user",
 			args: args{
 				machines: []Machine{
-					{Namespace: Namespace{Name: "joe"}},
+					{User: User{Name: "joe"}},
 				},
-				namespace: "joe",
+				user: "joe",
 			},
 			want: []Machine{
-				{Namespace: Namespace{Name: "joe"}},
+				{User: User{Name: "joe"}},
 			},
 		},
 		{
-			name: "3 machines, 2 in namespace",
+			name: "3 machines, 2 in user",
 			args: args{
 				machines: []Machine{
-					{ID: 1, Namespace: Namespace{Name: "joe"}},
-					{ID: 2, Namespace: Namespace{Name: "marc"}},
-					{ID: 3, Namespace: Namespace{Name: "marc"}},
+					{ID: 1, User: User{Name: "joe"}},
+					{ID: 2, User: User{Name: "marc"}},
+					{ID: 3, User: User{Name: "marc"}},
 				},
-				namespace: "marc",
+				user: "marc",
 			},
 			want: []Machine{
-				{ID: 2, Namespace: Namespace{Name: "marc"}},
-				{ID: 3, Namespace: Namespace{Name: "marc"}},
+				{ID: 2, User: User{Name: "marc"}},
+				{ID: 3, User: User{Name: "marc"}},
 			},
 		},
 		{
-			name: "5 machines, 0 in namespace",
+			name: "5 machines, 0 in user",
 			args: args{
 				machines: []Machine{
-					{ID: 1, Namespace: Namespace{Name: "joe"}},
-					{ID: 2, Namespace: Namespace{Name: "marc"}},
-					{ID: 3, Namespace: Namespace{Name: "marc"}},
-					{ID: 4, Namespace: Namespace{Name: "marc"}},
-					{ID: 5, Namespace: Namespace{Name: "marc"}},
+					{ID: 1, User: User{Name: "joe"}},
+					{ID: 2, User: User{Name: "marc"}},
+					{ID: 3, User: User{Name: "marc"}},
+					{ID: 4, User: User{Name: "marc"}},
+					{ID: 5, User: User{Name: "marc"}},
 				},
-				namespace: "mickael",
+				user: "mickael",
 			},
 			want: []Machine{},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := filterMachinesByNamespace(test.args.machines, test.args.namespace); !reflect.DeepEqual(
+			if got := filterMachinesByUser(test.args.machines, test.args.user); !reflect.DeepEqual(
 				got,
 				test.want,
 			) {
-				t.Errorf("listMachinesInNamespace() = %v, want %v", got, test.want)
+				t.Errorf("listMachinesInUser() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -947,25 +947,25 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				aclPolicy: ACLPolicy{
@@ -985,25 +985,25 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				aclPolicy: ACLPolicy{
@@ -1071,7 +1071,7 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1082,7 +1082,7 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1093,13 +1093,13 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 				},
 				aclPolicy: ACLPolicy{
@@ -1119,25 +1119,25 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				aclPolicy: ACLPolicy{
@@ -1160,27 +1160,27 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace:  Namespace{Name: "joe"},
+						User:  User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace:  Namespace{Name: "joe"},
+						User:  User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				aclPolicy:        ACLPolicy{},
@@ -1198,14 +1198,14 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace:  Namespace{Name: "joe"},
+						User:  User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1216,13 +1216,13 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				aclPolicy: ACLPolicy{
@@ -1236,7 +1236,7 @@ func Test_expandAlias(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "list host in namespace without correctly tagged servers",
+			name: "list host in user without correctly tagged servers",
 			args: args{
 				alias: "joe",
 				machines: []Machine{
@@ -1244,7 +1244,7 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1255,7 +1255,7 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1266,13 +1266,13 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 				},
 				aclPolicy: ACLPolicy{
@@ -1308,7 +1308,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 	type args struct {
 		aclPolicy        ACLPolicy
 		nodes            []Machine
-		namespace        string
+		user        string
 		stripEmailDomain bool
 	}
 	tests := []struct {
@@ -1328,7 +1328,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1339,7 +1339,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1350,16 +1350,16 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 				},
-				namespace:        "joe",
+				user:        "joe",
 				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					Namespace:   Namespace{Name: "joe"},
+					User:   User{Name: "joe"},
 				},
 			},
 		},
@@ -1379,7 +1379,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1390,7 +1390,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1401,16 +1401,16 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 				},
-				namespace:        "joe",
+				user:        "joe",
 				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					Namespace:   Namespace{Name: "joe"},
+					User:   User{Name: "joe"},
 				},
 			},
 		},
@@ -1425,7 +1425,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1436,23 +1436,23 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace:  Namespace{Name: "joe"},
+						User:  User{Name: "joe"},
 						ForcedTags: []string{"tag:accountant-webserver"},
 					},
 					{
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 				},
-				namespace:        "joe",
+				user:        "joe",
 				stripEmailDomain: true,
 			},
 			want: []Machine{
 				{
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					Namespace:   Namespace{Name: "joe"},
+					User:   User{Name: "joe"},
 				},
 			},
 		},
@@ -1467,7 +1467,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "hr-web1",
@@ -1478,7 +1478,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 						HostInfo: HostInfo{
 							OS:          "centos",
 							Hostname:    "hr-web2",
@@ -1489,10 +1489,10 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 				},
-				namespace:        "joe",
+				user:        "joe",
 				stripEmailDomain: true,
 			},
 			want: []Machine{
@@ -1500,7 +1500,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 					},
-					Namespace: Namespace{Name: "joe"},
+					User: User{Name: "joe"},
 					HostInfo: HostInfo{
 						OS:          "centos",
 						Hostname:    "hr-web1",
@@ -1511,7 +1511,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.2"),
 					},
-					Namespace: Namespace{Name: "joe"},
+					User: User{Name: "joe"},
 					HostInfo: HostInfo{
 						OS:          "centos",
 						Hostname:    "hr-web2",
@@ -1522,7 +1522,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.4"),
 					},
-					Namespace: Namespace{Name: "joe"},
+					User: User{Name: "joe"},
 				},
 			},
 		},
@@ -1532,7 +1532,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 			got := excludeCorrectlyTaggedNodes(
 				test.args.aclPolicy,
 				test.args.nodes,
-				test.args.namespace,
+				test.args.user,
 				test.args.stripEmailDomain,
 			)
 			if !reflect.DeepEqual(got, test.want) {

@@ -35,8 +35,8 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions),
-		"namespace2": len(TailscaleVersions),
+		"user1": len(TailscaleVersions),
+		"user2": len(TailscaleVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("webauthping"))
@@ -93,8 +93,8 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions),
-		"namespace2": len(TailscaleVersions),
+		"user1": len(TailscaleVersions),
+		"user2": len(TailscaleVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("weblogout"))
@@ -156,8 +156,8 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 		t.Errorf("failed to get headscale server: %s", err)
 	}
 
-	for namespaceName := range spec {
-		err = scenario.runTailscaleUp(namespaceName, headscale.GetEndpoint())
+	for userName := range spec {
+		err = scenario.runTailscaleUp(userName, headscale.GetEndpoint())
 		if err != nil {
 			t.Errorf("failed to run tailscale up: %s", err)
 		}
@@ -225,7 +225,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 }
 
 func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
-	namespaces map[string]int,
+	users map[string]int,
 	opts ...hsic.Option,
 ) error {
 	headscale, err := s.Headscale(opts...)
@@ -238,19 +238,19 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
 		return err
 	}
 
-	for namespaceName, clientCount := range namespaces {
-		log.Printf("creating namespace %s with %d clients", namespaceName, clientCount)
-		err = s.CreateNamespace(namespaceName)
+	for userName, clientCount := range users {
+		log.Printf("creating user %s with %d clients", userName, clientCount)
+		err = s.CreateUser(userName)
 		if err != nil {
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount)
+		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount)
 		if err != nil {
 			return err
 		}
 
-		err = s.runTailscaleUp(namespaceName, headscale.GetEndpoint())
+		err = s.runTailscaleUp(userName, headscale.GetEndpoint())
 		if err != nil {
 			return err
 		}
@@ -260,15 +260,15 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
 }
 
 func (s *AuthWebFlowScenario) runTailscaleUp(
-	namespaceStr, loginServer string,
+	userStr, loginServer string,
 ) error {
-	log.Printf("running tailscale up for namespace %s", namespaceStr)
-	if namespace, ok := s.namespaces[namespaceStr]; ok {
-		for _, client := range namespace.Clients {
-			namespace.joinWaitGroup.Add(1)
+	log.Printf("running tailscale up for user %s", userStr)
+	if user, ok := s.users[userStr]; ok {
+		for _, client := range user.Clients {
+			user.joinWaitGroup.Add(1)
 
 			go func(c TailscaleClient) {
-				defer namespace.joinWaitGroup.Done()
+				defer user.joinWaitGroup.Done()
 
 				// TODO(juanfont): error handle this
 				loginURL, err := c.UpWithLoginURL(loginServer)
@@ -276,7 +276,7 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 					log.Printf("failed to run tailscale up: %s", err)
 				}
 
-				err = s.runHeadscaleRegister(namespaceStr, loginURL)
+				err = s.runHeadscaleRegister(userStr, loginURL)
 				if err != nil {
 					log.Printf("failed to register client: %s", err)
 				}
@@ -287,15 +287,15 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 				log.Printf("error waiting for client %s to be ready: %s", client.Hostname(), err)
 			}
 		}
-		namespace.joinWaitGroup.Wait()
+		user.joinWaitGroup.Wait()
 
 		return nil
 	}
 
-	return fmt.Errorf("failed to up tailscale node: %w", errNoNamespaceAvailable)
+	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
 }
 
-func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL *url.URL) error {
+func (s *AuthWebFlowScenario) runHeadscaleRegister(userStr string, loginURL *url.URL) error {
 	headscale, err := s.Headscale()
 	if err != nil {
 		return err
@@ -335,7 +335,7 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(namespaceStr string, loginURL
 
 	if headscale, err := s.Headscale(); err == nil {
 		_, err = headscale.Execute(
-			[]string{"headscale", "-n", namespaceStr, "nodes", "register", "--key", key},
+			[]string{"headscale", "-n", userStr, "nodes", "register", "--key", key},
 		)
 		if err != nil {
 			log.Printf("failed to register node: %s", err)

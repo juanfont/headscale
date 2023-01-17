@@ -19,12 +19,12 @@ import (
 
 func init() {
 	rootCmd.AddCommand(nodeCmd)
-	listNodesCmd.Flags().StringP("namespace", "n", "", "Filter by namespace")
+	listNodesCmd.Flags().StringP("user", "n", "", "Filter by user")
 	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
 	nodeCmd.AddCommand(listNodesCmd)
 
-	registerNodeCmd.Flags().StringP("namespace", "n", "", "Namespace")
-	err := registerNodeCmd.MarkFlagRequired("namespace")
+	registerNodeCmd.Flags().StringP("user", "n", "", "User")
+	err := registerNodeCmd.MarkFlagRequired("user")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -63,9 +63,9 @@ func init() {
 		log.Fatalf(err.Error())
 	}
 
-	moveNodeCmd.Flags().StringP("namespace", "n", "", "New namespace")
+	moveNodeCmd.Flags().StringP("user", "n", "", "New user")
 
-	err = moveNodeCmd.MarkFlagRequired("namespace")
+	err = moveNodeCmd.MarkFlagRequired("user")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -93,9 +93,9 @@ var registerNodeCmd = &cobra.Command{
 	Short: "Registers a machine to your network",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		namespace, err := cmd.Flags().GetString("namespace")
+		user, err := cmd.Flags().GetString("user")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 
 			return
 		}
@@ -117,7 +117,7 @@ var registerNodeCmd = &cobra.Command{
 
 		request := &v1.RegisterMachineRequest{
 			Key:       machineKey,
-			Namespace: namespace,
+			User: user,
 		}
 
 		response, err := client.RegisterMachine(ctx, request)
@@ -146,9 +146,9 @@ var listNodesCmd = &cobra.Command{
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		namespace, err := cmd.Flags().GetString("namespace")
+		user, err := cmd.Flags().GetString("user")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting namespace: %s", err), output)
+			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 
 			return
 		}
@@ -164,7 +164,7 @@ var listNodesCmd = &cobra.Command{
 		defer conn.Close()
 
 		request := &v1.ListMachinesRequest{
-			Namespace: namespace,
+			User: user,
 		}
 
 		response, err := client.ListMachines(ctx, request)
@@ -184,7 +184,7 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
-		tableData, err := nodesToPtables(namespace, showTags, response.Machines)
+		tableData, err := nodesToPtables(user, showTags, response.Machines)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
@@ -388,7 +388,7 @@ var deleteNodeCmd = &cobra.Command{
 
 var moveNodeCmd = &cobra.Command{
 	Use:     "move",
-	Short:   "Move node to another namespace",
+	Short:   "Move node to another user",
 	Aliases: []string{"mv"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
@@ -404,11 +404,11 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		namespace, err := cmd.Flags().GetString("namespace")
+		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting namespace: %s", err),
+				fmt.Sprintf("Error getting user: %s", err),
 				output,
 			)
 
@@ -439,7 +439,7 @@ var moveNodeCmd = &cobra.Command{
 
 		moveRequest := &v1.MoveMachineRequest{
 			MachineId: identifier,
-			Namespace: namespace,
+			User: user,
 		}
 
 		moveResponse, err := client.MoveMachine(ctx, moveRequest)
@@ -456,12 +456,12 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(moveResponse.Machine, "Node moved to another namespace", output)
+		SuccessOutput(moveResponse.Machine, "Node moved to another user", output)
 	},
 }
 
 func nodesToPtables(
-	currentNamespace string,
+	currentUser string,
 	showTags bool,
 	machines []*v1.Machine,
 ) (pterm.TableData, error) {
@@ -471,7 +471,7 @@ func nodesToPtables(
 		"Name",
 		"MachineKey",
 		"NodeKey",
-		"Namespace",
+		"User",
 		"IP addresses",
 		"Ephemeral",
 		"Last seen",
@@ -560,12 +560,12 @@ func nodesToPtables(
 		}
 		validTags = strings.TrimLeft(validTags, ",")
 
-		var namespace string
-		if currentNamespace == "" || (currentNamespace == machine.Namespace.Name) {
-			namespace = pterm.LightMagenta(machine.Namespace.Name)
+		var user string
+		if currentUser == "" || (currentUser == machine.User.Name) {
+			user = pterm.LightMagenta(machine.User.Name)
 		} else {
-			// Shared into this namespace
-			namespace = pterm.LightYellow(machine.Namespace.Name)
+			// Shared into this user
+			user = pterm.LightYellow(machine.User.Name)
 		}
 
 		var IPV4Address string
@@ -584,7 +584,7 @@ func nodesToPtables(
 			machine.GetGivenName(),
 			machineKey.ShortString(),
 			nodeKey.ShortString(),
-			namespace,
+			user,
 			strings.Join([]string{IPV4Address, IPV6Address}, ", "),
 			strconv.FormatBool(ephemeral),
 			lastSeenTime,

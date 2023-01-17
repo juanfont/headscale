@@ -183,7 +183,7 @@ func (h *Headscale) handlePollCommon(
 		}
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
-		updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "endpoint-update").
+		updateRequestsFromNode.WithLabelValues(machine.User.Name, machine.Hostname, "endpoint-update").
 			Inc()
 		updateChan <- struct{}{}
 
@@ -216,7 +216,7 @@ func (h *Headscale) handlePollCommon(
 		Bool("noise", isNoise).
 		Str("machine", machine.Hostname).
 		Msg("Notifying peers")
-	updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "full-update").
+	updateRequestsFromNode.WithLabelValues(machine.User.Name, machine.Hostname, "full-update").
 		Inc()
 	updateChan <- struct{}{}
 
@@ -342,7 +342,7 @@ func (h *Headscale) pollNetMapStream(
 			now := time.Now().UTC()
 			machine.LastSeen = &now
 
-			lastStateUpdate.WithLabelValues(machine.Namespace.Name, machine.Hostname).
+			lastStateUpdate.WithLabelValues(machine.User.Name, machine.Hostname).
 				Set(float64(now.Unix()))
 			machine.LastSuccessfulUpdate = &now
 
@@ -453,7 +453,7 @@ func (h *Headscale) pollNetMapStream(
 				Str("machine", machine.Hostname).
 				Str("channel", "update").
 				Msg("Received a request for update")
-			updateRequestsReceivedOnChannel.WithLabelValues(machine.Namespace.Name, machine.Hostname).
+			updateRequestsReceivedOnChannel.WithLabelValues(machine.User.Name, machine.Hostname).
 				Inc()
 
 			if h.isOutdated(machine) {
@@ -466,7 +466,7 @@ func (h *Headscale) pollNetMapStream(
 					Bool("noise", isNoise).
 					Str("machine", machine.Hostname).
 					Time("last_successful_update", lastUpdate).
-					Time("last_state_change", h.getLastStateChange(machine.Namespace)).
+					Time("last_state_change", h.getLastStateChange(machine.User)).
 					Msgf("There has been updates since the last successful update to %s", machine.Hostname)
 				data, err := h.getMapResponseData(mapRequest, machine, isNoise)
 				if err != nil {
@@ -489,7 +489,7 @@ func (h *Headscale) pollNetMapStream(
 						Str("channel", "update").
 						Err(err).
 						Msg("Could not write the map response")
-					updateRequestsSentToNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "failed").
+					updateRequestsSentToNode.WithLabelValues(machine.User.Name, machine.Hostname, "failed").
 						Inc()
 
 					return
@@ -514,7 +514,7 @@ func (h *Headscale) pollNetMapStream(
 					Str("machine", machine.Hostname).
 					Str("channel", "update").
 					Msg("Updated Map has been sent")
-				updateRequestsSentToNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "success").
+				updateRequestsSentToNode.WithLabelValues(machine.User.Name, machine.Hostname, "success").
 					Inc()
 
 				// Keep track of the last successful update,
@@ -540,7 +540,7 @@ func (h *Headscale) pollNetMapStream(
 				}
 				now := time.Now().UTC()
 
-				lastStateUpdate.WithLabelValues(machine.Namespace.Name, machine.Hostname).
+				lastStateUpdate.WithLabelValues(machine.User.Name, machine.Hostname).
 					Set(float64(now.Unix()))
 				machine.LastSuccessfulUpdate = &now
 
@@ -566,7 +566,7 @@ func (h *Headscale) pollNetMapStream(
 					Bool("noise", isNoise).
 					Str("machine", machine.Hostname).
 					Time("last_successful_update", lastUpdate).
-					Time("last_state_change", h.getLastStateChange(machine.Namespace)).
+					Time("last_state_change", h.getLastStateChange(machine.User)).
 					Msgf("%s is up to date", machine.Hostname)
 			}
 
@@ -676,7 +676,7 @@ func (h *Headscale) scheduledPollWorker(
 				Str("machine", machine.Hostname).
 				Bool("noise", isNoise).
 				Msg("Sending update request")
-			updateRequestsFromNode.WithLabelValues(machine.Namespace.Name, machine.Hostname, "scheduled-update").
+			updateRequestsFromNode.WithLabelValues(machine.User.Name, machine.Hostname, "scheduled-update").
 				Inc()
 			select {
 			case updateChan <- struct{}{}:

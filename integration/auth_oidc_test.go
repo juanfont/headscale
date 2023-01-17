@@ -49,7 +49,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions),
+		"user1": len(TailscaleVersions),
 	}
 
 	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL)
@@ -116,7 +116,7 @@ func TestOIDCExpireNodes(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions),
+		"user1": len(TailscaleVersions),
 	}
 
 	oidcConfig, err := scenario.runMockOIDC(shortAccessTTL)
@@ -169,7 +169,7 @@ func TestOIDCExpireNodes(t *testing.T) {
 }
 
 func (s *AuthOIDCScenario) CreateHeadscaleEnv(
-	namespaces map[string]int,
+	users map[string]int,
 	opts ...hsic.Option,
 ) error {
 	headscale, err := s.Headscale(opts...)
@@ -182,19 +182,19 @@ func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 		return err
 	}
 
-	for namespaceName, clientCount := range namespaces {
-		log.Printf("creating namespace %s with %d clients", namespaceName, clientCount)
-		err = s.CreateNamespace(namespaceName)
+	for userName, clientCount := range users {
+		log.Printf("creating user %s with %d clients", userName, clientCount)
+		err = s.CreateUser(userName)
 		if err != nil {
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInNamespace(namespaceName, "all", clientCount)
+		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount)
 		if err != nil {
 			return err
 		}
 
-		err = s.runTailscaleUp(namespaceName, headscale.GetEndpoint())
+		err = s.runTailscaleUp(userName, headscale.GetEndpoint())
 		if err != nil {
 			return err
 		}
@@ -287,20 +287,20 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*headscale.OIDC
 }
 
 func (s *AuthOIDCScenario) runTailscaleUp(
-	namespaceStr, loginServer string,
+	userStr, loginServer string,
 ) error {
 	headscale, err := s.Headscale()
 	if err != nil {
 		return err
 	}
 
-	log.Printf("running tailscale up for namespace %s", namespaceStr)
-	if namespace, ok := s.namespaces[namespaceStr]; ok {
-		for _, client := range namespace.Clients {
-			namespace.joinWaitGroup.Add(1)
+	log.Printf("running tailscale up for user %s", userStr)
+	if user, ok := s.users[userStr]; ok {
+		for _, client := range user.Clients {
+			user.joinWaitGroup.Add(1)
 
 			go func(c TailscaleClient) {
-				defer namespace.joinWaitGroup.Done()
+				defer user.joinWaitGroup.Done()
 
 				// TODO(juanfont): error handle this
 				loginURL, err := c.UpWithLoginURL(loginServer)
@@ -347,12 +347,12 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 			log.Printf("client %s is ready", client.Hostname())
 		}
 
-		namespace.joinWaitGroup.Wait()
+		user.joinWaitGroup.Wait()
 
 		return nil
 	}
 
-	return fmt.Errorf("failed to up tailscale node: %w", errNoNamespaceAvailable)
+	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
 }
 
 func pingAll(t *testing.T, clients []TailscaleClient, ips []netip.Addr) int {

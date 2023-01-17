@@ -15,10 +15,10 @@ import (
 )
 
 func (s *Suite) TestGetMachine(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "testmachine")
@@ -30,7 +30,7 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -41,10 +41,10 @@ func (s *Suite) TestGetMachine(c *check.C) {
 }
 
 func (s *Suite) TestGetMachineByID(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachineByID(0)
@@ -56,7 +56,7 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -67,10 +67,10 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 }
 
 func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachineByID(0)
@@ -85,7 +85,7 @@ func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -96,10 +96,10 @@ func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
 }
 
 func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachineByID(0)
@@ -116,7 +116,7 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -127,7 +127,7 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 }
 
 func (s *Suite) TestDeleteMachine(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 	machine := Machine{
 		ID:             0,
@@ -135,7 +135,7 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
@@ -144,12 +144,12 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 	err = app.DeleteMachine(&machine)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine(namespace.Name, "testmachine")
+	_, err = app.GetMachine(user.Name, "testmachine")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestHardDeleteMachine(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 	machine := Machine{
 		ID:             0,
@@ -157,7 +157,7 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine3",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
@@ -166,15 +166,15 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 	err = app.HardDeleteMachine(&machine)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine(namespace.Name, "testmachine3")
+	_, err = app.GetMachine(user.Name, "testmachine3")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestListPeers(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachineByID(0)
@@ -187,7 +187,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 			NodeKey:        "bar" + strconv.Itoa(index),
 			DiscoKey:       "faa" + strconv.Itoa(index),
 			Hostname:       "testmachine" + strconv.Itoa(index),
-			NamespaceID:    namespace.ID,
+			UserID:    user.ID,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 		}
@@ -208,18 +208,18 @@ func (s *Suite) TestListPeers(c *check.C) {
 
 func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	type base struct {
-		namespace *Namespace
+		user *User
 		key       *PreAuthKey
 	}
 
 	stor := make([]base, 0)
 
 	for _, name := range []string{"test", "admin"} {
-		namespace, err := app.CreateNamespace(name)
+		user, err := app.CreateUser(name)
 		c.Assert(err, check.IsNil)
-		pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+		pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
-		stor = append(stor, base{namespace, pak})
+		stor = append(stor, base{user, pak})
 	}
 
 	_, err := app.GetMachineByID(0)
@@ -235,7 +235,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 				netip.MustParseAddr(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1))),
 			},
 			Hostname:       "testmachine" + strconv.Itoa(index),
-			NamespaceID:    stor[index%2].namespace.ID,
+			UserID:    stor[index%2].user.ID,
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(stor[index%2].key.ID),
 		}
@@ -267,11 +267,11 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	adminMachine, err := app.GetMachineByID(1)
-	c.Logf("Machine(%v), namespace: %v", adminMachine.Hostname, adminMachine.Namespace)
+	c.Logf("Machine(%v), user: %v", adminMachine.Hostname, adminMachine.User)
 	c.Assert(err, check.IsNil)
 
 	testMachine, err := app.GetMachineByID(2)
-	c.Logf("Machine(%v), namespace: %v", testMachine.Hostname, testMachine.Namespace)
+	c.Logf("Machine(%v), user: %v", testMachine.Hostname, testMachine.User)
 	c.Assert(err, check.IsNil)
 
 	machines, err := app.ListMachines()
@@ -294,10 +294,10 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 }
 
 func (s *Suite) TestExpireMachine(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "testmachine")
@@ -309,7 +309,7 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		Expiry:         &time.Time{},
@@ -350,13 +350,13 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 }
 
 func (s *Suite) TestGenerateGivenName(c *check.C) {
-	namespace1, err := app.CreateNamespace("namespace-1")
+	user1, err := app.CreateUser("user-1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace1.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user1.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("namespace-1", "testmachine")
+	_, err = app.GetMachine("user-1", "testmachine")
 	c.Assert(err, check.NotNil)
 
 	machine := &Machine{
@@ -366,38 +366,38 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 		DiscoKey:       "disco-key-1",
 		Hostname:       "hostname-1",
 		GivenName:      "hostname-1",
-		NamespaceID:    namespace1.ID,
+		UserID:    user1.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
 	app.db.Save(machine)
 
 	givenName, err := app.GenerateGivenName("machine-key-2", "hostname-2")
-	comment := check.Commentf("Same namespace, unique machines, unique hostnames, no conflict")
+	comment := check.Commentf("Same user, unique machines, unique hostnames, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-2", comment)
 
 	givenName, err = app.GenerateGivenName("machine-key-1", "hostname-1")
-	comment = check.Commentf("Same namespace, same machine, same hostname, no conflict")
+	comment = check.Commentf("Same user, same machine, same hostname, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-1", comment)
 
 	givenName, err = app.GenerateGivenName("machine-key-2", "hostname-1")
-	comment = check.Commentf("Same namespace, unique machines, same hostname, conflict")
+	comment = check.Commentf("Same user, unique machines, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
 
 	givenName, err = app.GenerateGivenName("machine-key-2", "hostname-1")
-	comment = check.Commentf("Unique namespaces, unique machines, same hostname, conflict")
+	comment = check.Commentf("Unique users, unique machines, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
 }
 
 func (s *Suite) TestSetTags(c *check.C) {
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = app.GetMachine("test", "testmachine")
@@ -409,7 +409,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
@@ -457,7 +457,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				machine: Machine{
-					Namespace: Namespace{
+					User: User{
 						Name: "joe",
 					},
 					HostInfo: HostInfo{
@@ -478,7 +478,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				machine: Machine{
-					Namespace: Namespace{
+					User: User{
 						Name: "joe",
 					},
 					HostInfo: HostInfo{
@@ -499,7 +499,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				machine: Machine{
-					Namespace: Namespace{
+					User: User{
 						Name: "joe",
 					},
 					HostInfo: HostInfo{
@@ -524,7 +524,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				machine: Machine{
-					Namespace: Namespace{
+					User: User{
 						Name: "joe",
 					},
 					HostInfo: HostInfo{
@@ -541,7 +541,7 @@ func Test_getTags(t *testing.T) {
 			args: args{
 				aclPolicy: nil,
 				machine: Machine{
-					Namespace: Namespace{
+					User: User{
 						Name: "joe",
 					},
 					HostInfo: HostInfo{
@@ -607,21 +607,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -635,19 +635,19 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          1,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-					Namespace:   Namespace{Name: "joe"},
+					User:   User{Name: "joe"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					Namespace:   Namespace{Name: "marc"},
+					User:   User{Name: "marc"},
 				},
 				{
 					ID:          3,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
-					Namespace:   Namespace{Name: "mickael"},
+					User:   User{Name: "mickael"},
 				},
 			},
 		},
@@ -660,21 +660,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -688,14 +688,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          1,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-					Namespace:   Namespace{Name: "joe"},
+					User:   User{Name: "joe"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					Namespace:   Namespace{Name: "marc"},
+					User:   User{Name: "marc"},
 				},
 			},
 		},
@@ -708,21 +708,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -736,14 +736,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					Namespace:   Namespace{Name: "marc"},
+					User:   User{Name: "marc"},
 				},
 			},
 			want: Machines{
 				{
 					ID:          3,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
-					Namespace:   Namespace{Name: "mickael"},
+					User:   User{Name: "mickael"},
 				},
 			},
 		},
@@ -756,21 +756,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -786,7 +786,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 					},
-					Namespace: Namespace{Name: "joe"},
+					User: User{Name: "joe"},
 				},
 			},
 			want: Machines{
@@ -795,7 +795,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.2"),
 					},
-					Namespace: Namespace{Name: "marc"},
+					User: User{Name: "marc"},
 				},
 			},
 		},
@@ -808,21 +808,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -838,7 +838,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.2"),
 					},
-					Namespace: Namespace{Name: "marc"},
+					User: User{Name: "marc"},
 				},
 			},
 			want: Machines{
@@ -847,14 +847,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 					},
-					Namespace: Namespace{Name: "joe"},
+					User: User{Name: "joe"},
 				},
 				{
 					ID: 3,
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.3"),
 					},
-					Namespace: Namespace{Name: "mickael"},
+					User: User{Name: "mickael"},
 				},
 			},
 		},
@@ -867,21 +867,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -895,7 +895,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					Namespace:   Namespace{Name: "marc"},
+					User:   User{Name: "marc"},
 				},
 			},
 			want: Machines{
@@ -904,12 +904,12 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					IPAddresses: MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 					},
-					Namespace: Namespace{Name: "joe"},
+					User: User{Name: "joe"},
 				},
 				{
 					ID:          3,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.3")},
-					Namespace:   Namespace{Name: "mickael"},
+					User:   User{Name: "mickael"},
 				},
 			},
 		},
@@ -922,21 +922,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						Namespace: Namespace{Name: "joe"},
+						User: User{Name: "joe"},
 					},
 					{
 						ID: 2,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						Namespace: Namespace{Name: "marc"},
+						User: User{Name: "marc"},
 					},
 					{
 						ID: 3,
 						IPAddresses: MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						Namespace: Namespace{Name: "mickael"},
+						User: User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -944,7 +944,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				machine: &Machine{ // current machine
 					ID:          2,
 					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-					Namespace:   Namespace{Name: "marc"},
+					User:   User{Name: "marc"},
 				},
 			},
 			want: Machines{},
@@ -1125,10 +1125,10 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_autoapprovers.hujson")
 	c.Assert(err, check.IsNil)
 
-	namespace, err := app.CreateNamespace("test")
+	user, err := app.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(namespace.Name, false, false, nil, nil)
+	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	nodeKey := key.NewNode()
@@ -1144,7 +1144,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "test",
-		NamespaceID:    namespace.ID,
+		UserID:    user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		HostInfo: HostInfo{

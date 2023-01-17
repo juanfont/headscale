@@ -41,7 +41,7 @@ var retry = func(times int, sleepInterval time.Duration,
 	return result, stderr, err
 }
 
-func TestSSHOneNamespaceAllToAll(t *testing.T) {
+func TestSSHOneUserAllToAll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -51,7 +51,7 @@ func TestSSHOneNamespaceAllToAll(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions) - 5,
+		"user1": len(TailscaleVersions) - 5,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -59,7 +59,7 @@ func TestSSHOneNamespaceAllToAll(t *testing.T) {
 		hsic.WithACLPolicy(
 			&headscale.ACLPolicy{
 				Groups: map[string][]string{
-					"group:integration-test": {"namespace1"},
+					"group:integration-test": {"user1"},
 				},
 				ACLs: []headscale.ACL{
 					{
@@ -117,7 +117,7 @@ func TestSSHOneNamespaceAllToAll(t *testing.T) {
 	}
 }
 
-func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
+func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -127,8 +127,8 @@ func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions) - 5,
-		"namespace2": len(TailscaleVersions) - 5,
+		"user1": len(TailscaleVersions) - 5,
+		"user2": len(TailscaleVersions) - 5,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -136,7 +136,7 @@ func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
 		hsic.WithACLPolicy(
 			&headscale.ACLPolicy{
 				Groups: map[string][]string{
-					"group:integration-test": {"namespace1", "namespace2"},
+					"group:integration-test": {"user1", "user2"},
 				},
 				ACLs: []headscale.ACL{
 					{
@@ -163,12 +163,12 @@ func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
 
-	nsOneClients, err := scenario.ListTailscaleClients("namespace1")
+	nsOneClients, err := scenario.ListTailscaleClients("user1")
 	if err != nil {
 		t.Errorf("failed to get clients: %s", err)
 	}
 
-	nsTwoClients, err := scenario.ListTailscaleClients("namespace2")
+	nsTwoClients, err := scenario.ListTailscaleClients("user2")
 	if err != nil {
 		t.Errorf("failed to get clients: %s", err)
 	}
@@ -183,7 +183,7 @@ func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
 		t.Errorf("failed to get FQDNs: %s", err)
 	}
 
-	testInterNamespaceSSH := func(sourceClients []TailscaleClient, targetClients []TailscaleClient) {
+	testInterUserSSH := func(sourceClients []TailscaleClient, targetClients []TailscaleClient) {
 		for _, client := range sourceClients {
 			for _, peer := range targetClients {
 				assertSSHHostname(t, client, peer)
@@ -191,8 +191,8 @@ func TestSSHMultipleNamespacesAllToAll(t *testing.T) {
 		}
 	}
 
-	testInterNamespaceSSH(nsOneClients, nsTwoClients)
-	testInterNamespaceSSH(nsTwoClients, nsOneClients)
+	testInterUserSSH(nsOneClients, nsTwoClients)
+	testInterUserSSH(nsTwoClients, nsOneClients)
 
 	err = scenario.Shutdown()
 	if err != nil {
@@ -210,7 +210,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions) - 5,
+		"user1": len(TailscaleVersions) - 5,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -218,7 +218,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 		hsic.WithACLPolicy(
 			&headscale.ACLPolicy{
 				Groups: map[string][]string{
-					"group:integration-test": {"namespace1"},
+					"group:integration-test": {"user1"},
 				},
 				ACLs: []headscale.ACL{
 					{
@@ -280,7 +280,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespace1": len(TailscaleVersions) - 5,
+		"user1": len(TailscaleVersions) - 5,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -288,7 +288,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 		hsic.WithACLPolicy(
 			&headscale.ACLPolicy{
 				Groups: map[string][]string{
-					"group:integration-test": {"namespace1"},
+					"group:integration-test": {"user1"},
 				},
 				ACLs: []headscale.ACL{
 					{
@@ -347,7 +347,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	}
 }
 
-func TestSSNamespaceOnlyIsolation(t *testing.T) {
+func TestSSUserOnlyIsolation(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -357,8 +357,8 @@ func TestSSNamespaceOnlyIsolation(t *testing.T) {
 	}
 
 	spec := map[string]int{
-		"namespaceacl1": len(TailscaleVersions) - 5,
-		"namespaceacl2": len(TailscaleVersions) - 5,
+		"useracl1": len(TailscaleVersions) - 5,
+		"useracl2": len(TailscaleVersions) - 5,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -366,8 +366,8 @@ func TestSSNamespaceOnlyIsolation(t *testing.T) {
 		hsic.WithACLPolicy(
 			&headscale.ACLPolicy{
 				Groups: map[string][]string{
-					"group:ssh1": {"namespaceacl1"},
-					"group:ssh2": {"namespaceacl2"},
+					"group:ssh1": {"useracl1"},
+					"group:ssh2": {"useracl2"},
 				},
 				ACLs: []headscale.ACL{
 					{
@@ -392,7 +392,7 @@ func TestSSNamespaceOnlyIsolation(t *testing.T) {
 				},
 			},
 		),
-		hsic.WithTestName("sshtwonamespaceaclblock"),
+		hsic.WithTestName("sshtwouseraclblock"),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_EXPERIMENTAL_FEATURE_SSH": "1",
 		}),
@@ -401,12 +401,12 @@ func TestSSNamespaceOnlyIsolation(t *testing.T) {
 		t.Errorf("failed to create headscale environment: %s", err)
 	}
 
-	ssh1Clients, err := scenario.ListTailscaleClients("namespaceacl1")
+	ssh1Clients, err := scenario.ListTailscaleClients("useracl1")
 	if err != nil {
 		t.Errorf("failed to get clients: %s", err)
 	}
 
-	ssh2Clients, err := scenario.ListTailscaleClients("namespaceacl2")
+	ssh2Clients, err := scenario.ListTailscaleClients("useracl2")
 	if err != nil {
 		t.Errorf("failed to get clients: %s", err)
 	}
