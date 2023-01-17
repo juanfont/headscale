@@ -7,10 +7,11 @@
 package v1
 
 import (
+	reflect "reflect"
+
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	reflect "reflect"
 )
 
 const (
@@ -277,6 +278,7 @@ var file_headscale_v1_headscale_proto_goTypes = []interface{}{
 	(*ExpireApiKeyResponse)(nil),       // 46: headscale.v1.ExpireApiKeyResponse
 	(*ListApiKeysResponse)(nil),        // 47: headscale.v1.ListApiKeysResponse
 }
+
 var file_headscale_v1_headscale_proto_depIdxs = []int32{
 	0,  // 0: headscale.v1.HeadscaleService.GetUser:input_type -> headscale.v1.GetUserRequest
 	1,  // 1: headscale.v1.HeadscaleService.CreateUser:input_type -> headscale.v1.CreateUserRequest

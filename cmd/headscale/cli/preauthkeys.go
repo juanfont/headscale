@@ -166,7 +166,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 			Msg("Preparing to create preauthkey")
 
 		request := &v1.CreatePreAuthKeyRequest{
-			User: user,
+			User:      user,
 			Reusable:  reusable,
 			Ephemeral: ephemeral,
 			AclTags:   tags,
@@ -238,7 +238,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 
 		request := &v1.ExpirePreAuthKeyRequest{
 			User: user,
-			Key:       args[0],
+			Key:  args[0],
 		}
 
 		response, err := client.ExpirePreAuthKey(ctx, request)

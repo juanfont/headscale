@@ -8,6 +8,7 @@ package v1
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -314,78 +315,100 @@ type HeadscaleServiceServer interface {
 }
 
 // UnimplementedHeadscaleServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedHeadscaleServiceServer struct {
-}
+type UnimplementedHeadscaleServiceServer struct{}
 
 func (UnimplementedHeadscaleServiceServer) GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetUser not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) CreateUser(context.Context, *CreateUserRequest) (*CreateUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateUser not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) RenameUser(context.Context, *RenameUserRequest) (*RenameUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RenameUser not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) DeleteUser(context.Context, *DeleteUserRequest) (*DeleteUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteUser not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListUsers not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) CreatePreAuthKey(context.Context, *CreatePreAuthKeyRequest) (*CreatePreAuthKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreatePreAuthKey not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) ExpirePreAuthKey(context.Context, *ExpirePreAuthKeyRequest) (*ExpirePreAuthKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExpirePreAuthKey not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) ListPreAuthKeys(context.Context, *ListPreAuthKeysRequest) (*ListPreAuthKeysResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPreAuthKeys not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) DebugCreateMachine(context.Context, *DebugCreateMachineRequest) (*DebugCreateMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DebugCreateMachine not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) GetMachine(context.Context, *GetMachineRequest) (*GetMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMachine not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) SetTags(context.Context, *SetTagsRequest) (*SetTagsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetTags not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) RegisterMachine(context.Context, *RegisterMachineRequest) (*RegisterMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterMachine not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) DeleteMachine(context.Context, *DeleteMachineRequest) (*DeleteMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteMachine not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) ExpireMachine(context.Context, *ExpireMachineRequest) (*ExpireMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExpireMachine not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) RenameMachine(context.Context, *RenameMachineRequest) (*RenameMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RenameMachine not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) ListMachines(context.Context, *ListMachinesRequest) (*ListMachinesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListMachines not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) MoveMachine(context.Context, *MoveMachineRequest) (*MoveMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MoveMachine not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) GetRoutes(context.Context, *GetRoutesRequest) (*GetRoutesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRoutes not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) EnableRoute(context.Context, *EnableRouteRequest) (*EnableRouteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EnableRoute not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) DisableRoute(context.Context, *DisableRouteRequest) (*DisableRouteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DisableRoute not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) GetMachineRoutes(context.Context, *GetMachineRoutesRequest) (*GetMachineRoutesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMachineRoutes not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateApiKey not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) ExpireApiKey(context.Context, *ExpireApiKeyRequest) (*ExpireApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExpireApiKey not implemented")
 }
+
 func (UnimplementedHeadscaleServiceServer) ListApiKeys(context.Context, *ListApiKeysRequest) (*ListApiKeysResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListApiKeys not implemented")
 }

@@ -116,7 +116,7 @@ var registerNodeCmd = &cobra.Command{
 		}
 
 		request := &v1.RegisterMachineRequest{
-			Key:       machineKey,
+			Key:  machineKey,
 			User: user,
 		}
 
@@ -439,7 +439,7 @@ var moveNodeCmd = &cobra.Command{
 
 		moveRequest := &v1.MoveMachineRequest{
 			MachineId: identifier,
-			User: user,
+			User:      user,
 		}
 
 		moveResponse, err := client.MoveMachine(ctx, moveRequest)

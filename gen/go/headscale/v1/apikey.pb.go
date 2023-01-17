@@ -7,11 +7,12 @@
 package v1
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -422,17 +423,19 @@ func file_headscale_v1_apikey_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_apikey_proto_rawDescData
 }
 
-var file_headscale_v1_apikey_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_headscale_v1_apikey_proto_goTypes = []interface{}{
-	(*ApiKey)(nil),                // 0: headscale.v1.ApiKey
-	(*CreateApiKeyRequest)(nil),   // 1: headscale.v1.CreateApiKeyRequest
-	(*CreateApiKeyResponse)(nil),  // 2: headscale.v1.CreateApiKeyResponse
-	(*ExpireApiKeyRequest)(nil),   // 3: headscale.v1.ExpireApiKeyRequest
-	(*ExpireApiKeyResponse)(nil),  // 4: headscale.v1.ExpireApiKeyResponse
-	(*ListApiKeysRequest)(nil),    // 5: headscale.v1.ListApiKeysRequest
-	(*ListApiKeysResponse)(nil),   // 6: headscale.v1.ListApiKeysResponse
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
-}
+var (
+	file_headscale_v1_apikey_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+	file_headscale_v1_apikey_proto_goTypes  = []interface{}{
+		(*ApiKey)(nil),                // 0: headscale.v1.ApiKey
+		(*CreateApiKeyRequest)(nil),   // 1: headscale.v1.CreateApiKeyRequest
+		(*CreateApiKeyResponse)(nil),  // 2: headscale.v1.CreateApiKeyResponse
+		(*ExpireApiKeyRequest)(nil),   // 3: headscale.v1.ExpireApiKeyRequest
+		(*ExpireApiKeyResponse)(nil),  // 4: headscale.v1.ExpireApiKeyResponse
+		(*ListApiKeysRequest)(nil),    // 5: headscale.v1.ListApiKeysRequest
+		(*ListApiKeysResponse)(nil),   // 6: headscale.v1.ListApiKeysResponse
+		(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	}
+)
 var file_headscale_v1_apikey_proto_depIdxs = []int32{
 	7, // 0: headscale.v1.ApiKey.expiration:type_name -> google.protobuf.Timestamp
 	7, // 1: headscale.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp

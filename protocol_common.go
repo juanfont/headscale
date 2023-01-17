@@ -428,7 +428,7 @@ func (h *Headscale) handleAuthKeyCommon(
 		machineToRegister := Machine{
 			Hostname:       registerRequest.Hostinfo.Hostname,
 			GivenName:      givenName,
-			UserID:    pak.User.ID,
+			UserID:         pak.User.ID,
 			MachineKey:     MachinePublicKeyStripPrefix(machineKey),
 			RegisterMethod: RegisterMethodAuthKey,
 			Expiry:         &registerRequest.Expiry,

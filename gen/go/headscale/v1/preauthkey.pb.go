@@ -7,11 +7,12 @@
 package v1
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -521,17 +522,19 @@ func file_headscale_v1_preauthkey_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_preauthkey_proto_rawDescData
 }
 
-var file_headscale_v1_preauthkey_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_headscale_v1_preauthkey_proto_goTypes = []interface{}{
-	(*PreAuthKey)(nil),               // 0: headscale.v1.PreAuthKey
-	(*CreatePreAuthKeyRequest)(nil),  // 1: headscale.v1.CreatePreAuthKeyRequest
-	(*CreatePreAuthKeyResponse)(nil), // 2: headscale.v1.CreatePreAuthKeyResponse
-	(*ExpirePreAuthKeyRequest)(nil),  // 3: headscale.v1.ExpirePreAuthKeyRequest
-	(*ExpirePreAuthKeyResponse)(nil), // 4: headscale.v1.ExpirePreAuthKeyResponse
-	(*ListPreAuthKeysRequest)(nil),   // 5: headscale.v1.ListPreAuthKeysRequest
-	(*ListPreAuthKeysResponse)(nil),  // 6: headscale.v1.ListPreAuthKeysResponse
-	(*timestamppb.Timestamp)(nil),    // 7: google.protobuf.Timestamp
-}
+var (
+	file_headscale_v1_preauthkey_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+	file_headscale_v1_preauthkey_proto_goTypes  = []interface{}{
+		(*PreAuthKey)(nil),               // 0: headscale.v1.PreAuthKey
+		(*CreatePreAuthKeyRequest)(nil),  // 1: headscale.v1.CreatePreAuthKeyRequest
+		(*CreatePreAuthKeyResponse)(nil), // 2: headscale.v1.CreatePreAuthKeyResponse
+		(*ExpirePreAuthKeyRequest)(nil),  // 3: headscale.v1.ExpirePreAuthKeyRequest
+		(*ExpirePreAuthKeyResponse)(nil), // 4: headscale.v1.ExpirePreAuthKeyResponse
+		(*ListPreAuthKeysRequest)(nil),   // 5: headscale.v1.ListPreAuthKeysRequest
+		(*ListPreAuthKeysResponse)(nil),  // 6: headscale.v1.ListPreAuthKeysResponse
+		(*timestamppb.Timestamp)(nil),    // 7: google.protobuf.Timestamp
+	}
+)
 var file_headscale_v1_preauthkey_proto_depIdxs = []int32{
 	7, // 0: headscale.v1.PreAuthKey.expiration:type_name -> google.protobuf.Timestamp
 	7, // 1: headscale.v1.PreAuthKey.created_at:type_name -> google.protobuf.Timestamp

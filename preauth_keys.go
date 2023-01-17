@@ -18,20 +18,20 @@ const (
 	ErrPreAuthKeyNotFound          = Error("AuthKey not found")
 	ErrPreAuthKeyExpired           = Error("AuthKey expired")
 	ErrSingleUseAuthKeyHasBeenUsed = Error("AuthKey has already been used")
-	ErrUserMismatch           = Error("user mismatch")
+	ErrUserMismatch                = Error("user mismatch")
 	ErrPreAuthKeyACLTagInvalid     = Error("AuthKey tag is invalid")
 )
 
 // PreAuthKey describes a pre-authorization key usable in a particular user.
 type PreAuthKey struct {
-	ID          uint64 `gorm:"primary_key"`
-	Key         string
-	UserID uint
-	User   User
-	Reusable    bool
-	Ephemeral   bool `gorm:"default:false"`
-	Used        bool `gorm:"default:false"`
-	ACLTags     []PreAuthKeyACLTag
+	ID        uint64 `gorm:"primary_key"`
+	Key       string
+	UserID    uint
+	User      User
+	Reusable  bool
+	Ephemeral bool `gorm:"default:false"`
+	Used      bool `gorm:"default:false"`
+	ACLTags   []PreAuthKeyACLTag
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
@@ -70,13 +70,13 @@ func (h *Headscale) CreatePreAuthKey(
 	}
 
 	key := PreAuthKey{
-		Key:         kstr,
-		UserID: user.ID,
-		User:   *user,
-		Reusable:    reusable,
-		Ephemeral:   ephemeral,
-		CreatedAt:   &now,
-		Expiration:  expiration,
+		Key:        kstr,
+		UserID:     user.ID,
+		User:       *user,
+		Reusable:   reusable,
+		Ephemeral:  ephemeral,
+		CreatedAt:  &now,
+		Expiration: expiration,
 	}
 
 	err = h.db.Transaction(func(db *gorm.DB) error {
@@ -217,7 +217,7 @@ func (h *Headscale) generateKey() (string, error) {
 
 func (key *PreAuthKey) toProto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
-		User: key.User.Name,
+		User:      key.User.Name,
 		Id:        strconv.FormatUint(key.ID, Base10),
 		Key:       key.Key,
 		Ephemeral: key.Ephemeral,

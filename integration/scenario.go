@@ -25,7 +25,7 @@ const (
 
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
-	errNoUserAvailable = errors.New("no user available")
+	errNoUserAvailable      = errors.New("no user available")
 
 	// Tailscale started adding TS2021 support in CapabilityVersion>=28 (v1.24.0), but
 	// proper support in Headscale was only added for CapabilityVersion>=39 clients (v1.30.0).
@@ -116,7 +116,7 @@ func NewScenario() (*Scenario, error) {
 
 	return &Scenario{
 		controlServers: xsync.NewMapOf[ControlServer](),
-		users:     make(map[string]*User),
+		users:          make(map[string]*User),
 
 		pool:    pool,
 		network: network,
