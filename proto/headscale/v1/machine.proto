@@ -3,7 +3,7 @@ package headscale.v1;
 option  go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 import "google/protobuf/timestamp.proto";
-import "headscale/v1/namespace.proto";
+import "headscale/v1/user.proto";
 import "headscale/v1/preauthkey.proto";
 
 enum RegisterMethod {
@@ -20,7 +20,7 @@ message Machine {
     string          disco_key    = 4;
     repeated string ip_addresses = 5;
     string          name         = 6;
-    Namespace namespace          = 7;
+    User user          = 7;
 
     google.protobuf.Timestamp last_seen              = 8;
     google.protobuf.Timestamp last_successful_update = 9;
@@ -48,7 +48,7 @@ message Machine {
 }
 
 message RegisterMachineRequest {
-    string namespace = 1;
+    string user = 1;
     string key       = 2;
 }
 
@@ -98,7 +98,7 @@ message RenameMachineResponse {
 }
 
 message ListMachinesRequest {
-    string namespace = 1;
+    string user = 1;
 }
 
 message ListMachinesResponse {
@@ -107,7 +107,7 @@ message ListMachinesResponse {
 
 message MoveMachineRequest {
     uint64 machine_id = 1;
-    string namespace  = 2;
+    string user  = 2;
 }
 
 message MoveMachineResponse {
@@ -115,7 +115,7 @@ message MoveMachineResponse {
 }
 
 message DebugCreateMachineRequest {
-    string namespace       = 1;
+    string user       = 1;
     string          key    = 2;
     string          name   = 3;
     repeated string routes = 4;
