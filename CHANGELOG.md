@@ -1,6 +1,12 @@
 # CHANGELOG
 
-## 0.18.x (2022-xx-xx)
+## 0.19.0 (2022-11-26)
+
+### BREAKING
+
+- Rename Namespace to User [#1144](https://github.com/juanfont/headscale/pull/1144)
+
+## 0.18.0 (2022-01-14)
 
 ### Changes
 
