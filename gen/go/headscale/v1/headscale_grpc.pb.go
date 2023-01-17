@@ -22,12 +22,12 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type HeadscaleServiceClient interface {
-	// --- Namespace start ---
-	GetNamespace(ctx context.Context, in *GetNamespaceRequest, opts ...grpc.CallOption) (*GetNamespaceResponse, error)
-	CreateNamespace(ctx context.Context, in *CreateNamespaceRequest, opts ...grpc.CallOption) (*CreateNamespaceResponse, error)
-	RenameNamespace(ctx context.Context, in *RenameNamespaceRequest, opts ...grpc.CallOption) (*RenameNamespaceResponse, error)
-	DeleteNamespace(ctx context.Context, in *DeleteNamespaceRequest, opts ...grpc.CallOption) (*DeleteNamespaceResponse, error)
-	ListNamespaces(ctx context.Context, in *ListNamespacesRequest, opts ...grpc.CallOption) (*ListNamespacesResponse, error)
+	// --- User start ---
+	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error)
+	CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*CreateUserResponse, error)
+	RenameUser(ctx context.Context, in *RenameUserRequest, opts ...grpc.CallOption) (*RenameUserResponse, error)
+	DeleteUser(ctx context.Context, in *DeleteUserRequest, opts ...grpc.CallOption) (*DeleteUserResponse, error)
+	ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
 	// --- PreAuthKeys start ---
 	CreatePreAuthKey(ctx context.Context, in *CreatePreAuthKeyRequest, opts ...grpc.CallOption) (*CreatePreAuthKeyResponse, error)
 	ExpirePreAuthKey(ctx context.Context, in *ExpirePreAuthKeyRequest, opts ...grpc.CallOption) (*ExpirePreAuthKeyResponse, error)
@@ -61,45 +61,45 @@ func NewHeadscaleServiceClient(cc grpc.ClientConnInterface) HeadscaleServiceClie
 	return &headscaleServiceClient{cc}
 }
 
-func (c *headscaleServiceClient) GetNamespace(ctx context.Context, in *GetNamespaceRequest, opts ...grpc.CallOption) (*GetNamespaceResponse, error) {
-	out := new(GetNamespaceResponse)
-	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/GetNamespace", in, out, opts...)
+func (c *headscaleServiceClient) GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error) {
+	out := new(GetUserResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/GetUser", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) CreateNamespace(ctx context.Context, in *CreateNamespaceRequest, opts ...grpc.CallOption) (*CreateNamespaceResponse, error) {
-	out := new(CreateNamespaceResponse)
-	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/CreateNamespace", in, out, opts...)
+func (c *headscaleServiceClient) CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*CreateUserResponse, error) {
+	out := new(CreateUserResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/CreateUser", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) RenameNamespace(ctx context.Context, in *RenameNamespaceRequest, opts ...grpc.CallOption) (*RenameNamespaceResponse, error) {
-	out := new(RenameNamespaceResponse)
-	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/RenameNamespace", in, out, opts...)
+func (c *headscaleServiceClient) RenameUser(ctx context.Context, in *RenameUserRequest, opts ...grpc.CallOption) (*RenameUserResponse, error) {
+	out := new(RenameUserResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/RenameUser", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) DeleteNamespace(ctx context.Context, in *DeleteNamespaceRequest, opts ...grpc.CallOption) (*DeleteNamespaceResponse, error) {
-	out := new(DeleteNamespaceResponse)
-	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/DeleteNamespace", in, out, opts...)
+func (c *headscaleServiceClient) DeleteUser(ctx context.Context, in *DeleteUserRequest, opts ...grpc.CallOption) (*DeleteUserResponse, error) {
+	out := new(DeleteUserResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/DeleteUser", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) ListNamespaces(ctx context.Context, in *ListNamespacesRequest, opts ...grpc.CallOption) (*ListNamespacesResponse, error) {
-	out := new(ListNamespacesResponse)
-	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/ListNamespaces", in, out, opts...)
+func (c *headscaleServiceClient) ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error) {
+	out := new(ListUsersResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/ListUsers", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -281,12 +281,12 @@ func (c *headscaleServiceClient) ListApiKeys(ctx context.Context, in *ListApiKey
 // All implementations must embed UnimplementedHeadscaleServiceServer
 // for forward compatibility
 type HeadscaleServiceServer interface {
-	// --- Namespace start ---
-	GetNamespace(context.Context, *GetNamespaceRequest) (*GetNamespaceResponse, error)
-	CreateNamespace(context.Context, *CreateNamespaceRequest) (*CreateNamespaceResponse, error)
-	RenameNamespace(context.Context, *RenameNamespaceRequest) (*RenameNamespaceResponse, error)
-	DeleteNamespace(context.Context, *DeleteNamespaceRequest) (*DeleteNamespaceResponse, error)
-	ListNamespaces(context.Context, *ListNamespacesRequest) (*ListNamespacesResponse, error)
+	// --- User start ---
+	GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error)
+	CreateUser(context.Context, *CreateUserRequest) (*CreateUserResponse, error)
+	RenameUser(context.Context, *RenameUserRequest) (*RenameUserResponse, error)
+	DeleteUser(context.Context, *DeleteUserRequest) (*DeleteUserResponse, error)
+	ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error)
 	// --- PreAuthKeys start ---
 	CreatePreAuthKey(context.Context, *CreatePreAuthKeyRequest) (*CreatePreAuthKeyResponse, error)
 	ExpirePreAuthKey(context.Context, *ExpirePreAuthKeyRequest) (*ExpirePreAuthKeyResponse, error)
@@ -317,20 +317,20 @@ type HeadscaleServiceServer interface {
 type UnimplementedHeadscaleServiceServer struct {
 }
 
-func (UnimplementedHeadscaleServiceServer) GetNamespace(context.Context, *GetNamespaceRequest) (*GetNamespaceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetNamespace not implemented")
+func (UnimplementedHeadscaleServiceServer) GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUser not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) CreateNamespace(context.Context, *CreateNamespaceRequest) (*CreateNamespaceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateNamespace not implemented")
+func (UnimplementedHeadscaleServiceServer) CreateUser(context.Context, *CreateUserRequest) (*CreateUserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateUser not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) RenameNamespace(context.Context, *RenameNamespaceRequest) (*RenameNamespaceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RenameNamespace not implemented")
+func (UnimplementedHeadscaleServiceServer) RenameUser(context.Context, *RenameUserRequest) (*RenameUserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RenameUser not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) DeleteNamespace(context.Context, *DeleteNamespaceRequest) (*DeleteNamespaceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteNamespace not implemented")
+func (UnimplementedHeadscaleServiceServer) DeleteUser(context.Context, *DeleteUserRequest) (*DeleteUserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteUser not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) ListNamespaces(context.Context, *ListNamespacesRequest) (*ListNamespacesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ListNamespaces not implemented")
+func (UnimplementedHeadscaleServiceServer) ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListUsers not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) CreatePreAuthKey(context.Context, *CreatePreAuthKeyRequest) (*CreatePreAuthKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreatePreAuthKey not implemented")
@@ -402,92 +402,92 @@ func RegisterHeadscaleServiceServer(s grpc.ServiceRegistrar, srv HeadscaleServic
 	s.RegisterService(&HeadscaleService_ServiceDesc, srv)
 }
 
-func _HeadscaleService_GetNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetNamespaceRequest)
+func _HeadscaleService_GetUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).GetNamespace(ctx, in)
+		return srv.(HeadscaleServiceServer).GetUser(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/headscale.v1.HeadscaleService/GetNamespace",
+		FullMethod: "/headscale.v1.HeadscaleService/GetUser",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).GetNamespace(ctx, req.(*GetNamespaceRequest))
+		return srv.(HeadscaleServiceServer).GetUser(ctx, req.(*GetUserRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_CreateNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateNamespaceRequest)
+func _HeadscaleService_CreateUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateUserRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).CreateNamespace(ctx, in)
+		return srv.(HeadscaleServiceServer).CreateUser(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/headscale.v1.HeadscaleService/CreateNamespace",
+		FullMethod: "/headscale.v1.HeadscaleService/CreateUser",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).CreateNamespace(ctx, req.(*CreateNamespaceRequest))
+		return srv.(HeadscaleServiceServer).CreateUser(ctx, req.(*CreateUserRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_RenameNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RenameNamespaceRequest)
+func _HeadscaleService_RenameUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameUserRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).RenameNamespace(ctx, in)
+		return srv.(HeadscaleServiceServer).RenameUser(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/headscale.v1.HeadscaleService/RenameNamespace",
+		FullMethod: "/headscale.v1.HeadscaleService/RenameUser",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).RenameNamespace(ctx, req.(*RenameNamespaceRequest))
+		return srv.(HeadscaleServiceServer).RenameUser(ctx, req.(*RenameUserRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_DeleteNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteNamespaceRequest)
+func _HeadscaleService_DeleteUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteUserRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).DeleteNamespace(ctx, in)
+		return srv.(HeadscaleServiceServer).DeleteUser(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/headscale.v1.HeadscaleService/DeleteNamespace",
+		FullMethod: "/headscale.v1.HeadscaleService/DeleteUser",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).DeleteNamespace(ctx, req.(*DeleteNamespaceRequest))
+		return srv.(HeadscaleServiceServer).DeleteUser(ctx, req.(*DeleteUserRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_ListNamespaces_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListNamespacesRequest)
+func _HeadscaleService_ListUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUsersRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).ListNamespaces(ctx, in)
+		return srv.(HeadscaleServiceServer).ListUsers(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/headscale.v1.HeadscaleService/ListNamespaces",
+		FullMethod: "/headscale.v1.HeadscaleService/ListUsers",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).ListNamespaces(ctx, req.(*ListNamespacesRequest))
+		return srv.(HeadscaleServiceServer).ListUsers(ctx, req.(*ListUsersRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -842,24 +842,24 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*HeadscaleServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetNamespace",
-			Handler:    _HeadscaleService_GetNamespace_Handler,
+			MethodName: "GetUser",
+			Handler:    _HeadscaleService_GetUser_Handler,
 		},
 		{
-			MethodName: "CreateNamespace",
-			Handler:    _HeadscaleService_CreateNamespace_Handler,
+			MethodName: "CreateUser",
+			Handler:    _HeadscaleService_CreateUser_Handler,
 		},
 		{
-			MethodName: "RenameNamespace",
-			Handler:    _HeadscaleService_RenameNamespace_Handler,
+			MethodName: "RenameUser",
+			Handler:    _HeadscaleService_RenameUser_Handler,
 		},
 		{
-			MethodName: "DeleteNamespace",
-			Handler:    _HeadscaleService_DeleteNamespace_Handler,
+			MethodName: "DeleteUser",
+			Handler:    _HeadscaleService_DeleteUser_Handler,
 		},
 		{
-			MethodName: "ListNamespaces",
-			Handler:    _HeadscaleService_ListNamespaces_Handler,
+			MethodName: "ListUsers",
+			Handler:    _HeadscaleService_ListUsers_Handler,
 		},
 		{
 			MethodName: "CreatePreAuthKey",
