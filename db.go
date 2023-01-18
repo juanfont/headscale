@@ -41,6 +41,13 @@ func (h *Headscale) initDB() error {
 		db.Exec(`create extension if not exists "uuid-ossp";`)
 	}
 
+	_ = db.Migrator().RenameTable("namespaces", "users")
+
+	err = db.AutoMigrate(&User{})
+	if err != nil {
+		return err
+	}
+
 	_ = db.Migrator().RenameColumn(&Machine{}, "ip_address", "ip_addresses")
 	_ = db.Migrator().RenameColumn(&Machine{}, "name", "hostname")
 
@@ -183,13 +190,6 @@ func (h *Headscale) initDB() error {
 	}
 
 	err = db.AutoMigrate(&KV{})
-	if err != nil {
-		return err
-	}
-
-	_ = db.Migrator().RenameTable("Namespace", "User")
-
-	err = db.AutoMigrate(&User{})
 	if err != nil {
 		return err
 	}
