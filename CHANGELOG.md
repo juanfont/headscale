@@ -5,6 +5,7 @@
 ### BREAKING
 
 - Rename Namespace to User [#1144](https://github.com/juanfont/headscale/pull/1144)
+  - **BACKUP your database before upgrading**
 
 ## 0.18.0 (2022-01-14)
 
