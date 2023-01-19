@@ -352,7 +352,7 @@ func (h *Headscale) ListMachines() ([]Machine, error) {
 
 func (h *Headscale) ListMachinesByGivenName(givenName string) ([]Machine, error) {
 	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Find(&machines).Where("given_name = ?", givenName).Error; err != nil {
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where("given_name = ?", givenName).Find(&machines).Error; err != nil {
 		return nil, err
 	}
 
