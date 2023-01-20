@@ -80,4 +80,4 @@ server {
 
 ## Limitations
 
-[Not all types of records are supported](https://github.com/tailscale/tailscale/blob/main/ipn/ipnlocal/local.go#L2891-L2909), especially no CNAME records.
+[Not all types of records are supported](https://github.com/tailscale/tailscale/blob/6edf357b96b28ee1be659a70232c0135b2ffedfd/ipn/ipnlocal/local.go#L2989-L3007), especially no CNAME records.
