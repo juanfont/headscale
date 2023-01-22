@@ -90,7 +90,14 @@ func (h *Headscale) EnableRoute(id uint64) error {
 		return err
 	}
 
-	return h.EnableRoutes(&route.Machine, netip.Prefix(route.Prefix).String())
+	// Tailscale requires both IPv4 and IPv6 exit routes to
+	// be enabled at the same time, as per
+	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
+	if route.isExitRoute() {
+		return h.enableRoutes(&route.Machine, ExitRouteV4.String(), ExitRouteV6.String())
+	}
+
+	return h.enableRoutes(&route.Machine, netip.Prefix(route.Prefix).String())
 }
 
 func (h *Headscale) DisableRoute(id uint64) error {
