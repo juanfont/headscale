@@ -1047,8 +1047,8 @@ func (h *Headscale) IsRoutesEnabled(machine *Machine, routeStr string) bool {
 	return false
 }
 
-// EnableRoutes enables new routes based on a list of new routes.
-func (h *Headscale) EnableRoutes(machine *Machine, routeStrs ...string) error {
+// enableRoutes enables new routes based on a list of new routes.
+func (h *Headscale) enableRoutes(machine *Machine, routeStrs ...string) error {
 	newRoutes := make([]netip.Prefix, len(routeStrs))
 	for index, routeStr := range routeStrs {
 		route, err := netip.ParsePrefix(routeStr)
