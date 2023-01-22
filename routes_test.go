@@ -46,10 +46,10 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(advertisedRoutes), check.Equals, 1)
 
-	err = app.EnableRoutes(&machine, "192.168.0.0/24")
+	err = app.enableRoutes(&machine, "192.168.0.0/24")
 	c.Assert(err, check.NotNil)
 
-	err = app.EnableRoutes(&machine, "10.0.0.0/24")
+	err = app.enableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 }
 
@@ -102,10 +102,10 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(noEnabledRoutes), check.Equals, 0)
 
-	err = app.EnableRoutes(&machine, "192.168.0.0/24")
+	err = app.enableRoutes(&machine, "192.168.0.0/24")
 	c.Assert(err, check.NotNil)
 
-	err = app.EnableRoutes(&machine, "10.0.0.0/24")
+	err = app.enableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 
 	enabledRoutes, err := app.GetEnabledRoutes(&machine)
@@ -113,14 +113,14 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	c.Assert(len(enabledRoutes), check.Equals, 1)
 
 	// Adding it twice will just let it pass through
-	err = app.EnableRoutes(&machine, "10.0.0.0/24")
+	err = app.enableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 
 	enableRoutesAfterDoubleApply, err := app.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enableRoutesAfterDoubleApply), check.Equals, 1)
 
-	err = app.EnableRoutes(&machine, "150.0.10.0/25")
+	err = app.enableRoutes(&machine, "150.0.10.0/25")
 	c.Assert(err, check.IsNil)
 
 	enabledRoutesWithAdditionalRoute, err := app.GetEnabledRoutes(&machine)
@@ -167,10 +167,10 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	err = app.processMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine1, route.String())
+	err = app.enableRoutes(&machine1, route.String())
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine1, route2.String())
+	err = app.enableRoutes(&machine1, route2.String())
 	c.Assert(err, check.IsNil)
 
 	hostInfo2 := tailcfg.Hostinfo{
@@ -192,7 +192,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	err = app.processMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine2, route2.String())
+	err = app.enableRoutes(&machine2, route2.String())
 	c.Assert(err, check.IsNil)
 
 	enabledRoutes1, err := app.GetEnabledRoutes(&machine1)
@@ -254,10 +254,10 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	err = app.processMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine1, prefix.String())
+	err = app.enableRoutes(&machine1, prefix.String())
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine1, prefix2.String())
+	err = app.enableRoutes(&machine1, prefix2.String())
 	c.Assert(err, check.IsNil)
 
 	err = app.handlePrimarySubnetFailover()
@@ -291,7 +291,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	err = app.processMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine2, prefix2.String())
+	err = app.enableRoutes(&machine2, prefix2.String())
 	c.Assert(err, check.IsNil)
 
 	err = app.handlePrimarySubnetFailover()
@@ -339,7 +339,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	err = app.processMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine2, prefix.String())
+	err = app.enableRoutes(&machine2, prefix.String())
 	c.Assert(err, check.IsNil)
 
 	err = app.handlePrimarySubnetFailover()
@@ -413,18 +413,24 @@ func (s *Suite) TestAllowedIPRoutes(c *check.C) {
 	err = app.processMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine1, prefix.String())
+	err = app.enableRoutes(&machine1, prefix.String())
 	c.Assert(err, check.IsNil)
 
 	// We do not enable this one on purpose to test that it is not enabled
-	// err = app.EnableRoutes(&machine1, prefix2.String())
+	// err = app.enableRoutes(&machine1, prefix2.String())
 	// c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine1, prefixExitNodeV4.String())
+	routes, err := app.GetMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
+	for _, route := range routes {
+		if route.isExitRoute() {
+			err = app.EnableRoute(uint64(route.ID))
+			c.Assert(err, check.IsNil)
 
-	err = app.EnableRoutes(&machine1, prefixExitNodeV6.String())
-	c.Assert(err, check.IsNil)
+			// We only enable one exit route, so we can test that both are enabled
+			break
+		}
+	}
 
 	err = app.handlePrimarySubnetFailover()
 	c.Assert(err, check.IsNil)
