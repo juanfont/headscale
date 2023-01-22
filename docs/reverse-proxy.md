@@ -112,3 +112,9 @@ The following Caddyfile is all that is necessary to use Caddy as a reverse proxy
 Caddy v2 will [automatically](https://caddyserver.com/docs/automatic-https) provision a certficate for your domain/subdomain, force HTTPS, and proxy websockets - no further configuration is necessary.
 
 For a slightly more complex configuration which utilizes Docker containers to manage Caddy, Headscale, and Headscale-UI, [Guru Computing's guide](https://blog.gurucomputing.com.au/smart-vpns-with-headscale/) is an excellent reference.
+
+## Apache
+
+Apache is NOT supported. It will not work. Apache [overwrites](https://github.com/svn2github/apache-httpd/blob/82779fce1be478e2333afc9fef86d34f88db718b/modules/proxy/mod_proxy_wstunnel.c#L354) the custom upgrade header of thw WebSockets connection, which is required for the Tailscale TS2021 protocol.
+
+Please use any other reverse proxy.
