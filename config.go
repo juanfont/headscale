@@ -411,34 +411,32 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 		}
 
 		if viper.IsSet("dns_config.restricted_nameservers") {
-			if len(dnsConfig.Resolvers) > 0 {
-				dnsConfig.Routes = make(map[string][]*dnstype.Resolver)
-				restrictedDNS := viper.GetStringMapStringSlice(
-					"dns_config.restricted_nameservers",
+			dnsConfig.Routes = make(map[string][]*dnstype.Resolver)
+			domains := []string{}
+			restrictedDNS := viper.GetStringMapStringSlice(
+				"dns_config.restricted_nameservers",
+			)
+			for domain, restrictedNameservers := range restrictedDNS {
+				restrictedResolvers := make(
+					[]*dnstype.Resolver,
+					len(restrictedNameservers),
 				)
-				for domain, restrictedNameservers := range restrictedDNS {
-					restrictedResolvers := make(
-						[]*dnstype.Resolver,
-						len(restrictedNameservers),
-					)
-					for index, nameserverStr := range restrictedNameservers {
-						nameserver, err := netip.ParseAddr(nameserverStr)
-						if err != nil {
-							log.Error().
-								Str("func", "getDNSConfig").
-								Err(err).
-								Msgf("Could not parse restricted nameserver IP: %s", nameserverStr)
-						}
-						restrictedResolvers[index] = &dnstype.Resolver{
-							Addr: nameserver.String(),
-						}
+				for index, nameserverStr := range restrictedNameservers {
+					nameserver, err := netip.ParseAddr(nameserverStr)
+					if err != nil {
+						log.Error().
+							Str("func", "getDNSConfig").
+							Err(err).
+							Msgf("Could not parse restricted nameserver IP: %s", nameserverStr)
 					}
-					dnsConfig.Routes[domain] = restrictedResolvers
+					restrictedResolvers[index] = &dnstype.Resolver{
+						Addr: nameserver.String(),
+					}
 				}
-			} else {
-				log.Warn().
-					Msg("Warning: dns_config.restricted_nameservers is set, but no nameservers are configured. Ignoring restricted_nameservers.")
+				dnsConfig.Routes[domain] = restrictedResolvers
+				domains = append(domains, domain)
 			}
+			dnsConfig.Domains = domains
 		}
 
 		if viper.IsSet("dns_config.domains") {
