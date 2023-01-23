@@ -112,3 +112,20 @@ The following Caddyfile is all that is necessary to use Caddy as a reverse proxy
 Caddy v2 will [automatically](https://caddyserver.com/docs/automatic-https) provision a certficate for your domain/subdomain, force HTTPS, and proxy websockets - no further configuration is necessary.
 
 For a slightly more complex configuration which utilizes Docker containers to manage Caddy, Headscale, and Headscale-UI, [Guru Computing's guide](https://blog.gurucomputing.com.au/smart-vpns-with-headscale/) is an excellent reference.
+
+## Apache
+
+The following minimal Apache config will proxy traffic to the Headscale instance on `<IP:PORT>`. Note that `upgrade=any` is required as a parameter for `ProxyPass` so that WebSockets traffic whose `Upgrade` header value is not equal to `WebSocket` (i. e. Tailscale Control Protocol) is forwarded correctly. See the [Apache docs](https://httpd.apache.org/docs/2.4/mod/mod_proxy_wstunnel.html) for more information on this.
+
+```
+<VirtualHost *:443>
+	ServerName <YOUR_SERVER_NAME>
+
+	ProxyPreserveHost On
+	ProxyPass / http://<IP:PORT>/ upgrade=any
+
+	SSLEngine On
+	SSLCertificateFile <PATH_TO_CERT>
+	SSLCertificateKeyFile <PATH_CERT_KEY>
+</VirtualHost>
+```
