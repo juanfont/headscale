@@ -335,7 +335,7 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(userStr string, loginURL *url
 
 	if headscale, err := s.Headscale(); err == nil {
 		_, err = headscale.Execute(
-			[]string{"headscale", "-n", userStr, "nodes", "register", "--key", key},
+			[]string{"headscale", "nodes", "register", "--user", userStr, "--key", key},
 		)
 		if err != nil {
 			log.Printf("failed to register node: %s", err)
