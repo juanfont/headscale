@@ -48,6 +48,9 @@ func (h *Headscale) initDB() error {
 		return err
 	}
 
+	_ = db.Migrator().RenameColumn(&Machine{}, "namespace_id", "user_id")
+	_ = db.Migrator().RenameColumn(&PreAuthKey{}, "namespace_id", "user_id")
+
 	_ = db.Migrator().RenameColumn(&Machine{}, "ip_address", "ip_addresses")
 	_ = db.Migrator().RenameColumn(&Machine{}, "name", "hostname")
 
