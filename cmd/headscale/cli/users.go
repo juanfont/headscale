@@ -27,7 +27,7 @@ const (
 var userCmd = &cobra.Command{
 	Use:     "users",
 	Short:   "Manage the users of Headscale",
-	Aliases: []string{"user", "namespace", "ns"},
+	Aliases: []string{"user", "namespace", "namespaces", "ns"},
 }
 
 var createUserCmd = &cobra.Command{

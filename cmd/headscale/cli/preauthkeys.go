@@ -20,7 +20,13 @@ const (
 
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
-	preauthkeysCmd.PersistentFlags().StringP("user", "n", "", "User")
+	preauthkeysCmd.PersistentFlags().StringP("user", "u", "", "User")
+
+	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "User")
+	pakNamespaceFlag := preauthkeysCmd.PersistentFlags().Lookup("namespace")
+	pakNamespaceFlag.Deprecated = deprecateNamespaceMessage
+	pakNamespaceFlag.Hidden = true
+
 	err := preauthkeysCmd.MarkPersistentFlagRequired("user")
 	if err != nil {
 		log.Fatal().Err(err).Msg("")

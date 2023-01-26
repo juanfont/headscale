@@ -27,7 +27,13 @@ func init() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
-	createNodeCmd.Flags().StringP("user", "n", "", "User")
+	createNodeCmd.Flags().StringP("user", "u", "", "User")
+
+	createNodeCmd.Flags().StringP("namespace", "n", "", "User")
+	createNodeNamespaceFlag := createNodeCmd.Flags().Lookup("namespace")
+	createNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
+	createNodeNamespaceFlag.Hidden = true
+
 	err = createNodeCmd.MarkFlagRequired("user")
 	if err != nil {
 		log.Fatal().Err(err).Msg("")

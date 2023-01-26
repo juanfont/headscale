@@ -19,11 +19,23 @@ import (
 
 func init() {
 	rootCmd.AddCommand(nodeCmd)
-	listNodesCmd.Flags().StringP("user", "n", "", "Filter by user")
+	listNodesCmd.Flags().StringP("user", "u", "", "Filter by user")
 	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
+
+	listNodesCmd.Flags().StringP("namespace", "n", "", "User")
+	listNodesNamespaceFlag := listNodesCmd.Flags().Lookup("namespace")
+	listNodesNamespaceFlag.Deprecated = deprecateNamespaceMessage
+	listNodesNamespaceFlag.Hidden = true
+
 	nodeCmd.AddCommand(listNodesCmd)
 
-	registerNodeCmd.Flags().StringP("user", "n", "", "User")
+	registerNodeCmd.Flags().StringP("user", "u", "", "User")
+
+	registerNodeCmd.Flags().StringP("namespace", "n", "", "User")
+	registerNodeNamespaceFlag := registerNodeCmd.Flags().Lookup("namespace")
+	registerNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
+	registerNodeNamespaceFlag.Hidden = true
+
 	err := registerNodeCmd.MarkFlagRequired("user")
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -63,7 +75,12 @@ func init() {
 		log.Fatalf(err.Error())
 	}
 
-	moveNodeCmd.Flags().StringP("user", "n", "", "New user")
+	moveNodeCmd.Flags().StringP("user", "u", "", "New user")
+
+	moveNodeCmd.Flags().StringP("namespace", "n", "", "User")
+	moveNodeNamespaceFlag := moveNodeCmd.Flags().Lookup("namespace")
+	moveNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
+	moveNodeNamespaceFlag.Hidden = true
 
 	err = moveNodeCmd.MarkFlagRequired("user")
 	if err != nil {
