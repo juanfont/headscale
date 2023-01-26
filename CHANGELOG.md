@@ -6,6 +6,7 @@
 
 - Rename Namespace to User [#1144](https://github.com/juanfont/headscale/pull/1144)
   - **BACKUP your database before upgrading**
+- Command line flags previously taking `--namespace` or `-n` will now require `--user` or `-u`
 
 ## 0.18.0 (2022-01-14)
 

@@ -12,10 +12,15 @@ import (
 	"github.com/tcnksm/go-latest"
 )
 
+const (
+	deprecateNamespaceMessage = "use --user"
+)
+
 var cfgFile string = ""
 
 func init() {
-	if len(os.Args) > 1 && (os.Args[1] == "version" || os.Args[1] == "mockoidc" || os.Args[1] == "completion") {
+	if len(os.Args) > 1 &&
+		(os.Args[1] == "version" || os.Args[1] == "mockoidc" || os.Args[1] == "completion") {
 		return
 	}
 
