@@ -3,8 +3,10 @@ package cli
 import (
 	"fmt"
 	"log"
+	"net/netip"
 	"strconv"
 
+	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -218,6 +220,19 @@ func routesToPtables(routes []*v1.Route) pterm.TableData {
 	tableData := pterm.TableData{{"ID", "Machine", "Prefix", "Advertised", "Enabled", "Primary"}}
 
 	for _, route := range routes {
+		var isPrimaryStr string
+		prefix, err := netip.ParsePrefix(route.Prefix)
+		if err != nil {
+			log.Printf("Error parsing prefix %s: %s", route.Prefix, err)
+
+			continue
+		}
+		if prefix == headscale.ExitRouteV4 || prefix == headscale.ExitRouteV6 {
+			isPrimaryStr = "-"
+		} else {
+			isPrimaryStr = strconv.FormatBool(route.IsPrimary)
+		}
+
 		tableData = append(tableData,
 			[]string{
 				strconv.FormatUint(route.Id, Base10),
@@ -225,7 +240,7 @@ func routesToPtables(routes []*v1.Route) pterm.TableData {
 				route.Prefix,
 				strconv.FormatBool(route.Advertised),
 				strconv.FormatBool(route.Enabled),
-				strconv.FormatBool(route.IsPrimary),
+				isPrimaryStr,
 			})
 	}
 
