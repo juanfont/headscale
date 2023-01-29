@@ -1,6 +1,12 @@
 # CHANGELOG
 
-## 0.19.0 (2022-11-26)
+## 0.20.0 (2023-x-x)
+
+### Changes
+
+- Fix wrong behaviour in exit nodes [#1159](https://github.com/juanfont/headscale/pull/1159)
+
+## 0.19.0 (2023-01-29)
 
 ### BREAKING
 
@@ -8,7 +14,7 @@
   - **BACKUP your database before upgrading**
 - Command line flags previously taking `--namespace` or `-n` will now require `--user` or `-u`
 
-## 0.18.0 (2022-01-14)
+## 0.18.0 (2023-01-14)
 
 ### Changes
 
