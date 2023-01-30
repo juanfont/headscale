@@ -26,7 +26,8 @@ derp.yaml
 # Exclude Jetbrains Editors
 .idea
 
-test_output/ 
+test_output/
+control_logs/
 
 # Nix build output
 result

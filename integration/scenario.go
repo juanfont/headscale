@@ -126,7 +126,15 @@ func NewScenario() (*Scenario, error) {
 
 func (s *Scenario) Shutdown() error {
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
-		err := control.Shutdown()
+		err := control.SaveLog("/tmp/control")
+		if err != nil {
+			log.Printf(
+				"Failed to save log from control: %s",
+				fmt.Errorf("failed to save log from control: %w", err),
+			)
+		}
+
+		err = control.Shutdown()
 		if err != nil {
 			log.Printf(
 				"Failed to shut down control: %s",

@@ -6,6 +6,7 @@ import (
 
 type ControlServer interface {
 	Shutdown() error
+	SaveLog(string) error
 	Execute(command []string) (string, error)
 	GetHealthEndpoint() string
 	GetEndpoint() string
