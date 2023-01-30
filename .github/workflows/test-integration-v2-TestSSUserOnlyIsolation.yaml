@@ -2,9 +2,13 @@
 # DO NOT EDIT, generated with cmd/gh-action-integration-generator/main.go
 # To regenerate, run "go generate" in cmd/gh-action-integration-generator/
 
-name: Integration Test v2 - TestSSNamespaceOnlyIsolation
+name: Integration Test v2 - TestSSUserOnlyIsolation
 
 on: [pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-$${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -26,8 +30,8 @@ jobs:
             integration_test/
             config-example.yaml
 
-      - uses: cachix/install-nix-action@v16
-        if: steps.changed-files.outputs.any_changed == 'true'
+      - uses: cachix/install-nix-action@v18
+        if: ${{ env.ACT }} || steps.changed-files.outputs.any_changed == 'true'
 
       - name: Run general integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -38,10 +42,17 @@ jobs:
               --name headscale-test-suite \
               --volume $PWD:$PWD -w $PWD/integration \
               --volume /var/run/docker.sock:/var/run/docker.sock \
+              --volume $PWD/control_logs:/tmp/control \
               golang:1 \
                 go test ./... \
                   -tags ts2019 \
                   -failfast \
                   -timeout 120m \
                   -parallel 1 \
-                  -run "^TestSSNamespaceOnlyIsolation$"
+                  -run "^TestSSUserOnlyIsolation$"
+
+      - uses: actions/upload-artifact@v3
+        if: always() && steps.changed-files.outputs.any_changed == 'true'
+        with:
+          name: logs
+          path: "control_logs/*.log"

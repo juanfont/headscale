@@ -248,6 +248,10 @@ func (t *HeadscaleInContainer) Shutdown() error {
 	return t.pool.Purge(t.container)
 }
 
+func (t *HeadscaleInContainer) SaveLog(path string) error {
+	return dockertestutil.SaveLog(t.pool, t.container, path)
+}
+
 func (t *HeadscaleInContainer) Execute(
 	command []string,
 ) (string, error) {

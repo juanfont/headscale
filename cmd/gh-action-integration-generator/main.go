@@ -20,6 +20,10 @@ name: Integration Test v2 - {{.Name}}
 
 on: [pull_request]
 
+concurrency:
+  group: {{ "${{ github.workflow }}-$${{ github.head_ref || github.run_id }}" }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -40,8 +44,8 @@ jobs:
             integration_test/
             config-example.yaml
 
-      - uses: cachix/install-nix-action@v16
-        if: steps.changed-files.outputs.any_changed == 'true'
+      - uses: cachix/install-nix-action@v18
+        if: {{ "${{ env.ACT }}" }} || steps.changed-files.outputs.any_changed == 'true'
 
       - name: Run general integration tests
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -52,6 +56,7 @@ jobs:
               --name headscale-test-suite \
               --volume $PWD:$PWD -w $PWD/integration \
               --volume /var/run/docker.sock:/var/run/docker.sock \
+              --volume $PWD/control_logs:/tmp/control \
               golang:1 \
                 go test ./... \
                   -tags ts2019 \
@@ -59,6 +64,12 @@ jobs:
                   -timeout 120m \
                   -parallel 1 \
                   -run "^{{.Name}}$"
+
+      - uses: actions/upload-artifact@v3
+        if: always() && steps.changed-files.outputs.any_changed == 'true'
+        with:
+          name: logs
+          path: "control_logs/*.log"
 `))
 )
 
