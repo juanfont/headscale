@@ -1041,7 +1041,7 @@ func Test_expandAlias(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "simple host",
+			name: "simple host by ip",
 			args: args{
 				alias:            "10.0.0.1",
 				machines:         []Machine{},
@@ -1049,6 +1049,21 @@ func Test_expandAlias(t *testing.T) {
 				stripEmailDomain: true,
 			},
 			want:    []string{"10.0.0.1"},
+			wantErr: false,
+		},
+		{
+			name: "simple host by hostname alias",
+			args: args{
+				alias:    "testy",
+				machines: []Machine{},
+				aclPolicy: ACLPolicy{
+					Hosts: Hosts{
+						"testy": netip.MustParsePrefix("10.0.0.132/32"),
+					},
+				},
+				stripEmailDomain: true,
+			},
+			want:    []string{"10.0.0.132/32"},
 			wantErr: false,
 		},
 		{

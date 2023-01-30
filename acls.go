@@ -150,7 +150,11 @@ func (h *Headscale) UpdateACLRules() error {
 	return nil
 }
 
-func generateACLRules(machines []Machine, aclPolicy ACLPolicy, stripEmaildomain bool) ([]tailcfg.FilterRule, error) {
+func generateACLRules(
+	machines []Machine,
+	aclPolicy ACLPolicy,
+	stripEmaildomain bool,
+) ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
 
 	for index, acl := range aclPolicy.ACLs {
@@ -160,7 +164,7 @@ func generateACLRules(machines []Machine, aclPolicy ACLPolicy, stripEmaildomain 
 
 		srcIPs := []string{}
 		for innerIndex, src := range acl.Sources {
-			srcs, err := generateACLPolicySrcIP(machines, aclPolicy, src, stripEmaildomain)
+			srcs, err := generateACLPolicySrc(machines, aclPolicy, src, stripEmaildomain)
 			if err != nil {
 				log.Error().
 					Msgf("Error parsing ACL %d, Source %d", index, innerIndex)
@@ -311,7 +315,7 @@ func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {
 	}, nil
 }
 
-func generateACLPolicySrcIP(
+func generateACLPolicySrc(
 	machines []Machine,
 	aclPolicy ACLPolicy,
 	src string,
@@ -427,6 +431,7 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 // - a user
 // - a group
 // - a tag
+// - a host
 // and transform these in IPAddresses.
 func expandAlias(
 	machines []Machine,
