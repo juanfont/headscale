@@ -99,7 +99,7 @@ func TestUserCommand(t *testing.T) {
 
 	assert.Equal(
 		t,
-		[]string{"user1", "newname"},
+		[]string{"newname", "user1"},
 		result,
 	)
 
