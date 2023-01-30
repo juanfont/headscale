@@ -5,6 +5,7 @@
 ### Changes
 
 - Fix wrong behaviour in exit nodes [#1159](https://github.com/juanfont/headscale/pull/1159)
+- Align behaviour of `dns_config.restricted_nameservers` to tailscale [#1162](https://github.com/juanfont/headscale/pull/1162)
 
 ## 0.19.0 (2023-01-29)
 
