@@ -6,6 +6,9 @@
 
 - Fix wrong behaviour in exit nodes [#1159](https://github.com/juanfont/headscale/pull/1159)
 - Align behaviour of `dns_config.restricted_nameservers` to tailscale [#1162](https://github.com/juanfont/headscale/pull/1162)
+- Make OpenID Connect authenticated client expiry time configurable [#1191](https://github.com/juanfont/headscale/pull/1191)
+  - defaults to 180 days like Tailscale SaaS
+  - adds option to use the expiry time from the OpenID token for the node (see config-example.yaml)
 
 ## 0.19.0 (2023-01-29)
 

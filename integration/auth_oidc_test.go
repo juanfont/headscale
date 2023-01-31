@@ -100,7 +100,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	}
 }
 
-func TestOIDCExpireNodes(t *testing.T) {
+func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -125,10 +125,11 @@ func TestOIDCExpireNodes(t *testing.T) {
 	}
 
 	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
-		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
-		"HEADSCALE_OIDC_CLIENT_SECRET":      oidcConfig.ClientSecret,
-		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": fmt.Sprintf("%t", oidcConfig.StripEmaildomain),
+		"HEADSCALE_OIDC_ISSUER":                oidcConfig.Issuer,
+		"HEADSCALE_OIDC_CLIENT_ID":             oidcConfig.ClientID,
+		"HEADSCALE_OIDC_CLIENT_SECRET":         oidcConfig.ClientSecret,
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN":    fmt.Sprintf("%t", oidcConfig.StripEmaildomain),
+		"HEADSCALE_OIDC_USE_EXPIRY_FROM_TOKEN": "1",
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -278,7 +279,10 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*headscale.OIDC
 	log.Printf("headscale mock oidc is ready for tests at %s", hostEndpoint)
 
 	return &headscale.OIDCConfig{
-		Issuer:                     fmt.Sprintf("http://%s/oidc", net.JoinHostPort(s.mockOIDC.GetIPInNetwork(s.network), strconv.Itoa(port))),
+		Issuer: fmt.Sprintf(
+			"http://%s/oidc",
+			net.JoinHostPort(s.mockOIDC.GetIPInNetwork(s.network), strconv.Itoa(port)),
+		),
 		ClientID:                   "superclient",
 		ClientSecret:               "supersecret",
 		StripEmaildomain:           true,

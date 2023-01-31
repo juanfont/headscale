@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -25,9 +26,14 @@ const (
 
 	JSONLogFormat = "json"
 	TextLogFormat = "text"
+
+	defaultOIDCExpiryTime               = 180 * 24 * time.Hour // 180 Days
+	maxDuration           time.Duration = 1<<63 - 1
 )
 
-var errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
+var errOidcMutuallyExclusive = errors.New(
+	"oidc_client_secret and oidc_client_secret_path are mutually exclusive",
+)
 
 // Config contains the initial Headscale configuration.
 type Config struct {
@@ -101,6 +107,8 @@ type OIDCConfig struct {
 	AllowedUsers               []string
 	AllowedGroups              []string
 	StripEmaildomain           bool
+	Expiry                     time.Duration
+	UseExpiryFromToken         bool
 }
 
 type DERPConfig struct {
@@ -180,6 +188,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
+	viper.SetDefault("oidc.expiry", "180d")
+	viper.SetDefault("oidc.use_expiry_from_token", false)
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -601,6 +611,22 @@ func GetHeadscaleConfig() (*Config, error) {
 			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
 			AllowedGroups:    viper.GetStringSlice("oidc.allowed_groups"),
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
+			Expiry: func() time.Duration {
+				// if set to 0, we assume no expiry
+				if value := viper.GetString("oidc.expiry"); value == "0" {
+					return maxDuration
+				} else {
+					expiry, err := model.ParseDuration(value)
+					if err != nil {
+						log.Warn().Msg("failed to parse oidc.expiry, defaulting back to 180 days")
+
+						return defaultOIDCExpiryTime
+					}
+
+					return time.Duration(expiry)
+				}
+			}(),
+			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
 		},
 
 		LogTail:             logConfig,

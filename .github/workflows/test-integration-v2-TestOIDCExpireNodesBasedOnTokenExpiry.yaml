@@ -2,7 +2,7 @@
 # DO NOT EDIT, generated with cmd/gh-action-integration-generator/main.go
 # To regenerate, run "go generate" in cmd/gh-action-integration-generator/
 
-name: Integration Test v2 - TestOIDCExpireNodes
+name: Integration Test v2 - TestOIDCExpireNodesBasedOnTokenExpiry
 
 on: [pull_request]
 
@@ -49,7 +49,7 @@ jobs:
                   -failfast \
                   -timeout 120m \
                   -parallel 1 \
-                  -run "^TestOIDCExpireNodes$"
+                  -run "^TestOIDCExpireNodesBasedOnTokenExpiry$"
 
       - uses: actions/upload-artifact@v3
         if: always() && steps.changed-files.outputs.any_changed == 'true'
