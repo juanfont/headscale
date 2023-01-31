@@ -37,12 +37,14 @@ logtail:
   enabled: false
 metrics_listen_addr: 127.0.0.1:9090
 oidc:
+  expiry: 180d
   only_start_if_oidc_is_available: true
   scope:
     - openid
     - profile
     - email
   strip_email_domain: true
+  use_expiry_from_token: false
 private_key_path: private.key
 noise:
   private_key_path: noise_private.key

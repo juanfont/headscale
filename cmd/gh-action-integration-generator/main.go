@@ -90,7 +90,7 @@ func main() {
 		"TestHeadscale",
 		"TestUserCommand",
 		"TestOIDCAuthenticationPingAll",
-		"TestOIDCExpireNodes",
+		"TestOIDCExpireNodesBasedOnTokenExpiry",
 		"TestPingAllByHostname",
 		"TestPingAllByIP",
 		"TestPreAuthKeyCommand",
