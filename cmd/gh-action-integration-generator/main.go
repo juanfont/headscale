@@ -14,8 +14,9 @@ import (
 
 var (
 	jobFileNameTemplate = `test-integration-v2-%s.yaml`
-	jobTemplate         = template.Must(template.New("jobTemplate").Parse(`
-# DO NOT EDIT, generated with cmd/gh-action-integration-generator/main.go
+	jobTemplate         = template.Must(
+		template.New("jobTemplate").
+			Parse(`# DO NOT EDIT, generated with cmd/gh-action-integration-generator/main.go
 # To regenerate, run "go generate" in cmd/gh-action-integration-generator/
 
 name: Integration Test v2 - {{.Name}}
