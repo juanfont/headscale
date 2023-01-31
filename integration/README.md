@@ -11,6 +11,5 @@ Tests are located in files ending with `_test.go` and the framework are located 
 
 ## Running integration tests on GitHub Actions
 
-Each test currently runs as a separate workflows in GitHub actions, to add new test, add
-the new test to the list in `../cmd/gh-action-integration-generator/main.go` and run
+Each test currently runs as a separate workflows in GitHub actions, to add new test, run
 `go generate` inside `../cmd/gh-action-integration-generator/` and commit the result.
