@@ -12,6 +12,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -738,6 +739,9 @@ func (h *Headscale) toNode(
 
 	online := machine.isOnline()
 
+	tags, _ := getTags(h.aclPolicy, machine, h.cfg.OIDC.StripEmaildomain)
+	tags = lo.Uniq(append(tags, machine.ForcedTags...))
+
 	node := tailcfg.Node{
 		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
@@ -758,6 +762,8 @@ func (h *Headscale) toNode(
 		DERP:       derp,
 		Hostinfo:   hostInfo.View(),
 		Created:    machine.CreatedAt,
+
+		Tags: tags,
 
 		PrimaryRoutes: primaryPrefixes,
 

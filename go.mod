@@ -25,6 +25,7 @@ require (
 	github.com/pterm/pterm v0.12.50
 	github.com/puzpuzpuz/xsync/v2 v2.4.0
 	github.com/rs/zerolog v1.28.0
+	github.com/samber/lo v1.37.0
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.14.0
 	github.com/stretchr/testify v1.8.1
