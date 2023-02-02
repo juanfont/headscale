@@ -157,14 +157,14 @@ func (h *Headscale) DERPHandler(
 
 	if !fastStart {
 		pubKey := h.privateKey.Public()
-		pubKeyStr := pubKey.UntypedHexString() //nolint
+		pubKeyStr, _ := pubKey.MarshalText() //nolint
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\n"+
 			"Upgrade: DERP\r\n"+
 			"Connection: Upgrade\r\n"+
 			"Derp-Version: %v\r\n"+
 			"Derp-Public-Key: %s\r\n\r\n",
 			derp.ProtocolVersion,
-			pubKeyStr)
+			string(pubKeyStr))
 	}
 
 	h.DERPServer.tailscaleDERP.Accept(req.Context(), netConn, conn, netConn.RemoteAddr().String())
