@@ -8,11 +8,14 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"strings"
 	"text/template"
 )
 
 var (
+	githubWorkflowPath  = "../../.github/workflows/"
 	jobFileNameTemplate = `test-integration-v2-%s.yaml`
 	jobTemplate         = template.Must(
 		template.New("jobTemplate").
@@ -79,6 +82,22 @@ jobs:
 
 const workflowFilePerm = 0o600
 
+func removeTests() {
+	glob := fmt.Sprintf(jobFileNameTemplate, "*")
+
+	files, err := filepath.Glob(filepath.Join(githubWorkflowPath, glob))
+	if err != nil {
+		log.Fatalf("failed to find test files")
+	}
+
+	for _, file := range files {
+		err := os.Remove(file)
+		if err != nil {
+			log.Printf("failed to remove: %s", err)
+		}
+	}
+}
+
 func findTests() []string {
 	rgBin, err := exec.LookPath("rg")
 	if err != nil {
@@ -121,6 +140,8 @@ func main() {
 
 	tests := findTests()
 
+	removeTests()
+
 	for _, test := range tests {
 		log.Printf("generating workflow for %s", test)
 
@@ -132,9 +153,9 @@ func main() {
 			log.Fatalf("failed to render template: %s", err)
 		}
 
-		path := "../../.github/workflows/" + fmt.Sprintf(jobFileNameTemplate, test)
+		testPath := path.Join(githubWorkflowPath, fmt.Sprintf(jobFileNameTemplate, test))
 
-		err := os.WriteFile(path, content.Bytes(), workflowFilePerm)
+		err := os.WriteFile(testPath, content.Bytes(), workflowFilePerm)
 		if err != nil {
 			log.Fatalf("failed to write github job: %s", err)
 		}
