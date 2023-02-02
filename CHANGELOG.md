@@ -9,6 +9,8 @@
 - Make OpenID Connect authenticated client expiry time configurable [#1191](https://github.com/juanfont/headscale/pull/1191)
   - defaults to 180 days like Tailscale SaaS
   - adds option to use the expiry time from the OpenID token for the node (see config-example.yaml)
+- Set ControlTime in Map info sent to nodes [#1195](https://github.com/juanfont/headscale/pull/1195)
+- Populate Tags field on Node updates sent [#1195](https://github.com/juanfont/headscale/pull/1195)
 
 ## 0.19.0 (2023-01-29)
 
