@@ -24,7 +24,6 @@ type IntegrationCLITestSuite struct {
 	pool      dockertest.Pool
 	network   dockertest.Network
 	headscale dockertest.Resource
-	env       []string
 }
 
 func TestIntegrationCLITestSuite(t *testing.T) {

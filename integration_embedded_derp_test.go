@@ -382,7 +382,7 @@ func (s *IntegrationDERPTestSuite) saveLog(
 
 	err = os.WriteFile(
 		path.Join(basePath, resource.Container.Name+".stdout.log"),
-		[]byte(stdout.String()),
+		stderr.Bytes(),
 		0o644,
 	)
 	if err != nil {
@@ -391,7 +391,7 @@ func (s *IntegrationDERPTestSuite) saveLog(
 
 	err = os.WriteFile(
 		path.Join(basePath, resource.Container.Name+".stderr.log"),
-		[]byte(stdout.String()),
+		stderr.Bytes(),
 		0o644,
 	)
 	if err != nil {

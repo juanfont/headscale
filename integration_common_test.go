@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -46,11 +45,6 @@ var (
 		"1.12.3",
 	}
 )
-
-type TestUser struct {
-	count      int
-	tailscales map[string]dockertest.Resource
-}
 
 type ExecuteCommandConfig struct {
 	timeout time.Duration
@@ -201,38 +195,6 @@ func getDockerBuildOptions(version string) *dockertest.BuildOptions {
 	return tailscaleBuildOptions
 }
 
-func getIPs(
-	tailscales map[string]dockertest.Resource,
-) (map[string][]netip.Addr, error) {
-	ips := make(map[string][]netip.Addr)
-	for hostname, tailscale := range tailscales {
-		command := []string{"tailscale", "ip"}
-
-		result, _, err := ExecuteCommand(
-			&tailscale,
-			command,
-			[]string{},
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, address := range strings.Split(result, "\n") {
-			address = strings.TrimSuffix(address, "\n")
-			if len(address) < 1 {
-				continue
-			}
-			ip, err := netip.ParseAddr(address)
-			if err != nil {
-				return nil, err
-			}
-			ips[hostname] = append(ips[hostname], ip)
-		}
-	}
-
-	return ips, nil
-}
-
 func getDNSNames(
 	headscale *dockertest.Resource,
 ) ([]string, error) {
@@ -261,43 +223,6 @@ func getDNSNames(
 
 	for index := range listAll {
 		hostnames[index] = listAll[index].GetGivenName()
-	}
-
-	return hostnames, nil
-}
-
-func getMagicFQDN(
-	headscale *dockertest.Resource,
-) ([]string, error) {
-	listAllResult, _, err := ExecuteCommand(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--output",
-			"json",
-		},
-		[]string{},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var listAll []v1.Machine
-	err = json.Unmarshal([]byte(listAllResult), &listAll)
-	if err != nil {
-		return nil, err
-	}
-
-	hostnames := make([]string, len(listAll))
-
-	for index := range listAll {
-		hostnames[index] = fmt.Sprintf(
-			"%s.%s.headscale.net",
-			listAll[index].GetGivenName(),
-			listAll[index].GetUser().GetName(),
-		)
 	}
 
 	return hostnames, nil
