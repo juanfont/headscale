@@ -1,6 +1,8 @@
 package headscale
 
 import (
+	"time"
+
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
@@ -55,6 +57,8 @@ func (h *Headscale) generateMapResponse(
 		peers,
 	)
 
+	now := time.Now()
+
 	resp := tailcfg.MapResponse{
 		KeepAlive:    false,
 		Node:         node,
@@ -65,6 +69,7 @@ func (h *Headscale) generateMapResponse(
 		SSHPolicy:    h.sshPolicy,
 		DERPMap:      h.DERPMap,
 		UserProfiles: profiles,
+		ControlTime:  &now,
 		Debug: &tailcfg.Debug{
 			DisableLogTail:      !h.cfg.LogTail.Enabled,
 			RandomizeClientPort: h.cfg.RandomizeClientPort,
