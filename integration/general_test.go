@@ -1,16 +1,19 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
 	"testing"
 	"time"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPingAllByIP(t *testing.T) {
@@ -556,20 +559,92 @@ func TestResolveMagicDNS(t *testing.T) {
 	}
 }
 
-func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
-	t.Helper()
-	success := 0
+func TestExpireNode(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
 
-	for _, client := range clients {
-		for _, addr := range addrs {
-			err := client.Ping(addr)
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
-			} else {
-				success++
-			}
+	scenario, err := NewScenario()
+	if err != nil {
+		t.Errorf("failed to create scenario: %s", err)
+	}
+
+	spec := map[string]int{
+		"user1": len(TailscaleVersions),
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("expirenode"))
+	if err != nil {
+		t.Errorf("failed to create headscale environment: %s", err)
+	}
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("before expire: %d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	for _, client := range allClients {
+		status, err := client.Status()
+		assert.NoError(t, err)
+
+		// Assert that we have the original count - self
+		assert.Len(t, status.Peers(), len(TailscaleVersions)-1)
+	}
+
+	headscale, err := scenario.Headscale()
+	assert.NoError(t, err)
+
+	// TODO(kradalby): This is Headscale specific and would not play nicely
+	// with other implementations of the ControlServer interface
+	result, err := headscale.Execute([]string{
+		"headscale", "nodes", "expire", "--identifier", "0", "--output", "json",
+	})
+	assert.NoError(t, err)
+
+	var machine v1.Machine
+	err = json.Unmarshal([]byte(result), &machine)
+	assert.NoError(t, err)
+
+	time.Sleep(30 * time.Second)
+
+	// Verify that the expired not is no longer present in the Peer list
+	// of connected nodes.
+	for _, client := range allClients {
+		status, err := client.Status()
+		assert.NoError(t, err)
+
+		for _, peerKey := range status.Peers() {
+			peerStatus := status.Peer[peerKey]
+
+			peerPublicKey := strings.TrimPrefix(peerStatus.PublicKey.String(), "nodekey:")
+
+			assert.NotEqual(t, machine.NodeKey, peerPublicKey)
+		}
+
+		if client.Hostname() != machine.Name {
+			// Assert that we have the original count - self - expired node
+			assert.Len(t, status.Peers(), len(TailscaleVersions)-2)
 		}
 	}
 
-	return success
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"net/url"
 
+	"github.com/juanfont/headscale/integration/tsic"
 	"tailscale.com/ipn/ipnstate"
 )
 
@@ -22,6 +23,6 @@ type TailscaleClient interface {
 	WaitForReady() error
 	WaitForLogout() error
 	WaitForPeers(expected int) error
-	Ping(hostnameOrIP string) error
+	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	ID() string
 }
