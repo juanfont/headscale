@@ -60,16 +60,39 @@ func (h *Headscale) generateMapResponse(
 	now := time.Now()
 
 	resp := tailcfg.MapResponse{
-		KeepAlive:    false,
-		Node:         node,
-		Peers:        nodePeers,
-		DNSConfig:    dnsConfig,
-		Domain:       h.cfg.BaseDomain,
+		KeepAlive: false,
+		Node:      node,
+
+		// TODO: Only send if updated
+		DERPMap: h.DERPMap,
+
+		// TODO: Only send if updated
+		Peers: nodePeers,
+
+		// TODO(kradalby): Implement:
+		// https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L1351-L1374
+		// PeersChanged
+		// PeersRemoved
+		// PeersChangedPatch
+		// PeerSeenChange
+		// OnlineChange
+
+		// TODO: Only send if updated
+		DNSConfig: dnsConfig,
+
+		// TODO: Only send if updated
+		Domain: h.cfg.BaseDomain,
+
+		// TODO: Only send if updated
 		PacketFilter: h.aclRules,
-		SSHPolicy:    h.sshPolicy,
-		DERPMap:      h.DERPMap,
+
 		UserProfiles: profiles,
-		ControlTime:  &now,
+
+		// TODO: Only send if updated
+		SSHPolicy: h.sshPolicy,
+
+		ControlTime: &now,
+
 		Debug: &tailcfg.Debug{
 			DisableLogTail:      !h.cfg.LogTail.Enabled,
 			RandomizeClientPort: h.cfg.RandomizeClientPort,
