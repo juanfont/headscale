@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/juanfont/headscale"
@@ -20,6 +22,7 @@ import (
 
 const (
 	tsicHashLength    = 6
+	defaultPingCount  = 10
 	dockerContextPath = "../."
 	headscaleCertPath = "/usr/local/share/ca-certificates/headscale.crt"
 )
@@ -49,6 +52,7 @@ type TailscaleInContainer struct {
 	headscaleCert     []byte
 	headscaleHostname string
 	withSSH           bool
+	withTags          []string
 }
 
 type Option = func(c *TailscaleInContainer)
@@ -82,6 +86,12 @@ func WithOrCreateNetwork(network *dockertest.Network) Option {
 func WithHeadscaleName(hsName string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.headscaleHostname = hsName
+	}
+}
+
+func WithTags(tags []string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withTags = tags
 	}
 }
 
@@ -229,6 +239,12 @@ func (t *TailscaleInContainer) Up(
 
 	if t.withSSH {
 		command = append(command, "--ssh")
+	}
+
+	if len(t.withTags) > 0 {
+		command = append(command,
+			fmt.Sprintf(`--advertise-tags=%s`, strings.Join(t.withTags, ",")),
+		)
 	}
 
 	if _, _, err := t.Execute(command); err != nil {
@@ -390,17 +406,55 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 	})
 }
 
-// TODO(kradalby): Make multiping, go routine magic.
-func (t *TailscaleInContainer) Ping(hostnameOrIP string) error {
-	return t.pool.Retry(func() error {
-		command := []string{
-			"tailscale", "ping",
-			"--timeout=1s",
-			"--c=10",
-			"--until-direct=true",
-			hostnameOrIP,
-		}
+type (
+	PingOption = func(args *pingArgs)
+	pingArgs   struct {
+		timeout time.Duration
+		count   int
+		direct  bool
+	}
+)
 
+func WithPingTimeout(timeout time.Duration) PingOption {
+	return func(args *pingArgs) {
+		args.timeout = timeout
+	}
+}
+
+func WithPingCount(count int) PingOption {
+	return func(args *pingArgs) {
+		args.count = count
+	}
+}
+
+func WithPingUntilDirect(direct bool) PingOption {
+	return func(args *pingArgs) {
+		args.direct = direct
+	}
+}
+
+// TODO(kradalby): Make multiping, go routine magic.
+func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) error {
+	args := pingArgs{
+		timeout: time.Second,
+		count:   defaultPingCount,
+		direct:  true,
+	}
+
+	for _, opt := range opts {
+		opt(&args)
+	}
+
+	command := []string{
+		"tailscale", "ping",
+		fmt.Sprintf("--timeout=%s", args.timeout),
+		fmt.Sprintf("--c=%d", args.count),
+		fmt.Sprintf("--until-direct=%s", strconv.FormatBool(args.direct)),
+	}
+
+	command = append(command, hostnameOrIP)
+
+	return t.pool.Retry(func() error {
 		result, _, err := t.Execute(command)
 		if err != nil {
 			log.Printf(

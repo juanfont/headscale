@@ -26,6 +26,7 @@ const (
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
 	errNoUserAvailable      = errors.New("no user available")
+	errNoClientFound        = errors.New("client not found")
 
 	// Tailscale started adding TS2021 support in CapabilityVersion>=28 (v1.24.0), but
 	// proper support in Headscale was only added for CapabilityVersion>=39 clients (v1.30.0).
@@ -203,7 +204,11 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 	return headscale, nil
 }
 
-func (s *Scenario) CreatePreAuthKey(user string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error) {
+func (s *Scenario) CreatePreAuthKey(
+	user string,
+	reusable bool,
+	ephemeral bool,
+) (*v1.PreAuthKey, error) {
 	if headscale, err := s.Headscale(); err == nil {
 		key, err := headscale.CreateAuthKey(user, reusable, ephemeral)
 		if err != nil {
@@ -438,6 +443,24 @@ func (s *Scenario) ListTailscaleClients(users ...string) ([]TailscaleClient, err
 	}
 
 	return allClients, nil
+}
+
+func (s *Scenario) FindTailscaleClientByIP(ip netip.Addr) (TailscaleClient, error) {
+	clients, err := s.ListTailscaleClients()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, client := range clients {
+		ips, _ := client.IPs()
+		for _, ip2 := range ips {
+			if ip == ip2 {
+				return client, nil
+			}
+		}
+	}
+
+	return nil, errNoClientFound
 }
 
 func (s *Scenario) ListTailscaleClientsIPs(users ...string) ([]netip.Addr, error) {
