@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 )
 
 func TestPingAllByIP(t *testing.T) {
@@ -46,19 +47,11 @@ func TestPingAllByIP(t *testing.T) {
 		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
 	}
 
-	success := 0
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
 
-	for _, client := range allClients {
-		for _, ip := range allIps {
-			err := client.Ping(ip.String())
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
-			} else {
-				success++
-			}
-		}
-	}
-
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	err = scenario.Shutdown()
@@ -148,18 +141,11 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 		t.Errorf("failed to get clients: %s", err)
 	}
 
-	success := 0
-	for _, client := range allClients {
-		for _, ip := range allIps {
-			err := client.Ping(ip.String())
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
-			} else {
-				success++
-			}
-		}
-	}
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
 
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	for _, client := range allClients {
@@ -184,7 +170,12 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 			}
 
 			if !found {
-				t.Errorf("IPs changed for client %s. Used to be %v now %v", client.Hostname(), clientIPs[client], ips)
+				t.Errorf(
+					"IPs changed for client %s. Used to be %v now %v",
+					client.Hostname(),
+					clientIPs[client],
+					ips,
+				)
 			}
 		}
 	}
@@ -253,18 +244,11 @@ func TestEphemeral(t *testing.T) {
 		t.Errorf("failed to get clients: %s", err)
 	}
 
-	success := 0
-	for _, client := range allClients {
-		for _, ip := range allIps {
-			err := client.Ping(ip.String())
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
-			} else {
-				success++
-			}
-		}
-	}
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
 
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	for _, client := range allClients {
@@ -335,18 +319,7 @@ func TestPingAllByHostname(t *testing.T) {
 		t.Errorf("failed to get FQDNs: %s", err)
 	}
 
-	success := 0
-
-	for _, client := range allClients {
-		for _, hostname := range allHostnames {
-			err := client.Ping(hostname)
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", hostname, client.Hostname(), err)
-			} else {
-				success++
-			}
-		}
-	}
+	success := pingAllHelper(t, allClients, allHostnames)
 
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allClients))
 
@@ -581,4 +554,22 @@ func TestResolveMagicDNS(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to tear down scenario: %s", err)
 	}
+}
+
+func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
+	t.Helper()
+	success := 0
+
+	for _, client := range clients {
+		for _, addr := range addrs {
+			err := client.Ping(addr)
+			if err != nil {
+				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
+			} else {
+				success++
+			}
+		}
+	}
+
+	return success
 }
