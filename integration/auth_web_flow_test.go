@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/samber/lo"
 )
 
 var errParseAuthPage = errors.New("failed to parse auth page")
@@ -59,18 +60,11 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
 	}
 
-	success := 0
-	for _, client := range allClients {
-		for _, ip := range allIps {
-			err := client.Ping(ip.String())
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
-			} else {
-				success++
-			}
-		}
-	}
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
 
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	err = scenario.Shutdown()
@@ -117,18 +111,11 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
 	}
 
-	success := 0
-	for _, client := range allClients {
-		for _, ip := range allIps {
-			err := client.Ping(ip.String())
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
-			} else {
-				success++
-			}
-		}
-	}
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
 
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	clientIPs := make(map[TailscaleClient][]netip.Addr)
@@ -175,18 +162,11 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 		t.Errorf("failed to get clients: %s", err)
 	}
 
-	success = 0
-	for _, client := range allClients {
-		for _, ip := range allIps {
-			err := client.Ping(ip.String())
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
-			} else {
-				success++
-			}
-		}
-	}
+	allAddrs = lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
 
+	success = pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	for _, client := range allClients {
@@ -211,7 +191,12 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 			}
 
 			if !found {
-				t.Errorf("IPs changed for client %s. Used to be %v now %v", client.Hostname(), clientIPs[client], ips)
+				t.Errorf(
+					"IPs changed for client %s. Used to be %v now %v",
+					client.Hostname(),
+					clientIPs[client],
+					ips,
+				)
 			}
 		}
 	}

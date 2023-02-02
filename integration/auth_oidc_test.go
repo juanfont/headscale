@@ -19,6 +19,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"github.com/samber/lo"
 )
 
 const (
@@ -91,7 +92,11 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
 	}
 
-	success := pingAll(t, allClients, allIps)
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	err = scenario.Shutdown()
@@ -157,7 +162,11 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
 	}
 
-	success := pingAll(t, allClients, allIps)
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d (before expiry)", success, len(allClients)*len(allIps))
 
 	// await all nodes being logged out after OIDC token expiry
@@ -357,24 +366,6 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 	}
 
 	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
-}
-
-func pingAll(t *testing.T, clients []TailscaleClient, ips []netip.Addr) int {
-	t.Helper()
-	success := 0
-
-	for _, client := range clients {
-		for _, ip := range ips {
-			err := client.Ping(ip.String())
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", ip, client.Hostname(), err)
-			} else {
-				success++
-			}
-		}
-	}
-
-	return success
 }
 
 func (s *AuthOIDCScenario) Shutdown() error {
