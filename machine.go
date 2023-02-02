@@ -743,25 +743,29 @@ func (h *Headscale) toNode(
 		StableID: tailcfg.StableNodeID(
 			strconv.FormatUint(machine.ID, Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
-		Name:          hostname,
-		User:          tailcfg.UserID(machine.UserID),
-		Key:           nodeKey,
-		KeyExpiry:     keyExpiry,
-		Machine:       machineKey,
-		DiscoKey:      discoKey,
-		Addresses:     addrs,
-		AllowedIPs:    allowedIPs,
+		Name: hostname,
+
+		User: tailcfg.UserID(machine.UserID),
+
+		Key:       nodeKey,
+		KeyExpiry: keyExpiry,
+
+		Machine:    machineKey,
+		DiscoKey:   discoKey,
+		Addresses:  addrs,
+		AllowedIPs: allowedIPs,
+		Endpoints:  machine.Endpoints,
+		DERP:       derp,
+		Hostinfo:   hostInfo.View(),
+		Created:    machine.CreatedAt,
+
 		PrimaryRoutes: primaryPrefixes,
-		Endpoints:     machine.Endpoints,
-		DERP:          derp,
 
-		Online:   &online,
-		Hostinfo: hostInfo.View(),
-		Created:  machine.CreatedAt,
-		LastSeen: machine.LastSeen,
-
+		LastSeen:          machine.LastSeen,
+		Online:            &online,
 		KeepAlive:         true,
 		MachineAuthorized: !machine.isExpired(),
+
 		Capabilities: []string{
 			tailcfg.CapabilityFileSharing,
 			tailcfg.CapabilityAdmin,
@@ -1112,7 +1116,8 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 	routes := []Route{}
 	err := h.db.
 		Preload("Machine").
-		Where("machine_id = ? AND advertised = true AND enabled = false", machine.ID).Find(&routes).Error
+		Where("machine_id = ? AND advertised = true AND enabled = false", machine.ID).
+		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Error().
 			Caller().
@@ -1126,7 +1131,9 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 	approvedRoutes := []Route{}
 
 	for _, advertisedRoute := range routes {
-		routeApprovers, err := h.aclPolicy.AutoApprovers.GetRouteApprovers(netip.Prefix(advertisedRoute.Prefix))
+		routeApprovers, err := h.aclPolicy.AutoApprovers.GetRouteApprovers(
+			netip.Prefix(advertisedRoute.Prefix),
+		)
 		if err != nil {
 			log.Err(err).
 				Str("advertisedRoute", advertisedRoute.String()).
