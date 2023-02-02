@@ -83,6 +83,10 @@ func (h *Headscale) generateMapResponse(
 		// TODO: Only send if updated
 		Domain: h.cfg.BaseDomain,
 
+		// Do not instruct clients to collect services, we do not
+		// support or do anything with them
+		CollectServices: "false",
+
 		// TODO: Only send if updated
 		PacketFilter: h.aclRules,
 
