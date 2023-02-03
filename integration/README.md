@@ -9,6 +9,16 @@ Headscale's test framework and the current set of scenarios are defined in this 
 
 Tests are located in files ending with `_test.go` and the framework are located in the rest.
 
+## Running integration tests locally
+
+The easiest way to run tests locally is to use `[act](INSERT LINK)`, a local GitHub Actions runner:
+
+```
+act pull_request -W .github/workflows/test-integration-v2-TestPingAllByIP.yaml
+```
+
+Alternatively, the `docker run` command in each GitHub workflow file can be used.
+
 ## Running integration tests on GitHub Actions
 
 Each test currently runs as a separate workflows in GitHub actions, to add new test, run
