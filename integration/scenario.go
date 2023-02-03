@@ -57,12 +57,23 @@ var (
 	// 	"1.8.7",
 	// }.
 
+	// TailscaleVersions represents a list of Tailscale versions the suite
+	// uses to test compatibility with the ControlServer.
+	//
+	// The list contains two special cases, "head" and "unstable" which
+	// points to the current tip of Tailscale's main branch and the latest
+	// released unstable version.
+	//
+	// The rest of the version represents Tailscale versions that can be
+	// found in Tailscale's apt repository.
 	TailscaleVersions = append(
 		tailscaleVersions2021,
 		tailscaleVersions2019...,
 	)
 )
 
+// User represents a User in the ControlServer and a map of TailscaleClient's
+// associated with the User.
 type User struct {
 	Clients map[string]TailscaleClient
 
@@ -71,6 +82,10 @@ type User struct {
 	syncWaitGroup   sync.WaitGroup
 }
 
+// Scenario is a representation of an environment with one ControlServer and
+// one or more User's and its associated TailscaleClients.
+// A Scenario is intended to simplify setting up a new testcase for testing
+// a ControlServer with TailscaleClients.
 // TODO(kradalby): make control server configurable, test correctness with Tailscale SaaS.
 type Scenario struct {
 	// TODO(kradalby): support multiple headcales for later, currently only
@@ -85,6 +100,8 @@ type Scenario struct {
 	headscaleLock sync.Mutex
 }
 
+// NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
+// a set of Users and TailscaleClients.
 func NewScenario() (*Scenario, error) {
 	hash, err := headscale.GenerateRandomStringDNSSafe(scenarioHashLength)
 	if err != nil {
@@ -125,6 +142,10 @@ func NewScenario() (*Scenario, error) {
 	}, nil
 }
 
+// Shutdown shuts down and cleans up all the containers (ControlServer, TailscaleClient)
+// and networks associated with it.
+// In addition, it will save the logs of the ControlServer to `/tmp/control` in the
+// environment running the tests.
 func (s *Scenario) Shutdown() error {
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
 		err := control.SaveLog("/tmp/control")
@@ -168,6 +189,7 @@ func (s *Scenario) Shutdown() error {
 	return nil
 }
 
+// Users returns the name of all users associated with the Scenario.
 func (s *Scenario) Users() []string {
 	users := make([]string, 0)
 	for user := range s.users {
@@ -180,6 +202,9 @@ func (s *Scenario) Users() []string {
 /// Headscale related stuff
 // Note: These functions assume that there is a _single_ headscale instance for now
 
+// Headscale returns a ControlServer instance based on hsic (HeadscaleInContainer)
+// If the Scenario already has an instance, the pointer to the running container
+// will be return, otherwise a new instance will be created.
 // TODO(kradalby): make port and headscale configurable, multiple instances support?
 func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 	s.headscaleLock.Lock()
@@ -204,6 +229,8 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 	return headscale, nil
 }
 
+// CreatePreAuthKey creates a "pre authentorised key" to be created in the
+// Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreatePreAuthKey(
 	user string,
 	reusable bool,
@@ -221,6 +248,8 @@ func (s *Scenario) CreatePreAuthKey(
 	return nil, fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
 }
 
+// CreateUser creates a User to be created in the
+// Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreateUser(user string) error {
 	if headscale, err := s.Headscale(); err == nil {
 		err := headscale.CreateUser(user)
@@ -240,6 +269,8 @@ func (s *Scenario) CreateUser(user string) error {
 
 /// Client related stuff
 
+// CreateTailscaleNodesInUser creates and adds a new TailscaleClient to a
+// User in the Scenario.
 func (s *Scenario) CreateTailscaleNodesInUser(
 	userStr string,
 	requestedVersion string,
@@ -300,6 +331,8 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 	return fmt.Errorf("failed to add tailscale node: %w", errNoUserAvailable)
 }
 
+// RunTailscaleUp will log in all of the TailscaleClients associated with a
+// User to the given ControlServer (by URL).
 func (s *Scenario) RunTailscaleUp(
 	userStr, loginServer, authKey string,
 ) error {
@@ -328,6 +361,8 @@ func (s *Scenario) RunTailscaleUp(
 	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
 }
 
+// CountTailscale returns the total number of TailscaleClients in a Scenario.
+// This is the sum of Users x TailscaleClients.
 func (s *Scenario) CountTailscale() int {
 	count := 0
 
@@ -338,6 +373,8 @@ func (s *Scenario) CountTailscale() int {
 	return count
 }
 
+// WaitForTailscaleSync blocks execution until all the TailscaleClient reports
+// to have all other TailscaleClients present in their netmap.NetworkMap.
 func (s *Scenario) WaitForTailscaleSync() error {
 	tsCount := s.CountTailscale()
 
@@ -358,7 +395,7 @@ func (s *Scenario) WaitForTailscaleSync() error {
 	return nil
 }
 
-// CreateHeadscaleEnv is a conventient method returning a set up Headcale
+// CreateHeadscaleEnv is a conventient method returning a complete Headcale
 // test environment with nodes of all versions, joined to the server with X
 // users.
 func (s *Scenario) CreateHeadscaleEnv(
@@ -396,6 +433,8 @@ func (s *Scenario) CreateHeadscaleEnv(
 	return nil
 }
 
+// GetIPs returns all netip.Addr of TailscaleClients associated with a User
+// in a Scenario.
 func (s *Scenario) GetIPs(user string) ([]netip.Addr, error) {
 	var ips []netip.Addr
 	if ns, ok := s.users[user]; ok {
@@ -413,6 +452,7 @@ func (s *Scenario) GetIPs(user string) ([]netip.Addr, error) {
 	return ips, fmt.Errorf("failed to get ips: %w", errNoUserAvailable)
 }
 
+// GetIPs returns all TailscaleClients associated with a User in a Scenario.
 func (s *Scenario) GetClients(user string) ([]TailscaleClient, error) {
 	var clients []TailscaleClient
 	if ns, ok := s.users[user]; ok {
@@ -426,6 +466,8 @@ func (s *Scenario) GetClients(user string) ([]TailscaleClient, error) {
 	return clients, fmt.Errorf("failed to get clients: %w", errNoUserAvailable)
 }
 
+// ListTailscaleClients returns a list of TailscaleClients given the Users
+// passed as parameters.
 func (s *Scenario) ListTailscaleClients(users ...string) ([]TailscaleClient, error) {
 	var allClients []TailscaleClient
 
@@ -445,6 +487,8 @@ func (s *Scenario) ListTailscaleClients(users ...string) ([]TailscaleClient, err
 	return allClients, nil
 }
 
+// FindTailscaleClientByIP returns a TailscaleClient associated with an IP address
+// if it exists.
 func (s *Scenario) FindTailscaleClientByIP(ip netip.Addr) (TailscaleClient, error) {
 	clients, err := s.ListTailscaleClients()
 	if err != nil {
@@ -463,6 +507,8 @@ func (s *Scenario) FindTailscaleClientByIP(ip netip.Addr) (TailscaleClient, erro
 	return nil, errNoClientFound
 }
 
+// ListTailscaleClientsIPs returns a list of netip.Addr based on Users
+// passed as parameters.
 func (s *Scenario) ListTailscaleClientsIPs(users ...string) ([]netip.Addr, error) {
 	var allIps []netip.Addr
 
@@ -482,6 +528,8 @@ func (s *Scenario) ListTailscaleClientsIPs(users ...string) ([]netip.Addr, error
 	return allIps, nil
 }
 
+// ListTailscaleClientsIPs returns a list of FQDN based on Users
+// passed as parameters.
 func (s *Scenario) ListTailscaleClientsFQDNs(users ...string) ([]string, error) {
 	allFQDNs := make([]string, 0)
 
@@ -502,6 +550,8 @@ func (s *Scenario) ListTailscaleClientsFQDNs(users ...string) ([]string, error) 
 	return allFQDNs, nil
 }
 
+// WaitForTailscaleLogout blocks execution until all TailscaleClients have
+// logged out of the ControlServer.
 func (s *Scenario) WaitForTailscaleLogout() {
 	for _, user := range s.users {
 		for _, client := range user.Clients {

@@ -36,6 +36,8 @@ var (
 	errTailscaleNotLoggedOut           = errors.New("tailscale not logged out")
 )
 
+// TailscaleInContainer is an implementation of TailscaleClient which
+// sets up a Tailscale instance inside a container.
 type TailscaleInContainer struct {
 	version  string
 	hostname string
@@ -55,14 +57,22 @@ type TailscaleInContainer struct {
 	withTags          []string
 }
 
+// Option represent optional settings that can be given to a
+// Tailscale instance.
 type Option = func(c *TailscaleInContainer)
 
+// WithHeadscaleTLS takes the certificate of the Headscale instance
+// and adds it to the trusted surtificate of the Tailscale container.
 func WithHeadscaleTLS(cert []byte) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.headscaleCert = cert
 	}
 }
 
+// WithOrCreateNetwork sets the Docker container network to use with
+// the Tailscale instance, if the parameter is nil, a new network,
+// isolating the TailscaleClient, will be created. If a network is
+// passed, the Tailscale instance will join the given network.
 func WithOrCreateNetwork(network *dockertest.Network) Option {
 	return func(tsic *TailscaleInContainer) {
 		if network != nil {
@@ -83,24 +93,29 @@ func WithOrCreateNetwork(network *dockertest.Network) Option {
 	}
 }
 
+// WithHeadscaleName set the name of the headscale instance,
+// mostly useful in combination with TLS and WithHeadscaleTLS.
 func WithHeadscaleName(hsName string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.headscaleHostname = hsName
 	}
 }
 
+// WithTags associates the given tags to the Tailscale instance.
 func WithTags(tags []string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withTags = tags
 	}
 }
 
+// WithSSH enables SSH for the Tailscale instance.
 func WithSSH() Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withSSH = true
 	}
 }
 
+// New returns a new TailscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
 	version string,
@@ -182,22 +197,29 @@ func (t *TailscaleInContainer) hasTLS() bool {
 	return len(t.headscaleCert) != 0
 }
 
+// Shutdown stops and cleans up the Tailscale container.
 func (t *TailscaleInContainer) Shutdown() error {
 	return t.pool.Purge(t.container)
 }
 
+// Hostname returns the hostname of the Tailscale instance.
 func (t *TailscaleInContainer) Hostname() string {
 	return t.hostname
 }
 
+// Version returns the running Tailscale version of the instance.
 func (t *TailscaleInContainer) Version() string {
 	return t.version
 }
 
+// ID returns the Docker container ID of the TailscaleInContainer
+// instance.
 func (t *TailscaleInContainer) ID() string {
 	return t.container.Container.ID
 }
 
+// Execute runs a command inside the Tailscale container and returns the
+// result of stdout as a string.
 func (t *TailscaleInContainer) Execute(
 	command []string,
 ) (string, string, error) {
@@ -223,6 +245,8 @@ func (t *TailscaleInContainer) Execute(
 	return stdout, stderr, nil
 }
 
+// Up runs the login routine on the given Tailscale instance.
+// This login mechanism uses the authorised key for authentication.
 func (t *TailscaleInContainer) Up(
 	loginServer, authKey string,
 ) error {
@@ -254,6 +278,8 @@ func (t *TailscaleInContainer) Up(
 	return nil
 }
 
+// Up runs the login routine on the given Tailscale instance.
+// This login mechanism uses web + command line flow for authentication.
 func (t *TailscaleInContainer) UpWithLoginURL(
 	loginServer string,
 ) (*url.URL, error) {
@@ -286,6 +312,7 @@ func (t *TailscaleInContainer) UpWithLoginURL(
 	return loginURL, nil
 }
 
+// Logout runs the logout routine on the given Tailscale instance.
 func (t *TailscaleInContainer) Logout() error {
 	_, _, err := t.Execute([]string{"tailscale", "logout"})
 	if err != nil {
@@ -295,6 +322,7 @@ func (t *TailscaleInContainer) Logout() error {
 	return nil
 }
 
+// IPs returns the netip.Addr of the Tailscale instance.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	if t.ips != nil && len(t.ips) != 0 {
 		return t.ips, nil
@@ -327,6 +355,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	return ips, nil
 }
 
+// Status returns the ipnstate.Status of the Tailscale instance.
 func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 	command := []string{
 		"tailscale",
@@ -348,6 +377,7 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 	return &status, err
 }
 
+// FQDN returns the FQDN as a string of the Tailscale instance.
 func (t *TailscaleInContainer) FQDN() (string, error) {
 	if t.fqdn != "" {
 		return t.fqdn, nil
@@ -361,6 +391,8 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 	return status.Self.DNSName, nil
 }
 
+// WaitForReady blocks until the Tailscale (tailscaled) instance is ready
+// to login or be used.
 func (t *TailscaleInContainer) WaitForReady() error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
@@ -376,6 +408,7 @@ func (t *TailscaleInContainer) WaitForReady() error {
 	})
 }
 
+// WaitForLogout blocks until the Tailscale instance has logged out.
 func (t *TailscaleInContainer) WaitForLogout() error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
@@ -391,6 +424,8 @@ func (t *TailscaleInContainer) WaitForLogout() error {
 	})
 }
 
+// WaitForPeers blocks until N number of peers is present in the
+// Peer list of the Tailscale instance.
 func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
@@ -407,32 +442,42 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 }
 
 type (
+	// PingOption repreent optional settings that can be given
+	// to ping another host.
 	PingOption = func(args *pingArgs)
-	pingArgs   struct {
+
+	pingArgs struct {
 		timeout time.Duration
 		count   int
 		direct  bool
 	}
 )
 
+// WithPingTimeout sets the timeout for the ping command.
 func WithPingTimeout(timeout time.Duration) PingOption {
 	return func(args *pingArgs) {
 		args.timeout = timeout
 	}
 }
 
+// WithPingCount sets the count of pings to attempt.
 func WithPingCount(count int) PingOption {
 	return func(args *pingArgs) {
 		args.count = count
 	}
 }
 
+// WithPingUntilDirect decides if the ping should only succeed
+// if a direct connection is established or if successful
+// DERP ping is sufficient.
 func WithPingUntilDirect(direct bool) PingOption {
 	return func(args *pingArgs) {
 		args.direct = direct
 	}
 }
 
+// Ping executes the Tailscale ping command and pings a hostname
+// or IP. It accepts a series of PingOption.
 // TODO(kradalby): Make multiping, go routine magic.
 func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) error {
 	args := pingArgs{
@@ -475,6 +520,7 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 	})
 }
 
+// WriteFile save file inside the Tailscale container.
 func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
 }
