@@ -41,6 +41,8 @@ type fileInContainer struct {
 	contents []byte
 }
 
+// HeadscaleInContainer is an implementation of ControlServer which
+// sets up a Headscale instance inside a container.
 type HeadscaleInContainer struct {
 	hostname string
 
@@ -57,8 +59,12 @@ type HeadscaleInContainer struct {
 	filesInContainer []fileInContainer
 }
 
+// Option represent optional settings that can be given to a
+// Headscale instance.
 type Option = func(c *HeadscaleInContainer)
 
+// WithACLPolicy adds a headscale.ACLPolicy policy to the
+// HeadscaleInContainer instance.
 func WithACLPolicy(acl *headscale.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		// TODO(kradalby): Move somewhere appropriate
@@ -68,6 +74,7 @@ func WithACLPolicy(acl *headscale.ACLPolicy) Option {
 	}
 }
 
+// WithTLS creates certificates and enables HTTPS.
 func WithTLS() Option {
 	return func(hsic *HeadscaleInContainer) {
 		cert, key, err := createCertificate()
@@ -84,6 +91,8 @@ func WithTLS() Option {
 	}
 }
 
+// WithConfigEnv takes a map of environment variables that
+// can be used to override Headscale configuration.
 func WithConfigEnv(configEnv map[string]string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		for key, value := range configEnv {
@@ -92,12 +101,15 @@ func WithConfigEnv(configEnv map[string]string) Option {
 	}
 }
 
+// WithPort sets the port on where to run Headscale.
 func WithPort(port int) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.port = port
 	}
 }
 
+// WithTestName sets a a name for the test, this will be reflected
+// in the Docker container name.
 func WithTestName(testName string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hash, _ := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
@@ -107,6 +119,8 @@ func WithTestName(testName string) Option {
 	}
 }
 
+// WithHostnameAsServerURL sets the Headscale ServerURL based on
+// the Hostname.
 func WithHostnameAsServerURL() Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["HEADSCALE_SERVER_URL"] = fmt.Sprintf("http://%s",
@@ -116,6 +130,7 @@ func WithHostnameAsServerURL() Option {
 	}
 }
 
+// WithFileInContainer adds a file to the container at the given path.
 func WithFileInContainer(path string, contents []byte) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.filesInContainer = append(hsic.filesInContainer,
@@ -126,6 +141,7 @@ func WithFileInContainer(path string, contents []byte) Option {
 	}
 }
 
+// New returns a new HeadscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
@@ -244,14 +260,19 @@ func (t *HeadscaleInContainer) hasTLS() bool {
 	return len(t.tlsCert) != 0 && len(t.tlsKey) != 0
 }
 
+// Shutdown stops and cleans up the Headscale container.
 func (t *HeadscaleInContainer) Shutdown() error {
 	return t.pool.Purge(t.container)
 }
 
+// SaveLog saves the current stdout log of the container to a path
+// on the host system.
 func (t *HeadscaleInContainer) SaveLog(path string) error {
 	return dockertestutil.SaveLog(t.pool, t.container, path)
 }
 
+// Execute runs a command inside the Headscale container and returns the
+// result of stdout as a string.
 func (t *HeadscaleInContainer) Execute(
 	command []string,
 ) (string, error) {
@@ -273,18 +294,23 @@ func (t *HeadscaleInContainer) Execute(
 	return stdout, nil
 }
 
+// GetIP returns the docker container IP as a string.
 func (t *HeadscaleInContainer) GetIP() string {
 	return t.container.GetIPInNetwork(t.network)
 }
 
+// GetPort returns the docker container port as a string.
 func (t *HeadscaleInContainer) GetPort() string {
 	return fmt.Sprintf("%d", t.port)
 }
 
+// GetHealthEndpoint returns a health endpoint for the HeadscaleInContainer
+// instance.
 func (t *HeadscaleInContainer) GetHealthEndpoint() string {
 	return fmt.Sprintf("%s/health", t.GetEndpoint())
 }
 
+// GetEndpoint returns the Headscale endpoint for the HeadscaleInContainer.
 func (t *HeadscaleInContainer) GetEndpoint() string {
 	hostEndpoint := fmt.Sprintf("%s:%d",
 		t.GetIP(),
@@ -297,14 +323,18 @@ func (t *HeadscaleInContainer) GetEndpoint() string {
 	return fmt.Sprintf("http://%s", hostEndpoint)
 }
 
+// GetCert returns the public certificate of the HeadscaleInContainer.
 func (t *HeadscaleInContainer) GetCert() []byte {
 	return t.tlsCert
 }
 
+// GetHostname returns the hostname of the HeadscaleInContainer.
 func (t *HeadscaleInContainer) GetHostname() string {
 	return t.hostname
 }
 
+// WaitForReady blocks until the Headscale instance is ready to
+// serve clients.
 func (t *HeadscaleInContainer) WaitForReady() error {
 	url := t.GetHealthEndpoint()
 
@@ -332,6 +362,7 @@ func (t *HeadscaleInContainer) WaitForReady() error {
 	})
 }
 
+// CreateUser adds a new user to the Headscale instance.
 func (t *HeadscaleInContainer) CreateUser(
 	user string,
 ) error {
@@ -349,6 +380,8 @@ func (t *HeadscaleInContainer) CreateUser(
 	return nil
 }
 
+// CreateAuthKey creates a new "authorisation key" for a User that can be used
+// to authorise a TailscaleClient with the Headscale instance.
 func (t *HeadscaleInContainer) CreateAuthKey(
 	user string,
 	reusable bool,
@@ -392,6 +425,8 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
+// ListMachinesInUser list the TailscaleClients (Machine, Headscale internal representation)
+// associated with a user.
 func (t *HeadscaleInContainer) ListMachinesInUser(
 	user string,
 ) ([]*v1.Machine, error) {
@@ -415,6 +450,7 @@ func (t *HeadscaleInContainer) ListMachinesInUser(
 	return nodes, nil
 }
 
+// WriteFile save file inside the Headscale container.
 func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
 }
