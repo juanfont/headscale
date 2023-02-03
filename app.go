@@ -521,7 +521,7 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	apiRouter.Use(h.httpAuthenticationMiddleware)
 	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
 
-	router.PathPrefix("/").HandlerFunc(stdoutHandler)
+	router.PathPrefix("/").HandlerFunc(notFoundHandler)
 
 	return router
 }
@@ -957,7 +957,7 @@ func (h *Headscale) getLastStateChange(users ...User) time.Time {
 	}
 }
 
-func stdoutHandler(
+func notFoundHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
@@ -969,6 +969,7 @@ func stdoutHandler(
 		Interface("url", req.URL).
 		Bytes("body", body).
 		Msg("Request did not match")
+	writer.WriteHeader(http.StatusNotFound)
 }
 
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
