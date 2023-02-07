@@ -81,6 +81,11 @@ one of the maintainers.
 
 Please have a look at the documentation under [`docs/`](docs/).
 
+## Talks
+
+- Fosdem 2023 (video): [Headscale: How we are using integration testing to reimplement Tailscale](https://fosdem.org/2023/schedule/event/goheadscale/)
+  - presented by Juan Font Alonso and Kristoffer Dalby
+
 ## Disclaimer
 
 1. We have nothing to do with Tailscale, or Tailscale Inc.
