@@ -138,6 +138,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
+WorkingDirectory=/var/lib/headscale
 ReadWritePaths=/var/lib/headscale /var/run/headscale
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 RuntimeDirectory=headscale
