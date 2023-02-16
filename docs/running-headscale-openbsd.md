@@ -10,17 +10,14 @@ describing how to make `headscale` run properly in a server environment.
 
 1. Install from ports (Not Recommend)
 
-   As of OpenBSD 7.1, there's a headscale in ports collection, however, it's severely outdated(v0.12.4).
+   As of OpenBSD 7.2, there's a headscale in ports collection, however, it's severely outdated(v0.12.4).
    You can install it via `pkg_add headscale`.
 
-2. Install from source on OpenBSD 7.1
+2. Install from source on OpenBSD 7.2
 
 ```shell
 # Install prerequistes
-# 1. go v1.19+: headscale newer than 0.17 needs go 1.19+ to compile
-# 2. gmake: Makefile in the headscale repo is written in GNU make syntax
-pkg_add -D snap go
-pkg_add gmake
+pkg_add go
 
 git clone https://github.com/juanfont/headscale.git
 
@@ -33,7 +30,7 @@ latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
 
 git checkout $latestTag
 
-gmake build
+go build -ldflags="-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$latestTag" github.com/juanfont/headscale
 
 # make it executable
 chmod a+x headscale
