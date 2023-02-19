@@ -36,14 +36,19 @@ useradd \
 	--home-dir /var/lib/headscale/ \
 	--system \
 	--user-group \
-	--shell /usr/bin/nologin \
+	--shell /usr/sbin/nologin \
 	headscale
 ```
+
+This directory needs to be writable by the user running headscale. If you are not running headscale as root make sure that `/var/lib/headscale` is owned by the headscale user. If you used useradd to create the directory it should be done by default.
 
 4. Create an empty SQLite database:
 
 ```shell
 touch /var/lib/headscale/db.sqlite
+
+# if you created a headscale user make it the owner:
+chown headscale:headscale /var/lib/headscale/db.sqlite
 ```
 
 5. Create a `headscale` configuration:
@@ -51,6 +56,7 @@ touch /var/lib/headscale/db.sqlite
 ```shell
 touch /etc/headscale/config.yaml
 ```
+The config file should be owned by root with read permission for the headscale user. `-rw-r--r-- root root`
 
 It is **strongly recommended** to copy and modify the [example configuration](../config-example.yaml)
 from the [headscale repository](../)
@@ -77,6 +83,13 @@ Verify `headscale` is available:
 ```shell
 curl http://127.0.0.1:9090/metrics
 ```
+
+Verify you can issue commands to `headscale`:
+
+```shell
+headscale users list
+```
+When running headscale as a normal user it is possible that the metrics page is available but you cannot issue commands to headscale. In that case you need to change to the directory from where you started headscale.
 
 8. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
