@@ -139,3 +139,31 @@ oidc:
     # Optional: Force the Azure AD account picker
     prompt: select_account
 ```
+
+## Google OAuth Example
+In order to integrate Headscale with Google, you'll need to have a [Google Cloud Console](https://console.cloud.google.com) account.
+
+Google OAuth has a [verification process](https://support.google.com/cloud/answer/9110914?hl=en) if you need to have users authenticate who are outside of your domain. If you only need to authenticate users from your domain name (ie `@example.com`), you don't need to go through the verification process.
+
+However if you don't have a domain, or need to add users outside of your domain, you can manually add emails via Google Console.
+
+### Steps
+1. Go to [Google Console](https://console.cloud.google.com) and login or create an account if you don't have one.
+2. Create a project (if you don't already have one).
+3. On the left hand menu, go to `APIs and services` -> `Credentials`
+4. Click `Create Credentials` -> `OAuth client ID`
+5. Under `Application Type`, choose `Web Application`
+6. For `Name`, enter whatever you like
+7. Under `Authorised redirect URIs`, use `https://example.com/oidc/callback`, replacing example.com with your Headscale URL.
+8. Click `Save` at the bottom of the form
+9. Take note of the `Client ID` and `Client secret`, you can also download it for reference if you need it.
+10. Edit your headscale config, under `oidc`, filling in your `client_id` and `client_secret`:
+```yaml
+oidc:
+  issuer: "https://accounts.google.com"
+  client_id: ""
+  client_secret: ""
+  scope: ["openid", "profile", "email"]
+```
+
+You can also use `allowed_domains` and `allowed_users` to restrict the users who can authenticate.
