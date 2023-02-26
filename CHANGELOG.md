@@ -1,5 +1,7 @@
 # CHANGELOG
 
+- Adding "configtest" CLI command.
+
 ## 0.20.0 (2023-x-x)
 
 ### Changes
