@@ -63,7 +63,7 @@ jobs:
 
       - name: Prettify code
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: creyD/prettier_action@v4.0
+        uses: creyD/prettier_action@v4.3
         with:
           prettier_options: >-
             --check **/*.{ts,js,md,yaml,yml,sass,css,scss,html}
