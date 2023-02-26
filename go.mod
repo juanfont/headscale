@@ -44,7 +44,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.4.8
 	gorm.io/gorm v1.24.5
-	tailscale.com v1.34.0
+	tailscale.com v1.36.2
 )
 
 require (
