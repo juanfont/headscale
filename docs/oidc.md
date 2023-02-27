@@ -141,6 +141,7 @@ oidc:
 ```
 
 ## Google OAuth Example
+
 In order to integrate Headscale with Google, you'll need to have a [Google Cloud Console](https://console.cloud.google.com) account.
 
 Google OAuth has a [verification process](https://support.google.com/cloud/answer/9110914?hl=en) if you need to have users authenticate who are outside of your domain. If you only need to authenticate users from your domain name (ie `@example.com`), you don't need to go through the verification process.
@@ -148,6 +149,7 @@ Google OAuth has a [verification process](https://support.google.com/cloud/answe
 However if you don't have a domain, or need to add users outside of your domain, you can manually add emails via Google Console.
 
 ### Steps
+
 1. Go to [Google Console](https://console.cloud.google.com) and login or create an account if you don't have one.
 2. Create a project (if you don't already have one).
 3. On the left hand menu, go to `APIs and services` -> `Credentials`
@@ -158,6 +160,7 @@ However if you don't have a domain, or need to add users outside of your domain,
 8. Click `Save` at the bottom of the form
 9. Take note of the `Client ID` and `Client secret`, you can also download it for reference if you need it.
 10. Edit your headscale config, under `oidc`, filling in your `client_id` and `client_secret`:
+
 ```yaml
 oidc:
   issuer: "https://accounts.google.com"
