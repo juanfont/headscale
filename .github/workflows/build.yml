@@ -15,6 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions: write-all
 
     steps:
       - uses: actions/checkout@v3
@@ -36,8 +37,32 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
 
       - name: Run build
+        id: build
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: nix build
+        run: |
+          nix build |& tee build-result
+          BUILD_STATUS="${PIPESTATUS[0]}"
+
+          OLD_HASH=$(cat build-result | grep specified: | awk -F ':' '{print $2}' | sed 's/ //g')
+          NEW_HASH=$(cat build-result | grep got: | awk -F ':' '{print $2}' | sed 's/ //g')
+
+          echo "OLD_HASH=$OLD_HASH" >> $GITHUB_OUTPUT
+          echo "NEW_HASH=$NEW_HASH" >> $GITHUB_OUTPUT
+
+          exit $BUILD_STATUS
+
+      - name: Nix gosum diverging
+        uses: actions/github-script@v6
+        if: failure() && steps.build.outcome == 'failure'
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            github.rest.pulls.createReviewComment({
+              pull_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Nix build failed with wrong gosum, please update "vendorSha256" (${{ steps.build.outputs.OLD_HASH }}) for the "headscale" package in flake.nix with the new SHA: ${{ steps.build.outputs.NEW_HASH }}'
+            })
 
       - uses: actions/upload-artifact@v3
         if: steps.changed-files.outputs.any_changed == 'true'
