@@ -84,9 +84,11 @@ type Headscale struct {
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *DERPServer
 
-	aclPolicy *ACLPolicy
-	aclRules  []tailcfg.FilterRule
-	sshPolicy *tailcfg.SSHPolicy
+	aclPolicy  *ACLPolicy
+	aclRules   []tailcfg.FilterRule
+	aclRuleRW  sync.RWMutex
+	aclRuleMap map[string]map[string]struct{}
+	sshPolicy  *tailcfg.SSHPolicy
 
 	lastStateChange *xsync.MapOf[string, time.Time]
 
