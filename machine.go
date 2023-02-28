@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -184,8 +185,9 @@ func matchSourceAndDestinationWithRule(
 // getFilteredByACLPeerss should return the list of peers authorized to be accessed from machine.
 func getFilteredByACLPeers(
 	machines []Machine,
-	rules []tailcfg.FilterRule,
+	lock *sync.RWMutex,
 	machine *Machine,
+	aclRuleMap map[string]map[string]struct{},
 ) Machines {
 	log.Trace().
 		Caller().
@@ -200,50 +202,68 @@ func getFilteredByACLPeers(
 		if peer.ID == machine.ID {
 			continue
 		}
-		for _, rule := range rules {
-			var dst []string
-			for _, d := range rule.DstPorts {
-				dst = append(dst, d.IP)
+		match := false
+		peerIPs := peer.IPAddresses.ToStringSlice()
+
+		lock.RLock()
+		if dstMap, ok := aclRuleMap["*"]; ok {
+			// match source and all destination
+			if _, dstOk := dstMap["*"]; dstOk {
+				match = true
+				goto Assignment
 			}
-			peerIPs := peer.IPAddresses.ToStringSlice()
-			if matchSourceAndDestinationWithRule(
-				rule.SrcIPs,
-				dst,
-				machineIPs,
-				peerIPs,
-			) || // match source and destination
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					peerIPs,
-					machineIPs,
-				) || // match return path
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					machineIPs,
-					[]string{"*"},
-				) || // match source and all destination
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					[]string{"*"},
-					[]string{"*"},
-				) || // match source and all destination
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					[]string{"*"},
-					peerIPs,
-				) || // match source and all destination
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					[]string{"*"},
-					machineIPs,
-				) { // match all sources and source
-				peers[peer.ID] = peer
+
+			// match source and all destination
+			for _, peerIP := range peerIPs {
+				if _, dstOk := dstMap[peerIP]; dstOk {
+					match = true
+					goto Assignment
+				}
 			}
+
+			// match all sources and source
+			for _, machineIP := range machineIPs {
+				if _, dstOk := dstMap[machineIP]; dstOk {
+					match = true
+					goto Assignment
+				}
+			}
+		}
+
+		for _, machineIP := range machineIPs {
+			if dstMap, ok := aclRuleMap[machineIP]; ok {
+				// match source and all destination
+				if _, dstOk := dstMap["*"]; dstOk {
+					match = true
+					goto Assignment
+				}
+
+				// match source and destination
+				for _, peerIP := range peerIPs {
+					if _, dstOk := dstMap[peerIP]; dstOk {
+						match = true
+						goto Assignment
+					}
+				}
+			}
+		}
+
+		for _, peerIP := range peerIPs {
+			if dstMap, ok := aclRuleMap[peerIP]; ok {
+				// match return path
+				for _, machineIP := range machineIPs {
+					if _, dstOk := dstMap[machineIP]; dstOk {
+						match = true
+						goto Assignment
+					}
+				}
+			}
+		}
+
+	Assignment:
+		lock.RUnlock()
+		if match {
+			peers[peer.ID] = peer
 		}
 	}
 
@@ -302,7 +322,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 
 			return Machines{}, err
 		}
-		peers = getFilteredByACLPeers(machines, h.aclRules, machine)
+		peers = getFilteredByACLPeers(machines, &h.aclRuleRW, machine, h.aclRuleMap)
 	} else {
 		peers, err = h.ListPeers(machine)
 		if err != nil {

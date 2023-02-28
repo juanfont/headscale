@@ -133,6 +133,26 @@ func (h *Headscale) UpdateACLRules() error {
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 	h.aclRules = rules
 
+	aclRulesMap := make(map[string]map[string]struct{})
+	for _, rule := range rules {
+		for _, srcIP := range rule.SrcIPs {
+			if data, ok := aclRulesMap[srcIP]; ok {
+				for _, dstPort := range rule.DstPorts {
+					data[dstPort.IP] = struct{}{}
+				}
+			} else {
+				dstPortsMap := make(map[string]struct{}, len(rule.DstPorts))
+				for _, dstPort := range rule.DstPorts {
+					dstPortsMap[dstPort.IP] = struct{}{}
+				}
+				aclRulesMap[srcIP] = dstPortsMap
+			}
+		}
+	}
+	h.aclRuleRW.Lock()
+	h.aclRuleMap = aclRulesMap
+	h.aclRuleRW.Unlock()
+
 	if featureEnableSSH() {
 		sshRules, err := h.generateSSHRules()
 		if err != nil {
