@@ -108,7 +108,7 @@ func WithPort(port int) Option {
 	}
 }
 
-// WithTestName sets a a name for the test, this will be reflected
+// WithTestName sets a name for the test, this will be reflected
 // in the Docker container name.
 func WithTestName(testName string) Option {
 	return func(hsic *HeadscaleInContainer) {
