@@ -7,12 +7,11 @@
 package v1
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -925,24 +924,22 @@ func file_headscale_v1_device_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_device_proto_rawDescData
 }
 
-var (
-	file_headscale_v1_device_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
-	file_headscale_v1_device_proto_goTypes  = []interface{}{
-		(*Latency)(nil),                    // 0: headscale.v1.Latency
-		(*ClientSupports)(nil),             // 1: headscale.v1.ClientSupports
-		(*ClientConnectivity)(nil),         // 2: headscale.v1.ClientConnectivity
-		(*GetDeviceRequest)(nil),           // 3: headscale.v1.GetDeviceRequest
-		(*GetDeviceResponse)(nil),          // 4: headscale.v1.GetDeviceResponse
-		(*DeleteDeviceRequest)(nil),        // 5: headscale.v1.DeleteDeviceRequest
-		(*DeleteDeviceResponse)(nil),       // 6: headscale.v1.DeleteDeviceResponse
-		(*GetDeviceRoutesRequest)(nil),     // 7: headscale.v1.GetDeviceRoutesRequest
-		(*GetDeviceRoutesResponse)(nil),    // 8: headscale.v1.GetDeviceRoutesResponse
-		(*EnableDeviceRoutesRequest)(nil),  // 9: headscale.v1.EnableDeviceRoutesRequest
-		(*EnableDeviceRoutesResponse)(nil), // 10: headscale.v1.EnableDeviceRoutesResponse
-		nil,                                // 11: headscale.v1.ClientConnectivity.LatencyEntry
-		(*timestamppb.Timestamp)(nil),      // 12: google.protobuf.Timestamp
-	}
-)
+var file_headscale_v1_device_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_headscale_v1_device_proto_goTypes = []interface{}{
+	(*Latency)(nil),                    // 0: headscale.v1.Latency
+	(*ClientSupports)(nil),             // 1: headscale.v1.ClientSupports
+	(*ClientConnectivity)(nil),         // 2: headscale.v1.ClientConnectivity
+	(*GetDeviceRequest)(nil),           // 3: headscale.v1.GetDeviceRequest
+	(*GetDeviceResponse)(nil),          // 4: headscale.v1.GetDeviceResponse
+	(*DeleteDeviceRequest)(nil),        // 5: headscale.v1.DeleteDeviceRequest
+	(*DeleteDeviceResponse)(nil),       // 6: headscale.v1.DeleteDeviceResponse
+	(*GetDeviceRoutesRequest)(nil),     // 7: headscale.v1.GetDeviceRoutesRequest
+	(*GetDeviceRoutesResponse)(nil),    // 8: headscale.v1.GetDeviceRoutesResponse
+	(*EnableDeviceRoutesRequest)(nil),  // 9: headscale.v1.EnableDeviceRoutesRequest
+	(*EnableDeviceRoutesResponse)(nil), // 10: headscale.v1.EnableDeviceRoutesResponse
+	nil,                                // 11: headscale.v1.ClientConnectivity.LatencyEntry
+	(*timestamppb.Timestamp)(nil),      // 12: google.protobuf.Timestamp
+}
 var file_headscale_v1_device_proto_depIdxs = []int32{
 	11, // 0: headscale.v1.ClientConnectivity.latency:type_name -> headscale.v1.ClientConnectivity.LatencyEntry
 	1,  // 1: headscale.v1.ClientConnectivity.client_supports:type_name -> headscale.v1.ClientSupports

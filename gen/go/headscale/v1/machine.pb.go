@@ -7,12 +7,11 @@
 package v1
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -1310,35 +1309,33 @@ func file_headscale_v1_machine_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_machine_proto_rawDescData
 }
 
-var (
-	file_headscale_v1_machine_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-	file_headscale_v1_machine_proto_msgTypes  = make([]protoimpl.MessageInfo, 19)
-	file_headscale_v1_machine_proto_goTypes   = []interface{}{
-		(RegisterMethod)(0),                // 0: headscale.v1.RegisterMethod
-		(*Machine)(nil),                    // 1: headscale.v1.Machine
-		(*RegisterMachineRequest)(nil),     // 2: headscale.v1.RegisterMachineRequest
-		(*RegisterMachineResponse)(nil),    // 3: headscale.v1.RegisterMachineResponse
-		(*GetMachineRequest)(nil),          // 4: headscale.v1.GetMachineRequest
-		(*GetMachineResponse)(nil),         // 5: headscale.v1.GetMachineResponse
-		(*SetTagsRequest)(nil),             // 6: headscale.v1.SetTagsRequest
-		(*SetTagsResponse)(nil),            // 7: headscale.v1.SetTagsResponse
-		(*DeleteMachineRequest)(nil),       // 8: headscale.v1.DeleteMachineRequest
-		(*DeleteMachineResponse)(nil),      // 9: headscale.v1.DeleteMachineResponse
-		(*ExpireMachineRequest)(nil),       // 10: headscale.v1.ExpireMachineRequest
-		(*ExpireMachineResponse)(nil),      // 11: headscale.v1.ExpireMachineResponse
-		(*RenameMachineRequest)(nil),       // 12: headscale.v1.RenameMachineRequest
-		(*RenameMachineResponse)(nil),      // 13: headscale.v1.RenameMachineResponse
-		(*ListMachinesRequest)(nil),        // 14: headscale.v1.ListMachinesRequest
-		(*ListMachinesResponse)(nil),       // 15: headscale.v1.ListMachinesResponse
-		(*MoveMachineRequest)(nil),         // 16: headscale.v1.MoveMachineRequest
-		(*MoveMachineResponse)(nil),        // 17: headscale.v1.MoveMachineResponse
-		(*DebugCreateMachineRequest)(nil),  // 18: headscale.v1.DebugCreateMachineRequest
-		(*DebugCreateMachineResponse)(nil), // 19: headscale.v1.DebugCreateMachineResponse
-		(*User)(nil),                       // 20: headscale.v1.User
-		(*timestamppb.Timestamp)(nil),      // 21: google.protobuf.Timestamp
-		(*PreAuthKey)(nil),                 // 22: headscale.v1.PreAuthKey
-	}
-)
+var file_headscale_v1_machine_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_headscale_v1_machine_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_headscale_v1_machine_proto_goTypes = []interface{}{
+	(RegisterMethod)(0),                // 0: headscale.v1.RegisterMethod
+	(*Machine)(nil),                    // 1: headscale.v1.Machine
+	(*RegisterMachineRequest)(nil),     // 2: headscale.v1.RegisterMachineRequest
+	(*RegisterMachineResponse)(nil),    // 3: headscale.v1.RegisterMachineResponse
+	(*GetMachineRequest)(nil),          // 4: headscale.v1.GetMachineRequest
+	(*GetMachineResponse)(nil),         // 5: headscale.v1.GetMachineResponse
+	(*SetTagsRequest)(nil),             // 6: headscale.v1.SetTagsRequest
+	(*SetTagsResponse)(nil),            // 7: headscale.v1.SetTagsResponse
+	(*DeleteMachineRequest)(nil),       // 8: headscale.v1.DeleteMachineRequest
+	(*DeleteMachineResponse)(nil),      // 9: headscale.v1.DeleteMachineResponse
+	(*ExpireMachineRequest)(nil),       // 10: headscale.v1.ExpireMachineRequest
+	(*ExpireMachineResponse)(nil),      // 11: headscale.v1.ExpireMachineResponse
+	(*RenameMachineRequest)(nil),       // 12: headscale.v1.RenameMachineRequest
+	(*RenameMachineResponse)(nil),      // 13: headscale.v1.RenameMachineResponse
+	(*ListMachinesRequest)(nil),        // 14: headscale.v1.ListMachinesRequest
+	(*ListMachinesResponse)(nil),       // 15: headscale.v1.ListMachinesResponse
+	(*MoveMachineRequest)(nil),         // 16: headscale.v1.MoveMachineRequest
+	(*MoveMachineResponse)(nil),        // 17: headscale.v1.MoveMachineResponse
+	(*DebugCreateMachineRequest)(nil),  // 18: headscale.v1.DebugCreateMachineRequest
+	(*DebugCreateMachineResponse)(nil), // 19: headscale.v1.DebugCreateMachineResponse
+	(*User)(nil),                       // 20: headscale.v1.User
+	(*timestamppb.Timestamp)(nil),      // 21: google.protobuf.Timestamp
+	(*PreAuthKey)(nil),                 // 22: headscale.v1.PreAuthKey
+}
 var file_headscale_v1_machine_proto_depIdxs = []int32{
 	20, // 0: headscale.v1.Machine.user:type_name -> headscale.v1.User
 	21, // 1: headscale.v1.Machine.last_seen:type_name -> google.protobuf.Timestamp

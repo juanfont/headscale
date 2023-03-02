@@ -559,6 +559,37 @@
         ]
       }
     },
+    "/api/v1/routes/{routeId}": {
+      "delete": {
+        "operationId": "HeadscaleService_DeleteRoute",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeleteRouteResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "routeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/routes/{routeId}/disable": {
       "post": {
         "operationId": "HeadscaleService_DisableRoute",
@@ -915,6 +946,9 @@
       }
     },
     "v1DeleteMachineResponse": {
+      "type": "object"
+    },
+    "v1DeleteRouteResponse": {
       "type": "object"
     },
     "v1DeleteUserResponse": {
