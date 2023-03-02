@@ -422,6 +422,18 @@ func (api headscaleV1APIServer) GetMachineRoutes(
 	}, nil
 }
 
+func (api headscaleV1APIServer) DeleteRoute(
+	ctx context.Context,
+	request *v1.DeleteRouteRequest,
+) (*v1.DeleteRouteResponse, error) {
+	err := api.h.DeleteRoute(request.GetRouteId())
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.DeleteRouteResponse{}, nil
+}
+
 func (api headscaleV1APIServer) CreateApiKey(
 	ctx context.Context,
 	request *v1.CreateApiKeyRequest,
