@@ -129,6 +129,21 @@ func (h *Headscale) DeleteRoute(id uint64) error {
 	return h.handlePrimarySubnetFailover()
 }
 
+func (h *Headscale) DeleteMachineRoutes(m *Machine) error {
+	routes, err := h.GetMachineRoutes(m)
+	if err != nil {
+		return err
+	}
+
+	for i := range routes {
+		if err := h.db.Unscoped().Delete(&routes[i]).Error; err != nil {
+			return err
+		}
+	}
+
+	return h.handlePrimarySubnetFailover()
+}
+
 // isUniquePrefix returns if there is another machine providing the same route already.
 func (h *Headscale) isUniquePrefix(route Route) bool {
 	var count int64
