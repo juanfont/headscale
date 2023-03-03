@@ -81,6 +81,15 @@ one of the maintainers.
 
 Please have a look at the documentation under [`docs/`](docs/).
 
+## Graphical Control Panels
+
+Headscale provides an API for complete management of your Tailnet.
+These are community projects not directly affiliated with the Headscale project.
+
+| Name            | Repository Link                                      | Description                                            | Status |
+| --------------- | ---------------------------------------------------- | ------------------------------------------------------ | ------ |
+| headscale-webui | [Github](https://github.com/ifargle/headscale-webui) | A simple Headscale web UI for small-scale deployments. | Alpha  |
+
 ## Talks
 
 - Fosdem 2023 (video): [Headscale: How we are using integration testing to reimplement Tailscale](https://fosdem.org/2023/schedule/event/goheadscale/)
