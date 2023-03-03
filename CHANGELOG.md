@@ -4,6 +4,8 @@
 
 ### changes
 
+- Adding "configtest" CLI command.
+
 ## 0.20.0 (2023-02-03)
 
 ### changes
