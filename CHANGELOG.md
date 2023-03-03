@@ -1,8 +1,12 @@
 # CHANGELOG
 
-## 0.20.0 (2023-x-x)
+## 0.21.0 (2023-xx-xx)
 
-### Changes
+### changes
+
+## 0.20.0 (2023-02-03)
+
+### changes
 
 - Fix wrong behaviour in exit nodes [#1159](https://github.com/juanfont/headscale/pull/1159)
 - Align behaviour of `dns_config.restricted_nameservers` to tailscale [#1162](https://github.com/juanfont/headscale/pull/1162)
