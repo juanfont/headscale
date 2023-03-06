@@ -8,7 +8,6 @@ package v1
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -48,6 +47,7 @@ type HeadscaleServiceClient interface {
 	EnableRoute(ctx context.Context, in *EnableRouteRequest, opts ...grpc.CallOption) (*EnableRouteResponse, error)
 	DisableRoute(ctx context.Context, in *DisableRouteRequest, opts ...grpc.CallOption) (*DisableRouteResponse, error)
 	GetMachineRoutes(ctx context.Context, in *GetMachineRoutesRequest, opts ...grpc.CallOption) (*GetMachineRoutesResponse, error)
+	DeleteRoute(ctx context.Context, in *DeleteRouteRequest, opts ...grpc.CallOption) (*DeleteRouteResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error)
 	ExpireApiKey(ctx context.Context, in *ExpireApiKeyRequest, opts ...grpc.CallOption) (*ExpireApiKeyResponse, error)
@@ -251,6 +251,15 @@ func (c *headscaleServiceClient) GetMachineRoutes(ctx context.Context, in *GetMa
 	return out, nil
 }
 
+func (c *headscaleServiceClient) DeleteRoute(ctx context.Context, in *DeleteRouteRequest, opts ...grpc.CallOption) (*DeleteRouteResponse, error) {
+	out := new(DeleteRouteResponse)
+	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/DeleteRoute", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *headscaleServiceClient) CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error) {
 	out := new(CreateApiKeyResponse)
 	err := c.cc.Invoke(ctx, "/headscale.v1.HeadscaleService/CreateApiKey", in, out, opts...)
@@ -307,6 +316,7 @@ type HeadscaleServiceServer interface {
 	EnableRoute(context.Context, *EnableRouteRequest) (*EnableRouteResponse, error)
 	DisableRoute(context.Context, *DisableRouteRequest) (*DisableRouteResponse, error)
 	GetMachineRoutes(context.Context, *GetMachineRoutesRequest) (*GetMachineRoutesResponse, error)
+	DeleteRoute(context.Context, *DeleteRouteRequest) (*DeleteRouteResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error)
 	ExpireApiKey(context.Context, *ExpireApiKeyRequest) (*ExpireApiKeyResponse, error)
@@ -315,100 +325,81 @@ type HeadscaleServiceServer interface {
 }
 
 // UnimplementedHeadscaleServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedHeadscaleServiceServer struct{}
+type UnimplementedHeadscaleServiceServer struct {
+}
 
 func (UnimplementedHeadscaleServiceServer) GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetUser not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) CreateUser(context.Context, *CreateUserRequest) (*CreateUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateUser not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) RenameUser(context.Context, *RenameUserRequest) (*RenameUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RenameUser not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) DeleteUser(context.Context, *DeleteUserRequest) (*DeleteUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteUser not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListUsers not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) CreatePreAuthKey(context.Context, *CreatePreAuthKeyRequest) (*CreatePreAuthKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreatePreAuthKey not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) ExpirePreAuthKey(context.Context, *ExpirePreAuthKeyRequest) (*ExpirePreAuthKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExpirePreAuthKey not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) ListPreAuthKeys(context.Context, *ListPreAuthKeysRequest) (*ListPreAuthKeysResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPreAuthKeys not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) DebugCreateMachine(context.Context, *DebugCreateMachineRequest) (*DebugCreateMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DebugCreateMachine not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) GetMachine(context.Context, *GetMachineRequest) (*GetMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMachine not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) SetTags(context.Context, *SetTagsRequest) (*SetTagsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetTags not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) RegisterMachine(context.Context, *RegisterMachineRequest) (*RegisterMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterMachine not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) DeleteMachine(context.Context, *DeleteMachineRequest) (*DeleteMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteMachine not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) ExpireMachine(context.Context, *ExpireMachineRequest) (*ExpireMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExpireMachine not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) RenameMachine(context.Context, *RenameMachineRequest) (*RenameMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RenameMachine not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) ListMachines(context.Context, *ListMachinesRequest) (*ListMachinesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListMachines not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) MoveMachine(context.Context, *MoveMachineRequest) (*MoveMachineResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MoveMachine not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) GetRoutes(context.Context, *GetRoutesRequest) (*GetRoutesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRoutes not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) EnableRoute(context.Context, *EnableRouteRequest) (*EnableRouteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EnableRoute not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) DisableRoute(context.Context, *DisableRouteRequest) (*DisableRouteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DisableRoute not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) GetMachineRoutes(context.Context, *GetMachineRoutesRequest) (*GetMachineRoutesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMachineRoutes not implemented")
 }
-
+func (UnimplementedHeadscaleServiceServer) DeleteRoute(context.Context, *DeleteRouteRequest) (*DeleteRouteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteRoute not implemented")
+}
 func (UnimplementedHeadscaleServiceServer) CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateApiKey not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) ExpireApiKey(context.Context, *ExpireApiKeyRequest) (*ExpireApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExpireApiKey not implemented")
 }
-
 func (UnimplementedHeadscaleServiceServer) ListApiKeys(context.Context, *ListApiKeysRequest) (*ListApiKeysResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListApiKeys not implemented")
 }
@@ -803,6 +794,24 @@ func _HeadscaleService_GetMachineRoutes_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_DeleteRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).DeleteRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/headscale.v1.HeadscaleService/DeleteRoute",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).DeleteRoute(ctx, req.(*DeleteRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HeadscaleService_CreateApiKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateApiKeyRequest)
 	if err := dec(in); err != nil {
@@ -947,6 +956,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMachineRoutes",
 			Handler:    _HeadscaleService_GetMachineRoutes_Handler,
+		},
+		{
+			MethodName: "DeleteRoute",
+			Handler:    _HeadscaleService_DeleteRoute_Handler,
 		},
 		{
 			MethodName: "CreateApiKey",

@@ -535,6 +535,11 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
 
 // DeleteMachine softs deletes a Machine from the database.
 func (h *Headscale) DeleteMachine(machine *Machine) error {
+	err := h.DeleteMachineRoutes(machine)
+	if err != nil {
+		return err
+	}
+
 	if err := h.db.Delete(&machine).Error; err != nil {
 		return err
 	}
@@ -552,6 +557,11 @@ func (h *Headscale) TouchMachine(machine *Machine) error {
 
 // HardDeleteMachine hard deletes a Machine from the database.
 func (h *Headscale) HardDeleteMachine(machine *Machine) error {
+	err := h.DeleteMachineRoutes(machine)
+	if err != nil {
+		return err
+	}
+
 	if err := h.db.Unscoped().Delete(&machine).Error; err != nil {
 		return err
 	}

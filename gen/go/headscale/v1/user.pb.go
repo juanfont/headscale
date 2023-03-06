@@ -7,12 +7,11 @@
 package v1
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -607,23 +606,21 @@ func file_headscale_v1_user_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_user_proto_rawDescData
 }
 
-var (
-	file_headscale_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-	file_headscale_v1_user_proto_goTypes  = []interface{}{
-		(*User)(nil),                  // 0: headscale.v1.User
-		(*GetUserRequest)(nil),        // 1: headscale.v1.GetUserRequest
-		(*GetUserResponse)(nil),       // 2: headscale.v1.GetUserResponse
-		(*CreateUserRequest)(nil),     // 3: headscale.v1.CreateUserRequest
-		(*CreateUserResponse)(nil),    // 4: headscale.v1.CreateUserResponse
-		(*RenameUserRequest)(nil),     // 5: headscale.v1.RenameUserRequest
-		(*RenameUserResponse)(nil),    // 6: headscale.v1.RenameUserResponse
-		(*DeleteUserRequest)(nil),     // 7: headscale.v1.DeleteUserRequest
-		(*DeleteUserResponse)(nil),    // 8: headscale.v1.DeleteUserResponse
-		(*ListUsersRequest)(nil),      // 9: headscale.v1.ListUsersRequest
-		(*ListUsersResponse)(nil),     // 10: headscale.v1.ListUsersResponse
-		(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
-	}
-)
+var file_headscale_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_headscale_v1_user_proto_goTypes = []interface{}{
+	(*User)(nil),                  // 0: headscale.v1.User
+	(*GetUserRequest)(nil),        // 1: headscale.v1.GetUserRequest
+	(*GetUserResponse)(nil),       // 2: headscale.v1.GetUserResponse
+	(*CreateUserRequest)(nil),     // 3: headscale.v1.CreateUserRequest
+	(*CreateUserResponse)(nil),    // 4: headscale.v1.CreateUserResponse
+	(*RenameUserRequest)(nil),     // 5: headscale.v1.RenameUserRequest
+	(*RenameUserResponse)(nil),    // 6: headscale.v1.RenameUserResponse
+	(*DeleteUserRequest)(nil),     // 7: headscale.v1.DeleteUserRequest
+	(*DeleteUserResponse)(nil),    // 8: headscale.v1.DeleteUserResponse
+	(*ListUsersRequest)(nil),      // 9: headscale.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),     // 10: headscale.v1.ListUsersResponse
+	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
+}
 var file_headscale_v1_user_proto_depIdxs = []int32{
 	11, // 0: headscale.v1.User.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: headscale.v1.GetUserResponse.user:type_name -> headscale.v1.User

@@ -150,6 +150,12 @@ service HeadscaleService {
         };
     }
 
+    rpc DeleteRoute(DeleteRouteRequest) returns(DeleteRouteResponse) {
+        option(google.api.http) = {
+            delete : "/api/v1/routes/{route_id}"
+        };
+    }
+
     // --- Route end ---
 
     // --- ApiKeys start ---

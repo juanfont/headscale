@@ -35,6 +35,13 @@ func init() {
 		log.Fatalf(err.Error())
 	}
 	routesCmd.AddCommand(disableRouteCmd)
+
+	deleteRouteCmd.Flags().Uint64P("route", "r", 0, "Route identifier (ID)")
+	err = deleteRouteCmd.MarkFlagRequired("route")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	routesCmd.AddCommand(deleteRouteCmd)
 }
 
 var routesCmd = &cobra.Command{
@@ -200,7 +207,50 @@ var disableRouteCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Cannot enable route %d: %s", routeID, status.Convert(err).Message()),
+				fmt.Sprintf("Cannot disable route %d: %s", routeID, status.Convert(err).Message()),
+				output,
+			)
+
+			return
+		}
+
+		if output != "" {
+			SuccessOutput(response, "", output)
+
+			return
+		}
+	},
+}
+
+var deleteRouteCmd = &cobra.Command{
+	Use:   "delete",
+	Short: "Delete a given route",
+	Long:  `This command will delete a given route.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		routeID, err := cmd.Flags().GetUint64("route")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		response, err := client.DeleteRoute(ctx, &v1.DeleteRouteRequest{
+			RouteId: routeID,
+		})
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot delete route %d: %s", routeID, status.Convert(err).Message()),
 				output,
 			)
 

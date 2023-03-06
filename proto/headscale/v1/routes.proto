@@ -46,3 +46,10 @@ message GetMachineRoutesRequest {
 message GetMachineRoutesResponse {
     repeated Route routes = 1;
 }
+
+message DeleteRouteRequest {
+    uint64 route_id = 1;
+}
+
+message DeleteRouteResponse {
+}
