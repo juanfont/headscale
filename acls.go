@@ -133,25 +133,13 @@ func (h *Headscale) UpdateACLRules() error {
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 	h.aclRules = rules
 
-	aclRulesMap := make(map[string]map[string]struct{})
-	for _, rule := range rules {
-		for _, srcIP := range rule.SrcIPs {
-			if data, ok := aclRulesMap[srcIP]; ok {
-				for _, dstPort := range rule.DstPorts {
-					data[dstPort.IP] = struct{}{}
-				}
-			} else {
-				dstPortsMap := make(map[string]struct{}, len(rule.DstPorts))
-				for _, dstPort := range rule.DstPorts {
-					dstPortsMap[dstPort.IP] = struct{}{}
-				}
-				aclRulesMap[srcIP] = dstPortsMap
-			}
-		}
-	}
-	h.aclRuleRW.Lock()
-	h.aclRuleMap = aclRulesMap
-	h.aclRuleRW.Unlock()
+	// Precompute a map of which sources can reach each destination, this is
+	// to provide quicker lookup when we calculate the peerlist for the map
+	// response to nodes.
+	aclPeerCacheMap := generateACLPeerCacheMap(rules)
+	h.aclPeerCacheMapRW.Lock()
+	h.aclPeerCacheMap = aclPeerCacheMap
+	h.aclPeerCacheMapRW.Unlock()
 
 	if featureEnableSSH() {
 		sshRules, err := h.generateSSHRules()
@@ -168,6 +156,30 @@ func (h *Headscale) UpdateACLRules() error {
 	}
 
 	return nil
+}
+
+// generateACLPeerCacheMap takes a list of Tailscale filter rules and generates a map
+// of which Sources ("*" and IPs) can access destinations. This is to speed up the
+// process of generating MapResponses when deciding which Peers to inform nodes about.
+func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string]map[string]struct{} {
+	aclCachePeerMap := make(map[string]map[string]struct{})
+	for _, rule := range rules {
+		for _, srcIP := range rule.SrcIPs {
+			if data, ok := aclCachePeerMap[srcIP]; ok {
+				for _, dstPort := range rule.DstPorts {
+					data[dstPort.IP] = struct{}{}
+				}
+			} else {
+				dstPortsMap := make(map[string]struct{}, len(rule.DstPorts))
+				for _, dstPort := range rule.DstPorts {
+					dstPortsMap[dstPort.IP] = struct{}{}
+				}
+				aclCachePeerMap[srcIP] = dstPortsMap
+			}
+		}
+	}
+
+	return aclCachePeerMap
 }
 
 func generateACLRules(

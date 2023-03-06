@@ -278,8 +278,8 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	machines, err := app.ListMachines()
 	c.Assert(err, check.IsNil)
 
-	peersOfTestMachine := getFilteredByACLPeers(machines, &app.aclRuleRW, testMachine, app.aclRuleMap)
-	peersOfAdminMachine := getFilteredByACLPeers(machines, &app.aclRuleRW, adminMachine, app.aclRuleMap)
+	peersOfTestMachine := app.filterMachinesByACL(testMachine, machines)
+	peersOfAdminMachine := app.filterMachinesByACL(adminMachine, machines)
 
 	c.Log(peersOfTestMachine)
 	c.Assert(len(peersOfTestMachine), check.Equals, 4)
@@ -954,31 +954,16 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 	var lock sync.RWMutex
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			aclRulesMap := make(map[string]map[string]struct{})
-			for _, rule := range tt.args.rules {
-				for _, srcIP := range rule.SrcIPs {
-					if data, ok := aclRulesMap[srcIP]; ok {
-						for _, dstPort := range rule.DstPorts {
-							data[dstPort.IP] = struct{}{}
-						}
-					} else {
-						dstPortsMap := make(map[string]struct{}, len(rule.DstPorts))
-						for _, dstPort := range rule.DstPorts {
-							dstPortsMap[dstPort.IP] = struct{}{}
-						}
-						aclRulesMap[srcIP] = dstPortsMap
-					}
-				}
-			}
+			aclRulesMap := generateACLPeerCacheMap(tt.args.rules)
 
-			got := getFilteredByACLPeers(
+			got := filterMachinesByACL(
+				tt.args.machine,
 				tt.args.machines,
 				&lock,
-				tt.args.machine,
 				aclRulesMap,
 			)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("getFilteredByACLPeers() = %v, want %v", got, tt.want)
+				t.Errorf("filterMachinesByACL() = %v, want %v", got, tt.want)
 			}
 		})
 	}
