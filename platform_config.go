@@ -7,7 +7,7 @@ import (
 	"net/http"
 	textTemplate "text/template"
 
-	"github.com/gofrs/uuid"
+	"github.com/gofrs/uuid/v5"
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog/log"
 )
