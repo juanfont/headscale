@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -160,32 +161,18 @@ func (machine *Machine) isEphemeral() bool {
 	return machine.AuthKey != nil && machine.AuthKey.Ephemeral
 }
 
-func containsAddresses(inputs []string, addrs []string) bool {
-	for _, addr := range addrs {
-		if containsStr(inputs, addr) {
-			return true
-		}
-	}
-
-	return false
+// filterMachinesByACL wrapper function to not have devs pass around locks and maps
+// related to the application outside of tests.
+func (h *Headscale) filterMachinesByACL(currentMachine *Machine, peers Machines) Machines {
+	return filterMachinesByACL(currentMachine, peers, &h.aclPeerCacheMapRW, h.aclPeerCacheMap)
 }
 
-// matchSourceAndDestinationWithRule.
-func matchSourceAndDestinationWithRule(
-	ruleSources []string,
-	ruleDestinations []string,
-	source []string,
-	destination []string,
-) bool {
-	return containsAddresses(ruleSources, source) &&
-		containsAddresses(ruleDestinations, destination)
-}
-
-// getFilteredByACLPeerss should return the list of peers authorized to be accessed from machine.
-func getFilteredByACLPeers(
-	machines []Machine,
-	rules []tailcfg.FilterRule,
+// filterMachinesByACL returns the list of peers authorized to be accessed from a given machine.
+func filterMachinesByACL(
 	machine *Machine,
+	machines []Machine,
+	lock *sync.RWMutex,
+	aclPeerCacheMap map[string]map[string]struct{},
 ) Machines {
 	log.Trace().
 		Caller().
@@ -196,56 +183,79 @@ func getFilteredByACLPeers(
 	// Aclfilter peers here. We are itering through machines in all users and search through the computed aclRules
 	// for match between rule SrcIPs and DstPorts. If the rule is a match we allow the machine to be viewable.
 	machineIPs := machine.IPAddresses.ToStringSlice()
+
+	// TODO(kradalby): Remove this lock, I suspect its not a good idea, and might not be necessary,
+	// we only set this at startup atm (reading ACLs) and it might become a bottleneck.
+	lock.RLock()
+
 	for _, peer := range machines {
 		if peer.ID == machine.ID {
 			continue
 		}
-		for _, rule := range rules {
-			var dst []string
-			for _, d := range rule.DstPorts {
-				dst = append(dst, d.IP)
-			}
-			peerIPs := peer.IPAddresses.ToStringSlice()
-			if matchSourceAndDestinationWithRule(
-				rule.SrcIPs,
-				dst,
-				machineIPs,
-				peerIPs,
-			) || // match source and destination
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					peerIPs,
-					machineIPs,
-				) || // match return path
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					machineIPs,
-					[]string{"*"},
-				) || // match source and all destination
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					[]string{"*"},
-					[]string{"*"},
-				) || // match source and all destination
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					[]string{"*"},
-					peerIPs,
-				) || // match source and all destination
-				matchSourceAndDestinationWithRule(
-					rule.SrcIPs,
-					dst,
-					[]string{"*"},
-					machineIPs,
-				) { // match all sources and source
+		peerIPs := peer.IPAddresses.ToStringSlice()
+
+		if dstMap, ok := aclPeerCacheMap["*"]; ok {
+			// match source and all destination
+			if _, dstOk := dstMap["*"]; dstOk {
 				peers[peer.ID] = peer
+
+				continue
+			}
+
+			// match source and all destination
+			for _, peerIP := range peerIPs {
+				if _, dstOk := dstMap[peerIP]; dstOk {
+					peers[peer.ID] = peer
+
+					continue
+				}
+			}
+
+			// match all sources and source
+			for _, machineIP := range machineIPs {
+				if _, dstOk := dstMap[machineIP]; dstOk {
+					peers[peer.ID] = peer
+
+					continue
+				}
+			}
+		}
+
+		for _, machineIP := range machineIPs {
+			if dstMap, ok := aclPeerCacheMap[machineIP]; ok {
+				// match source and all destination
+				if _, dstOk := dstMap["*"]; dstOk {
+					peers[peer.ID] = peer
+
+					continue
+				}
+
+				// match source and destination
+				for _, peerIP := range peerIPs {
+					if _, dstOk := dstMap[peerIP]; dstOk {
+						peers[peer.ID] = peer
+
+						continue
+					}
+				}
+			}
+		}
+
+		for _, peerIP := range peerIPs {
+			if dstMap, ok := aclPeerCacheMap[peerIP]; ok {
+				// match return path
+				for _, machineIP := range machineIPs {
+					if _, dstOk := dstMap[machineIP]; dstOk {
+						peers[peer.ID] = peer
+
+						continue
+					}
+				}
 			}
 		}
 	}
+
+	lock.RUnlock()
 
 	authorizedPeers := make([]Machine, 0, len(peers))
 	for _, m := range peers {
@@ -302,7 +312,7 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 
 			return Machines{}, err
 		}
-		peers = getFilteredByACLPeers(machines, h.aclRules, machine)
+		peers = h.filterMachinesByACL(machine, machines)
 	} else {
 		peers, err = h.ListPeers(machine)
 		if err != nil {

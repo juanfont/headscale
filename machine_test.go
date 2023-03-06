@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -277,8 +278,8 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	machines, err := app.ListMachines()
 	c.Assert(err, check.IsNil)
 
-	peersOfTestMachine := getFilteredByACLPeers(machines, app.aclRules, testMachine)
-	peersOfAdminMachine := getFilteredByACLPeers(machines, app.aclRules, adminMachine)
+	peersOfTestMachine := app.filterMachinesByACL(testMachine, machines)
+	peersOfAdminMachine := app.filterMachinesByACL(adminMachine, machines)
 
 	c.Log(peersOfTestMachine)
 	c.Assert(len(peersOfTestMachine), check.Equals, 4)
@@ -950,15 +951,19 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			want: Machines{},
 		},
 	}
+	var lock sync.RWMutex
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getFilteredByACLPeers(
-				tt.args.machines,
-				tt.args.rules,
+			aclRulesMap := generateACLPeerCacheMap(tt.args.rules)
+
+			got := filterMachinesByACL(
 				tt.args.machine,
+				tt.args.machines,
+				&lock,
+				aclRulesMap,
 			)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("getFilteredByACLPeers() = %v, want %v", got, tt.want)
+				t.Errorf("filterMachinesByACL() = %v, want %v", got, tt.want)
 			}
 		})
 	}
