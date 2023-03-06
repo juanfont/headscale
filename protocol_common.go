@@ -131,11 +131,10 @@ func (h *Headscale) handleRegisterCommon(
 					Bool("noise", isNoise).
 					Msg("Machine is waiting for interactive login")
 
-				ticker := time.NewTicker(registrationHoldoff)
 				select {
 				case <-req.Context().Done():
 					return
-				case <-ticker.C:
+				case <-time.After(registrationHoldoff):
 					h.handleNewMachineCommon(writer, registerRequest, machineKey, isNoise)
 
 					return
@@ -263,6 +262,14 @@ func (h *Headscale) handleRegisterCommon(
 			)
 
 			return
+		}
+
+		if registerRequest.Followup != "" {
+			select {
+			case <-req.Context().Done():
+				return
+			case <-time.After(registrationHoldoff):
+			}
 		}
 
 		// The machine has expired or it is logged out
