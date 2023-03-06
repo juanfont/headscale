@@ -87,7 +87,7 @@ type Headscale struct {
 	aclPolicy         *ACLPolicy
 	aclRules          []tailcfg.FilterRule
 	aclPeerCacheMapRW sync.RWMutex
-	aclPeerCacheMap        map[string]map[string]struct{}
+	aclPeerCacheMap   map[string]map[string]struct{}
 	sshPolicy         *tailcfg.SSHPolicy
 
 	lastStateChange *xsync.MapOf[string, time.Time]

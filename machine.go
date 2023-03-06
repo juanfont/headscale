@@ -198,6 +198,7 @@ func filterMachinesByACL(
 			// match source and all destination
 			if _, dstOk := dstMap["*"]; dstOk {
 				peers[peer.ID] = peer
+
 				continue
 			}
 
@@ -205,6 +206,7 @@ func filterMachinesByACL(
 			for _, peerIP := range peerIPs {
 				if _, dstOk := dstMap[peerIP]; dstOk {
 					peers[peer.ID] = peer
+
 					continue
 				}
 			}
@@ -213,6 +215,7 @@ func filterMachinesByACL(
 			for _, machineIP := range machineIPs {
 				if _, dstOk := dstMap[machineIP]; dstOk {
 					peers[peer.ID] = peer
+
 					continue
 				}
 			}
@@ -223,6 +226,7 @@ func filterMachinesByACL(
 				// match source and all destination
 				if _, dstOk := dstMap["*"]; dstOk {
 					peers[peer.ID] = peer
+
 					continue
 				}
 
@@ -230,6 +234,7 @@ func filterMachinesByACL(
 				for _, peerIP := range peerIPs {
 					if _, dstOk := dstMap[peerIP]; dstOk {
 						peers[peer.ID] = peer
+
 						continue
 					}
 				}
@@ -242,6 +247,7 @@ func filterMachinesByACL(
 				for _, machineIP := range machineIPs {
 					if _, dstOk := dstMap[machineIP]; dstOk {
 						peers[peer.ID] = peer
+
 						continue
 					}
 				}
