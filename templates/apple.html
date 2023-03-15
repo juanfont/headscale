@@ -15,6 +15,7 @@
         padding: 0 10px;
         font-family: Sans-serif;
       }
+
       h1,
       h2,
       h3 {
@@ -24,7 +25,7 @@
   </head>
 
   <body>
-    <h1>headscale: Apple configuration</h1>
+    <h1>headscale: macOS configuration</h1>
     <h2>Recent Tailscale versions (1.34.0 and higher)</h2>
     <p>
       Tailscale added Fast User Switching in version 1.34 and you can now use
@@ -34,7 +35,6 @@
     <h3>Command line</h3>
     <p>Use Tailscale's login command to add your profile:</p>
     <pre><code>tailscale login --login-server {{.URL}}</code></pre>
-
     <h3>GUI</h3>
     <ol>
       <li>
@@ -46,21 +46,15 @@
       </li>
       <li>Follow the login procedure in the browser</li>
     </ol>
-
     <h2>Apple configuration profiles (1.32.0 and lower)</h2>
     <p>
       This page provides
-      <a href="https://support.apple.com/guide/mdm/mdm-overview-mdmbf9e668/web">
-        configuration profiles
-      </a>
+      <a href="https://support.apple.com/guide/mdm/mdm-overview-mdmbf9e668/web"
+        >configuration profiles</a
+      >
       for the official Tailscale clients for
     </p>
     <ul>
-      <li>
-        <a href="https://apps.apple.com/us/app/tailscale/id1470499037?ls=1"
-          >iOS</a
-        >
-      </li>
       <li>
         <a href="https://apps.apple.com/ca/app/tailscale/id1475387142?mt=12"
           >macOS - AppStore Client</a
@@ -76,34 +70,19 @@
       The profiles will configure Tailscale.app to use <code>{{.URL}}</code> as
       its control server.
     </p>
-
     <h3>Caution</h3>
     <p>
       You should always download and inspect the profile before installing it:
     </p>
-    <!--
-		<pre><code>curl {{.URL}}/apple/ios</code></pre>
-		-->
     <ul>
       <li>
-        for app store client:
-        <code>curl {{.URL}}/apple/macos-app-store</code>
+        for app store client: <code>curl {{.URL}}/apple/macos-app-store</code>
       </li>
       <li>
-        for standalone client:
-        <code>curl {{.URL}}/apple/macos-standalone</code>
+        for standalone client: <code>curl {{.URL}}/apple/macos-standalone</code>
       </li>
     </ul>
-
     <h2>Profiles</h2>
-
-    <!--
-		<h3>iOS</h3>
-		<p>
-		    <a href="/apple/ios" download="headscale_ios.mobileconfig">iOS profile</a>
-		</p>
-		-->
-
     <h3>macOS</h3>
     <p>
       Headscale can be set to the default server by installing a Headscale
@@ -117,7 +96,6 @@
         >macOS Standalone profile</a
       >
     </p>
-
     <ol>
       <li>
         Download the profile, then open it. When it has been opened, there
@@ -127,7 +105,6 @@
       <li>Find and install the Headscale profile</li>
       <li>Restart Tailscale.app and log in</li>
     </ol>
-
     <p>Or</p>
     <p>
       Use your terminal to configure the default setting for Tailscale by
@@ -143,7 +120,39 @@
         <code>defaults write io.tailscale.ipn.macsys ControlURL {{.URL}}</code>
       </li>
     </ul>
-
     <p>Restart Tailscale.app and log in.</p>
+    <h1>headscale: iOS configuration</h1>
+    <h2>Recent Tailscale versions (1.38.0 and higher)</h2>
+    <p>
+      Tailscale 1.38 on
+      <a href="https://apps.apple.com/us/app/tailscale/id1470499037?ls=1"
+        >iOS</a
+      >
+      added a configuration option to allow user to set an "Alternate
+      Coordination server". This can be used to connect to your headscale
+      server.
+    </p>
+    <h3>GUI</h3>
+    <ol>
+      <li>
+        Open Tailscale and make sure you are <i>not</i> logged in to any account
+      </li>
+      <li>Open Settings on the iOS device</li>
+      <li>
+        Scroll down to the "third party apps" section, under "Game Center" or
+        "TV Provider"
+      </li>
+      <li>
+        Find Tailscale and enter the settings
+        <ol>
+          <li>
+            If the iOS device was previously logged into Tailscale, switch the
+            "Reset Keychain" toggle to "on"
+          </li>
+        </ol>
+      </li>
+      <li>Enter "{{.URL}}" under "Alternate Coordination Server URL"</li>
+      <li>Open Tailscale and log in to the Headscale server</li>
+    </ol>
   </body>
 </html>
