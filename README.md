@@ -75,7 +75,7 @@ one of the maintainers.
 | macOS   | Yes (see `/apple` on your headscale for more information) |
 | Windows | Yes [docs](./docs/windows-client.md)                      |
 | Android | Yes [docs](./docs/android-client.md)                      |
-| iOS     | Not yet                                                   |
+| iOS     | Yes [docs](./docs/iOS-client.md)                          |
 
 ## Running headscale
 
