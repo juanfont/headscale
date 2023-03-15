@@ -6,6 +6,7 @@
 
 - Adding "configtest" CLI command. [#1230](https://github.com/juanfont/headscale/pull/1230)
 - Add documentation on connecting with iOS to `/apple` [#1261](https://github.com/juanfont/headscale/pull/1261)
+- Update iOS compatibility and added documentation for iOS
 
 ## 0.20.0 (2023-02-03)
 
