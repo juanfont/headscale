@@ -56,7 +56,7 @@
     </p>
     <ul>
       <li>
-        <a href="https://apps.apple.com/ca/app/tailscale/id1475387142?mt=12"
+        <a href="https://apps.apple.com/app/tailscale/id1475387142"
           >macOS - AppStore Client</a
         >.
       </li>
@@ -122,18 +122,22 @@
     </ul>
     <p>Restart Tailscale.app and log in.</p>
     <h1>headscale: iOS configuration</h1>
-    <h2>Recent Tailscale versions (1.38.0 and higher)</h2>
+    <h2>Recent Tailscale versions (1.38.1 and higher)</h2>
     <p>
-      Tailscale 1.38 on
-      <a href="https://apps.apple.com/us/app/tailscale/id1470499037?ls=1"
-        >iOS</a
-      >
+      Tailscale 1.38.1 on
+      <a href="https://apps.apple.com/app/tailscale/id1470499037">iOS</a>
       added a configuration option to allow user to set an "Alternate
       Coordination server". This can be used to connect to your headscale
       server.
     </p>
     <h3>GUI</h3>
     <ol>
+      <li>
+        Install the official Tailscale iOS client from the
+        <a href="https://apps.apple.com/app/tailscale/id1470499037"
+          >App store</a
+        >
+      </li>
       <li>
         Open Tailscale and make sure you are <i>not</i> logged in to any account
       </li>
@@ -143,16 +147,24 @@
         "TV Provider"
       </li>
       <li>
-        Find Tailscale and enter the settings
-        <ol>
+        Find Tailscale and select it
+        <ul>
           <li>
             If the iOS device was previously logged into Tailscale, switch the
             "Reset Keychain" toggle to "on"
           </li>
-        </ol>
+        </ul>
       </li>
       <li>Enter "{{.URL}}" under "Alternate Coordination Server URL"</li>
-      <li>Open Tailscale and log in to the Headscale server</li>
+      <li>
+        Restart the app by closing it from the iOS app switcher, open the app
+        and select the regular sign in option <i>(non-SSO)</i>. It should open
+        up to the headscale authentication page.
+      </li>
+      <li>
+        Enter your credentials and log in. Headscale should now be working on
+        your iOS device
+      </li>
     </ol>
   </body>
 </html>
