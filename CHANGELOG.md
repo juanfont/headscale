@@ -1,16 +1,21 @@
 # CHANGELOG
 
-## 0.21.0 (2023-xx-xx)
+## 0.22.0 (2023-XX-XX)
 
-### changes
+### Changes
+
+## 0.21.0 (2023-03-20)
+
+### Changes
 
 - Adding "configtest" CLI command. [#1230](https://github.com/juanfont/headscale/pull/1230)
 - Add documentation on connecting with iOS to `/apple` [#1261](https://github.com/juanfont/headscale/pull/1261)
 - Update iOS compatibility and added documentation for iOS [#1264](https://github.com/juanfont/headscale/pull/1264)
+- Allow to delete routes [#1244](https://github.com/juanfont/headscale/pull/1244)
 
 ## 0.20.0 (2023-02-03)
 
-### changes
+### Changes
 
 - Fix wrong behaviour in exit nodes [#1159](https://github.com/juanfont/headscale/pull/1159)
 - Align behaviour of `dns_config.restricted_nameservers` to tailscale [#1162](https://github.com/juanfont/headscale/pull/1162)
