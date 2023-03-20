@@ -89,6 +89,7 @@ These are community projects not directly affiliated with the Headscale project.
 | Name            | Repository Link                                      | Description                                            | Status |
 | --------------- | ---------------------------------------------------- | ------------------------------------------------------ | ------ |
 | headscale-webui | [Github](https://github.com/ifargle/headscale-webui) | A simple Headscale web UI for small-scale deployments. | Alpha  |
+| headscale-ui | [Github](https://github.com/gurucomputing/headscale-ui) | A client side browser UI for headscale | Beta |
 
 ## Talks
 
