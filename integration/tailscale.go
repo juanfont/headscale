@@ -24,5 +24,6 @@ type TailscaleClient interface {
 	WaitForLogout() error
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
+	Curl(url string, opts ...tsic.CurlOption) (string, error)
 	ID() string
 }

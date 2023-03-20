@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/juanfont/headscale"
@@ -8,6 +9,44 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 )
+
+const numberOfTestClients = 2
+
+func aclScenario(t *testing.T, policy headscale.ACLPolicy) *Scenario {
+	t.Helper()
+	scenario, err := NewScenario()
+	assert.NoError(t, err)
+
+	spec := map[string]int{
+		"user1": numberOfTestClients,
+		"user2": numberOfTestClients,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec,
+		[]tsic.Option{
+			tsic.WithDockerEntrypoint([]string{
+				"/bin/bash",
+				"-c",
+				"/bin/sleep 3 ; update-ca-certificates ; python3 -m http.server 80 & tailscaled --tun=tsdev",
+			}),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithACLPolicy(&policy),
+		hsic.WithTestName("acldenyallping"),
+	)
+	assert.NoError(t, err)
+
+	// allClients, err := scenario.ListTailscaleClients()
+	// assert.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assert.NoError(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	assert.NoError(t, err)
+
+	return scenario
+}
 
 // This tests a different ACL mechanism, if a host _cannot_ connect
 // to another node at all based on ACL, it should just not be part
@@ -178,4 +217,64 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+// Test to confirm that we can use user:80 from one user
+// This should make the node appear in the peer list, but
+// disallow ping.
+// This ACL will not allow user1 access its own machines.
+// Reported: https://github.com/juanfont/headscale/issues/699
+func TestACLAllowUser80Dst(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := aclScenario(t,
+		headscale.ACLPolicy{
+			ACLs: []headscale.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"user1"},
+					Destinations: []string{"user2:80"},
+				},
+			},
+		},
+	)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	assert.NoError(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	assert.NoError(t, err)
+
+	// Test that user1 can visit all user2
+	for _, client := range user1Clients {
+		for _, peer := range user2Clients {
+			fqdn, err := peer.FQDN()
+			assert.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			assert.NoError(t, err)
+		}
+	}
+
+	// Test that user2 _cannot_ visit user1
+	for _, client := range user2Clients {
+		for _, peer := range user1Clients {
+			fqdn, err := peer.FQDN()
+			assert.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Empty(t, result)
+			assert.Error(t, err)
+		}
+	}
+
+	err = scenario.Shutdown()
+	assert.NoError(t, err)
 }

@@ -55,6 +55,8 @@ type TailscaleInContainer struct {
 	headscaleHostname string
 	withSSH           bool
 	withTags          []string
+	withEntrypoint    []string
+	workdir           string
 }
 
 // Option represent optional settings that can be given to a
@@ -115,6 +117,24 @@ func WithSSH() Option {
 	}
 }
 
+// WithDockerWorkdir allows the docker working directory to be set.
+func WithDockerWorkdir(dir string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.workdir = dir
+	}
+}
+
+// WithDockerEntrypoint allows the docker entrypoint of the container
+// to be overridden. This is a dangerous option which can make
+// the container not work as intended as a typo might prevent
+// tailscaled and other processes from starting.
+// Use with caution.
+func WithDockerEntrypoint(args []string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withEntrypoint = args
+	}
+}
+
 // New returns a new TailscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
@@ -135,6 +155,12 @@ func New(
 
 		pool:    pool,
 		network: network,
+
+		withEntrypoint: []string{
+			"/bin/bash",
+			"-c",
+			"/bin/sleep 3 ; update-ca-certificates ; tailscaled --tun=tsdev",
+		},
 	}
 
 	for _, opt := range opts {
@@ -147,11 +173,7 @@ func New(
 		// Cmd: []string{
 		// 	"tailscaled", "--tun=tsdev",
 		// },
-		Entrypoint: []string{
-			"/bin/bash",
-			"-c",
-			"/bin/sleep 3 ; update-ca-certificates ; tailscaled --tun=tsdev",
-		},
+		Entrypoint: tsic.withEntrypoint,
 	}
 
 	if tsic.headscaleHostname != "" {
@@ -159,6 +181,10 @@ func New(
 			"host.docker.internal:host-gateway",
 			fmt.Sprintf("%s:host-gateway", tsic.headscaleHostname),
 		}
+	}
+
+	if tsic.workdir != "" {
+		tailscaleOptions.WorkingDir = tsic.workdir
 	}
 
 	// dockertest isnt very good at handling containers that has already
@@ -518,6 +544,98 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 
 		return nil
 	})
+}
+
+type (
+	// CurlOption repreent optional settings that can be given
+	// to curl another host.
+	CurlOption = func(args *curlArgs)
+
+	curlArgs struct {
+		connectionTimeout time.Duration
+		maxTime           time.Duration
+		retry             int
+		retryDelay        time.Duration
+		retryMaxTime      time.Duration
+	}
+)
+
+// WithCurlConnectionTimeout sets the timeout for each connection started
+// by curl.
+func WithCurlConnectionTimeout(timeout time.Duration) CurlOption {
+	return func(args *curlArgs) {
+		args.connectionTimeout = timeout
+	}
+}
+
+// WithCurlMaxTime sets the max time for a transfer for each connection started
+// by curl.
+func WithCurlMaxTime(t time.Duration) CurlOption {
+	return func(args *curlArgs) {
+		args.maxTime = t
+	}
+}
+
+// WithCurlRetry sets the number of retries a connection is attempted by curl.
+func WithCurlRetry(ret int) CurlOption {
+	return func(args *curlArgs) {
+		args.retry = ret
+	}
+}
+
+const (
+	defaultConnectionTimeout = 3 * time.Second
+	defaultMaxTime           = 10 * time.Second
+	defaultRetry             = 5
+	defaultRetryDelay        = 0 * time.Second
+	defaultRetryMaxTime      = 50 * time.Second
+)
+
+// Curl executes the Tailscale curl command and curls a hostname
+// or IP. It accepts a series of CurlOption.
+func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, error) {
+	args := curlArgs{
+		connectionTimeout: defaultConnectionTimeout,
+		maxTime:           defaultMaxTime,
+		retry:             defaultRetry,
+		retryDelay:        defaultRetryDelay,
+		retryMaxTime:      defaultRetryMaxTime,
+	}
+
+	for _, opt := range opts {
+		opt(&args)
+	}
+
+	command := []string{
+		"curl",
+		"--silent",
+		"--connect-timeout", fmt.Sprintf("%d", int(args.connectionTimeout.Seconds())),
+		"--max-time", fmt.Sprintf("%d", int(args.maxTime.Seconds())),
+		"--retry", fmt.Sprintf("%d", args.retry),
+		"--retry-delay", fmt.Sprintf("%d", int(args.retryDelay.Seconds())),
+		"--retry-max-time", fmt.Sprintf("%d", int(args.retryMaxTime.Seconds())),
+		url,
+	}
+
+	var result string
+	err := t.pool.Retry(func() error {
+		var err error
+		result, _, err = t.Execute(command)
+		if err != nil {
+			log.Printf(
+				"failed to run curl command from %s to %s, err: %s",
+				t.Hostname(),
+				url,
+				err,
+			)
+
+			return err
+		}
+
+		return nil
+	})
+
+	return result, err
 }
 
 // WriteFile save file inside the Tailscale container.
