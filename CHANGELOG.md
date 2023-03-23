@@ -4,6 +4,8 @@
 
 ### Changes
 
+- Fix longstanding bug that would prevent "\*" from working properly in ACLs (issue [#699](https://github.com/juanfont/headscale/issues/699)) [#1279](https://github.com/juanfont/headscale/pull/1279)
+
 ## 0.21.0 (2023-03-20)
 
 ### Changes
