@@ -2,6 +2,7 @@ package integration
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/juanfont/headscale"
@@ -32,7 +33,7 @@ func aclScenario(t *testing.T, policy headscale.ACLPolicy) *Scenario {
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(&policy),
-		hsic.WithTestName("acldenyallping"),
+		hsic.WithTestName("acl"),
 	)
 	assert.NoError(t, err)
 
@@ -234,6 +235,166 @@ func TestACLAllowUser80Dst(t *testing.T) {
 					Action:       "accept",
 					Sources:      []string{"user1"},
 					Destinations: []string{"user2:80"},
+				},
+			},
+		},
+	)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	assert.NoError(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	assert.NoError(t, err)
+
+	// Test that user1 can visit all user2
+	for _, client := range user1Clients {
+		for _, peer := range user2Clients {
+			fqdn, err := peer.FQDN()
+			assert.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			assert.NoError(t, err)
+		}
+	}
+
+	// Test that user2 _cannot_ visit user1
+	for _, client := range user2Clients {
+		for _, peer := range user1Clients {
+			fqdn, err := peer.FQDN()
+			assert.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Empty(t, result)
+			assert.Error(t, err)
+		}
+	}
+
+	err = scenario.Shutdown()
+	assert.NoError(t, err)
+}
+
+func TestACLDenyAllPort80(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := aclScenario(t,
+		headscale.ACLPolicy{
+			Groups: map[string][]string{
+				"group:integration-acl-test": {"user1", "user2"},
+			},
+			ACLs: []headscale.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"group:integration-acl-test"},
+					Destinations: []string{"*:22"},
+				},
+			},
+		},
+	)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assert.NoError(t, err)
+
+	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
+	assert.NoError(t, err)
+
+	for _, client := range allClients {
+		for _, hostname := range allHostnames {
+			// We will always be allowed to check _self_ so shortcircuit
+			// the test here.
+			if strings.Contains(hostname, client.Hostname()) {
+				continue
+			}
+
+			url := fmt.Sprintf("http://%s/etc/hostname", hostname)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Empty(t, result)
+			assert.Error(t, err)
+		}
+	}
+
+	err = scenario.Shutdown()
+	assert.NoError(t, err)
+}
+
+// Test to confirm that we can use user:* from one user.
+// This ACL will not allow user1 access its own machines.
+// Reported: https://github.com/juanfont/headscale/issues/699
+func TestACLAllowUserDst(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := aclScenario(t,
+		headscale.ACLPolicy{
+			ACLs: []headscale.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"user1"},
+					Destinations: []string{"user2:*"},
+				},
+			},
+		},
+	)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	assert.NoError(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	assert.NoError(t, err)
+
+	// Test that user1 can visit all user2
+	for _, client := range user1Clients {
+		for _, peer := range user2Clients {
+			fqdn, err := peer.FQDN()
+			assert.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			assert.NoError(t, err)
+		}
+	}
+
+	// Test that user2 _cannot_ visit user1
+	for _, client := range user2Clients {
+		for _, peer := range user1Clients {
+			fqdn, err := peer.FQDN()
+			assert.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Empty(t, result)
+			assert.Error(t, err)
+		}
+	}
+
+	err = scenario.Shutdown()
+	assert.NoError(t, err)
+}
+
+// Test to confirm that we can use *:* from one user
+// Reported: https://github.com/juanfont/headscale/issues/699
+func TestACLAllowStarDst(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := aclScenario(t,
+		headscale.ACLPolicy{
+			ACLs: []headscale.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"user1"},
+					Destinations: []string{"*:*"},
 				},
 			},
 		},
