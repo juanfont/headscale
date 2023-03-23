@@ -282,10 +282,10 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	peersOfAdminMachine := app.filterMachinesByACL(adminMachine, machines)
 
 	c.Log(peersOfTestMachine)
-	c.Assert(len(peersOfTestMachine), check.Equals, 4)
-	c.Assert(peersOfTestMachine[0].Hostname, check.Equals, "testmachine4")
-	c.Assert(peersOfTestMachine[1].Hostname, check.Equals, "testmachine6")
-	c.Assert(peersOfTestMachine[3].Hostname, check.Equals, "testmachine10")
+	c.Assert(len(peersOfTestMachine), check.Equals, 9)
+	c.Assert(peersOfTestMachine[0].Hostname, check.Equals, "testmachine1")
+	c.Assert(peersOfTestMachine[1].Hostname, check.Equals, "testmachine3")
+	c.Assert(peersOfTestMachine[3].Hostname, check.Equals, "testmachine5")
 
 	c.Log(peersOfAdminMachine)
 	c.Assert(len(peersOfAdminMachine), check.Equals, 9)
@@ -949,6 +949,96 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 			want: Machines{},
+		},
+		{
+			// Investigating 699
+			// Found some machines: [ts-head-8w6paa ts-unstable-lys2ib ts-head-upcrmb ts-unstable-rlwpvr] machine=ts-head-8w6paa
+			// ACL rules generated ACL=[{"DstPorts":[{"Bits":null,"IP":"*","Ports":{"First":0,"Last":65535}}],"SrcIPs":["fd7a:115c:a1e0::3","100.64.0.3","fd7a:115c:a1e0::4","100.64.0.4"]}]
+			// ACL Cache Map={"100.64.0.3":{"*":{}},"100.64.0.4":{"*":{}},"fd7a:115c:a1e0::3":{"*":{}},"fd7a:115c:a1e0::4":{"*":{}}}
+			name: "issue-699-broken-star",
+			args: args{
+				machines: Machines{ //
+					{
+						ID:       1,
+						Hostname: "ts-head-upcrmb",
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+							netip.MustParseAddr("fd7a:115c:a1e0::3"),
+						},
+						User: User{Name: "user1"},
+					},
+					{
+						ID:       2,
+						Hostname: "ts-unstable-rlwpvr",
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.4"),
+							netip.MustParseAddr("fd7a:115c:a1e0::4"),
+						},
+						User: User{Name: "user1"},
+					},
+					{
+						ID:       3,
+						Hostname: "ts-head-8w6paa",
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+							netip.MustParseAddr("fd7a:115c:a1e0::1"),
+						},
+						User: User{Name: "user2"},
+					},
+					{
+						ID:       4,
+						Hostname: "ts-unstable-lys2ib",
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+							netip.MustParseAddr("fd7a:115c:a1e0::2"),
+						},
+						User: User{Name: "user2"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						DstPorts: []tailcfg.NetPortRange{
+							{
+								IP:    "*",
+								Ports: tailcfg.PortRange{First: 0, Last: 65535},
+							},
+						},
+						SrcIPs: []string{
+							"fd7a:115c:a1e0::3", "100.64.0.3",
+							"fd7a:115c:a1e0::4", "100.64.0.4",
+						},
+					},
+				},
+				machine: &Machine{ // current machine
+					ID:       3,
+					Hostname: "ts-head-8w6paa",
+					IPAddresses: MachineAddresses{
+						netip.MustParseAddr("100.64.0.1"),
+						netip.MustParseAddr("fd7a:115c:a1e0::1"),
+					},
+					User: User{Name: "user2"},
+				},
+			},
+			want: Machines{
+				{
+					ID:       1,
+					Hostname: "ts-head-upcrmb",
+					IPAddresses: MachineAddresses{
+						netip.MustParseAddr("100.64.0.3"),
+						netip.MustParseAddr("fd7a:115c:a1e0::3"),
+					},
+					User: User{Name: "user1"},
+				},
+				{
+					ID:       2,
+					Hostname: "ts-unstable-rlwpvr",
+					IPAddresses: MachineAddresses{
+						netip.MustParseAddr("100.64.0.4"),
+						netip.MustParseAddr("fd7a:115c:a1e0::4"),
+					},
+					User: User{Name: "user1"},
+				},
+			},
 		},
 	}
 	var lock sync.RWMutex
