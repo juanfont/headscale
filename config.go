@@ -107,6 +107,7 @@ type OIDCConfig struct {
 	AllowedUsers               []string
 	AllowedGroups              []string
 	StripEmaildomain           bool
+	UseUsernameClaim	   bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
 }
@@ -610,6 +611,7 @@ func GetHeadscaleConfig() (*Config, error) {
 			AllowedDomains:   viper.GetStringSlice("oidc.allowed_domains"),
 			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
 			AllowedGroups:    viper.GetStringSlice("oidc.allowed_groups"),
+			UseUsernameClaim: viper.GetBool("oidc.use_username_claim"),
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 			Expiry: func() time.Duration {
 				// if set to 0, we assume no expiry

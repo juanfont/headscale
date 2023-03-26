@@ -43,6 +43,16 @@ oidc:
   allowed_users:
     - alice@example.com
 
+  # By default, Headscale will use the OIDC email address claim to determine the username.
+  # OIDC also returns a `preferred_username` claim.
+  #
+  # If `use_username_claim` is set to `true`, then the `preferred_username` claim will
+  # be used instead to set the Headscale username.
+  # If `use_username_claim` is set to `false`, then the `email` claim will be used
+  # to derive the Headscale username (as modified by the `strip_email_domain` entry).
+
+  use_username_claim: false
+
   # If `strip_email_domain` is set to `true`, the domain part of the username email address will be removed.
   # This will transform `first-name.last-name@example.com` to the user `first-name.last-name`
   # If `strip_email_domain` is set to `false` the domain part will NOT be removed resulting to the following
@@ -170,3 +180,44 @@ oidc:
 ```
 
 You can also use `allowed_domains` and `allowed_users` to restrict the users who can authenticate.
+
+## Authelia Example
+
+In order to integrate Headscale with your Authelia instance, you need to generate a client secret add your Headscale instance as a client.
+
+First, generate a client secret. If you are running Authelia inside docker, prepend `docker-compose exec <authelia_container_name>` before these commands:
+```shell
+authelia crypto hash generate pbkdf2 --variant sha512 --random --random.length 72
+```
+This will return two strings, a "Random Password" which you will fill into Headscale, and a "Digest" you will fill into Authelia.
+
+In your Authelia configuration, add Headscale under the client section:
+```yaml
+clients:
+  - id: headscale
+    description: Headscale
+    secret: "DIGEST_STRING_FROM_ABOVE"
+    public: false
+    authorization_policy: two_factor
+    redirect_uris:
+      - https://your.headscale.domain/oidc/callback
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+```
+
+In your Headscale `config.yaml`, edit the config under `oidc`, filling in the `client_id` to match the `id` line in the Authelia config and filling in `client_secret` from the "Random Password" output. 
+You may want to tune the `expiry`, `only_start_if_oidc_available`, and other entries. The following are only the required entries.
+```yaml
+oidc:
+  issuer: "https://your.authelia.domain"
+  client_id: "headscale"
+  client_secret: "RANDOM_PASSWORD_STRING_FROM_ABOVE"
+  scope: ["openid", "profile", "email", "groups"]
+  allowed_groups:
+    - authelia_groups_you_want_to_limit
+```
+
+In particular, you may want to set `use_username_claim: true` to use Authelia's `preferred_username` grant to set Headscale usernames.
