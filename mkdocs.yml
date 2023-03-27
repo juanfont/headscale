@@ -1,0 +1,147 @@
+site_name: Headscale
+site_url: https://example.com
+site_author: Headscale authors
+site_description: >-
+  An open source, self-hosted implementation of the Tailscale control server.
+
+# Repository
+repo_name: juanfont/headscale
+repo_url: https://github.com/juanfont/headscale
+
+# Copyright
+copyright: Copyright &copy; 2023 Headscale authors
+
+# Configuration
+theme:
+  name: material
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    # - content.tabs.link
+    - content.tooltips
+    # - header.autohide
+    # - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    # - navigation.instant
+    # - navigation.prune
+    - navigation.sections
+    - navigation.tabs
+    # - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    # - toc.integrate
+  palette:
+    - scheme: default
+      primary: red
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: red
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  favicon: assets/favicon.png
+  logo: ./logo/headscale3-dots.svg
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - minify:
+      minify_html: true
+  - social: {}
+
+# Customization
+extra:
+  annotate:
+    json: [.s2]
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/juanfont/headscale
+    - icon: material/coffee
+      link: https://ko-fi.com/headscale
+    - icon: fontawesome/brands/docker
+      link: https://github.com/juanfont/headscale/pkgs/container/headscale
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/c84AZQhmpx
+
+# Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:materialx.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: squidfunk
+      repo: mkdocs-material
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Page tree
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation:
+          - Linux: running-headscale-linux.md
+          - OpenBSD: running-headscale-openbsd.md
+          - Container: running-headscale-container.md
+      - Configuration:
+          - OIDC authentication: oidc.md
+          - Exit node: exit-node.md
+          - Reverse proxy: reverse-proxy.md
+          - TLS: tls.md
+          - ACLs: acls.md
+          - Custom DNS records: dns-records.md
+          - Remote CLI: remote-cli.md
+      - Usage:
+          - Android: android-client.md
+          - Windows: windows-client.md
+          - iOS: iOS-client.md
+  - Proposals:
+      - ACLs: proposals/001-acls.md
+      - Better routing: proposals/002-better-routing.md
+  - Glossary: glossary.md
