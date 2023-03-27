@@ -45,6 +45,8 @@ a server they can register, the check of the tags is done on headscale server
 and only valid tags are applied. A tag is valid if the user that is
 registering it is allowed to do it.
 
+To use ACLs in headscale, you must edit your config.yaml file. In there you will find a `acl_policy_path: ""` parameter. This will need to point to your ACL file. More info on how these poicies are written can be found [here](https://tailscale.com/kb/1018/acls/).
+
 Here are the ACL's to implement the same permissions as above:
 
 ```json
