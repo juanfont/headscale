@@ -243,6 +243,12 @@ func filterMachinesByACL(
 
 		for _, peerIP := range peerIPs {
 			if dstMap, ok := aclPeerCacheMap[peerIP]; ok {
+				// match source and all destination
+				if _, dstOk := dstMap["*"]; dstOk {
+					peers[peer.ID] = peer
+
+					continue
+				}
 				// match return path
 				for _, machineIP := range machineIPs {
 					if _, dstOk := dstMap[machineIP]; dstOk {
