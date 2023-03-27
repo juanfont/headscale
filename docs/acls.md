@@ -1,4 +1,15 @@
-# ACLs use case example
+Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-hosted environment.
+
+For instance, instead of referring to users when defining groups you must
+use users (which are the equivalent to user/logins in Tailscale.com).
+
+Please check https://tailscale.com/kb/1018/acls/, and `./tests/acls/` in this repo for working examples.
+
+When using ACL's the User borders are no longer applied. All machines
+whichever the User have the ability to communicate with other hosts as
+long as the ACL's permits this exchange.
+
+## ACLs use case example
 
 Let's build an example use case for a small business (It may be the place where
 ACL's are the most useful).

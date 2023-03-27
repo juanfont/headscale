@@ -12,6 +12,11 @@ Ensure that the installed version is at least 1.38.1, as that is the first relea
 
 ## Configuring the headscale URL
 
+!!! info "Apple devices"
+
+    An endpoint with information on how to connect your Apple devices
+    (currently macOS only) is available at `/apple` on your running instance.
+
 Ensure that the tailscale app is logged out before proceeding.
 
 Go to iOS settings, scroll down past game center and tv provider to the tailscale app and select it. The headscale URL can be entered into the _"ALTERNATE COORDINATION SERVER URL"_ box.
