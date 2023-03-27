@@ -1,5 +1,12 @@
 # Running headscale on OpenBSD
 
+!!! warning "Community documentation"
+
+    This page is not actively maintained by the headscale authors and is
+    written by community members. It is _not_ verified by `headscale` developers.
+
+    **It might be outdated and it might miss necessary steps**.
+
 ## Goal
 
 This documentation has the goal of showing a user how-to install and run `headscale` on OpenBSD 7.1.
