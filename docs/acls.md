@@ -35,6 +35,9 @@ Headscale server.
 ACLs could be written either on [huJSON](https://github.com/tailscale/hujson)
 or YAML. Check the [test ACLs](../tests/acls) for further information.
 
+When the ACL file has been created and saved you can use the "acl_policy_path" setting 
+in the "config.yml" file to set the part to the file.
+
 When registering the servers we will need to add the flag
 `--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user that is
 registering the server should be allowed to do it. Since anyone can add tags to
