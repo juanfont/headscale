@@ -52,8 +52,7 @@ touch /var/lib/headscale/db.sqlite
 touch /etc/headscale/config.yaml
 ```
 
-It is **strongly recommended** to copy and modify the [example configuration](../config-example.yaml)
-from the [headscale repository](../)
+**(Strongly Recommended)** Download a copy of the [example configuration][config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
 6. Start the headscale server:
 
