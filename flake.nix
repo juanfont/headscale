@@ -97,6 +97,7 @@
             golines
             nodePackages.prettier
             goreleaser
+            nfpm
             gotestsum
 
             # Protobuf dependencies
