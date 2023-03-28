@@ -1,0 +1,37 @@
+# this is the base "template" for the package
+name: headscale
+description: headscale coordination server for Tailscale
+arch: ${ARCH}
+version: ${VERSION}
+priority: optional
+vendor: Juan Font
+maintainer: Kristoffer Dalby <kristoffer@dalby.cc>
+homepage: https://github.com/juanfont/headscale
+license: BSD
+contents:
+  - src: ./build/headscale
+    dst: /usr/bin/headscale
+  - src: ./config-example.yaml
+    dst: /etc/headscale/config.yaml
+    type: config|noreplace
+    file_info:
+      mode: 0640
+  - src: ./docs/packaging/headscale.systemd.service
+    dst: /etc/systemd/system/headscale.service
+  - dst: /var/lib/headscale
+    type: dir
+  - dst: /var/run/headscale
+    type: dir
+# deb:
+#   signature:
+#     method: dpkg-sig
+#     key_file: ".key.asc"
+# rpm:
+#   signature:
+#     key_file: ".key.asc"
+# apk:
+#   signature:
+#     key_file: ".key.rsa"
+scripts:
+  postinstall: ./docs/packaging/postinstall.sh
+  postremove: ./docs/packaging/postremove.sh
