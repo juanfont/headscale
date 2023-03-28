@@ -7,61 +7,23 @@ release:
   prerelease: auto
 
 builds:
-  - id: darwin-amd64
+  - id: headscale
     main: ./cmd/headscale/headscale.go
     mod_timestamp: "{{ .CommitTimestamp }}"
     env:
       - CGO_ENABLED=0
-    goos:
-      - darwin
-    goarch:
-      - amd64
+    targets:
+      - darwin_amd64
+      - darwin_arm64
+      - freebsd_amd64
+      - linux_386
+      - linux_amd64
+      - linux_arm64
+      - linux_arm_5
+      - linux_arm_6
+      - linux_arm_7
     flags:
       - -mod=readonly
-    ldflags:
-      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
-    tags:
-      - ts2019
-
-  - id: darwin-arm64
-    main: ./cmd/headscale/headscale.go
-    mod_timestamp: "{{ .CommitTimestamp }}"
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - darwin
-    goarch:
-      - arm64
-    flags:
-      - -mod=readonly
-    ldflags:
-      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
-    tags:
-      - ts2019
-
-  - id: linux-amd64
-    mod_timestamp: "{{ .CommitTimestamp }}"
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - amd64
-    main: ./cmd/headscale/headscale.go
-    ldflags:
-      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
-    tags:
-      - ts2019
-
-  - id: linux-arm64
-    mod_timestamp: "{{ .CommitTimestamp }}"
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - arm64
-    main: ./cmd/headscale/headscale.go
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
     tags:
@@ -70,12 +32,55 @@ builds:
 archives:
   - id: golang-cross
     builds:
-      - darwin-amd64
-      - darwin-arm64
-      - linux-amd64
-      - linux-arm64
+      - darwin_amd64
+      - darwin_arm64
+      - freebsd_amd64
+      - linux_386
+      - linux_amd64
+      - linux_arm64
+      - linux_arm_5
+      - linux_arm_6
+      - linux_arm_7
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format: binary
+
+nfpms:
+  # Configure nFPM for .deb and .rpm releases
+  #
+  # See https://nfpm.goreleaser.com/configuration/
+  # and https://goreleaser.com/customization/nfpm/
+  #
+  # Useful tools for debugging .debs:
+  # List file contents: dpkg -c dist/headscale...deb
+  # Package metadata: dpkg --info dist/headscale....deb
+  #
+  - builds:
+      - headscale
+    package_name: headscale
+    priority: optional
+    vendor: headscale
+    maintainer: Kristoffer Dalby <kristoffer@dalby.cc>
+    homepage: https://github.com/juanfont/headscale
+    license: BSD
+    bindir: /usr/bin
+    formats:
+      - deb
+      - rpm
+    contents:
+      - src: ./config-example.yaml
+        dst: /etc/headscale/config.yaml
+        type: config|noreplace
+        file_info:
+          mode: 0644
+      - src: ./docs/packaging/headscale.systemd.service
+        dst: /etc/systemd/system/headscale.service
+      - dst: /var/lib/headscale
+        type: dir
+      - dst: /var/run/headscale
+        type: dir
+    scripts:
+      postinstall: ./docs/packaging/postinstall.sh
+      postremove: ./docs/packaging/postremove.sh
 
 checksum:
   name_template: "checksums.txt"

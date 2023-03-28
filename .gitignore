@@ -14,6 +14,7 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+dist/
 /headscale
 config.json
 config.yaml
