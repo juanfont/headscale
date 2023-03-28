@@ -179,6 +179,8 @@ func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string]map[string]s
 		}
 	}
 
+	log.Trace().Interface("ACL Cache Map", aclCachePeerMap).Msg("ACL Peer Cache Map generated")
+
 	return aclCachePeerMap
 }
 
