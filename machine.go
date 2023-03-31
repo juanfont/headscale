@@ -170,13 +170,14 @@ func (h *Headscale) filterMachinesByACL(currentMachine *Machine, peers Machines)
 // filterMachinesByACL returns the list of peers authorized to be accessed from a given machine.
 func filterMachinesByACL(
 	machine *Machine,
-	machines []Machine,
+	machines Machines,
 	lock *sync.RWMutex,
 	aclPeerCacheMap map[string]map[string]struct{},
 ) Machines {
 	log.Trace().
 		Caller().
-		Str("machine", machine.Hostname).
+		Str("self", machine.Hostname).
+		Str("input", machines.String()).
 		Msg("Finding peers filtered by ACLs")
 
 	peers := make(map[uint64]Machine)
@@ -263,7 +264,7 @@ func filterMachinesByACL(
 
 	lock.RUnlock()
 
-	authorizedPeers := make([]Machine, 0, len(peers))
+	authorizedPeers := make(Machines, 0, len(peers))
 	for _, m := range peers {
 		authorizedPeers = append(authorizedPeers, m)
 	}
@@ -274,8 +275,9 @@ func filterMachinesByACL(
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Hostname).
-		Msgf("Found some machines: %v", machines)
+		Str("self", machine.Hostname).
+		Str("peers", authorizedPeers.String()).
+		Msg("Authorized peers")
 
 	return authorizedPeers
 }
@@ -335,8 +337,9 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Hostname).
-		Msgf("Found total peers: %s", peers.String())
+		Str("self", machine.Hostname).
+		Str("peers", peers.String()).
+		Msg("Peers returned to caller")
 
 	return peers, nil
 }
