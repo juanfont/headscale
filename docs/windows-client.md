@@ -15,7 +15,7 @@ You can set these using the Windows Registry Editor:
 
 ![windows-registry](./images/windows-registry.png)
 
-Or via the following Powershell commands (right click Powershell icon and select "Run as administrator":
+Or via the following Powershell commands (right click Powershell icon and select "Run as administrator"):
 
 ```
 New-ItemProperty -Path 'HKLM:\Software\Tailscale IPN' -Name UnattendedMode -PropertyType String -Value always
