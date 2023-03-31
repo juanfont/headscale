@@ -74,7 +74,7 @@
         clicking the icon in the system tray
       </li>
     </ol>
-    <p>Or</p>
+    <p>Or using REG:</p>
     <p>
       Open command prompt with Administrator rights. Issue the following
       commands to add the required registry entries:
@@ -83,7 +83,16 @@
     <code>REG ADD "HKLM\Software\Tailscale IPN" /v UnattendedMode /t REG_SZ /d always
       REG ADD "HKLM\Software\Tailscale IPN" /v LoginURL /t REG_SZ /d "{{.URL}}"</code>
   </pre>
-    <p>Restart Tailscale and log in.</p>
+    <p>Or using Powershell</p>
+    <p>
+      Open Powershell with Administrator rights. Issue the following
+      commands to add the required registry entries:
+    </p>
+    <pre>
+    <code>New-ItemProperty -Path 'HKLM:\Software\Tailscale IPN' -Name UnattendedMode -PropertyType String -Value always
+      New-ItemProperty -Path 'HKLM:\Software\Tailscale IPN' -Name LoginURL -PropertyType String -Value "{{.URL}}"</code>
+  </pre>
+    <p>Finally, restart Tailscale and log in.</p>
 
     <p></p>
   </body>
