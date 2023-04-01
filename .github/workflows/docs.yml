@@ -28,7 +28,7 @@ jobs:
       - name: Setup dependencies
         run: pip install mkdocs-material pillow cairosvg mkdocs-minify-plugin
       - name: Build docs
-        run: mkdocs build
+        run: mkdocs build --strict
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
