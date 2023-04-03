@@ -1556,3 +1556,67 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		})
 	}
 }
+
+func Test_expandACLPeerAddr(t *testing.T) {
+	type args struct {
+		srcIP string
+	}
+	tests := []struct {
+		name string
+		args args
+		want []string
+	}{
+		{
+			name: "asterix",
+			args: args{
+				srcIP: "*",
+			},
+			want: []string{"*"},
+		},
+		{
+			name: "ip",
+			args: args{
+				srcIP: "10.0.0.1",
+			},
+			want: []string{"10.0.0.1"},
+		},
+		{
+			name: "ip/32",
+			args: args{
+				srcIP: "10.0.0.1/32",
+			},
+			want: []string{"10.0.0.1"},
+		},
+		{
+			name: "ip/30",
+			args: args{
+				srcIP: "10.0.0.1/30",
+			},
+			want: []string{
+				"10.0.0.0",
+				"10.0.0.1",
+				"10.0.0.2",
+			},
+		},
+		{
+			name: "ip/28",
+			args: args{
+				srcIP: "192.168.0.128/28",
+			},
+			want: []string{
+				"192.168.0.128", "192.168.0.129", "192.168.0.130",
+				"192.168.0.131", "192.168.0.132", "192.168.0.133",
+				"192.168.0.134", "192.168.0.135", "192.168.0.136",
+				"192.168.0.137", "192.168.0.138", "192.168.0.139",
+				"192.168.0.140", "192.168.0.141", "192.168.0.142",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := expandACLPeerAddr(tt.args.srcIP); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("expandACLPeerAddr() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
