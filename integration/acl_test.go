@@ -2,6 +2,7 @@ package integration
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -433,6 +434,217 @@ func TestACLAllowStarDst(t *testing.T) {
 			result, err := client.Curl(url)
 			assert.Empty(t, result)
 			assert.Error(t, err)
+		}
+	}
+
+	err = scenario.Shutdown()
+	assert.NoError(t, err)
+}
+
+// This test aims to cover cases where individual hosts are allowed and denied
+// access based on their assigned hostname
+// https://github.com/juanfont/headscale/issues/941
+
+//	ACL = [{
+//			"DstPorts": [{
+//				"Bits": null,
+//				"IP": "100.64.0.3/32",
+//				"Ports": {
+//					"First": 0,
+//					"Last": 65535
+//				}
+//			}],
+//			"SrcIPs": ["*"]
+//		}, {
+//
+//			"DstPorts": [{
+//				"Bits": null,
+//				"IP": "100.64.0.2/32",
+//				"Ports": {
+//					"First": 0,
+//					"Last": 65535
+//				}
+//			}],
+//			"SrcIPs": ["100.64.0.1/32"]
+//		}]
+//
+//	ACL Cache Map= {
+//		"*": {
+//			"100.64.0.3/32": {}
+//		},
+//		"100.64.0.1/32": {
+//			"100.64.0.2/32": {}
+//		}
+//	}
+func TestACLNamedHostsCanReach(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := aclScenario(t,
+		headscale.ACLPolicy{
+			Hosts: headscale.Hosts{
+				"test1": netip.MustParsePrefix("100.64.0.1/32"),
+				"test2": netip.MustParsePrefix("100.64.0.2/32"),
+				"test3": netip.MustParsePrefix("100.64.0.3/32"),
+			},
+			ACLs: []headscale.ACL{
+				// Everyone can curl test3
+				{
+					Action:       "accept",
+					Sources:      []string{"*"},
+					Destinations: []string{"test3:*"},
+				},
+				// test1 can curl test2
+				{
+					Action:       "accept",
+					Sources:      []string{"test1"},
+					Destinations: []string{"test2:*"},
+				},
+			},
+		},
+	)
+
+	// Since user/users dont matter here, we basically expect that some clients
+	// will be assigned these ips and that we can pick them up for our own use.
+	test1ip := netip.MustParseAddr("100.64.0.1")
+	test1, err := scenario.FindTailscaleClientByIP(test1ip)
+	assert.NoError(t, err)
+
+	test1fqdn, err := test1.FQDN()
+	assert.NoError(t, err)
+	test1ipURL := fmt.Sprintf("http://%s/etc/hostname", test1ip.String())
+	test1fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test1fqdn)
+
+	test2ip := netip.MustParseAddr("100.64.0.2")
+	test2, err := scenario.FindTailscaleClientByIP(test2ip)
+	assert.NoError(t, err)
+
+	test2fqdn, err := test2.FQDN()
+	assert.NoError(t, err)
+	test2ipURL := fmt.Sprintf("http://%s/etc/hostname", test2ip.String())
+	test2fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test2fqdn)
+
+	test3ip := netip.MustParseAddr("100.64.0.3")
+	test3, err := scenario.FindTailscaleClientByIP(test3ip)
+	assert.NoError(t, err)
+
+	test3fqdn, err := test3.FQDN()
+	assert.NoError(t, err)
+	test3ipURL := fmt.Sprintf("http://%s/etc/hostname", test3ip.String())
+	test3fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test3fqdn)
+
+	// test1 can query test3
+	result, err := test1.Curl(test3ipURL)
+	assert.Len(t, result, 13)
+	assert.NoError(t, err)
+
+	result, err = test1.Curl(test3fqdnURL)
+	assert.Len(t, result, 13)
+	assert.NoError(t, err)
+
+	// test2 can query test3
+	result, err = test2.Curl(test3ipURL)
+	assert.Len(t, result, 13)
+	assert.NoError(t, err)
+
+	result, err = test2.Curl(test3fqdnURL)
+	assert.Len(t, result, 13)
+	assert.NoError(t, err)
+
+	// test3 cannot query test1
+	result, err = test3.Curl(test1ipURL)
+	assert.Empty(t, result)
+	assert.Error(t, err)
+
+	result, err = test3.Curl(test1fqdnURL)
+	assert.Empty(t, result)
+	assert.Error(t, err)
+
+	// test3 cannot query test2
+	result, err = test3.Curl(test2ipURL)
+	assert.Empty(t, result)
+	assert.Error(t, err)
+
+	result, err = test3.Curl(test2fqdnURL)
+	assert.Empty(t, result)
+	assert.Error(t, err)
+
+	// test1 can query test2
+	result, err = test1.Curl(test2ipURL)
+	assert.Len(t, result, 13)
+	assert.NoError(t, err)
+
+	result, err = test1.Curl(test2fqdnURL)
+	assert.Len(t, result, 13)
+	assert.NoError(t, err)
+
+	// test2 cannot query test1
+	result, err = test2.Curl(test1ipURL)
+	assert.Empty(t, result)
+	assert.Error(t, err)
+
+	result, err = test2.Curl(test1fqdnURL)
+	assert.Empty(t, result)
+	assert.Error(t, err)
+
+	err = scenario.Shutdown()
+	assert.NoError(t, err)
+}
+
+// TestACLNamedHostsCanReachBySubnet is the same as
+// TestACLNamedHostsCanReach, but it tests if we expand a
+// full CIDR correctly. All routes should work.
+func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := aclScenario(t,
+		headscale.ACLPolicy{
+			Hosts: headscale.Hosts{
+				"all": netip.MustParsePrefix("100.64.0.0/24"),
+			},
+			ACLs: []headscale.ACL{
+				// Everyone can curl test3
+				{
+					Action:       "accept",
+					Sources:      []string{"*"},
+					Destinations: []string{"all:*"},
+				},
+			},
+		},
+	)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	assert.NoError(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	assert.NoError(t, err)
+
+	// Test that user1 can visit all user2
+	for _, client := range user1Clients {
+		for _, peer := range user2Clients {
+			fqdn, err := peer.FQDN()
+			assert.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			assert.NoError(t, err)
+		}
+	}
+
+	// Test that user2 can visit all user1
+	for _, client := range user2Clients {
+		for _, peer := range user1Clients {
+			fqdn, err := peer.FQDN()
+			assert.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			assert.NoError(t, err)
 		}
 	}
 

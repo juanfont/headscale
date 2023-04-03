@@ -14,6 +14,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
+	"go4.org/netipx"
 	"gopkg.in/yaml.v3"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
@@ -165,16 +166,22 @@ func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string]map[string]s
 	aclCachePeerMap := make(map[string]map[string]struct{})
 	for _, rule := range rules {
 		for _, srcIP := range rule.SrcIPs {
-			if data, ok := aclCachePeerMap[srcIP]; ok {
-				for _, dstPort := range rule.DstPorts {
-					data[dstPort.IP] = struct{}{}
+			for _, ip := range expandACLPeerAddr(srcIP) {
+				if data, ok := aclCachePeerMap[ip]; ok {
+					for _, dstPort := range rule.DstPorts {
+						for _, dstIP := range expandACLPeerAddr(dstPort.IP) {
+							data[dstIP] = struct{}{}
+						}
+					}
+				} else {
+					dstPortsMap := make(map[string]struct{}, len(rule.DstPorts))
+					for _, dstPort := range rule.DstPorts {
+						for _, dstIP := range expandACLPeerAddr(dstPort.IP) {
+							dstPortsMap[dstIP] = struct{}{}
+						}
+					}
+					aclCachePeerMap[ip] = dstPortsMap
 				}
-			} else {
-				dstPortsMap := make(map[string]struct{}, len(rule.DstPorts))
-				for _, dstPort := range rule.DstPorts {
-					dstPortsMap[dstPort.IP] = struct{}{}
-				}
-				aclCachePeerMap[srcIP] = dstPortsMap
 			}
 		}
 	}
@@ -182,6 +189,41 @@ func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string]map[string]s
 	log.Trace().Interface("ACL Cache Map", aclCachePeerMap).Msg("ACL Peer Cache Map generated")
 
 	return aclCachePeerMap
+}
+
+// expandACLPeerAddr takes a "tailcfg.FilterRule" "IP" and expands it into
+// something our cache logic can look up, which is "*" or single IP addresses.
+// This is probably quite inefficient, but it is a result of
+// "make it work, then make it fast", and a lot of the ACL stuff does not
+// work, but people have tried to make it fast.
+func expandACLPeerAddr(srcIP string) []string {
+	if ip, err := netip.ParseAddr(srcIP); err == nil {
+		return []string{ip.String()}
+	}
+
+	if cidr, err := netip.ParsePrefix(srcIP); err == nil {
+		addrs := []string{}
+
+		ipRange := netipx.RangeOfPrefix(cidr)
+
+		from := ipRange.From()
+		too := ipRange.To()
+
+		if from == too {
+			return []string{from.String()}
+		}
+
+		for from != too {
+			addrs = append(addrs, from.String())
+
+			from = from.Next()
+		}
+
+		return addrs
+	}
+
+	// probably "*" or other string based "IP"
+	return []string{srcIP}
 }
 
 func generateACLRules(
