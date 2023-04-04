@@ -1596,6 +1596,7 @@ func Test_expandACLPeerAddr(t *testing.T) {
 				"10.0.0.0",
 				"10.0.0.1",
 				"10.0.0.2",
+				"10.0.0.3",
 			},
 		},
 		{
@@ -1609,6 +1610,76 @@ func Test_expandACLPeerAddr(t *testing.T) {
 				"192.168.0.134", "192.168.0.135", "192.168.0.136",
 				"192.168.0.137", "192.168.0.138", "192.168.0.139",
 				"192.168.0.140", "192.168.0.141", "192.168.0.142",
+				"192.168.0.143",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := expandACLPeerAddr(tt.args.srcIP); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("expandACLPeerAddr() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_expandACLPeerAddrV6(t *testing.T) {
+	type args struct {
+		srcIP string
+	}
+	tests := []struct {
+		name string
+		args args
+		want []string
+	}{
+		{
+			name: "asterix",
+			args: args{
+				srcIP: "*",
+			},
+			want: []string{"*"},
+		},
+		{
+			name: "ipfull",
+			args: args{
+				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c:3166",
+			},
+			want: []string{"fd7a:115c:a1e0:ab12:4943:cd96:624c:3166"},
+		},
+		{
+			name: "ipzerocompression",
+			args: args{
+				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c::",
+			},
+			want: []string{"fd7a:115c:a1e0:ab12:4943:cd96:624c:0"},
+		},
+		{
+			name: "ip/128",
+			args: args{
+				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c:3166/128",
+			},
+			want: []string{"fd7a:115c:a1e0:ab12:4943:cd96:624c:3166"},
+		},
+		{
+			name: "ip/127",
+			args: args{
+				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c:0000/127",
+			},
+			want: []string{
+				"fd7a:115c:a1e0:ab12:4943:cd96:624c:0",
+				"fd7a:115c:a1e0:ab12:4943:cd96:624c:1",
+			},
+		},
+		{
+			name: "ip/126",
+			args: args{
+				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c:0000/126",
+			},
+			want: []string{
+				"fd7a:115c:a1e0:ab12:4943:cd96:624c:0",
+				"fd7a:115c:a1e0:ab12:4943:cd96:624c:1",
+				"fd7a:115c:a1e0:ab12:4943:cd96:624c:2",
+				"fd7a:115c:a1e0:ab12:4943:cd96:624c:3",
 			},
 		},
 	}
