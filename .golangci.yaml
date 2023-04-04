@@ -29,6 +29,14 @@ linters:
     - execinquery
     - exhaustruct
     - nolintlint
+    - musttag # causes issues with imported libs
+
+    # deprecated
+    - structcheck # replaced by unused
+    - ifshort # deprecated by the owner
+    - varcheck # replaced by unused
+    - nosnakecase # replaced by revive
+    - deadcode # replaced by unused
 
     # We should strive to enable these:
     - wrapcheck
