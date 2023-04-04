@@ -213,11 +213,11 @@ func expandACLPeerAddr(srcIP string) []string {
 			return []string{from.String()}
 		}
 
-		for from != too {
+		for from != too && from.Less(too) {
 			addrs = append(addrs, from.String())
-
 			from = from.Next()
 		}
+		addrs = append(addrs, too.String()) // Add the last IP address in the range
 
 		return addrs
 	}
