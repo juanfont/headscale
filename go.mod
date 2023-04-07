@@ -1,6 +1,6 @@
 module github.com/juanfont/headscale
 
-go 1.19
+go 1.20
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.6
@@ -8,42 +8,42 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/coreos/go-oidc/v3 v3.5.0
 	github.com/davecgh/go-spew v1.1.1
-	github.com/deckarep/golang-set/v2 v2.1.0
+	github.com/deckarep/golang-set/v2 v2.3.0
 	github.com/efekarakus/termcolor v1.0.1
 	github.com/glebarez/sqlite v1.7.0
 	github.com/gofrs/uuid/v5 v5.0.0
 	github.com/gorilla/mux v1.8.0
-	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.1
-	github.com/klauspost/compress v1.15.15
+	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.2
+	github.com/klauspost/compress v1.16.4
 	github.com/oauth2-proxy/mockoidc v0.0.0-20220308204021-b9169deeb282
 	github.com/ory/dockertest/v3 v3.9.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/philip-bui/grpc-zerolog v1.0.1
 	github.com/prometheus/client_golang v1.14.0
-	github.com/prometheus/common v0.40.0
-	github.com/pterm/pterm v0.12.54
+	github.com/prometheus/common v0.42.0
+	github.com/pterm/pterm v0.12.58
 	github.com/puzpuzpuz/xsync/v2 v2.4.0
 	github.com/rs/zerolog v1.29.0
-	github.com/samber/lo v1.37.0
-	github.com/spf13/cobra v1.6.1
+	github.com/samber/lo v1.38.1
+	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
 	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e
-	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
-	golang.org/x/crypto v0.6.0
-	golang.org/x/net v0.7.0
-	golang.org/x/oauth2 v0.5.0
+	go4.org/netipx v0.0.0-20230303233057-f1b76eb4bb35
+	golang.org/x/crypto v0.7.0
+	golang.org/x/net v0.9.0
+	golang.org/x/oauth2 v0.7.0
 	golang.org/x/sync v0.1.0
-	google.golang.org/genproto v0.0.0-20230223222841-637eb2293923
-	google.golang.org/grpc v1.53.0
-	google.golang.org/protobuf v1.28.1
+	google.golang.org/genproto v0.0.0-20230403163135-c38d8f061ccd
+	google.golang.org/grpc v1.54.0
+	google.golang.org/protobuf v1.30.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.4.8
-	gorm.io/gorm v1.24.5
-	tailscale.com v1.36.2
+	gorm.io/gorm v1.24.6
+	tailscale.com v1.38.4
 )
 
 require (
@@ -70,15 +70,14 @@ require (
 	github.com/go-jose/go-jose/v3 v3.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
-	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/go-github v17.0.0+incompatible // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.3.0 // indirect
-	github.com/gookit/color v1.5.2 // indirect
+	github.com/gookit/color v1.5.3 // indirect
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hdevalence/ed25519consensus v0.1.0 // indirect
@@ -89,9 +88,8 @@ require (
 	github.com/jackc/pgx/v5 v5.3.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/josharian/native v1.1.0 // indirect
+	github.com/josharian/native v1.1.1-0.20230202152459-5c7d0dd6ab86 // indirect
 	github.com/jsimonetti/rtnetlink v1.3.1 // indirect
-	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -108,8 +106,6 @@ require (
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0-rc2 // indirect
 	github.com/opencontainers/runc v1.1.4 // indirect
@@ -135,9 +131,9 @@ require (
 	go4.org/mem v0.0.0-20220726221520-4f986261bf13 // indirect
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2 // indirect
 	golang.org/x/mod v0.8.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/term v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/sys v0.7.0 // indirect
+	golang.org/x/term v0.7.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
