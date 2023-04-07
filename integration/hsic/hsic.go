@@ -52,6 +52,7 @@ type HeadscaleInContainer struct {
 
 	// optional config
 	port             int
+	extraPorts       []string
 	aclPolicy        *headscale.ACLPolicy
 	env              map[string]string
 	tlsCert          []byte
@@ -105,6 +106,13 @@ func WithConfigEnv(configEnv map[string]string) Option {
 func WithPort(port int) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.port = port
+	}
+}
+
+// WithExtraPorts exposes additional ports on the container (e.g. 3478/udp for STUN)
+func WithExtraPorts(ports []string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.extraPorts = ports
 	}
 }
 
@@ -187,7 +195,7 @@ func New(
 
 	runOptions := &dockertest.RunOptions{
 		Name:         hsic.hostname,
-		ExposedPorts: []string{portProto},
+		ExposedPorts: append([]string{portProto}, hsic.extraPorts...),
 		Networks:     []*dockertest.Network{network},
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
