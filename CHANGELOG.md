@@ -7,6 +7,7 @@
 - Add `.deb` and `.rpm` packages to release process [#1297](https://github.com/juanfont/headscale/pull/1297)
 - Add 32-bit Arm platforms to release process [#1297](https://github.com/juanfont/headscale/pull/1297)
 - Fix longstanding bug that would prevent "\*" from working properly in ACLs (issue [#699](https://github.com/juanfont/headscale/issues/699)) [#1279](https://github.com/juanfont/headscale/pull/1279)
+- Target Go 1.20 and Tailscale 1.38 for Headscale [#1323](https://github.com/juanfont/headscale/pull/1323)
 
 ## 0.21.0 (2023-03-20)
 
