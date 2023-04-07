@@ -2,7 +2,7 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -24,7 +24,7 @@
           pkgs = nixpkgs.legacyPackages.${prev.system};
         in
         rec {
-          headscale = pkgs.buildGo119Module rec {
+          headscale = pkgs.buildGo120Module rec {
             pname = "headscale";
             version = headscaleVersion;
             src = pkgs.lib.cleanSource self;
@@ -36,7 +36,7 @@
 
             # When updating go.mod or go.sum, a new sha will need to be calculated,
             # update this if you have a mismatch after doing a change to thos files.
-            vendorSha256 = "sha256-R183PDeAUnNwNV8iE3b22S5hGPJG8aZQGdENGqcPCw8=";
+            vendorSha256 = "sha256-+JxS4Q6rTpdBwms2nkVDY/Kluv2qu2T0BaOIjfeX85M=";
 
             ldflags = [ "-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}" ];
           };
@@ -89,7 +89,7 @@
           overlays = [ self.overlay ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_1_19 gnumake ];
+        buildDeps = with pkgs; [ git go_1_20 gnumake ];
         devDeps = with pkgs;
           buildDeps
           ++ [
