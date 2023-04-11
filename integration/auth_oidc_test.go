@@ -362,6 +362,15 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 
 		user.joinWaitGroup.Wait()
 
+		for _, client := range user.Clients {
+			err := client.WaitForReady()
+			if err != nil {
+				log.Printf("client %s was not ready: %s", client.Hostname(), err)
+
+				return fmt.Errorf("failed to up tailscale node: %w", err)
+			}
+		}
+
 		return nil
 	}
 
