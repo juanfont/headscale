@@ -430,6 +430,15 @@ func (t *TailscaleInContainer) WaitForReady() error {
 			return nil
 		}
 
+		// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
+		// https://github.com/tailscale/tailscale/pull/3865
+		//
+		// Before that, we can check the BackendState to see if the
+		// tailscaled daemon is connected to the control system.
+		if status.BackendState == "Running" {
+			return nil
+		}
+
 		return errTailscaleNotConnected
 	})
 }
