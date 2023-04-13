@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"gopkg.in/yaml.v3"
@@ -533,9 +534,11 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 // - a group
 // - a tag
 // - a host
+// - an ip
+// - a cidr
 // and transform these in IPAddresses.
 func expandAlias(
-	machines []Machine,
+	machines Machines,
 	aclPolicy ACLPolicy,
 	alias string,
 	stripEmailDomain bool,
@@ -617,19 +620,40 @@ func expandAlias(
 
 	// if alias is an host
 	if h, ok := aclPolicy.Hosts[alias]; ok {
-		return []string{h.String()}, nil
+		log.Trace().Str("host", h.String()).Msg("expandAlias got hosts entry")
+
+		return expandAlias(machines, aclPolicy, h.String(), stripEmailDomain)
 	}
 
 	// if alias is an IP
-	ip, err := netip.ParseAddr(alias)
-	if err == nil {
-		return []string{ip.String()}, nil
+	if ip, err := netip.ParseAddr(alias); err == nil {
+		log.Trace().Str("ip", ip.String()).Msg("expandAlias got ip")
+		ips := []string{ip.String()}
+		matches := machines.FilterByIP(ip)
+
+		for _, machine := range matches {
+			ips = append(ips, machine.IPAddresses.ToStringSlice()...)
+		}
+
+		return lo.Uniq(ips), nil
 	}
 
-	// if alias is an CIDR
-	cidr, err := netip.ParsePrefix(alias)
-	if err == nil {
-		return []string{cidr.String()}, nil
+	if cidr, err := netip.ParsePrefix(alias); err == nil {
+		log.Trace().Str("cidr", cidr.String()).Msg("expandAlias got cidr")
+		val := []string{cidr.String()}
+		// This is suboptimal and quite expensive, but if we only add the cidr, we will miss all the relevant IPv6
+		// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
+		for _, machine := range machines {
+			for _, ip := range machine.IPAddresses {
+				// log.Trace().
+				// 	Msgf("checking if machine ip (%s) is part of cidr (%s): %v, is single ip cidr (%v), addr: %s", ip.String(), cidr.String(), cidr.Contains(ip), cidr.IsSingleIP(), cidr.Addr().String())
+				if cidr.Contains(ip) {
+					val = append(val, machine.IPAddresses.ToStringSlice()...)
+				}
+			}
+		}
+
+		return lo.Uniq(val), nil
 	}
 
 	log.Warn().Msgf("No IPs found with the alias %v", alias)

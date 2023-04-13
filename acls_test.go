@@ -1026,22 +1026,7 @@ func Test_expandAlias(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "private network",
-			args: args{
-				alias:    "homeNetwork",
-				machines: []Machine{},
-				aclPolicy: ACLPolicy{
-					Hosts: Hosts{
-						"homeNetwork": netip.MustParsePrefix("192.168.1.0/24"),
-					},
-				},
-				stripEmailDomain: true,
-			},
-			want:    []string{"192.168.1.0/24"},
-			wantErr: false,
-		},
-		{
-			name: "simple host by ip",
+			name: "simple host by ip passed through",
 			args: args{
 				alias:            "10.0.0.1",
 				machines:         []Machine{},
@@ -1049,6 +1034,62 @@ func Test_expandAlias(t *testing.T) {
 				stripEmailDomain: true,
 			},
 			want:    []string{"10.0.0.1"},
+			wantErr: false,
+		},
+		{
+			name: "simple host by ipv4 single ipv4",
+			args: args{
+				alias: "10.0.0.1",
+				machines: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("10.0.0.1"),
+						},
+						User: User{Name: "mickael"},
+					},
+				},
+				aclPolicy:        ACLPolicy{},
+				stripEmailDomain: true,
+			},
+			want:    []string{"10.0.0.1"},
+			wantErr: false,
+		},
+		{
+			name: "simple host by ipv4 single dual stack",
+			args: args{
+				alias: "10.0.0.1",
+				machines: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("10.0.0.1"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
+						},
+						User: User{Name: "mickael"},
+					},
+				},
+				aclPolicy:        ACLPolicy{},
+				stripEmailDomain: true,
+			},
+			want:    []string{"10.0.0.1", "fd7a:115c:a1e0:ab12:4843:2222:6273:2222"},
+			wantErr: false,
+		},
+		{
+			name: "simple host by ipv6 single dual stack",
+			args: args{
+				alias: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
+				machines: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("10.0.0.1"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
+						},
+						User: User{Name: "mickael"},
+					},
+				},
+				aclPolicy:        ACLPolicy{},
+				stripEmailDomain: true,
+			},
+			want:    []string{"fd7a:115c:a1e0:ab12:4843:2222:6273:2222", "10.0.0.1"},
 			wantErr: false,
 		},
 		{
@@ -1064,6 +1105,21 @@ func Test_expandAlias(t *testing.T) {
 				stripEmailDomain: true,
 			},
 			want:    []string{"10.0.0.132/32"},
+			wantErr: false,
+		},
+		{
+			name: "private network",
+			args: args{
+				alias:    "homeNetwork",
+				machines: []Machine{},
+				aclPolicy: ACLPolicy{
+					Hosts: Hosts{
+						"homeNetwork": netip.MustParsePrefix("192.168.1.0/24"),
+					},
+				},
+				stripEmailDomain: true,
+			},
+			want:    []string{"192.168.1.0/24"},
 			wantErr: false,
 		},
 		{
