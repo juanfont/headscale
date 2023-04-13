@@ -29,6 +29,7 @@ const (
 
 var (
 	errTailscalePingFailed             = errors.New("ping failed")
+	errTailscalePingNotDERP            = errors.New("ping not via DERP")
 	errTailscaleNotLoggedIn            = errors.New("tailscale not logged in")
 	errTailscaleWrongPeerCount         = errors.New("wrong peer count")
 	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
@@ -56,6 +57,7 @@ type TailscaleInContainer struct {
 	withSSH           bool
 	withTags          []string
 	withEntrypoint    []string
+	withExtraHosts    []string
 	workdir           string
 }
 
@@ -124,6 +126,12 @@ func WithDockerWorkdir(dir string) Option {
 	}
 }
 
+func WithExtraHosts(hosts []string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withExtraHosts = hosts
+	}
+}
+
 // WithDockerEntrypoint allows the docker entrypoint of the container
 // to be overridden. This is a dangerous option which can make
 // the container not work as intended as a typo might prevent
@@ -169,11 +177,12 @@ func New(
 
 	tailscaleOptions := &dockertest.RunOptions{
 		Name:     hostname,
-		Networks: []*dockertest.Network{network},
+		Networks: []*dockertest.Network{tsic.network},
 		// Cmd: []string{
 		// 	"tailscaled", "--tun=tsdev",
 		// },
 		Entrypoint: tsic.withEntrypoint,
+		ExtraHosts: tsic.withExtraHosts,
 	}
 
 	if tsic.headscaleHostname != "" {
@@ -248,11 +257,13 @@ func (t *TailscaleInContainer) ID() string {
 // result of stdout as a string.
 func (t *TailscaleInContainer) Execute(
 	command []string,
+	options ...dockertestutil.ExecuteCommandOption,
 ) (string, string, error) {
 	stdout, stderr, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
 		[]string{},
+		options...,
 	)
 	if err != nil {
 		log.Printf("command stderr: %s\n", stderr)
@@ -477,7 +488,7 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 }
 
 type (
-	// PingOption repreent optional settings that can be given
+	// PingOption represent optional settings that can be given
 	// to ping another host.
 	PingOption = func(args *pingArgs)
 
@@ -485,6 +496,15 @@ type (
 		timeout time.Duration
 		count   int
 		direct  bool
+	}
+)
+
+type (
+	DERPPingOption = func(args *derpPingArgs)
+
+	derpPingArgs struct {
+		timeout time.Duration
+		count   int
 	}
 )
 
@@ -549,6 +569,62 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 
 		if !strings.Contains(result, "pong") && !strings.Contains(result, "is local") {
 			return backoff.Permanent(errTailscalePingFailed)
+		}
+
+		return nil
+	})
+}
+
+// PingViaDERP executes the Tailscale ping command and pings a hostname
+// or IP via the DERP network (i.e., not a direct connection). It accepts a series of DERPPingOption.
+// TODO(kradalby): Make multiping, go routine magic.
+func (t *TailscaleInContainer) PingViaDERP(hostnameOrIP string, opts ...PingOption) error {
+	args := pingArgs{
+		timeout: time.Second,
+		count:   defaultPingCount,
+	}
+
+	for _, opt := range opts {
+		opt(&args)
+	}
+
+	command := []string{
+		"tailscale", "ping",
+		fmt.Sprintf("--timeout=%s", args.timeout),
+		fmt.Sprintf("--c=%d", args.count),
+		"--until-direct=false",
+	}
+
+	command = append(command, hostnameOrIP)
+
+	return t.pool.Retry(func() error {
+		result, _, err := t.Execute(
+			command,
+			dockertestutil.ExecuteCommandTimeout(
+				time.Duration(int64(args.timeout)*int64(args.count)),
+			),
+		)
+		if err != nil {
+			fmt.Printf(
+				"failed to run ping command from %s to %s, err: %s",
+				t.Hostname(),
+				hostnameOrIP,
+				err,
+			)
+
+			return err
+		}
+
+		if strings.Contains(result, "is local") {
+			return nil
+		}
+
+		if !strings.Contains(result, "pong") {
+			return backoff.Permanent(errTailscalePingFailed)
+		}
+
+		if !strings.Contains(result, "via DERP") {
+			return backoff.Permanent(errTailscalePingNotDERP)
 		}
 
 		return nil

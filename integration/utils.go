@@ -2,6 +2,9 @@ package integration
 
 import (
 	"testing"
+	"time"
+
+	"github.com/juanfont/headscale/integration/tsic"
 )
 
 func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
@@ -20,6 +23,51 @@ func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int 
 	}
 
 	return success
+}
+
+func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
+	t.Helper()
+	success := 0
+
+	for _, client := range clients {
+		for _, addr := range addrs {
+			if isSelfClient(client, addr) {
+				continue
+			}
+
+			err := client.PingViaDERP(
+				addr,
+				tsic.WithPingTimeout(2*time.Second),
+				tsic.WithPingCount(10),
+			)
+			if err != nil {
+				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
+			} else {
+				success++
+			}
+		}
+	}
+
+	return success
+}
+
+func isSelfClient(client TailscaleClient, addr string) bool {
+	if addr == client.Hostname() {
+		return true
+	}
+
+	ips, err := client.IPs()
+	if err != nil {
+		return false
+	}
+
+	for _, ip := range ips {
+		if ip.String() == addr {
+			return true
+		}
+	}
+
+	return false
 }
 
 // pingAllNegativeHelper is intended to have 1 or more nodes timeing out from the ping,
