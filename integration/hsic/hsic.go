@@ -112,7 +112,7 @@ func WithPort(port int) Option {
 	}
 }
 
-// WithExtraPorts exposes additional ports on the container (e.g. 3478/udp for STUN)
+// WithExtraPorts exposes additional ports on the container (e.g. 3478/udp for STUN).
 func WithExtraPorts(ports []string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.extraPorts = ports
@@ -190,14 +190,14 @@ func New(
 
 	portProto := fmt.Sprintf("%d/tcp", hsic.port)
 
-	serverUrl, err := url.Parse(hsic.env["HEADSCALE_SERVER_URL"])
+	serverURL, err := url.Parse(hsic.env["HEADSCALE_SERVER_URL"])
 	if err != nil {
 		return nil, err
 	}
 
 	if len(hsic.tlsCert) != 0 && len(hsic.tlsKey) != 0 {
-		serverUrl.Scheme = "https"
-		hsic.env["HEADSCALE_SERVER_URL"] = serverUrl.String()
+		serverURL.Scheme = "https"
+		hsic.env["HEADSCALE_SERVER_URL"] = serverURL.String()
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
