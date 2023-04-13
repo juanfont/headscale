@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -23,6 +24,7 @@ import (
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
+	"github.com/ory/dockertest/v3/docker"
 )
 
 const (
@@ -52,6 +54,8 @@ type HeadscaleInContainer struct {
 
 	// optional config
 	port             int
+	extraPorts       []string
+	hostPortBindings map[string][]string
 	aclPolicy        *headscale.ACLPolicy
 	env              map[string]string
 	tlsCert          []byte
@@ -77,7 +81,7 @@ func WithACLPolicy(acl *headscale.ACLPolicy) Option {
 // WithTLS creates certificates and enables HTTPS.
 func WithTLS() Option {
 	return func(hsic *HeadscaleInContainer) {
-		cert, key, err := createCertificate()
+		cert, key, err := createCertificate(hsic.hostname)
 		if err != nil {
 			log.Fatalf("failed to create certificates for headscale test: %s", err)
 		}
@@ -105,6 +109,19 @@ func WithConfigEnv(configEnv map[string]string) Option {
 func WithPort(port int) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.port = port
+	}
+}
+
+// WithExtraPorts exposes additional ports on the container (e.g. 3478/udp for STUN)
+func WithExtraPorts(ports []string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.extraPorts = ports
+	}
+}
+
+func WithHostPortBindings(bindings map[string][]string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.hostPortBindings = bindings
 	}
 }
 
@@ -173,6 +190,16 @@ func New(
 
 	portProto := fmt.Sprintf("%d/tcp", hsic.port)
 
+	serverUrl, err := url.Parse(hsic.env["HEADSCALE_SERVER_URL"])
+	if err != nil {
+		return nil, err
+	}
+
+	if len(hsic.tlsCert) != 0 && len(hsic.tlsKey) != 0 {
+		serverUrl.Scheme = "https"
+		hsic.env["HEADSCALE_SERVER_URL"] = serverUrl.String()
+	}
+
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile.debug",
 		ContextDir: dockerContextPath,
@@ -187,13 +214,25 @@ func New(
 
 	runOptions := &dockertest.RunOptions{
 		Name:         hsic.hostname,
-		ExposedPorts: []string{portProto},
+		ExposedPorts: append([]string{portProto}, hsic.extraPorts...),
 		Networks:     []*dockertest.Network{network},
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
 		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; headscale serve"},
 		Env:        env,
+	}
+
+	if len(hsic.hostPortBindings) > 0 {
+		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
+		for port, hostPorts := range hsic.hostPortBindings {
+			runOptions.PortBindings[docker.Port(port)] = []docker.PortBinding{}
+			for _, hostPort := range hostPorts {
+				runOptions.PortBindings[docker.Port(port)] = append(
+					runOptions.PortBindings[docker.Port(port)],
+					docker.PortBinding{HostPort: hostPort})
+			}
+		}
 	}
 
 	// dockertest isnt very good at handling containers that has already
@@ -456,7 +495,7 @@ func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
 }
 
 // nolint
-func createCertificate() ([]byte, []byte, error) {
+func createCertificate(hostname string) ([]byte, []byte, error) {
 	// From:
 	// https://shaneutt.com/blog/golang-ca-and-signed-cert-go/
 
@@ -468,7 +507,7 @@ func createCertificate() ([]byte, []byte, error) {
 			Locality:     []string{"Leiden"},
 		},
 		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(30 * time.Minute),
+		NotAfter:  time.Now().Add(60 * time.Minute),
 		IsCA:      true,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,
@@ -486,16 +525,17 @@ func createCertificate() ([]byte, []byte, error) {
 	cert := &x509.Certificate{
 		SerialNumber: big.NewInt(1658),
 		Subject: pkix.Name{
+			CommonName:   hostname,
 			Organization: []string{"Headscale testing INC"},
 			Country:      []string{"NL"},
 			Locality:     []string{"Leiden"},
 		},
-		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
 		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(30 * time.Minute),
+		NotAfter:     time.Now().Add(60 * time.Minute),
 		SubjectKeyId: []byte{1, 2, 3, 4, 6},
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:     x509.KeyUsageDigitalSignature,
+		DNSNames:     []string{hostname},
 	}
 
 	certPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
