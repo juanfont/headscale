@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"net/url"
 
+	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"tailscale.com/ipn/ipnstate"
 )
@@ -13,7 +14,7 @@ type TailscaleClient interface {
 	Hostname() string
 	Shutdown() error
 	Version() string
-	Execute(command []string) (string, string, error)
+	Execute(command []string, options ...dockertestutil.ExecuteCommandOption) (string, string, error)
 	Up(loginServer, authKey string) error
 	UpWithLoginURL(loginServer string) (*url.URL, error)
 	Logout() error
@@ -24,6 +25,7 @@ type TailscaleClient interface {
 	WaitForLogout() error
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
+	PingViaDERP(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)
 	ID() string
 }
