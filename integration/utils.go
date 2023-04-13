@@ -7,6 +7,11 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 )
 
+const (
+	derpPingTimeout = 2 * time.Second
+	derpPingCount   = 10
+)
+
 func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
 	t.Helper()
 	success := 0
@@ -37,8 +42,8 @@ func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) 
 
 			err := client.PingViaDERP(
 				addr,
-				tsic.WithPingTimeout(2*time.Second),
-				tsic.WithPingCount(10),
+				tsic.WithPingTimeout(derpPingTimeout),
+				tsic.WithPingCount(derpPingCount),
 			)
 			if err != nil {
 				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)

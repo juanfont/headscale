@@ -499,15 +499,6 @@ type (
 	}
 )
 
-type (
-	DERPPingOption = func(args *derpPingArgs)
-
-	derpPingArgs struct {
-		timeout time.Duration
-		count   int
-	}
-)
-
 // WithPingTimeout sets the timeout for the ping command.
 func WithPingTimeout(timeout time.Duration) PingOption {
 	return func(args *pingArgs) {
@@ -605,7 +596,7 @@ func (t *TailscaleInContainer) PingViaDERP(hostnameOrIP string, opts ...PingOpti
 			),
 		)
 		if err != nil {
-			fmt.Printf(
+			log.Printf(
 				"failed to run ping command from %s to %s, err: %s",
 				t.Hostname(),
 				hostnameOrIP,
