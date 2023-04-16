@@ -46,3 +46,35 @@ func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int 
 //
 // 	return failures
 // }
+
+// // findPeerByIP takes an IP and a map of peers from status.Peer, and returns a *ipnstate.PeerStatus
+// // if there is a peer with the given IP. If no peer is found, nil is returned.
+// func findPeerByIP(
+// 	ip netip.Addr,
+// 	peers map[key.NodePublic]*ipnstate.PeerStatus,
+// ) *ipnstate.PeerStatus {
+// 	for _, peer := range peers {
+// 		for _, peerIP := range peer.TailscaleIPs {
+// 			if ip == peerIP {
+// 				return peer
+// 			}
+// 		}
+// 	}
+//
+// 	return nil
+// }
+//
+// // findPeerByHostname takes a hostname and a map of peers from status.Peer, and returns a *ipnstate.PeerStatus
+// // if there is a peer with the given hostname. If no peer is found, nil is returned.
+// func findPeerByHostname(
+// 	hostname string,
+// 	peers map[key.NodePublic]*ipnstate.PeerStatus,
+// ) *ipnstate.PeerStatus {
+// 	for _, peer := range peers {
+// 		if hostname == peer.HostName {
+// 			return peer
+// 		}
+// 	}
+//
+// 	return nil
+// }

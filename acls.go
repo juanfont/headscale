@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"gopkg.in/yaml.v3"
@@ -407,15 +408,40 @@ func generateACLPolicyDest(
 	needsWildcard bool,
 	stripEmaildomain bool,
 ) ([]tailcfg.NetPortRange, error) {
-	tokens := strings.Split(dest, ":")
+	var tokens []string
+
+	log.Trace().Str("destination", dest).Msg("generating policy destination")
+
+	// Check if there is a IPv4/6:Port combination, IPv6 has more than
+	// three ":".
+	tokens = strings.Split(dest, ":")
 	if len(tokens) < expectedTokenItems || len(tokens) > 3 {
-		return nil, errInvalidPortFormat
+		port := tokens[len(tokens)-1]
+
+		maybeIPv6Str := strings.TrimSuffix(dest, ":"+port)
+		log.Trace().Str("maybeIPv6Str", maybeIPv6Str).Msg("")
+
+		if maybeIPv6, err := netip.ParseAddr(maybeIPv6Str); err != nil && !maybeIPv6.Is6() {
+			log.Trace().Err(err).Msg("trying to parse as IPv6")
+
+			return nil, fmt.Errorf(
+				"failed to parse destination, tokens %v: %w",
+				tokens,
+				errInvalidPortFormat,
+			)
+		} else {
+			tokens = []string{maybeIPv6Str, port}
+		}
 	}
+
+	log.Trace().Strs("tokens", tokens).Msg("generating policy destination")
 
 	var alias string
 	// We can have here stuff like:
 	// git-server:*
 	// 192.168.1.0/24:22
+	// fd7a:115c:a1e0::2:22
+	// fd7a:115c:a1e0::2/128:22
 	// tag:montreal-webserver:80,443
 	// tag:api-server:443
 	// example-host-1:*
@@ -508,9 +534,11 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 // - a group
 // - a tag
 // - a host
+// - an ip
+// - a cidr
 // and transform these in IPAddresses.
 func expandAlias(
-	machines []Machine,
+	machines Machines,
 	aclPolicy ACLPolicy,
 	alias string,
 	stripEmailDomain bool,
@@ -592,19 +620,40 @@ func expandAlias(
 
 	// if alias is an host
 	if h, ok := aclPolicy.Hosts[alias]; ok {
-		return []string{h.String()}, nil
+		log.Trace().Str("host", h.String()).Msg("expandAlias got hosts entry")
+
+		return expandAlias(machines, aclPolicy, h.String(), stripEmailDomain)
 	}
 
 	// if alias is an IP
-	ip, err := netip.ParseAddr(alias)
-	if err == nil {
-		return []string{ip.String()}, nil
+	if ip, err := netip.ParseAddr(alias); err == nil {
+		log.Trace().Str("ip", ip.String()).Msg("expandAlias got ip")
+		ips := []string{ip.String()}
+		matches := machines.FilterByIP(ip)
+
+		for _, machine := range matches {
+			ips = append(ips, machine.IPAddresses.ToStringSlice()...)
+		}
+
+		return lo.Uniq(ips), nil
 	}
 
-	// if alias is an CIDR
-	cidr, err := netip.ParsePrefix(alias)
-	if err == nil {
-		return []string{cidr.String()}, nil
+	if cidr, err := netip.ParsePrefix(alias); err == nil {
+		log.Trace().Str("cidr", cidr.String()).Msg("expandAlias got cidr")
+		val := []string{cidr.String()}
+		// This is suboptimal and quite expensive, but if we only add the cidr, we will miss all the relevant IPv6
+		// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
+		for _, machine := range machines {
+			for _, ip := range machine.IPAddresses {
+				// log.Trace().
+				// 	Msgf("checking if machine ip (%s) is part of cidr (%s): %v, is single ip cidr (%v), addr: %s", ip.String(), cidr.String(), cidr.Contains(ip), cidr.IsSingleIP(), cidr.Addr().String())
+				if cidr.Contains(ip) {
+					val = append(val, machine.IPAddresses.ToStringSlice()...)
+				}
+			}
+		}
+
+		return lo.Uniq(val), nil
 	}
 
 	log.Warn().Msgf("No IPs found with the alias %v", alias)
@@ -666,6 +715,7 @@ func expandPorts(portsStr string, needsWildcard bool) (*[]tailcfg.PortRange, err
 
 	ports := []tailcfg.PortRange{}
 	for _, portStr := range strings.Split(portsStr, ",") {
+		log.Trace().Msgf("parsing portstring: %s", portStr)
 		rang := strings.Split(portStr, "-")
 		switch len(rang) {
 		case 1:
