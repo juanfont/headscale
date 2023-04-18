@@ -129,6 +129,7 @@
 
           shellHook = ''
             export GOFLAGS=-tags="ts2019"
+            export PATH="$PWD/result/bin:$PATH"
           '';
         };
 
