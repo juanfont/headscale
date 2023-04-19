@@ -65,7 +65,7 @@ nfpms:
     bindir: /usr/bin
     formats:
       - deb
-      - rpm
+      # - rpm
     contents:
       - src: ./config-example.yaml
         dst: /etc/headscale/config.yaml
