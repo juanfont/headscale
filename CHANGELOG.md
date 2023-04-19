@@ -4,7 +4,8 @@
 
 ### Changes
 
-- Add `.deb` and `.rpm` packages to release process [#1297](https://github.com/juanfont/headscale/pull/1297)
+- Add `.deb` packages to release process [#1297](https://github.com/juanfont/headscale/pull/1297)
+- Update and simplify the documentation to use new `.deb` packages [#1349](https://github.com/juanfont/headscale/pull/1349)
 - Add 32-bit Arm platforms to release process [#1297](https://github.com/juanfont/headscale/pull/1297)
 - Fix longstanding bug that would prevent "\*" from working properly in ACLs (issue [#699](https://github.com/juanfont/headscale/issues/699)) [#1279](https://github.com/juanfont/headscale/pull/1279)
 - Target Go 1.20 and Tailscale 1.38 for Headscale [#1323](https://github.com/juanfont/headscale/pull/1323)
