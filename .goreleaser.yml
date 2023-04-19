@@ -2,6 +2,7 @@
 before:
   hooks:
     - go mod tidy -compat=1.20
+    - go mod vendor
 
 release:
   prerelease: auto
@@ -43,6 +44,13 @@ archives:
       - linux-arm-7
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format: binary
+
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}_{{ .Version }}"
+  format: tar.gz
+  files:
+    - "vendor/"
 
 nfpms:
   # Configure nFPM for .deb and .rpm releases

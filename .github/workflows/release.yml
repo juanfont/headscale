@@ -19,6 +19,6 @@ jobs:
       - uses: cachix/install-nix-action@v16
 
       - name: Run goreleaser
-        run: nix develop --command -- goreleaser release --rm-dist
+        run: nix develop --command -- goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
