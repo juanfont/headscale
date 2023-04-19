@@ -64,6 +64,7 @@ summary() {
 	echo ""
 	echo " Please follow the next steps to start the software:"
 	echo ""
+	echo "    sudo systemctl enable headscale"
 	echo "    sudo systemctl start headscale"
 	echo ""
 	echo " Configuration settings can be adjusted here:"
