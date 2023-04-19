@@ -122,6 +122,11 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 	var dbString string
 	switch cfg.DBtype {
 	case Postgres:
+		if cfg.DBurl != "" {
+			dbString = cfg.DBurl
+			break
+		}
+		
 		dbString = fmt.Sprintf(
 			"host=%s dbname=%s user=%s",
 			cfg.DBhost,

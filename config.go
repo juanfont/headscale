@@ -61,6 +61,7 @@ type Config struct {
 	DBuser string
 	DBpass string
 	DBssl  string
+	DBurl  string
 
 	TLS TLSConfig
 
