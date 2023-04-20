@@ -129,6 +129,14 @@
 
           shellHook = ''
             export GOFLAGS=-tags="ts2019"
+            export PATH="$PWD/result/bin:$PATH"
+
+            mkdir -p ./ignored
+            export HEADSCALE_PRIVATE_KEY_PATH="./ignored/private.key"
+            export HEADSCALE_NOISE_PRIVATE_KEY_PATH="./ignored/noise_private.key"
+            export HEADSCALE_DB_PATH="./ignored/db.sqlite"
+            export HEADSCALE_TLS_LETSENCRYPT_CACHE_DIR="./ignored/cache"
+            export HEADSCALE_UNIX_SOCKET="./ignored/headscale.sock"
           '';
         };
 
