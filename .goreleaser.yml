@@ -32,16 +32,6 @@ builds:
 
 archives:
   - id: golang-cross
-    builds:
-      - darwin-amd64
-      - darwin-arm64
-      - freebsd-amd64
-      - linux-386
-      - linux-amd64
-      - linux-arm64
-      - linux-arm-5
-      - linux-arm-6
-      - linux-arm-7
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format: binary
 
