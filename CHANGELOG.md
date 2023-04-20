@@ -4,6 +4,12 @@
 
 ### Changes
 
+## 0.22.1 (2023-04-20)
+
+### Changes
+
+- Fix issue where SystemD could not bind to port 80 [#1365](https://github.com/juanfont/headscale/pull/1365)
+
 ## 0.22.0 (2023-04-20)
 
 ### Changes
