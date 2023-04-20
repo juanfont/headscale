@@ -16,7 +16,7 @@ WorkingDirectory=/var/lib/headscale
 ReadWritePaths=/var/lib/headscale /var/run
 
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_CHOWN
-CapabilityBoundingSet=CAP_CHOWN
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_CHOWN
 LockPersonality=true
 NoNewPrivileges=true
 PrivateDevices=true
