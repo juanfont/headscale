@@ -107,7 +107,7 @@ type OIDCConfig struct {
 	AllowedUsers               []string
 	AllowedGroups              []string
 	StripEmaildomain           bool
-	UseUsernameClaim	   bool
+	UseUsernameClaim           bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
 }
@@ -188,6 +188,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
+	viper.SetDefault("oidc.use_username_claim", false)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)

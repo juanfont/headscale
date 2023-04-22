@@ -256,7 +256,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	content, err := renderOIDCCallbackTemplate(writer, claims)
+	content, err := renderOIDCCallbackTemplate(writer, userName)
 	if err != nil {
 		return
 	}
@@ -582,9 +582,14 @@ func (h *Headscale) validateMachineForOIDCCallback(
 			Str("expiresAt", fmt.Sprintf("%v", expiry)).
 			Msg("successfully refreshed machine")
 
+		userName, err := getUserName(writer, claims, h.cfg.OIDC.UseUsernameClaim, h.cfg.OIDC.StripEmaildomain)
+		if err != nil {
+			userName = "unknown"
+		}
+
 		var content bytes.Buffer
 		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-			User: claims.Email,
+			User: userName,
 			Verb: "Reauthenticated",
 		}); err != nil {
 			log.Error().
@@ -743,11 +748,11 @@ func (h *Headscale) registerMachineForOIDCCallback(
 
 func renderOIDCCallbackTemplate(
 	writer http.ResponseWriter,
-	claims *IDTokenClaims,
+	user string,
 ) (*bytes.Buffer, error) {
 	var content bytes.Buffer
 	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-		User: claims.Email,
+		User: user,
 		Verb: "Authenticated",
 	}); err != nil {
 		log.Error().

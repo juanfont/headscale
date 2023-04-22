@@ -186,12 +186,15 @@ You can also use `allowed_domains` and `allowed_users` to restrict the users who
 In order to integrate Headscale with your Authelia instance, you need to generate a client secret add your Headscale instance as a client.
 
 First, generate a client secret. If you are running Authelia inside docker, prepend `docker-compose exec <authelia_container_name>` before these commands:
+
 ```shell
 authelia crypto hash generate pbkdf2 --variant sha512 --random --random.length 72
 ```
+
 This will return two strings, a "Random Password" which you will fill into Headscale, and a "Digest" you will fill into Authelia.
 
 In your Authelia configuration, add Headscale under the client section:
+
 ```yaml
 clients:
   - id: headscale
@@ -208,8 +211,9 @@ clients:
       - groups
 ```
 
-In your Headscale `config.yaml`, edit the config under `oidc`, filling in the `client_id` to match the `id` line in the Authelia config and filling in `client_secret` from the "Random Password" output. 
+In your Headscale `config.yaml`, edit the config under `oidc`, filling in the `client_id` to match the `id` line in the Authelia config and filling in `client_secret` from the "Random Password" output.
 You may want to tune the `expiry`, `only_start_if_oidc_available`, and other entries. The following are only the required entries.
+
 ```yaml
 oidc:
   issuer: "https://your.authelia.domain"

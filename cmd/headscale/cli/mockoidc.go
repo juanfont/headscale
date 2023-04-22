@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/oauth2-proxy/mockoidc"
@@ -63,6 +65,29 @@ func mockOIDC() error {
 		}
 		accessTTL = newTTL
 	}
+	
+	mockUsers := os.Getenv("MOCKOIDC_USERS")
+	users := []mockoidc.User{}
+	if mockUsers != "" {
+		user_strings := strings.Split(mockUsers, ",")
+		user_re := regexp.MustCompile(`^\s*(?P<username>\S+)\s*<(?P<email>\S+@\S+)>\s*$`)
+		for _, v := range user_strings {
+			match := user_re.FindStringSubmatch(v)
+			if match != nil {
+				fmt.Println("Success!", match[1], match[2])
+				// Use the default mockoidc entries for other entries
+				users = append(users, &mockoidc.MockUser{
+					Subject:           "1234567890",
+					Email:             match[2],
+					PreferredUsername: match[1],
+					Phone:             "555-987-6543",
+					Address:           "123 Main Street",
+					Groups:            []string{"engineering", "design"},
+					EmailVerified:     true,
+				})
+			}
+		}
+	}
 
 	log.Info().Msgf("Access token TTL: %s", accessTTL)
 
@@ -71,7 +96,7 @@ func mockOIDC() error {
 		return err
 	}
 
-	mock, err := getMockOIDC(clientID, clientSecret)
+	mock, err := getMockOIDC(clientID, clientSecret, users)
 	if err != nil {
 		return err
 	}
@@ -93,7 +118,7 @@ func mockOIDC() error {
 	return nil
 }
 
-func getMockOIDC(clientID string, clientSecret string) (*mockoidc.MockOIDC, error) {
+func getMockOIDC(clientID string, clientSecret string, users []mockoidc.User) (*mockoidc.MockOIDC, error) {
 	keypair, err := mockoidc.NewKeypair(nil)
 	if err != nil {
 		return nil, err
@@ -109,6 +134,10 @@ func getMockOIDC(clientID string, clientSecret string) (*mockoidc.MockOIDC, erro
 		SessionStore:                  mockoidc.NewSessionStore(),
 		UserQueue:                     &mockoidc.UserQueue{},
 		ErrorQueue:                    &mockoidc.ErrorQueue{},
+	}
+
+	for _, v := range users {
+		mock.QueueUser(v)
 	}
 
 	return &mock, nil

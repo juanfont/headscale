@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +37,181 @@ type AuthOIDCScenario struct {
 	mockOIDC *dockertest.Resource
 }
 
+func TestOIDCUsernameGrant(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	baseScenario, err := NewScenario()
+	if err != nil {
+		t.Errorf("failed to create scenario: %s", err)
+	}
+
+	scenario := AuthOIDCScenario{
+		Scenario: baseScenario,
+	}
+
+	spec := map[string]int{
+		"user1": len(TailscaleVersions),
+	}
+
+	users := make([]string, len(TailscaleVersions))
+	for i := range users {
+		users[i] = "test-user <test-email@example.com>"
+	}
+	user_str := strings.Join(users, ", ")
+
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, user_str)
+	if err != nil {
+		t.Errorf("failed to run mock OIDC server: %s", err)
+	}
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
+		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "false",
+		"HEADSCALE_OIDC_USE_USERNAME_CLAIM": "true",
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		hsic.WithTestName("oidcauthping"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithHostnameAsServerURL(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+	)
+	if err != nil {
+		t.Errorf("failed to create headscale environment: %s", err)
+	}
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	// Check that clients are registered under the right username
+	for _, client := range allClients {
+		fqdn, err := client.FQDN()
+		if err != nil {
+			t.Errorf("Unable to get client FQDN: %s", err)
+		}
+
+		if !strings.HasSuffix(fqdn, "test-user.headscale.net") {
+			t.Errorf("Client registered with unexpected username. Client FQDN: %s", fqdn)
+		}
+	}
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
+}
+
+func TestOIDCEmailGrant(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	baseScenario, err := NewScenario()
+	if err != nil {
+		t.Errorf("failed to create scenario: %s", err)
+	}
+
+	scenario := AuthOIDCScenario{
+		Scenario: baseScenario,
+	}
+
+	spec := map[string]int{
+		"user1": len(TailscaleVersions),
+	}
+
+	users := make([]string, len(TailscaleVersions))
+	for i := range users {
+		users[i] = "test-user <test-email@example.com>"
+	}
+	user_str := strings.Join(users, ", ")
+
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, user_str)
+	if err != nil {
+		t.Errorf("failed to run mock OIDC server: %s", err)
+	}
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
+		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "true",
+		"HEADSCALE_OIDC_USE_USERNAME_CLAIM": "false",
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		hsic.WithTestName("oidcauthping"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithHostnameAsServerURL(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+	)
+	if err != nil {
+		t.Errorf("failed to create headscale environment: %s", err)
+	}
+
+	allClients, err := scenario.ListTailscaleClients()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+	// Check that clients are registered under the right username
+	for _, client := range allClients {
+		fqdn, err := client.FQDN()
+		if err != nil {
+			t.Errorf("Unable to get client FQDN: %s", err)
+		}
+
+		if !strings.HasSuffix(fqdn, "test-email.headscale.net") {
+			t.Errorf("Client registered with unexpected username. Client FQDN: %s", fqdn)
+		}
+	}
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	if err != nil {
+		t.Errorf("failed to get clients: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	if err != nil {
+		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
+	}
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	err = scenario.Shutdown()
+	if err != nil {
+		t.Errorf("failed to tear down scenario: %s", err)
+	}
+}
+
 func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -53,7 +229,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		"user1": len(TailscaleVersions),
 	}
 
-	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL)
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, "")
 	if err != nil {
 		t.Errorf("failed to run mock OIDC server: %s", err)
 	}
@@ -124,7 +300,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 		"user1": len(TailscaleVersions),
 	}
 
-	oidcConfig, err := scenario.runMockOIDC(shortAccessTTL)
+	oidcConfig, err := scenario.runMockOIDC(shortAccessTTL, "")
 	if err != nil {
 		t.Fatalf("failed to run mock OIDC server: %s", err)
 	}
@@ -213,7 +389,7 @@ func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 	return nil
 }
 
-func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*headscale.OIDCConfig, error) {
+func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users string) (*headscale.OIDCConfig, error) {
 	port, err := dockertestutil.RandomFreeHostPort()
 	if err != nil {
 		log.Fatalf("could not find an open port: %s", err)
@@ -237,6 +413,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*headscale.OIDC
 			fmt.Sprintf("MOCKOIDC_PORT=%d", port),
 			"MOCKOIDC_CLIENT_ID=superclient",
 			"MOCKOIDC_CLIENT_SECRET=supersecret",
+			fmt.Sprintf("MOCKOIDC_USERS=%s", users),
 			fmt.Sprintf("MOCKOIDC_ACCESS_TTL=%s", accessTTL.String()),
 		},
 	}
