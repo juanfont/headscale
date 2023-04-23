@@ -10,7 +10,7 @@ import (
 )
 
 // // NoiseRegistrationHandler handles the actual registration process of a machine.
-func (t *ts2021App) NoiseRegistrationHandler(
+func (ns *noiseServer) NoiseRegistrationHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
@@ -20,6 +20,11 @@ func (t *ts2021App) NoiseRegistrationHandler(
 
 		return
 	}
+
+	log.Trace().
+		Any("headers", req.Header).
+		Msg("Headers")
+
 	body, _ := io.ReadAll(req.Body)
 	registerRequest := tailcfg.RegisterRequest{}
 	if err := json.Unmarshal(body, &registerRequest); err != nil {
@@ -33,5 +38,5 @@ func (t *ts2021App) NoiseRegistrationHandler(
 		return
 	}
 
-	t.headscale.handleRegisterCommon(writer, req, registerRequest, t.conn.Peer(), true)
+	ns.headscale.handleRegisterCommon(writer, req, registerRequest, ns.conn.Peer(), true)
 }

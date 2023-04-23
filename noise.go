@@ -17,7 +17,7 @@ const (
 	ts2021UpgradePath = "/ts2021"
 )
 
-type ts2021App struct {
+type noiseServer struct {
 	headscale *Headscale
 
 	conn *controlbase.Conn
@@ -52,7 +52,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		return
 	}
 
-	ts2021App := ts2021App{
+	noiseServer := noiseServer{
 		headscale: h,
 		conn:      noiseConn,
 	}
@@ -63,9 +63,9 @@ func (h *Headscale) NoiseUpgradeHandler(
 	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
 	router := mux.NewRouter()
 
-	router.HandleFunc("/machine/register", ts2021App.NoiseRegistrationHandler).
+	router.HandleFunc("/machine/register", noiseServer.NoiseRegistrationHandler).
 		Methods(http.MethodPost)
-	router.HandleFunc("/machine/map", ts2021App.NoisePollNetMapHandler)
+	router.HandleFunc("/machine/map", noiseServer.NoisePollNetMapHandler)
 
 	server := http.Server{
 		ReadTimeout: HTTPReadTimeout,
