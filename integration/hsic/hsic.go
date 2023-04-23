@@ -295,6 +295,10 @@ func New(
 	return hsic, nil
 }
 
+func (t *HeadscaleInContainer) ConnectToNetwork(network *dockertest.Network) error {
+	return t.container.ConnectToNetwork(network)
+}
+
 func (t *HeadscaleInContainer) hasTLS() bool {
 	return len(t.tlsCert) != 0 && len(t.tlsKey) != 0
 }

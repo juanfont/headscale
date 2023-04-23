@@ -2,12 +2,14 @@ package integration
 
 import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/ory/dockertest/v3"
 )
 
 type ControlServer interface {
 	Shutdown() error
 	SaveLog(string) error
 	Execute(command []string) (string, error)
+	ConnectToNetwork(network *dockertest.Network) error
 	GetHealthEndpoint() string
 	GetEndpoint() string
 	WaitForReady() error
