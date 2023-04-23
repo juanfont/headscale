@@ -546,49 +546,6 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 	command = append(command, hostnameOrIP)
 
 	return t.pool.Retry(func() error {
-		result, _, err := t.Execute(command)
-		if err != nil {
-			log.Printf(
-				"failed to run ping command from %s to %s, err: %s",
-				t.Hostname(),
-				hostnameOrIP,
-				err,
-			)
-
-			return err
-		}
-
-		if !strings.Contains(result, "pong") && !strings.Contains(result, "is local") {
-			return backoff.Permanent(errTailscalePingFailed)
-		}
-
-		return nil
-	})
-}
-
-// PingViaDERP executes the Tailscale ping command and pings a hostname
-// or IP via the DERP network (i.e., not a direct connection). It accepts a series of DERPPingOption.
-// TODO(kradalby): Make multiping, go routine magic.
-func (t *TailscaleInContainer) PingViaDERP(hostnameOrIP string, opts ...PingOption) error {
-	args := pingArgs{
-		timeout: time.Second,
-		count:   defaultPingCount,
-	}
-
-	for _, opt := range opts {
-		opt(&args)
-	}
-
-	command := []string{
-		"tailscale", "ping",
-		fmt.Sprintf("--timeout=%s", args.timeout),
-		fmt.Sprintf("--c=%d", args.count),
-		"--until-direct=false",
-	}
-
-	command = append(command, hostnameOrIP)
-
-	return t.pool.Retry(func() error {
 		result, _, err := t.Execute(
 			command,
 			dockertestutil.ExecuteCommandTimeout(
@@ -614,8 +571,12 @@ func (t *TailscaleInContainer) PingViaDERP(hostnameOrIP string, opts ...PingOpti
 			return backoff.Permanent(errTailscalePingFailed)
 		}
 
-		if !strings.Contains(result, "via DERP") {
-			return backoff.Permanent(errTailscalePingNotDERP)
+		if !args.direct {
+			if strings.Contains(result, "via DERP") {
+				return nil
+			} else {
+				return backoff.Permanent(errTailscalePingNotDERP)
+			}
 		}
 
 		return nil

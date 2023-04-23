@@ -40,10 +40,11 @@ func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) 
 				continue
 			}
 
-			err := client.PingViaDERP(
+			err := client.Ping(
 				addr,
 				tsic.WithPingTimeout(derpPingTimeout),
 				tsic.WithPingCount(derpPingCount),
+				tsic.WithPingUntilDirect(false),
 			)
 			if err != nil {
 				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
