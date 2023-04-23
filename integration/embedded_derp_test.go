@@ -37,8 +37,7 @@ func TestDERPServerScenario(t *testing.T) {
 		"user1": len(TailscaleVersions),
 	}
 
-	headscaleConfig := hsic.DefaultConfigEnv()
-	headscaleConfig["HEADSCALE_LISTEN_ADDR"] = "0.0.0.0:8443"
+	headscaleConfig := map[string]string{}
 	headscaleConfig["HEADSCALE_DERP_URLS"] = ""
 	headscaleConfig["HEADSCALE_DERP_SERVER_ENABLED"] = "true"
 	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_ID"] = "999"
@@ -49,14 +48,7 @@ func TestDERPServerScenario(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		spec,
 		hsic.WithConfigEnv(headscaleConfig),
-		hsic.WithPort(8443),
 		hsic.WithTestName("derpserver"),
-		hsic.WithHostPortBindings(
-			map[string][]string{
-				"8443/tcp": {"8443"},
-				"3478/udp": {"3478"},
-			},
-		),
 		hsic.WithExtraPorts([]string{"3478/udp"}),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
@@ -113,11 +105,6 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 
 	headscaleURL.Host = fmt.Sprintf("%s:%s", hsServer.GetHostname(), headscaleURL.Port())
 
-	extraHosts := []string{
-		"host.docker.internal:host-gateway",
-		fmt.Sprintf("%s:host-gateway", hsServer.GetHostname()),
-	}
-
 	err = hsServer.WaitForReady()
 	if err != nil {
 		return err
@@ -139,7 +126,6 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 			userName,
 			"all",
 			clientCount,
-			tsic.WithExtraHosts(extraHosts),
 		)
 		if err != nil {
 			return err
@@ -166,6 +152,11 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 	count int,
 	opts ...tsic.Option,
 ) error {
+	hsServer, err := s.Headscale()
+	if err != nil {
+		return err
+	}
+
 	if user, ok := s.users[userStr]; ok {
 		for clientN := 0; clientN < count; clientN++ {
 			networkName := fmt.Sprintf("tsnet-%s-%s-%d",
@@ -183,24 +174,22 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 
 			s.tsicNetworks[networkName] = network
 
+			err = hsServer.ConnectToNetwork(network)
+			if err != nil {
+				return fmt.Errorf("failed to connect headscale to %s network: %w", networkName, err)
+			}
+
 			version := requestedVersion
 			if requestedVersion == "all" {
 				version = TailscaleVersions[clientN%len(TailscaleVersions)]
 			}
 
-			headscale, err := s.Headscale()
-			if err != nil {
-				return fmt.Errorf("failed to create tailscale node: %w", err)
-			}
-
-			cert := headscale.GetCert()
-			hostname := headscale.GetHostname()
+			cert := hsServer.GetCert()
 
 			user.createWaitGroup.Add(1)
 
 			opts = append(opts,
 				tsic.WithHeadscaleTLS(cert),
-				tsic.WithHeadscaleName(hostname),
 			)
 
 			go func() {
