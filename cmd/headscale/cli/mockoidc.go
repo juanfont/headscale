@@ -65,17 +65,16 @@ func mockOIDC() error {
 		}
 		accessTTL = newTTL
 	}
-	
+
 	mockUsers := os.Getenv("MOCKOIDC_USERS")
 	users := []mockoidc.User{}
 	if mockUsers != "" {
-		user_strings := strings.Split(mockUsers, ",")
-		user_re := regexp.MustCompile(`^\s*(?P<username>\S+)\s*<(?P<email>\S+@\S+)>\s*$`)
-		for _, v := range user_strings {
-			match := user_re.FindStringSubmatch(v)
+		userStrings := strings.Split(mockUsers, ",")
+		userRe := regexp.MustCompile(`^\s*(?P<username>\S+)\s*<(?P<email>\S+@\S+)>\s*$`)
+		for _, v := range userStrings {
+			match := userRe.FindStringSubmatch(v)
 			if match != nil {
-				fmt.Println("Success!", match[1], match[2])
-				// Use the default mockoidc entries for other entries
+				// Use the default mockoidc claims for other entries
 				users = append(users, &mockoidc.MockUser{
 					Subject:           "1234567890",
 					Email:             match[2],

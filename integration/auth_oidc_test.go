@@ -58,9 +58,9 @@ func TestOIDCUsernameGrant(t *testing.T) {
 	for i := range users {
 		users[i] = "test-user <test-email@example.com>"
 	}
-	user_str := strings.Join(users, ", ")
+	userStr := strings.Join(users, ", ")
 
-	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, user_str)
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, userStr)
 	if err != nil {
 		t.Errorf("failed to run mock OIDC server: %s", err)
 	}
@@ -146,9 +146,9 @@ func TestOIDCEmailGrant(t *testing.T) {
 	for i := range users {
 		users[i] = "test-user <test-email@example.com>"
 	}
-	user_str := strings.Join(users, ", ")
+	userStr := strings.Join(users, ", ")
 
-	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, user_str)
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, userStr)
 	if err != nil {
 		t.Errorf("failed to run mock OIDC server: %s", err)
 	}
