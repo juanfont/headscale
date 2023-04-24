@@ -38,16 +38,6 @@ test_integration_cli:
 		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
 		go run gotest.tools/gotestsum@latest -- $(TAGS) -failfast -timeout 30m -count=1 -run IntegrationCLI ./...
 
-test_integration_derp:
-	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
-	docker network create headscale-test || true
-	docker run -t --rm \
-		--network headscale-test \
-		-v ~/.cache/hs-integration-go:/go \
-		-v $$PWD:$$PWD -w $$PWD \
-		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go run gotest.tools/gotestsum@latest -- $(TAGS) -failfast -timeout 30m -count=1 -run IntegrationDERP ./...
-
 test_integration_v2_general:
 	docker run \
 		-t --rm \
