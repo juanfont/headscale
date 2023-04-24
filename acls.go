@@ -163,23 +163,20 @@ func (h *Headscale) UpdateACLRules() error {
 // generateACLPeerCacheMap takes a list of Tailscale filter rules and generates a map
 // of which Sources ("*" and IPs) can access destinations. This is to speed up the
 // process of generating MapResponses when deciding which Peers to inform nodes about.
-func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string]map[string]struct{} {
-	aclCachePeerMap := make(map[string]map[string]struct{})
+func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string][]string {
+	aclCachePeerMap := make(map[string][]string)
 	for _, rule := range rules {
 		for _, srcIP := range rule.SrcIPs {
 			for _, ip := range expandACLPeerAddr(srcIP) {
 				if data, ok := aclCachePeerMap[ip]; ok {
 					for _, dstPort := range rule.DstPorts {
-						for _, dstIP := range expandACLPeerAddr(dstPort.IP) {
-							data[dstIP] = struct{}{}
-						}
+						data = append(data, dstPort.IP)
 					}
+					aclCachePeerMap[ip] = data
 				} else {
-					dstPortsMap := make(map[string]struct{}, len(rule.DstPorts))
+					dstPortsMap := make([]string, 0)
 					for _, dstPort := range rule.DstPorts {
-						for _, dstIP := range expandACLPeerAddr(dstPort.IP) {
-							dstPortsMap[dstIP] = struct{}{}
-						}
+						dstPortsMap = append(dstPortsMap, dstPort.IP)
 					}
 					aclCachePeerMap[ip] = dstPortsMap
 				}
