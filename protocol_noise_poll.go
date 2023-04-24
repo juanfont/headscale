@@ -46,6 +46,8 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
+	ns.nodeKey = mapRequest.NodeKey
+
 	machine, err := ns.headscale.GetMachineByAnyKey(ns.conn.Peer(), mapRequest.NodeKey, key.NodePublic{})
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
