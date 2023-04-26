@@ -136,14 +136,6 @@ func (h *Headscale) UpdateACLRules() error {
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 	h.aclRules = rules
 
-	// Precompute a map of which sources can reach each destination, this is
-	// to provide quicker lookup when we calculate the peerlist for the map
-	// response to nodes.
-	// aclPeerCacheMap := generateACLPeerCacheMap(rules)
-	// h.aclPeerCacheMapRW.Lock()
-	// h.aclPeerCacheMap = aclPeerCacheMap
-	// h.aclPeerCacheMapRW.Unlock()
-
 	if featureEnableSSH() {
 		sshRules, err := h.generateSSHRules()
 		if err != nil {
@@ -160,70 +152,6 @@ func (h *Headscale) UpdateACLRules() error {
 
 	return nil
 }
-
-// // generateACLPeerCacheMap takes a list of Tailscale filter rules and generates a map
-// // of which Sources ("*" and IPs) can access destinations. This is to speed up the
-// // process of generating MapResponses when deciding which Peers to inform nodes about.
-// func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string][]string {
-// 	aclCachePeerMap := make(map[string][]string)
-// 	for _, rule := range rules {
-// 		for _, srcIP := range rule.SrcIPs {
-// 			for _, ip := range expandACLPeerAddr(srcIP) {
-// 				if data, ok := aclCachePeerMap[ip]; ok {
-// 					for _, dstPort := range rule.DstPorts {
-// 						data = append(data, dstPort.IP)
-// 					}
-// 					aclCachePeerMap[ip] = data
-// 				} else {
-// 					dstPortsMap := make([]string, 0)
-// 					for _, dstPort := range rule.DstPorts {
-// 						dstPortsMap = append(dstPortsMap, dstPort.IP)
-// 					}
-// 					aclCachePeerMap[ip] = dstPortsMap
-// 				}
-// 			}
-// 		}
-// 	}
-//
-// 	log.Trace().Interface("ACL Cache Map", aclCachePeerMap).Msg("ACL Peer Cache Map generated")
-//
-// 	return aclCachePeerMap
-// }
-//
-// // expandACLPeerAddr takes a "tailcfg.FilterRule" "IP" and expands it into
-// // something our cache logic can look up, which is "*" or single IP addresses.
-// // This is probably quite inefficient, but it is a result of
-// // "make it work, then make it fast", and a lot of the ACL stuff does not
-// // work, but people have tried to make it fast.
-// func expandACLPeerAddr(srcIP string) []string {
-// 	if ip, err := netip.ParseAddr(srcIP); err == nil {
-// 		return []string{ip.String()}
-// 	}
-//
-// 	if cidr, err := netip.ParsePrefix(srcIP); err == nil {
-// 		addrs := []string{}
-//
-// 		ipRange := netipx.RangeOfPrefix(cidr)
-//
-// 		from := ipRange.From()
-// 		too := ipRange.To()
-//
-// 		if from == too {
-// 			return []string{from.String()}
-// 		}
-//
-// 		for from != too && from.Less(too) {
-// 			addrs = append(addrs, from.String())
-// 			from = from.Next()
-// 		}
-// 		addrs = append(addrs, too.String()) // Add the last IP address in the range
-//
-// 		return addrs
-// 	}
-//
-// 	// probably "*" or other string based "IP"
-// 	return []string{srcIP}
-// }
 
 // generateFilterRules takes a set of machines and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
