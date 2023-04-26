@@ -128,7 +128,7 @@ func (h *Headscale) UpdateACLRules() error {
 		return errEmptyPolicy
 	}
 
-	rules, err := generateFilterRules(machines, *h.aclPolicy, h.cfg.OIDC.StripEmaildomain)
+	rules, err := h.aclPolicy.generateFilterRules(machines, h.cfg.OIDC.StripEmaildomain)
 	if err != nil {
 		return err
 	}
@@ -226,9 +226,8 @@ func expandACLPeerAddr(srcIP string) []string {
 
 // generateFilterRules takes a set of machines and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
-func generateFilterRules(
+func (pol *ACLPolicy) generateFilterRules(
 	machines []Machine,
-	pol ACLPolicy,
 	stripEmaildomain bool,
 ) ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}

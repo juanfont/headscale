@@ -54,7 +54,7 @@ func (s *Suite) TestBasicRule(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_1.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateFilterRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 }
@@ -411,7 +411,7 @@ func (s *Suite) TestPortRange(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_range.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateFilterRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -425,7 +425,7 @@ func (s *Suite) TestProtocolParsing(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_protocols.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateFilterRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -439,7 +439,7 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateFilterRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -455,7 +455,7 @@ func (s *Suite) TestPortWildcardYAML(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.yaml")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateFilterRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -498,7 +498,7 @@ func (s *Suite) TestPortUser(c *check.C) {
 	machines, err := app.ListMachines()
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateFilterRules(machines, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules(machines, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -541,7 +541,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	machines, err := app.ListMachines()
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateFilterRules(machines, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules(machines, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
