@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"sort"
 	"strconv"
@@ -172,7 +173,7 @@ func filterMachinesByACL(
 	machine *Machine,
 	machines Machines,
 	lock *sync.RWMutex,
-	aclPeerCacheMap map[string]map[string]struct{},
+	aclPeerCacheMap map[string][]string,
 ) Machines {
 	log.Trace().
 		Caller().
@@ -197,43 +198,34 @@ func filterMachinesByACL(
 
 		if dstMap, ok := aclPeerCacheMap["*"]; ok {
 			// match source and all destination
-			if _, dstOk := dstMap["*"]; dstOk {
-				peers[peer.ID] = peer
 
-				continue
+			for _, dst := range dstMap {
+				if dst == "*" {
+					peers[peer.ID] = peer
+
+					continue
+				}
 			}
 
 			// match source and all destination
 			for _, peerIP := range peerIPs {
-				if _, dstOk := dstMap[peerIP]; dstOk {
-					peers[peer.ID] = peer
+				for _, dst := range dstMap {
+					_, cdr, _ := net.ParseCIDR(dst)
+					ip := net.ParseIP(peerIP)
+					if dst == peerIP || (cdr != nil && ip != nil && cdr.Contains(ip)) {
+						peers[peer.ID] = peer
 
-					continue
+						continue
+					}
 				}
 			}
 
 			// match all sources and source
 			for _, machineIP := range machineIPs {
-				if _, dstOk := dstMap[machineIP]; dstOk {
-					peers[peer.ID] = peer
-
-					continue
-				}
-			}
-		}
-
-		for _, machineIP := range machineIPs {
-			if dstMap, ok := aclPeerCacheMap[machineIP]; ok {
-				// match source and all destination
-				if _, dstOk := dstMap["*"]; dstOk {
-					peers[peer.ID] = peer
-
-					continue
-				}
-
-				// match source and destination
-				for _, peerIP := range peerIPs {
-					if _, dstOk := dstMap[peerIP]; dstOk {
+				for _, dst := range dstMap {
+					_, cdr, _ := net.ParseCIDR(dst)
+					ip := net.ParseIP(machineIP)
+					if dst == machineIP || (cdr != nil && ip != nil && cdr.Contains(ip)) {
 						peers[peer.ID] = peer
 
 						continue
@@ -242,20 +234,53 @@ func filterMachinesByACL(
 			}
 		}
 
-		for _, peerIP := range peerIPs {
-			if dstMap, ok := aclPeerCacheMap[peerIP]; ok {
+		for _, machineIP := range machineIPs {
+			if dstMap, ok := aclPeerCacheMap[machineIP]; ok {
 				// match source and all destination
-				if _, dstOk := dstMap["*"]; dstOk {
-					peers[peer.ID] = peer
-
-					continue
-				}
-				// match return path
-				for _, machineIP := range machineIPs {
-					if _, dstOk := dstMap[machineIP]; dstOk {
+				for _, dst := range dstMap {
+					if dst == "*" {
 						peers[peer.ID] = peer
 
 						continue
+					}
+				}
+
+				// match source and destination
+				for _, peerIP := range peerIPs {
+					for _, dst := range dstMap {
+						_, cdr, _ := net.ParseCIDR(dst)
+						ip := net.ParseIP(peerIP)
+						if dst == peerIP || (cdr != nil && ip != nil && cdr.Contains(ip)) {
+							peers[peer.ID] = peer
+
+							continue
+						}
+					}
+				}
+			}
+		}
+
+		for _, peerIP := range peerIPs {
+			if dstMap, ok := aclPeerCacheMap[peerIP]; ok {
+				// match source and all destination
+				for _, dst := range dstMap {
+					if dst == "*" {
+						peers[peer.ID] = peer
+
+						continue
+					}
+				}
+
+				// match return path
+				for _, machineIP := range machineIPs {
+					for _, dst := range dstMap {
+						_, cdr, _ := net.ParseCIDR(dst)
+						ip := net.ParseIP(machineIP)
+						if dst == machineIP || (cdr != nil && ip != nil && cdr.Contains(ip)) {
+							peers[peer.ID] = peer
+
+							continue
+						}
 					}
 				}
 			}
