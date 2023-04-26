@@ -87,6 +87,16 @@ type (
 	MachinesP []*Machine
 )
 
+// machinesByID converts a slice of machines to a map from node id to machine.
+func machinesByID(machines Machines) map[uint64]Machine {
+	byID := make(map[uint64]Machine)
+	for _, machine := range machines {
+		byID[machine.ID] = machine
+	}
+
+	return byID
+}
+
 type MachineAddresses []netip.Addr
 
 func (ma MachineAddresses) ToStringSlice() []string {
@@ -494,6 +504,8 @@ func (h *Headscale) DeleteMachine(machine *Machine) error {
 		return err
 	}
 
+	h.setLastStateChangeToNow()
+
 	return nil
 }
 
@@ -515,6 +527,8 @@ func (h *Headscale) HardDeleteMachine(machine *Machine) error {
 	if err := h.db.Unscoped().Delete(&machine).Error; err != nil {
 		return err
 	}
+
+	h.setLastStateChangeToNow()
 
 	return nil
 }

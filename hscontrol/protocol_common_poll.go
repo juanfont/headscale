@@ -92,7 +92,8 @@ func (h *Headscale) handlePollCommon(
 		}
 	}
 
-	mapResp, err := h.getMapResponseData(mapRequest, machine, isNoise)
+	var mapResponseState mapResponseStreamState
+	mapResp, err := h.getMapResponseData(mapRequest, machine, isNoise, &mapResponseState)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -225,6 +226,7 @@ func (h *Headscale) handlePollCommon(
 		ctx,
 		machine,
 		mapRequest,
+		&mapResponseState,
 		pollDataChan,
 		keepAliveChan,
 		updateChan,
@@ -245,6 +247,7 @@ func (h *Headscale) pollNetMapStream(
 	ctxReq context.Context,
 	machine *Machine,
 	mapRequest tailcfg.MapRequest,
+	streamState *mapResponseStreamState,
 	pollDataChan chan []byte,
 	keepAliveChan chan []byte,
 	updateChan chan struct{},
@@ -468,7 +471,7 @@ func (h *Headscale) pollNetMapStream(
 					Time("last_successful_update", lastUpdate).
 					Time("last_state_change", h.getLastStateChange(machine.User)).
 					Msgf("There has been updates since the last successful update to %s", machine.Hostname)
-				data, err := h.getMapResponseData(mapRequest, machine, isNoise)
+				data, err := h.getMapResponseData(mapRequest, machine, isNoise, streamState)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").

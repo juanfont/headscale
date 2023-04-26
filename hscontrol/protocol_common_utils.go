@@ -12,12 +12,18 @@ import (
 	"tailscale.com/types/key"
 )
 
+// getMapResponseData genereates and encodes a MapResponse for the node.
+//
+// streamState is persistent state maintained across a stream of mapResponse messages.
+// For first message in stream, send the address of a zero-initialized struct,
+// then send the same address in subsequent messages to enable sending of delta-only messages.
 func (h *Headscale) getMapResponseData(
 	mapRequest tailcfg.MapRequest,
 	machine *Machine,
 	isNoise bool,
+	streamState *mapResponseStreamState,
 ) ([]byte, error) {
-	mapResponse, err := h.generateMapResponse(mapRequest, machine)
+	mapResponse, err := h.generateMapResponse(mapRequest, machine, streamState)
 	if err != nil {
 		return nil, err
 	}

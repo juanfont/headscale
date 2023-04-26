@@ -621,11 +621,21 @@ func TestExpireNode(t *testing.T) {
 	err = json.Unmarshal([]byte(result), &machine)
 	assert.NoError(t, err)
 
-	time.Sleep(30 * time.Second)
-
-	// Verify that the expired not is no longer present in the Peer list
-	// of connected nodes.
+	// Verify that the expired node logsout and all peers
+	// are notified.
 	for _, client := range allClients {
+		// Expect expired peer to log out
+		if client.Hostname() == machine.Name {
+			assert.NoError(t, client.WaitForLogout())
+
+			continue
+		}
+
+		// All other peers, wait for peer to be removed.
+		// The original count - self - expired node.
+		// Log version since peer delta functionality has evolved over tailscale versions.
+		assert.NoError(t, client.WaitForPeers(len(TailscaleVersions)-2), "for client with version %s", client.Version())
+
 		status, err := client.Status()
 		assert.NoError(t, err)
 
@@ -634,12 +644,7 @@ func TestExpireNode(t *testing.T) {
 
 			peerPublicKey := strings.TrimPrefix(peerStatus.PublicKey.String(), "nodekey:")
 
-			assert.NotEqual(t, machine.NodeKey, peerPublicKey)
-		}
-
-		if client.Hostname() != machine.Name {
-			// Assert that we have the original count - self - expired node
-			assert.Len(t, status.Peers(), len(TailscaleVersions)-2)
+			assert.NotEqualf(t, machine.NodeKey, peerPublicKey, "for client with version %s", client.Version())
 		}
 	}
 

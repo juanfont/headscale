@@ -25,6 +25,9 @@
 - Replace node filter logic, ensuring nodes with access can see eachother [#1381](https://github.com/juanfont/headscale/pull/1381)
 - Disable (or delete) both exit routes at the same time [#1428](https://github.com/juanfont/headscale/pull/1428)
 - Ditch distroless for Docker image, create default socket dir in `/var/run/headscale` [#1450](https://github.com/juanfont/headscale/pull/1450)
+- Send peer deltas in MapResponse [#1390](https://github.com/juanfont/headscale/pull/1390)
+  - Reduces data usage for larget tailnets when peers are changed, removed, or added
+  - Fixes a bug where where 1 peer is deleted in a tailnet of 2 peers, and the remaining peer is not notified of the removed peer
 
 ## 0.22.1 (2023-04-20)
 

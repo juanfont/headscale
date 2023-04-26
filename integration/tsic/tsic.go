@@ -466,7 +466,8 @@ func (t *TailscaleInContainer) WaitForLogout() error {
 			return fmt.Errorf("failed to fetch tailscale status: %w", err)
 		}
 
-		if status.CurrentTailnet == nil {
+		// Catch case where node is never logged in, or has a tailnet but was logged out /expired
+		if status.CurrentTailnet == nil || status.BackendState == "NeedsLogin" {
 			return nil
 		}
 
