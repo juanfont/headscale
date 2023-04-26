@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -1041,16 +1040,12 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			},
 		},
 	}
-	var lock sync.RWMutex
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			aclRulesMap := generateACLPeerCacheMap(tt.args.rules)
-
 			got := filterMachinesByACL(
 				tt.args.machine,
 				tt.args.machines,
-				&lock,
-				aclRulesMap,
+				tt.args.rules,
 			)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("filterMachinesByACL() = %v, want %v", got, tt.want)
