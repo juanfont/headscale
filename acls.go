@@ -228,7 +228,7 @@ func expandACLPeerAddr(srcIP string) []string {
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
 func (pol *ACLPolicy) generateFilterRules(
 	machines []Machine,
-	stripEmaildomain bool,
+	stripEmailDomain bool,
 ) ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
 
@@ -239,7 +239,7 @@ func (pol *ACLPolicy) generateFilterRules(
 
 		srcIPs := []string{}
 		for srcIndex, src := range acl.Sources {
-			srcs, err := pol.getIPsFromSource(src, machines, stripEmaildomain)
+			srcs, err := pol.getIPsFromSource(src, machines, stripEmailDomain)
 			if err != nil {
 				log.Error().
 					Interface("src", src).
@@ -266,7 +266,7 @@ func (pol *ACLPolicy) generateFilterRules(
 				dest,
 				machines,
 				needsWildcard,
-				stripEmaildomain,
+				stripEmailDomain,
 			)
 			if err != nil {
 				log.Error().
@@ -569,6 +569,7 @@ func (pol *ACLPolicy) expandAlias(
 	}
 
 	// if alias is an host
+	// Note, this is recursive.
 	if h, ok := pol.Hosts[alias]; ok {
 		log.Trace().Str("host", h.String()).Msg("expandAlias got hosts entry")
 
