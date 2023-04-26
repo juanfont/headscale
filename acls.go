@@ -132,16 +132,17 @@ func (h *Headscale) UpdateACLRules() error {
 	if err != nil {
 		return err
 	}
+
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 	h.aclRules = rules
 
 	// Precompute a map of which sources can reach each destination, this is
 	// to provide quicker lookup when we calculate the peerlist for the map
 	// response to nodes.
-	aclPeerCacheMap := generateACLPeerCacheMap(rules)
-	h.aclPeerCacheMapRW.Lock()
-	h.aclPeerCacheMap = aclPeerCacheMap
-	h.aclPeerCacheMapRW.Unlock()
+	// aclPeerCacheMap := generateACLPeerCacheMap(rules)
+	// h.aclPeerCacheMapRW.Lock()
+	// h.aclPeerCacheMap = aclPeerCacheMap
+	// h.aclPeerCacheMapRW.Unlock()
 
 	if featureEnableSSH() {
 		sshRules, err := h.generateSSHRules()
@@ -160,69 +161,69 @@ func (h *Headscale) UpdateACLRules() error {
 	return nil
 }
 
-// generateACLPeerCacheMap takes a list of Tailscale filter rules and generates a map
-// of which Sources ("*" and IPs) can access destinations. This is to speed up the
-// process of generating MapResponses when deciding which Peers to inform nodes about.
-func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string][]string {
-	aclCachePeerMap := make(map[string][]string)
-	for _, rule := range rules {
-		for _, srcIP := range rule.SrcIPs {
-			for _, ip := range expandACLPeerAddr(srcIP) {
-				if data, ok := aclCachePeerMap[ip]; ok {
-					for _, dstPort := range rule.DstPorts {
-						data = append(data, dstPort.IP)
-					}
-					aclCachePeerMap[ip] = data
-				} else {
-					dstPortsMap := make([]string, 0)
-					for _, dstPort := range rule.DstPorts {
-						dstPortsMap = append(dstPortsMap, dstPort.IP)
-					}
-					aclCachePeerMap[ip] = dstPortsMap
-				}
-			}
-		}
-	}
-
-	log.Trace().Interface("ACL Cache Map", aclCachePeerMap).Msg("ACL Peer Cache Map generated")
-
-	return aclCachePeerMap
-}
-
-// expandACLPeerAddr takes a "tailcfg.FilterRule" "IP" and expands it into
-// something our cache logic can look up, which is "*" or single IP addresses.
-// This is probably quite inefficient, but it is a result of
-// "make it work, then make it fast", and a lot of the ACL stuff does not
-// work, but people have tried to make it fast.
-func expandACLPeerAddr(srcIP string) []string {
-	if ip, err := netip.ParseAddr(srcIP); err == nil {
-		return []string{ip.String()}
-	}
-
-	if cidr, err := netip.ParsePrefix(srcIP); err == nil {
-		addrs := []string{}
-
-		ipRange := netipx.RangeOfPrefix(cidr)
-
-		from := ipRange.From()
-		too := ipRange.To()
-
-		if from == too {
-			return []string{from.String()}
-		}
-
-		for from != too && from.Less(too) {
-			addrs = append(addrs, from.String())
-			from = from.Next()
-		}
-		addrs = append(addrs, too.String()) // Add the last IP address in the range
-
-		return addrs
-	}
-
-	// probably "*" or other string based "IP"
-	return []string{srcIP}
-}
+// // generateACLPeerCacheMap takes a list of Tailscale filter rules and generates a map
+// // of which Sources ("*" and IPs) can access destinations. This is to speed up the
+// // process of generating MapResponses when deciding which Peers to inform nodes about.
+// func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string][]string {
+// 	aclCachePeerMap := make(map[string][]string)
+// 	for _, rule := range rules {
+// 		for _, srcIP := range rule.SrcIPs {
+// 			for _, ip := range expandACLPeerAddr(srcIP) {
+// 				if data, ok := aclCachePeerMap[ip]; ok {
+// 					for _, dstPort := range rule.DstPorts {
+// 						data = append(data, dstPort.IP)
+// 					}
+// 					aclCachePeerMap[ip] = data
+// 				} else {
+// 					dstPortsMap := make([]string, 0)
+// 					for _, dstPort := range rule.DstPorts {
+// 						dstPortsMap = append(dstPortsMap, dstPort.IP)
+// 					}
+// 					aclCachePeerMap[ip] = dstPortsMap
+// 				}
+// 			}
+// 		}
+// 	}
+//
+// 	log.Trace().Interface("ACL Cache Map", aclCachePeerMap).Msg("ACL Peer Cache Map generated")
+//
+// 	return aclCachePeerMap
+// }
+//
+// // expandACLPeerAddr takes a "tailcfg.FilterRule" "IP" and expands it into
+// // something our cache logic can look up, which is "*" or single IP addresses.
+// // This is probably quite inefficient, but it is a result of
+// // "make it work, then make it fast", and a lot of the ACL stuff does not
+// // work, but people have tried to make it fast.
+// func expandACLPeerAddr(srcIP string) []string {
+// 	if ip, err := netip.ParseAddr(srcIP); err == nil {
+// 		return []string{ip.String()}
+// 	}
+//
+// 	if cidr, err := netip.ParsePrefix(srcIP); err == nil {
+// 		addrs := []string{}
+//
+// 		ipRange := netipx.RangeOfPrefix(cidr)
+//
+// 		from := ipRange.From()
+// 		too := ipRange.To()
+//
+// 		if from == too {
+// 			return []string{from.String()}
+// 		}
+//
+// 		for from != too && from.Less(too) {
+// 			addrs = append(addrs, from.String())
+// 			from = from.Next()
+// 		}
+// 		addrs = append(addrs, too.String()) // Add the last IP address in the range
+//
+// 		return addrs
+// 	}
+//
+// 	// probably "*" or other string based "IP"
+// 	return []string{srcIP}
+// }
 
 // generateFilterRules takes a set of machines and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
@@ -878,4 +879,132 @@ func (pol *ACLPolicy) getIPsFromIPPrefix(
 	}
 
 	return lo.Uniq(val), nil
+}
+
+// This is borrowed from
+// https://github.com/tailscale/tailscale/blob/71029cea2ddf82007b80f465b256d027eab0f02d/wgengine/filter/tailcfg.go#L97-L162
+var (
+	zeroIP4 = netip.AddrFrom4([4]byte{})
+	zeroIP6 = netip.AddrFrom16([16]byte{})
+)
+
+// parseIPSet parses arg as one:
+//
+//   - an IP address (IPv4 or IPv6)
+//   - the string "*" to match everything (both IPv4 & IPv6)
+//   - a CIDR (e.g. "192.168.0.0/16")
+//   - a range of two IPs, inclusive, separated by hyphen ("2eff::1-2eff::0800")
+//
+// bits, if non-nil, is the legacy SrcBits CIDR length to make a IP
+// address (without a slash) treated as a CIDR of *bits length.
+//
+// TODO(bradfitz): make this return an IPSet and plumb that all
+// around, and ultimately use a new version of IPSet.ContainsFunc like
+// Contains16Func that works in [16]byte address, so we we can match
+// at runtime without allocating?
+func parseIPSet(arg string, bits *int) ([]netip.Prefix, error) {
+	if arg == "*" {
+		// User explicitly requested wildcard.
+		return []netip.Prefix{
+			netip.PrefixFrom(zeroIP4, 0),
+			netip.PrefixFrom(zeroIP6, 0),
+		}, nil
+	}
+	if strings.Contains(arg, "/") {
+		pfx, err := netip.ParsePrefix(arg)
+		if err != nil {
+			return nil, err
+		}
+		if pfx != pfx.Masked() {
+			return nil, fmt.Errorf("%v contains non-network bits set", pfx)
+		}
+		return []netip.Prefix{pfx}, nil
+	}
+	if strings.Count(arg, "-") == 1 {
+		ip1s, ip2s, _ := strings.Cut(arg, "-")
+		ip1, err := netip.ParseAddr(ip1s)
+		if err != nil {
+			return nil, err
+		}
+		ip2, err := netip.ParseAddr(ip2s)
+		if err != nil {
+			return nil, err
+		}
+		r := netipx.IPRangeFrom(ip1, ip2)
+		if !r.Valid() {
+			return nil, fmt.Errorf("invalid IP range %q", arg)
+		}
+		return r.Prefixes(), nil
+	}
+	ip, err := netip.ParseAddr(arg)
+	if err != nil {
+		return nil, fmt.Errorf("invalid IP address %q", arg)
+	}
+	bits8 := uint8(ip.BitLen())
+	if bits != nil {
+		if *bits < 0 || *bits > int(bits8) {
+			return nil, fmt.Errorf("invalid CIDR size %d for IP %q", *bits, arg)
+		}
+		bits8 = uint8(*bits)
+	}
+	return []netip.Prefix{netip.PrefixFrom(ip, int(bits8))}, nil
+}
+
+func ipInPrefixList(ip netip.Addr, netlist []netip.Prefix) bool {
+	for _, net := range netlist {
+		if net.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+type Match struct {
+	Srcs  []netip.Prefix
+	Dests []netip.Prefix
+}
+
+func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
+	match := Match{
+		Srcs:  []netip.Prefix{},
+		Dests: []netip.Prefix{},
+	}
+
+	for _, srcIP := range rule.SrcIPs {
+		prefix, _ := parseIPSet(srcIP, nil)
+
+		match.Srcs = append(match.Srcs, prefix...)
+	}
+
+	for _, dest := range rule.DstPorts {
+		prefix, _ := parseIPSet(dest.IP, nil)
+
+		match.Dests = append(match.Dests, prefix...)
+	}
+
+	return match
+}
+
+func (m *Match) SrcsContainsIPs(ips []netip.Addr) bool {
+	for _, prefix := range m.Srcs {
+		for _, ip := range ips {
+			if prefix.Contains(ip) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (m *Match) DestsContainsIP(ips []netip.Addr) bool {
+	for _, prefix := range m.Dests {
+		for _, ip := range ips {
+			if prefix.Contains(ip) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
