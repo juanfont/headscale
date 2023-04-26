@@ -556,26 +556,31 @@ func (s *Suite) TestPortGroup(c *check.C) {
 }
 
 func Test_expandGroup(t *testing.T) {
+	type field struct {
+		pol ACLPolicy
+	}
 	type args struct {
-		aclPolicy        ACLPolicy
 		group            string
 		stripEmailDomain bool
 	}
 	tests := []struct {
 		name    string
+		field   field
 		args    args
 		want    []string
 		wantErr bool
 	}{
 		{
 			name: "simple test",
-			args: args{
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{
 						"group:test": []string{"user1", "user2", "user3"},
 						"group:foo":  []string{"user2", "user3"},
 					},
 				},
+			},
+			args: args{
 				group:            "group:test",
 				stripEmailDomain: true,
 			},
@@ -584,13 +589,15 @@ func Test_expandGroup(t *testing.T) {
 		},
 		{
 			name: "InexistantGroup",
-			args: args{
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{
 						"group:test": []string{"user1", "user2", "user3"},
 						"group:foo":  []string{"user2", "user3"},
 					},
 				},
+			},
+			args: args{
 				group:            "group:undefined",
 				stripEmailDomain: true,
 			},
@@ -599,8 +606,8 @@ func Test_expandGroup(t *testing.T) {
 		},
 		{
 			name: "Expand emails in group",
-			args: args{
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{
 						"group:admin": []string{
 							"joe.bar@gmail.com",
@@ -608,6 +615,8 @@ func Test_expandGroup(t *testing.T) {
 						},
 					},
 				},
+			},
+			args: args{
 				group:            "group:admin",
 				stripEmailDomain: true,
 			},
@@ -616,8 +625,8 @@ func Test_expandGroup(t *testing.T) {
 		},
 		{
 			name: "Expand emails in group",
-			args: args{
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{
 						"group:admin": []string{
 							"joe.bar@gmail.com",
@@ -625,6 +634,8 @@ func Test_expandGroup(t *testing.T) {
 						},
 					},
 				},
+			},
+			args: args{
 				group:            "group:admin",
 				stripEmailDomain: false,
 			},
@@ -634,8 +645,7 @@ func Test_expandGroup(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := expandGroup(
-				test.args.aclPolicy,
+			got, err := test.field.pol.getUsersInGroup(
 				test.args.group,
 				test.args.stripEmailDomain,
 			)
@@ -653,7 +663,7 @@ func Test_expandGroup(t *testing.T) {
 
 func Test_expandTagOwners(t *testing.T) {
 	type args struct {
-		aclPolicy        ACLPolicy
+		aclPolicy        *ACLPolicy
 		tag              string
 		stripEmailDomain bool
 	}
@@ -666,7 +676,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "simple tag expansion",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:test": []string{"user1"}},
 				},
 				tag:              "tag:test",
@@ -678,7 +688,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "expand with tag and group",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					Groups:    Groups{"group:foo": []string{"user1", "user2"}},
 					TagOwners: TagOwners{"tag:test": []string{"group:foo"}},
 				},
@@ -691,7 +701,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "expand with user and group",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					Groups:    Groups{"group:foo": []string{"user1", "user2"}},
 					TagOwners: TagOwners{"tag:test": []string{"group:foo", "user3"}},
 				},
@@ -704,7 +714,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "invalid tag",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:foo": []string{"group:foo", "user1"}},
 				},
 				tag:              "tag:test",
@@ -716,7 +726,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "invalid group",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					Groups:    Groups{"group:bar": []string{"user1", "user2"}},
 					TagOwners: TagOwners{"tag:test": []string{"group:foo", "user2"}},
 				},
@@ -729,7 +739,7 @@ func Test_expandTagOwners(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := expandTagOwners(
+			got, err := getTagOwners(
 				test.args.aclPolicy,
 				test.args.tag,
 				test.args.stripEmailDomain,
@@ -908,6 +918,9 @@ func Test_listMachinesInUser(t *testing.T) {
 }
 
 func Test_expandAlias(t *testing.T) {
+	type field struct {
+		pol ACLPolicy
+	}
 	type args struct {
 		machines         []Machine
 		aclPolicy        ACLPolicy
@@ -916,12 +929,16 @@ func Test_expandAlias(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
+		field   field
 		args    args
 		want    []string
 		wantErr bool
 	}{
 		{
 			name: "wildcard",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "*",
 				machines: []Machine{
@@ -932,7 +949,6 @@ func Test_expandAlias(t *testing.T) {
 						},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"*"},
@@ -940,6 +956,11 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple group",
+			field: field{
+				pol: ACLPolicy{
+					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
+				},
+			},
 			args: args{
 				alias: "group:accountant",
 				machines: []Machine{
@@ -968,9 +989,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
-				},
 				stripEmailDomain: true,
 			},
 			want:    []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
@@ -978,6 +996,11 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "wrong group",
+			field: field{
+				pol: ACLPolicy{
+					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
+				},
+			},
 			args: args{
 				alias: "group:hr",
 				machines: []Machine{
@@ -1006,9 +1029,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
-				},
 				stripEmailDomain: true,
 			},
 			want:    []string{},
@@ -1016,10 +1036,12 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple ipaddress",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias:            "10.0.0.3",
 				machines:         []Machine{},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"10.0.0.3"},
@@ -1027,10 +1049,12 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple host by ip passed through",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias:            "10.0.0.1",
 				machines:         []Machine{},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"10.0.0.1"},
@@ -1038,6 +1062,9 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple host by ipv4 single ipv4",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "10.0.0.1",
 				machines: []Machine{
@@ -1048,7 +1075,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"10.0.0.1"},
@@ -1056,6 +1082,9 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple host by ipv4 single dual stack",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "10.0.0.1",
 				machines: []Machine{
@@ -1067,7 +1096,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"10.0.0.1", "fd7a:115c:a1e0:ab12:4843:2222:6273:2222"},
@@ -1075,6 +1103,9 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple host by ipv6 single dual stack",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
 				machines: []Machine{
@@ -1086,7 +1117,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"fd7a:115c:a1e0:ab12:4843:2222:6273:2222", "10.0.0.1"},
@@ -1094,14 +1124,16 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple host by hostname alias",
-			args: args{
-				alias:    "testy",
-				machines: []Machine{},
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Hosts: Hosts{
 						"testy": netip.MustParsePrefix("10.0.0.132/32"),
 					},
 				},
+			},
+			args: args{
+				alias:            "testy",
+				machines:         []Machine{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"10.0.0.132/32"},
@@ -1109,14 +1141,16 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "private network",
-			args: args{
-				alias:    "homeNetwork",
-				machines: []Machine{},
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Hosts: Hosts{
 						"homeNetwork": netip.MustParsePrefix("192.168.1.0/24"),
 					},
 				},
+			},
+			args: args{
+				alias:            "homeNetwork",
+				machines:         []Machine{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"192.168.1.0/24"},
@@ -1124,6 +1158,9 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple CIDR",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias:            "10.0.0.0/16",
 				machines:         []Machine{},
@@ -1135,6 +1172,11 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "simple tag",
+			field: field{
+				pol: ACLPolicy{
+					TagOwners: TagOwners{"tag:hr-webserver": []string{"joe"}},
+				},
+			},
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: []Machine{
@@ -1173,9 +1215,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "joe"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					TagOwners: TagOwners{"tag:hr-webserver": []string{"joe"}},
-				},
 				stripEmailDomain: true,
 			},
 			want:    []string{"100.64.0.1", "100.64.0.2"},
@@ -1183,6 +1222,14 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "No tag defined",
+			field: field{
+				pol: ACLPolicy{
+					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
+					TagOwners: TagOwners{
+						"tag:accountant-webserver": []string{"group:accountant"},
+					},
+				},
+			},
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: []Machine{
@@ -1209,12 +1256,6 @@ func Test_expandAlias(t *testing.T) {
 							netip.MustParseAddr("100.64.0.4"),
 						},
 						User: User{Name: "mickael"},
-					},
-				},
-				aclPolicy: ACLPolicy{
-					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
-					TagOwners: TagOwners{
-						"tag:accountant-webserver": []string{"group:accountant"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1224,6 +1265,9 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "Forced tag defined",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: []Machine{
@@ -1254,7 +1298,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
 			want:    []string{"100.64.0.1", "100.64.0.2"},
@@ -1262,6 +1305,13 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "Forced tag with legitimate tagOwner",
+			field: field{
+				pol: ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:hr-webserver": []string{"joe"},
+					},
+				},
+			},
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: []Machine{
@@ -1296,11 +1346,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					TagOwners: TagOwners{
-						"tag:hr-webserver": []string{"joe"},
-					},
-				},
 				stripEmailDomain: true,
 			},
 			want:    []string{"100.64.0.1", "100.64.0.2"},
@@ -1308,6 +1353,11 @@ func Test_expandAlias(t *testing.T) {
 		},
 		{
 			name: "list host in user without correctly tagged servers",
+			field: field{
+				pol: ACLPolicy{
+					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
+				},
+			},
 			args: args{
 				alias: "joe",
 				machines: []Machine{
@@ -1346,9 +1396,6 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "joe"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
-				},
 				stripEmailDomain: true,
 			},
 			want:    []string{"100.64.0.4"},
@@ -1357,9 +1404,8 @@ func Test_expandAlias(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := expandAlias(
+			got, err := test.field.pol.expandAlias(
 				test.args.machines,
-				test.args.aclPolicy,
 				test.args.alias,
 				test.args.stripEmailDomain,
 			)
@@ -1377,7 +1423,7 @@ func Test_expandAlias(t *testing.T) {
 
 func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 	type args struct {
-		aclPolicy        ACLPolicy
+		aclPolicy        *ACLPolicy
 		nodes            []Machine
 		user             string
 		stripEmailDomain bool
@@ -1391,7 +1437,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		{
 			name: "exclude nodes with valid tags",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: []Machine{
@@ -1437,7 +1483,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		{
 			name: "exclude nodes with valid tags, and owner is in a group",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					Groups: Groups{
 						"group:accountant": []string{"joe", "bar"},
 					},
@@ -1488,7 +1534,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		{
 			name: "exclude nodes with valid tags and with forced tags",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: []Machine{
@@ -1530,7 +1576,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		{
 			name: "all nodes have invalid tags, don't exclude them",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: []Machine{

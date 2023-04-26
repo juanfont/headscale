@@ -893,7 +893,7 @@ func getTags(
 	validTagMap := make(map[string]bool)
 	invalidTagMap := make(map[string]bool)
 	for _, tag := range machine.HostInfo.RequestTags {
-		owners, err := expandTagOwners(*aclPolicy, tag, stripEmailDomain)
+		owners, err := getTagOwners(aclPolicy, tag, stripEmailDomain)
 		if errors.Is(err, errInvalidTag) {
 			invalidTagMap[tag] = true
 
@@ -1207,7 +1207,7 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 			if approvedAlias == machine.User.Name {
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
-				approvedIps, err := expandAlias([]Machine{*machine}, *h.aclPolicy, approvedAlias, h.cfg.OIDC.StripEmaildomain)
+				approvedIps, err := h.aclPolicy.expandAlias([]Machine{*machine}, approvedAlias, h.cfg.OIDC.StripEmaildomain)
 				if err != nil {
 					log.Err(err).
 						Str("alias", approvedAlias).
