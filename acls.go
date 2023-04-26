@@ -830,6 +830,7 @@ var (
 // around, and ultimately use a new version of IPSet.ContainsFunc like
 // Contains16Func that works in [16]byte address, so we we can match
 // at runtime without allocating?
+// nolint
 func parseIPSet(arg string, bits *int) ([]netip.Prefix, error) {
 	if arg == "*" {
 		// User explicitly requested wildcard.
@@ -846,22 +847,27 @@ func parseIPSet(arg string, bits *int) ([]netip.Prefix, error) {
 		if pfx != pfx.Masked() {
 			return nil, fmt.Errorf("%v contains non-network bits set", pfx)
 		}
+
 		return []netip.Prefix{pfx}, nil
 	}
 	if strings.Count(arg, "-") == 1 {
 		ip1s, ip2s, _ := strings.Cut(arg, "-")
+
 		ip1, err := netip.ParseAddr(ip1s)
 		if err != nil {
 			return nil, err
 		}
+
 		ip2, err := netip.ParseAddr(ip2s)
 		if err != nil {
 			return nil, err
 		}
+
 		r := netipx.IPRangeFrom(ip1, ip2)
-		if !r.Valid() {
+		if !r.IsValid() {
 			return nil, fmt.Errorf("invalid IP range %q", arg)
 		}
+
 		return r.Prefixes(), nil
 	}
 	ip, err := netip.ParseAddr(arg)
@@ -875,16 +881,8 @@ func parseIPSet(arg string, bits *int) ([]netip.Prefix, error) {
 		}
 		bits8 = uint8(*bits)
 	}
-	return []netip.Prefix{netip.PrefixFrom(ip, int(bits8))}, nil
-}
 
-func ipInPrefixList(ip netip.Addr, netlist []netip.Prefix) bool {
-	for _, net := range netlist {
-		if net.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	return []netip.Prefix{netip.PrefixFrom(ip, int(bits8))}, nil
 }
 
 type Match struct {
