@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/rs/zerolog/log"
 	"gopkg.in/check.v1"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
@@ -1789,6 +1791,131 @@ func Test_expandACLPeerAddrV6(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := expandACLPeerAddr(tt.args.srcIP); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("expandACLPeerAddr() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestACLPolicy_generateFilterRules(t *testing.T) {
+	type field struct {
+		pol ACLPolicy
+	}
+	type args struct {
+		machines         []Machine
+		stripEmailDomain bool
+	}
+	tests := []struct {
+		name    string
+		field   field
+		args    args
+		want    []tailcfg.FilterRule
+		wantErr bool
+	}{
+		{
+			name:    "no-policy",
+			field:   field{},
+			args:    args{},
+			want:    []tailcfg.FilterRule{},
+			wantErr: false,
+		},
+		{
+			name: "simple group",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"*"},
+							Destinations: []string{"*:*"},
+						},
+					},
+				},
+			},
+			args: args{
+				machines:         []Machine{},
+				stripEmailDomain: true,
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP: "*",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "simple host by ipv4 single dual stack",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"100.64.0.1"},
+							Destinations: []string{"100.64.0.2:*"},
+						},
+					},
+				},
+			},
+			args: args{
+				machines: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("10.0.0.1"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+						},
+						User: User{Name: "mickael"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("10.0.0.2"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
+						},
+						User: User{Name: "mickael"},
+					},
+				},
+				stripEmailDomain: true,
+			},
+			// [{"SrcIPs":["100.64.0.1"],"DstPorts":[{"IP":"100.64.0.2","Bits":null,"Ports":{"First":0,"Last":65535}}]}]
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1"},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP: "100.64.0.2",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.field.pol.generateFilterRules(
+				tt.args.machines,
+				tt.args.stripEmailDomain,
+			)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ACLPolicy.generateFilterRules() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				log.Trace().Interface("got", got).Msg("result")
+				t.Errorf("ACLPolicy.generateFilterRules() = %v, want %v", got, tt.want)
 			}
 		})
 	}
