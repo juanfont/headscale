@@ -820,7 +820,6 @@ func (h *Headscale) Serve() error {
 
 				// And we're done:
 				cancel()
-				os.Exit(0)
 			}
 		}
 	}
