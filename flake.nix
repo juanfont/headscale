@@ -100,6 +100,10 @@
             nfpm
             gotestsum
 
+            # 'dot' is needed for pprof graphs
+            # go tool pprof -http=: <source>
+            graphviz
+
             # Protobuf dependencies
             protobuf
             protoc-gen-go
