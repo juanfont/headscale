@@ -76,6 +76,12 @@ jobs:
         with:
           name: logs
           path: "control_logs/*.log"
+
+      - uses: actions/upload-artifact@v3
+        if: always() && steps.changed-files.outputs.any_changed == 'true'
+        with:
+          name: pprof
+          path: "control_logs/*.pprof.tar"
 `),
 	)
 )

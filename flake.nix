@@ -36,7 +36,7 @@
 
             # When updating go.mod or go.sum, a new sha will need to be calculated,
             # update this if you have a mismatch after doing a change to thos files.
-            vendorSha256 = "sha256-lqMmTPLlnm4dGs3O+hS0LmR5LTWP5ICqMSkNnB+XXLI=";
+            vendorSha256 = "sha256-5a3SR77vYp8AsVFyFhBQtHn1I2kdlph+RuAkuT6hPIs=";
 
             ldflags = [ "-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}" ];
           };
@@ -99,6 +99,10 @@
             goreleaser
             nfpm
             gotestsum
+
+            # 'dot' is needed for pprof graphs
+            # go tool pprof -http=: <source>
+            graphviz
 
             # Protobuf dependencies
             protobuf

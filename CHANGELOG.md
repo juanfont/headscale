@@ -4,6 +4,9 @@
 
 ### Changes
 
+- Add environment flags to enable pprof (profiling) [#1382](https://github.com/juanfont/headscale/pull/1382)
+  - Profiles are continously generated in our integration tests.
+
 ## 0.22.1 (2023-04-20)
 
 ### Changes
