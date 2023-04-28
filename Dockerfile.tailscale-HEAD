@@ -1,3 +1,7 @@
+# This Dockerfile and the images produced are for testing headscale,
+# and are in no way endorsed by Headscale's maintainers as an
+# official nor supported release or distribution.
+
 FROM golang:latest
 
 RUN apt-get update \
