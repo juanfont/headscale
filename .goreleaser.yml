@@ -9,7 +9,7 @@ release:
 
 builds:
   - id: headscale
-    main: ./cmd/headscale/headscale.go
+    main: ./cmd/headscale
     mod_timestamp: "{{ .CommitTimestamp }}"
     env:
       - CGO_ENABLED=0
@@ -63,7 +63,6 @@ nfpms:
     bindir: /usr/bin
     formats:
       - deb
-      # - rpm
     contents:
       - src: ./config-example.yaml
         dst: /etc/headscale/config.yaml
@@ -79,6 +78,48 @@ nfpms:
     scripts:
       postinstall: ./docs/packaging/postinstall.sh
       postremove: ./docs/packaging/postremove.sh
+
+kos:
+  - id: ghcr
+    repository: ghcr.io/juanfont/headscale
+    base_image: gcr.io/distroless/base-debian11
+    build: headscale
+    main: ./cmd/headscale
+    env:
+      - CGO_ENABLED=0
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+      - linux/arm/v6
+      - linux/arm/v5
+    tags:
+      - latest
+      - '{{ .Tag }}'
+      - '{{ .Major }}.{{ .Minor }}.{{ .Patch }}'
+      - '{{ .Major }}.{{ .Minor }}'
+      - '{{ .Major }}'
+      - '{{ if not .Prerelease }}stable{{ end }}'
+
+  - id: dockerhub
+    build: headscale
+    base_image: gcr.io/distroless/base-debian11
+    repository: headscale/headscale
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+      - linux/arm/v6
+      - linux/arm/v5
+    tags:
+      - latest
+      - '{{ .Tag }}'
+      - '{{ .Major }}.{{ .Minor }}.{{ .Patch }}'
+      - '{{ .Major }}.{{ .Minor }}'
+      - '{{ .Major }}'
+      - '{{ if not .Prerelease }}stable{{ end }}'
 
 checksum:
   name_template: "checksums.txt"
