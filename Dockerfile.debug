@@ -1,4 +1,7 @@
-# Builder image
+# This Dockerfile and the images produced are for testing headscale,
+# and are in no way endorsed by Headscale's maintainers as an
+# official nor supported release or distribution.
+
 FROM docker.io/golang:1.21-bookworm AS build
 ARG VERSION=dev
 ENV GOPATH /go
