@@ -1259,3 +1259,131 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(enabledRoutes, check.HasLen, 3)
 }
+
+func TestMachine_canAccess(t *testing.T) {
+	type args struct {
+		filter   []tailcfg.FilterRule
+		machine2 *Machine
+	}
+	tests := []struct {
+		name    string
+		machine Machine
+		args    args
+		want    bool
+	}{
+		{
+			name: "no-rules",
+			machine: Machine{
+				IPAddresses: MachineAddresses{
+					netip.MustParseAddr("10.0.0.1"),
+				},
+			},
+			args: args{
+				filter: []tailcfg.FilterRule{},
+				machine2: &Machine{
+					IPAddresses: MachineAddresses{
+						netip.MustParseAddr("10.0.0.2"),
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "wildcard",
+			machine: Machine{
+				IPAddresses: MachineAddresses{
+					netip.MustParseAddr("10.0.0.1"),
+				},
+			},
+			args: args{
+				filter: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{
+								IP: "*",
+								Ports: tailcfg.PortRange{
+									First: 0,
+									Last:  65535,
+								},
+							},
+						},
+					},
+				},
+				machine2: &Machine{
+					IPAddresses: MachineAddresses{
+						netip.MustParseAddr("10.0.0.2"),
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "explicit-m1-to-m2",
+			machine: Machine{
+				IPAddresses: MachineAddresses{
+					netip.MustParseAddr("10.0.0.1"),
+				},
+			},
+			args: args{
+				filter: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"10.0.0.1"},
+						DstPorts: []tailcfg.NetPortRange{
+							{
+								IP: "10.0.0.2",
+								Ports: tailcfg.PortRange{
+									First: 0,
+									Last:  65535,
+								},
+							},
+						},
+					},
+				},
+				machine2: &Machine{
+					IPAddresses: MachineAddresses{
+						netip.MustParseAddr("10.0.0.2"),
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "explicit-m2-to-m1",
+			machine: Machine{
+				IPAddresses: MachineAddresses{
+					netip.MustParseAddr("10.0.0.1"),
+				},
+			},
+			args: args{
+				filter: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"10.0.0.2"},
+						DstPorts: []tailcfg.NetPortRange{
+							{
+								IP: "10.0.0.1",
+								Ports: tailcfg.PortRange{
+									First: 0,
+									Last:  65535,
+								},
+							},
+						},
+					},
+				},
+				machine2: &Machine{
+					IPAddresses: MachineAddresses{
+						netip.MustParseAddr("10.0.0.2"),
+					},
+				},
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.machine.canAccess(tt.args.filter, tt.args.machine2); got != tt.want {
+				t.Errorf("Machine.canAccess() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
