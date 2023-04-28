@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/rs/zerolog/log"
+	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
@@ -144,7 +145,7 @@ func (s *Suite) TestSshRules(c *check.C) {
 	c.Assert(app.sshPolicy.Rules, check.HasLen, 2)
 	c.Assert(app.sshPolicy.Rules[0].SSHUsers, check.HasLen, 1)
 	c.Assert(app.sshPolicy.Rules[0].Principals, check.HasLen, 1)
-	c.Assert(app.sshPolicy.Rules[0].Principals[0].NodeIP, check.Matches, "100.64.0.1")
+	c.Assert(app.sshPolicy.Rules[0].Principals[0].UserLogin, check.Matches, "user1")
 
 	c.Assert(app.sshPolicy.Rules[1].SSHUsers, check.HasLen, 1)
 	c.Assert(app.sshPolicy.Rules[1].Principals, check.HasLen, 1)
@@ -232,7 +233,7 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(app.aclRules, check.HasLen, 1)
 	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1/32")
 }
 
 // this test should validate that we can expand a group in a TagOWner section and
@@ -282,7 +283,7 @@ func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(app.aclRules, check.HasLen, 1)
 	c.Assert(app.aclRules[0].DstPorts, check.HasLen, 1)
-	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 }
 
 // need a test with:
@@ -331,7 +332,7 @@ func (s *Suite) TestInvalidTagValidUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(app.aclRules, check.HasLen, 1)
 	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1/32")
 }
 
 // tag on a host is owned by a tag owner, the tag is valid.
@@ -399,14 +400,14 @@ func (s *Suite) TestValidTagInvalidUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(app.aclRules, check.HasLen, 1)
 	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.2")
+	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.2/32")
 	c.Assert(app.aclRules[0].DstPorts, check.HasLen, 2)
 	c.Assert(app.aclRules[0].DstPorts[0].Ports.First, check.Equals, uint16(80))
 	c.Assert(app.aclRules[0].DstPorts[0].Ports.Last, check.Equals, uint16(80))
-	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 	c.Assert(app.aclRules[0].DstPorts[1].Ports.First, check.Equals, uint16(443))
 	c.Assert(app.aclRules[0].DstPorts[1].Ports.Last, check.Equals, uint16(443))
-	c.Assert(app.aclRules[0].DstPorts[1].IP, check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].DstPorts[1].IP, check.Equals, "100.64.0.1/32")
 }
 
 func (s *Suite) TestPortRange(c *check.C) {
@@ -449,8 +450,8 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
 	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, "*")
+	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
 }
 
 func (s *Suite) TestPortWildcardYAML(c *check.C) {
@@ -465,8 +466,8 @@ func (s *Suite) TestPortWildcardYAML(c *check.C) {
 	c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
 	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, "*")
+	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
 }
 
 func (s *Suite) TestPortUser(c *check.C) {
@@ -511,7 +512,7 @@ func (s *Suite) TestPortUser(c *check.C) {
 	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
 	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
 	c.Assert(len(ips), check.Equals, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String())
+	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String()+"/32")
 }
 
 func (s *Suite) TestPortGroup(c *check.C) {
@@ -554,7 +555,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
 	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
 	c.Assert(len(ips), check.Equals, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String())
+	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String()+"/32")
 }
 
 func Test_expandGroup(t *testing.T) {
@@ -920,6 +921,22 @@ func Test_listMachinesInUser(t *testing.T) {
 }
 
 func Test_expandAlias(t *testing.T) {
+	set := func(ips []string, prefixes []string) *netipx.IPSet {
+		var builder netipx.IPSetBuilder
+
+		for _, ip := range ips {
+			builder.Add(netip.MustParseAddr(ip))
+		}
+
+		for _, pre := range prefixes {
+			builder.AddPrefix(netip.MustParsePrefix(pre))
+		}
+
+		s, _ := builder.IPSet()
+
+		return s
+	}
+
 	type field struct {
 		pol ACLPolicy
 	}
@@ -933,7 +950,7 @@ func Test_expandAlias(t *testing.T) {
 		name    string
 		field   field
 		args    args
-		want    []string
+		want    *netipx.IPSet
 		wantErr bool
 	}{
 		{
@@ -953,7 +970,10 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"*"},
+			want: set([]string{}, []string{
+				"0.0.0.0/0",
+				"::/0",
+			}),
 			wantErr: false,
 		},
 		{
@@ -993,7 +1013,9 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
+			want: set([]string{
+				"100.64.0.1", "100.64.0.2", "100.64.0.3",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1033,7 +1055,7 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{},
+			want:    set([]string{}, []string{}),
 			wantErr: true,
 		},
 		{
@@ -1046,7 +1068,9 @@ func Test_expandAlias(t *testing.T) {
 				machines:         []Machine{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.3"},
+			want: set([]string{
+				"10.0.0.3",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1059,7 +1083,9 @@ func Test_expandAlias(t *testing.T) {
 				machines:         []Machine{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.1"},
+			want: set([]string{
+				"10.0.0.1",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1079,7 +1105,9 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.1"},
+			want: set([]string{
+				"10.0.0.1",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1100,7 +1128,9 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.1", "fd7a:115c:a1e0:ab12:4843:2222:6273:2222"},
+			want: set([]string{
+				"10.0.0.1", "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1121,7 +1151,9 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"fd7a:115c:a1e0:ab12:4843:2222:6273:2222", "10.0.0.1"},
+			want: set([]string{
+				"fd7a:115c:a1e0:ab12:4843:2222:6273:2222", "10.0.0.1",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1138,7 +1170,7 @@ func Test_expandAlias(t *testing.T) {
 				machines:         []Machine{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.132/32"},
+			want:    set([]string{}, []string{"10.0.0.132/32"}),
 			wantErr: false,
 		},
 		{
@@ -1155,7 +1187,7 @@ func Test_expandAlias(t *testing.T) {
 				machines:         []Machine{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"192.168.1.0/24"},
+			want:    set([]string{}, []string{"192.168.1.0/24"}),
 			wantErr: false,
 		},
 		{
@@ -1169,7 +1201,7 @@ func Test_expandAlias(t *testing.T) {
 				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.0/16"},
+			want:    set([]string{}, []string{"10.0.0.0/16"}),
 			wantErr: false,
 		},
 		{
@@ -1219,7 +1251,9 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.1", "100.64.0.2"},
+			want: set([]string{
+				"100.64.0.1", "100.64.0.2",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1262,7 +1296,7 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{},
+			want:    set([]string{}, []string{}),
 			wantErr: true,
 		},
 		{
@@ -1302,7 +1336,7 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.1", "100.64.0.2"},
+			want:    set([]string{"100.64.0.1", "100.64.0.2"}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1350,7 +1384,7 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.1", "100.64.0.2"},
+			want:    set([]string{"100.64.0.1", "100.64.0.2"}, []string{}),
 			wantErr: false,
 		},
 		{
@@ -1400,7 +1434,7 @@ func Test_expandAlias(t *testing.T) {
 				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.4"},
+			want:    set([]string{"100.64.0.4"}, []string{}),
 			wantErr: false,
 		},
 	}
@@ -1416,7 +1450,7 @@ func Test_expandAlias(t *testing.T) {
 
 				return
 			}
-			if !reflect.DeepEqual(got, test.want) {
+			if diff := cmp.Diff(test.want, got); diff != "" {
 				t.Errorf("expandAlias() = %v, want %v", got, test.want)
 			}
 		})
@@ -1702,10 +1736,17 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"*"},
+					SrcIPs: []string{"0.0.0.0/0", "::/0"},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP: "*",
+							IP: "0.0.0.0/0",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+						{
+							IP: "::/0",
 							Ports: tailcfg.PortRange{
 								First: 0,
 								Last:  65535,
@@ -1750,17 +1791,17 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1", "fd7a:115c:a1e0:ab12:4843:2222:6273:2221"},
+					SrcIPs: []string{"100.64.0.1/32", "fd7a:115c:a1e0:ab12:4843:2222:6273:2221/128"},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP: "100.64.0.2",
+							IP: "100.64.0.2/32",
 							Ports: tailcfg.PortRange{
 								First: 0,
 								Last:  65535,
 							},
 						},
 						{
-							IP: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
+							IP: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222/128",
 							Ports: tailcfg.PortRange{
 								First: 0,
 								Last:  65535,

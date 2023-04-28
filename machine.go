@@ -13,6 +13,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
+	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -95,6 +96,14 @@ func (ma MachineAddresses) ToStringSlice() []string {
 	}
 
 	return strSlice
+}
+
+// AppendToIPSet adds the individual ips in MachineAddresses to a
+// given netipx.IPSetBuilder.
+func (ma MachineAddresses) AppendToIPSet(build *netipx.IPSetBuilder) {
+	for _, ip := range ma {
+		build.Add(ip)
+	}
 }
 
 func (ma *MachineAddresses) Scan(destination interface{}) error {
@@ -1114,7 +1123,7 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 				}
 
 				// approvedIPs should contain all of machine's IPs if it matches the rule, so check for first
-				if contains(approvedIps, machine.IPAddresses[0].String()) {
+				if approvedIps.Contains(machine.IPAddresses[0]) {
 					approvedRoutes = append(approvedRoutes, advertisedRoute)
 				}
 			}
