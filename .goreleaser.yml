@@ -36,6 +36,7 @@ archives:
     format: binary
 
 source:
+  rlcp: true
   enabled: true
   name_template: "{{ .ProjectName }}_{{ .Version }}"
   format: tar.gz
@@ -63,7 +64,6 @@ nfpms:
     bindir: /usr/bin
     formats:
       - deb
-      # - rpm
     contents:
       - src: ./config-example.yaml
         dst: /etc/headscale/config.yaml
@@ -79,6 +79,36 @@ nfpms:
     scripts:
       postinstall: ./docs/packaging/postinstall.sh
       postremove: ./docs/packaging/postremove.sh
+
+kos:
+  - id: ghcr
+    build: headscale
+    base_image: gcr.io/distroless/base-debian11
+    repository: ghcr.io/juanfont/headscale
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+      - linux/arm/v6
+      - linux/arm/v5
+    tags:
+      - latest
+      - '{{.Tag}}'
+  - id: dockerhub
+    build: headscale
+    base_image: gcr.io/distroless/base-debian11
+    repository: headscale/headscale
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+      - linux/arm/v6
+      - linux/arm/v5
+    tags:
+      - latest
+      - '{{.Tag}}'
 
 checksum:
   name_template: "checksums.txt"
