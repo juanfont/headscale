@@ -6,6 +6,7 @@
 
 - Add environment flags to enable pprof (profiling) [#1382](https://github.com/juanfont/headscale/pull/1382)
   - Profiles are continously generated in our integration tests.
+- Move systemd service file to /usr/lib/systemd/system in `.deb` packages
 
 ## 0.22.1 (2023-04-20)
 
