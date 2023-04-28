@@ -82,7 +82,7 @@ nfpms:
 kos:
   - id: ghcr
     repository: ghcr.io/juanfont/headscale
-    base_image: gcr.io/distroless/base-debian11
+    base_image: gcr.io/distroless/base-debian12
     build: headscale
     main: ./cmd/headscale
     env:
@@ -92,33 +92,31 @@ kos:
       - linux/386
       - linux/arm64
       - linux/arm/v7
-      - linux/arm/v6
-      - linux/arm/v5
     tags:
       - latest
       - "{{ .Tag }}"
       - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
       - "{{ .Major }}.{{ .Minor }}"
       - "{{ .Major }}"
+      - "sha-{{ .ShortCommit }}"
       - "{{ if not .Prerelease }}stable{{ end }}"
 
   - id: dockerhub
     build: headscale
-    base_image: gcr.io/distroless/base-debian11
+    base_image: gcr.io/distroless/base-debian12
     repository: headscale/headscale
     platforms:
       - linux/amd64
       - linux/386
       - linux/arm64
       - linux/arm/v7
-      - linux/arm/v6
-      - linux/arm/v5
     tags:
       - latest
       - "{{ .Tag }}"
       - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
       - "{{ .Major }}.{{ .Minor }}"
       - "{{ .Major }}"
+      - "sha-{{ .ShortCommit }}"
       - "{{ if not .Prerelease }}stable{{ end }}"
 
 checksum:
