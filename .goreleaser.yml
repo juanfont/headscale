@@ -71,7 +71,7 @@ nfpms:
         file_info:
           mode: 0644
       - src: ./docs/packaging/headscale.systemd.service
-        dst: /etc/systemd/system/headscale.service
+        dst: /usr/lib/systemd/system/headscale.service
       - dst: /var/lib/headscale
         type: dir
       - dst: /var/run/headscale
