@@ -38,7 +38,6 @@ implements a _single_ Tailnet, which is typically what a single organisation, or
 home/personal setup would use.
 
 `headscale` uses terms that maps to Tailscale's control server, consult the
-[glossary](./docs/glossary.md) for explainations.
 
 ## Support
 
@@ -79,7 +78,7 @@ one of the maintainers.
 
 ## Running headscale
 
-Please have a look at the documentation under [`docs/`](docs/).
+Please have a look at the [`documentation`](https://headscale.net/).
 
 ## Graphical Control Panels
 
