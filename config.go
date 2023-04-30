@@ -161,6 +161,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetEnvPrefix("headscale")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+	
+	viper.SetDefault("skip_config_file", false)
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", http01ChallengeType)
@@ -202,10 +204,15 @@ func LoadConfig(path string, isFile bool) error {
 		return nil
 	}
 
-	if err := viper.ReadInConfig(); err != nil {
-		log.Warn().Err(err).Msg("Failed to read configuration from disk")
+	//skip reading config file if inside container
+	if viper.GetBool("skip_config_file") {
 
-		return fmt.Errorf("fatal error reading config file: %w", err)
+		if err := viper.ReadInConfig(); err != nil {
+			log.Warn().Err(err).Msg("Failed to read configuration from disk")
+
+			return fmt.Errorf("fatal error reading config file: %w", err)
+		}
+		
 	}
 
 	// Collect any validation errors and return them all at once
