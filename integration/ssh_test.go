@@ -424,26 +424,26 @@ func TestSSUserOnlyIsolation(t *testing.T) {
 	// TODO(kradalby,evenh): ACLs do currently not cover reject
 	// cases properly, and currently will accept all incomming connections
 	// as long as a rule is present.
-	//
-	// for _, client := range ssh1Clients {
-	// 	for _, peer := range ssh2Clients {
-	// 		if client.Hostname() == peer.Hostname() {
-	// 			continue
-	// 		}
-	//
-	// 		assertSSHPermissionDenied(t, client, peer)
-	// 	}
-	// }
-	//
-	// for _, client := range ssh2Clients {
-	// 	for _, peer := range ssh1Clients {
-	// 		if client.Hostname() == peer.Hostname() {
-	// 			continue
-	// 		}
-	//
-	// 		assertSSHPermissionDenied(t, client, peer)
-	// 	}
-	// }
+
+	for _, client := range ssh1Clients {
+		for _, peer := range ssh2Clients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
+
+	for _, client := range ssh2Clients {
+		for _, peer := range ssh1Clients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
 
 	for _, client := range ssh1Clients {
 		for _, peer := range ssh1Clients {

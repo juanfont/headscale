@@ -338,22 +338,42 @@ func (h *Headscale) generateSSHRules() ([]*tailcfg.SSHRule, error) {
 
 		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
 		for innerIndex, rawSrc := range sshACL.Sources {
-			expandedSrcs, err := expandAlias(
-				machines,
-				*h.aclPolicy,
-				rawSrc,
-				h.cfg.OIDC.StripEmaildomain,
-			)
-			if err != nil {
-				log.Error().
-					Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
-
-				return nil, err
-			}
-			for _, expandedSrc := range expandedSrcs {
+			if isWildcard(rawSrc) {
 				principals = append(principals, &tailcfg.SSHPrincipal{
-					NodeIP: expandedSrc,
+					Any: true,
 				})
+			} else if isGroup(rawSrc) {
+				users, err := expandGroup(*h.aclPolicy, rawSrc, h.cfg.OIDC.StripEmaildomain)
+				if err != nil {
+					log.Error().
+						Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
+
+					return nil, err
+				}
+
+				for _, user := range users {
+					principals = append(principals, &tailcfg.SSHPrincipal{
+						UserLogin: user,
+					})
+				}
+			} else {
+				expandedSrcs, err := expandAlias(
+					machines,
+					*h.aclPolicy,
+					rawSrc,
+					h.cfg.OIDC.StripEmaildomain,
+				)
+				if err != nil {
+					log.Error().
+						Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
+
+					return nil, err
+				}
+				for _, expandedSrc := range expandedSrcs {
+					principals = append(principals, &tailcfg.SSHPrincipal{
+						NodeIP: expandedSrc,
+					})
+				}
 			}
 		}
 
@@ -362,10 +382,9 @@ func (h *Headscale) generateSSHRules() ([]*tailcfg.SSHRule, error) {
 			userMap[user] = "="
 		}
 		rules = append(rules, &tailcfg.SSHRule{
-			RuleExpires: nil,
-			Principals:  principals,
-			SSHUsers:    userMap,
-			Action:      &action,
+			Principals: principals,
+			SSHUsers:   userMap,
+			Action:     &action,
 		})
 	}
 
@@ -541,7 +560,7 @@ func expandAlias(
 	stripEmailDomain bool,
 ) ([]string, error) {
 	ips := []string{}
-	if alias == "*" {
+	if isWildcard(alias) {
 		return []string{"*"}, nil
 	}
 
@@ -549,7 +568,7 @@ func expandAlias(
 		Str("alias", alias).
 		Msg("Expanding")
 
-	if strings.HasPrefix(alias, "group:") {
+	if isGroup(alias) {
 		users, err := expandGroup(aclPolicy, alias, stripEmailDomain)
 		if err != nil {
 			return ips, err
@@ -564,7 +583,7 @@ func expandAlias(
 		return ips, nil
 	}
 
-	if strings.HasPrefix(alias, "tag:") {
+	if isTag(alias) {
 		// check for forced tags
 		for _, machine := range machines {
 			if contains(machine.ForcedTags, alias) {
@@ -700,7 +719,7 @@ func excludeCorrectlyTaggedNodes(
 }
 
 func expandPorts(portsStr string, needsWildcard bool) (*[]tailcfg.PortRange, error) {
-	if portsStr == "*" {
+	if isWildcard(portsStr) {
 		return &[]tailcfg.PortRange{
 			{First: portRangeBegin, Last: portRangeEnd},
 		}, nil
@@ -775,7 +794,7 @@ func expandTagOwners(
 		)
 	}
 	for _, owner := range ows {
-		if strings.HasPrefix(owner, "group:") {
+		if isGroup(owner) {
 			gs, err := expandGroup(aclPolicy, owner, stripEmailDomain)
 			if err != nil {
 				return []string{}, err
@@ -806,7 +825,7 @@ func expandGroup(
 		)
 	}
 	for _, group := range aclGroups {
-		if strings.HasPrefix(group, "group:") {
+		if isGroup(group) {
 			return []string{}, fmt.Errorf(
 				"%w. A group cannot be composed of groups. https://tailscale.com/kb/1018/acls/#groups",
 				errInvalidGroup,
@@ -824,4 +843,20 @@ func expandGroup(
 	}
 
 	return outGroups, nil
+}
+
+func isWildcard(str string) bool {
+	return str == "*"
+}
+
+func isGroup(str string) bool {
+	return strings.HasPrefix(str, "group:")
+}
+
+func isAutoGroup(str string) bool {
+	return strings.HasPrefix(str, "autogroup:")
+}
+
+func isTag(str string) bool {
+	return strings.HasPrefix(str, "tag:")
 }
