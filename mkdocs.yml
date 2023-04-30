@@ -1,6 +1,6 @@
 site_name: Headscale
 site_url: https://juanfont.github.io/headscale
-edit_uri: blob/main/docs/  # Change the master branch to main as we are using main as a main branch
+edit_uri: blob/main/docs/ # Change the master branch to main as we are using main as a main branch
 site_author: Headscale authors
 site_description: >-
   An open source, self-hosted implementation of the Tailscale control server.
