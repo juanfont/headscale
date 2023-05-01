@@ -12,7 +12,7 @@ import (
 	"tailscale.com/types/key"
 )
 
-// RegistrationHandler handles the actual registration process of a machine
+// RegistrationHandler handles the actual registration process of a node
 // Endpoint /machine/:mkey.
 func (h *Headscale) RegistrationHandler(
 	writer http.ResponseWriter,
@@ -38,7 +38,7 @@ func (h *Headscale) RegistrationHandler(
 			Caller().
 			Err(err).
 			Msg("Cannot parse machine key")
-		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
+		nodeRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		http.Error(writer, "Cannot parse machine key", http.StatusBadRequest)
 
 		return
@@ -50,7 +50,7 @@ func (h *Headscale) RegistrationHandler(
 			Caller().
 			Err(err).
 			Msg("Cannot decode message")
-		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
+		nodeRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		http.Error(writer, "Cannot decode message", http.StatusBadRequest)
 
 		return

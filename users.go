@@ -32,7 +32,7 @@ var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
 // User is the way Headscale implements the concept of users in Tailscale
 //
 // At the end of the day, users in Tailscale are some kind of 'bubbles' or users
-// that contain our machines.
+// that contain our nodes.
 type User struct {
 	gorm.Model
 	Name string `gorm:"unique"`
@@ -63,18 +63,18 @@ func (h *Headscale) CreateUser(name string) (*User, error) {
 }
 
 // DestroyUser destroys a User. Returns error if the User does
-// not exist or if there are machines associated with it.
+// not exist or if there are nodes associated with it.
 func (h *Headscale) DestroyUser(name string) error {
 	user, err := h.GetUser(name)
 	if err != nil {
 		return ErrUserNotFound
 	}
 
-	machines, err := h.ListMachinesByUser(name)
+	nodes, err := h.ListNodesByUser(name)
 	if err != nil {
 		return err
 	}
-	if len(machines) > 0 {
+	if len(nodes) > 0 {
 		return ErrUserStillHasNodes
 	}
 
@@ -148,8 +148,8 @@ func (h *Headscale) ListUsers() ([]User, error) {
 	return users, nil
 }
 
-// ListMachinesByUser gets all the nodes in a given user.
-func (h *Headscale) ListMachinesByUser(name string) ([]Machine, error) {
+// ListNodesByUser gets all the nodes in a given user.
+func (h *Headscale) ListNodesByUser(name string) ([]Node, error) {
 	err := CheckForFQDNRules(name)
 	if err != nil {
 		return nil, err
@@ -159,16 +159,16 @@ func (h *Headscale) ListMachinesByUser(name string) ([]Machine, error) {
 		return nil, err
 	}
 
-	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&Machine{UserID: user.ID}).Find(&machines).Error; err != nil {
+	nodes := []Node{}
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&Node{UserID: user.ID}).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 
-	return machines, nil
+	return nodes, nil
 }
 
-// SetMachineUser assigns a Machine to a user.
-func (h *Headscale) SetMachineUser(machine *Machine, username string) error {
+// SetNodeUser assigns a Node to a user.
+func (h *Headscale) SetNodeUser(node *Node, username string) error {
 	err := CheckForFQDNRules(username)
 	if err != nil {
 		return err
@@ -177,8 +177,8 @@ func (h *Headscale) SetMachineUser(machine *Machine, username string) error {
 	if err != nil {
 		return err
 	}
-	machine.User = *user
-	if result := h.db.Save(&machine); result.Error != nil {
+	node.User = *user
+	if result := h.db.Save(&node); result.Error != nil {
 		return result.Error
 	}
 
@@ -212,11 +212,11 @@ func (n *User) toTailscaleLogin() *tailcfg.Login {
 }
 
 func (h *Headscale) getMapResponseUserProfiles(
-	machine Machine,
-	peers Machines,
+	node Node,
+	peers Nodes,
 ) []tailcfg.UserProfile {
 	userMap := make(map[string]User)
-	userMap[machine.User.Name] = machine.User
+	userMap[node.User.Name] = node.User
 	for _, peer := range peers {
 		userMap[peer.User.Name] = peer.User // not worth checking if already is there
 	}

@@ -9,13 +9,13 @@ import (
 
 func (h *Headscale) generateMapResponse(
 	mapRequest tailcfg.MapRequest,
-	machine *Machine,
+	node *Node,
 ) (*tailcfg.MapResponse, error) {
 	log.Trace().
 		Str("func", "generateMapResponse").
-		Str("machine", mapRequest.Hostinfo.Hostname).
+		Str("node", mapRequest.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := h.toNode(*machine, h.cfg.BaseDomain, h.cfg.DNSConfig)
+	tailNode, err := h.toNode(*node, h.cfg.BaseDomain, h.cfg.DNSConfig)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -26,7 +26,7 @@ func (h *Headscale) generateMapResponse(
 		return nil, err
 	}
 
-	peers, err := h.getValidPeers(machine)
+	peers, err := h.getValidPeers(node)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -37,7 +37,7 @@ func (h *Headscale) generateMapResponse(
 		return nil, err
 	}
 
-	profiles := h.getMapResponseUserProfiles(*machine, peers)
+	profiles := h.getMapResponseUserProfiles(*node, peers)
 
 	nodePeers, err := h.toNodes(peers, h.cfg.BaseDomain, h.cfg.DNSConfig)
 	if err != nil {
@@ -53,7 +53,7 @@ func (h *Headscale) generateMapResponse(
 	dnsConfig := getMapResponseDNSConfig(
 		h.cfg.DNSConfig,
 		h.cfg.BaseDomain,
-		*machine,
+		*node,
 		peers,
 	)
 
@@ -61,7 +61,7 @@ func (h *Headscale) generateMapResponse(
 
 	resp := tailcfg.MapResponse{
 		KeepAlive: false,
-		Node:      node,
+		Node:      tailNode,
 
 		// TODO: Only send if updated
 		DERPMap: h.DERPMap,
@@ -105,7 +105,7 @@ func (h *Headscale) generateMapResponse(
 
 	log.Trace().
 		Str("func", "generateMapResponse").
-		Str("machine", mapRequest.Hostinfo.Hostname).
+		Str("node", mapRequest.Hostinfo.Hostname).
 		// Interface("payload", resp).
 		Msgf("Generated map response: %s", tailMapResponseToString(resp))
 

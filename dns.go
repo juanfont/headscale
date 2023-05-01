@@ -159,22 +159,22 @@ func generateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 }
 
 // If any nextdns DoH resolvers are present in the list of resolvers it will
-// take metadata from the machine metadata and instruct tailscale to add it
+// take metadata from the node metadata and instruct tailscale to add it
 // to the requests. This makes it possible to identify from which device the
 // requests come in the NextDNS dashboard.
 //
 // This will produce a resolver like:
 // `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
-func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine Machine) {
+func addNextDNSMetadata(resolvers []*dnstype.Resolver, node Node) {
 	for _, resolver := range resolvers {
 		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
 			attrs := url.Values{
-				"device_name":  []string{machine.Hostname},
-				"device_model": []string{machine.HostInfo.OS},
+				"device_name":  []string{node.Hostname},
+				"device_model": []string{node.HostInfo.OS},
 			}
 
-			if len(machine.IPAddresses) > 0 {
-				attrs.Add("device_ip", machine.IPAddresses[0].String())
+			if len(node.IPAddresses) > 0 {
+				attrs.Add("device_ip", node.IPAddresses[0].String())
 			}
 
 			resolver.Addr = fmt.Sprintf("%s?%s", resolver.Addr, attrs.Encode())
@@ -185,8 +185,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine Machine) {
 func getMapResponseDNSConfig(
 	dnsConfigOrig *tailcfg.DNSConfig,
 	baseDomain string,
-	machine Machine,
-	peers Machines,
+	node Node,
+	peers Nodes,
 ) *tailcfg.DNSConfig {
 	var dnsConfig *tailcfg.DNSConfig = dnsConfigOrig.Clone()
 	if dnsConfigOrig != nil && dnsConfigOrig.Proxied { // if MagicDNS is enabled
@@ -195,13 +195,13 @@ func getMapResponseDNSConfig(
 			dnsConfig.Domains,
 			fmt.Sprintf(
 				"%s.%s",
-				machine.User.Name,
+				node.User.Name,
 				baseDomain,
 			),
 		)
 
 		userSet := mapset.NewSet[User]()
-		userSet.Add(machine.User)
+		userSet.Add(node.User)
 		for _, p := range peers {
 			userSet.Add(p.User)
 		}
@@ -213,7 +213,7 @@ func getMapResponseDNSConfig(
 		dnsConfig = dnsConfigOrig
 	}
 
-	addNextDNSMetadata(dnsConfig.Resolvers, machine)
+	addNextDNSMetadata(dnsConfig.Resolvers, node)
 
 	return dnsConfig
 }

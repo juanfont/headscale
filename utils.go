@@ -139,8 +139,8 @@ func decode(
 	return nil
 }
 
-func (h *Headscale) getAvailableIPs() (MachineAddresses, error) {
-	var ips MachineAddresses
+func (h *Headscale) getAvailableIPs() (NodeAddresses, error) {
+	var ips NodeAddresses
 	var err error
 	ipPrefixes := h.cfg.IPPrefixes
 	for _, ipPrefix := range ipPrefixes {
@@ -201,12 +201,12 @@ func (h *Headscale) getUsedIPs() (*netipx.IPSet, error) {
 	// but this was quick to get running and it should be enough
 	// to begin experimenting with a dual stack tailnet.
 	var addressesSlices []string
-	h.db.Model(&Machine{}).Pluck("ip_addresses", &addressesSlices)
+	h.db.Model(&Node{}).Pluck("ip_addresses", &addressesSlices)
 
 	var ips netipx.IPSetBuilder
 	for _, slice := range addressesSlices {
-		var machineAddresses MachineAddresses
-		err := machineAddresses.Scan(slice)
+		var nodeAddresses NodeAddresses
+		err := nodeAddresses.Scan(slice)
 		if err != nil {
 			return &netipx.IPSet{}, fmt.Errorf(
 				"failed to read ip from database: %w",
@@ -214,7 +214,7 @@ func (h *Headscale) getUsedIPs() (*netipx.IPSet, error) {
 			)
 		}
 
-		for _, ip := range machineAddresses {
+		for _, ip := range nodeAddresses {
 			ips.Add(ip)
 		}
 	}

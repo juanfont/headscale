@@ -20,7 +20,7 @@ const (
 	RegisterMethodOIDC                       = "oidc"
 	RegisterMethodCLI                        = "cli"
 	ErrRegisterMethodCLIDoesNotSupportExpire = Error(
-		"machines registered with CLI does not support expire",
+		"node registered with CLI does not support expire",
 	)
 )
 
@@ -74,9 +74,9 @@ var registerWebAPITemplate = template.Must(
 	</head>
 	<body>
 		<h1>headscale</h1>
-		<h2>Machine registration</h2>
+		<h2>Node registration</h2>
 		<p>
-			Run the command below in the headscale server to add this machine to your network:
+			Run the command below in the headscale server to add this node to your network:
 		</p>
 		<pre><code>headscale nodes register --user USERNAME --key {{.Key}}</code></pre>
 	</body>

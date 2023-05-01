@@ -41,27 +41,27 @@ func (t *ts2021App) NoisePollNetMapHandler(
 		return
 	}
 
-	machine, err := t.headscale.GetMachineByAnyKey(t.conn.Peer(), mapRequest.NodeKey, key.NodePublic{})
+	node, err := t.headscale.GetNodeByAnyKey(t.conn.Peer(), mapRequest.NodeKey, key.NodePublic{})
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
 				Str("handler", "NoisePollNetMap").
-				Msgf("Ignoring request, cannot find machine with key %s", mapRequest.NodeKey.String())
+				Msgf("Ignoring request, cannot find node with key %s", mapRequest.NodeKey.String())
 			http.Error(writer, "Internal error", http.StatusNotFound)
 
 			return
 		}
 		log.Error().
 			Str("handler", "NoisePollNetMap").
-			Msgf("Failed to fetch machine from the database with node key: %s", mapRequest.NodeKey.String())
+			Msgf("Failed to fetch node from the database with node key: %s", mapRequest.NodeKey.String())
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 
 		return
 	}
 	log.Debug().
 		Str("handler", "NoisePollNetMap").
-		Str("machine", machine.Hostname).
-		Msg("A machine is entering polling via the Noise protocol")
+		Str("node", node.Hostname).
+		Msg("A node is entering polling via the Noise protocol")
 
-	t.headscale.handlePollCommon(writer, req.Context(), machine, mapRequest, true)
+	t.headscale.handlePollCommon(writer, req.Context(), node, mapRequest, true)
 }

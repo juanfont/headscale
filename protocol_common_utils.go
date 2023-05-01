@@ -14,10 +14,10 @@ import (
 
 func (h *Headscale) getMapResponseData(
 	mapRequest tailcfg.MapRequest,
-	machine *Machine,
+	node *Node,
 	isNoise bool,
 ) ([]byte, error) {
-	mapResponse, err := h.generateMapResponse(mapRequest, machine)
+	mapResponse, err := h.generateMapResponse(mapRequest, node)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,7 @@ func (h *Headscale) getMapResponseData(
 	}
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)))
+	err = machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(node.MachineKey)))
 	if err != nil {
 		log.Error().
 			Caller().
@@ -42,7 +42,7 @@ func (h *Headscale) getMapResponseData(
 
 func (h *Headscale) getMapKeepAliveResponseData(
 	mapRequest tailcfg.MapRequest,
-	machine *Machine,
+	node *Node,
 	isNoise bool,
 ) ([]byte, error) {
 	keepAliveResponse := tailcfg.MapResponse{
@@ -54,7 +54,7 @@ func (h *Headscale) getMapKeepAliveResponseData(
 	}
 
 	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)))
+	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(node.MachineKey)))
 	if err != nil {
 		log.Error().
 			Caller().

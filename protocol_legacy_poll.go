@@ -67,12 +67,12 @@ func (h *Headscale) PollNetMapHandler(
 		return
 	}
 
-	machine, err := h.GetMachineByMachineKey(machineKey)
+	node, err := h.GetNodeByMachineKey(machineKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
 				Str("handler", "PollNetMap").
-				Msgf("Ignoring request, cannot find machine with key %s", machineKey.String())
+				Msgf("Ignoring request, cannot find node with mkey %s", machineKey.String())
 
 			http.Error(writer, "", http.StatusUnauthorized)
 
@@ -80,7 +80,7 @@ func (h *Headscale) PollNetMapHandler(
 		}
 		log.Error().
 			Str("handler", "PollNetMap").
-			Msgf("Failed to fetch machine from the database with Machine key: %s", machineKey.String())
+			Msgf("Failed to fetch node from the database with Machine key: %s", machineKey.String())
 		http.Error(writer, "", http.StatusInternalServerError)
 
 		return
@@ -89,8 +89,8 @@ func (h *Headscale) PollNetMapHandler(
 	log.Trace().
 		Str("handler", "PollNetMap").
 		Str("id", machineKeyStr).
-		Str("machine", machine.Hostname).
-		Msg("A machine is entering polling via the legacy protocol")
+		Str("machine", node.Hostname).
+		Msg("A node is entering polling via the legacy protocol")
 
-	h.handlePollCommon(writer, req.Context(), machine, mapRequest, false)
+	h.handlePollCommon(writer, req.Context(), node, mapRequest, false)
 }

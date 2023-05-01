@@ -211,7 +211,7 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
-// expireEphemeralNodes deletes ephemeral machine records that have not been
+// expireEphemeralNodes deletes ephemeral node records that have not been
 // seen for longer than h.cfg.EphemeralNodeInactivityTimeout.
 func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
@@ -220,12 +220,12 @@ func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 	}
 }
 
-// expireExpiredMachines expires machines that have an explicit expiry set
+// expireExpiredNodes expires node that have an explicit expiry set
 // after that expiry time has passed.
-func (h *Headscale) expireExpiredMachines(milliSeconds int64) {
+func (h *Headscale) expireExpiredNodes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 	for range ticker.C {
-		h.expireExpiredMachinesWorker()
+		h.expireExpiredNodesWorker()
 	}
 }
 
@@ -248,32 +248,32 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 	}
 
 	for _, user := range users {
-		machines, err := h.ListMachinesByUser(user.Name)
+		nodes, err := h.ListNodesByUser(user.Name)
 		if err != nil {
 			log.Error().
 				Err(err).
 				Str("user", user.Name).
-				Msg("Error listing machines in user")
+				Msg("Error listing nodes in user")
 
 			return
 		}
 
 		expiredFound := false
-		for _, machine := range machines {
-			if machine.isEphemeral() && machine.LastSeen != nil &&
+		for _, node := range nodes {
+			if node.isEphemeral() && node.LastSeen != nil &&
 				time.Now().
-					After(machine.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
+					After(node.LastSeen.Add(h.cfg.EphemeralNodeInactivityTimeout)) {
 				expiredFound = true
 				log.Info().
-					Str("machine", machine.Hostname).
+					Str("node", node.Hostname).
 					Msg("Ephemeral client removed from database")
 
-				err = h.db.Unscoped().Delete(machine).Error
+				err = h.db.Unscoped().Delete(node).Error
 				if err != nil {
 					log.Error().
 						Err(err).
-						Str("machine", machine.Hostname).
-						Msg("🤮 Cannot delete ephemeral machine from the database")
+						Str("node", node.Hostname).
+						Msg("Cannot delete ephemeral node from the database")
 				}
 			}
 		}
@@ -284,7 +284,7 @@ func (h *Headscale) expireEphemeralNodesWorker() {
 	}
 }
 
-func (h *Headscale) expireExpiredMachinesWorker() {
+func (h *Headscale) expireExpiredNodesWorker() {
 	users, err := h.ListUsers()
 	if err != nil {
 		log.Error().Err(err).Msg("Error listing users")
@@ -293,34 +293,34 @@ func (h *Headscale) expireExpiredMachinesWorker() {
 	}
 
 	for _, user := range users {
-		machines, err := h.ListMachinesByUser(user.Name)
+		nodes, err := h.ListNodesByUser(user.Name)
 		if err != nil {
 			log.Error().
 				Err(err).
 				Str("user", user.Name).
-				Msg("Error listing machines in user")
+				Msg("Error listing nodes in user")
 
 			return
 		}
 
 		expiredFound := false
-		for index, machine := range machines {
-			if machine.isExpired() &&
-				machine.Expiry.After(h.getLastStateChange(user)) {
+		for index, node := range nodes {
+			if node.isExpired() &&
+				node.Expiry.After(h.getLastStateChange(user)) {
 				expiredFound = true
 
-				err := h.ExpireMachine(&machines[index])
+				err := h.ExpireNode(&nodes[index])
 				if err != nil {
 					log.Error().
 						Err(err).
-						Str("machine", machine.Hostname).
-						Str("name", machine.GivenName).
-						Msg("🤮 Cannot expire machine")
+						Str("node", node.Hostname).
+						Str("name", node.GivenName).
+						Msg("Cannot expire node")
 				} else {
 					log.Info().
-						Str("machine", machine.Hostname).
-						Str("name", machine.GivenName).
-						Msg("Machine successfully expired")
+						Str("node", node.Hostname).
+						Str("name", node.GivenName).
+						Msg("Node successfully expired")
 				}
 			}
 		}
@@ -552,7 +552,7 @@ func (h *Headscale) Serve() error {
 	}
 
 	go h.expireEphemeralNodes(updateInterval)
-	go h.expireExpiredMachines(updateInterval)
+	go h.expireExpiredNodes(updateInterval)
 
 	go h.failoverSubnetRoutes(updateInterval)
 

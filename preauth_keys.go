@@ -193,12 +193,12 @@ func (h *Headscale) checkKeyValidity(k string) (*PreAuthKey, error) {
 		return &pak, nil
 	}
 
-	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Where(&Machine{AuthKeyID: uint(pak.ID)}).Find(&machines).Error; err != nil {
+	nodes := []Node{}
+	if err := h.db.Preload("AuthKey").Where(&Node{AuthKeyID: uint(pak.ID)}).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 
-	if len(machines) != 0 || pak.Used {
+	if len(nodes) != 0 || pak.Used {
 		return nil, ErrSingleUseAuthKeyHasBeenUsed
 	}
 

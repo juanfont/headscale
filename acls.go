@@ -119,7 +119,7 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 }
 
 func (h *Headscale) UpdateACLRules() error {
-	machines, err := h.ListMachines()
+	nodes, err := h.ListNodes()
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func (h *Headscale) UpdateACLRules() error {
 		return errEmptyPolicy
 	}
 
-	rules, err := generateACLRules(machines, *h.aclPolicy, h.cfg.OIDC.StripEmaildomain)
+	rules, err := generateACLRules(nodes, *h.aclPolicy, h.cfg.OIDC.StripEmaildomain)
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func expandACLPeerAddr(srcIP string) []string {
 }
 
 func generateACLRules(
-	machines []Machine,
+	nodes []Node,
 	aclPolicy ACLPolicy,
 	stripEmaildomain bool,
 ) ([]tailcfg.FilterRule, error) {
@@ -238,7 +238,7 @@ func generateACLRules(
 
 		srcIPs := []string{}
 		for innerIndex, src := range acl.Sources {
-			srcs, err := generateACLPolicySrc(machines, aclPolicy, src, stripEmaildomain)
+			srcs, err := generateACLPolicySrc(nodes, aclPolicy, src, stripEmaildomain)
 			if err != nil {
 				log.Error().
 					Msgf("Error parsing ACL %d, Source %d", index, innerIndex)
@@ -259,7 +259,7 @@ func generateACLRules(
 		destPorts := []tailcfg.NetPortRange{}
 		for innerIndex, dest := range acl.Destinations {
 			dests, err := generateACLPolicyDest(
-				machines,
+				nodes,
 				aclPolicy,
 				dest,
 				needsWildcard,
@@ -291,7 +291,7 @@ func (h *Headscale) generateSSHRules() ([]*tailcfg.SSHRule, error) {
 		return nil, errEmptyPolicy
 	}
 
-	machines, err := h.ListMachines()
+	nodes, err := h.ListNodes()
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +339,7 @@ func (h *Headscale) generateSSHRules() ([]*tailcfg.SSHRule, error) {
 		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
 		for innerIndex, rawSrc := range sshACL.Sources {
 			expandedSrcs, err := expandAlias(
-				machines,
+				nodes,
 				*h.aclPolicy,
 				rawSrc,
 				h.cfg.OIDC.StripEmaildomain,
@@ -390,16 +390,16 @@ func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {
 }
 
 func generateACLPolicySrc(
-	machines []Machine,
+	nodes []Node,
 	aclPolicy ACLPolicy,
 	src string,
 	stripEmaildomain bool,
 ) ([]string, error) {
-	return expandAlias(machines, aclPolicy, src, stripEmaildomain)
+	return expandAlias(nodes, aclPolicy, src, stripEmaildomain)
 }
 
 func generateACLPolicyDest(
-	machines []Machine,
+	nodes []Node,
 	aclPolicy ACLPolicy,
 	dest string,
 	needsWildcard bool,
@@ -449,7 +449,7 @@ func generateACLPolicyDest(
 	}
 
 	expanded, err := expandAlias(
-		machines,
+		nodes,
 		aclPolicy,
 		alias,
 		stripEmaildomain,
@@ -535,7 +535,7 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 // - a cidr
 // and transform these in IPAddresses.
 func expandAlias(
-	machines Machines,
+	nodes Nodes,
 	aclPolicy ACLPolicy,
 	alias string,
 	stripEmailDomain bool,
@@ -555,7 +555,7 @@ func expandAlias(
 			return ips, err
 		}
 		for _, n := range users {
-			nodes := filterMachinesByUser(machines, n)
+			nodes := filterNodesByUser(nodes, n)
 			for _, node := range nodes {
 				ips = append(ips, node.IPAddresses.ToStringSlice()...)
 			}
@@ -566,9 +566,9 @@ func expandAlias(
 
 	if strings.HasPrefix(alias, "tag:") {
 		// check for forced tags
-		for _, machine := range machines {
-			if contains(machine.ForcedTags, alias) {
-				ips = append(ips, machine.IPAddresses.ToStringSlice()...)
+		for _, node := range nodes {
+			if contains(node.ForcedTags, alias) {
+				ips = append(ips, node.IPAddresses.ToStringSlice()...)
 			}
 		}
 
@@ -590,13 +590,13 @@ func expandAlias(
 			}
 		}
 
-		// filter out machines per tag owner
+		// filter out nodes per tag owner
 		for _, user := range owners {
-			machines := filterMachinesByUser(machines, user)
-			for _, machine := range machines {
-				hi := machine.GetHostInfo()
+			nodes := filterNodesByUser(nodes, user)
+			for _, node := range nodes {
+				hi := node.GetHostInfo()
 				if contains(hi.RequestTags, alias) {
-					ips = append(ips, machine.IPAddresses.ToStringSlice()...)
+					ips = append(ips, node.IPAddresses.ToStringSlice()...)
 				}
 			}
 		}
@@ -605,10 +605,10 @@ func expandAlias(
 	}
 
 	// if alias is a user
-	nodes := filterMachinesByUser(machines, alias)
-	nodes = excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias, stripEmailDomain)
+	filteredNodes := filterNodesByUser(nodes, alias)
+	filteredNodes = excludeCorrectlyTaggedNodes(aclPolicy, filteredNodes, alias, stripEmailDomain)
 
-	for _, n := range nodes {
+	for _, n := range filteredNodes {
 		ips = append(ips, n.IPAddresses.ToStringSlice()...)
 	}
 	if len(ips) > 0 {
@@ -619,17 +619,17 @@ func expandAlias(
 	if h, ok := aclPolicy.Hosts[alias]; ok {
 		log.Trace().Str("host", h.String()).Msg("expandAlias got hosts entry")
 
-		return expandAlias(machines, aclPolicy, h.String(), stripEmailDomain)
+		return expandAlias(filteredNodes, aclPolicy, h.String(), stripEmailDomain)
 	}
 
 	// if alias is an IP
 	if ip, err := netip.ParseAddr(alias); err == nil {
 		log.Trace().Str("ip", ip.String()).Msg("expandAlias got ip")
 		ips := []string{ip.String()}
-		matches := machines.FilterByIP(ip)
+		matches := nodes.FilterByIP(ip)
 
-		for _, machine := range matches {
-			ips = append(ips, machine.IPAddresses.ToStringSlice()...)
+		for _, node := range matches {
+			ips = append(ips, node.IPAddresses.ToStringSlice()...)
 		}
 
 		return lo.Uniq(ips), nil
@@ -640,12 +640,12 @@ func expandAlias(
 		val := []string{cidr.String()}
 		// This is suboptimal and quite expensive, but if we only add the cidr, we will miss all the relevant IPv6
 		// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
-		for _, machine := range machines {
-			for _, ip := range machine.IPAddresses {
+		for _, node := range nodes {
+			for _, ip := range node.IPAddresses {
 				// log.Trace().
-				// 	Msgf("checking if machine ip (%s) is part of cidr (%s): %v, is single ip cidr (%v), addr: %s", ip.String(), cidr.String(), cidr.Contains(ip), cidr.IsSingleIP(), cidr.Addr().String())
+				// 	Msgf("checking if node ip (%s) is part of cidr (%s): %v, is single ip cidr (%v), addr: %s", ip.String(), cidr.String(), cidr.Contains(ip), cidr.IsSingleIP(), cidr.Addr().String())
 				if cidr.Contains(ip) {
-					val = append(val, machine.IPAddresses.ToStringSlice()...)
+					val = append(val, node.IPAddresses.ToStringSlice()...)
 				}
 			}
 		}
@@ -663,11 +663,11 @@ func expandAlias(
 // we assume in this function that we only have nodes from 1 user.
 func excludeCorrectlyTaggedNodes(
 	aclPolicy ACLPolicy,
-	nodes []Machine,
+	nodes []Node,
 	user string,
 	stripEmailDomain bool,
-) []Machine {
-	out := []Machine{}
+) []Node {
+	out := []Node{}
 	tags := []string{}
 	for tag := range aclPolicy.TagOwners {
 		owners, _ := expandTagOwners(aclPolicy, user, stripEmailDomain)
@@ -676,9 +676,9 @@ func excludeCorrectlyTaggedNodes(
 			tags = append(tags, tag)
 		}
 	}
-	// for each machine if tag is in tags list, don't append it.
-	for _, machine := range nodes {
-		hi := machine.GetHostInfo()
+	// for each node if tag is in tags list, don't append it.
+	for _, node := range nodes {
+		hi := node.GetHostInfo()
 
 		found := false
 		for _, t := range hi.RequestTags {
@@ -688,11 +688,11 @@ func excludeCorrectlyTaggedNodes(
 				break
 			}
 		}
-		if len(machine.ForcedTags) > 0 {
+		if len(node.ForcedTags) > 0 {
 			found = true
 		}
 		if !found {
-			out = append(out, machine)
+			out = append(out, node)
 		}
 	}
 
@@ -747,11 +747,11 @@ func expandPorts(portsStr string, needsWildcard bool) (*[]tailcfg.PortRange, err
 	return &ports, nil
 }
 
-func filterMachinesByUser(machines []Machine, user string) []Machine {
-	out := []Machine{}
-	for _, machine := range machines {
-		if machine.User.Name == user {
-			out = append(out, machine)
+func filterNodesByUser(nodes []Node, user string) []Node {
+	out := []Node{}
+	for _, node := range nodes {
+		if node.User.Name == user {
+			out = append(out, node)
 		}
 	}
 
