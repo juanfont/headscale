@@ -254,10 +254,10 @@ dns_config:
   # `hostname.user.base_domain` (e.g., _myhost.myuser.example.com_).
   base_domain: example.com
 
-  # Defines if a tagged node should ditch the user in magic dns FQDN.
+  # Defines if a tagged node should ditch the user in MagicDNS FQDN.
   # Would result in `<machine.given_name>.<base_domain>` instead of 
   # `<machine.given_name>.<machine.user.name>.<base_domain>`
-  remove_user_from_tagged_DNS: false
+  remove_user_from_tagged_dns: false
 
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:

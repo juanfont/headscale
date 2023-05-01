@@ -486,8 +486,8 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string, bool) {
 		}
 
 		var removeUserFromTaggedDNS bool
-		if viper.IsSet("dns_config.remove_user_from_tagged_DNS") {
-			removeUserFromTaggedDNS = viper.GetBool("dns_config.remove_user_from_tagged_DNS")
+		if viper.IsSet("dns_config.remove_user_from_tagged_dns") {
+			removeUserFromTaggedDNS = viper.GetBool("dns_config.remove_user_from_tagged_dns")
 		} else {
 			removeUserFromTaggedDNS = false // does not really matter when MagicDNS is not enabled
 		}
