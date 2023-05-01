@@ -43,49 +43,53 @@ func (h *Headscale) initDB() error {
 
 	_ = db.Migrator().RenameTable("namespaces", "users")
 
+	// the big rename from Machine to Node
+	_ = db.Migrator().RenameTable("machines", "nodes")
+	_ = db.Migrator().RenameColumn(&Route{}, "machine_id", "node_id")
+
 	err = db.AutoMigrate(&User{})
 	if err != nil {
 		return err
 	}
 
-	_ = db.Migrator().RenameColumn(&Machine{}, "namespace_id", "user_id")
+	_ = db.Migrator().RenameColumn(&Node{}, "namespace_id", "user_id")
 	_ = db.Migrator().RenameColumn(&PreAuthKey{}, "namespace_id", "user_id")
 
-	_ = db.Migrator().RenameColumn(&Machine{}, "ip_address", "ip_addresses")
-	_ = db.Migrator().RenameColumn(&Machine{}, "name", "hostname")
+	_ = db.Migrator().RenameColumn(&Node{}, "ip_address", "ip_addresses")
+	_ = db.Migrator().RenameColumn(&Node{}, "name", "hostname")
 
 	// GivenName is used as the primary source of DNS names, make sure
 	// the field is populated and normalized if it was not when the
-	// machine was registered.
-	_ = db.Migrator().RenameColumn(&Machine{}, "nickname", "given_name")
+	// node was registered.
+	_ = db.Migrator().RenameColumn(&Node{}, "nickname", "given_name")
 
-	// If the Machine table has a column for registered,
+	// If the Node table has a column for registered,
 	// find all occourences of "false" and drop them. Then
 	// remove the column.
-	if db.Migrator().HasColumn(&Machine{}, "registered") {
+	if db.Migrator().HasColumn(&Node{}, "registered") {
 		log.Info().
-			Msg(`Database has legacy "registered" column in machine, removing...`)
+			Msg(`Database has legacy "registered" column in node, removing...`)
 
-		machines := Machines{}
-		if err := h.db.Not("registered").Find(&machines).Error; err != nil {
+		nodes := Nodes{}
+		if err := h.db.Not("registered").Find(&nodes).Error; err != nil {
 			log.Error().Err(err).Msg("Error accessing db")
 		}
 
-		for _, machine := range machines {
+		for _, node := range nodes {
 			log.Info().
-				Str("machine", machine.Hostname).
-				Str("machine_key", machine.MachineKey).
-				Msg("Deleting unregistered machine")
-			if err := h.db.Delete(&Machine{}, machine.ID).Error; err != nil {
+				Str("node", node.Hostname).
+				Str("machine_key", node.MachineKey).
+				Msg("Deleting unregistered node")
+			if err := h.db.Delete(&Node{}, node.ID).Error; err != nil {
 				log.Error().
 					Err(err).
-					Str("machine", machine.Hostname).
-					Str("machine_key", machine.MachineKey).
-					Msg("Error deleting unregistered machine")
+					Str("node", node.Hostname).
+					Str("machine_key", node.MachineKey).
+					Msg("Error deleting unregistered node")
 			}
 		}
 
-		err := db.Migrator().DropColumn(&Machine{}, "registered")
+		err := db.Migrator().DropColumn(&Node{}, "registered")
 		if err != nil {
 			log.Error().Err(err).Msg("Error dropping registered column")
 		}
@@ -96,21 +100,21 @@ func (h *Headscale) initDB() error {
 		return err
 	}
 
-	if db.Migrator().HasColumn(&Machine{}, "enabled_routes") {
-		log.Info().Msgf("Database has legacy enabled_routes column in machine, migrating...")
+	if db.Migrator().HasColumn(&Node{}, "enabled_routes") {
+		log.Info().Msgf("Database has legacy enabled_routes column in node, migrating...")
 
-		type MachineAux struct {
+		type NodeAux struct {
 			ID            uint64
 			EnabledRoutes IPPrefixes
 		}
 
-		machinesAux := []MachineAux{}
-		err := db.Table("machines").Select("id, enabled_routes").Scan(&machinesAux).Error
+		nodesAux := []NodeAux{}
+		err := db.Table("nodes").Select("id, enabled_routes").Scan(&nodesAux).Error
 		if err != nil {
 			log.Fatal().Err(err).Msg("Error accessing db")
 		}
-		for _, machine := range machinesAux {
-			for _, prefix := range machine.EnabledRoutes {
+		for _, node := range nodesAux {
+			for _, prefix := range node.EnabledRoutes {
 				if err != nil {
 					log.Error().
 						Err(err).
@@ -120,8 +124,8 @@ func (h *Headscale) initDB() error {
 					continue
 				}
 
-				err = db.Preload("Machine").
-					Where("machine_id = ? AND prefix = ?", machine.ID, IPPrefix(prefix)).
+				err = db.Preload("Node").
+					Where("node_id = ? AND prefix = ?", node.ID, IPPrefix(prefix)).
 					First(&Route{}).
 					Error
 				if err == nil {
@@ -133,7 +137,7 @@ func (h *Headscale) initDB() error {
 				}
 
 				route := Route{
-					MachineID:  machine.ID,
+					NodeID:     node.ID,
 					Advertised: true,
 					Enabled:    true,
 					Prefix:     IPPrefix(prefix),
@@ -142,51 +146,51 @@ func (h *Headscale) initDB() error {
 					log.Error().Err(err).Msg("Error creating route")
 				} else {
 					log.Info().
-						Uint64("machine_id", route.MachineID).
+						Uint64("node_id", route.NodeID).
 						Str("prefix", prefix.String()).
 						Msg("Route migrated")
 				}
 			}
 		}
 
-		err = db.Migrator().DropColumn(&Machine{}, "enabled_routes")
+		err = db.Migrator().DropColumn(&Node{}, "enabled_routes")
 		if err != nil {
 			log.Error().Err(err).Msg("Error dropping enabled_routes column")
 		}
 	}
 
-	err = db.AutoMigrate(&Machine{})
+	err = db.AutoMigrate(&Node{})
 	if err != nil {
 		return err
 	}
 
-	if db.Migrator().HasColumn(&Machine{}, "given_name") {
-		machines := Machines{}
-		if err := h.db.Find(&machines).Error; err != nil {
+	if db.Migrator().HasColumn(&Node{}, "given_name") {
+		nodes := Nodes{}
+		if err := h.db.Find(&nodes).Error; err != nil {
 			log.Error().Err(err).Msg("Error accessing db")
 		}
 
-		for item, machine := range machines {
-			if machine.GivenName == "" {
+		for item, node := range nodes {
+			if node.GivenName == "" {
 				normalizedHostname, err := NormalizeToFQDNRules(
-					machine.Hostname,
+					node.Hostname,
 					h.cfg.OIDC.StripEmaildomain,
 				)
 				if err != nil {
 					log.Error().
 						Caller().
-						Str("hostname", machine.Hostname).
+						Str("hostname", node.Hostname).
 						Err(err).
-						Msg("Failed to normalize machine hostname in DB migration")
+						Msg("Failed to normalize node hostname in DB migration")
 				}
 
-				err = h.RenameMachine(&machines[item], normalizedHostname)
+				err = h.RenameNode(&nodes[item], normalizedHostname)
 				if err != nil {
 					log.Error().
 						Caller().
-						Str("hostname", machine.Hostname).
+						Str("hostname", node.Hostname).
 						Err(err).
-						Msg("Failed to save normalized machine name in DB migration")
+						Msg("Failed to save normalized node name in DB migration")
 				}
 			}
 		}
@@ -324,7 +328,7 @@ func (hi *HostInfo) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), hi)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
 	}
 }
 
@@ -370,7 +374,7 @@ func (i *IPPrefixes) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), i)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
 	}
 }
 
@@ -392,7 +396,7 @@ func (i *StringList) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), i)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
 	}
 }
 

@@ -23,9 +23,9 @@ var (
 type Route struct {
 	gorm.Model
 
-	MachineID uint64
-	Machine   Machine
-	Prefix    IPPrefix
+	NodeID uint64
+	Node   Node
+	Prefix IPPrefix
 
 	Advertised bool
 	Enabled    bool
@@ -35,7 +35,7 @@ type Route struct {
 type Routes []Route
 
 func (r *Route) String() string {
-	return fmt.Sprintf("%s:%s", r.Machine, netip.Prefix(r.Prefix).String())
+	return fmt.Sprintf("%s:%s", r.Node, netip.Prefix(r.Prefix).String())
 }
 
 func (r *Route) isExitRoute() bool {
@@ -53,7 +53,7 @@ func (rs Routes) toPrefixes() []netip.Prefix {
 
 func (h *Headscale) GetRoutes() ([]Route, error) {
 	var routes []Route
-	err := h.db.Preload("Machine").Find(&routes).Error
+	err := h.db.Preload("Node").Find(&routes).Error
 	if err != nil {
 		return nil, err
 	}
@@ -61,11 +61,11 @@ func (h *Headscale) GetRoutes() ([]Route, error) {
 	return routes, nil
 }
 
-func (h *Headscale) GetMachineRoutes(m *Machine) ([]Route, error) {
+func (h *Headscale) GetNodeRoutes(m *Node) ([]Route, error) {
 	var routes []Route
 	err := h.db.
-		Preload("Machine").
-		Where("machine_id = ?", m.ID).
+		Preload("Node").
+		Where("node_id = ?", m.ID).
 		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -76,7 +76,7 @@ func (h *Headscale) GetMachineRoutes(m *Machine) ([]Route, error) {
 
 func (h *Headscale) GetRoute(id uint64) (*Route, error) {
 	var route Route
-	err := h.db.Preload("Machine").First(&route, id).Error
+	err := h.db.Preload("Node").First(&route, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -94,10 +94,10 @@ func (h *Headscale) EnableRoute(id uint64) error {
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
 	if route.isExitRoute() {
-		return h.enableRoutes(&route.Machine, ExitRouteV4.String(), ExitRouteV6.String())
+		return h.enableRoutes(&route.Node, ExitRouteV4.String(), ExitRouteV6.String())
 	}
 
-	return h.enableRoutes(&route.Machine, netip.Prefix(route.Prefix).String())
+	return h.enableRoutes(&route.Node, netip.Prefix(route.Prefix).String())
 }
 
 func (h *Headscale) DisableRoute(id uint64) error {
@@ -129,8 +129,8 @@ func (h *Headscale) DeleteRoute(id uint64) error {
 	return h.handlePrimarySubnetFailover()
 }
 
-func (h *Headscale) DeleteMachineRoutes(m *Machine) error {
-	routes, err := h.GetMachineRoutes(m)
+func (h *Headscale) DeleteNodeRoutes(node *Node) error {
+	routes, err := h.GetNodeRoutes(node)
 	if err != nil {
 		return err
 	}
@@ -144,14 +144,14 @@ func (h *Headscale) DeleteMachineRoutes(m *Machine) error {
 	return h.handlePrimarySubnetFailover()
 }
 
-// isUniquePrefix returns if there is another machine providing the same route already.
+// isUniquePrefix returns if there is another node providing the same route already.
 func (h *Headscale) isUniquePrefix(route Route) bool {
 	var count int64
 	h.db.
 		Model(&Route{}).
-		Where("prefix = ? AND machine_id != ? AND advertised = ? AND enabled = ?",
+		Where("prefix = ? AND node_id != ? AND advertised = ? AND enabled = ?",
 			route.Prefix,
-			route.MachineID,
+			route.NodeID,
 			true, true).Count(&count)
 
 	return count == 0
@@ -160,7 +160,7 @@ func (h *Headscale) isUniquePrefix(route Route) bool {
 func (h *Headscale) getPrimaryRoute(prefix netip.Prefix) (*Route, error) {
 	var route Route
 	err := h.db.
-		Preload("Machine").
+		Preload("Node").
 		Where("prefix = ? AND advertised = ? AND enabled = ? AND is_primary = ?", IPPrefix(prefix), true, true, true).
 		First(&route).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -174,13 +174,13 @@ func (h *Headscale) getPrimaryRoute(prefix netip.Prefix) (*Route, error) {
 	return &route, nil
 }
 
-// getMachinePrimaryRoutes returns the routes that are enabled and marked as primary (for subnet failover)
+// getNodePrimaryRoutes returns the routes that are enabled and marked as primary (for subnet failover)
 // Exit nodes are not considered for this, as they are never marked as Primary.
-func (h *Headscale) getMachinePrimaryRoutes(m *Machine) ([]Route, error) {
+func (h *Headscale) getNodePrimaryRoutes(m *Node) ([]Route, error) {
 	var routes []Route
 	err := h.db.
-		Preload("Machine").
-		Where("machine_id = ? AND advertised = ? AND enabled = ? AND is_primary = ?", m.ID, true, true, true).
+		Preload("Node").
+		Where("node_id = ? AND advertised = ? AND enabled = ? AND is_primary = ?", m.ID, true, true, true).
 		Find(&routes).Error
 	if err != nil {
 		return nil, err
@@ -189,15 +189,15 @@ func (h *Headscale) getMachinePrimaryRoutes(m *Machine) ([]Route, error) {
 	return routes, nil
 }
 
-func (h *Headscale) processMachineRoutes(machine *Machine) error {
+func (h *Headscale) processNodeRoutes(node *Node) error {
 	currentRoutes := []Route{}
-	err := h.db.Where("machine_id = ?", machine.ID).Find(&currentRoutes).Error
+	err := h.db.Where("node_id = ?", node.ID).Find(&currentRoutes).Error
 	if err != nil {
 		return err
 	}
 
 	advertisedRoutes := map[netip.Prefix]bool{}
-	for _, prefix := range machine.HostInfo.RoutableIPs {
+	for _, prefix := range node.HostInfo.RoutableIPs {
 		advertisedRoutes[prefix] = false
 	}
 
@@ -224,7 +224,7 @@ func (h *Headscale) processMachineRoutes(machine *Machine) error {
 	for prefix, exists := range advertisedRoutes {
 		if !exists {
 			route := Route{
-				MachineID:  machine.ID,
+				NodeID:     node.ID,
 				Prefix:     IPPrefix(prefix),
 				Advertised: true,
 				Enabled:    false,
@@ -243,7 +243,7 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 	// first, get all the enabled routes
 	var routes []Route
 	err := h.db.
-		Preload("Machine").
+		Preload("Node").
 		Where("advertised = ? AND enabled = ?", true, true).
 		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -261,7 +261,7 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 			if h.isUniquePrefix(route) || errors.Is(err, gorm.ErrRecordNotFound) {
 				log.Info().
 					Str("prefix", netip.Prefix(route.Prefix).String()).
-					Str("machine", route.Machine.GivenName).
+					Str("node", route.Node.GivenName).
 					Msg("Setting primary route")
 				routes[pos].IsPrimary = true
 				err := h.db.Save(&routes[pos]).Error
@@ -278,23 +278,23 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 		}
 
 		if route.IsPrimary {
-			if route.Machine.isOnline() {
+			if route.Node.isOnline() {
 				continue
 			}
 
-			// machine offline, find a new primary
+			// node offline, find a new primary
 			log.Info().
-				Str("machine", route.Machine.Hostname).
+				Str("node", route.Node.Hostname).
 				Str("prefix", netip.Prefix(route.Prefix).String()).
-				Msgf("machine offline, finding a new primary subnet")
+				Msgf("node offline, finding a new primary subnet")
 
 			// find a new primary route
 			var newPrimaryRoutes []Route
 			err := h.db.
-				Preload("Machine").
-				Where("prefix = ? AND machine_id != ? AND advertised = ? AND enabled = ?",
+				Preload("Node").
+				Where("prefix = ? AND node_id != ? AND advertised = ? AND enabled = ?",
 					route.Prefix,
-					route.MachineID,
+					route.NodeID,
 					true, true).
 				Find(&newPrimaryRoutes).Error
 			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -305,7 +305,7 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 
 			var newPrimaryRoute *Route
 			for pos, r := range newPrimaryRoutes {
-				if r.Machine.isOnline() {
+				if r.Node.isOnline() {
 					newPrimaryRoute = &newPrimaryRoutes[pos]
 
 					break
@@ -314,7 +314,7 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 
 			if newPrimaryRoute == nil {
 				log.Warn().
-					Str("machine", route.Machine.Hostname).
+					Str("node", route.Node.Hostname).
 					Str("prefix", netip.Prefix(route.Prefix).String()).
 					Msgf("no alternative primary route found")
 
@@ -322,9 +322,9 @@ func (h *Headscale) handlePrimarySubnetFailover() error {
 			}
 
 			log.Info().
-				Str("old_machine", route.Machine.Hostname).
+				Str("old_node", route.Node.Hostname).
 				Str("prefix", netip.Prefix(route.Prefix).String()).
-				Str("new_machine", newPrimaryRoute.Machine.Hostname).
+				Str("new_node", newPrimaryRoute.Node.Hostname).
 				Msgf("found new primary route")
 
 			// disable the old primary route
@@ -362,7 +362,7 @@ func (rs Routes) toProto() []*v1.Route {
 	for _, route := range rs {
 		protoRoute := v1.Route{
 			Id:         uint64(route.ID),
-			Machine:    route.Machine.toProto(),
+			Node:       route.Node.toProto(),
 			Prefix:     netip.Prefix(route.Prefix).String(),
 			Advertised: route.Advertised,
 			Enabled:    route.Enabled,

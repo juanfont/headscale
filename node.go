@@ -22,32 +22,32 @@ import (
 )
 
 const (
-	ErrMachineNotFound                  = Error("machine not found")
-	ErrMachineRouteIsNotAvailable       = Error("route is not available on machine")
-	ErrMachineAddressesInvalid          = Error("failed to parse machine addresses")
-	ErrMachineNotFoundRegistrationCache = Error(
-		"machine not found in registration cache",
+	ErrNodeNotFound                  = Error("node not found")
+	ErrNodeRouteIsNotAvailable       = Error("route is not available on node ")
+	ErrNodeAddressesInvalid          = Error("failed to parse node addresses")
+	ErrNodeNotFoundRegistrationCache = Error(
+		"node not found in registration cache",
 	)
-	ErrCouldNotConvertMachineInterface = Error("failed to convert machine interface")
-	ErrHostnameTooLong                 = Error("Hostname too long")
-	ErrDifferentRegisteredUser         = Error(
-		"machine was previously registered with a different user",
+	ErrCouldNotConvertNodeInterface = Error("failed to convert node interface")
+	ErrHostnameTooLong              = Error("Hostname too long")
+	ErrDifferentRegisteredUser      = Error(
+		"node was previously registered with a different user",
 	)
-	MachineGivenNameHashLength = 8
-	MachineGivenNameTrimSize   = 2
+	NodeGivenNameHashLength = 8
+	NodeGivenNameTrimSize   = 2
 )
 
 const (
 	maxHostnameLength = 255
 )
 
-// Machine is a Headscale client.
-type Machine struct {
+// Node is a Headscale client.
+type Node struct {
 	ID          uint64 `gorm:"primary_key"`
 	MachineKey  string `gorm:"type:varchar(64);unique_index"`
 	NodeKey     string
 	DiscoKey    string
-	IPAddresses MachineAddresses
+	IPAddresses NodeAddresses
 
 	// Hostname represents the name given by the Tailscale
 	// client during registration
@@ -84,13 +84,13 @@ type Machine struct {
 }
 
 type (
-	Machines  []Machine
-	MachinesP []*Machine
+	Nodes  []Node
+	NodesP []*Node
 )
 
-type MachineAddresses []netip.Addr
+type NodeAddresses []netip.Addr
 
-func (ma MachineAddresses) ToStringSlice() []string {
+func (ma NodeAddresses) ToStringSlice() []string {
 	strSlice := make([]string, 0, len(ma))
 	for _, addr := range ma {
 		strSlice = append(strSlice, addr.String())
@@ -99,7 +99,7 @@ func (ma MachineAddresses) ToStringSlice() []string {
 	return strSlice
 }
 
-func (ma *MachineAddresses) Scan(destination interface{}) error {
+func (ma *NodeAddresses) Scan(destination interface{}) error {
 	switch value := destination.(type) {
 	case string:
 		addresses := strings.Split(value, ",")
@@ -118,80 +118,80 @@ func (ma *MachineAddresses) Scan(destination interface{}) error {
 		return nil
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
 	}
 }
 
 // Value return json value, implement driver.Valuer interface.
-func (ma MachineAddresses) Value() (driver.Value, error) {
+func (ma NodeAddresses) Value() (driver.Value, error) {
 	addresses := strings.Join(ma.ToStringSlice(), ",")
 
 	return addresses, nil
 }
 
-// isExpired returns whether the machine registration has expired.
-func (machine Machine) isExpired() bool {
+// isExpired returns whether the node registration has expired.
+func (node Node) isExpired() bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefor considered
 	// to mean "not expired"
-	if machine.Expiry == nil || machine.Expiry.IsZero() {
+	if node.Expiry == nil || node.Expiry.IsZero() {
 		return false
 	}
 
-	return time.Now().UTC().After(*machine.Expiry)
+	return time.Now().UTC().After(*node.Expiry)
 }
 
-// isOnline returns if the machine is connected to Headscale.
+// isOnline returns if the node is connected to Headscale.
 // This is really a naive implementation, as we don't really see
 // if there is a working connection between the client and the server.
-func (machine *Machine) isOnline() bool {
-	if machine.LastSeen == nil {
+func (node *Node) isOnline() bool {
+	if node.LastSeen == nil {
 		return false
 	}
 
-	if machine.isExpired() {
+	if node.isExpired() {
 		return false
 	}
 
-	return machine.LastSeen.After(time.Now().Add(-keepAliveInterval))
+	return node.LastSeen.After(time.Now().Add(-keepAliveInterval))
 }
 
-// isEphemeral returns if the machine is registered as an Ephemeral node.
+// isEphemeral returns if the node is registered as an Ephemeral node.
 // https://tailscale.com/kb/1111/ephemeral-nodes/
-func (machine *Machine) isEphemeral() bool {
-	return machine.AuthKey != nil && machine.AuthKey.Ephemeral
+func (node *Node) isEphemeral() bool {
+	return node.AuthKey != nil && node.AuthKey.Ephemeral
 }
 
-// filterMachinesByACL wrapper function to not have devs pass around locks and maps
+// filterNodesByACL wrapper function to not have devs pass around locks and maps
 // related to the application outside of tests.
-func (h *Headscale) filterMachinesByACL(currentMachine *Machine, peers Machines) Machines {
-	return filterMachinesByACL(currentMachine, peers, &h.aclPeerCacheMapRW, h.aclPeerCacheMap)
+func (h *Headscale) filterNodesByACL(currentNode *Node, peers Nodes) Nodes {
+	return filterNodesByACL(currentNode, peers, &h.aclPeerCacheMapRW, h.aclPeerCacheMap)
 }
 
-// filterMachinesByACL returns the list of peers authorized to be accessed from a given machine.
-func filterMachinesByACL(
-	machine *Machine,
-	machines Machines,
+// filterNodesByACL returns the list of peers authorized to be accessed from a given node.
+func filterNodesByACL(
+	node *Node,
+	nodes Nodes,
 	lock *sync.RWMutex,
 	aclPeerCacheMap map[string][]string,
-) Machines {
+) Nodes {
 	log.Trace().
 		Caller().
-		Str("self", machine.Hostname).
-		Str("input", machines.String()).
+		Str("self", node.Hostname).
+		Str("input", nodes.String()).
 		Msg("Finding peers filtered by ACLs")
 
-	peers := make(map[uint64]Machine)
-	// Aclfilter peers here. We are itering through machines in all users and search through the computed aclRules
-	// for match between rule SrcIPs and DstPorts. If the rule is a match we allow the machine to be viewable.
-	machineIPs := machine.IPAddresses.ToStringSlice()
+	peers := make(map[uint64]Node)
+	// Aclfilter peers here. We are itering through nodes in all users and search through the computed aclRules
+	// for match between rule SrcIPs and DstPorts. If the rule is a match we allow the node to be viewable.
+	nodeIPs := node.IPAddresses.ToStringSlice()
 
 	// TODO(kradalby): Remove this lock, I suspect its not a good idea, and might not be necessary,
 	// we only set this at startup atm (reading ACLs) and it might become a bottleneck.
 	lock.RLock()
 
-	for _, peer := range machines {
-		if peer.ID == machine.ID {
+	for _, peer := range nodes {
+		if peer.ID == node.ID {
 			continue
 		}
 		peerIPs := peer.IPAddresses.ToStringSlice()
@@ -221,11 +221,11 @@ func filterMachinesByACL(
 			}
 
 			// match all sources and source
-			for _, machineIP := range machineIPs {
+			for _, nodeIP := range nodeIPs {
 				for _, dst := range dstMap {
 					_, cdr, _ := net.ParseCIDR(dst)
-					ip := net.ParseIP(machineIP)
-					if dst == machineIP || (cdr != nil && ip != nil && cdr.Contains(ip)) {
+					ip := net.ParseIP(nodeIP)
+					if dst == nodeIP || (cdr != nil && ip != nil && cdr.Contains(ip)) {
 						peers[peer.ID] = peer
 
 						continue
@@ -234,8 +234,8 @@ func filterMachinesByACL(
 			}
 		}
 
-		for _, machineIP := range machineIPs {
-			if dstMap, ok := aclPeerCacheMap[machineIP]; ok {
+		for _, nodeIP := range nodeIPs {
+			if dstMap, ok := aclPeerCacheMap[nodeIP]; ok {
 				// match source and all destination
 				for _, dst := range dstMap {
 					if dst == "*" {
@@ -272,11 +272,11 @@ func filterMachinesByACL(
 				}
 
 				// match return path
-				for _, machineIP := range machineIPs {
+				for _, nodeIP := range nodeIPs {
 					for _, dst := range dstMap {
 						_, cdr, _ := net.ParseCIDR(dst)
-						ip := net.ParseIP(machineIP)
-						if dst == machineIP || (cdr != nil && ip != nil && cdr.Contains(ip)) {
+						ip := net.ParseIP(nodeIP)
+						if dst == nodeIP || (cdr != nil && ip != nil && cdr.Contains(ip)) {
 							peers[peer.ID] = peer
 
 							continue
@@ -289,7 +289,7 @@ func filterMachinesByACL(
 
 	lock.RUnlock()
 
-	authorizedPeers := make(Machines, 0, len(peers))
+	authorizedPeers := make(Nodes, 0, len(peers))
 	for _, m := range peers {
 		authorizedPeers = append(authorizedPeers, m)
 	}
@@ -300,61 +300,61 @@ func filterMachinesByACL(
 
 	log.Trace().
 		Caller().
-		Str("self", machine.Hostname).
+		Str("self", node.Hostname).
 		Str("peers", authorizedPeers.String()).
 		Msg("Authorized peers")
 
 	return authorizedPeers
 }
 
-func (h *Headscale) ListPeers(machine *Machine) (Machines, error) {
+func (h *Headscale) ListPeers(node *Node) (Nodes, error) {
 	log.Trace().
 		Caller().
-		Str("machine", machine.Hostname).
+		Str("node", node.Hostname).
 		Msg("Finding direct peers")
 
-	machines := Machines{}
+	nodes := Nodes{}
 	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where("node_key <> ?",
-		machine.NodeKey).Find(&machines).Error; err != nil {
+		node.NodeKey).Find(&nodes).Error; err != nil {
 		log.Error().Err(err).Msg("Error accessing db")
 
-		return Machines{}, err
+		return Nodes{}, err
 	}
 
-	sort.Slice(machines, func(i, j int) bool { return machines[i].ID < machines[j].ID })
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Hostname).
-		Msgf("Found peers: %s", machines.String())
+		Str("node", node.Hostname).
+		Msgf("Found peers: %s", nodes.String())
 
-	return machines, nil
+	return nodes, nil
 }
 
-func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
-	var peers Machines
+func (h *Headscale) getPeers(node *Node) (Nodes, error) {
+	var peers Nodes
 	var err error
 
 	// If ACLs rules are defined, filter visible host list with the ACLs
 	// else use the classic user scope
 	if h.aclPolicy != nil {
-		var machines []Machine
-		machines, err = h.ListMachines()
+		var nodes []Node
+		nodes, err = h.ListNodes()
 		if err != nil {
-			log.Error().Err(err).Msg("Error retrieving list of machines")
+			log.Error().Err(err).Msg("Error retrieving list of nodes")
 
-			return Machines{}, err
+			return Nodes{}, err
 		}
-		peers = h.filterMachinesByACL(machine, machines)
+		peers = h.filterNodesByACL(node, nodes)
 	} else {
-		peers, err = h.ListPeers(machine)
+		peers, err = h.ListPeers(node)
 		if err != nil {
 			log.Error().
 				Caller().
 				Err(err).
 				Msg("Cannot fetch peers")
 
-			return Machines{}, err
+			return Nodes{}, err
 		}
 	}
 
@@ -362,19 +362,19 @@ func (h *Headscale) getPeers(machine *Machine) (Machines, error) {
 
 	log.Trace().
 		Caller().
-		Str("self", machine.Hostname).
+		Str("self", node.Hostname).
 		Str("peers", peers.String()).
 		Msg("Peers returned to caller")
 
 	return peers, nil
 }
 
-func (h *Headscale) getValidPeers(machine *Machine) (Machines, error) {
-	validPeers := make(Machines, 0)
+func (h *Headscale) getValidPeers(node *Node) (Nodes, error) {
+	validPeers := make(Nodes, 0)
 
-	peers, err := h.getPeers(machine)
+	peers, err := h.getPeers(node)
 	if err != nil {
-		return Machines{}, err
+		return Nodes{}, err
 	}
 
 	for _, peer := range peers {
@@ -386,71 +386,71 @@ func (h *Headscale) getValidPeers(machine *Machine) (Machines, error) {
 	return validPeers, nil
 }
 
-func (h *Headscale) ListMachines() ([]Machine, error) {
-	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Find(&machines).Error; err != nil {
+func (h *Headscale) ListNodes() ([]Node, error) {
+	nodes := []Node{}
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 
-	return machines, nil
+	return nodes, nil
 }
 
-func (h *Headscale) ListMachinesByGivenName(givenName string) ([]Machine, error) {
-	machines := []Machine{}
-	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where("given_name = ?", givenName).Find(&machines).Error; err != nil {
+func (h *Headscale) ListNodesByGivenName(givenName string) ([]Node, error) {
+	nodes := []Node{}
+	if err := h.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where("given_name = ?", givenName).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 
-	return machines, nil
+	return nodes, nil
 }
 
-// GetMachine finds a Machine by name and user and returns the Machine struct.
-func (h *Headscale) GetMachine(user string, name string) (*Machine, error) {
-	machines, err := h.ListMachinesByUser(user)
+// GetNode finds a Node by name and user and returns the Node struct.
+func (h *Headscale) GetNode(user string, name string) (*Node, error) {
+	nodes, err := h.ListNodesByUser(user)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, m := range machines {
+	for _, m := range nodes {
 		if m.Hostname == name {
 			return &m, nil
 		}
 	}
 
-	return nil, ErrMachineNotFound
+	return nil, ErrNodeNotFound
 }
 
-// GetMachineByGivenName finds a Machine by given name and user and returns the Machine struct.
-func (h *Headscale) GetMachineByGivenName(user string, givenName string) (*Machine, error) {
-	machines, err := h.ListMachinesByUser(user)
+// GetNodeByGivenName finds a Node by given name and user and returns the Node struct.
+func (h *Headscale) GetNodeByGivenName(user string, givenName string) (*Node, error) {
+	nodes, err := h.ListNodesByUser(user)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, m := range machines {
-		if m.GivenName == givenName {
-			return &m, nil
+	for _, node := range nodes {
+		if node.GivenName == givenName {
+			return &node, nil
 		}
 	}
 
-	return nil, ErrMachineNotFound
+	return nil, ErrNodeNotFound
 }
 
-// GetMachineByID finds a Machine by ID and returns the Machine struct.
-func (h *Headscale) GetMachineByID(id uint64) (*Machine, error) {
-	m := Machine{}
-	if result := h.db.Preload("AuthKey").Preload("User").Find(&Machine{ID: id}).First(&m); result.Error != nil {
+// GetNodeByID finds a Node by ID and returns the Node struct.
+func (h *Headscale) GetNodeByID(id uint64) (*Node, error) {
+	m := Node{}
+	if result := h.db.Preload("AuthKey").Preload("User").Find(&Node{ID: id}).First(&m); result.Error != nil {
 		return nil, result.Error
 	}
 
 	return &m, nil
 }
 
-// GetMachineByMachineKey finds a Machine by its MachineKey and returns the Machine struct.
-func (h *Headscale) GetMachineByMachineKey(
+// GetNodeByNodeKey finds a Node by its NodeKey and returns the Node struct.
+func (h *Headscale) GetNodeByMachineKey(
 	machineKey key.MachinePublic,
-) (*Machine, error) {
-	m := Machine{}
+) (*Node, error) {
+	m := Node{}
 	if result := h.db.Preload("AuthKey").Preload("User").First(&m, "machine_key = ?", MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
 		return nil, result.Error
 	}
@@ -458,118 +458,118 @@ func (h *Headscale) GetMachineByMachineKey(
 	return &m, nil
 }
 
-// GetMachineByNodeKey finds a Machine by its current NodeKey.
-func (h *Headscale) GetMachineByNodeKey(
+// GetNodeByNodeKey finds a Node by its current NodeKey.
+func (h *Headscale) GetNodeByNodeKey(
 	nodeKey key.NodePublic,
-) (*Machine, error) {
-	machine := Machine{}
-	if result := h.db.Preload("AuthKey").Preload("User").First(&machine, "node_key = ?",
+) (*Node, error) {
+	node := Node{}
+	if result := h.db.Preload("AuthKey").Preload("User").First(&node, "node_key = ?",
 		NodePublicKeyStripPrefix(nodeKey)); result.Error != nil {
 		return nil, result.Error
 	}
 
-	return &machine, nil
+	return &node, nil
 }
 
-// GetMachineByAnyNodeKey finds a Machine by its MachineKey, its current NodeKey or the old one, and returns the Machine struct.
-func (h *Headscale) GetMachineByAnyKey(
+// GetNodeByAnyKey finds a Node by its MachineKey, its current NodeKey, or the old one, and returns the Node struct.
+func (h *Headscale) GetNodeByAnyKey(
 	machineKey key.MachinePublic, nodeKey key.NodePublic, oldNodeKey key.NodePublic,
-) (*Machine, error) {
-	machine := Machine{}
-	if result := h.db.Preload("AuthKey").Preload("User").First(&machine, "machine_key = ? OR node_key = ? OR node_key = ?",
+) (*Node, error) {
+	node := Node{}
+	if result := h.db.Preload("AuthKey").Preload("User").First(&node, "machine_key = ? OR node_key = ? OR node_key = ?",
 		MachinePublicKeyStripPrefix(machineKey),
 		NodePublicKeyStripPrefix(nodeKey),
 		NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
 		return nil, result.Error
 	}
 
-	return &machine, nil
+	return &node, nil
 }
 
-// UpdateMachineFromDatabase takes a Machine struct pointer (typically already loaded from database
+// UpdateNodeFromDatabase takes a Node struct pointer (typically already loaded from database
 // and updates it with the latest data from the database.
-func (h *Headscale) UpdateMachineFromDatabase(machine *Machine) error {
-	if result := h.db.Find(machine).First(&machine); result.Error != nil {
+func (h *Headscale) UpdateNodeFromDatabase(node *Node) error {
+	if result := h.db.Find(node).First(&node); result.Error != nil {
 		return result.Error
 	}
 
 	return nil
 }
 
-// SetTags takes a Machine struct pointer and update the forced tags.
-func (h *Headscale) SetTags(machine *Machine, tags []string) error {
+// SetTags takes a Node struct pointer and update the forced tags.
+func (h *Headscale) SetTags(node *Node, tags []string) error {
 	newTags := []string{}
 	for _, tag := range tags {
 		if !contains(newTags, tag) {
 			newTags = append(newTags, tag)
 		}
 	}
-	machine.ForcedTags = newTags
+	node.ForcedTags = newTags
 	if err := h.UpdateACLRules(); err != nil && !errors.Is(err, errEmptyPolicy) {
 		return err
 	}
 	h.setLastStateChangeToNow()
 
-	if err := h.db.Save(machine).Error; err != nil {
-		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
+	if err := h.db.Save(node).Error; err != nil {
+		return fmt.Errorf("failed to update tags for node in the database: %w", err)
 	}
 
 	return nil
 }
 
-// ExpireMachine takes a Machine struct and sets the expire field to now.
-func (h *Headscale) ExpireMachine(machine *Machine) error {
+// ExpireNode takes a Node struct and sets the expire field to now.
+func (h *Headscale) ExpireNode(node *Node) error {
 	now := time.Now()
-	machine.Expiry = &now
+	node.Expiry = &now
 
 	h.setLastStateChangeToNow()
 
-	if err := h.db.Save(machine).Error; err != nil {
-		return fmt.Errorf("failed to expire machine in the database: %w", err)
+	if err := h.db.Save(node).Error; err != nil {
+		return fmt.Errorf("failed to expire node in the database: %w", err)
 	}
 
 	return nil
 }
 
-// RenameMachine takes a Machine struct and a new GivenName for the machines
+// RenameNode takes a Node struct and a new GivenName for the nodes
 // and renames it.
-func (h *Headscale) RenameMachine(machine *Machine, newName string) error {
+func (h *Headscale) RenameNode(node *Node, newName string) error {
 	err := CheckForFQDNRules(
 		newName,
 	)
 	if err != nil {
 		log.Error().
 			Caller().
-			Str("func", "RenameMachine").
-			Str("machine", machine.Hostname).
+			Str("func", "RenameNode").
+			Str("node", node.Hostname).
 			Str("newName", newName).
 			Err(err)
 
 		return err
 	}
-	machine.GivenName = newName
+	node.GivenName = newName
 
 	h.setLastStateChangeToNow()
 
-	if err := h.db.Save(machine).Error; err != nil {
-		return fmt.Errorf("failed to rename machine in the database: %w", err)
+	if err := h.db.Save(node).Error; err != nil {
+		return fmt.Errorf("failed to rename node in the database: %w", err)
 	}
 
 	return nil
 }
 
-// RefreshMachine takes a Machine struct and sets the expire field to now.
-func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
+// RefreshNode takes a Node struct and sets the expire field to now.
+func (h *Headscale) RefreshNode(node *Node, expiry time.Time) error {
 	now := time.Now()
 
-	machine.LastSuccessfulUpdate = &now
-	machine.Expiry = &expiry
+	node.LastSuccessfulUpdate = &now
+	node.Expiry = &expiry
 
 	h.setLastStateChangeToNow()
 
-	if err := h.db.Save(machine).Error; err != nil {
+	if err := h.db.Save(node).Error; err != nil {
 		return fmt.Errorf(
-			"failed to refresh machine (update expiration) in the database: %w",
+			"failed to refresh node (update expiration) in the database: %w",
 			err,
 		)
 	}
@@ -577,51 +577,51 @@ func (h *Headscale) RefreshMachine(machine *Machine, expiry time.Time) error {
 	return nil
 }
 
-// DeleteMachine softs deletes a Machine from the database.
-func (h *Headscale) DeleteMachine(machine *Machine) error {
-	err := h.DeleteMachineRoutes(machine)
+// DeleteNode softs deletes a Node from the database.
+func (h *Headscale) DeleteNode(node *Node) error {
+	err := h.DeleteNodeRoutes(node)
 	if err != nil {
 		return err
 	}
 
-	if err := h.db.Delete(&machine).Error; err != nil {
+	if err := h.db.Delete(&node).Error; err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (h *Headscale) TouchMachine(machine *Machine) error {
-	return h.db.Updates(Machine{
-		ID:                   machine.ID,
-		LastSeen:             machine.LastSeen,
-		LastSuccessfulUpdate: machine.LastSuccessfulUpdate,
+func (h *Headscale) TouchNode(node *Node) error {
+	return h.db.Updates(Node{
+		ID:                   node.ID,
+		LastSeen:             node.LastSeen,
+		LastSuccessfulUpdate: node.LastSuccessfulUpdate,
 	}).Error
 }
 
-// HardDeleteMachine hard deletes a Machine from the database.
-func (h *Headscale) HardDeleteMachine(machine *Machine) error {
-	err := h.DeleteMachineRoutes(machine)
+// HardDeleteNode hard deletes a Node from the database.
+func (h *Headscale) HardDeleteNode(node *Node) error {
+	err := h.DeleteNodeRoutes(node)
 	if err != nil {
 		return err
 	}
 
-	if err := h.db.Unscoped().Delete(&machine).Error; err != nil {
+	if err := h.db.Unscoped().Delete(&node).Error; err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// GetHostInfo returns a Hostinfo struct for the machine.
-func (machine *Machine) GetHostInfo() tailcfg.Hostinfo {
-	return tailcfg.Hostinfo(machine.HostInfo)
+// GetHostInfo returns a Hostinfo struct for the node.
+func (node *Node) GetHostInfo() tailcfg.Hostinfo {
+	return tailcfg.Hostinfo(node.HostInfo)
 }
 
-func (h *Headscale) isOutdated(machine *Machine) bool {
-	if err := h.UpdateMachineFromDatabase(machine); err != nil {
+func (h *Headscale) isOutdated(node *Node) bool {
+	if err := h.UpdateNodeFromDatabase(node); err != nil {
 		// It does not seem meaningful to propagate this error as the end result
-		// will have to be that the machine has to be considered outdated.
+		// will have to be that the node has to be considered outdated.
 		return true
 	}
 
@@ -631,77 +631,77 @@ func (h *Headscale) isOutdated(machine *Machine) bool {
 	// This would mostly be for a bit of performance, and can be calculated based on
 	// ACLs.
 	lastChange := h.getLastStateChange()
-	lastUpdate := machine.CreatedAt
-	if machine.LastSuccessfulUpdate != nil {
-		lastUpdate = *machine.LastSuccessfulUpdate
+	lastUpdate := node.CreatedAt
+	if node.LastSuccessfulUpdate != nil {
+		lastUpdate = *node.LastSuccessfulUpdate
 	}
 	log.Trace().
 		Caller().
-		Str("machine", machine.Hostname).
+		Str("node", node.Hostname).
 		Time("last_successful_update", lastChange).
 		Time("last_state_change", lastUpdate).
-		Msgf("Checking if %s is missing updates", machine.Hostname)
+		Msgf("Checking if %s is missing updates", node.Hostname)
 
 	return lastUpdate.Before(lastChange)
 }
 
-func (machine Machine) String() string {
-	return machine.Hostname
+func (node Node) String() string {
+	return node.Hostname
 }
 
-func (machines Machines) String() string {
-	temp := make([]string, len(machines))
+func (nodes Nodes) String() string {
+	temp := make([]string, len(nodes))
 
-	for index, machine := range machines {
-		temp[index] = machine.Hostname
+	for index, node := range nodes {
+		temp[index] = node.Hostname
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
 // TODO(kradalby): Remove when we have generics...
-func (machines MachinesP) String() string {
-	temp := make([]string, len(machines))
+func (nodes NodesP) String() string {
+	temp := make([]string, len(nodes))
 
-	for index, machine := range machines {
-		temp[index] = machine.Hostname
+	for index, node := range nodes {
+		temp[index] = node.Hostname
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
 func (h *Headscale) toNodes(
-	machines Machines,
+	nodes Nodes,
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
 ) ([]*tailcfg.Node, error) {
-	nodes := make([]*tailcfg.Node, len(machines))
+	tailNodes := make([]*tailcfg.Node, len(nodes))
 
-	for index, machine := range machines {
-		node, err := h.toNode(machine, baseDomain, dnsConfig)
+	for index, node := range nodes {
+		tailNode, err := h.toNode(node, baseDomain, dnsConfig)
 		if err != nil {
 			return nil, err
 		}
 
-		nodes[index] = node
+		tailNodes[index] = tailNode
 	}
 
-	return nodes, nil
+	return tailNodes, nil
 }
 
-// toNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
+// toNode converts a Node into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS.
 func (h *Headscale) toNode(
-	machine Machine,
+	node Node,
 	baseDomain string,
 	dnsConfig *tailcfg.DNSConfig,
 ) (*tailcfg.Node, error) {
 	var nodeKey key.NodePublic
-	err := nodeKey.UnmarshalText([]byte(NodePublicKeyEnsurePrefix(machine.NodeKey)))
+	err := nodeKey.UnmarshalText([]byte(NodePublicKeyEnsurePrefix(node.NodeKey)))
 	if err != nil {
 		log.Trace().
 			Caller().
-			Str("node_key", machine.NodeKey).
+			Str("node_key", node.NodeKey).
 			Msgf("Failed to parse node public key from hex")
 
 		return nil, fmt.Errorf("failed to parse node public key: %w", err)
@@ -709,19 +709,19 @@ func (h *Headscale) toNode(
 
 	var machineKey key.MachinePublic
 	// MachineKey is only used in the legacy protocol
-	if machine.MachineKey != "" {
+	if node.MachineKey != "" {
 		err = machineKey.UnmarshalText(
-			[]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+			[]byte(MachinePublicKeyEnsurePrefix(node.MachineKey)),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse machine public key: %w", err)
+			return nil, fmt.Errorf("failed to parse node public key: %w", err)
 		}
 	}
 
 	var discoKey key.DiscoPublic
-	if machine.DiscoKey != "" {
+	if node.DiscoKey != "" {
 		err := discoKey.UnmarshalText(
-			[]byte(DiscoPublicKeyEnsurePrefix(machine.DiscoKey)),
+			[]byte(DiscoPublicKeyEnsurePrefix(node.DiscoKey)),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse disco public key: %w", err)
@@ -731,8 +731,8 @@ func (h *Headscale) toNode(
 	}
 
 	addrs := []netip.Prefix{}
-	for _, machineAddress := range machine.IPAddresses {
-		ip := netip.PrefixFrom(machineAddress, machineAddress.BitLen())
+	for _, nodeAddress := range node.IPAddresses {
+		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
 		addrs = append(addrs, ip)
 	}
 
@@ -740,32 +740,32 @@ func (h *Headscale) toNode(
 		[]netip.Prefix{},
 		addrs...) // we append the node own IP, as it is required by the clients
 
-	primaryRoutes, err := h.getMachinePrimaryRoutes(&machine)
+	primaryRoutes, err := h.getNodePrimaryRoutes(&node)
 	if err != nil {
 		return nil, err
 	}
 	primaryPrefixes := Routes(primaryRoutes).toPrefixes()
 
-	machineRoutes, err := h.GetMachineRoutes(&machine)
+	nodeRoutes, err := h.GetNodeRoutes(&node)
 	if err != nil {
 		return nil, err
 	}
-	for _, route := range machineRoutes {
+	for _, route := range nodeRoutes {
 		if route.Enabled && (route.IsPrimary || route.isExitRoute()) {
 			allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix))
 		}
 	}
 
 	var derp string
-	if machine.HostInfo.NetInfo != nil {
-		derp = fmt.Sprintf("127.3.3.40:%d", machine.HostInfo.NetInfo.PreferredDERP)
+	if node.HostInfo.NetInfo != nil {
+		derp = fmt.Sprintf("127.3.3.40:%d", node.HostInfo.NetInfo.PreferredDERP)
 	} else {
 		derp = "127.3.3.40:0" // Zero means disconnected or unknown.
 	}
 
 	var keyExpiry time.Time
-	if machine.Expiry != nil {
-		keyExpiry = *machine.Expiry
+	if node.Expiry != nil {
+		keyExpiry = *node.Expiry
 	} else {
 		keyExpiry = time.Time{}
 	}
@@ -774,8 +774,8 @@ func (h *Headscale) toNode(
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
-			machine.GivenName,
-			machine.User.Name,
+			node.GivenName,
+			node.User.Name,
 			baseDomain,
 		)
 		if len(hostname) > maxHostnameLength {
@@ -786,24 +786,24 @@ func (h *Headscale) toNode(
 			)
 		}
 	} else {
-		hostname = machine.GivenName
+		hostname = node.GivenName
 	}
 
-	hostInfo := machine.GetHostInfo()
+	hostInfo := node.GetHostInfo()
 
-	online := machine.isOnline()
+	online := node.isOnline()
 
-	tags, _ := getTags(h.aclPolicy, machine, h.cfg.OIDC.StripEmaildomain)
-	tags = lo.Uniq(append(tags, machine.ForcedTags...))
+	tags, _ := getTags(h.aclPolicy, node, h.cfg.OIDC.StripEmaildomain)
+	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
-	node := tailcfg.Node{
-		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
+	tailNode := tailcfg.Node{
+		ID: tailcfg.NodeID(node.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
-			strconv.FormatUint(machine.ID, Base10),
+			strconv.FormatUint(node.ID, Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name: hostname,
 
-		User: tailcfg.UserID(machine.UserID),
+		User: tailcfg.UserID(node.UserID),
 
 		Key:       nodeKey,
 		KeyExpiry: keyExpiry,
@@ -812,19 +812,19 @@ func (h *Headscale) toNode(
 		DiscoKey:   discoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
-		Endpoints:  machine.Endpoints,
+		Endpoints:  node.Endpoints,
 		DERP:       derp,
 		Hostinfo:   hostInfo.View(),
-		Created:    machine.CreatedAt,
+		Created:    node.CreatedAt,
 
 		Tags: tags,
 
 		PrimaryRoutes: primaryPrefixes,
 
-		LastSeen:          machine.LastSeen,
+		LastSeen:          node.LastSeen,
 		Online:            &online,
 		KeepAlive:         true,
-		MachineAuthorized: !machine.isExpired(),
+		MachineAuthorized: !node.isExpired(),
 
 		Capabilities: []string{
 			tailcfg.CapabilityFileSharing,
@@ -833,56 +833,56 @@ func (h *Headscale) toNode(
 		},
 	}
 
-	return &node, nil
+	return &tailNode, nil
 }
 
-func (machine *Machine) toProto() *v1.Machine {
-	machineProto := &v1.Machine{
-		Id:         machine.ID,
-		MachineKey: machine.MachineKey,
+func (node *Node) toProto() *v1.Node {
+	nodeProto := &v1.Node{
+		Id:         node.ID,
+		MachineKey: node.MachineKey,
 
-		NodeKey:     machine.NodeKey,
-		DiscoKey:    machine.DiscoKey,
-		IpAddresses: machine.IPAddresses.ToStringSlice(),
-		Name:        machine.Hostname,
-		GivenName:   machine.GivenName,
-		User:        machine.User.toProto(),
-		ForcedTags:  machine.ForcedTags,
-		Online:      machine.isOnline(),
+		NodeKey:     node.NodeKey,
+		DiscoKey:    node.DiscoKey,
+		IpAddresses: node.IPAddresses.ToStringSlice(),
+		Name:        node.Hostname,
+		GivenName:   node.GivenName,
+		User:        node.User.toProto(),
+		ForcedTags:  node.ForcedTags,
+		Online:      node.isOnline(),
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
 
-		CreatedAt: timestamppb.New(machine.CreatedAt),
+		CreatedAt: timestamppb.New(node.CreatedAt),
 	}
 
-	if machine.AuthKey != nil {
-		machineProto.PreAuthKey = machine.AuthKey.toProto()
+	if node.AuthKey != nil {
+		nodeProto.PreAuthKey = node.AuthKey.toProto()
 	}
 
-	if machine.LastSeen != nil {
-		machineProto.LastSeen = timestamppb.New(*machine.LastSeen)
+	if node.LastSeen != nil {
+		nodeProto.LastSeen = timestamppb.New(*node.LastSeen)
 	}
 
-	if machine.LastSuccessfulUpdate != nil {
-		machineProto.LastSuccessfulUpdate = timestamppb.New(
-			*machine.LastSuccessfulUpdate,
+	if node.LastSuccessfulUpdate != nil {
+		nodeProto.LastSuccessfulUpdate = timestamppb.New(
+			*node.LastSuccessfulUpdate,
 		)
 	}
 
-	if machine.Expiry != nil {
-		machineProto.Expiry = timestamppb.New(*machine.Expiry)
+	if node.Expiry != nil {
+		nodeProto.Expiry = timestamppb.New(*node.Expiry)
 	}
 
-	return machineProto
+	return nodeProto
 }
 
-// getTags will return the tags of the current machine.
+// getTags will return the tags of the current node.
 // Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
 // Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
 func getTags(
 	aclPolicy *ACLPolicy,
-	machine Machine,
+	node Node,
 	stripEmailDomain bool,
 ) ([]string, []string) {
 	validTags := make([]string, 0)
@@ -892,7 +892,7 @@ func getTags(
 	}
 	validTagMap := make(map[string]bool)
 	invalidTagMap := make(map[string]bool)
-	for _, tag := range machine.HostInfo.RequestTags {
+	for _, tag := range node.HostInfo.RequestTags {
 		owners, err := expandTagOwners(*aclPolicy, tag, stripEmailDomain)
 		if errors.Is(err, errInvalidTag) {
 			invalidTagMap[tag] = true
@@ -901,7 +901,7 @@ func getTags(
 		}
 		var found bool
 		for _, owner := range owners {
-			if machine.User.Name == owner {
+			if node.User.Name == owner {
 				found = true
 			}
 		}
@@ -921,12 +921,12 @@ func getTags(
 	return validTags, invalidTags
 }
 
-func (h *Headscale) RegisterMachineFromAuthCallback(
+func (h *Headscale) RegisterNodeFromAuthCallback(
 	nodeKeyStr string,
 	userName string,
-	machineExpiry *time.Time,
+	nodeExpiry *time.Time,
 	registrationMethod string,
-) (*Machine, error) {
+) (*Node, error) {
 	nodeKey := key.NodePublic{}
 	err := nodeKey.UnmarshalText([]byte(nodeKeyStr))
 	if err != nil {
@@ -937,76 +937,76 @@ func (h *Headscale) RegisterMachineFromAuthCallback(
 		Str("nodeKey", nodeKey.ShortString()).
 		Str("userName", userName).
 		Str("registrationMethod", registrationMethod).
-		Str("expiresAt", fmt.Sprintf("%v", machineExpiry)).
-		Msg("Registering machine from API/CLI or auth callback")
+		Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
+		Msg("Registering node from API/CLI or auth callback")
 
-	if machineInterface, ok := h.registrationCache.Get(NodePublicKeyStripPrefix(nodeKey)); ok {
-		if registrationMachine, ok := machineInterface.(Machine); ok {
+	if nodeInterface, ok := h.registrationCache.Get(NodePublicKeyStripPrefix(nodeKey)); ok {
+		if registrationNode, ok := nodeInterface.(Node); ok {
 			user, err := h.GetUser(userName)
 			if err != nil {
 				return nil, fmt.Errorf(
-					"failed to find user in register machine from auth callback, %w",
+					"failed to find user in register node from auth callback, %w",
 					err,
 				)
 			}
 
-			// Registration of expired machine with different user
-			if registrationMachine.ID != 0 &&
-				registrationMachine.UserID != user.ID {
+			// Registration of expired node with different user
+			if registrationNode.ID != 0 &&
+				registrationNode.UserID != user.ID {
 				return nil, ErrDifferentRegisteredUser
 			}
 
-			registrationMachine.UserID = user.ID
-			registrationMachine.RegisterMethod = registrationMethod
+			registrationNode.UserID = user.ID
+			registrationNode.RegisterMethod = registrationMethod
 
-			if machineExpiry != nil {
-				registrationMachine.Expiry = machineExpiry
+			if nodeExpiry != nil {
+				registrationNode.Expiry = nodeExpiry
 			}
 
-			machine, err := h.RegisterMachine(
-				registrationMachine,
+			node, err := h.RegisterNode(
+				registrationNode,
 			)
 
 			if err == nil {
 				h.registrationCache.Delete(nodeKeyStr)
 			}
 
-			return machine, err
+			return node, err
 		} else {
-			return nil, ErrCouldNotConvertMachineInterface
+			return nil, ErrCouldNotConvertNodeInterface
 		}
 	}
 
-	return nil, ErrMachineNotFoundRegistrationCache
+	return nil, ErrNodeNotFoundRegistrationCache
 }
 
-// RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
-func (h *Headscale) RegisterMachine(machine Machine,
-) (*Machine, error) {
+// RegisterNode is executed from the CLI to register a new Node using its MachineKey.
+func (h *Headscale) RegisterNode(node Node,
+) (*Node, error) {
 	log.Debug().
-		Str("machine", machine.Hostname).
-		Str("machine_key", machine.MachineKey).
-		Str("node_key", machine.NodeKey).
-		Str("user", machine.User.Name).
-		Msg("Registering machine")
+		Str("node", node.Hostname).
+		Str("machine_key", node.MachineKey).
+		Str("node_key", node.NodeKey).
+		Str("user", node.User.Name).
+		Msg("Registering node")
 
-	// If the machine exists and we had already IPs for it, we just save it
-	// so we store the machine.Expire and machine.Nodekey that has been set when
+	// If the node exists and we had already IPs for it, we just save it
+	// so we store the node.Expire and node.Nodekey that has been set when
 	// adding it to the registrationCache
-	if len(machine.IPAddresses) > 0 {
-		if err := h.db.Save(&machine).Error; err != nil {
-			return nil, fmt.Errorf("failed register existing machine in the database: %w", err)
+	if len(node.IPAddresses) > 0 {
+		if err := h.db.Save(&node).Error; err != nil {
+			return nil, fmt.Errorf("failed register existing node in the database: %w", err)
 		}
 
 		log.Trace().
 			Caller().
-			Str("machine", machine.Hostname).
-			Str("machine_key", machine.MachineKey).
-			Str("node_key", machine.NodeKey).
-			Str("user", machine.User.Name).
-			Msg("Machine authorized again")
+			Str("node", node.Hostname).
+			Str("machine_key", node.MachineKey).
+			Str("node_key", node.NodeKey).
+			Str("user", node.User.Name).
+			Msg("Node authorized again")
 
-		return &machine, nil
+		return &node, nil
 	}
 
 	h.ipAllocationMutex.Lock()
@@ -1017,40 +1017,40 @@ func (h *Headscale) RegisterMachine(machine Machine,
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", machine.Hostname).
-			Msg("Could not find IP for the new machine")
+			Str("node", node.Hostname).
+			Msg("Could not find IP for the new node")
 
 		return nil, err
 	}
 
-	machine.IPAddresses = ips
+	node.IPAddresses = ips
 
-	if err := h.db.Save(&machine).Error; err != nil {
-		return nil, fmt.Errorf("failed register(save) machine in the database: %w", err)
+	if err := h.db.Save(&node).Error; err != nil {
+		return nil, fmt.Errorf("failed register(save) node in the database: %w", err)
 	}
 
 	log.Trace().
 		Caller().
-		Str("machine", machine.Hostname).
+		Str("node", node.Hostname).
 		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
-		Msg("Machine registered with the database")
+		Msg("Node registered with the database")
 
-	return &machine, nil
+	return &node, nil
 }
 
-// GetAdvertisedRoutes returns the routes that are be advertised by the given machine.
-func (h *Headscale) GetAdvertisedRoutes(machine *Machine) ([]netip.Prefix, error) {
+// GetAdvertisedRoutes returns the routes that are be advertised by the given node.
+func (h *Headscale) GetAdvertisedRoutes(node *Node) ([]netip.Prefix, error) {
 	routes := []Route{}
 
 	err := h.db.
-		Preload("Machine").
-		Where("machine_id = ? AND advertised = ?", machine.ID, true).Find(&routes).Error
+		Preload("Node").
+		Where("node_id = ? AND advertised = ?", node.ID, true).Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", machine.Hostname).
-			Msg("Could not get advertised routes for machine")
+			Str("node", node.Hostname).
+			Msg("Could not get advertised routes for node")
 
 		return nil, err
 	}
@@ -1063,20 +1063,20 @@ func (h *Headscale) GetAdvertisedRoutes(machine *Machine) ([]netip.Prefix, error
 	return prefixes, nil
 }
 
-// GetEnabledRoutes returns the routes that are enabled for the machine.
-func (h *Headscale) GetEnabledRoutes(machine *Machine) ([]netip.Prefix, error) {
+// GetEnabledRoutes returns the routes that are enabled for the node.
+func (h *Headscale) GetEnabledRoutes(node *Node) ([]netip.Prefix, error) {
 	routes := []Route{}
 
 	err := h.db.
-		Preload("Machine").
-		Where("machine_id = ? AND advertised = ? AND enabled = ?", machine.ID, true, true).
+		Preload("Node").
+		Where("node_id = ? AND advertised = ? AND enabled = ?", node.ID, true, true).
 		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", machine.Hostname).
-			Msg("Could not get enabled routes for machine")
+			Str("node", node.Hostname).
+			Msg("Could not get enabled routes for node")
 
 		return nil, err
 	}
@@ -1089,13 +1089,13 @@ func (h *Headscale) GetEnabledRoutes(machine *Machine) ([]netip.Prefix, error) {
 	return prefixes, nil
 }
 
-func (h *Headscale) IsRoutesEnabled(machine *Machine, routeStr string) bool {
+func (h *Headscale) IsRoutesEnabled(node *Node, routeStr string) bool {
 	route, err := netip.ParsePrefix(routeStr)
 	if err != nil {
 		return false
 	}
 
-	enabledRoutes, err := h.GetEnabledRoutes(machine)
+	enabledRoutes, err := h.GetEnabledRoutes(node)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not get enabled routes")
 
@@ -1112,7 +1112,7 @@ func (h *Headscale) IsRoutesEnabled(machine *Machine, routeStr string) bool {
 }
 
 // enableRoutes enables new routes based on a list of new routes.
-func (h *Headscale) enableRoutes(machine *Machine, routeStrs ...string) error {
+func (h *Headscale) enableRoutes(node *Node, routeStrs ...string) error {
 	newRoutes := make([]netip.Prefix, len(routeStrs))
 	for index, routeStr := range routeStrs {
 		route, err := netip.ParsePrefix(routeStr)
@@ -1123,7 +1123,7 @@ func (h *Headscale) enableRoutes(machine *Machine, routeStrs ...string) error {
 		newRoutes[index] = route
 	}
 
-	advertisedRoutes, err := h.GetAdvertisedRoutes(machine)
+	advertisedRoutes, err := h.GetAdvertisedRoutes(node)
 	if err != nil {
 		return err
 	}
@@ -1132,8 +1132,8 @@ func (h *Headscale) enableRoutes(machine *Machine, routeStrs ...string) error {
 		if !contains(advertisedRoutes, newRoute) {
 			return fmt.Errorf(
 				"route (%s) is not available on node %s: %w",
-				machine.Hostname,
-				newRoute, ErrMachineRouteIsNotAvailable,
+				node.Hostname,
+				newRoute, ErrNodeRouteIsNotAvailable,
 			)
 		}
 	}
@@ -1141,8 +1141,8 @@ func (h *Headscale) enableRoutes(machine *Machine, routeStrs ...string) error {
 	// Separate loop so we don't leave things in a half-updated state
 	for _, prefix := range newRoutes {
 		route := Route{}
-		err := h.db.Preload("Machine").
-			Where("machine_id = ? AND prefix = ?", machine.ID, IPPrefix(prefix)).
+		err := h.db.Preload("Node").
+			Where("node_id = ? AND prefix = ?", node.ID, IPPrefix(prefix)).
 			First(&route).Error
 		if err == nil {
 			route.Enabled = true
@@ -1167,23 +1167,23 @@ func (h *Headscale) enableRoutes(machine *Machine, routeStrs ...string) error {
 	return nil
 }
 
-// EnableAutoApprovedRoutes enables any routes advertised by a machine that match the ACL autoApprovers policy.
-func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
-	if len(machine.IPAddresses) == 0 {
-		return nil // This machine has no IPAddresses, so can't possibly match any autoApprovers ACLs
+// EnableAutoApprovedRoutes enables any routes advertised by a node that match the ACL autoApprovers policy.
+func (h *Headscale) EnableAutoApprovedRoutes(node *Node) error {
+	if len(node.IPAddresses) == 0 {
+		return nil // This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
 	routes := []Route{}
 	err := h.db.
-		Preload("Machine").
-		Where("machine_id = ? AND advertised = true AND enabled = false", machine.ID).
+		Preload("Node").
+		Where("node_id = ? AND advertised = true AND enabled = false", node.ID).
 		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", machine.Hostname).
-			Msg("Could not get advertised routes for machine")
+			Str("node", node.Hostname).
+			Msg("Could not get advertised routes for node")
 
 		return err
 	}
@@ -1197,17 +1197,17 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 		if err != nil {
 			log.Err(err).
 				Str("advertisedRoute", advertisedRoute.String()).
-				Uint64("machineId", machine.ID).
+				Uint64("nodeId", node.ID).
 				Msg("Failed to resolve autoApprovers for advertised route")
 
 			return err
 		}
 
 		for _, approvedAlias := range routeApprovers {
-			if approvedAlias == machine.User.Name {
+			if approvedAlias == node.User.Name {
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
-				approvedIps, err := expandAlias([]Machine{*machine}, *h.aclPolicy, approvedAlias, h.cfg.OIDC.StripEmaildomain)
+				approvedIps, err := expandAlias([]Node{*node}, *h.aclPolicy, approvedAlias, h.cfg.OIDC.StripEmaildomain)
 				if err != nil {
 					log.Err(err).
 						Str("alias", approvedAlias).
@@ -1216,8 +1216,8 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 					return err
 				}
 
-				// approvedIPs should contain all of machine's IPs if it matches the rule, so check for first
-				if contains(approvedIps, machine.IPAddresses[0].String()) {
+				// approvedIPs should contain all of node's IPs if it matches the rule, so check for first
+				if contains(approvedIps, node.IPAddresses[0].String()) {
 					approvedRoutes = append(approvedRoutes, advertisedRoute)
 				}
 			}
@@ -1230,7 +1230,7 @@ func (h *Headscale) EnableAutoApprovedRoutes(machine *Machine) error {
 		if err != nil {
 			log.Err(err).
 				Str("approvedRoute", approvedRoute.String()).
-				Uint64("machineId", machine.ID).
+				Uint64("nodeId", node.ID).
 				Msg("Failed to enable approved route")
 
 			return err
@@ -1251,12 +1251,12 @@ func (h *Headscale) generateGivenName(suppliedName string, randomSuffix bool) (s
 
 	if randomSuffix {
 		// Trim if a hostname will be longer than 63 chars after adding the hash.
-		trimmedHostnameLength := labelHostnameLength - MachineGivenNameHashLength - MachineGivenNameTrimSize
+		trimmedHostnameLength := labelHostnameLength - NodeGivenNameHashLength - NodeGivenNameTrimSize
 		if len(normalizedHostname) > trimmedHostnameLength {
 			normalizedHostname = normalizedHostname[:trimmedHostnameLength]
 		}
 
-		suffix, err := GenerateRandomStringDNSSafe(MachineGivenNameHashLength)
+		suffix, err := GenerateRandomStringDNSSafe(NodeGivenNameHashLength)
 		if err != nil {
 			return "", err
 		}
@@ -1274,13 +1274,13 @@ func (h *Headscale) GenerateGivenName(machineKey string, suppliedName string) (s
 	}
 
 	// Tailscale rules (may differ) https://tailscale.com/kb/1098/machine-names/
-	machines, err := h.ListMachinesByGivenName(givenName)
+	nodes, err := h.ListNodesByGivenName(givenName)
 	if err != nil {
 		return "", err
 	}
 
-	for _, machine := range machines {
-		if machine.MachineKey != machineKey && machine.GivenName == givenName {
+	for _, node := range nodes {
+		if node.MachineKey != machineKey && node.GivenName == givenName {
 			postfixedName, err := h.generateGivenName(suppliedName, true)
 			if err != nil {
 				return "", err
@@ -1293,13 +1293,13 @@ func (h *Headscale) GenerateGivenName(machineKey string, suppliedName string) (s
 	return givenName, nil
 }
 
-func (machines Machines) FilterByIP(ip netip.Addr) Machines {
-	found := make(Machines, 0)
+func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
+	found := make(Nodes, 0)
 
-	for _, machine := range machines {
-		for _, mIP := range machine.IPAddresses {
+	for _, node := range nodes {
+		for _, mIP := range node.IPAddresses {
 			if ip == mIP {
-				found = append(found, machine)
+				found = append(found, node)
 			}
 		}
 	}
