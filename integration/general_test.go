@@ -266,18 +266,18 @@ func TestEphemeral(t *testing.T) {
 	t.Logf("all clients logged out")
 
 	for userName := range spec {
-		machines, err := headscale.ListMachinesInUser(userName)
+		nodes, err := headscale.ListNodesInUser(userName)
 		if err != nil {
 			log.Error().
 				Err(err).
 				Str("user", userName).
-				Msg("Error listing machines in user")
+				Msg("Error listing nodes in user")
 
 			return
 		}
 
-		if len(machines) != 0 {
-			t.Errorf("expected no machines, got %d in user %s", len(machines), userName)
+		if len(nodes) != 0 {
+			t.Errorf("expected no nodes, got %d in user %s", len(nodes), userName)
 		}
 	}
 
@@ -617,8 +617,8 @@ func TestExpireNode(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	var machine v1.Machine
-	err = json.Unmarshal([]byte(result), &machine)
+	var node v1.Node
+	err = json.Unmarshal([]byte(result), &node)
 	assert.NoError(t, err)
 
 	time.Sleep(30 * time.Second)
@@ -634,10 +634,10 @@ func TestExpireNode(t *testing.T) {
 
 			peerPublicKey := strings.TrimPrefix(peerStatus.PublicKey.String(), "nodekey:")
 
-			assert.NotEqual(t, machine.NodeKey, peerPublicKey)
+			assert.NotEqual(t, node.NodeKey, peerPublicKey)
 		}
 
-		if client.Hostname() != machine.Name {
+		if client.Hostname() != node.Name {
 			// Assert that we have the original count - self - expired node
 			assert.Len(t, status.Peers(), len(TailscaleVersions)-2)
 		}

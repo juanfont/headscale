@@ -219,7 +219,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 // Test to confirm that we can use user:80 from one user
 // This should make the node appear in the peer list, but
 // disallow ping.
-// This ACL will not allow user1 access its own machines.
+// This ACL will not allow user1 access its own nodes.
 // Reported: https://github.com/juanfont/headscale/issues/699
 func TestACLAllowUser80Dst(t *testing.T) {
 	IntegrationSkip(t)
@@ -324,7 +324,7 @@ func TestACLDenyAllPort80(t *testing.T) {
 }
 
 // Test to confirm that we can use user:* from one user.
-// This ACL will not allow user1 access its own machines.
+// This ACL will not allow user1 access its own nodes.
 // Reported: https://github.com/juanfont/headscale/issues/699
 func TestACLAllowUserDst(t *testing.T) {
 	IntegrationSkip(t)

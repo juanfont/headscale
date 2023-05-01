@@ -215,7 +215,7 @@ func getDNSNames(
 		return nil, err
 	}
 
-	var listAll []v1.Machine
+	var listAll []v1.Node
 	err = json.Unmarshal([]byte(listAllResult), &listAll)
 	if err != nil {
 		return nil, err

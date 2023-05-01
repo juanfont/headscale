@@ -553,17 +553,17 @@ func (s *IntegrationCLITestSuite) TestPreAuthKeyCommandReusableEphemeral() {
 }
 
 func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
-	user, err := s.createUser("machine-user")
+	user, err := s.createUser("node-user")
 	assert.Nil(s.T(), err)
 
-	machineKeys := []string{
+	nodeKeys := []string{
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 	}
-	machines := make([]*v1.Machine, len(machineKeys))
+	nodes := make([]*v1.Node, len(nodeKeys))
 	assert.Nil(s.T(), err)
 
-	for index, machineKey := range machineKeys {
+	for index, nodeKey := range nodeKeys {
 		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -571,11 +571,11 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("machine-%d", index+1),
+				fmt.Sprintf("node-%d", index+1),
 				"--user",
 				user.Name,
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -583,7 +583,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, _, err := ExecuteCommand(
+		nodeResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -592,7 +592,7 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 				user.Name,
 				"register",
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -600,13 +600,13 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		var machine v1.Machine
-		err = json.Unmarshal([]byte(machineResult), &machine)
+		var node v1.Node
+		err = json.Unmarshal([]byte(nodeResult), &node)
 		assert.Nil(s.T(), err)
 
-		machines[index] = &machine
+		nodes[index] = &node
 	}
-	assert.Len(s.T(), machines, len(machineKeys))
+	assert.Len(s.T(), nodes, len(nodeKeys))
 
 	addTagResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -622,10 +622,10 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var machine v1.Machine
-	err = json.Unmarshal([]byte(addTagResult), &machine)
+	var node v1.Node
+	err = json.Unmarshal([]byte(addTagResult), &node)
 	assert.Nil(s.T(), err)
-	assert.Equal(s.T(), []string{"tag:test"}, machine.ForcedTags)
+	assert.Equal(s.T(), []string{"tag:test"}, node.ForcedTags)
 
 	// try to set a wrong tag and retrieve the error
 	wrongTagResult, _, err := ExecuteCommand(
@@ -660,13 +660,13 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 		},
 		[]string{},
 	)
-	resultMachines := make([]*v1.Machine, len(machineKeys))
+	resultNodes := make([]*v1.Node, len(nodeKeys))
 	assert.Nil(s.T(), err)
-	json.Unmarshal([]byte(listAllResult), &resultMachines)
+	json.Unmarshal([]byte(listAllResult), &resultNodes)
 	found := false
-	for _, machine := range resultMachines {
-		if machine.ForcedTags != nil {
-			for _, tag := range machine.ForcedTags {
+	for _, node := range resultNodes {
+		if node.ForcedTags != nil {
+			for _, tag := range node.ForcedTags {
 				if tag == "tag:test" {
 					found = true
 				}
@@ -677,29 +677,29 @@ func (s *IntegrationCLITestSuite) TestNodeTagCommand() {
 		s.T(),
 		true,
 		found,
-		"should find a machine with the tag 'tag:test' in the list of machines",
+		"should find a node with the tag 'tag:test' in the list of nodes",
 	)
 }
 
 func (s *IntegrationCLITestSuite) TestNodeCommand() {
-	user, err := s.createUser("machine-user")
+	user, err := s.createUser("node-user")
 	assert.Nil(s.T(), err)
 
 	secondUser, err := s.createUser("other-user")
 	assert.Nil(s.T(), err)
 
-	// Randomly generated machine keys
-	machineKeys := []string{
+	// Randomly generated node keys
+	nodeKeys := []string{
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
 		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
-	machines := make([]*v1.Machine, len(machineKeys))
+	nodes := make([]*v1.Node, len(nodeKeys))
 	assert.Nil(s.T(), err)
 
-	for index, machineKey := range machineKeys {
+	for index, nodeKey := range nodeKeys {
 		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -707,11 +707,11 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("machine-%d", index+1),
+				fmt.Sprintf("node-%d", index+1),
 				"--user",
 				user.Name,
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -719,7 +719,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, _, err := ExecuteCommand(
+		nodeResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -728,7 +728,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				user.Name,
 				"register",
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -736,14 +736,14 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		var machine v1.Machine
-		err = json.Unmarshal([]byte(machineResult), &machine)
+		var node v1.Node
+		err = json.Unmarshal([]byte(nodeResult), &node)
 		assert.Nil(s.T(), err)
 
-		machines[index] = &machine
+		nodes[index] = &node
 	}
 
-	assert.Len(s.T(), machines, len(machineKeys))
+	assert.Len(s.T(), nodes, len(nodeKeys))
 
 	// Test list all nodes after added seconds
 	listAllResult, _, err := ExecuteCommand(
@@ -759,7 +759,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAll []v1.Machine
+	var listAll []v1.Node
 	err = json.Unmarshal([]byte(listAllResult), &listAll)
 	assert.Nil(s.T(), err)
 
@@ -771,20 +771,20 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	assert.Equal(s.T(), uint64(4), listAll[3].Id)
 	assert.Equal(s.T(), uint64(5), listAll[4].Id)
 
-	assert.Equal(s.T(), "machine-1", listAll[0].Name)
-	assert.Equal(s.T(), "machine-2", listAll[1].Name)
-	assert.Equal(s.T(), "machine-3", listAll[2].Name)
-	assert.Equal(s.T(), "machine-4", listAll[3].Name)
-	assert.Equal(s.T(), "machine-5", listAll[4].Name)
+	assert.Equal(s.T(), "node-1", listAll[0].Name)
+	assert.Equal(s.T(), "node-2", listAll[1].Name)
+	assert.Equal(s.T(), "node-3", listAll[2].Name)
+	assert.Equal(s.T(), "node-4", listAll[3].Name)
+	assert.Equal(s.T(), "node-5", listAll[4].Name)
 
-	otherUserMachineKeys := []string{
+	otherUserNodeKeys := []string{
 		"nodekey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
 		"nodekey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
 	}
-	otherUserMachines := make([]*v1.Machine, len(otherUserMachineKeys))
+	otherUserNodes := make([]*v1.Node, len(otherUserNodeKeys))
 	assert.Nil(s.T(), err)
 
-	for index, machineKey := range otherUserMachineKeys {
+	for index, nodeKey := range otherUserNodeKeys {
 		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -792,11 +792,11 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("otherUser-machine-%d", index+1),
+				fmt.Sprintf("otherUser-node-%d", index+1),
 				"--user",
 				secondUser.Name,
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -804,7 +804,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, _, err := ExecuteCommand(
+		nodeResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -813,7 +813,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 				secondUser.Name,
 				"register",
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -821,14 +821,14 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		var machine v1.Machine
-		err = json.Unmarshal([]byte(machineResult), &machine)
+		var node v1.Node
+		err = json.Unmarshal([]byte(nodeResult), &node)
 		assert.Nil(s.T(), err)
 
-		otherUserMachines[index] = &machine
+		otherUserNodes[index] = &node
 	}
 
-	assert.Len(s.T(), otherUserMachines, len(otherUserMachineKeys))
+	assert.Len(s.T(), otherUserNodes, len(otherUserNodeKeys))
 
 	// Test list all nodes after added otherUser
 	listAllWithotherUserResult, _, err := ExecuteCommand(
@@ -844,21 +844,21 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAllWithotherUser []v1.Machine
+	var listAllWithotherUser []v1.Node
 	err = json.Unmarshal(
 		[]byte(listAllWithotherUserResult),
 		&listAllWithotherUser,
 	)
 	assert.Nil(s.T(), err)
 
-	// All nodes, machines + otherUser
+	// All nodes, nodes + otherUser
 	assert.Len(s.T(), listAllWithotherUser, 7)
 
 	assert.Equal(s.T(), uint64(6), listAllWithotherUser[5].Id)
 	assert.Equal(s.T(), uint64(7), listAllWithotherUser[6].Id)
 
-	assert.Equal(s.T(), "otherUser-machine-1", listAllWithotherUser[5].Name)
-	assert.Equal(s.T(), "otherUser-machine-2", listAllWithotherUser[6].Name)
+	assert.Equal(s.T(), "otherUser-node-1", listAllWithotherUser[5].Name)
+	assert.Equal(s.T(), "otherUser-node-2", listAllWithotherUser[6].Name)
 
 	// Test list all nodes after added otherUser
 	listOnlyotherUserMachineUserResult, _, err := ExecuteCommand(
@@ -876,7 +876,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listOnlyotherUserMachineUser []v1.Machine
+	var listOnlyotherUserMachineUser []v1.Node
 	err = json.Unmarshal(
 		[]byte(listOnlyotherUserMachineUserResult),
 		&listOnlyotherUserMachineUser,
@@ -890,16 +890,16 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 
 	assert.Equal(
 		s.T(),
-		"otherUser-machine-1",
+		"otherUser-node-1",
 		listOnlyotherUserMachineUser[0].Name,
 	)
 	assert.Equal(
 		s.T(),
-		"otherUser-machine-2",
+		"otherUser-node-2",
 		listOnlyotherUserMachineUser[1].Name,
 	)
 
-	// Delete a machines
+	// Delete a nodes
 	_, _, err = ExecuteCommand(
 		&s.headscale,
 		[]string{
@@ -907,7 +907,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 			"nodes",
 			"delete",
 			"--identifier",
-			// Delete the last added machine
+			// Delete the last added node
 			"4",
 			"--output",
 			"json",
@@ -917,7 +917,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	// Test: list main user after machine is deleted
+	// Test: list main user after node is deleted
 	listOnlyMachineUserAfterDeleteResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
@@ -933,7 +933,7 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listOnlyMachineUserAfterDelete []v1.Machine
+	var listOnlyMachineUserAfterDelete []v1.Node
 	err = json.Unmarshal(
 		[]byte(listOnlyMachineUserAfterDeleteResult),
 		&listOnlyMachineUserAfterDelete,
@@ -944,21 +944,21 @@ func (s *IntegrationCLITestSuite) TestNodeCommand() {
 }
 
 func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
-	user, err := s.createUser("machine-expire-user")
+	user, err := s.createUser("node-expire-user")
 	assert.Nil(s.T(), err)
 
-	// Randomly generated machine keys
-	machineKeys := []string{
+	// Randomly generated node keys
+	nodeKeys := []string{
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
 		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
-	machines := make([]*v1.Machine, len(machineKeys))
+	nodes := make([]*v1.Node, len(nodeKeys))
 	assert.Nil(s.T(), err)
 
-	for index, machineKey := range machineKeys {
+	for index, nodeKey := range nodeKeys {
 		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -966,11 +966,11 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("machine-%d", index+1),
+				fmt.Sprintf("node-%d", index+1),
 				"--user",
 				user.Name,
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -978,7 +978,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, _, err := ExecuteCommand(
+		nodeResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -987,7 +987,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 				user.Name,
 				"register",
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -995,14 +995,14 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		var machine v1.Machine
-		err = json.Unmarshal([]byte(machineResult), &machine)
+		var node v1.Node
+		err = json.Unmarshal([]byte(nodeResult), &node)
 		assert.Nil(s.T(), err)
 
-		machines[index] = &machine
+		nodes[index] = &node
 	}
 
-	assert.Len(s.T(), machines, len(machineKeys))
+	assert.Len(s.T(), nodes, len(nodeKeys))
 
 	listAllResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1017,7 +1017,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAll []v1.Machine
+	var listAll []v1.Node
 	err = json.Unmarshal([]byte(listAllResult), &listAll)
 	assert.Nil(s.T(), err)
 
@@ -1057,7 +1057,7 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAllAfterExpiry []v1.Machine
+	var listAllAfterExpiry []v1.Node
 	err = json.Unmarshal([]byte(listAllAfterExpiryResult), &listAllAfterExpiry)
 	assert.Nil(s.T(), err)
 
@@ -1071,21 +1071,21 @@ func (s *IntegrationCLITestSuite) TestNodeExpireCommand() {
 }
 
 func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
-	user, err := s.createUser("machine-rename-command")
+	user, err := s.createUser("node-rename-command")
 	assert.Nil(s.T(), err)
 
-	// Randomly generated machine keys
-	machineKeys := []string{
+	// Randomly generated node keys
+	nodeKeys := []string{
 		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
 		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 	}
-	machines := make([]*v1.Machine, len(machineKeys))
+	nodes := make([]*v1.Node, len(nodeKeys))
 	assert.Nil(s.T(), err)
 
-	for index, machineKey := range machineKeys {
+	for index, nodeKey := range nodeKeys {
 		_, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
@@ -1093,11 +1093,11 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("machine-%d", index+1),
+				fmt.Sprintf("node-%d", index+1),
 				"--user",
 				user.Name,
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -1105,7 +1105,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		machineResult, _, err := ExecuteCommand(
+		nodeResult, _, err := ExecuteCommand(
 			&s.headscale,
 			[]string{
 				"headscale",
@@ -1114,7 +1114,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 				user.Name,
 				"register",
 				"--key",
-				machineKey,
+				nodeKey,
 				"--output",
 				"json",
 			},
@@ -1122,14 +1122,14 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 		)
 		assert.Nil(s.T(), err)
 
-		var machine v1.Machine
-		err = json.Unmarshal([]byte(machineResult), &machine)
+		var node v1.Node
+		err = json.Unmarshal([]byte(nodeResult), &node)
 		assert.Nil(s.T(), err)
 
-		machines[index] = &machine
+		nodes[index] = &node
 	}
 
-	assert.Len(s.T(), machines, len(machineKeys))
+	assert.Len(s.T(), nodes, len(nodeKeys))
 
 	listAllResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1144,17 +1144,17 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAll []v1.Machine
+	var listAll []v1.Node
 	err = json.Unmarshal([]byte(listAllResult), &listAll)
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), listAll, 5)
 
-	assert.Contains(s.T(), listAll[0].GetGivenName(), "machine-1")
-	assert.Contains(s.T(), listAll[1].GetGivenName(), "machine-2")
-	assert.Contains(s.T(), listAll[2].GetGivenName(), "machine-3")
-	assert.Contains(s.T(), listAll[3].GetGivenName(), "machine-4")
-	assert.Contains(s.T(), listAll[4].GetGivenName(), "machine-5")
+	assert.Contains(s.T(), listAll[0].GetGivenName(), "node-1")
+	assert.Contains(s.T(), listAll[1].GetGivenName(), "node-2")
+	assert.Contains(s.T(), listAll[2].GetGivenName(), "node-3")
+	assert.Contains(s.T(), listAll[3].GetGivenName(), "node-4")
+	assert.Contains(s.T(), listAll[4].GetGivenName(), "node-5")
 
 	for i := 0; i < 3; i++ {
 		_, _, err := ExecuteCommand(
@@ -1165,7 +1165,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 				"rename",
 				"--identifier",
 				fmt.Sprintf("%d", listAll[i].Id),
-				fmt.Sprintf("newmachine-%d", i+1),
+				fmt.Sprintf("newnode-%d", i+1),
 			},
 			[]string{},
 		)
@@ -1185,17 +1185,17 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAllAfterRename []v1.Machine
+	var listAllAfterRename []v1.Node
 	err = json.Unmarshal([]byte(listAllAfterRenameResult), &listAllAfterRename)
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), listAllAfterRename, 5)
 
-	assert.Equal(s.T(), "newmachine-1", listAllAfterRename[0].GetGivenName())
-	assert.Equal(s.T(), "newmachine-2", listAllAfterRename[1].GetGivenName())
-	assert.Equal(s.T(), "newmachine-3", listAllAfterRename[2].GetGivenName())
-	assert.Contains(s.T(), listAllAfterRename[3].GetGivenName(), "machine-4")
-	assert.Contains(s.T(), listAllAfterRename[4].GetGivenName(), "machine-5")
+	assert.Equal(s.T(), "newnode-1", listAllAfterRename[0].GetGivenName())
+	assert.Equal(s.T(), "newnode-2", listAllAfterRename[1].GetGivenName())
+	assert.Equal(s.T(), "newnode-3", listAllAfterRename[2].GetGivenName())
+	assert.Contains(s.T(), listAllAfterRename[3].GetGivenName(), "node-4")
+	assert.Contains(s.T(), listAllAfterRename[4].GetGivenName(), "node-5")
 
 	// Test failure for too long names
 	result, _, err := ExecuteCommand(
@@ -1226,7 +1226,7 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var listAllAfterRenameAttempt []v1.Machine
+	var listAllAfterRenameAttempt []v1.Node
 	err = json.Unmarshal(
 		[]byte(listAllAfterRenameAttemptResult),
 		&listAllAfterRenameAttempt,
@@ -1235,11 +1235,11 @@ func (s *IntegrationCLITestSuite) TestNodeRenameCommand() {
 
 	assert.Len(s.T(), listAllAfterRenameAttempt, 5)
 
-	assert.Equal(s.T(), "newmachine-1", listAllAfterRenameAttempt[0].GetGivenName())
-	assert.Equal(s.T(), "newmachine-2", listAllAfterRenameAttempt[1].GetGivenName())
-	assert.Equal(s.T(), "newmachine-3", listAllAfterRenameAttempt[2].GetGivenName())
-	assert.Contains(s.T(), listAllAfterRenameAttempt[3].GetGivenName(), "machine-4")
-	assert.Contains(s.T(), listAllAfterRenameAttempt[4].GetGivenName(), "machine-5")
+	assert.Equal(s.T(), "newnode-1", listAllAfterRenameAttempt[0].GetGivenName())
+	assert.Equal(s.T(), "newnode-2", listAllAfterRenameAttempt[1].GetGivenName())
+	assert.Equal(s.T(), "newnode-3", listAllAfterRenameAttempt[2].GetGivenName())
+	assert.Contains(s.T(), listAllAfterRenameAttempt[3].GetGivenName(), "node-4")
+	assert.Contains(s.T(), listAllAfterRenameAttempt[4].GetGivenName(), "node-5")
 }
 
 func (s *IntegrationCLITestSuite) TestApiKeyCommand() {
@@ -1393,8 +1393,8 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	newUser, err := s.createUser("new-user")
 	assert.Nil(s.T(), err)
 
-	// Randomly generated machine key
-	machineKey := "nodekey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
+	// Randomly generated node key
+	nodeKey := "nodekey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
 
 	_, _, err = ExecuteCommand(
 		&s.headscale,
@@ -1403,11 +1403,11 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"debug",
 			"create-node",
 			"--name",
-			"nomad-machine",
+			"nomad-node",
 			"--user",
 			oldUser.Name,
 			"--key",
-			machineKey,
+			nodeKey,
 			"--output",
 			"json",
 		},
@@ -1415,7 +1415,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	machineResult, _, err := ExecuteCommand(
+	nodeResult, _, err := ExecuteCommand(
 		&s.headscale,
 		[]string{
 			"headscale",
@@ -1424,7 +1424,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			oldUser.Name,
 			"register",
 			"--key",
-			machineKey,
+			nodeKey,
 			"--output",
 			"json",
 		},
@@ -1432,15 +1432,15 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var machine v1.Machine
-	err = json.Unmarshal([]byte(machineResult), &machine)
+	var node v1.Node
+	err = json.Unmarshal([]byte(nodeResult), &node)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), uint64(1), machine.Id)
-	assert.Equal(s.T(), "nomad-machine", machine.Name)
-	assert.Equal(s.T(), machine.User.Name, oldUser.Name)
+	assert.Equal(s.T(), uint64(1), node.Id)
+	assert.Equal(s.T(), "nomad-node", node.Name)
+	assert.Equal(s.T(), node.User.Name, oldUser.Name)
 
-	machineId := fmt.Sprintf("%d", machine.Id)
+	nodeId := fmt.Sprintf("%d", node.Id)
 
 	moveToNewNSResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1449,7 +1449,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"nodes",
 			"move",
 			"--identifier",
-			machineId,
+			nodeId,
 			"--user",
 			newUser.Name,
 			"--output",
@@ -1459,10 +1459,10 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	err = json.Unmarshal([]byte(moveToNewNSResult), &machine)
+	err = json.Unmarshal([]byte(moveToNewNSResult), &node)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), machine.User, newUser)
+	assert.Equal(s.T(), node.User, newUser)
 
 	listAllNodesResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1477,14 +1477,14 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	var allNodes []v1.Machine
+	var allNodes []v1.Node
 	err = json.Unmarshal([]byte(listAllNodesResult), &allNodes)
 	assert.Nil(s.T(), err)
 
 	assert.Len(s.T(), allNodes, 1)
 
-	assert.Equal(s.T(), allNodes[0].Id, machine.Id)
-	assert.Equal(s.T(), allNodes[0].User, machine.User)
+	assert.Equal(s.T(), allNodes[0].Id, node.Id)
+	assert.Equal(s.T(), allNodes[0].User, node.User)
 	assert.Equal(s.T(), allNodes[0].User, newUser)
 
 	moveToNonExistingNSResult, _, err := ExecuteCommand(
@@ -1494,7 +1494,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"nodes",
 			"move",
 			"--identifier",
-			machineId,
+			nodeId,
 			"--user",
 			"non-existing-user",
 			"--output",
@@ -1509,7 +1509,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 		string(moveToNonExistingNSResult),
 		"User not found",
 	)
-	assert.Equal(s.T(), machine.User, newUser)
+	assert.Equal(s.T(), node.User, newUser)
 
 	moveToOldNSResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1518,7 +1518,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"nodes",
 			"move",
 			"--identifier",
-			machineId,
+			nodeId,
 			"--user",
 			oldUser.Name,
 			"--output",
@@ -1528,10 +1528,10 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	err = json.Unmarshal([]byte(moveToOldNSResult), &machine)
+	err = json.Unmarshal([]byte(moveToOldNSResult), &node)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), machine.User, oldUser)
+	assert.Equal(s.T(), node.User, oldUser)
 
 	moveToSameNSResult, _, err := ExecuteCommand(
 		&s.headscale,
@@ -1540,7 +1540,7 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 			"nodes",
 			"move",
 			"--identifier",
-			machineId,
+			nodeId,
 			"--user",
 			oldUser.Name,
 			"--output",
@@ -1550,10 +1550,10 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	err = json.Unmarshal([]byte(moveToSameNSResult), &machine)
+	err = json.Unmarshal([]byte(moveToSameNSResult), &node)
 	assert.Nil(s.T(), err)
 
-	assert.Equal(s.T(), machine.User, oldUser)
+	assert.Equal(s.T(), node.User, oldUser)
 }
 
 func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
