@@ -673,12 +673,13 @@ func (machines MachinesP) String() string {
 func (h *Headscale) toNodes(
 	machines Machines,
 	baseDomain string,
+	removeUserFromTaggedDNS bool,
 	dnsConfig *tailcfg.DNSConfig,
 ) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(machines))
 
 	for index, machine := range machines {
-		node, err := h.toNode(machine, baseDomain, dnsConfig)
+		node, err := h.toNode(machine, baseDomain, removeUserFromTaggedDNS, dnsConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -694,6 +695,7 @@ func (h *Headscale) toNodes(
 func (h *Headscale) toNode(
 	machine Machine,
 	baseDomain string,
+	removeUserFromTaggedDNS bool,
 	dnsConfig *tailcfg.DNSConfig,
 ) (*tailcfg.Node, error) {
 	var nodeKey key.NodePublic
@@ -770,14 +772,26 @@ func (h *Headscale) toNode(
 		keyExpiry = time.Time{}
 	}
 
+	tags, _ := getTags(h.aclPolicy, machine, h.cfg.OIDC.StripEmaildomain)
+	tags = lo.Uniq(append(tags, machine.ForcedTags...))
+
 	var hostname string
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
-		hostname = fmt.Sprintf(
-			"%s.%s.%s",
-			machine.GivenName,
-			machine.User.Name,
-			baseDomain,
-		)
+
+		if len(tags) > 0 && removeUserFromTaggedDNS {
+			hostname = fmt.Sprintf(
+				"%s.%s",
+				machine.GivenName,
+				baseDomain,
+			)
+		} else {
+			hostname = fmt.Sprintf(
+				"%s.%s.%s",
+				machine.GivenName,
+				machine.User.Name,
+				baseDomain,
+			)
+		}
 		if len(hostname) > maxHostnameLength {
 			return nil, fmt.Errorf(
 				"hostname %q is too long it cannot except 255 ASCII chars: %w",
@@ -792,9 +806,6 @@ func (h *Headscale) toNode(
 	hostInfo := machine.GetHostInfo()
 
 	online := machine.isOnline()
-
-	tags, _ := getTags(h.aclPolicy, machine, h.cfg.OIDC.StripEmaildomain)
-	tags = lo.Uniq(append(tags, machine.ForcedTags...))
 
 	node := tailcfg.Node{
 		ID: tailcfg.NodeID(machine.ID), // this is the actual ID

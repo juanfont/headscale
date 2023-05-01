@@ -140,12 +140,13 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 	err = headscale.LoadConfig(tmpDir, false)
 	c.Assert(err, check.IsNil)
 
-	dnsConfig, baseDomain := headscale.GetDNSConfig()
+	dnsConfig, baseDomain, removeUserFromTaggedDNS := headscale.GetDNSConfig()
 
 	c.Assert(dnsConfig.Nameservers[0].String(), check.Equals, "1.1.1.1")
 	c.Assert(dnsConfig.Resolvers[0].Addr, check.Equals, "1.1.1.1")
 	c.Assert(dnsConfig.Proxied, check.Equals, true)
 	c.Assert(baseDomain, check.Equals, "example.com")
+	c.Assert(removeUserFromTaggedDNS, check.Equals, false)
 }
 
 func writeConfig(c *check.C, tmpDir string, configYaml []byte) {

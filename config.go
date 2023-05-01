@@ -48,6 +48,7 @@ type Config struct {
 	PrivateKeyPath                 string
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
+	RemoveUserFromTaggedDNS        bool
 	Log                            LogConfig
 	DisableUpdateCheck             bool
 
@@ -373,7 +374,7 @@ func GetLogConfig() LogConfig {
 	}
 }
 
-func GetDNSConfig() (*tailcfg.DNSConfig, string) {
+func GetDNSConfig() (*tailcfg.DNSConfig, string, bool) {
 	if viper.IsSet("dns_config") {
 		dnsConfig := &tailcfg.DNSConfig{}
 
@@ -484,10 +485,17 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			baseDomain = "headscale.net" // does not really matter when MagicDNS is not enabled
 		}
 
-		return dnsConfig, baseDomain
+		var removeUserFromTaggedDNS bool
+		if viper.IsSet("dns_config.remove_user_from_tagged_DNS") {
+			removeUserFromTaggedDNS = viper.GetBool("dns_config.remove_user_from_tagged_DNS")
+		} else {
+			removeUserFromTaggedDNS = false // does not really matter when MagicDNS is not enabled
+		}
+
+		return dnsConfig, baseDomain, removeUserFromTaggedDNS
 	}
 
-	return nil, ""
+	return nil, "", false
 }
 
 func GetHeadscaleConfig() (*Config, error) {
@@ -502,7 +510,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		}, nil
 	}
 
-	dnsConfig, baseDomain := GetDNSConfig()
+	dnsConfig, baseDomain, removeUserFromTaggedDNS := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
 	randomizeClientPort := viper.GetBool("randomize_client_port")
@@ -567,7 +575,8 @@ func GetHeadscaleConfig() (*Config, error) {
 		NoisePrivateKeyPath: AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),
 		),
-		BaseDomain: baseDomain,
+		BaseDomain:              baseDomain,
+		RemoveUserFromTaggedDNS: removeUserFromTaggedDNS,
 
 		DERP: derpConfig,
 

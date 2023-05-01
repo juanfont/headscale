@@ -439,7 +439,7 @@ func (s *Suite) TestAllowedIPRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes1), check.Equals, 3)
 
-	peer, err := app.toNode(machine1, "headscale.net", nil)
+	peer, err := app.toNode(machine1, "headscale.net", false, nil)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(peer.AllowedIPs), check.Equals, 3)
