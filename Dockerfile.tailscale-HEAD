@@ -1,7 +1,7 @@
 FROM golang:latest
 
 RUN apt-get update \
-    && apt-get install -y ca-certificates dnsutils git iptables ssh \
+    && apt-get install -y dnsutils git iptables ssh ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --shell=/bin/bash --create-home ssh-it-user
@@ -10,15 +10,8 @@ RUN git clone https://github.com/tailscale/tailscale.git
 
 WORKDIR /go/tailscale
 
-RUN git checkout main
-
-RUN sh build_dist.sh tailscale.com/cmd/tailscale
-RUN sh build_dist.sh tailscale.com/cmd/tailscaled
-
-RUN cp tailscale /usr/local/bin/
-RUN cp tailscaled /usr/local/bin/
-
-ADD integration_test/etc_embedded_derp/tls/server.crt /usr/local/share/ca-certificates/
-RUN chmod 644 /usr/local/share/ca-certificates/server.crt
-
-RUN update-ca-certificates
+RUN git checkout main \
+    && sh build_dist.sh tailscale.com/cmd/tailscale \
+    && sh build_dist.sh tailscale.com/cmd/tailscaled \
+    && cp tailscale /usr/local/bin/ \
+    && cp tailscaled /usr/local/bin/
