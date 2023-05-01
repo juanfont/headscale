@@ -57,11 +57,11 @@ var listRoutesCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		machineID, err := cmd.Flags().GetUint64("identifier")
+		nodeID, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				fmt.Sprintf("Error getting node id from flag: %s", err),
 				output,
 			)
 
@@ -74,7 +74,7 @@ var listRoutesCmd = &cobra.Command{
 
 		var routes []*v1.Route
 
-		if machineID == 0 {
+		if nodeID == 0 {
 			response, err := client.GetRoutes(ctx, &v1.GetRoutesRequest{})
 			if err != nil {
 				ErrorOutput(
@@ -94,13 +94,13 @@ var listRoutesCmd = &cobra.Command{
 
 			routes = response.Routes
 		} else {
-			response, err := client.GetMachineRoutes(ctx, &v1.GetMachineRoutesRequest{
-				MachineId: machineID,
+			response, err := client.GetNodeRoutes(ctx, &v1.GetNodeRoutesRequest{
+				NodeId: nodeID,
 			})
 			if err != nil {
 				ErrorOutput(
 					err,
-					fmt.Sprintf("Cannot get routes for machine %d: %s", machineID, status.Convert(err).Message()),
+					fmt.Sprintf("Cannot get routes for node %d: %s", nodeID, status.Convert(err).Message()),
 					output,
 				)
 
@@ -147,7 +147,7 @@ var enableRouteCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				fmt.Sprintf("Error getting node id from flag: %s", err),
 				output,
 			)
 
@@ -190,7 +190,7 @@ var disableRouteCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				fmt.Sprintf("Error getting node id from flag: %s", err),
 				output,
 			)
 
@@ -233,7 +233,7 @@ var deleteRouteCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				fmt.Sprintf("Error getting node id from flag: %s", err),
 				output,
 			)
 
@@ -267,7 +267,7 @@ var deleteRouteCmd = &cobra.Command{
 
 // routesToPtables converts the list of routes to a nice table.
 func routesToPtables(routes []*v1.Route) pterm.TableData {
-	tableData := pterm.TableData{{"ID", "Machine", "Prefix", "Advertised", "Enabled", "Primary"}}
+	tableData := pterm.TableData{{"ID", "Node", "Prefix", "Advertised", "Enabled", "Primary"}}
 
 	for _, route := range routes {
 		var isPrimaryStr string
@@ -286,7 +286,7 @@ func routesToPtables(routes []*v1.Route) pterm.TableData {
 		tableData = append(tableData,
 			[]string{
 				strconv.FormatUint(route.Id, Base10),
-				route.Machine.GivenName,
+				route.Node.GivenName,
 				route.Prefix,
 				strconv.FormatBool(route.Advertised),
 				strconv.FormatBool(route.Enabled),

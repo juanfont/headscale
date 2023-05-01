@@ -57,7 +57,7 @@ var debugCmd = &cobra.Command{
 
 var createNodeCmd = &cobra.Command{
 	Use:   "create-node",
-	Short: "Create a node (machine) that can be registered with `nodes register <>` command",
+	Short: "Create a node that can be registered with `nodes register <>` command",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -83,7 +83,7 @@ var createNodeCmd = &cobra.Command{
 			return
 		}
 
-		machineKey, err := cmd.Flags().GetString("key")
+		nodeKey, err := cmd.Flags().GetString("key")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -93,7 +93,7 @@ var createNodeCmd = &cobra.Command{
 
 			return
 		}
-		if !headscale.NodePublicKeyRegex.Match([]byte(machineKey)) {
+		if !headscale.NodePublicKeyRegex.Match([]byte(nodeKey)) {
 			err = errPreAuthKeyMalformed
 			ErrorOutput(
 				err,
@@ -115,24 +115,24 @@ var createNodeCmd = &cobra.Command{
 			return
 		}
 
-		request := &v1.DebugCreateMachineRequest{
-			Key:    machineKey,
+		request := &v1.DebugCreateNodeRequest{
+			Key:    nodeKey,
 			Name:   name,
 			User:   user,
 			Routes: routes,
 		}
 
-		response, err := client.DebugCreateMachine(ctx, request)
+		response, err := client.DebugCreateNode(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Cannot create machine: %s", status.Convert(err).Message()),
+				fmt.Sprintf("Cannot create node: %s", status.Convert(err).Message()),
 				output,
 			)
 
 			return
 		}
 
-		SuccessOutput(response.Machine, "Machine created", output)
+		SuccessOutput(response.Node, "Node created", output)
 	},
 }
