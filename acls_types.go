@@ -51,7 +51,7 @@ type AutoApprovers struct {
 	ExitNode []string            `json:"exitNode" yaml:"exitNode"`
 }
 
-// SSH controls who can ssh into which machines.
+// SSH controls who can ssh into which nodes.
 type SSH struct {
 	Action       string   `json:"action"                yaml:"action"`
 	Sources      []string `json:"src"                   yaml:"src"`

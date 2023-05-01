@@ -47,17 +47,17 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	pak, err = app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	machine := Machine{
+	node := Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.Save(&node)
 
 	err = app.DestroyUser("test")
 	c.Assert(err, check.Equals, ErrUserStillHasNodes)
@@ -138,10 +138,10 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
+	_, err = app.GetNode(userShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
-	machineInShared1 := &Machine{
+	nodeInShared1 := &Node{
 		ID:             1,
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
@@ -153,12 +153,12 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyShared1.ID),
 	}
-	app.db.Save(machineInShared1)
+	app.db.Save(nodeInShared1)
 
-	_, err = app.GetMachine(userShared1.Name, machineInShared1.Hostname)
+	_, err = app.GetNode(userShared1.Name, nodeInShared1.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machineInShared2 := &Machine{
+	nodeInShared2 := &Node{
 		ID:             2,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -170,12 +170,12 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyShared2.ID),
 	}
-	app.db.Save(machineInShared2)
+	app.db.Save(nodeInShared2)
 
-	_, err = app.GetMachine(userShared2.Name, machineInShared2.Hostname)
+	_, err = app.GetNode(userShared2.Name, nodeInShared2.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machineInShared3 := &Machine{
+	nodeInShared3 := &Node{
 		ID:             3,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -187,12 +187,12 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyShared3.ID),
 	}
-	app.db.Save(machineInShared3)
+	app.db.Save(nodeInShared3)
 
-	_, err = app.GetMachine(userShared3.Name, machineInShared3.Hostname)
+	_, err = app.GetNode(userShared3.Name, nodeInShared3.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machine2InShared1 := &Machine{
+	node2InShared1 := &Node{
 		ID:             4,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -204,14 +204,14 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.4")},
 		AuthKeyID:      uint(preAuthKey2Shared1.ID),
 	}
-	app.db.Save(machine2InShared1)
+	app.db.Save(node2InShared1)
 
-	peersOfMachine1InShared1, err := app.getPeers(machineInShared1)
+	peersOfNode1InShared1, err := app.getPeers(nodeInShared1)
 	c.Assert(err, check.IsNil)
 
 	userProfiles := app.getMapResponseUserProfiles(
-		*machineInShared1,
-		peersOfMachine1InShared1,
+		*nodeInShared1,
+		peersOfNode1InShared1,
 	)
 
 	c.Assert(len(userProfiles), check.Equals, 3)
@@ -377,7 +377,7 @@ func TestCheckForFQDNRules(t *testing.T) {
 	}
 }
 
-func (s *Suite) TestSetMachineUser(c *check.C) {
+func (s *Suite) TestSetNodeUser(c *check.C) {
 	oldUser, err := app.CreateUser("old")
 	c.Assert(err, check.IsNil)
 
@@ -387,29 +387,29 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	pak, err := app.CreatePreAuthKey(oldUser.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	machine := Machine{
+	node := Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         oldUser.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
-	c.Assert(machine.UserID, check.Equals, oldUser.ID)
+	app.db.Save(&node)
+	c.Assert(node.UserID, check.Equals, oldUser.ID)
 
-	err = app.SetMachineUser(&machine, newUser.Name)
+	err = app.SetNodeUser(&node, newUser.Name)
 	c.Assert(err, check.IsNil)
-	c.Assert(machine.UserID, check.Equals, newUser.ID)
-	c.Assert(machine.User.Name, check.Equals, newUser.Name)
+	c.Assert(node.UserID, check.Equals, newUser.ID)
+	c.Assert(node.User.Name, check.Equals, newUser.Name)
 
-	err = app.SetMachineUser(&machine, "non-existing-user")
+	err = app.SetNodeUser(&node, "non-existing-user")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	err = app.SetMachineUser(&machine, newUser.Name)
+	err = app.SetNodeUser(&node, newUser.Name)
 	c.Assert(err, check.IsNil)
-	c.Assert(machine.UserID, check.Equals, newUser.ID)
-	c.Assert(machine.User.Name, check.Equals, newUser.Name)
+	c.Assert(node.UserID, check.Equals, newUser.ID)
+	c.Assert(node.User.Name, check.Equals, newUser.Name)
 }

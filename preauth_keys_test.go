@@ -73,7 +73,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	machine := Machine{
+	node := Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
@@ -83,7 +83,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.Save(&node)
 
 	key, err := app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
@@ -97,7 +97,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	pak, err := app.CreatePreAuthKey(user.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	machine := Machine{
+	node := Node{
 		ID:             1,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
@@ -107,7 +107,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.Save(&node)
 
 	key, err := app.checkKeyValidity(pak.Key)
 	c.Assert(err, check.IsNil)
@@ -134,7 +134,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	now := time.Now()
-	machine := Machine{
+	node := Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
@@ -145,19 +145,19 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 		LastSeen:       &now,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.Save(&node)
 
 	_, err = app.checkKeyValidity(pak.Key)
 	// Ephemeral keys are by definition reusable
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("test7", "testest")
+	_, err = app.GetNode("test7", "testest")
 	c.Assert(err, check.IsNil)
 
 	app.expireEphemeralNodesWorker()
 
-	// The machine record should have been deleted
-	_, err = app.GetMachine("test7", "testest")
+	// The node record should have been deleted
+	_, err = app.GetNode("test7", "testest")
 	c.Assert(err, check.NotNil)
 }
 
