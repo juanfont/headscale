@@ -33,6 +33,7 @@ var (
 	tailscaleVersions2021 = []string{
 		"head",
 		"unstable",
+		"1.40.0",
 		"1.38.4",
 		"1.36.2",
 		"1.34.2",
@@ -279,7 +280,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 
 			headscale, err := s.Headscale()
 			if err != nil {
-				return fmt.Errorf("failed to create tailscale node: %w", err)
+				return fmt.Errorf("failed to create tailscale node (version: %s): %w", version, err)
 			}
 
 			cert := headscale.GetCert()

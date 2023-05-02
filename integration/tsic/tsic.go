@@ -212,7 +212,11 @@ func New(
 		dockertestutil.DockerAllowNetworkAdministration,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("could not start tailscale container: %w", err)
+		return nil, fmt.Errorf(
+			"could not start tailscale container (version: %s): %w",
+			version,
+			err,
+		)
 	}
 	log.Printf("Created %s container\n", hostname)
 
