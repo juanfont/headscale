@@ -4,6 +4,7 @@
 
 ### Changes
 
+- Fix missing releases page hyperlink in installation guide [#1412](https://github.com/juanfont/headscale/pull/1412)
 - Add environment flags to enable pprof (profiling) [#1382](https://github.com/juanfont/headscale/pull/1382)
   - Profiles are continously generated in our integration tests.
 - Fix systemd service file location in `.deb` packages [#1391](https://github.com/juanfont/headscale/pull/1391)
