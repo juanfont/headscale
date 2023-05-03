@@ -257,7 +257,7 @@ dns_config:
 
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:
-unix_socket: /var/run/headscale.sock
+unix_socket: /var/run/headscale/headscale.sock
 unix_socket_permission: "0770"
 #
 # headscale supports experimental OpenID connect support,
