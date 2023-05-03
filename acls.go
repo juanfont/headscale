@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"gopkg.in/yaml.v3"
@@ -128,20 +127,13 @@ func (h *Headscale) UpdateACLRules() error {
 		return errEmptyPolicy
 	}
 
-	rules, err := generateACLRules(machines, *h.aclPolicy, h.cfg.OIDC.StripEmaildomain)
+	rules, err := h.aclPolicy.generateFilterRules(machines, h.cfg.OIDC.StripEmaildomain)
 	if err != nil {
 		return err
 	}
+
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 	h.aclRules = rules
-
-	// Precompute a map of which sources can reach each destination, this is
-	// to provide quicker lookup when we calculate the peerlist for the map
-	// response to nodes.
-	aclPeerCacheMap := generateACLPeerCacheMap(rules)
-	h.aclPeerCacheMapRW.Lock()
-	h.aclPeerCacheMap = aclPeerCacheMap
-	h.aclPeerCacheMapRW.Unlock()
 
 	if featureEnableSSH() {
 		sshRules, err := h.generateSSHRules()
@@ -160,88 +152,28 @@ func (h *Headscale) UpdateACLRules() error {
 	return nil
 }
 
-// generateACLPeerCacheMap takes a list of Tailscale filter rules and generates a map
-// of which Sources ("*" and IPs) can access destinations. This is to speed up the
-// process of generating MapResponses when deciding which Peers to inform nodes about.
-func generateACLPeerCacheMap(rules []tailcfg.FilterRule) map[string][]string {
-	aclCachePeerMap := make(map[string][]string)
-	for _, rule := range rules {
-		for _, srcIP := range rule.SrcIPs {
-			for _, ip := range expandACLPeerAddr(srcIP) {
-				if data, ok := aclCachePeerMap[ip]; ok {
-					for _, dstPort := range rule.DstPorts {
-						data = append(data, dstPort.IP)
-					}
-					aclCachePeerMap[ip] = data
-				} else {
-					dstPortsMap := make([]string, 0)
-					for _, dstPort := range rule.DstPorts {
-						dstPortsMap = append(dstPortsMap, dstPort.IP)
-					}
-					aclCachePeerMap[ip] = dstPortsMap
-				}
-			}
-		}
-	}
-
-	log.Trace().Interface("ACL Cache Map", aclCachePeerMap).Msg("ACL Peer Cache Map generated")
-
-	return aclCachePeerMap
-}
-
-// expandACLPeerAddr takes a "tailcfg.FilterRule" "IP" and expands it into
-// something our cache logic can look up, which is "*" or single IP addresses.
-// This is probably quite inefficient, but it is a result of
-// "make it work, then make it fast", and a lot of the ACL stuff does not
-// work, but people have tried to make it fast.
-func expandACLPeerAddr(srcIP string) []string {
-	if ip, err := netip.ParseAddr(srcIP); err == nil {
-		return []string{ip.String()}
-	}
-
-	if cidr, err := netip.ParsePrefix(srcIP); err == nil {
-		addrs := []string{}
-
-		ipRange := netipx.RangeOfPrefix(cidr)
-
-		from := ipRange.From()
-		too := ipRange.To()
-
-		if from == too {
-			return []string{from.String()}
-		}
-
-		for from != too && from.Less(too) {
-			addrs = append(addrs, from.String())
-			from = from.Next()
-		}
-		addrs = append(addrs, too.String()) // Add the last IP address in the range
-
-		return addrs
-	}
-
-	// probably "*" or other string based "IP"
-	return []string{srcIP}
-}
-
-func generateACLRules(
+// generateFilterRules takes a set of machines and an ACLPolicy and generates a
+// set of Tailscale compatible FilterRules used to allow traffic on clients.
+func (pol *ACLPolicy) generateFilterRules(
 	machines []Machine,
-	aclPolicy ACLPolicy,
-	stripEmaildomain bool,
+	stripEmailDomain bool,
 ) ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
 
-	for index, acl := range aclPolicy.ACLs {
+	for index, acl := range pol.ACLs {
 		if acl.Action != "accept" {
 			return nil, errInvalidAction
 		}
 
 		srcIPs := []string{}
-		for innerIndex, src := range acl.Sources {
-			srcs, err := generateACLPolicySrc(machines, aclPolicy, src, stripEmaildomain)
+		for srcIndex, src := range acl.Sources {
+			srcs, err := pol.getIPsFromSource(src, machines, stripEmailDomain)
 			if err != nil {
 				log.Error().
-					Msgf("Error parsing ACL %d, Source %d", index, innerIndex)
+					Interface("src", src).
+					Int("ACL index", index).
+					Int("Src index", srcIndex).
+					Msgf("Error parsing ACL")
 
 				return nil, err
 			}
@@ -257,17 +189,19 @@ func generateACLRules(
 		}
 
 		destPorts := []tailcfg.NetPortRange{}
-		for innerIndex, dest := range acl.Destinations {
-			dests, err := generateACLPolicyDest(
-				machines,
-				aclPolicy,
+		for destIndex, dest := range acl.Destinations {
+			dests, err := pol.getNetPortRangeFromDestination(
 				dest,
+				machines,
 				needsWildcard,
-				stripEmaildomain,
+				stripEmailDomain,
 			)
 			if err != nil {
 				log.Error().
-					Msgf("Error parsing ACL %d, Destination %d", index, innerIndex)
+					Interface("dest", dest).
+					Int("ACL index", index).
+					Int("dest index", destIndex).
+					Msgf("Error parsing ACL")
 
 				return nil, err
 			}
@@ -338,22 +272,41 @@ func (h *Headscale) generateSSHRules() ([]*tailcfg.SSHRule, error) {
 
 		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
 		for innerIndex, rawSrc := range sshACL.Sources {
-			expandedSrcs, err := expandAlias(
-				machines,
-				*h.aclPolicy,
-				rawSrc,
-				h.cfg.OIDC.StripEmaildomain,
-			)
-			if err != nil {
-				log.Error().
-					Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
-
-				return nil, err
-			}
-			for _, expandedSrc := range expandedSrcs {
+			if isWildcard(rawSrc) {
 				principals = append(principals, &tailcfg.SSHPrincipal{
-					NodeIP: expandedSrc,
+					Any: true,
 				})
+			} else if isGroup(rawSrc) {
+				users, err := h.aclPolicy.getUsersInGroup(rawSrc, h.cfg.OIDC.StripEmaildomain)
+				if err != nil {
+					log.Error().
+						Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
+
+					return nil, err
+				}
+
+				for _, user := range users {
+					principals = append(principals, &tailcfg.SSHPrincipal{
+						UserLogin: user,
+					})
+				}
+			} else {
+				expandedSrcs, err := h.aclPolicy.expandAlias(
+					machines,
+					rawSrc,
+					h.cfg.OIDC.StripEmaildomain,
+				)
+				if err != nil {
+					log.Error().
+						Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
+
+					return nil, err
+				}
+				for _, expandedSrc := range expandedSrcs.Prefixes() {
+					principals = append(principals, &tailcfg.SSHPrincipal{
+						NodeIP: expandedSrc.Addr().String(),
+					})
+				}
 			}
 		}
 
@@ -362,10 +315,9 @@ func (h *Headscale) generateSSHRules() ([]*tailcfg.SSHRule, error) {
 			userMap[user] = "="
 		}
 		rules = append(rules, &tailcfg.SSHRule{
-			RuleExpires: nil,
-			Principals:  principals,
-			SSHUsers:    userMap,
-			Action:      &action,
+			Principals: principals,
+			SSHUsers:   userMap,
+			Action:     &action,
 		})
 	}
 
@@ -389,19 +341,32 @@ func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {
 	}, nil
 }
 
-func generateACLPolicySrc(
-	machines []Machine,
-	aclPolicy ACLPolicy,
+// getIPsFromSource returns a set of Source IPs that would be associated
+// with the given src alias.
+func (pol *ACLPolicy) getIPsFromSource(
 	src string,
+	machines []Machine,
 	stripEmaildomain bool,
 ) ([]string, error) {
-	return expandAlias(machines, aclPolicy, src, stripEmaildomain)
+	ipSet, err := pol.expandAlias(machines, src, stripEmaildomain)
+	if err != nil {
+		return []string{}, err
+	}
+
+	prefixes := []string{}
+
+	for _, prefix := range ipSet.Prefixes() {
+		prefixes = append(prefixes, prefix.String())
+	}
+
+	return prefixes, nil
 }
 
-func generateACLPolicyDest(
-	machines []Machine,
-	aclPolicy ACLPolicy,
+// getNetPortRangeFromDestination returns a set of tailcfg.NetPortRange
+// which are associated with the dest alias.
+func (pol *ACLPolicy) getNetPortRangeFromDestination(
 	dest string,
+	machines []Machine,
 	needsWildcard bool,
 	stripEmaildomain bool,
 ) ([]tailcfg.NetPortRange, error) {
@@ -448,9 +413,8 @@ func generateACLPolicyDest(
 		alias = fmt.Sprintf("%s:%s", tokens[0], tokens[1])
 	}
 
-	expanded, err := expandAlias(
+	expanded, err := pol.expandAlias(
 		machines,
-		aclPolicy,
 		alias,
 		stripEmaildomain,
 	)
@@ -463,11 +427,11 @@ func generateACLPolicyDest(
 	}
 
 	dests := []tailcfg.NetPortRange{}
-	for _, d := range expanded {
-		for _, p := range *ports {
+	for _, dest := range expanded.Prefixes() {
+		for _, port := range *ports {
 			pr := tailcfg.NetPortRange{
-				IP:    d,
-				Ports: p,
+				IP:    dest.String(),
+				Ports: port,
 			}
 			dests = append(dests, pr)
 		}
@@ -534,135 +498,64 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 // - an ip
 // - a cidr
 // and transform these in IPAddresses.
-func expandAlias(
+func (pol *ACLPolicy) expandAlias(
 	machines Machines,
-	aclPolicy ACLPolicy,
 	alias string,
 	stripEmailDomain bool,
-) ([]string, error) {
-	ips := []string{}
-	if alias == "*" {
-		return []string{"*"}, nil
+) (*netipx.IPSet, error) {
+	if isWildcard(alias) {
+		return parseIPSet("*", nil)
 	}
+
+	build := netipx.IPSetBuilder{}
 
 	log.Debug().
 		Str("alias", alias).
 		Msg("Expanding")
 
-	if strings.HasPrefix(alias, "group:") {
-		users, err := expandGroup(aclPolicy, alias, stripEmailDomain)
-		if err != nil {
-			return ips, err
-		}
-		for _, n := range users {
-			nodes := filterMachinesByUser(machines, n)
-			for _, node := range nodes {
-				ips = append(ips, node.IPAddresses.ToStringSlice()...)
-			}
-		}
-
-		return ips, nil
+	// if alias is a group
+	if isGroup(alias) {
+		return pol.getIPsFromGroup(alias, machines, stripEmailDomain)
 	}
 
-	if strings.HasPrefix(alias, "tag:") {
-		// check for forced tags
-		for _, machine := range machines {
-			if contains(machine.ForcedTags, alias) {
-				ips = append(ips, machine.IPAddresses.ToStringSlice()...)
-			}
-		}
-
-		// find tag owners
-		owners, err := expandTagOwners(aclPolicy, alias, stripEmailDomain)
-		if err != nil {
-			if errors.Is(err, errInvalidTag) {
-				if len(ips) == 0 {
-					return ips, fmt.Errorf(
-						"%w. %v isn't owned by a TagOwner and no forced tags are defined",
-						errInvalidTag,
-						alias,
-					)
-				}
-
-				return ips, nil
-			} else {
-				return ips, err
-			}
-		}
-
-		// filter out machines per tag owner
-		for _, user := range owners {
-			machines := filterMachinesByUser(machines, user)
-			for _, machine := range machines {
-				hi := machine.GetHostInfo()
-				if contains(hi.RequestTags, alias) {
-					ips = append(ips, machine.IPAddresses.ToStringSlice()...)
-				}
-			}
-		}
-
-		return ips, nil
+	// if alias is a tag
+	if isTag(alias) {
+		return pol.getIPsFromTag(alias, machines, stripEmailDomain)
 	}
 
 	// if alias is a user
-	nodes := filterMachinesByUser(machines, alias)
-	nodes = excludeCorrectlyTaggedNodes(aclPolicy, nodes, alias, stripEmailDomain)
-
-	for _, n := range nodes {
-		ips = append(ips, n.IPAddresses.ToStringSlice()...)
-	}
-	if len(ips) > 0 {
-		return ips, nil
+	if ips, err := pol.getIPsForUser(alias, machines, stripEmailDomain); ips != nil {
+		return ips, err
 	}
 
 	// if alias is an host
-	if h, ok := aclPolicy.Hosts[alias]; ok {
+	// Note, this is recursive.
+	if h, ok := pol.Hosts[alias]; ok {
 		log.Trace().Str("host", h.String()).Msg("expandAlias got hosts entry")
 
-		return expandAlias(machines, aclPolicy, h.String(), stripEmailDomain)
+		return pol.expandAlias(machines, h.String(), stripEmailDomain)
 	}
 
 	// if alias is an IP
 	if ip, err := netip.ParseAddr(alias); err == nil {
-		log.Trace().Str("ip", ip.String()).Msg("expandAlias got ip")
-		ips := []string{ip.String()}
-		matches := machines.FilterByIP(ip)
-
-		for _, machine := range matches {
-			ips = append(ips, machine.IPAddresses.ToStringSlice()...)
-		}
-
-		return lo.Uniq(ips), nil
+		return pol.getIPsFromSingleIP(ip, machines)
 	}
 
-	if cidr, err := netip.ParsePrefix(alias); err == nil {
-		log.Trace().Str("cidr", cidr.String()).Msg("expandAlias got cidr")
-		val := []string{cidr.String()}
-		// This is suboptimal and quite expensive, but if we only add the cidr, we will miss all the relevant IPv6
-		// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
-		for _, machine := range machines {
-			for _, ip := range machine.IPAddresses {
-				// log.Trace().
-				// 	Msgf("checking if machine ip (%s) is part of cidr (%s): %v, is single ip cidr (%v), addr: %s", ip.String(), cidr.String(), cidr.Contains(ip), cidr.IsSingleIP(), cidr.Addr().String())
-				if cidr.Contains(ip) {
-					val = append(val, machine.IPAddresses.ToStringSlice()...)
-				}
-			}
-		}
-
-		return lo.Uniq(val), nil
+	// if alias is an IP Prefix (CIDR)
+	if prefix, err := netip.ParsePrefix(alias); err == nil {
+		return pol.getIPsFromIPPrefix(prefix, machines)
 	}
 
 	log.Warn().Msgf("No IPs found with the alias %v", alias)
 
-	return ips, nil
+	return build.IPSet()
 }
 
 // excludeCorrectlyTaggedNodes will remove from the list of input nodes the ones
 // that are correctly tagged since they should not be listed as being in the user
 // we assume in this function that we only have nodes from 1 user.
 func excludeCorrectlyTaggedNodes(
-	aclPolicy ACLPolicy,
+	aclPolicy *ACLPolicy,
 	nodes []Machine,
 	user string,
 	stripEmailDomain bool,
@@ -670,7 +563,7 @@ func excludeCorrectlyTaggedNodes(
 	out := []Machine{}
 	tags := []string{}
 	for tag := range aclPolicy.TagOwners {
-		owners, _ := expandTagOwners(aclPolicy, user, stripEmailDomain)
+		owners, _ := getTagOwners(aclPolicy, user, stripEmailDomain)
 		ns := append(owners, user)
 		if contains(ns, user) {
 			tags = append(tags, tag)
@@ -700,7 +593,7 @@ func excludeCorrectlyTaggedNodes(
 }
 
 func expandPorts(portsStr string, needsWildcard bool) (*[]tailcfg.PortRange, error) {
-	if portsStr == "*" {
+	if isWildcard(portsStr) {
 		return &[]tailcfg.PortRange{
 			{First: portRangeBegin, Last: portRangeEnd},
 		}, nil
@@ -758,15 +651,15 @@ func filterMachinesByUser(machines []Machine, user string) []Machine {
 	return out
 }
 
-// expandTagOwners will return a list of user. An owner can be either a user or a group
+// getTagOwners will return a list of user. An owner can be either a user or a group
 // a group cannot be composed of groups.
-func expandTagOwners(
-	aclPolicy ACLPolicy,
+func getTagOwners(
+	pol *ACLPolicy,
 	tag string,
 	stripEmailDomain bool,
 ) ([]string, error) {
 	var owners []string
-	ows, ok := aclPolicy.TagOwners[tag]
+	ows, ok := pol.TagOwners[tag]
 	if !ok {
 		return []string{}, fmt.Errorf(
 			"%w. %v isn't owned by a TagOwner. Please add one first. https://tailscale.com/kb/1018/acls/#tag-owners",
@@ -775,8 +668,8 @@ func expandTagOwners(
 		)
 	}
 	for _, owner := range ows {
-		if strings.HasPrefix(owner, "group:") {
-			gs, err := expandGroup(aclPolicy, owner, stripEmailDomain)
+		if isGroup(owner) {
+			gs, err := pol.getUsersInGroup(owner, stripEmailDomain)
 			if err != nil {
 				return []string{}, err
 			}
@@ -789,15 +682,15 @@ func expandTagOwners(
 	return owners, nil
 }
 
-// expandGroup will return the list of user inside the group
+// getUsersInGroup will return the list of user inside the group
 // after some validation.
-func expandGroup(
-	aclPolicy ACLPolicy,
+func (pol *ACLPolicy) getUsersInGroup(
 	group string,
 	stripEmailDomain bool,
 ) ([]string, error) {
-	outGroups := []string{}
-	aclGroups, ok := aclPolicy.Groups[group]
+	users := []string{}
+	log.Trace().Caller().Interface("pol", pol).Msg("test")
+	aclGroups, ok := pol.Groups[group]
 	if !ok {
 		return []string{}, fmt.Errorf(
 			"group %v isn't registered. %w",
@@ -806,7 +699,7 @@ func expandGroup(
 		)
 	}
 	for _, group := range aclGroups {
-		if strings.HasPrefix(group, "group:") {
+		if isGroup(group) {
 			return []string{}, fmt.Errorf(
 				"%w. A group cannot be composed of groups. https://tailscale.com/kb/1018/acls/#groups",
 				errInvalidGroup,
@@ -820,8 +713,151 @@ func expandGroup(
 				errInvalidGroup,
 			)
 		}
-		outGroups = append(outGroups, grp)
+		users = append(users, grp)
 	}
 
-	return outGroups, nil
+	return users, nil
+}
+
+func (pol *ACLPolicy) getIPsFromGroup(
+	group string,
+	machines Machines,
+	stripEmailDomain bool,
+) (*netipx.IPSet, error) {
+	build := netipx.IPSetBuilder{}
+
+	users, err := pol.getUsersInGroup(group, stripEmailDomain)
+	if err != nil {
+		return &netipx.IPSet{}, err
+	}
+	for _, user := range users {
+		filteredMachines := filterMachinesByUser(machines, user)
+		for _, machine := range filteredMachines {
+			machine.IPAddresses.AppendToIPSet(&build)
+		}
+	}
+
+	return build.IPSet()
+}
+
+func (pol *ACLPolicy) getIPsFromTag(
+	alias string,
+	machines Machines,
+	stripEmailDomain bool,
+) (*netipx.IPSet, error) {
+	build := netipx.IPSetBuilder{}
+
+	// check for forced tags
+	for _, machine := range machines {
+		if contains(machine.ForcedTags, alias) {
+			machine.IPAddresses.AppendToIPSet(&build)
+		}
+	}
+
+	// find tag owners
+	owners, err := getTagOwners(pol, alias, stripEmailDomain)
+	if err != nil {
+		if errors.Is(err, errInvalidTag) {
+			ipSet, _ := build.IPSet()
+			if len(ipSet.Prefixes()) == 0 {
+				return ipSet, fmt.Errorf(
+					"%w. %v isn't owned by a TagOwner and no forced tags are defined",
+					errInvalidTag,
+					alias,
+				)
+			}
+
+			return build.IPSet()
+		} else {
+			return nil, err
+		}
+	}
+
+	// filter out machines per tag owner
+	for _, user := range owners {
+		machines := filterMachinesByUser(machines, user)
+		for _, machine := range machines {
+			hi := machine.GetHostInfo()
+			if contains(hi.RequestTags, alias) {
+				machine.IPAddresses.AppendToIPSet(&build)
+			}
+		}
+	}
+
+	return build.IPSet()
+}
+
+func (pol *ACLPolicy) getIPsForUser(
+	user string,
+	machines Machines,
+	stripEmailDomain bool,
+) (*netipx.IPSet, error) {
+	build := netipx.IPSetBuilder{}
+
+	filteredMachines := filterMachinesByUser(machines, user)
+	filteredMachines = excludeCorrectlyTaggedNodes(pol, filteredMachines, user, stripEmailDomain)
+
+	// shortcurcuit if we have no machines to get ips from.
+	if len(filteredMachines) == 0 {
+		return nil, nil //nolint
+	}
+
+	for _, machine := range filteredMachines {
+		machine.IPAddresses.AppendToIPSet(&build)
+	}
+
+	return build.IPSet()
+}
+
+func (pol *ACLPolicy) getIPsFromSingleIP(
+	ip netip.Addr,
+	machines Machines,
+) (*netipx.IPSet, error) {
+	log.Trace().Str("ip", ip.String()).Msg("expandAlias got ip")
+
+	matches := machines.FilterByIP(ip)
+
+	build := netipx.IPSetBuilder{}
+	build.Add(ip)
+
+	for _, machine := range matches {
+		machine.IPAddresses.AppendToIPSet(&build)
+	}
+
+	return build.IPSet()
+}
+
+func (pol *ACLPolicy) getIPsFromIPPrefix(
+	prefix netip.Prefix,
+	machines Machines,
+) (*netipx.IPSet, error) {
+	log.Trace().Str("prefix", prefix.String()).Msg("expandAlias got prefix")
+	build := netipx.IPSetBuilder{}
+	build.AddPrefix(prefix)
+
+	// This is suboptimal and quite expensive, but if we only add the prefix, we will miss all the relevant IPv6
+	// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
+	for _, machine := range machines {
+		for _, ip := range machine.IPAddresses {
+			// log.Trace().
+			// 	Msgf("checking if machine ip (%s) is part of prefix (%s): %v, is single ip prefix (%v), addr: %s", ip.String(), prefix.String(), prefix.Contains(ip), prefix.IsSingleIP(), prefix.Addr().String())
+			if prefix.Contains(ip) {
+				machine.IPAddresses.AppendToIPSet(&build)
+			}
+		}
+	}
+
+	return build.IPSet()
+}
+
+func isWildcard(str string) bool {
+	return str == "*"
+}
+
+func isGroup(str string) bool {
+	return strings.HasPrefix(str, "group:")
+}
+
+func isTag(str string) bool {
+	return strings.HasPrefix(str, "tag:")
 }

@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/rs/zerolog/log"
+	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
@@ -54,7 +57,7 @@ func (s *Suite) TestBasicRule(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_1.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 }
@@ -142,7 +145,7 @@ func (s *Suite) TestSshRules(c *check.C) {
 	c.Assert(app.sshPolicy.Rules, check.HasLen, 2)
 	c.Assert(app.sshPolicy.Rules[0].SSHUsers, check.HasLen, 1)
 	c.Assert(app.sshPolicy.Rules[0].Principals, check.HasLen, 1)
-	c.Assert(app.sshPolicy.Rules[0].Principals[0].NodeIP, check.Matches, "100.64.0.1")
+	c.Assert(app.sshPolicy.Rules[0].Principals[0].UserLogin, check.Matches, "user1")
 
 	c.Assert(app.sshPolicy.Rules[1].SSHUsers, check.HasLen, 1)
 	c.Assert(app.sshPolicy.Rules[1].Principals, check.HasLen, 1)
@@ -230,7 +233,7 @@ func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(app.aclRules, check.HasLen, 1)
 	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1/32")
 }
 
 // this test should validate that we can expand a group in a TagOWner section and
@@ -280,7 +283,7 @@ func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(app.aclRules, check.HasLen, 1)
 	c.Assert(app.aclRules[0].DstPorts, check.HasLen, 1)
-	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 }
 
 // need a test with:
@@ -329,7 +332,7 @@ func (s *Suite) TestInvalidTagValidUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(app.aclRules, check.HasLen, 1)
 	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1/32")
 }
 
 // tag on a host is owned by a tag owner, the tag is valid.
@@ -397,21 +400,21 @@ func (s *Suite) TestValidTagInvalidUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(app.aclRules, check.HasLen, 1)
 	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.2")
+	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.2/32")
 	c.Assert(app.aclRules[0].DstPorts, check.HasLen, 2)
 	c.Assert(app.aclRules[0].DstPorts[0].Ports.First, check.Equals, uint16(80))
 	c.Assert(app.aclRules[0].DstPorts[0].Ports.Last, check.Equals, uint16(80))
-	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 	c.Assert(app.aclRules[0].DstPorts[1].Ports.First, check.Equals, uint16(443))
 	c.Assert(app.aclRules[0].DstPorts[1].Ports.Last, check.Equals, uint16(443))
-	c.Assert(app.aclRules[0].DstPorts[1].IP, check.Equals, "100.64.0.1")
+	c.Assert(app.aclRules[0].DstPorts[1].IP, check.Equals, "100.64.0.1/32")
 }
 
 func (s *Suite) TestPortRange(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_range.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -425,7 +428,7 @@ func (s *Suite) TestProtocolParsing(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_protocols.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -439,7 +442,7 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -447,15 +450,15 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
 	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, "*")
+	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
 }
 
 func (s *Suite) TestPortWildcardYAML(c *check.C) {
 	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.yaml")
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateACLRules([]Machine{}, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -463,8 +466,8 @@ func (s *Suite) TestPortWildcardYAML(c *check.C) {
 	c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
 	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, "*")
+	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
 }
 
 func (s *Suite) TestPortUser(c *check.C) {
@@ -498,7 +501,7 @@ func (s *Suite) TestPortUser(c *check.C) {
 	machines, err := app.ListMachines()
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateACLRules(machines, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules(machines, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -509,7 +512,7 @@ func (s *Suite) TestPortUser(c *check.C) {
 	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
 	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
 	c.Assert(len(ips), check.Equals, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String())
+	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String()+"/32")
 }
 
 func (s *Suite) TestPortGroup(c *check.C) {
@@ -541,7 +544,7 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	machines, err := app.ListMachines()
 	c.Assert(err, check.IsNil)
 
-	rules, err := generateACLRules(machines, *app.aclPolicy, false)
+	rules, err := app.aclPolicy.generateFilterRules(machines, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -552,30 +555,35 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
 	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
 	c.Assert(len(ips), check.Equals, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String())
+	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String()+"/32")
 }
 
 func Test_expandGroup(t *testing.T) {
+	type field struct {
+		pol ACLPolicy
+	}
 	type args struct {
-		aclPolicy        ACLPolicy
 		group            string
 		stripEmailDomain bool
 	}
 	tests := []struct {
 		name    string
+		field   field
 		args    args
 		want    []string
 		wantErr bool
 	}{
 		{
 			name: "simple test",
-			args: args{
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{
 						"group:test": []string{"user1", "user2", "user3"},
 						"group:foo":  []string{"user2", "user3"},
 					},
 				},
+			},
+			args: args{
 				group:            "group:test",
 				stripEmailDomain: true,
 			},
@@ -584,13 +592,15 @@ func Test_expandGroup(t *testing.T) {
 		},
 		{
 			name: "InexistantGroup",
-			args: args{
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{
 						"group:test": []string{"user1", "user2", "user3"},
 						"group:foo":  []string{"user2", "user3"},
 					},
 				},
+			},
+			args: args{
 				group:            "group:undefined",
 				stripEmailDomain: true,
 			},
@@ -599,8 +609,8 @@ func Test_expandGroup(t *testing.T) {
 		},
 		{
 			name: "Expand emails in group",
-			args: args{
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{
 						"group:admin": []string{
 							"joe.bar@gmail.com",
@@ -608,6 +618,8 @@ func Test_expandGroup(t *testing.T) {
 						},
 					},
 				},
+			},
+			args: args{
 				group:            "group:admin",
 				stripEmailDomain: true,
 			},
@@ -616,8 +628,8 @@ func Test_expandGroup(t *testing.T) {
 		},
 		{
 			name: "Expand emails in group",
-			args: args{
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{
 						"group:admin": []string{
 							"joe.bar@gmail.com",
@@ -625,6 +637,8 @@ func Test_expandGroup(t *testing.T) {
 						},
 					},
 				},
+			},
+			args: args{
 				group:            "group:admin",
 				stripEmailDomain: false,
 			},
@@ -634,8 +648,7 @@ func Test_expandGroup(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := expandGroup(
-				test.args.aclPolicy,
+			got, err := test.field.pol.getUsersInGroup(
 				test.args.group,
 				test.args.stripEmailDomain,
 			)
@@ -653,7 +666,7 @@ func Test_expandGroup(t *testing.T) {
 
 func Test_expandTagOwners(t *testing.T) {
 	type args struct {
-		aclPolicy        ACLPolicy
+		aclPolicy        *ACLPolicy
 		tag              string
 		stripEmailDomain bool
 	}
@@ -666,7 +679,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "simple tag expansion",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:test": []string{"user1"}},
 				},
 				tag:              "tag:test",
@@ -678,7 +691,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "expand with tag and group",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					Groups:    Groups{"group:foo": []string{"user1", "user2"}},
 					TagOwners: TagOwners{"tag:test": []string{"group:foo"}},
 				},
@@ -691,7 +704,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "expand with user and group",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					Groups:    Groups{"group:foo": []string{"user1", "user2"}},
 					TagOwners: TagOwners{"tag:test": []string{"group:foo", "user3"}},
 				},
@@ -704,7 +717,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "invalid tag",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:foo": []string{"group:foo", "user1"}},
 				},
 				tag:              "tag:test",
@@ -716,7 +729,7 @@ func Test_expandTagOwners(t *testing.T) {
 		{
 			name: "invalid group",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					Groups:    Groups{"group:bar": []string{"user1", "user2"}},
 					TagOwners: TagOwners{"tag:test": []string{"group:foo", "user2"}},
 				},
@@ -729,7 +742,7 @@ func Test_expandTagOwners(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := expandTagOwners(
+			got, err := getTagOwners(
 				test.args.aclPolicy,
 				test.args.tag,
 				test.args.stripEmailDomain,
@@ -908,6 +921,25 @@ func Test_listMachinesInUser(t *testing.T) {
 }
 
 func Test_expandAlias(t *testing.T) {
+	set := func(ips []string, prefixes []string) *netipx.IPSet {
+		var builder netipx.IPSetBuilder
+
+		for _, ip := range ips {
+			builder.Add(netip.MustParseAddr(ip))
+		}
+
+		for _, pre := range prefixes {
+			builder.AddPrefix(netip.MustParsePrefix(pre))
+		}
+
+		s, _ := builder.IPSet()
+
+		return s
+	}
+
+	type field struct {
+		pol ACLPolicy
+	}
 	type args struct {
 		machines         []Machine
 		aclPolicy        ACLPolicy
@@ -916,12 +948,16 @@ func Test_expandAlias(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
+		field   field
 		args    args
-		want    []string
+		want    *netipx.IPSet
 		wantErr bool
 	}{
 		{
 			name: "wildcard",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "*",
 				machines: []Machine{
@@ -932,14 +968,21 @@ func Test_expandAlias(t *testing.T) {
 						},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"*"},
+			want: set([]string{}, []string{
+				"0.0.0.0/0",
+				"::/0",
+			}),
 			wantErr: false,
 		},
 		{
 			name: "simple group",
+			field: field{
+				pol: ACLPolicy{
+					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
+				},
+			},
 			args: args{
 				alias: "group:accountant",
 				machines: []Machine{
@@ -968,16 +1011,20 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
-				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
+			want: set([]string{
+				"100.64.0.1", "100.64.0.2", "100.64.0.3",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "wrong group",
+			field: field{
+				pol: ACLPolicy{
+					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
+				},
+			},
 			args: args{
 				alias: "group:hr",
 				machines: []Machine{
@@ -1006,38 +1053,46 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
-				},
 				stripEmailDomain: true,
 			},
-			want:    []string{},
+			want:    set([]string{}, []string{}),
 			wantErr: true,
 		},
 		{
 			name: "simple ipaddress",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias:            "10.0.0.3",
 				machines:         []Machine{},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.3"},
+			want: set([]string{
+				"10.0.0.3",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "simple host by ip passed through",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias:            "10.0.0.1",
 				machines:         []Machine{},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.1"},
+			want: set([]string{
+				"10.0.0.1",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "simple host by ipv4 single ipv4",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "10.0.0.1",
 				machines: []Machine{
@@ -1048,14 +1103,18 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.1"},
+			want: set([]string{
+				"10.0.0.1",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "simple host by ipv4 single dual stack",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "10.0.0.1",
 				machines: []Machine{
@@ -1067,14 +1126,18 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.1", "fd7a:115c:a1e0:ab12:4843:2222:6273:2222"},
+			want: set([]string{
+				"10.0.0.1", "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "simple host by ipv6 single dual stack",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
 				machines: []Machine{
@@ -1086,55 +1149,68 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"fd7a:115c:a1e0:ab12:4843:2222:6273:2222", "10.0.0.1"},
+			want: set([]string{
+				"fd7a:115c:a1e0:ab12:4843:2222:6273:2222", "10.0.0.1",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "simple host by hostname alias",
-			args: args{
-				alias:    "testy",
-				machines: []Machine{},
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Hosts: Hosts{
 						"testy": netip.MustParsePrefix("10.0.0.132/32"),
 					},
 				},
+			},
+			args: args{
+				alias:            "testy",
+				machines:         []Machine{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.132/32"},
+			want:    set([]string{}, []string{"10.0.0.132/32"}),
 			wantErr: false,
 		},
 		{
 			name: "private network",
-			args: args{
-				alias:    "homeNetwork",
-				machines: []Machine{},
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Hosts: Hosts{
 						"homeNetwork": netip.MustParsePrefix("192.168.1.0/24"),
 					},
 				},
+			},
+			args: args{
+				alias:            "homeNetwork",
+				machines:         []Machine{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"192.168.1.0/24"},
+			want:    set([]string{}, []string{"192.168.1.0/24"}),
 			wantErr: false,
 		},
 		{
 			name: "simple CIDR",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias:            "10.0.0.0/16",
 				machines:         []Machine{},
 				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"10.0.0.0/16"},
+			want:    set([]string{}, []string{"10.0.0.0/16"}),
 			wantErr: false,
 		},
 		{
 			name: "simple tag",
+			field: field{
+				pol: ACLPolicy{
+					TagOwners: TagOwners{"tag:hr-webserver": []string{"joe"}},
+				},
+			},
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: []Machine{
@@ -1173,57 +1249,61 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "joe"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					TagOwners: TagOwners{"tag:hr-webserver": []string{"joe"}},
-				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.1", "100.64.0.2"},
+			want: set([]string{
+				"100.64.0.1", "100.64.0.2",
+			}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "No tag defined",
-			args: args{
-				alias: "tag:hr-webserver",
-				machines: []Machine{
-					{
-						IPAddresses: MachineAddresses{
-							netip.MustParseAddr("100.64.0.1"),
-						},
-						User: User{Name: "joe"},
-					},
-					{
-						IPAddresses: MachineAddresses{
-							netip.MustParseAddr("100.64.0.2"),
-						},
-						User: User{Name: "joe"},
-					},
-					{
-						IPAddresses: MachineAddresses{
-							netip.MustParseAddr("100.64.0.3"),
-						},
-						User: User{Name: "marc"},
-					},
-					{
-						IPAddresses: MachineAddresses{
-							netip.MustParseAddr("100.64.0.4"),
-						},
-						User: User{Name: "mickael"},
-					},
-				},
-				aclPolicy: ACLPolicy{
+			field: field{
+				pol: ACLPolicy{
 					Groups: Groups{"group:accountant": []string{"joe", "marc"}},
 					TagOwners: TagOwners{
 						"tag:accountant-webserver": []string{"group:accountant"},
 					},
 				},
+			},
+			args: args{
+				alias: "tag:hr-webserver",
+				machines: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+						},
+						User: User{Name: "joe"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+						},
+						User: User{Name: "joe"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+						},
+						User: User{Name: "marc"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.4"),
+						},
+						User: User{Name: "mickael"},
+					},
+				},
 				stripEmailDomain: true,
 			},
-			want:    []string{},
+			want:    set([]string{}, []string{}),
 			wantErr: true,
 		},
 		{
 			name: "Forced tag defined",
+			field: field{
+				pol: ACLPolicy{},
+			},
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: []Machine{
@@ -1254,14 +1334,20 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.1", "100.64.0.2"},
+			want:    set([]string{"100.64.0.1", "100.64.0.2"}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "Forced tag with legitimate tagOwner",
+			field: field{
+				pol: ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:hr-webserver": []string{"joe"},
+					},
+				},
+			},
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: []Machine{
@@ -1296,18 +1382,18 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "mickael"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					TagOwners: TagOwners{
-						"tag:hr-webserver": []string{"joe"},
-					},
-				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.1", "100.64.0.2"},
+			want:    set([]string{"100.64.0.1", "100.64.0.2"}, []string{}),
 			wantErr: false,
 		},
 		{
 			name: "list host in user without correctly tagged servers",
+			field: field{
+				pol: ACLPolicy{
+					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
+				},
+			},
 			args: args{
 				alias: "joe",
 				machines: []Machine{
@@ -1346,20 +1432,16 @@ func Test_expandAlias(t *testing.T) {
 						User: User{Name: "joe"},
 					},
 				},
-				aclPolicy: ACLPolicy{
-					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
-				},
 				stripEmailDomain: true,
 			},
-			want:    []string{"100.64.0.4"},
+			want:    set([]string{"100.64.0.4"}, []string{}),
 			wantErr: false,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := expandAlias(
+			got, err := test.field.pol.expandAlias(
 				test.args.machines,
-				test.args.aclPolicy,
 				test.args.alias,
 				test.args.stripEmailDomain,
 			)
@@ -1368,7 +1450,7 @@ func Test_expandAlias(t *testing.T) {
 
 				return
 			}
-			if !reflect.DeepEqual(got, test.want) {
+			if diff := cmp.Diff(test.want, got); diff != "" {
 				t.Errorf("expandAlias() = %v, want %v", got, test.want)
 			}
 		})
@@ -1377,7 +1459,7 @@ func Test_expandAlias(t *testing.T) {
 
 func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 	type args struct {
-		aclPolicy        ACLPolicy
+		aclPolicy        *ACLPolicy
 		nodes            []Machine
 		user             string
 		stripEmailDomain bool
@@ -1391,7 +1473,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		{
 			name: "exclude nodes with valid tags",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: []Machine{
@@ -1437,7 +1519,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		{
 			name: "exclude nodes with valid tags, and owner is in a group",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					Groups: Groups{
 						"group:accountant": []string{"joe", "bar"},
 					},
@@ -1488,7 +1570,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		{
 			name: "exclude nodes with valid tags and with forced tags",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: []Machine{
@@ -1530,7 +1612,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 		{
 			name: "all nodes have invalid tags, don't exclude them",
 			args: args{
-				aclPolicy: ACLPolicy{
+				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: []Machine{
@@ -1613,136 +1695,139 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 	}
 }
 
-func Test_expandACLPeerAddr(t *testing.T) {
+func TestACLPolicy_generateFilterRules(t *testing.T) {
+	type field struct {
+		pol ACLPolicy
+	}
 	type args struct {
-		srcIP string
+		machines         []Machine
+		stripEmailDomain bool
 	}
 	tests := []struct {
-		name string
-		args args
-		want []string
+		name    string
+		field   field
+		args    args
+		want    []tailcfg.FilterRule
+		wantErr bool
 	}{
 		{
-			name: "asterix",
-			args: args{
-				srcIP: "*",
-			},
-			want: []string{"*"},
+			name:    "no-policy",
+			field:   field{},
+			args:    args{},
+			want:    []tailcfg.FilterRule{},
+			wantErr: false,
 		},
 		{
-			name: "ip",
-			args: args{
-				srcIP: "10.0.0.1",
+			name: "allow-all",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"*"},
+							Destinations: []string{"*:*"},
+						},
+					},
+				},
 			},
-			want: []string{"10.0.0.1"},
+			args: args{
+				machines:         []Machine{},
+				stripEmailDomain: true,
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP: "0.0.0.0/0",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+						{
+							IP: "::/0",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
 		},
 		{
-			name: "ip/32",
+			name: "host1-can-reach-host2",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"100.64.0.1"},
+							Destinations: []string{"100.64.0.2:*"},
+						},
+					},
+				},
+			},
 			args: args{
-				srcIP: "10.0.0.1/32",
+				machines: []Machine{
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+						},
+						User: User{Name: "mickael"},
+					},
+					{
+						IPAddresses: MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
+						},
+						User: User{Name: "mickael"},
+					},
+				},
+				stripEmailDomain: true,
 			},
-			want: []string{"10.0.0.1"},
-		},
-		{
-			name: "ip/30",
-			args: args{
-				srcIP: "10.0.0.1/30",
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32", "fd7a:115c:a1e0:ab12:4843:2222:6273:2221/128"},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP: "100.64.0.2/32",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+						{
+							IP: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222/128",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+					},
+				},
 			},
-			want: []string{
-				"10.0.0.0",
-				"10.0.0.1",
-				"10.0.0.2",
-				"10.0.0.3",
-			},
-		},
-		{
-			name: "ip/28",
-			args: args{
-				srcIP: "192.168.0.128/28",
-			},
-			want: []string{
-				"192.168.0.128", "192.168.0.129", "192.168.0.130",
-				"192.168.0.131", "192.168.0.132", "192.168.0.133",
-				"192.168.0.134", "192.168.0.135", "192.168.0.136",
-				"192.168.0.137", "192.168.0.138", "192.168.0.139",
-				"192.168.0.140", "192.168.0.141", "192.168.0.142",
-				"192.168.0.143",
-			},
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := expandACLPeerAddr(tt.args.srcIP); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("expandACLPeerAddr() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
+			got, err := tt.field.pol.generateFilterRules(
+				tt.args.machines,
+				tt.args.stripEmailDomain,
+			)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ACLPolicy.generateFilterRules() error = %v, wantErr %v", err, tt.wantErr)
 
-func Test_expandACLPeerAddrV6(t *testing.T) {
-	type args struct {
-		srcIP string
-	}
-	tests := []struct {
-		name string
-		args args
-		want []string
-	}{
-		{
-			name: "asterix",
-			args: args{
-				srcIP: "*",
-			},
-			want: []string{"*"},
-		},
-		{
-			name: "ipfull",
-			args: args{
-				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c:3166",
-			},
-			want: []string{"fd7a:115c:a1e0:ab12:4943:cd96:624c:3166"},
-		},
-		{
-			name: "ipzerocompression",
-			args: args{
-				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c::",
-			},
-			want: []string{"fd7a:115c:a1e0:ab12:4943:cd96:624c:0"},
-		},
-		{
-			name: "ip/128",
-			args: args{
-				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c:3166/128",
-			},
-			want: []string{"fd7a:115c:a1e0:ab12:4943:cd96:624c:3166"},
-		},
-		{
-			name: "ip/127",
-			args: args{
-				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c:0000/127",
-			},
-			want: []string{
-				"fd7a:115c:a1e0:ab12:4943:cd96:624c:0",
-				"fd7a:115c:a1e0:ab12:4943:cd96:624c:1",
-			},
-		},
-		{
-			name: "ip/126",
-			args: args{
-				srcIP: "fd7a:115c:a1e0:ab12:4943:cd96:624c:0000/126",
-			},
-			want: []string{
-				"fd7a:115c:a1e0:ab12:4943:cd96:624c:0",
-				"fd7a:115c:a1e0:ab12:4943:cd96:624c:1",
-				"fd7a:115c:a1e0:ab12:4943:cd96:624c:2",
-				"fd7a:115c:a1e0:ab12:4943:cd96:624c:3",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := expandACLPeerAddr(tt.args.srcIP); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("expandACLPeerAddr() = %v, want %v", got, tt.want)
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				log.Trace().Interface("got", got).Msg("result")
+				t.Errorf("ACLPolicy.generateFilterRules() = %v, want %v", got, tt.want)
 			}
 		})
 	}

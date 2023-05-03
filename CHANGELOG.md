@@ -7,12 +7,14 @@
 - Add environment flags to enable pprof (profiling) [#1382](https://github.com/juanfont/headscale/pull/1382)
   - Profiles are continously generated in our integration tests.
 - Fix systemd service file location in `.deb` packages [#1391](https://github.com/juanfont/headscale/pull/1391)
+- Improvements on Noise implementation [#1379](https://github.com/juanfont/headscale/pull/1379)
+- Replace node filter logic, ensuring nodes with access can see eachother [#1381](https://github.com/juanfont/headscale/pull/1381)
 
 ## 0.22.1 (2023-04-20)
 
 ### Changes
 
-- Fix issue where SystemD could not bind to port 80 [#1365](https://github.com/juanfont/headscale/pull/1365)
+- Fix issue where systemd could not bind to port 80 [#1365](https://github.com/juanfont/headscale/pull/1365)
 
 ## 0.22.0 (2023-04-20)
 

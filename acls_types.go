@@ -111,8 +111,8 @@ func (hosts *Hosts) UnmarshalYAML(data []byte) error {
 }
 
 // IsZero is perhaps a bit naive here.
-func (policy ACLPolicy) IsZero() bool {
-	if len(policy.Groups) == 0 && len(policy.Hosts) == 0 && len(policy.ACLs) == 0 {
+func (pol ACLPolicy) IsZero() bool {
+	if len(pol.Groups) == 0 && len(pol.Hosts) == 0 && len(pol.ACLs) == 0 {
 		return true
 	}
 

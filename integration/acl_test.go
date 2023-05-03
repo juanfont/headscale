@@ -12,6 +12,39 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var veryLargeDestination = []string{
+	"0.0.0.0/5:*",
+	"8.0.0.0/7:*",
+	"11.0.0.0/8:*",
+	"12.0.0.0/6:*",
+	"16.0.0.0/4:*",
+	"32.0.0.0/3:*",
+	"64.0.0.0/2:*",
+	"128.0.0.0/3:*",
+	"160.0.0.0/5:*",
+	"168.0.0.0/6:*",
+	"172.0.0.0/12:*",
+	"172.32.0.0/11:*",
+	"172.64.0.0/10:*",
+	"172.128.0.0/9:*",
+	"173.0.0.0/8:*",
+	"174.0.0.0/7:*",
+	"176.0.0.0/4:*",
+	"192.0.0.0/9:*",
+	"192.128.0.0/11:*",
+	"192.160.0.0/13:*",
+	"192.169.0.0/16:*",
+	"192.170.0.0/15:*",
+	"192.172.0.0/14:*",
+	"192.176.0.0/12:*",
+	"192.192.0.0/10:*",
+	"193.0.0.0/8:*",
+	"194.0.0.0/7:*",
+	"196.0.0.0/6:*",
+	"200.0.0.0/5:*",
+	"208.0.0.0/4:*",
+}
+
 func aclScenario(t *testing.T, policy *headscale.ACLPolicy, clientsPerUser int) *Scenario {
 	t.Helper()
 	scenario, err := NewScenario()
@@ -176,6 +209,34 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user2": 3, // ns1 + ns2 (return path)
 			},
 		},
+		"very-large-destination-prefix-1372": {
+			users: map[string]int{
+				"user1": 2,
+				"user2": 2,
+			},
+			policy: headscale.ACLPolicy{
+				ACLs: []headscale.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"user1"},
+						Destinations: append([]string{"user1:*"}, veryLargeDestination...),
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"user2"},
+						Destinations: append([]string{"user2:*"}, veryLargeDestination...),
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"user1"},
+						Destinations: append([]string{"user2:*"}, veryLargeDestination...),
+					},
+				},
+			}, want: map[string]int{
+				"user1": 3, // ns1 + ns2
+				"user2": 3, // ns1 + ns2 (return path)
+			},
+		},
 	}
 
 	for name, testCase := range tests {
@@ -188,7 +249,6 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			err = scenario.CreateHeadscaleEnv(spec,
 				[]tsic.Option{},
 				hsic.WithACLPolicy(&testCase.policy),
-				// hsic.WithTestName(fmt.Sprintf("aclinnetmap%s", name)),
 			)
 			assert.NoError(t, err)
 
@@ -197,9 +257,6 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 			err = scenario.WaitForTailscaleSync()
 			assert.NoError(t, err)
-
-			// allHostnames, err := scenario.ListTailscaleClientsFQDNs()
-			// assert.NoError(t, err)
 
 			for _, client := range allClients {
 				status, err := client.Status()
