@@ -9,6 +9,9 @@
 - Fix systemd service file location in `.deb` packages [#1391](https://github.com/juanfont/headscale/pull/1391)
 - Improvements on Noise implementation [#1379](https://github.com/juanfont/headscale/pull/1379)
 - Replace node filter logic, ensuring nodes with access can see eachother [#1381](https://github.com/juanfont/headscale/pull/1381)
+- Support [hosting headscale behind a certain HTTP path](https://github.com/juanfont/headscale/issues/1126) [#1422](https://github.com/juanfont/headscale/pull/1422)
+  - For example, host at https://example.com/foo instead of https://example.com
+  - Some endpoints are always at the root of the server (`/`). See `config-example.yaml`
 
 ## 0.22.1 (2023-04-20)
 
