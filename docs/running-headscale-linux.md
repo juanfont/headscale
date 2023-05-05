@@ -20,7 +20,7 @@ configuration (`/etc/headscale/config.yaml`).
 
 ## Installation
 
-1. Download the lastest Headscale package for your platform (`.deb` for Ubuntu and Debian) from [Headscale's releases page](https://github.com/juanfont/headscale/releases):
+1. Download the latest Headscale package for your platform (`.deb` for Ubuntu and Debian) from [Headscale's releases page](https://github.com/juanfont/headscale/releases):
 
     ```shell
     wget --output-document=headscale.deb \
@@ -30,7 +30,7 @@ configuration (`/etc/headscale/config.yaml`).
 1. Install Headscale:
 
     ```shell
-    sudo dpkg --install headscale.deb
+    sudo apt install headscale.deb
     ```
 
 1. Enable Headscale service, this will start Headscale at boot:
