@@ -87,6 +87,26 @@ Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to ex
 This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
 `headscale` instance becomes available and then detach so headscale runs in the background.
 
+Example `docker-compose.yaml`
+
+```yaml
+version: "3.7"
+
+services:
+  headscale:
+    image: headscale/headscale
+    restart: unless-stopped
+    container_name: headscale
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      # pls change [config_path] to the fullpath of the config folder just created
+      - [config_path]:/etc/headscale
+    command: headscale serve
+
+```
+
 5. Verify `headscale` is running:
 
 Follow the container logs:
