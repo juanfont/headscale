@@ -98,8 +98,8 @@ services:
     restart: unless-stopped
     container_name: headscale
     ports:
-      - "8080:8080"
-      - "9090:9090"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
     volumes:
       # pls change [config_path] to the fullpath of the config folder just created
       - [config_path]:/etc/headscale
