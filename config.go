@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"go4.org/netipx"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 )
@@ -515,6 +516,29 @@ func GetHeadscaleConfig() (*Config, error) {
 		if err != nil {
 			panic(fmt.Errorf("failed to parse ip_prefixes[%d]: %w", i, err))
 		}
+
+		if prefix.Addr().Is4() {
+			builder := netipx.IPSetBuilder{}
+			builder.AddPrefix(tsaddr.CGNATRange())
+			ipSet, _ := builder.IPSet()
+			if !ipSet.ContainsPrefix(prefix) {
+				log.Warn().
+					Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
+						prefixInConfig, tsaddr.CGNATRange())
+			}
+		}
+
+		if prefix.Addr().Is6() {
+			builder := netipx.IPSetBuilder{}
+			builder.AddPrefix(tsaddr.TailscaleULARange())
+			ipSet, _ := builder.IPSet()
+			if !ipSet.ContainsPrefix(prefix) {
+				log.Warn().
+					Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
+						prefixInConfig, tsaddr.TailscaleULARange())
+			}
+		}
+
 		parsedPrefixes = append(parsedPrefixes, prefix)
 	}
 
