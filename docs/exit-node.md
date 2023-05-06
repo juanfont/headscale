@@ -14,6 +14,8 @@ If the node is already registered, it can advertise exit capabilities like this:
 $ sudo tailscale set --advertise-exit-node
 ```
 
+To use a node as an exit node, IP forwarding must be enabled on the node. Check the official [Tailscale documentation](https://tailscale.com/kb/1019/subnets/?tab=linux#enable-ip-forwarding) for how to enable IP fowarding.
+
 ## On the control server
 
 ```console
