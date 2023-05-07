@@ -106,11 +106,34 @@ func (h *Headscale) DisableRoute(id uint64) error {
 		return err
 	}
 
-	route.Enabled = false
-	route.IsPrimary = false
-	err = h.db.Save(route).Error
+	// Tailscale requires both IPv4 and IPv6 exit routes to
+	// be enabled at the same time, as per
+	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
+	if !route.isExitRoute() {
+		route.Enabled = false
+		route.IsPrimary = false
+		err = h.db.Save(route).Error
+		if err != nil {
+			return err
+		}
+
+		return h.handlePrimarySubnetFailover()
+	}
+
+	routes, err := h.GetMachineRoutes(&route.Machine)
 	if err != nil {
 		return err
+	}
+
+	for i := range routes {
+		if routes[i].isExitRoute() {
+			routes[i].Enabled = false
+			routes[i].IsPrimary = false
+			err = h.db.Save(&routes[i]).Error
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return h.handlePrimarySubnetFailover()
@@ -122,7 +145,30 @@ func (h *Headscale) DeleteRoute(id uint64) error {
 		return err
 	}
 
-	if err := h.db.Unscoped().Delete(&route).Error; err != nil {
+	// Tailscale requires both IPv4 and IPv6 exit routes to
+	// be enabled at the same time, as per
+	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
+	if !route.isExitRoute() {
+		if err := h.db.Unscoped().Delete(&route).Error; err != nil {
+			return err
+		}
+
+		return h.handlePrimarySubnetFailover()
+	}
+
+	routes, err := h.GetMachineRoutes(&route.Machine)
+	if err != nil {
+		return err
+	}
+
+	routesToDelete := []Route{}
+	for _, r := range routes {
+		if r.isExitRoute() {
+			routesToDelete = append(routesToDelete, r)
+		}
+	}
+
+	if err := h.db.Unscoped().Delete(&routesToDelete).Error; err != nil {
 		return err
 	}
 
