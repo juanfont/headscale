@@ -15,6 +15,7 @@
 ### Changes
 
 - Fix issue where systemd could not bind to port 80 [#1365](https://github.com/juanfont/headscale/pull/1365)
+- Disable (or delete) both exit routes at the same time [#1428](https://github.com/juanfont/headscale/pull/1428)
 
 ## 0.22.0 (2023-04-20)
 
