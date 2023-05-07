@@ -457,6 +457,37 @@ func (s *Suite) TestAllowedIPRoutes(c *check.C) {
 
 	c.Assert(foundExitNodeV4, check.Equals, true)
 	c.Assert(foundExitNodeV6, check.Equals, true)
+
+	// Now we disable only one of the exit routes
+	// and we see if both are disabled
+	var exitRouteV4 Route
+	for _, route := range routes {
+		if route.isExitRoute() && netip.Prefix(route.Prefix) == prefixExitNodeV4 {
+			exitRouteV4 = route
+
+			break
+		}
+	}
+
+	err = app.DisableRoute(uint64(exitRouteV4.ID))
+	c.Assert(err, check.IsNil)
+
+	enabledRoutes1, err = app.GetEnabledRoutes(&machine1)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(enabledRoutes1), check.Equals, 1)
+
+	// and now we delete only one of the exit routes
+	// and we check if both are deleted
+	routes, err = app.GetMachineRoutes(&machine1)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(routes), check.Equals, 4)
+
+	err = app.DeleteRoute(uint64(exitRouteV4.ID))
+	c.Assert(err, check.IsNil)
+
+	routes, err = app.GetMachineRoutes(&machine1)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(routes), check.Equals, 2)
 }
 
 func (s *Suite) TestDeleteRoutes(c *check.C) {
