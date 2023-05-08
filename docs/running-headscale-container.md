@@ -50,7 +50,7 @@ Edit the file and put a base ACL in it :
 }  
 ```
 
-# 4. Download a copy of the [example configuration][config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository and place it at ./config/config.yaml
+# 4. Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository and place it at ./config/config.yaml
 
 ```shell
 wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml || curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
