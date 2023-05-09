@@ -111,6 +111,7 @@ type OIDCConfig struct {
 	StripEmaildomain           bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
+	CallbackTemplate           string
 }
 
 type DERPConfig struct {
@@ -192,6 +193,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
+	viper.SetDefault("oidc.callback_template", "<html><body><h1>headscale</h1><p>{{.Verb}} as {{.User}}, you can now close this window.</p></body></html>")
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -652,6 +654,7 @@ func GetHeadscaleConfig() (*Config, error) {
 				}
 			}(),
 			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
+			CallbackTemplate:   viper.GetString("oidc.callback_template"),
 		},
 
 		LogTail:             logConfig,

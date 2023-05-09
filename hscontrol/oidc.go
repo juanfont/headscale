@@ -49,10 +49,18 @@ type IDTokenClaims struct {
 	Username string   `json:"preferred_username,omitempty"`
 }
 
+type oidcCallbackTemplateConfig struct {
+	User string
+	Verb string
+}
+
+var oidcCallbackTemplate *template.Template
+
 func (h *Headscale) initOIDC() error {
 	var err error
 	// grab oidc config if it hasn't been already
 	if h.oauth2Config == nil {
+		oidcCallbackTemplate = template.Must(template.New("oidccallback").Parse(h.cfg.OIDC.CallbackTemplate))
 		h.oidcProvider, err = oidc.NewProvider(context.Background(), h.cfg.OIDC.Issuer)
 
 		if err != nil {
@@ -176,22 +184,6 @@ func (h *Headscale) RegisterOIDC(
 
 	http.Redirect(writer, req, authURL, http.StatusFound)
 }
-
-type oidcCallbackTemplateConfig struct {
-	User string
-	Verb string
-}
-
-var oidcCallbackTemplate = template.Must(
-	template.New("oidccallback").Parse(`<html>
-	<body>
-	<h1>headscale</h1>
-	<p>
-			{{.Verb}} as {{.User}}, you can now close this window.
-	</p>
-	</body>
-	</html>`),
-)
 
 // OIDCCallback handles the callback from the OIDC endpoint
 // Retrieves the nkey from the state cache and adds the machine to the users email user

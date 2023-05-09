@@ -310,6 +310,16 @@ unix_socket_permission: "0770"
 #   user: `first-name.last-name.example.com`
 #
 #   strip_email_domain: true
+#   # Template of the page that will be displayed to the user after completing the OIDC login process.
+#   callback_template: -|
+#      <html>
+#      <body>
+#      <h1>headscale</h1>
+#      <p>
+#      {{.Verb}} as {{.User}}, you can now close this window.
+#      </p>
+#      </body>
+#      </html>
 
 # Logtail configuration
 # Logtail is Tailscales logging and auditing infrastructure, it allows the control panel

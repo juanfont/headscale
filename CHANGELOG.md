@@ -25,6 +25,7 @@
 - Replace node filter logic, ensuring nodes with access can see eachother [#1381](https://github.com/juanfont/headscale/pull/1381)
 - Disable (or delete) both exit routes at the same time [#1428](https://github.com/juanfont/headscale/pull/1428)
 - Ditch distroless for Docker image, create default socket dir in `/var/run/headscale` [#1450](https://github.com/juanfont/headscale/pull/1450)
+- Moved callback template to the configuration file from the hardcoded value. [#1435](https://github.com/juanfont/headscale/pull/1435)
 
 ## 0.22.1 (2023-04-20)
 
