@@ -6,12 +6,21 @@ labels: ["enhancement"]
 assignees: ""
 ---
 
-<!-- Headscale is a multinational community across the globe. Our common language is English. Please consider raising the feature request in this language. -->
+<!--
+We typically have a clear roadmap for what we want to improve and reserve the right
+to close feature requests that does not fit in the roadmap, or fit with the scope
+of the project.
 
-**Feature request**
+Headscale is a multinational community across the globe. Our language is English.
+All bug reports needs to be in English.
+-->
 
-<!-- A clear and precise description of what new or changed feature you want. -->
+## Why
 
-<!-- Please include the reason, why you would need the feature. E.g. what problem
+<!-- Include the reason, why you would need the feature. E.g. what problem
   does it solve? Or which workflow is currently frustrating and will be improved by
   this? -->
+
+## Description
+
+<!-- A clear and precise description of what new or changed feature you want. -->
