@@ -19,5 +19,7 @@ FROM docker.io/debian:bullseye-slim
 COPY --from=build /go/bin/headscale /bin/headscale
 ENV TZ UTC
 
+RUN mkdir -p /var/run/headscale
+
 EXPOSE 8080/tcp
 CMD ["headscale"]
