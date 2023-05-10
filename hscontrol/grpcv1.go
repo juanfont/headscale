@@ -1,5 +1,5 @@
 // nolint
-package headscale
+package hscontrol
 
 import (
 	"context"
