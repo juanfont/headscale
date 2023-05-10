@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
@@ -507,8 +508,10 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
 		Methods(http.MethodGet)
-	router.HandleFunc("/swagger", SwaggerUI).Methods(http.MethodGet)
-	router.HandleFunc("/swagger/v1/openapiv2.json", SwaggerAPIv1).
+
+	// TODO(kristoffer): move swagger into a package
+	router.HandleFunc("/swagger", headscale.SwaggerUI).Methods(http.MethodGet)
+	router.HandleFunc("/swagger/v1/openapiv2.json", headscale.SwaggerAPIv1).
 		Methods(http.MethodGet)
 
 	if h.cfg.DERP.ServerEnabled {
@@ -758,7 +761,7 @@ func (h *Headscale) Serve() error {
 
 				if h.cfg.ACL.PolicyPath != "" {
 					aclPath := AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
-					err := h.LoadACLPolicy(aclPath)
+					err := h.LoadACLPolicyFromPath(aclPath)
 					if err != nil {
 						log.Error().Err(err).Msg("Failed to reload ACL policy")
 					}

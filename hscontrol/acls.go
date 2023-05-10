@@ -59,8 +59,8 @@ const (
 
 var featureEnableSSH = envknob.RegisterBool("HEADSCALE_EXPERIMENTAL_FEATURE_SSH")
 
-// LoadACLPolicy loads the ACL policy from the specify path, and generates the ACL rules.
-func (h *Headscale) LoadACLPolicy(path string) error {
+// LoadACLPolicyFromPath loads the ACL policy from the specify path, and generates the ACL rules.
+func (h *Headscale) LoadACLPolicyFromPath(path string) error {
 	log.Debug().
 		Str("func", "LoadACLPolicy").
 		Str("path", path).
@@ -72,37 +72,42 @@ func (h *Headscale) LoadACLPolicy(path string) error {
 	}
 	defer policyFile.Close()
 
-	var policy ACLPolicy
 	policyBytes, err := io.ReadAll(policyFile)
 	if err != nil {
 		return err
 	}
 
+	log.Debug().
+		Str("path", path).
+		Bytes("file", policyBytes).
+		Msg("Loading ACLs")
+
 	switch filepath.Ext(path) {
 	case ".yml", ".yaml":
-		log.Debug().
-			Str("path", path).
-			Bytes("file", policyBytes).
-			Msg("Loading ACLs from YAML")
+		return h.LoadACLPolicyFromBytes(policyBytes, "yaml")
+	}
 
-		err := yaml.Unmarshal(policyBytes, &policy)
+	return h.LoadACLPolicyFromBytes(policyBytes, "hujson")
+}
+
+func (h *Headscale) LoadACLPolicyFromBytes(acl []byte, format string) error {
+	var policy ACLPolicy
+	switch format {
+	case "yaml":
+		err := yaml.Unmarshal(acl, &policy)
 		if err != nil {
 			return err
 		}
 
-		log.Trace().
-			Interface("policy", policy).
-			Msg("Loaded policy from YAML")
-
 	default:
-		ast, err := hujson.Parse(policyBytes)
+		ast, err := hujson.Parse(acl)
 		if err != nil {
 			return err
 		}
 
 		ast.Standardize()
-		policyBytes = ast.Pack()
-		err = json.Unmarshal(policyBytes, &policy)
+		acl = ast.Pack()
+		err = json.Unmarshal(acl, &policy)
 		if err != nil {
 			return err
 		}
