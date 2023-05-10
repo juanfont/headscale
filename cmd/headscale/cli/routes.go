@@ -6,8 +6,8 @@ import (
 	"net/netip"
 	"strconv"
 
-	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
@@ -277,7 +277,7 @@ func routesToPtables(routes []*v1.Route) pterm.TableData {
 
 			continue
 		}
-		if prefix == headscale.ExitRouteV4 || prefix == headscale.ExitRouteV6 {
+		if prefix == hscontrol.ExitRouteV4 || prefix == hscontrol.ExitRouteV6 {
 			isPrimaryStr = "-"
 		} else {
 			isPrimaryStr = strconv.FormatBool(route.IsPrimary)
