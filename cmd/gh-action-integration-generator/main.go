@@ -64,7 +64,7 @@ jobs:
               --volume /var/run/docker.sock:/var/run/docker.sock \
               --volume $PWD/control_logs:/tmp/control \
               golang:1 \
-                go test ./... \
+                go run gotest.tools/gotestsum@latest -- ./... \
                   -tags ts2019 \
                   -failfast \
                   -timeout 120m \
