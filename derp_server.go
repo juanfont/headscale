@@ -33,6 +33,9 @@ type DERPServer struct {
 func (h *Headscale) NewDERPServer() (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
 	server := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
+	
+	server.SetVerifyClient(true)
+	
 	region, err := h.generateRegionLocalDERP()
 	if err != nil {
 		return nil, err
