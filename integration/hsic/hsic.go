@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
@@ -59,7 +59,7 @@ type HeadscaleInContainer struct {
 	port             int
 	extraPorts       []string
 	hostPortBindings map[string][]string
-	aclPolicy        *headscale.ACLPolicy
+	aclPolicy        *hscontrol.ACLPolicy
 	env              map[string]string
 	tlsCert          []byte
 	tlsKey           []byte
@@ -70,9 +70,9 @@ type HeadscaleInContainer struct {
 // Headscale instance.
 type Option = func(c *HeadscaleInContainer)
 
-// WithACLPolicy adds a headscale.ACLPolicy policy to the
+// WithACLPolicy adds a hscontrol.ACLPolicy policy to the
 // HeadscaleInContainer instance.
-func WithACLPolicy(acl *headscale.ACLPolicy) Option {
+func WithACLPolicy(acl *hscontrol.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		// TODO(kradalby): Move somewhere appropriate
 		hsic.env["HEADSCALE_ACL_POLICY_PATH"] = aclPolicyPath
@@ -132,7 +132,7 @@ func WithHostPortBindings(bindings map[string][]string) Option {
 // in the Docker container name.
 func WithTestName(testName string) Option {
 	return func(hsic *HeadscaleInContainer) {
-		hash, _ := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
+		hash, _ := hscontrol.GenerateRandomStringDNSSafe(hsicHashLength)
 
 		hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
 		hsic.hostname = hostname
@@ -167,7 +167,7 @@ func New(
 	network *dockertest.Network,
 	opts ...Option,
 ) (*HeadscaleInContainer, error) {
-	hash, err := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
+	hash, err := hscontrol.GenerateRandomStringDNSSafe(hsicHashLength)
 	if err != nil {
 		return nil, err
 	}
