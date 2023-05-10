@@ -15,17 +15,26 @@ import (
 )
 
 func (s *Suite) TestWrongPath(c *check.C) {
-	err := app.LoadACLPolicy("asdfg")
+	err := app.LoadACLPolicyFromPath("asdfg")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestBrokenHuJson(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/broken.hujson")
+	acl := []byte(`
+{
+	`)
+	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestInvalidPolicyHuson(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/invalid.hujson")
+	acl := []byte(`
+{
+    "valid_json": true,
+    "but_a_policy_though": false
+}
+	`)
+	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.NotNil)
 	c.Assert(err, check.Equals, errEmptyPolicy)
 }
@@ -49,12 +58,161 @@ func (s *Suite) TestParseInvalidCIDR(c *check.C) {
 }
 
 func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/acl_policy_invalid.hujson")
+	acl := []byte(`
+{
+    // Declare static groups of users beyond those in the identity service.
+    "groups": {
+        "group:example": [
+            "user1@example.com",
+            "user2@example.com",
+        ],
+    },
+    // Declare hostname aliases to use in place of IP addresses or subnets.
+    "hosts": {
+        "example-host-1": "100.100.100.100",
+        "example-host-2": "100.100.101.100/24",
+    },
+    // Define who is allowed to use which tags.
+    "tagOwners": {
+        // Everyone in the montreal-admins or global-admins group are
+        // allowed to tag servers as montreal-webserver.
+        "tag:montreal-webserver": [
+            "group:montreal-admins",
+            "group:global-admins",
+        ],
+        // Only a few admins are allowed to create API servers.
+        "tag:api-server": [
+            "group:global-admins",
+            "example-host-1",
+        ],
+    },
+    // Access control lists.
+    "acls": [
+        // Engineering users, plus the president, can access port 22 (ssh)
+        // and port 3389 (remote desktop protocol) on all servers, and all
+        // ports on git-server or ci-server.
+        {
+            "action": "accept",
+            "src": [
+                "group:engineering",
+                "president@example.com"
+            ],
+            "dst": [
+                "*:22,3389",
+                "git-server:*",
+                "ci-server:*"
+            ],
+        },
+        // Allow engineer users to access any port on a device tagged with
+        // tag:production.
+        {
+            "action": "accept",
+            "src": [
+                "group:engineers"
+            ],
+            "dst": [
+                "tag:production:*"
+            ],
+        },
+        // Allow servers in the my-subnet host and 192.168.1.0/24 to access hosts
+        // on both networks.
+        {
+            "action": "accept",
+            "src": [
+                "my-subnet",
+                "192.168.1.0/24"
+            ],
+            "dst": [
+                "my-subnet:*",
+                "192.168.1.0/24:*"
+            ],
+        },
+        // Allow every user of your network to access anything on the network.
+        // Comment out this section if you want to define specific ACL
+        // restrictions above.
+        {
+            "action": "accept",
+            "src": [
+                "*"
+            ],
+            "dst": [
+                "*:*"
+            ],
+        },
+        // All users in Montreal are allowed to access the Montreal web
+        // servers.
+        {
+            "action": "accept",
+            "src": [
+                "group:montreal-users"
+            ],
+            "dst": [
+                "tag:montreal-webserver:80,443"
+            ],
+        },
+        // Montreal web servers are allowed to make outgoing connections to
+        // the API servers, but only on https port 443.
+        // In contrast, this doesn't grant API servers the right to initiate
+        // any connections.
+        {
+            "action": "accept",
+            "src": [
+                "tag:montreal-webserver"
+            ],
+            "dst": [
+                "tag:api-server:443"
+            ],
+        },
+    ],
+    // Declare tests to check functionality of ACL rules
+    "tests": [
+        {
+            "src": "user1@example.com",
+            "accept": [
+                "example-host-1:22",
+                "example-host-2:80"
+            ],
+            "deny": [
+                "exapmle-host-2:100"
+            ],
+        },
+        {
+            "src": "user2@example.com",
+            "accept": [
+                "100.60.3.4:22"
+            ],
+        },
+    ],
+}
+	`)
+	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestBasicRule(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_1.hujson")
+	acl := []byte(`
+{
+    "hosts": {
+        "host-1": "100.100.100.100",
+        "subnet-1": "100.100.101.100/24",
+    },
+
+    "acls": [
+        {
+            "action": "accept",
+            "src": [
+                "subnet-1",
+                "192.168.1.0/24"
+            ],
+            "dst": [
+                "*:22,3389",
+                "host-1:*",
+            ],
+        },
+    ],
+}
+	`)
+	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
@@ -411,7 +569,27 @@ func (s *Suite) TestValidTagInvalidUser(c *check.C) {
 }
 
 func (s *Suite) TestPortRange(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_range.hujson")
+	acl := []byte(`
+{
+    "hosts": {
+        "host-1": "100.100.100.100",
+        "subnet-1": "100.100.101.100/24",
+    },
+
+    "acls": [
+        {
+            "action": "accept",
+            "src": [
+                "subnet-1",
+            ],
+            "dst": [
+                "host-1:5400-5500",
+            ],
+        },
+    ],
+}
+	`)
+	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
@@ -425,7 +603,48 @@ func (s *Suite) TestPortRange(c *check.C) {
 }
 
 func (s *Suite) TestProtocolParsing(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_protocols.hujson")
+	acl := []byte(`
+{
+    "hosts": {
+        "host-1": "100.100.100.100",
+        "subnet-1": "100.100.101.100/24",
+    },
+
+    "acls": [
+        {
+            "Action": "accept",
+            "src": [
+                "*",
+            ],
+            "proto": "tcp",
+            "dst": [
+                "host-1:*",
+            ],
+        },
+        {
+            "Action": "accept",
+            "src": [
+                "*",
+            ],
+            "proto": "udp",
+            "dst": [
+                "host-1:53",
+            ],
+        },
+        {
+            "Action": "accept",
+            "src": [
+                "*",
+            ],
+            "proto": "icmp",
+            "dst": [
+                "host-1:*",
+            ],
+        },
+    ],
+}
+	`)
+	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
@@ -439,7 +658,27 @@ func (s *Suite) TestProtocolParsing(c *check.C) {
 }
 
 func (s *Suite) TestPortWildcard(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.hujson")
+	acl := []byte(`
+{
+    "hosts": {
+        "host-1": "100.100.100.100",
+        "subnet-1": "100.100.101.100/24",
+    },
+
+    "acls": [
+        {
+            "Action": "accept",
+            "src": [
+                "*",
+            ],
+            "dst": [
+                "host-1:*",
+            ],
+        },
+    ],
+}
+	`)
+	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
 	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
@@ -455,7 +694,19 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 }
 
 func (s *Suite) TestPortWildcardYAML(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/acl_policy_basic_wildcards.yaml")
+	acl := []byte(`
+---
+hosts:
+  host-1: 100.100.100.100/32
+  subnet-1: 100.100.101.100/24
+acls:
+  - action: accept
+    src:
+      - "*"
+    dst:
+      - host-1:*
+`)
+	err := app.LoadACLPolicyFromBytes(acl, "yaml")
 	c.Assert(err, check.IsNil)
 
 	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
@@ -493,9 +744,27 @@ func (s *Suite) TestPortUser(c *check.C) {
 	}
 	app.db.Save(&machine)
 
-	err = app.LoadACLPolicy(
-		"./tests/acls/acl_policy_basic_user_as_user.hujson",
-	)
+	acl := []byte(`
+{
+    "hosts": {
+        "host-1": "100.100.100.100",
+        "subnet-1": "100.100.101.100/24",
+    },
+
+    "acls": [
+        {
+            "action": "accept",
+            "src": [
+                "testuser",
+            ],
+            "dst": [
+                "host-1:*",
+            ],
+        },
+    ],
+}
+	`)
+	err = app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
 	machines, err := app.ListMachines()
@@ -538,7 +807,33 @@ func (s *Suite) TestPortGroup(c *check.C) {
 	}
 	app.db.Save(&machine)
 
-	err = app.LoadACLPolicy("./tests/acls/acl_policy_basic_groups.hujson")
+	acl := []byte(`
+{
+    "groups": {
+        "group:example": [
+            "testuser",
+        ],
+    },
+
+    "hosts": {
+        "host-1": "100.100.100.100",
+        "subnet-1": "100.100.101.100/24",
+    },
+
+    "acls": [
+        {
+            "action": "accept",
+            "src": [
+                "group:example",
+            ],
+            "dst": [
+                "host-1:*",
+            ],
+        },
+    ],
+}
+	`)
+	err = app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
 	machines, err := app.ListMachines()

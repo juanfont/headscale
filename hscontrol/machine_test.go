@@ -1212,7 +1212,31 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 }
 
 func (s *Suite) TestAutoApproveRoutes(c *check.C) {
-	err := app.LoadACLPolicy("./tests/acls/acl_policy_autoapprovers.hujson")
+	acl := []byte(`
+{
+    "tagOwners": {
+        "tag:exit": ["test"],
+    },
+
+    "groups": {
+        "group:test": ["test"]
+    },
+
+    "acls": [
+        {"action": "accept", "users": ["*"], "ports": ["*:*"]},
+    ],
+
+    "autoApprovers": {
+        "exitNode": ["tag:exit"],
+        "routes": {
+            "10.10.0.0/16": ["group:test"],
+            "10.11.0.0/16": ["test"],
+        }
+    }
+}
+	`)
+
+	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
 	user, err := app.CreateUser("test")
