@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/netip"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -392,6 +393,16 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		}
 		ips = append(ips, ip)
 	}
+
+	sort.Slice(ips, func(i, j int) bool {
+		if ips[i].Is4() && ips[j].Is6() {
+			return true
+		}
+		if ips[i].Is6() && ips[j].Is4() {
+			return false
+		}
+		return ips[i].Compare(ips[j]) < 0
+	})
 
 	return ips, nil
 }
