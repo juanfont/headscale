@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -57,18 +57,18 @@ func TestSSHOneUserAllToAll(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec,
 		[]tsic.Option{tsic.WithSSH()},
 		hsic.WithACLPolicy(
-			&headscale.ACLPolicy{
+			&hscontrol.ACLPolicy{
 				Groups: map[string][]string{
 					"group:integration-test": {"user1"},
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
 						Destinations: []string{"*:*"},
 					},
 				},
-				SSHs: []headscale.SSH{
+				SSHs: []hscontrol.SSH{
 					{
 						Action:       "accept",
 						Sources:      []string{"group:integration-test"},
@@ -134,18 +134,18 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec,
 		[]tsic.Option{tsic.WithSSH()},
 		hsic.WithACLPolicy(
-			&headscale.ACLPolicy{
+			&hscontrol.ACLPolicy{
 				Groups: map[string][]string{
 					"group:integration-test": {"user1", "user2"},
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
 						Destinations: []string{"*:*"},
 					},
 				},
-				SSHs: []headscale.SSH{
+				SSHs: []hscontrol.SSH{
 					{
 						Action:       "accept",
 						Sources:      []string{"group:integration-test"},
@@ -216,18 +216,18 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec,
 		[]tsic.Option{tsic.WithSSH()},
 		hsic.WithACLPolicy(
-			&headscale.ACLPolicy{
+			&hscontrol.ACLPolicy{
 				Groups: map[string][]string{
 					"group:integration-test": {"user1"},
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
 						Destinations: []string{"*:*"},
 					},
 				},
-				SSHs: []headscale.SSH{},
+				SSHs: []hscontrol.SSH{},
 			},
 		),
 		hsic.WithTestName("sshnoneconfigured"),
@@ -286,18 +286,18 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec,
 		[]tsic.Option{tsic.WithSSH()},
 		hsic.WithACLPolicy(
-			&headscale.ACLPolicy{
+			&hscontrol.ACLPolicy{
 				Groups: map[string][]string{
 					"group:integration-test": {"user1"},
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
 						Destinations: []string{"*:80"},
 					},
 				},
-				SSHs: []headscale.SSH{
+				SSHs: []hscontrol.SSH{
 					{
 						Action:       "accept",
 						Sources:      []string{"group:integration-test"},
@@ -364,19 +364,19 @@ func TestSSUserOnlyIsolation(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec,
 		[]tsic.Option{tsic.WithSSH()},
 		hsic.WithACLPolicy(
-			&headscale.ACLPolicy{
+			&hscontrol.ACLPolicy{
 				Groups: map[string][]string{
 					"group:ssh1": {"useracl1"},
 					"group:ssh2": {"useracl2"},
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
 						Destinations: []string{"*:*"},
 					},
 				},
-				SSHs: []headscale.SSH{
+				SSHs: []hscontrol.SSH{
 					{
 						Action:       "accept",
 						Sources:      []string{"group:ssh1"},
