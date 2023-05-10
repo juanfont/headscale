@@ -1,5 +1,5 @@
 // nolint
-package hscontrol
+package headscale
 
 import (
 	"encoding/json"
@@ -64,7 +64,7 @@ func (s *IntegrationCLITestSuite) SetupTest() {
 	headscaleOptions := &dockertest.RunOptions{
 		Name: "headscale-cli",
 		Mounts: []string{
-			fmt.Sprintf("%s/integration_test/etc:/etc/headscale", currentPath),
+			fmt.Sprintf("%s/integration_legacy/etc:/etc/headscale", currentPath),
 		},
 		Cmd:          []string{"headscale", "serve"},
 		Networks:     []*dockertest.Network{&s.network},
@@ -1558,11 +1558,11 @@ func (s *IntegrationCLITestSuite) TestNodeMoveCommand() {
 
 func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 	// TODO: make sure defaultConfig is not same as altConfig
-	defaultConfig, err := os.ReadFile("integration_test/etc/config.dump.gold.yaml")
+	defaultConfig, err := os.ReadFile("integration_legacy/etc/config.dump.gold.yaml")
 	assert.Nil(s.T(), err)
-	altConfig, err := os.ReadFile("integration_test/etc/alt-config.dump.gold.yaml")
+	altConfig, err := os.ReadFile("integration_legacy/etc/alt-config.dump.gold.yaml")
 	assert.Nil(s.T(), err)
-	altEnvConfig, err := os.ReadFile("integration_test/etc/alt-env-config.dump.gold.yaml")
+	altEnvConfig, err := os.ReadFile("integration_legacy/etc/alt-env-config.dump.gold.yaml")
 	assert.Nil(s.T(), err)
 
 	_, _, err = ExecuteCommand(
@@ -1575,7 +1575,7 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	defaultDumpConfig, err := os.ReadFile("integration_test/etc/config.dump.yaml")
+	defaultDumpConfig, err := os.ReadFile("integration_legacy/etc/config.dump.yaml")
 	assert.Nil(s.T(), err)
 
 	assert.YAMLEq(s.T(), string(defaultConfig), string(defaultDumpConfig))
@@ -1592,7 +1592,7 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	altDumpConfig, err := os.ReadFile("integration_test/etc/config.dump.yaml")
+	altDumpConfig, err := os.ReadFile("integration_legacy/etc/config.dump.yaml")
 	assert.Nil(s.T(), err)
 
 	assert.YAMLEq(s.T(), string(altConfig), string(altDumpConfig))
@@ -1609,7 +1609,7 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	altEnvDumpConfig, err := os.ReadFile("integration_test/etc/config.dump.yaml")
+	altEnvDumpConfig, err := os.ReadFile("integration_legacy/etc/config.dump.yaml")
 	assert.Nil(s.T(), err)
 
 	assert.YAMLEq(s.T(), string(altEnvConfig), string(altEnvDumpConfig))
@@ -1628,7 +1628,7 @@ func (s *IntegrationCLITestSuite) TestLoadConfigFromCommand() {
 	)
 	assert.Nil(s.T(), err)
 
-	altDumpConfig, err = os.ReadFile("integration_test/etc/config.dump.yaml")
+	altDumpConfig, err = os.ReadFile("integration_legacy/etc/config.dump.yaml")
 	assert.Nil(s.T(), err)
 
 	assert.YAMLEq(s.T(), string(altConfig), string(altDumpConfig))
