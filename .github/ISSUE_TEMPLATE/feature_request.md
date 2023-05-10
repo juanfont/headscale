@@ -9,7 +9,7 @@ assignees: ""
 <!--
 We typically have a clear roadmap for what we want to improve and reserve the right
 to close feature requests that does not fit in the roadmap, or fit with the scope
-of the project.
+of the project, or we actually want to implement ourselves.
 
 Headscale is a multinational community across the globe. Our language is English.
 All bug reports needs to be in English.
