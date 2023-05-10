@@ -9,8 +9,8 @@ import (
 	"time"
 
 	survey "github.com/AlecAivazis/survey/v2"
-	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
@@ -529,7 +529,7 @@ func nodesToPtables(
 
 		var machineKey key.MachinePublic
 		err := machineKey.UnmarshalText(
-			[]byte(headscale.MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+			[]byte(hscontrol.MachinePublicKeyEnsurePrefix(machine.MachineKey)),
 		)
 		if err != nil {
 			machineKey = key.MachinePublic{}
@@ -537,7 +537,7 @@ func nodesToPtables(
 
 		var nodeKey key.NodePublic
 		err = nodeKey.UnmarshalText(
-			[]byte(headscale.NodePublicKeyEnsurePrefix(machine.NodeKey)),
+			[]byte(hscontrol.NodePublicKeyEnsurePrefix(machine.NodeKey)),
 		)
 		if err != nil {
 			return nil, err
@@ -596,7 +596,7 @@ func nodesToPtables(
 		}
 
 		nodeData := []string{
-			strconv.FormatUint(machine.Id, headscale.Base10),
+			strconv.FormatUint(machine.Id, hscontrol.Base10),
 			machine.Name,
 			machine.GetGivenName(),
 			machineKey.ShortString(),
