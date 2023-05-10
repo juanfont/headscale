@@ -1,4 +1,4 @@
-package headscale
+package hscontrol
 
 import (
 	"net/netip"

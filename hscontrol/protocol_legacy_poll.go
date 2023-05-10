@@ -1,6 +1,6 @@
 //go:build ts2019
 
-package headscale
+package hscontrol
 
 import (
 	"errors"
