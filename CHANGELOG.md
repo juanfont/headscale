@@ -2,6 +2,10 @@
 
 ## 0.23.0 (2023-XX-XX)
 
+### BREAKING
+
+- Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1444](https://github.com/juanfont/headscale/pull/1444)
+
 ### Changes
 
 ## 0.22.2 (2023-05-10)
