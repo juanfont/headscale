@@ -122,6 +122,7 @@ markdown_extensions:
 # Page tree
 nav:
   - Home: index.md
+  - FAQ: faq.md
   - Getting started:
       - Installation:
           - Linux: running-headscale-linux.md
@@ -141,5 +142,5 @@ nav:
           - iOS: iOS-client.md
   - Proposals:
       - ACLs: proposals/001-acls.md
-      - Better routing: proposals/002-better-routing.md
+      - Better routing: proposals/002-better-routing.mdd
   - Glossary: glossary.md
