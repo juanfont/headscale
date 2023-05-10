@@ -1,5 +1,5 @@
 // nolint
-package hscontrol
+package headscale
 
 import (
 	"bytes"
