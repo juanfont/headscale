@@ -9,13 +9,13 @@
 - Fix systemd service file location in `.deb` packages [#1391](https://github.com/juanfont/headscale/pull/1391)
 - Improvements on Noise implementation [#1379](https://github.com/juanfont/headscale/pull/1379)
 - Replace node filter logic, ensuring nodes with access can see eachother [#1381](https://github.com/juanfont/headscale/pull/1381)
+- Disable (or delete) both exit routes at the same time [#1428](https://github.com/juanfont/headscale/pull/1428)
 
 ## 0.22.1 (2023-04-20)
 
 ### Changes
 
 - Fix issue where systemd could not bind to port 80 [#1365](https://github.com/juanfont/headscale/pull/1365)
-- Disable (or delete) both exit routes at the same time [#1428](https://github.com/juanfont/headscale/pull/1428)
 
 ## 0.22.0 (2023-04-20)
 

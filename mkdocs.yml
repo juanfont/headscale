@@ -129,6 +129,7 @@ nav:
           - OpenBSD: running-headscale-openbsd.md
           - Container: running-headscale-container.md
       - Configuration:
+          - Web UI: web-ui.md
           - OIDC authentication: oidc.md
           - Exit node: exit-node.md
           - Reverse proxy: reverse-proxy.md
