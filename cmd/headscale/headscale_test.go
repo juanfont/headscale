@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/spf13/viper"
 	"gopkg.in/check.v1"
 )
@@ -64,7 +65,7 @@ func (*Suite) TestConfigFileLoading(c *check.C) {
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
 	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 	c.Assert(
-		hscontrol.GetFileMode("unix_socket_permission"),
+		util.GetFileMode("unix_socket_permission"),
 		check.Equals,
 		fs.FileMode(0o770),
 	)
@@ -107,7 +108,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
 	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 	c.Assert(
-		hscontrol.GetFileMode("unix_socket_permission"),
+		util.GetFileMode("unix_socket_permission"),
 		check.Equals,
 		fs.FileMode(0o770),
 	)

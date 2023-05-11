@@ -24,6 +24,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
@@ -132,7 +133,7 @@ func WithHostPortBindings(bindings map[string][]string) Option {
 // in the Docker container name.
 func WithTestName(testName string) Option {
 	return func(hsic *HeadscaleInContainer) {
-		hash, _ := hscontrol.GenerateRandomStringDNSSafe(hsicHashLength)
+		hash, _ := util.GenerateRandomStringDNSSafe(hsicHashLength)
 
 		hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
 		hsic.hostname = hostname
@@ -167,7 +168,7 @@ func New(
 	network *dockertest.Network,
 	opts ...Option,
 ) (*HeadscaleInContainer, error) {
-	hash, err := hscontrol.GenerateRandomStringDNSSafe(hsicHashLength)
+	hash, err := util.GenerateRandomStringDNSSafe(hsicHashLength)
 	if err != nil {
 		return nil, err
 	}

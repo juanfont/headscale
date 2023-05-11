@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -39,7 +40,7 @@ func getHeadscaleApp() (*hscontrol.Headscale, error) {
 	// We are doing this here, as in the future could be cool to have it also hot-reload
 
 	if cfg.ACL.PolicyPath != "" {
-		aclPath := hscontrol.AbsolutePathFromConfigPath(cfg.ACL.PolicyPath)
+		aclPath := util.AbsolutePathFromConfigPath(cfg.ACL.PolicyPath)
 		err = app.LoadACLPolicyFromPath(aclPath)
 		if err != nil {
 			log.Fatal().
@@ -98,7 +99,7 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 		grpcOptions = append(
 			grpcOptions,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithContextDialer(hscontrol.GrpcSocketDialer),
+			grpc.WithContextDialer(util.GrpcSocketDialer),
 		)
 	} else {
 		// If we are not connecting to a local server, require an API key for authentication

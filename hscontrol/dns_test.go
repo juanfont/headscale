@@ -112,16 +112,16 @@ func (s *Suite) TestMagicDNSRootDomainsIPv6SingleMultiple(c *check.C) {
 }
 
 func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
-	userShared1, err := app.CreateUser("shared1")
+	userShared1, err := app.db.CreateUser("shared1")
 	c.Assert(err, check.IsNil)
 
-	userShared2, err := app.CreateUser("shared2")
+	userShared2, err := app.db.CreateUser("shared2")
 	c.Assert(err, check.IsNil)
 
-	userShared3, err := app.CreateUser("shared3")
+	userShared3, err := app.db.CreateUser("shared3")
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyInShared1, err := app.CreatePreAuthKey(
+	preAuthKeyInShared1, err := app.db.CreatePreAuthKey(
 		userShared1.Name,
 		false,
 		false,
@@ -130,7 +130,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyInShared2, err := app.CreatePreAuthKey(
+	preAuthKeyInShared2, err := app.db.CreatePreAuthKey(
 		userShared2.Name,
 		false,
 		false,
@@ -139,7 +139,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyInShared3, err := app.CreatePreAuthKey(
+	preAuthKeyInShared3, err := app.db.CreatePreAuthKey(
 		userShared3.Name,
 		false,
 		false,
@@ -148,7 +148,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	PreAuthKey2InShared1, err := app.CreatePreAuthKey(
+	PreAuthKey2InShared1, err := app.db.CreatePreAuthKey(
 		userShared1.Name,
 		false,
 		false,
@@ -157,7 +157,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
+	_, err = app.db.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
 	machineInShared1 := &Machine{
@@ -172,9 +172,9 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
-	app.db.Save(machineInShared1)
+	app.db.db.Save(machineInShared1)
 
-	_, err = app.GetMachine(userShared1.Name, machineInShared1.Hostname)
+	_, err = app.db.GetMachine(userShared1.Name, machineInShared1.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machineInShared2 := &Machine{
@@ -189,9 +189,9 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
-	app.db.Save(machineInShared2)
+	app.db.db.Save(machineInShared2)
 
-	_, err = app.GetMachine(userShared2.Name, machineInShared2.Hostname)
+	_, err = app.db.GetMachine(userShared2.Name, machineInShared2.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machineInShared3 := &Machine{
@@ -206,9 +206,9 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
-	app.db.Save(machineInShared3)
+	app.db.db.Save(machineInShared3)
 
-	_, err = app.GetMachine(userShared3.Name, machineInShared3.Hostname)
+	_, err = app.db.GetMachine(userShared3.Name, machineInShared3.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machine2InShared1 := &Machine{
@@ -223,7 +223,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.4")},
 		AuthKeyID:      uint(PreAuthKey2InShared1.ID),
 	}
-	app.db.Save(machine2InShared1)
+	app.db.db.Save(machine2InShared1)
 
 	baseDomain := "foobar.headscale.net"
 	dnsConfigOrig := tailcfg.DNSConfig{
@@ -232,7 +232,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Proxied: true,
 	}
 
-	peersOfMachineInShared1, err := app.getPeers(machineInShared1)
+	peersOfMachineInShared1, err := app.db.getPeers(app.aclPolicy, app.aclRules, machineInShared1)
 	c.Assert(err, check.IsNil)
 
 	dnsConfig := getMapResponseDNSConfig(
@@ -259,16 +259,16 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 }
 
 func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
-	userShared1, err := app.CreateUser("shared1")
+	userShared1, err := app.db.CreateUser("shared1")
 	c.Assert(err, check.IsNil)
 
-	userShared2, err := app.CreateUser("shared2")
+	userShared2, err := app.db.CreateUser("shared2")
 	c.Assert(err, check.IsNil)
 
-	userShared3, err := app.CreateUser("shared3")
+	userShared3, err := app.db.CreateUser("shared3")
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyInShared1, err := app.CreatePreAuthKey(
+	preAuthKeyInShared1, err := app.db.CreatePreAuthKey(
 		userShared1.Name,
 		false,
 		false,
@@ -277,7 +277,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyInShared2, err := app.CreatePreAuthKey(
+	preAuthKeyInShared2, err := app.db.CreatePreAuthKey(
 		userShared2.Name,
 		false,
 		false,
@@ -286,7 +286,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyInShared3, err := app.CreatePreAuthKey(
+	preAuthKeyInShared3, err := app.db.CreatePreAuthKey(
 		userShared3.Name,
 		false,
 		false,
@@ -295,7 +295,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	preAuthKey2InShared1, err := app.CreatePreAuthKey(
+	preAuthKey2InShared1, err := app.db.CreatePreAuthKey(
 		userShared1.Name,
 		false,
 		false,
@@ -304,7 +304,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
+	_, err = app.db.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
 	machineInShared1 := &Machine{
@@ -319,9 +319,9 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
-	app.db.Save(machineInShared1)
+	app.db.db.Save(machineInShared1)
 
-	_, err = app.GetMachine(userShared1.Name, machineInShared1.Hostname)
+	_, err = app.db.GetMachine(userShared1.Name, machineInShared1.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machineInShared2 := &Machine{
@@ -336,9 +336,9 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
-	app.db.Save(machineInShared2)
+	app.db.db.Save(machineInShared2)
 
-	_, err = app.GetMachine(userShared2.Name, machineInShared2.Hostname)
+	_, err = app.db.GetMachine(userShared2.Name, machineInShared2.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machineInShared3 := &Machine{
@@ -353,9 +353,9 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
-	app.db.Save(machineInShared3)
+	app.db.db.Save(machineInShared3)
 
-	_, err = app.GetMachine(userShared3.Name, machineInShared3.Hostname)
+	_, err = app.db.GetMachine(userShared3.Name, machineInShared3.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machine2InShared1 := &Machine{
@@ -370,7 +370,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.4")},
 		AuthKeyID:      uint(preAuthKey2InShared1.ID),
 	}
-	app.db.Save(machine2InShared1)
+	app.db.db.Save(machine2InShared1)
 
 	baseDomain := "foobar.headscale.net"
 	dnsConfigOrig := tailcfg.DNSConfig{
@@ -379,7 +379,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Proxied: false,
 	}
 
-	peersOfMachine1Shared1, err := app.getPeers(machineInShared1)
+	peersOfMachine1Shared1, err := app.db.getPeers(app.aclPolicy, app.aclRules, machineInShared1)
 	c.Assert(err, check.IsNil)
 
 	dnsConfig := getMapResponseDNSConfig(

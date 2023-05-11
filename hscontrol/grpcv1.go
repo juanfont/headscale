@@ -8,6 +8,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,7 +31,7 @@ func (api headscaleV1APIServer) GetUser(
 	ctx context.Context,
 	request *v1.GetUserRequest,
 ) (*v1.GetUserResponse, error) {
-	user, err := api.h.GetUser(request.GetName())
+	user, err := api.h.db.GetUser(request.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +43,7 @@ func (api headscaleV1APIServer) CreateUser(
 	ctx context.Context,
 	request *v1.CreateUserRequest,
 ) (*v1.CreateUserResponse, error) {
-	user, err := api.h.CreateUser(request.GetName())
+	user, err := api.h.db.CreateUser(request.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -54,12 +55,12 @@ func (api headscaleV1APIServer) RenameUser(
 	ctx context.Context,
 	request *v1.RenameUserRequest,
 ) (*v1.RenameUserResponse, error) {
-	err := api.h.RenameUser(request.GetOldName(), request.GetNewName())
+	err := api.h.db.RenameUser(request.GetOldName(), request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := api.h.GetUser(request.GetNewName())
+	user, err := api.h.db.GetUser(request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +72,7 @@ func (api headscaleV1APIServer) DeleteUser(
 	ctx context.Context,
 	request *v1.DeleteUserRequest,
 ) (*v1.DeleteUserResponse, error) {
-	err := api.h.DestroyUser(request.GetName())
+	err := api.h.db.DestroyUser(request.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +84,7 @@ func (api headscaleV1APIServer) ListUsers(
 	ctx context.Context,
 	request *v1.ListUsersRequest,
 ) (*v1.ListUsersResponse, error) {
-	users, err := api.h.ListUsers()
+	users, err := api.h.db.ListUsers()
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +117,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		}
 	}
 
-	preAuthKey, err := api.h.CreatePreAuthKey(
+	preAuthKey, err := api.h.db.CreatePreAuthKey(
 		request.GetUser(),
 		request.GetReusable(),
 		request.GetEphemeral(),
@@ -134,12 +135,12 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	ctx context.Context,
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
-	preAuthKey, err := api.h.GetPreAuthKey(request.GetUser(), request.Key)
+	preAuthKey, err := api.h.db.GetPreAuthKey(request.GetUser(), request.Key)
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.ExpirePreAuthKey(preAuthKey)
+	err = api.h.db.ExpirePreAuthKey(preAuthKey)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
 ) (*v1.ListPreAuthKeysResponse, error) {
-	preAuthKeys, err := api.h.ListPreAuthKeys(request.GetUser())
+	preAuthKeys, err := api.h.db.ListPreAuthKeys(request.GetUser())
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +174,8 @@ func (api headscaleV1APIServer) RegisterMachine(
 		Str("node_key", request.GetKey()).
 		Msg("Registering machine")
 
-	machine, err := api.h.RegisterMachineFromAuthCallback(
+	machine, err := api.h.db.RegisterMachineFromAuthCallback(
+		api.h.registrationCache,
 		request.GetKey(),
 		request.GetUser(),
 		nil,
@@ -190,7 +192,7 @@ func (api headscaleV1APIServer) GetMachine(
 	ctx context.Context,
 	request *v1.GetMachineRequest,
 ) (*v1.GetMachineResponse, error) {
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +204,7 @@ func (api headscaleV1APIServer) SetTags(
 	ctx context.Context,
 	request *v1.SetTagsRequest,
 ) (*v1.SetTagsResponse, error) {
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +218,7 @@ func (api headscaleV1APIServer) SetTags(
 		}
 	}
 
-	err = api.h.SetTags(machine, request.GetTags())
+	err = api.h.db.SetTags(machine, request.GetTags(), api.h.UpdateACLRules)
 	if err != nil {
 		return &v1.SetTagsResponse{
 			Machine: nil,
@@ -248,12 +250,12 @@ func (api headscaleV1APIServer) DeleteMachine(
 	ctx context.Context,
 	request *v1.DeleteMachineRequest,
 ) (*v1.DeleteMachineResponse, error) {
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.DeleteMachine(
+	err = api.h.db.DeleteMachine(
 		machine,
 	)
 	if err != nil {
@@ -267,12 +269,12 @@ func (api headscaleV1APIServer) ExpireMachine(
 	ctx context.Context,
 	request *v1.ExpireMachineRequest,
 ) (*v1.ExpireMachineResponse, error) {
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
 	}
 
-	api.h.ExpireMachine(
+	api.h.db.ExpireMachine(
 		machine,
 	)
 
@@ -288,12 +290,12 @@ func (api headscaleV1APIServer) RenameMachine(
 	ctx context.Context,
 	request *v1.RenameMachineRequest,
 ) (*v1.RenameMachineResponse, error) {
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.RenameMachine(
+	err = api.h.db.RenameMachine(
 		machine,
 		request.GetNewName(),
 	)
@@ -314,7 +316,7 @@ func (api headscaleV1APIServer) ListMachines(
 	request *v1.ListMachinesRequest,
 ) (*v1.ListMachinesResponse, error) {
 	if request.GetUser() != "" {
-		machines, err := api.h.ListMachinesByUser(request.GetUser())
+		machines, err := api.h.db.ListMachinesByUser(request.GetUser())
 		if err != nil {
 			return nil, err
 		}
@@ -327,7 +329,7 @@ func (api headscaleV1APIServer) ListMachines(
 		return &v1.ListMachinesResponse{Machines: response}, nil
 	}
 
-	machines, err := api.h.ListMachines()
+	machines, err := api.h.db.ListMachines()
 	if err != nil {
 		return nil, err
 	}
@@ -352,12 +354,12 @@ func (api headscaleV1APIServer) MoveMachine(
 	ctx context.Context,
 	request *v1.MoveMachineRequest,
 ) (*v1.MoveMachineResponse, error) {
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.SetMachineUser(machine, request.GetUser())
+	err = api.h.db.SetMachineUser(machine, request.GetUser())
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +371,7 @@ func (api headscaleV1APIServer) GetRoutes(
 	ctx context.Context,
 	request *v1.GetRoutesRequest,
 ) (*v1.GetRoutesResponse, error) {
-	routes, err := api.h.GetRoutes()
+	routes, err := api.h.db.GetRoutes()
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +385,7 @@ func (api headscaleV1APIServer) EnableRoute(
 	ctx context.Context,
 	request *v1.EnableRouteRequest,
 ) (*v1.EnableRouteResponse, error) {
-	err := api.h.EnableRoute(request.GetRouteId())
+	err := api.h.db.EnableRoute(request.GetRouteId())
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +397,7 @@ func (api headscaleV1APIServer) DisableRoute(
 	ctx context.Context,
 	request *v1.DisableRouteRequest,
 ) (*v1.DisableRouteResponse, error) {
-	err := api.h.DisableRoute(request.GetRouteId())
+	err := api.h.db.DisableRoute(request.GetRouteId())
 	if err != nil {
 		return nil, err
 	}
@@ -407,12 +409,12 @@ func (api headscaleV1APIServer) GetMachineRoutes(
 	ctx context.Context,
 	request *v1.GetMachineRoutesRequest,
 ) (*v1.GetMachineRoutesResponse, error) {
-	machine, err := api.h.GetMachineByID(request.GetMachineId())
+	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
 	if err != nil {
 		return nil, err
 	}
 
-	routes, err := api.h.GetMachineRoutes(machine)
+	routes, err := api.h.db.GetMachineRoutes(machine)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +428,7 @@ func (api headscaleV1APIServer) DeleteRoute(
 	ctx context.Context,
 	request *v1.DeleteRouteRequest,
 ) (*v1.DeleteRouteResponse, error) {
-	err := api.h.DeleteRoute(request.GetRouteId())
+	err := api.h.db.DeleteRoute(request.GetRouteId())
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +445,7 @@ func (api headscaleV1APIServer) CreateApiKey(
 		expiration = request.GetExpiration().AsTime()
 	}
 
-	apiKey, _, err := api.h.CreateAPIKey(
+	apiKey, _, err := api.h.db.CreateAPIKey(
 		&expiration,
 	)
 	if err != nil {
@@ -460,12 +462,12 @@ func (api headscaleV1APIServer) ExpireApiKey(
 	var apiKey *APIKey
 	var err error
 
-	apiKey, err = api.h.GetAPIKey(request.Prefix)
+	apiKey, err = api.h.db.GetAPIKey(request.Prefix)
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.ExpireAPIKey(apiKey)
+	err = api.h.db.ExpireAPIKey(apiKey)
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +479,7 @@ func (api headscaleV1APIServer) ListApiKeys(
 	ctx context.Context,
 	request *v1.ListApiKeysRequest,
 ) (*v1.ListApiKeysResponse, error) {
-	apiKeys, err := api.h.ListAPIKeys()
+	apiKeys, err := api.h.db.ListAPIKeys()
 	if err != nil {
 		return nil, err
 	}
@@ -495,12 +497,12 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 	ctx context.Context,
 	request *v1.DebugCreateMachineRequest,
 ) (*v1.DebugCreateMachineResponse, error) {
-	user, err := api.h.GetUser(request.GetUser())
+	user, err := api.h.db.GetUser(request.GetUser())
 	if err != nil {
 		return nil, err
 	}
 
-	routes, err := stringToIPPrefix(request.GetRoutes())
+	routes, err := util.StringToIPPrefix(request.GetRoutes())
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +519,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		Hostname:    "DebugTestMachine",
 	}
 
-	givenName, err := api.h.GenerateGivenName(request.GetKey(), request.GetName())
+	givenName, err := api.h.db.GenerateGivenName(request.GetKey(), request.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +544,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 	}
 
 	api.h.registrationCache.Set(
-		NodePublicKeyStripPrefix(nodeKey),
+		util.NodePublicKeyStripPrefix(nodeKey),
 		newMachine,
 		registerCacheExpiration,
 	)

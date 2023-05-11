@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -44,7 +45,7 @@ func (h *Headscale) PollNetMapHandler(
 	body, _ := io.ReadAll(req.Body)
 
 	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
+	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machineKeyStr)))
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -56,7 +57,7 @@ func (h *Headscale) PollNetMapHandler(
 		return
 	}
 	mapRequest := tailcfg.MapRequest{}
-	err = decode(body, &mapRequest, &machineKey, h.privateKey)
+	err = util.DecodeAndUnmarshalNaCl(body, &mapRequest, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -67,7 +68,7 @@ func (h *Headscale) PollNetMapHandler(
 		return
 	}
 
-	machine, err := h.GetMachineByMachineKey(machineKey)
+	machine, err := h.db.GetMachineByMachineKey(machineKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().

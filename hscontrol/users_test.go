@@ -9,42 +9,42 @@ import (
 )
 
 func (s *Suite) TestCreateAndDestroyUser(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 	c.Assert(user.Name, check.Equals, "test")
 
-	users, err := app.ListUsers()
+	users, err := app.db.ListUsers()
 	c.Assert(err, check.IsNil)
 	c.Assert(len(users), check.Equals, 1)
 
-	err = app.DestroyUser("test")
+	err = app.db.DestroyUser("test")
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetUser("test")
+	_, err = app.db.GetUser("test")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestDestroyUserErrors(c *check.C) {
-	err := app.DestroyUser("test")
+	err := app.db.DestroyUser("test")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	err = app.DestroyUser("test")
+	err = app.db.DestroyUser("test")
 	c.Assert(err, check.IsNil)
 
-	result := app.db.Preload("User").First(&pak, "key = ?", pak.Key)
+	result := app.db.db.Preload("User").First(&pak, "key = ?", pak.Key)
 	// destroying a user also deletes all associated preauthkeys
 	c.Assert(result.Error, check.Equals, gorm.ErrRecordNotFound)
 
-	user, err = app.CreateUser("test")
+	user, err = app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err = app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err = app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	machine := Machine{
@@ -57,52 +57,52 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	err = app.DestroyUser("test")
+	err = app.db.DestroyUser("test")
 	c.Assert(err, check.Equals, ErrUserStillHasNodes)
 }
 
 func (s *Suite) TestRenameUser(c *check.C) {
-	userTest, err := app.CreateUser("test")
+	userTest, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 	c.Assert(userTest.Name, check.Equals, "test")
 
-	users, err := app.ListUsers()
+	users, err := app.db.ListUsers()
 	c.Assert(err, check.IsNil)
 	c.Assert(len(users), check.Equals, 1)
 
-	err = app.RenameUser("test", "test-renamed")
+	err = app.db.RenameUser("test", "test-renamed")
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetUser("test")
+	_, err = app.db.GetUser("test")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	_, err = app.GetUser("test-renamed")
+	_, err = app.db.GetUser("test-renamed")
 	c.Assert(err, check.IsNil)
 
-	err = app.RenameUser("test-does-not-exit", "test")
+	err = app.db.RenameUser("test-does-not-exit", "test")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	userTest2, err := app.CreateUser("test2")
+	userTest2, err := app.db.CreateUser("test2")
 	c.Assert(err, check.IsNil)
 	c.Assert(userTest2.Name, check.Equals, "test2")
 
-	err = app.RenameUser("test2", "test-renamed")
+	err = app.db.RenameUser("test2", "test-renamed")
 	c.Assert(err, check.Equals, ErrUserExists)
 }
 
 func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
-	userShared1, err := app.CreateUser("shared1")
+	userShared1, err := app.db.CreateUser("shared1")
 	c.Assert(err, check.IsNil)
 
-	userShared2, err := app.CreateUser("shared2")
+	userShared2, err := app.db.CreateUser("shared2")
 	c.Assert(err, check.IsNil)
 
-	userShared3, err := app.CreateUser("shared3")
+	userShared3, err := app.db.CreateUser("shared3")
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyShared1, err := app.CreatePreAuthKey(
+	preAuthKeyShared1, err := app.db.CreatePreAuthKey(
 		userShared1.Name,
 		false,
 		false,
@@ -111,7 +111,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyShared2, err := app.CreatePreAuthKey(
+	preAuthKeyShared2, err := app.db.CreatePreAuthKey(
 		userShared2.Name,
 		false,
 		false,
@@ -120,7 +120,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	preAuthKeyShared3, err := app.CreatePreAuthKey(
+	preAuthKeyShared3, err := app.db.CreatePreAuthKey(
 		userShared3.Name,
 		false,
 		false,
@@ -129,7 +129,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	preAuthKey2Shared1, err := app.CreatePreAuthKey(
+	preAuthKey2Shared1, err := app.db.CreatePreAuthKey(
 		userShared1.Name,
 		false,
 		false,
@@ -138,7 +138,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
+	_, err = app.db.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
 	machineInShared1 := &Machine{
@@ -153,9 +153,9 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyShared1.ID),
 	}
-	app.db.Save(machineInShared1)
+	app.db.db.Save(machineInShared1)
 
-	_, err = app.GetMachine(userShared1.Name, machineInShared1.Hostname)
+	_, err = app.db.GetMachine(userShared1.Name, machineInShared1.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machineInShared2 := &Machine{
@@ -170,9 +170,9 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyShared2.ID),
 	}
-	app.db.Save(machineInShared2)
+	app.db.db.Save(machineInShared2)
 
-	_, err = app.GetMachine(userShared2.Name, machineInShared2.Hostname)
+	_, err = app.db.GetMachine(userShared2.Name, machineInShared2.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machineInShared3 := &Machine{
@@ -187,9 +187,9 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyShared3.ID),
 	}
-	app.db.Save(machineInShared3)
+	app.db.db.Save(machineInShared3)
 
-	_, err = app.GetMachine(userShared3.Name, machineInShared3.Hostname)
+	_, err = app.db.GetMachine(userShared3.Name, machineInShared3.Hostname)
 	c.Assert(err, check.IsNil)
 
 	machine2InShared1 := &Machine{
@@ -204,12 +204,12 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.4")},
 		AuthKeyID:      uint(preAuthKey2Shared1.ID),
 	}
-	app.db.Save(machine2InShared1)
+	app.db.db.Save(machine2InShared1)
 
-	peersOfMachine1InShared1, err := app.getPeers(machineInShared1)
+	peersOfMachine1InShared1, err := app.db.getPeers(app.aclPolicy, app.aclRules, machineInShared1)
 	c.Assert(err, check.IsNil)
 
-	userProfiles := app.getMapResponseUserProfiles(
+	userProfiles := app.db.getMapResponseUserProfiles(
 		*machineInShared1,
 		peersOfMachine1InShared1,
 	)
@@ -378,13 +378,13 @@ func TestCheckForFQDNRules(t *testing.T) {
 }
 
 func (s *Suite) TestSetMachineUser(c *check.C) {
-	oldUser, err := app.CreateUser("old")
+	oldUser, err := app.db.CreateUser("old")
 	c.Assert(err, check.IsNil)
 
-	newUser, err := app.CreateUser("new")
+	newUser, err := app.db.CreateUser("new")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(oldUser.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(oldUser.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	machine := Machine{
@@ -397,18 +397,18 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 	c.Assert(machine.UserID, check.Equals, oldUser.ID)
 
-	err = app.SetMachineUser(&machine, newUser.Name)
+	err = app.db.SetMachineUser(&machine, newUser.Name)
 	c.Assert(err, check.IsNil)
 	c.Assert(machine.UserID, check.Equals, newUser.ID)
 	c.Assert(machine.User.Name, check.Equals, newUser.Name)
 
-	err = app.SetMachineUser(&machine, "non-existing-user")
+	err = app.db.SetMachineUser(&machine, "non-existing-user")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	err = app.SetMachineUser(&machine, newUser.Name)
+	err = app.db.SetMachineUser(&machine, newUser.Name)
 	c.Assert(err, check.IsNil)
 	c.Assert(machine.UserID, check.Equals, newUser.ID)
 	c.Assert(machine.User.Name, check.Equals, newUser.Name)

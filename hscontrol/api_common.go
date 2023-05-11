@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
@@ -15,7 +16,7 @@ func (h *Headscale) generateMapResponse(
 		Str("func", "generateMapResponse").
 		Str("machine", mapRequest.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := h.toNode(*machine, h.cfg.BaseDomain, h.cfg.DNSConfig)
+	node, err := h.db.toNode(*machine, h.aclPolicy, h.cfg.BaseDomain, h.cfg.DNSConfig)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -26,7 +27,7 @@ func (h *Headscale) generateMapResponse(
 		return nil, err
 	}
 
-	peers, err := h.getValidPeers(machine)
+	peers, err := h.db.getValidPeers(h.aclPolicy, h.aclRules, machine)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -37,9 +38,9 @@ func (h *Headscale) generateMapResponse(
 		return nil, err
 	}
 
-	profiles := h.getMapResponseUserProfiles(*machine, peers)
+	profiles := h.db.getMapResponseUserProfiles(*machine, peers)
 
-	nodePeers, err := h.toNodes(peers, h.cfg.BaseDomain, h.cfg.DNSConfig)
+	nodePeers, err := h.db.toNodes(peers, h.aclPolicy, h.cfg.BaseDomain, h.cfg.DNSConfig)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -107,7 +108,7 @@ func (h *Headscale) generateMapResponse(
 		Str("func", "generateMapResponse").
 		Str("machine", mapRequest.Hostinfo.Hostname).
 		// Interface("payload", resp).
-		Msgf("Generated map response: %s", tailMapResponseToString(resp))
+		Msgf("Generated map response: %s", util.TailMapResponseToString(resp))
 
 	return &resp, nil
 }

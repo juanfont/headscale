@@ -3,25 +3,28 @@ package hscontrol
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/types/key"
 )
 
 const (
 	// TODO(juan): remove this once https://github.com/juanfont/headscale/issues/727 is fixed.
-	registrationHoldoff                      = time.Second * 5
-	reservedResponseHeaderSize               = 4
-	RegisterMethodAuthKey                    = "authkey"
-	RegisterMethodOIDC                       = "oidc"
-	RegisterMethodCLI                        = "cli"
-	ErrRegisterMethodCLIDoesNotSupportExpire = Error(
-		"machines registered with CLI does not support expire",
-	)
+	registrationHoldoff        = time.Second * 5
+	reservedResponseHeaderSize = 4
+	RegisterMethodAuthKey      = "authkey"
+	RegisterMethodOIDC         = "oidc"
+	RegisterMethodCLI          = "cli"
+)
+
+var ErrRegisterMethodCLIDoesNotSupportExpire = errors.New(
+	"machines registered with CLI does not support expire",
 )
 
 func (h *Headscale) HealthHandler(
@@ -53,7 +56,7 @@ func (h *Headscale) HealthHandler(
 		}
 	}
 
-	if err := h.pingDB(req.Context()); err != nil {
+	if err := h.db.pingDB(req.Context()); err != nil {
 		respond(err)
 
 		return
@@ -95,7 +98,7 @@ func (h *Headscale) RegisterWebAPI(
 	vars := mux.Vars(req)
 	nodeKeyStr, ok := vars["nkey"]
 
-	if !NodePublicKeyRegex.Match([]byte(nodeKeyStr)) {
+	if !util.NodePublicKeyRegex.Match([]byte(nodeKeyStr)) {
 		log.Warn().Str("node_key", nodeKeyStr).Msg("Invalid node key passed to registration url")
 
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -116,7 +119,7 @@ func (h *Headscale) RegisterWebAPI(
 	// the template and log an error.
 	var nodeKey key.NodePublic
 	err := nodeKey.UnmarshalText(
-		[]byte(NodePublicKeyEnsurePrefix(nodeKeyStr)),
+		[]byte(util.NodePublicKeyEnsurePrefix(nodeKeyStr)),
 	)
 
 	if !ok || nodeKeyStr == "" || err != nil {

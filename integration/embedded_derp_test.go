@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -110,7 +110,7 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 		return err
 	}
 
-	hash, err := hscontrol.GenerateRandomStringDNSSafe(scenarioHashLength)
+	hash, err := util.GenerateRandomStringDNSSafe(scenarioHashLength)
 	if err != nil {
 		return err
 	}

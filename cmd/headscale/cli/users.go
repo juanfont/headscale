@@ -1,11 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -20,9 +20,7 @@ func init() {
 	userCmd.AddCommand(renameUserCmd)
 }
 
-const (
-	errMissingParameter = hscontrol.Error("missing parameters")
-)
+var errMissingParameter = errors.New("missing parameters")
 
 var userCmd = &cobra.Command{
 	Use:     "users",
