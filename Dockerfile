@@ -16,6 +16,9 @@ RUN test -e /go/bin/headscale
 # Production image
 FROM docker.io/debian:bullseye-slim
 
+RUN apt-get update \
+    && apt-get install -y ca-certificates
+
 COPY --from=build /go/bin/headscale /bin/headscale
 ENV TZ UTC
 
