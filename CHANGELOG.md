@@ -2,6 +2,14 @@
 
 ## 0.23.0 (2023-XX-XX)
 
+### BREAKING
+
+- Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1444](https://github.com/juanfont/headscale/pull/1444)
+
+### Changes
+
+## 0.22.2 (2023-05-10)
+
 ### Changes
 
 - Add environment flags to enable pprof (profiling) [#1382](https://github.com/juanfont/headscale/pull/1382)
@@ -9,7 +17,10 @@
 - Fix systemd service file location in `.deb` packages [#1391](https://github.com/juanfont/headscale/pull/1391)
 - Improvements on Noise implementation [#1379](https://github.com/juanfont/headscale/pull/1379)
 - Replace node filter logic, ensuring nodes with access can see eachother [#1381](https://github.com/juanfont/headscale/pull/1381)
+- Disable (or delete) both exit routes at the same time [#1428](https://github.com/juanfont/headscale/pull/1428)
+- Ditch distroless for Docker image, create default socket dir in `/var/run/headscale` [#1450](https://github.com/juanfont/headscale/pull/1450)
 - Updated docker related doc, added example docker compose file [#1421](https://github.com/juanfont/headscale/pull/1421)
+
 
 ## 0.22.1 (2023-04-20)
 

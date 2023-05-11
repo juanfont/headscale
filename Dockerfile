@@ -14,10 +14,12 @@ RUN strip /go/bin/headscale
 RUN test -e /go/bin/headscale
 
 # Production image
-FROM gcr.io/distroless/base-debian11
+FROM docker.io/debian:bullseye-slim
 
 COPY --from=build /go/bin/headscale /bin/headscale
 ENV TZ UTC
+
+RUN mkdir -p /var/run/headscale
 
 EXPOSE 8080/tcp
 CMD ["headscale"]

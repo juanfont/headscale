@@ -58,11 +58,12 @@ noise:
 # List of IP prefixes to allocate tailaddresses from.
 # Each prefix consists of either an IPv4 or IPv6 address,
 # and the associated prefix length, delimited by a slash.
-# While this looks like it can take arbitrary values, it
-# needs to be within IP ranges supported by the Tailscale
-# client.
+# It must be within IP ranges supported by the Tailscale
+# client - i.e., subnets of 100.64.0.0/10 and fd7a:115c:a1e0::/48.
+# See below:
 # IPv6: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#LL81C52-L81C71
 # IPv4: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#L33
+# Any other range is NOT supported, and it will cause unexpected issues.
 ip_prefixes:
   - fd7a:115c:a1e0::/48
   - 100.64.0.0/10
@@ -256,7 +257,7 @@ dns_config:
 
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:
-unix_socket: /var/run/headscale.sock
+unix_socket: /var/run/headscale/headscale.sock
 unix_socket_permission: "0770"
 #
 # headscale supports experimental OpenID connect support,

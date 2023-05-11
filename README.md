@@ -32,20 +32,17 @@ organisation.
 
 ## Design goal
 
-`headscale` aims to implement a self-hosted, open source alternative to the Tailscale
-control server. `headscale` has a narrower scope and an instance of `headscale`
-implements a _single_ Tailnet, which is typically what a single organisation, or
-home/personal setup would use.
+Headscale aims to implement a self-hosted, open source alternative to the Tailscale
+control server.
+Headscale's goal is to provide self-hosters and hobbyists with an open-source
+server they can use for their projects and labs.
+It implements a narrow scope, a single Tailnet, suitable for a personal use, or a small
+open-source organisation.
 
-`headscale` uses terms that maps to Tailscale's control server, consult the
-
-## Support
+## Supporting Headscale
 
 If you like `headscale` and find it useful, there is a sponsorship and donation
 buttons available in the repo.
-
-If you would like to sponsor features, bugs or prioritisation, reach out to
-one of the maintainers.
 
 ## Features
 
@@ -78,16 +75,10 @@ one of the maintainers.
 
 ## Running headscale
 
+**Please note that we do not support nor encourage the use of reverse proxies
+and container to run Headscale.**
+
 Please have a look at the [`documentation`](https://headscale.net/).
-
-## Graphical Control Panels
-
-Headscale provides an API for complete management of your Tailnet.
-These are community projects not directly affiliated with the Headscale project.
-
-| Name            | Repository Link                                      | Description                                            | Status |
-| --------------- | ---------------------------------------------------- | ------------------------------------------------------ | ------ |
-| headscale-webui | [Github](https://github.com/ifargle/headscale-webui) | A simple Headscale web UI for small-scale deployments. | Alpha  |
 
 ## Talks
 
@@ -96,10 +87,22 @@ These are community projects not directly affiliated with the Headscale project.
 
 ## Disclaimer
 
-1. We have nothing to do with Tailscale, or Tailscale Inc.
+1. This project is not associated with Tailscale Inc.
 2. The purpose of Headscale is maintaining a working, self-hosted Tailscale control panel.
 
 ## Contributing
+
+Headscale is "Open Source, acknowledged contribution", this means that any
+contribution will have to be discussed with the Maintainers before being submitted.
+
+This model has been chosen to reduce the risk of burnout by limiting the
+maintenance overhead of reviewing and validating third-party code.
+
+Headscale is open to code contributions for bug fixes without discussion.
+
+If you find mistakes in the documentation, please submit a fix to the documentation.
+
+### Requirements
 
 To contribute to headscale you would need the lastest version of [Go](https://golang.org)
 and [Buf](https://buf.build)(Protobuf generator).
@@ -107,8 +110,6 @@ and [Buf](https://buf.build)(Protobuf generator).
 We recommend using [Nix](https://nixos.org/) to setup a development environment. This can
 be done with `nix develop`, which will install the tools and give you a shell.
 This guarantees that you will have the same dev env as `headscale` maintainers.
-
-PRs and suggestions are welcome.
 
 ### Code style
 
