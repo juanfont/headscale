@@ -2,7 +2,6 @@ package integration
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 	"testing"
 
@@ -186,16 +185,11 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 
 			cert := hsServer.GetCert()
 
-			user.createWaitGroup.Add(1)
-
 			opts = append(opts,
 				tsic.WithHeadscaleTLS(cert),
 			)
 
-			go func() {
-				defer user.createWaitGroup.Done()
-
-				// TODO(kradalby): error handle this
+			user.createWaitGroup.Go(func() error {
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
@@ -203,22 +197,21 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 					opts...,
 				)
 				if err != nil {
-					// return fmt.Errorf("failed to add tailscale node: %w", err)
-					log.Printf("failed to create tailscale node: %s", err)
+					return fmt.Errorf("failed to create tailscale node: %w", err)
 				}
 
 				err = tsClient.WaitForReady()
 				if err != nil {
-					// return fmt.Errorf("failed to add tailscale node: %w", err)
-					log.Printf("failed to wait for tailscaled: %s", err)
+					return fmt.Errorf("failed to wait for tailscaled: %w", err)
 				}
 
 				user.Clients[tsClient.Hostname()] = tsClient
-			}()
-		}
-		user.createWaitGroup.Wait()
 
-		return nil
+				return nil
+			})
+		}
+
+		return user.createWaitGroup.Wait()
 	}
 
 	return fmt.Errorf("failed to add tailscale node: %w", errNoUserAvailable)

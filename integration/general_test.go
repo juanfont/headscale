@@ -108,7 +108,9 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 		}
 	}
 
-	scenario.WaitForTailscaleLogout()
+	if err = scenario.WaitForTailscaleLogout(); err != nil {
+		t.Errorf("failed to logout tailscale nodes: %s", err)
+	}
 
 	t.Logf("all clients logged out")
 
@@ -261,7 +263,9 @@ func TestEphemeral(t *testing.T) {
 		}
 	}
 
-	scenario.WaitForTailscaleLogout()
+	if err = scenario.WaitForTailscaleLogout(); err != nil {
+		t.Errorf("failed to logout tailscale nodes: %s", err)
+	}
 
 	t.Logf("all clients logged out")
 

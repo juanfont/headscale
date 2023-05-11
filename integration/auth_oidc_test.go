@@ -170,7 +170,9 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	t.Logf("%d successful pings out of %d (before expiry)", success, len(allClients)*len(allIps))
 
 	// await all nodes being logged out after OIDC token expiry
-	scenario.WaitForTailscaleLogout()
+	if err = scenario.WaitForTailscaleLogout(); err != nil {
+		t.Errorf("failed to logout tailscale nodes: %s", err)
+	}
 
 	err = scenario.Shutdown()
 	if err != nil {
@@ -310,15 +312,11 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 	log.Printf("running tailscale up for user %s", userStr)
 	if user, ok := s.users[userStr]; ok {
 		for _, client := range user.Clients {
-			user.joinWaitGroup.Add(1)
-
-			go func(c TailscaleClient) {
-				defer user.joinWaitGroup.Done()
-
-				// TODO(juanfont): error handle this
+			c := client
+			user.joinWaitGroup.Go(func() error {
 				loginURL, err := c.UpWithLoginURL(loginServer)
 				if err != nil {
-					log.Printf("failed to run tailscale up: %s", err)
+					return fmt.Errorf("failed to run tailscale up: %w", err)
 				}
 
 				loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetIP())
@@ -335,22 +333,19 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
 				resp, err := httpClient.Do(req)
 				if err != nil {
-					log.Printf("%s failed to get login url %s: %s", c.Hostname(), loginURL, err)
-
-					return
+					return fmt.Errorf("%s failed to get login url %s: %w", c.Hostname(), loginURL, err)
 				}
 
 				defer resp.Body.Close()
 
 				_, err = io.ReadAll(resp.Body)
 				if err != nil {
-					log.Printf("%s failed to read response body: %s", c.Hostname(), err)
-
-					return
+					return fmt.Errorf("%s failed to read response body: %w", c.Hostname(), err)
 				}
-
 				log.Printf("Finished request for %s to join tailnet", c.Hostname())
-			}(client)
+
+				return nil
+			})
 
 			err = client.WaitForReady()
 			if err != nil {
@@ -360,7 +355,9 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 			log.Printf("client %s is ready", client.Hostname())
 		}
 
-		user.joinWaitGroup.Wait()
+		if err := user.joinWaitGroup.Wait(); err != nil {
+			return fmt.Errorf("failed to bring up tailscale nodes: %w", err)
+		}
 
 		for _, client := range user.Clients {
 			err := client.WaitForReady()

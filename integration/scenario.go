@@ -16,6 +16,7 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
 	"github.com/puzpuzpuz/xsync/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -79,9 +80,9 @@ var (
 type User struct {
 	Clients map[string]TailscaleClient
 
-	createWaitGroup sync.WaitGroup
-	joinWaitGroup   sync.WaitGroup
-	syncWaitGroup   sync.WaitGroup
+	createWaitGroup errgroup.Group
+	joinWaitGroup   errgroup.Group
+	syncWaitGroup   errgroup.Group
 }
 
 // Scenario is a representation of an environment with one ControlServer and
@@ -286,17 +287,12 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 			cert := headscale.GetCert()
 			hostname := headscale.GetHostname()
 
-			user.createWaitGroup.Add(1)
-
 			opts = append(opts,
 				tsic.WithHeadscaleTLS(cert),
 				tsic.WithHeadscaleName(hostname),
 			)
 
-			go func() {
-				defer user.createWaitGroup.Done()
-
-				// TODO(kradalby): error handle this
+			user.createWaitGroup.Go(func() error {
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
@@ -304,22 +300,21 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 					opts...,
 				)
 				if err != nil {
-					// return fmt.Errorf("failed to add tailscale node: %w", err)
-					log.Printf("failed to create tailscale node: %s", err)
+					return fmt.Errorf("failed to add tailscale node: %w", err)
 				}
 
 				err = tsClient.WaitForReady()
 				if err != nil {
-					// return fmt.Errorf("failed to add tailscale node: %w", err)
-					log.Printf("failed to wait for tailscaled: %s", err)
+					return fmt.Errorf("failed to add tailscale node: %w", err)
 				}
 
 				user.Clients[tsClient.Hostname()] = tsClient
-			}()
-		}
-		user.createWaitGroup.Wait()
 
-		return nil
+				return nil
+			})
+		}
+
+		return user.createWaitGroup.Wait()
 	}
 
 	return fmt.Errorf("failed to add tailscale node: %w", errNoUserAvailable)
@@ -332,14 +327,10 @@ func (s *Scenario) RunTailscaleUp(
 ) error {
 	if user, ok := s.users[userStr]; ok {
 		for _, client := range user.Clients {
-			user.joinWaitGroup.Add(1)
-
-			go func(c TailscaleClient) {
-				defer user.joinWaitGroup.Done()
-
-				// TODO(kradalby): error handle this
-				_ = c.Up(loginServer, authKey)
-			}(client)
+			c := client
+			user.joinWaitGroup.Go(func() error {
+				return c.Up(loginServer, authKey)
+			})
 
 			err := client.WaitForReady()
 			if err != nil {
@@ -347,7 +338,9 @@ func (s *Scenario) RunTailscaleUp(
 			}
 		}
 
-		user.joinWaitGroup.Wait()
+		if err := user.joinWaitGroup.Wait(); err != nil {
+			return fmt.Errorf("failed to up tailscale nodes: %w", err)
+		}
 
 		for _, client := range user.Clients {
 			err := client.WaitForReady()
@@ -383,16 +376,14 @@ func (s *Scenario) WaitForTailscaleSync() error {
 
 	for _, user := range s.users {
 		for _, client := range user.Clients {
-			user.syncWaitGroup.Add(1)
-
-			go func(c TailscaleClient) {
-				defer user.syncWaitGroup.Done()
-
-				// TODO(kradalby): error handle this
-				_ = c.WaitForPeers(tsCount)
-			}(client)
+			c := client
+			user.syncWaitGroup.Go(func() error {
+				return c.WaitForPeers(tsCount)
+			})
 		}
-		user.syncWaitGroup.Wait()
+		if err := user.syncWaitGroup.Wait(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -555,18 +546,18 @@ func (s *Scenario) ListTailscaleClientsFQDNs(users ...string) ([]string, error) 
 
 // WaitForTailscaleLogout blocks execution until all TailscaleClients have
 // logged out of the ControlServer.
-func (s *Scenario) WaitForTailscaleLogout() {
+func (s *Scenario) WaitForTailscaleLogout() error {
 	for _, user := range s.users {
 		for _, client := range user.Clients {
-			user.syncWaitGroup.Add(1)
-
-			go func(c TailscaleClient) {
-				defer user.syncWaitGroup.Done()
-
-				// TODO(kradalby): error handle this
-				_ = c.WaitForLogout()
-			}(client)
+			c := client
+			user.syncWaitGroup.Go(func() error {
+				return c.WaitForLogout()
+			})
 		}
-		user.syncWaitGroup.Wait()
+		if err := user.syncWaitGroup.Wait(); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }

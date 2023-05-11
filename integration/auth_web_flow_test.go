@@ -134,7 +134,9 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 		}
 	}
 
-	scenario.WaitForTailscaleLogout()
+	if err = scenario.WaitForTailscaleLogout(); err != nil {
+		t.Errorf("failed to logout tailscale nodes: %s", err)
+	}
 
 	t.Logf("all clients logged out")
 
@@ -250,29 +252,29 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 	log.Printf("running tailscale up for user %s", userStr)
 	if user, ok := s.users[userStr]; ok {
 		for _, client := range user.Clients {
-			user.joinWaitGroup.Add(1)
-
-			go func(c TailscaleClient) {
-				defer user.joinWaitGroup.Done()
-
-				// TODO(juanfont): error handle this
+			c := client
+			user.joinWaitGroup.Go(func() error {
 				loginURL, err := c.UpWithLoginURL(loginServer)
 				if err != nil {
-					log.Printf("failed to run tailscale up: %s", err)
+					return fmt.Errorf("failed to run tailscale up: %w", err)
 				}
 
 				err = s.runHeadscaleRegister(userStr, loginURL)
 				if err != nil {
-					log.Printf("failed to register client: %s", err)
+					return fmt.Errorf("failed to register client: %w", err)
 				}
-			}(client)
+
+				return nil
+			})
 
 			err := client.WaitForReady()
 			if err != nil {
 				log.Printf("error waiting for client %s to be ready: %s", client.Hostname(), err)
 			}
 		}
-		user.joinWaitGroup.Wait()
+		if err := user.joinWaitGroup.Wait(); err != nil {
+			return fmt.Errorf("failed to up tailscale nodes: %w", err)
+		}
 
 		for _, client := range user.Clients {
 			err := client.WaitForReady()
