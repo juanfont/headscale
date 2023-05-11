@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -271,15 +272,15 @@ func GetTLSConfig() TLSConfig {
 		LetsEncrypt: LetsEncryptConfig{
 			Hostname: viper.GetString("tls_letsencrypt_hostname"),
 			Listen:   viper.GetString("tls_letsencrypt_listen"),
-			CacheDir: AbsolutePathFromConfigPath(
+			CacheDir: util.AbsolutePathFromConfigPath(
 				viper.GetString("tls_letsencrypt_cache_dir"),
 			),
 			ChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
 		},
-		CertPath: AbsolutePathFromConfigPath(
+		CertPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("tls_cert_path"),
 		),
-		KeyPath: AbsolutePathFromConfigPath(
+		KeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("tls_key_path"),
 		),
 	}
@@ -585,10 +586,10 @@ func GetHeadscaleConfig() (*Config, error) {
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 
 		IPPrefixes: prefixes,
-		PrivateKeyPath: AbsolutePathFromConfigPath(
+		PrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("private_key_path"),
 		),
-		NoisePrivateKeyPath: AbsolutePathFromConfigPath(
+		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),
 		),
 		BaseDomain: baseDomain,
@@ -604,7 +605,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		),
 
 		DBtype: viper.GetString("db_type"),
-		DBpath: AbsolutePathFromConfigPath(viper.GetString("db_path")),
+		DBpath: util.AbsolutePathFromConfigPath(viper.GetString("db_path")),
 		DBhost: viper.GetString("db_host"),
 		DBport: viper.GetInt("db_port"),
 		DBname: viper.GetString("db_name"),
@@ -620,7 +621,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		ACMEURL:   viper.GetString("acme_url"),
 
 		UnixSocket:           viper.GetString("unix_socket"),
-		UnixSocketPermission: GetFileMode("unix_socket_permission"),
+		UnixSocketPermission: util.GetFileMode("unix_socket_permission"),
 
 		OIDC: OIDCConfig{
 			OnlyStartIfOIDCIsAvailable: viper.GetBool(

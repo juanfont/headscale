@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/ory/dockertest/v3"
@@ -220,7 +221,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*hscontrol.OIDC
 	}
 	portNotation := fmt.Sprintf("%d/tcp", port)
 
-	hash, _ := hscontrol.GenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
+	hash, _ := util.GenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
 
 	hostname := fmt.Sprintf("hs-oidcmock-%s", hash)
 

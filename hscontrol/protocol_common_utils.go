@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/smallzstd"
@@ -27,7 +28,7 @@ func (h *Headscale) getMapResponseData(
 	}
 
 	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)))
+	err = machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)))
 	if err != nil {
 		log.Error().
 			Caller().
@@ -50,11 +51,16 @@ func (h *Headscale) getMapKeepAliveResponseData(
 	}
 
 	if isNoise {
-		return h.marshalMapResponse(keepAliveResponse, key.MachinePublic{}, mapRequest.Compress, isNoise)
+		return h.marshalMapResponse(
+			keepAliveResponse,
+			key.MachinePublic{},
+			mapRequest.Compress,
+			isNoise,
+		)
 	}
 
 	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machine.MachineKey)))
+	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)))
 	if err != nil {
 		log.Error().
 			Caller().
@@ -104,7 +110,7 @@ func (h *Headscale) marshalMapResponse(
 	}
 
 	var respBody []byte
-	if compression == ZstdCompression {
+	if compression == util.ZstdCompression {
 		respBody = zstdEncode(jsonBody)
 		if !isNoise { // if legacy protocol
 			respBody = h.privateKey.SealTo(machineKey, respBody)

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
@@ -83,7 +83,7 @@ var listAPIKeys = &cobra.Command{
 			}
 
 			tableData = append(tableData, []string{
-				strconv.FormatUint(key.GetId(), hscontrol.Base10),
+				strconv.FormatUint(key.GetId(), util.Base10),
 				key.GetPrefix(),
 				expiration,
 				key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),

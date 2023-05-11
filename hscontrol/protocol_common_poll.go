@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
@@ -29,10 +30,10 @@ func (h *Headscale) handlePollCommon(
 ) {
 	machine.Hostname = mapRequest.Hostinfo.Hostname
 	machine.HostInfo = HostInfo(*mapRequest.Hostinfo)
-	machine.DiscoKey = DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
+	machine.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
 	now := time.Now().UTC()
 
-	err := h.processMachineRoutes(machine)
+	err := h.db.processMachineRoutes(machine)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -53,7 +54,7 @@ func (h *Headscale) handlePollCommon(
 		}
 
 		// update routes with peer information
-		err = h.EnableAutoApprovedRoutes(machine)
+		err = h.db.EnableAutoApprovedRoutes(h.aclPolicy, machine)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -77,7 +78,7 @@ func (h *Headscale) handlePollCommon(
 		machine.LastSeen = &now
 	}
 
-	if err := h.db.Updates(machine).Error; err != nil {
+	if err := h.db.db.Updates(machine).Error; err != nil {
 		if err != nil {
 			log.Error().
 				Str("handler", "PollNetMap").
@@ -325,7 +326,7 @@ func (h *Headscale) pollNetMapStream(
 				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
-			err = h.UpdateMachineFromDatabase(machine)
+			err = h.db.UpdateMachineFromDatabase(machine)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -346,7 +347,7 @@ func (h *Headscale) pollNetMapStream(
 				Set(float64(now.Unix()))
 			machine.LastSuccessfulUpdate = &now
 
-			err = h.TouchMachine(machine)
+			err = h.db.TouchMachine(machine)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -409,7 +410,7 @@ func (h *Headscale) pollNetMapStream(
 				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
-			err = h.UpdateMachineFromDatabase(machine)
+			err = h.db.UpdateMachineFromDatabase(machine)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -425,7 +426,7 @@ func (h *Headscale) pollNetMapStream(
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
-			err = h.TouchMachine(machine)
+			err = h.db.TouchMachine(machine)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -456,7 +457,7 @@ func (h *Headscale) pollNetMapStream(
 			updateRequestsReceivedOnChannel.WithLabelValues(machine.User.Name, machine.Hostname).
 				Inc()
 
-			if h.isOutdated(machine) {
+			if h.db.isOutdated(machine, h.getLastStateChange()) {
 				var lastUpdate time.Time
 				if machine.LastSuccessfulUpdate != nil {
 					lastUpdate = *machine.LastSuccessfulUpdate
@@ -524,7 +525,7 @@ func (h *Headscale) pollNetMapStream(
 				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
-				err = h.UpdateMachineFromDatabase(machine)
+				err = h.db.UpdateMachineFromDatabase(machine)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").
@@ -544,7 +545,7 @@ func (h *Headscale) pollNetMapStream(
 					Set(float64(now.Unix()))
 				machine.LastSuccessfulUpdate = &now
 
-				err = h.TouchMachine(machine)
+				err = h.db.TouchMachine(machine)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").
@@ -578,7 +579,7 @@ func (h *Headscale) pollNetMapStream(
 				// TODO: Abstract away all the database calls, this can cause race conditions
 				// when an outdated machine object is kept alive, e.g. db is update from
 				// command line, but then overwritten.
-			err := h.UpdateMachineFromDatabase(machine)
+			err := h.db.UpdateMachineFromDatabase(machine)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").
@@ -594,7 +595,7 @@ func (h *Headscale) pollNetMapStream(
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
-			err = h.TouchMachine(machine)
+			err = h.db.TouchMachine(machine)
 			if err != nil {
 				log.Error().
 					Str("handler", "PollNetMapStream").

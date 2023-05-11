@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
@@ -150,7 +150,7 @@ func New(
 	network *dockertest.Network,
 	opts ...Option,
 ) (*TailscaleInContainer, error) {
-	hash, err := hscontrol.GenerateRandomStringDNSSafe(tsicHashLength)
+	hash, err := util.GenerateRandomStringDNSSafe(tsicHashLength)
 	if err != nil {
 		return nil, err
 	}

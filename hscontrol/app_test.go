@@ -42,18 +42,32 @@ func (s *Suite) ResetDB(c *check.C) {
 		IPPrefixes: []netip.Prefix{
 			netip.MustParsePrefix("10.27.0.0/23"),
 		},
+		OIDC: OIDCConfig{
+			StripEmaildomain: false,
+		},
 	}
 
+	// TODO(kradalby): make this use NewHeadscale properly so it doesnt drift
 	app = Headscale{
 		cfg:      &cfg,
 		dbType:   "sqlite3",
 		dbString: tmpDir + "/headscale_test.db",
+
+		stateUpdateChan:       make(chan struct{}),
+		cancelStateUpdateChan: make(chan struct{}),
 	}
-	err = app.initDB()
-	if err != nil {
-		c.Fatal(err)
-	}
-	db, err := app.openDB()
+
+	go app.watchStateChannel()
+
+	db, err := NewHeadscaleDatabase(
+		app.dbType,
+		app.dbString,
+		cfg.OIDC.StripEmaildomain,
+		false,
+		app.stateUpdateChan,
+		cfg.IPPrefixes,
+		"",
+	)
 	if err != nil {
 		c.Fatal(err)
 	}

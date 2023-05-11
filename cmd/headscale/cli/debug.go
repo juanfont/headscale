@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
@@ -93,7 +93,7 @@ var createNodeCmd = &cobra.Command{
 
 			return
 		}
-		if !hscontrol.NodePublicKeyRegex.Match([]byte(machineKey)) {
+		if !util.NodePublicKeyRegex.Match([]byte(machineKey)) {
 			err = errPreAuthKeyMalformed
 			ErrorOutput(
 				err,

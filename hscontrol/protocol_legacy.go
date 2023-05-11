@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -32,7 +33,7 @@ func (h *Headscale) RegistrationHandler(
 	body, _ := io.ReadAll(req.Body)
 
 	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(MachinePublicKeyEnsurePrefix(machineKeyStr)))
+	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machineKeyStr)))
 	if err != nil {
 		log.Error().
 			Caller().
@@ -44,7 +45,7 @@ func (h *Headscale) RegistrationHandler(
 		return
 	}
 	registerRequest := tailcfg.RegisterRequest{}
-	err = decode(body, &registerRequest, &machineKey, h.privateKey)
+	err = util.DecodeAndUnmarshalNaCl(body, &registerRequest, &machineKey, h.privateKey)
 	if err != nil {
 		log.Error().
 			Caller().

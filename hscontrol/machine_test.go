@@ -9,19 +9,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
 func (s *Suite) TestGetMachine(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("test", "testmachine")
+	_, err = app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
 	machine := &Machine{
@@ -34,20 +35,20 @@ func (s *Suite) TestGetMachine(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(machine)
+	app.db.db.Save(machine)
 
-	_, err = app.GetMachine("test", "testmachine")
+	_, err = app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
 }
 
 func (s *Suite) TestGetMachineByID(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachineByID(0)
+	_, err = app.db.GetMachineByID(0)
 	c.Assert(err, check.NotNil)
 
 	machine := Machine{
@@ -60,20 +61,20 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	_, err = app.GetMachineByID(0)
+	_, err = app.db.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 }
 
 func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachineByID(0)
+	_, err = app.db.GetMachineByID(0)
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -81,28 +82,28 @@ func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
 
 	machine := Machine{
 		ID:             0,
-		MachineKey:     MachinePublicKeyStripPrefix(machineKey.Public()),
-		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
+		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
+		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	_, err = app.GetMachineByNodeKey(nodeKey.Public())
+	_, err = app.db.GetMachineByNodeKey(nodeKey.Public())
 	c.Assert(err, check.IsNil)
 }
 
 func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachineByID(0)
+	_, err = app.db.GetMachineByID(0)
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -112,22 +113,22 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 
 	machine := Machine{
 		ID:             0,
-		MachineKey:     MachinePublicKeyStripPrefix(machineKey.Public()),
-		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
+		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
+		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		UserID:         user.ID,
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	_, err = app.GetMachineByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
+	_, err = app.db.GetMachineByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
 	c.Assert(err, check.IsNil)
 }
 
 func (s *Suite) TestDeleteMachine(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 	machine := Machine{
 		ID:             0,
@@ -139,17 +140,17 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	err = app.DeleteMachine(&machine)
+	err = app.db.DeleteMachine(&machine)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine(user.Name, "testmachine")
+	_, err = app.db.GetMachine(user.Name, "testmachine")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestHardDeleteMachine(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 	machine := Machine{
 		ID:             0,
@@ -161,23 +162,23 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	err = app.HardDeleteMachine(&machine)
+	err = app.db.HardDeleteMachine(&machine)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine(user.Name, "testmachine3")
+	_, err = app.db.GetMachine(user.Name, "testmachine3")
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestListPeers(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachineByID(0)
+	_, err = app.db.GetMachineByID(0)
 	c.Assert(err, check.NotNil)
 
 	for index := 0; index <= 10; index++ {
@@ -191,13 +192,13 @@ func (s *Suite) TestListPeers(c *check.C) {
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 		}
-		app.db.Save(&machine)
+		app.db.db.Save(&machine)
 	}
 
-	machine0ByID, err := app.GetMachineByID(0)
+	machine0ByID, err := app.db.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 
-	peersOfMachine0, err := app.ListPeers(machine0ByID)
+	peersOfMachine0, err := app.db.ListPeers(machine0ByID)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(peersOfMachine0), check.Equals, 9)
@@ -215,14 +216,14 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	stor := make([]base, 0)
 
 	for _, name := range []string{"test", "admin"} {
-		user, err := app.CreateUser(name)
+		user, err := app.db.CreateUser(name)
 		c.Assert(err, check.IsNil)
-		pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+		pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 		stor = append(stor, base{user, pak})
 	}
 
-	_, err := app.GetMachineByID(0)
+	_, err := app.db.GetMachineByID(0)
 	c.Assert(err, check.NotNil)
 
 	for index := 0; index <= 10; index++ {
@@ -239,7 +240,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 			RegisterMethod: RegisterMethodAuthKey,
 			AuthKeyID:      uint(stor[index%2].key.ID),
 		}
-		app.db.Save(&machine)
+		app.db.db.Save(&machine)
 	}
 
 	app.aclPolicy = &ACLPolicy{
@@ -266,19 +267,19 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	err = app.UpdateACLRules()
 	c.Assert(err, check.IsNil)
 
-	adminMachine, err := app.GetMachineByID(1)
+	adminMachine, err := app.db.GetMachineByID(1)
 	c.Logf("Machine(%v), user: %v", adminMachine.Hostname, adminMachine.User)
 	c.Assert(err, check.IsNil)
 
-	testMachine, err := app.GetMachineByID(2)
+	testMachine, err := app.db.GetMachineByID(2)
 	c.Logf("Machine(%v), user: %v", testMachine.Hostname, testMachine.User)
 	c.Assert(err, check.IsNil)
 
-	machines, err := app.ListMachines()
+	machines, err := app.db.ListMachines()
 	c.Assert(err, check.IsNil)
 
-	peersOfTestMachine := app.filterMachinesByACL(testMachine, machines)
-	peersOfAdminMachine := app.filterMachinesByACL(adminMachine, machines)
+	peersOfTestMachine := app.db.filterMachinesByACL(app.aclRules, testMachine, machines)
+	peersOfAdminMachine := app.db.filterMachinesByACL(app.aclRules, adminMachine, machines)
 
 	c.Log(peersOfTestMachine)
 	c.Assert(len(peersOfTestMachine), check.Equals, 9)
@@ -294,13 +295,13 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 }
 
 func (s *Suite) TestExpireMachine(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("test", "testmachine")
+	_, err = app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
 	machine := &Machine{
@@ -314,15 +315,15 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 		AuthKeyID:      uint(pak.ID),
 		Expiry:         &time.Time{},
 	}
-	app.db.Save(machine)
+	app.db.db.Save(machine)
 
-	machineFromDB, err := app.GetMachine("test", "testmachine")
+	machineFromDB, err := app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
 	c.Assert(machineFromDB, check.NotNil)
 
 	c.Assert(machineFromDB.isExpired(), check.Equals, false)
 
-	err = app.ExpireMachine(machineFromDB)
+	err = app.db.ExpireMachine(machineFromDB)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(machineFromDB.isExpired(), check.Equals, true)
@@ -350,13 +351,13 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 }
 
 func (s *Suite) TestGenerateGivenName(c *check.C) {
-	user1, err := app.CreateUser("user-1")
+	user1, err := app.db.CreateUser("user-1")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user1.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user1.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("user-1", "testmachine")
+	_, err = app.db.GetMachine("user-1", "testmachine")
 	c.Assert(err, check.NotNil)
 
 	machine := &Machine{
@@ -370,37 +371,37 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(machine)
+	app.db.db.Save(machine)
 
-	givenName, err := app.GenerateGivenName("machine-key-2", "hostname-2")
+	givenName, err := app.db.GenerateGivenName("machine-key-2", "hostname-2")
 	comment := check.Commentf("Same user, unique machines, unique hostnames, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-2", comment)
 
-	givenName, err = app.GenerateGivenName("machine-key-1", "hostname-1")
+	givenName, err = app.db.GenerateGivenName("machine-key-1", "hostname-1")
 	comment = check.Commentf("Same user, same machine, same hostname, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-1", comment)
 
-	givenName, err = app.GenerateGivenName("machine-key-2", "hostname-1")
+	givenName, err = app.db.GenerateGivenName("machine-key-2", "hostname-1")
 	comment = check.Commentf("Same user, unique machines, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
 
-	givenName, err = app.GenerateGivenName("machine-key-2", "hostname-1")
+	givenName, err = app.db.GenerateGivenName("machine-key-2", "hostname-1")
 	comment = check.Commentf("Unique users, unique machines, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
 }
 
 func (s *Suite) TestSetTags(c *check.C) {
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("test", "testmachine")
+	_, err = app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
 	machine := &Machine{
@@ -413,21 +414,21 @@ func (s *Suite) TestSetTags(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(machine)
+	app.db.db.Save(machine)
 
 	// assign simple tags
 	sTags := []string{"tag:test", "tag:foo"}
-	err = app.SetTags(machine, sTags)
+	err = app.db.SetTags(machine, sTags, app.UpdateACLRules)
 	c.Assert(err, check.IsNil)
-	machine, err = app.GetMachine("test", "testmachine")
+	machine, err = app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
 	c.Assert(machine.ForcedTags, check.DeepEquals, StringList(sTags))
 
 	// assign duplicat tags, expect no errors but no doubles in DB
 	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
-	err = app.SetTags(machine, eTags)
+	err = app.db.SetTags(machine, eTags, app.UpdateACLRules)
 	c.Assert(err, check.IsNil)
-	machine, err = app.GetMachine("test", "testmachine")
+	machine, err = app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
 	c.Assert(
 		machine.ForcedTags,
@@ -562,7 +563,7 @@ func Test_getTags(t *testing.T) {
 				test.args.stripEmailDomain,
 			)
 			for _, valid := range gotValid {
-				if !contains(test.wantValid, valid) {
+				if !util.StringOrPrefixListContains(test.wantValid, valid) {
 					t.Errorf(
 						"valids: getTags() = %v, want %v",
 						gotValid,
@@ -573,7 +574,7 @@ func Test_getTags(t *testing.T) {
 				}
 			}
 			for _, invalid := range gotInvalid {
-				if !contains(test.wantInvalid, invalid) {
+				if !util.StringOrPrefixListContains(test.wantInvalid, invalid) {
 					t.Errorf(
 						"invalids: getTags() = %v, want %v",
 						gotInvalid,
@@ -1061,19 +1062,15 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
-		h       *Headscale
+		db      *HSDatabase
 		args    args
 		want    *regexp.Regexp
 		wantErr bool
 	}{
 		{
 			name: "simple machine name generation",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
+			db: &HSDatabase{
+				stripEmailDomain: true,
 			},
 			args: args{
 				suppliedName: "testmachine",
@@ -1084,12 +1081,8 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 53 chars",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
+			db: &HSDatabase{
+				stripEmailDomain: true,
 			},
 			args: args{
 				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
@@ -1100,12 +1093,8 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 63 chars",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
+			db: &HSDatabase{
+				stripEmailDomain: true,
 			},
 			args: args{
 				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
@@ -1116,12 +1105,8 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 64 chars",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
+			db: &HSDatabase{
+				stripEmailDomain: true,
 			},
 			args: args{
 				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234",
@@ -1132,12 +1117,8 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 73 chars",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
+			db: &HSDatabase{
+				stripEmailDomain: true,
 			},
 			args: args{
 				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234567890123",
@@ -1148,12 +1129,8 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with random suffix",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
+			db: &HSDatabase{
+				stripEmailDomain: true,
 			},
 			args: args{
 				suppliedName: "test",
@@ -1164,12 +1141,8 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 63 chars with random suffix",
-			h: &Headscale{
-				cfg: &Config{
-					OIDC: OIDCConfig{
-						StripEmaildomain: true,
-					},
-				},
+			db: &HSDatabase{
+				stripEmailDomain: true,
 			},
 			args: args{
 				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
@@ -1181,7 +1154,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.h.generateGivenName(tt.args.suppliedName, tt.args.randomSuffix)
+			got, err := tt.db.generateGivenName(tt.args.suppliedName, tt.args.randomSuffix)
 			if (err != nil) != tt.wantErr {
 				t.Errorf(
 					"Headscale.GenerateGivenName() error = %v, wantErr %v",
@@ -1214,35 +1187,35 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	acl := []byte(`
 {
-    "tagOwners": {
-        "tag:exit": ["test"],
-    },
+	"tagOwners": {
+		"tag:exit": ["test"],
+	},
 
-    "groups": {
-        "group:test": ["test"]
-    },
+	"groups": {
+		"group:test": ["test"]
+	},
 
-    "acls": [
-        {"action": "accept", "users": ["*"], "ports": ["*:*"]},
-    ],
+	"acls": [
+		{"action": "accept", "users": ["*"], "ports": ["*:*"]},
+	],
 
-    "autoApprovers": {
-        "exitNode": ["tag:exit"],
-        "routes": {
-            "10.10.0.0/16": ["group:test"],
-            "10.11.0.0/16": ["test"],
-        }
-    }
+	"autoApprovers": {
+		"exitNode": ["tag:exit"],
+		"routes": {
+			"10.10.0.0/16": ["group:test"],
+			"10.11.0.0/16": ["test"],
+		}
+	}
 }
 	`)
 
 	err := app.LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
-	user, err := app.CreateUser("test")
+	user, err := app.db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	nodeKey := key.NewNode()
@@ -1255,7 +1228,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	machine := Machine{
 		ID:             0,
 		MachineKey:     "foo",
-		NodeKey:        NodePublicKeyStripPrefix(nodeKey.Public()),
+		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
 		Hostname:       "test",
 		UserID:         user.ID,
@@ -1268,18 +1241,18 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 	}
 
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	err = app.processMachineRoutes(&machine)
+	err = app.db.processMachineRoutes(&machine)
 	c.Assert(err, check.IsNil)
 
-	machine0ByID, err := app.GetMachineByID(0)
+	machine0ByID, err := app.db.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 
-	err = app.EnableAutoApprovedRoutes(machine0ByID)
+	err = app.db.EnableAutoApprovedRoutes(app.aclPolicy, machine0ByID)
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes, err := app.GetEnabledRoutes(machine0ByID)
+	enabledRoutes, err := app.db.GetEnabledRoutes(machine0ByID)
 	c.Assert(err, check.IsNil)
 	c.Assert(enabledRoutes, check.HasLen, 3)
 }

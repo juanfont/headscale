@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Suite) TestGetAvailableIp(c *check.C) {
-	ips, err := app.getAvailableIPs()
+	ips, err := app.db.getAvailableIPs()
 
 	c.Assert(err, check.IsNil)
 
@@ -19,16 +19,16 @@ func (s *Suite) TestGetAvailableIp(c *check.C) {
 }
 
 func (s *Suite) TestGetUsedIps(c *check.C) {
-	ips, err := app.getAvailableIPs()
+	ips, err := app.db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
-	user, err := app.CreateUser("test-ip")
+	user, err := app.db.CreateUser("test-ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("test", "testmachine")
+	_, err = app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
 	machine := Machine{
@@ -42,9 +42,9 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 		AuthKeyID:      uint(pak.ID),
 		IPAddresses:    ips,
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	usedIps, err := app.getUsedIPs()
+	usedIps, err := app.db.getUsedIPs()
 
 	c.Assert(err, check.IsNil)
 
@@ -56,7 +56,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	c.Assert(usedIps.Equal(expectedIPSet), check.Equals, true)
 	c.Assert(usedIps.Contains(expected), check.Equals, true)
 
-	machine1, err := app.GetMachineByID(0)
+	machine1, err := app.db.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
@@ -64,19 +64,19 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 }
 
 func (s *Suite) TestGetMultiIp(c *check.C) {
-	user, err := app.CreateUser("test-ip-multi")
+	user, err := app.db.CreateUser("test-ip-multi")
 	c.Assert(err, check.IsNil)
 
 	for index := 1; index <= 350; index++ {
-		app.ipAllocationMutex.Lock()
+		app.db.ipAllocationMutex.Lock()
 
-		ips, err := app.getAvailableIPs()
+		ips, err := app.db.getAvailableIPs()
 		c.Assert(err, check.IsNil)
 
-		pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+		pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 
-		_, err = app.GetMachine("test", "testmachine")
+		_, err = app.db.GetMachine("test", "testmachine")
 		c.Assert(err, check.NotNil)
 
 		machine := Machine{
@@ -90,12 +90,12 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 			AuthKeyID:      uint(pak.ID),
 			IPAddresses:    ips,
 		}
-		app.db.Save(&machine)
+		app.db.db.Save(&machine)
 
-		app.ipAllocationMutex.Unlock()
+		app.db.ipAllocationMutex.Unlock()
 	}
 
-	usedIps, err := app.getUsedIPs()
+	usedIps, err := app.db.getUsedIPs()
 	c.Assert(err, check.IsNil)
 
 	expected0 := netip.MustParseAddr("10.27.0.1")
@@ -117,7 +117,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(usedIps.Contains(expected300), check.Equals, true)
 
 	// Check that we can read back the IPs
-	machine1, err := app.GetMachineByID(1)
+	machine1, err := app.db.GetMachineByID(1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
 	c.Assert(
@@ -126,7 +126,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		netip.MustParseAddr("10.27.0.1"),
 	)
 
-	machine50, err := app.GetMachineByID(50)
+	machine50, err := app.db.GetMachineByID(50)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(machine50.IPAddresses), check.Equals, 1)
 	c.Assert(
@@ -136,7 +136,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	)
 
 	expectedNextIP := netip.MustParseAddr("10.27.1.95")
-	nextIP, err := app.getAvailableIPs()
+	nextIP, err := app.db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(nextIP), check.Equals, 1)
@@ -144,7 +144,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 
 	// If we call get Available again, we should receive
 	// the same IP, as it has not been reserved.
-	nextIP2, err := app.getAvailableIPs()
+	nextIP2, err := app.db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(nextIP2), check.Equals, 1)
@@ -152,7 +152,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 }
 
 func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
-	ips, err := app.getAvailableIPs()
+	ips, err := app.db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
 	expected := netip.MustParseAddr("10.27.0.1")
@@ -160,13 +160,13 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 	c.Assert(len(ips), check.Equals, 1)
 	c.Assert(ips[0].String(), check.Equals, expected.String())
 
-	user, err := app.CreateUser("test-ip")
+	user, err := app.db.CreateUser("test-ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.GetMachine("test", "testmachine")
+	_, err = app.db.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
 	machine := Machine{
@@ -179,23 +179,11 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 		RegisterMethod: RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.Save(&machine)
+	app.db.db.Save(&machine)
 
-	ips2, err := app.getAvailableIPs()
+	ips2, err := app.db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(ips2), check.Equals, 1)
 	c.Assert(ips2[0].String(), check.Equals, expected.String())
-}
-
-func (s *Suite) TestGenerateRandomStringDNSSafe(c *check.C) {
-	for i := 0; i < 100000; i++ {
-		str, err := GenerateRandomStringDNSSafe(8)
-		if err != nil {
-			c.Error(err)
-		}
-		if len(str) != 8 {
-			c.Error("invalid length", len(str), str)
-		}
-	}
 }
