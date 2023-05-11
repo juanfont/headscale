@@ -66,8 +66,6 @@ db_type: sqlite3
 db_path: /etc/headscale/db.sqlite
 ```
 
-Change the `unix_socket: /var/run/headscale/headscale.sock` to `unix_socket: ./headscale.sock` for gRPC socket if you encounter `Error starting server error="failed to set up gRPC socket` related error 
-
 4. Start the headscale server while working in the host headscale directory:
 
 ```shell
