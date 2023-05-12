@@ -8,6 +8,12 @@
 
 ### Changes
 
+## 0.22.3 (2023-05-12)
+
+### Changes
+
+- Added missing ca-certificates in Docker image [#1463](https://github.com/juanfont/headscale/pull/1463)
+
 ## 0.22.2 (2023-05-10)
 
 ### Changes
