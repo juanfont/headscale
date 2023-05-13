@@ -24,21 +24,9 @@ build:
 dev: lint test build
 
 test:
-	@go test $(TAGS) -short -coverprofile=coverage.out ./...
+	gotestsum -- $(TAGS) -short -coverprofile=coverage.out ./...
 
-test_integration: test_integration_cli test_integration_derp test_integration_v2_general
-
-test_integration_cli:
-	docker network rm $$(docker network ls --filter name=headscale --quiet) || true
-	docker network create headscale-test || true
-	docker run -t --rm \
-		--network headscale-test \
-		-v ~/.cache/hs-integration-go:/go \
-		-v $$PWD:$$PWD -w $$PWD \
-		-v /var/run/docker.sock:/var/run/docker.sock golang:1 \
-		go run gotest.tools/gotestsum@latest -- $(TAGS) -failfast -timeout 30m -count=1 -run IntegrationCLI ./...
-
-test_integration_v2_general:
+test_integration:
 	docker run \
 		-t --rm \
 		-v ~/.cache/hs-integration-go:/go \

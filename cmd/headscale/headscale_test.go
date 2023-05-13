@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanfont/headscale"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/spf13/viper"
 	"gopkg.in/check.v1"
 )
@@ -50,7 +50,7 @@ func (*Suite) TestConfigFileLoading(c *check.C) {
 	}
 
 	// Load example config, it should load without validation errors
-	err = headscale.LoadConfig(cfgFile, true)
+	err = hscontrol.LoadConfig(cfgFile, true)
 	c.Assert(err, check.IsNil)
 
 	// Test that config file was interpreted correctly
@@ -64,7 +64,7 @@ func (*Suite) TestConfigFileLoading(c *check.C) {
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
 	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 	c.Assert(
-		headscale.GetFileMode("unix_socket_permission"),
+		hscontrol.GetFileMode("unix_socket_permission"),
 		check.Equals,
 		fs.FileMode(0o770),
 	)
@@ -93,7 +93,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	}
 
 	// Load example config, it should load without validation errors
-	err = headscale.LoadConfig(tmpDir, false)
+	err = hscontrol.LoadConfig(tmpDir, false)
 	c.Assert(err, check.IsNil)
 
 	// Test that config file was interpreted correctly
@@ -107,7 +107,7 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
 	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 	c.Assert(
-		headscale.GetFileMode("unix_socket_permission"),
+		hscontrol.GetFileMode("unix_socket_permission"),
 		check.Equals,
 		fs.FileMode(0o770),
 	)
@@ -137,10 +137,10 @@ func (*Suite) TestDNSConfigLoading(c *check.C) {
 	}
 
 	// Load example config, it should load without validation errors
-	err = headscale.LoadConfig(tmpDir, false)
+	err = hscontrol.LoadConfig(tmpDir, false)
 	c.Assert(err, check.IsNil)
 
-	dnsConfig, baseDomain := headscale.GetDNSConfig()
+	dnsConfig, baseDomain := hscontrol.GetDNSConfig()
 
 	c.Assert(dnsConfig.Nameservers[0].String(), check.Equals, "1.1.1.1")
 	c.Assert(dnsConfig.Resolvers[0].Addr, check.Equals, "1.1.1.1")
@@ -172,7 +172,7 @@ noise:
 	writeConfig(c, tmpDir, configYaml)
 
 	// Check configuration validation errors (1)
-	err = headscale.LoadConfig(tmpDir, false)
+	err = hscontrol.LoadConfig(tmpDir, false)
 	c.Assert(err, check.NotNil)
 	// check.Matches can not handle multiline strings
 	tmp := strings.ReplaceAll(err.Error(), "\n", "***")
@@ -201,6 +201,6 @@ tls_letsencrypt_hostname: example.com
 tls_letsencrypt_challenge_type: TLS-ALPN-01
 `)
 	writeConfig(c, tmpDir, configYaml)
-	err = headscale.LoadConfig(tmpDir, false)
+	err = hscontrol.LoadConfig(tmpDir, false)
 	c.Assert(err, check.IsNil)
 }
