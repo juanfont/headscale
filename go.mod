@@ -10,6 +10,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.3.0
 	github.com/efekarakus/termcolor v1.0.1
 	github.com/glebarez/sqlite v1.7.0
+	github.com/gnue/httpfs v0.0.0-20230210040605-6094ea035554
 	github.com/gofrs/uuid/v5 v5.0.0
 	github.com/google/go-cmp v0.5.9
 	github.com/gorilla/mux v1.8.0
