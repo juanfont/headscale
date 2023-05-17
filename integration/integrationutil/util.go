@@ -72,3 +72,24 @@ func WriteFileToContainer(
 
 	return nil
 }
+
+func FetchPathFromContainer(
+	pool *dockertest.Pool,
+	container *dockertest.Resource,
+	path string,
+) ([]byte, error) {
+	buf := bytes.NewBuffer([]byte{})
+
+	err := pool.Client.DownloadFromContainer(
+		container.Container.ID,
+		docker.DownloadFromContainerOptions{
+			OutputStream: buf,
+			Path:         path,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}

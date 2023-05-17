@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/juanfont/headscale"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
@@ -150,7 +150,7 @@ func New(
 	network *dockertest.Network,
 	opts ...Option,
 ) (*TailscaleInContainer, error) {
-	hash, err := headscale.GenerateRandomStringDNSSafe(tsicHashLength)
+	hash, err := hscontrol.GenerateRandomStringDNSSafe(tsicHashLength)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +212,11 @@ func New(
 		dockertestutil.DockerAllowNetworkAdministration,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("could not start tailscale container: %w", err)
+		return nil, fmt.Errorf(
+			"could not start tailscale container (version: %s): %w",
+			version,
+			err,
+		)
 	}
 	log.Printf("Created %s container\n", hostname)
 

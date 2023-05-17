@@ -6,13 +6,46 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanfont/headscale"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 )
 
-func aclScenario(t *testing.T, policy *headscale.ACLPolicy, clientsPerUser int) *Scenario {
+var veryLargeDestination = []string{
+	"0.0.0.0/5:*",
+	"8.0.0.0/7:*",
+	"11.0.0.0/8:*",
+	"12.0.0.0/6:*",
+	"16.0.0.0/4:*",
+	"32.0.0.0/3:*",
+	"64.0.0.0/2:*",
+	"128.0.0.0/3:*",
+	"160.0.0.0/5:*",
+	"168.0.0.0/6:*",
+	"172.0.0.0/12:*",
+	"172.32.0.0/11:*",
+	"172.64.0.0/10:*",
+	"172.128.0.0/9:*",
+	"173.0.0.0/8:*",
+	"174.0.0.0/7:*",
+	"176.0.0.0/4:*",
+	"192.0.0.0/9:*",
+	"192.128.0.0/11:*",
+	"192.160.0.0/13:*",
+	"192.169.0.0/16:*",
+	"192.170.0.0/15:*",
+	"192.172.0.0/14:*",
+	"192.176.0.0/12:*",
+	"192.192.0.0/10:*",
+	"193.0.0.0/8:*",
+	"194.0.0.0/7:*",
+	"196.0.0.0/6:*",
+	"200.0.0.0/5:*",
+	"208.0.0.0/4:*",
+}
+
+func aclScenario(t *testing.T, policy *hscontrol.ACLPolicy, clientsPerUser int) *Scenario {
 	t.Helper()
 	scenario, err := NewScenario()
 	assert.NoError(t, err)
@@ -59,7 +92,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 	// they can access minus one (them self).
 	tests := map[string]struct {
 		users  map[string]int
-		policy headscale.ACLPolicy
+		policy hscontrol.ACLPolicy
 		want   map[string]int
 	}{
 		// Test that when we have no ACL, each client netmap has
@@ -69,8 +102,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: headscale.ACLPolicy{
-				ACLs: []headscale.ACL{
+			policy: hscontrol.ACLPolicy{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
@@ -90,8 +123,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: headscale.ACLPolicy{
-				ACLs: []headscale.ACL{
+			policy: hscontrol.ACLPolicy{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"user1"},
@@ -116,8 +149,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: headscale.ACLPolicy{
-				ACLs: []headscale.ACL{
+			policy: hscontrol.ACLPolicy{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"user1"},
@@ -153,8 +186,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: headscale.ACLPolicy{
-				ACLs: []headscale.ACL{
+			policy: hscontrol.ACLPolicy{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"user1"},
@@ -176,6 +209,34 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user2": 3, // ns1 + ns2 (return path)
 			},
 		},
+		"very-large-destination-prefix-1372": {
+			users: map[string]int{
+				"user1": 2,
+				"user2": 2,
+			},
+			policy: hscontrol.ACLPolicy{
+				ACLs: []hscontrol.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"user1"},
+						Destinations: append([]string{"user1:*"}, veryLargeDestination...),
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"user2"},
+						Destinations: append([]string{"user2:*"}, veryLargeDestination...),
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"user1"},
+						Destinations: append([]string{"user2:*"}, veryLargeDestination...),
+					},
+				},
+			}, want: map[string]int{
+				"user1": 3, // ns1 + ns2
+				"user2": 3, // ns1 + ns2 (return path)
+			},
+		},
 	}
 
 	for name, testCase := range tests {
@@ -188,7 +249,6 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			err = scenario.CreateHeadscaleEnv(spec,
 				[]tsic.Option{},
 				hsic.WithACLPolicy(&testCase.policy),
-				// hsic.WithTestName(fmt.Sprintf("aclinnetmap%s", name)),
 			)
 			assert.NoError(t, err)
 
@@ -197,9 +257,6 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 			err = scenario.WaitForTailscaleSync()
 			assert.NoError(t, err)
-
-			// allHostnames, err := scenario.ListTailscaleClientsFQDNs()
-			// assert.NoError(t, err)
 
 			for _, client := range allClients {
 				status, err := client.Status()
@@ -225,8 +282,8 @@ func TestACLAllowUser80Dst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&headscale.ACLPolicy{
-			ACLs: []headscale.ACL{
+		&hscontrol.ACLPolicy{
+			ACLs: []hscontrol.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"user1"},
@@ -281,11 +338,11 @@ func TestACLDenyAllPort80(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&headscale.ACLPolicy{
+		&hscontrol.ACLPolicy{
 			Groups: map[string][]string{
 				"group:integration-acl-test": {"user1", "user2"},
 			},
-			ACLs: []headscale.ACL{
+			ACLs: []hscontrol.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"group:integration-acl-test"},
@@ -330,8 +387,8 @@ func TestACLAllowUserDst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&headscale.ACLPolicy{
-			ACLs: []headscale.ACL{
+		&hscontrol.ACLPolicy{
+			ACLs: []hscontrol.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"user1"},
@@ -388,8 +445,8 @@ func TestACLAllowStarDst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&headscale.ACLPolicy{
-			ACLs: []headscale.ACL{
+		&hscontrol.ACLPolicy{
+			ACLs: []hscontrol.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"user1"},
@@ -447,11 +504,11 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&headscale.ACLPolicy{
-			Hosts: headscale.Hosts{
+		&hscontrol.ACLPolicy{
+			Hosts: hscontrol.Hosts{
 				"all": netip.MustParsePrefix("100.64.0.0/24"),
 			},
-			ACLs: []headscale.ACL{
+			ACLs: []hscontrol.ACL{
 				// Everyone can curl test3
 				{
 					Action:       "accept",
@@ -546,16 +603,16 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 	IntegrationSkip(t)
 
 	tests := map[string]struct {
-		policy headscale.ACLPolicy
+		policy hscontrol.ACLPolicy
 	}{
 		"ipv4": {
-			policy: headscale.ACLPolicy{
-				Hosts: headscale.Hosts{
+			policy: hscontrol.ACLPolicy{
+				Hosts: hscontrol.Hosts{
 					"test1": netip.MustParsePrefix("100.64.0.1/32"),
 					"test2": netip.MustParsePrefix("100.64.0.2/32"),
 					"test3": netip.MustParsePrefix("100.64.0.3/32"),
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					// Everyone can curl test3
 					{
 						Action:       "accept",
@@ -572,13 +629,13 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			},
 		},
 		"ipv6": {
-			policy: headscale.ACLPolicy{
-				Hosts: headscale.Hosts{
+			policy: hscontrol.ACLPolicy{
+				Hosts: hscontrol.Hosts{
 					"test1": netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
 					"test2": netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
 					"test3": netip.MustParsePrefix("fd7a:115c:a1e0::3/128"),
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					// Everyone can curl test3
 					{
 						Action:       "accept",
@@ -797,11 +854,11 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 	IntegrationSkip(t)
 
 	tests := map[string]struct {
-		policy headscale.ACLPolicy
+		policy hscontrol.ACLPolicy
 	}{
 		"ipv4": {
-			policy: headscale.ACLPolicy{
-				ACLs: []headscale.ACL{
+			policy: hscontrol.ACLPolicy{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"100.64.0.1"},
@@ -811,8 +868,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"ipv6": {
-			policy: headscale.ACLPolicy{
-				ACLs: []headscale.ACL{
+			policy: hscontrol.ACLPolicy{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"fd7a:115c:a1e0::1"},
@@ -822,12 +879,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv4cidr": {
-			policy: headscale.ACLPolicy{
-				Hosts: headscale.Hosts{
+			policy: hscontrol.ACLPolicy{
+				Hosts: hscontrol.Hosts{
 					"test1": netip.MustParsePrefix("100.64.0.1/32"),
 					"test2": netip.MustParsePrefix("100.64.0.2/32"),
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"test1"},
@@ -837,12 +894,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv6cidr": {
-			policy: headscale.ACLPolicy{
-				Hosts: headscale.Hosts{
+			policy: hscontrol.ACLPolicy{
+				Hosts: hscontrol.Hosts{
 					"test1": netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
 					"test2": netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"test1"},
@@ -852,12 +909,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"group": {
-			policy: headscale.ACLPolicy{
+			policy: hscontrol.ACLPolicy{
 				Groups: map[string][]string{
 					"group:one": {"user1"},
 					"group:two": {"user2"},
 				},
-				ACLs: []headscale.ACL{
+				ACLs: []hscontrol.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"group:one"},

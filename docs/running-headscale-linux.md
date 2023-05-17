@@ -20,7 +20,7 @@ configuration (`/etc/headscale/config.yaml`).
 
 ## Installation
 
-1. Download the lastest Headscale package for your platform (`.deb` for Ubuntu and Debian) from [Headscale's releases page]():
+1. Download the lastest Headscale package for your platform (`.deb` for Ubuntu and Debian) from [Headscale's releases page](https://github.com/juanfont/headscale/releases):
 
 ```shell
 wget --output-document=headscale.deb \

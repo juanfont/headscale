@@ -16,11 +16,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
@@ -56,7 +59,7 @@ type HeadscaleInContainer struct {
 	port             int
 	extraPorts       []string
 	hostPortBindings map[string][]string
-	aclPolicy        *headscale.ACLPolicy
+	aclPolicy        *hscontrol.ACLPolicy
 	env              map[string]string
 	tlsCert          []byte
 	tlsKey           []byte
@@ -67,9 +70,9 @@ type HeadscaleInContainer struct {
 // Headscale instance.
 type Option = func(c *HeadscaleInContainer)
 
-// WithACLPolicy adds a headscale.ACLPolicy policy to the
+// WithACLPolicy adds a hscontrol.ACLPolicy policy to the
 // HeadscaleInContainer instance.
-func WithACLPolicy(acl *headscale.ACLPolicy) Option {
+func WithACLPolicy(acl *hscontrol.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		// TODO(kradalby): Move somewhere appropriate
 		hsic.env["HEADSCALE_ACL_POLICY_PATH"] = aclPolicyPath
@@ -129,7 +132,7 @@ func WithHostPortBindings(bindings map[string][]string) Option {
 // in the Docker container name.
 func WithTestName(testName string) Option {
 	return func(hsic *HeadscaleInContainer) {
-		hash, _ := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
+		hash, _ := hscontrol.GenerateRandomStringDNSSafe(hsicHashLength)
 
 		hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
 		hsic.hostname = hostname
@@ -164,7 +167,7 @@ func New(
 	network *dockertest.Network,
 	opts ...Option,
 ) (*HeadscaleInContainer, error) {
-	hash, err := headscale.GenerateRandomStringDNSSafe(hsicHashLength)
+	hash, err := hscontrol.GenerateRandomStringDNSSafe(hsicHashLength)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +208,10 @@ func New(
 		ContextDir: dockerContextPath,
 	}
 
-	env := []string{}
+	env := []string{
+		"HEADSCALE_PROFILING_ENABLED=1",
+		"HEADSCALE_PROFILING_PATH=/tmp/profile",
+	}
 	for key, value := range hsic.env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
@@ -219,7 +225,7 @@ func New(
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
-		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; headscale serve"},
+		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; headscale serve ; /bin/sleep 30"},
 		Env:        env,
 	}
 
@@ -305,6 +311,33 @@ func (t *HeadscaleInContainer) hasTLS() bool {
 
 // Shutdown stops and cleans up the Headscale container.
 func (t *HeadscaleInContainer) Shutdown() error {
+	err := t.SaveLog("/tmp/control")
+	if err != nil {
+		log.Printf(
+			"Failed to save log from control: %s",
+			fmt.Errorf("failed to save log from control: %w", err),
+		)
+	}
+
+	// Send a interrupt signal to the "headscale" process inside the container
+	// allowing it to shut down gracefully and flush the profile to disk.
+	// The container will live for a bit longer due to the sleep at the end.
+	err = t.SendInterrupt()
+	if err != nil {
+		log.Printf(
+			"Failed to send graceful interrupt to control: %s",
+			fmt.Errorf("failed to send graceful interrupt to control: %w", err),
+		)
+	}
+
+	err = t.SaveProfile("/tmp/control")
+	if err != nil {
+		log.Printf(
+			"Failed to save profile from control: %s",
+			fmt.Errorf("failed to save profile from control: %w", err),
+		)
+	}
+
 	return t.pool.Purge(t.container)
 }
 
@@ -312,6 +345,24 @@ func (t *HeadscaleInContainer) Shutdown() error {
 // on the host system.
 func (t *HeadscaleInContainer) SaveLog(path string) error {
 	return dockertestutil.SaveLog(t.pool, t.container, path)
+}
+
+func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
+	tarFile, err := t.FetchPath("/tmp/profile")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(
+		path.Join(savePath, t.hostname+".pprof.tar"),
+		tarFile,
+		os.ModePerm,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Execute runs a command inside the Headscale container and returns the
@@ -496,6 +547,26 @@ func (t *HeadscaleInContainer) ListMachinesInUser(
 // WriteFile save file inside the Headscale container.
 func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
+}
+
+// FetchPath gets a path from inside the Headscale container and returns a tar
+// file as byte array.
+func (t *HeadscaleInContainer) FetchPath(path string) ([]byte, error) {
+	return integrationutil.FetchPathFromContainer(t.pool, t.container, path)
+}
+
+func (t *HeadscaleInContainer) SendInterrupt() error {
+	pid, err := t.Execute([]string{"pidof", "headscale"})
+	if err != nil {
+		return err
+	}
+
+	_, err = t.Execute([]string{"kill", "-2", strings.Trim(pid, "'\n")})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // nolint

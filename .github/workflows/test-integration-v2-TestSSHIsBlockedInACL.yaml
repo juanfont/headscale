@@ -43,7 +43,7 @@ jobs:
               --volume /var/run/docker.sock:/var/run/docker.sock \
               --volume $PWD/control_logs:/tmp/control \
               golang:1 \
-                go test ./... \
+                go run gotest.tools/gotestsum@latest -- ./... \
                   -tags ts2019 \
                   -failfast \
                   -timeout 120m \
@@ -55,3 +55,9 @@ jobs:
         with:
           name: logs
           path: "control_logs/*.log"
+
+      - uses: actions/upload-artifact@v3
+        if: always() && steps.changed-files.outputs.any_changed == 'true'
+        with:
+          name: pprof
+          path: "control_logs/*.pprof.tar"

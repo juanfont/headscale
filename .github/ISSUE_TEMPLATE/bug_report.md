@@ -6,19 +6,24 @@ labels: ["bug"]
 assignees: ""
 ---
 
-<!-- Headscale is a multinational community across the globe. Our common language is English. Please consider raising the bug report in this language. -->
+<!--
+Before posting a bug report, discuss the behaviour you are expecting with the Discord community
+to make sure that it is truly a bug.
+The issue tracker is not the place to ask for support or how to set up Headscale.
 
-**Bug description**
+Bug reports without the sufficient information will be closed.
+
+Headscale is a multinational community across the globe. Our language is English.
+All bug reports needs to be in English.
+-->
+
+## Bug description
 
 <!-- A clear and concise description of what the bug is. Describe the expected bahavior
   and how it is currently different. If you are unsure if it is a bug, consider discussing
   it on our Discord server first. -->
 
-**To Reproduce**
-
-<!-- Steps to reproduce the behavior. -->
-
-**Context info**
+## Environment
 
 <!-- Please add relevant information about your system. For example:
 - Version of headscale used
@@ -28,3 +33,20 @@ assignees: ""
 - The relevant config parameters you used
 - Log output
 -->
+
+- OS:
+- Headscale version:
+- Tailscale version:
+
+<!--
+We do not support running Headscale in a container nor behind a (reverse) proxy.
+If either of these are true for your environment, ask the community in Discord
+instead of filing a bug report.
+-->
+
+- [ ] Headscale is behind a (reverse) proxy
+- [ ] Headscale runs in a container
+
+## To Reproduce
+
+<!-- Steps to reproduce the behavior. -->

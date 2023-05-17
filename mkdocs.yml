@@ -1,5 +1,6 @@
 site_name: Headscale
 site_url: https://juanfont.github.io/headscale
+edit_uri: blob/main/docs/ # Change the master branch to main as we are using main as a main branch
 site_author: Headscale authors
 site_description: >-
   An open source, self-hosted implementation of the Tailscale control server.
@@ -121,12 +122,14 @@ markdown_extensions:
 # Page tree
 nav:
   - Home: index.md
+  - FAQ: faq.md
   - Getting started:
       - Installation:
           - Linux: running-headscale-linux.md
           - OpenBSD: running-headscale-openbsd.md
           - Container: running-headscale-container.md
       - Configuration:
+          - Web UI: web-ui.md
           - OIDC authentication: oidc.md
           - Exit node: exit-node.md
           - Reverse proxy: reverse-proxy.md

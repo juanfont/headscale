@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -33,6 +33,7 @@ var (
 	tailscaleVersions2021 = []string{
 		"head",
 		"unstable",
+		"1.40.0",
 		"1.38.4",
 		"1.36.2",
 		"1.34.2",
@@ -104,7 +105,7 @@ type Scenario struct {
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
 // a set of Users and TailscaleClients.
 func NewScenario() (*Scenario, error) {
-	hash, err := headscale.GenerateRandomStringDNSSafe(scenarioHashLength)
+	hash, err := hscontrol.GenerateRandomStringDNSSafe(scenarioHashLength)
 	if err != nil {
 		return nil, err
 	}
@@ -149,15 +150,7 @@ func NewScenario() (*Scenario, error) {
 // environment running the tests.
 func (s *Scenario) Shutdown() error {
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
-		err := control.SaveLog("/tmp/control")
-		if err != nil {
-			log.Printf(
-				"Failed to save log from control: %s",
-				fmt.Errorf("failed to save log from control: %w", err),
-			)
-		}
-
-		err = control.Shutdown()
+		err := control.Shutdown()
 		if err != nil {
 			log.Printf(
 				"Failed to shut down control: %s",
@@ -287,7 +280,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 
 			headscale, err := s.Headscale()
 			if err != nil {
-				return fmt.Errorf("failed to create tailscale node: %w", err)
+				return fmt.Errorf("failed to create tailscale node (version: %s): %w", version, err)
 			}
 
 			cert := headscale.GetCert()
