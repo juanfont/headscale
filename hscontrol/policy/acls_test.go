@@ -439,6 +439,44 @@ acls:
 	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
 }
 
+func (s *Suite) TestBasicIpv6YAML(c *check.C) {
+	acl := []byte(`
+---
+hosts:
+  host-1: 100.100.100.100/32
+  subnet-1: 100.100.101.100/24
+acls:
+  - action: accept
+    src:
+      - "*"
+    dst:
+      - 0.0.0.0/0:*
+      - ::/0:*
+      - fd7a:115c:a1e0::2:22
+`)
+	pol, err := LoadACLPolicyFromBytes(acl, "yaml")
+	c.Assert(err, check.IsNil)
+	c.Assert(pol, check.NotNil)
+
+	rules, err := pol.generateFilterRules(types.Machines{}, false)
+	c.Assert(err, check.IsNil)
+	c.Assert(rules, check.NotNil)
+
+	c.Assert(rules, check.HasLen, 1)
+	c.Assert(rules[0].DstPorts, check.HasLen, 3)
+	c.Assert(rules[0].DstPorts[0].IP, check.Equals, "0.0.0.0/0")
+	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
+	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
+	c.Assert(rules[0].DstPorts[1].IP, check.Equals, "::/0")
+	c.Assert(rules[0].DstPorts[1].Ports.First, check.Equals, uint16(0))
+	c.Assert(rules[0].DstPorts[1].Ports.Last, check.Equals, uint16(65535))
+	c.Assert(rules[0].DstPorts[2].IP, check.Equals, "fd7a:115c:a1e0::2/128")
+	c.Assert(rules[0].DstPorts[2].Ports.First, check.Equals, uint16(22))
+	c.Assert(rules[0].DstPorts[2].Ports.Last, check.Equals, uint16(22))
+	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
+	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
+}
+
 func Test_expandGroup(t *testing.T) {
 	type field struct {
 		pol ACLPolicy
