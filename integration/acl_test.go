@@ -237,6 +237,24 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user2": 3, // ns1 + ns2 (return path)
 			},
 		},
+		"ipv6-acls-1470": {
+			users: map[string]int{
+				"user1": 2,
+				"user2": 2,
+			},
+			policy: policy.ACLPolicy{
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"0.0.0.0/0:*", "::/0:*"},
+					},
+				},
+			}, want: map[string]int{
+				"user1": 3, // ns1 + ns2
+				"user2": 3, // ns2 + ns1
+			},
+		},
 	}
 
 	for name, testCase := range tests {

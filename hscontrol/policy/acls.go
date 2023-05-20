@@ -385,7 +385,13 @@ func (pol *ACLPolicy) getNetPortRangeFromDestination(
 		maybeIPv6Str := strings.TrimSuffix(dest, ":"+port)
 		log.Trace().Str("maybeIPv6Str", maybeIPv6Str).Msg("")
 
-		if maybeIPv6, err := netip.ParseAddr(maybeIPv6Str); err != nil && !maybeIPv6.Is6() {
+		filteredMaybeIPv6Str := maybeIPv6Str
+		if strings.Contains(maybeIPv6Str, "/") {
+			networkParts := strings.Split(maybeIPv6Str, "/")
+			filteredMaybeIPv6Str = networkParts[0]
+		}
+
+		if maybeIPv6, err := netip.ParseAddr(filteredMaybeIPv6Str); err != nil && !maybeIPv6.Is6() {
 			log.Trace().Err(err).Msg("trying to parse as IPv6")
 
 			return nil, fmt.Errorf(
