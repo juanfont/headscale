@@ -18,9 +18,6 @@ const (
 	// TODO(juan): remove this once https://github.com/juanfont/headscale/issues/727 is fixed.
 	registrationHoldoff        = time.Second * 5
 	reservedResponseHeaderSize = 4
-	RegisterMethodAuthKey      = "authkey"
-	RegisterMethodOIDC         = "oidc"
-	RegisterMethodCLI          = "cli"
 )
 
 var ErrRegisterMethodCLIDoesNotSupportExpire = errors.New(
@@ -56,7 +53,7 @@ func (h *Headscale) HealthHandler(
 		}
 	}
 
-	if err := h.db.pingDB(req.Context()); err != nil {
+	if err := h.db.PingDB(req.Context()); err != nil {
 		respond(err)
 
 		return

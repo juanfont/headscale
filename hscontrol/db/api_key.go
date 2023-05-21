@@ -1,4 +1,4 @@
-package hscontrol
+package db
 
 import (
 	"errors"
@@ -6,10 +6,9 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"golang.org/x/crypto/bcrypt"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -19,22 +18,10 @@ const (
 
 var ErrAPIKeyFailedToParse = errors.New("failed to parse ApiKey")
 
-// APIKey describes the datamodel for API keys used to remotely authenticate with
-// headscale.
-type APIKey struct {
-	ID     uint64 `gorm:"primary_key"`
-	Prefix string `gorm:"uniqueIndex"`
-	Hash   []byte
-
-	CreatedAt  *time.Time
-	Expiration *time.Time
-	LastSeen   *time.Time
-}
-
 // CreateAPIKey creates a new ApiKey in a user, and returns it.
 func (hsdb *HSDatabase) CreateAPIKey(
 	expiration *time.Time,
-) (string, *APIKey, error) {
+) (string, *types.APIKey, error) {
 	prefix, err := util.GenerateRandomStringURLSafe(apiPrefixLength)
 	if err != nil {
 		return "", nil, err
@@ -53,7 +40,7 @@ func (hsdb *HSDatabase) CreateAPIKey(
 		return "", nil, err
 	}
 
-	key := APIKey{
+	key := types.APIKey{
 		Prefix:     prefix,
 		Hash:       hash,
 		Expiration: expiration,
@@ -67,8 +54,8 @@ func (hsdb *HSDatabase) CreateAPIKey(
 }
 
 // ListAPIKeys returns the list of ApiKeys for a user.
-func (hsdb *HSDatabase) ListAPIKeys() ([]APIKey, error) {
-	keys := []APIKey{}
+func (hsdb *HSDatabase) ListAPIKeys() ([]types.APIKey, error) {
+	keys := []types.APIKey{}
 	if err := hsdb.db.Find(&keys).Error; err != nil {
 		return nil, err
 	}
@@ -77,8 +64,8 @@ func (hsdb *HSDatabase) ListAPIKeys() ([]APIKey, error) {
 }
 
 // GetAPIKey returns a ApiKey for a given key.
-func (hsdb *HSDatabase) GetAPIKey(prefix string) (*APIKey, error) {
-	key := APIKey{}
+func (hsdb *HSDatabase) GetAPIKey(prefix string) (*types.APIKey, error) {
+	key := types.APIKey{}
 	if result := hsdb.db.First(&key, "prefix = ?", prefix); result.Error != nil {
 		return nil, result.Error
 	}
@@ -87,9 +74,9 @@ func (hsdb *HSDatabase) GetAPIKey(prefix string) (*APIKey, error) {
 }
 
 // GetAPIKeyByID returns a ApiKey for a given id.
-func (hsdb *HSDatabase) GetAPIKeyByID(id uint64) (*APIKey, error) {
-	key := APIKey{}
-	if result := hsdb.db.Find(&APIKey{ID: id}).First(&key); result.Error != nil {
+func (hsdb *HSDatabase) GetAPIKeyByID(id uint64) (*types.APIKey, error) {
+	key := types.APIKey{}
+	if result := hsdb.db.Find(&types.APIKey{ID: id}).First(&key); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -98,7 +85,7 @@ func (hsdb *HSDatabase) GetAPIKeyByID(id uint64) (*APIKey, error) {
 
 // DestroyAPIKey destroys a ApiKey. Returns error if the ApiKey
 // does not exist.
-func (hsdb *HSDatabase) DestroyAPIKey(key APIKey) error {
+func (hsdb *HSDatabase) DestroyAPIKey(key types.APIKey) error {
 	if result := hsdb.db.Unscoped().Delete(key); result.Error != nil {
 		return result.Error
 	}
@@ -107,7 +94,7 @@ func (hsdb *HSDatabase) DestroyAPIKey(key APIKey) error {
 }
 
 // ExpireAPIKey marks a ApiKey as expired.
-func (hsdb *HSDatabase) ExpireAPIKey(key *APIKey) error {
+func (hsdb *HSDatabase) ExpireAPIKey(key *types.APIKey) error {
 	if err := hsdb.db.Model(&key).Update("Expiration", time.Now()).Error; err != nil {
 		return err
 	}
@@ -135,25 +122,4 @@ func (hsdb *HSDatabase) ValidateAPIKey(keyStr string) (bool, error) {
 	}
 
 	return true, nil
-}
-
-func (key *APIKey) toProto() *v1.ApiKey {
-	protoKey := v1.ApiKey{
-		Id:     key.ID,
-		Prefix: key.Prefix,
-	}
-
-	if key.Expiration != nil {
-		protoKey.Expiration = timestamppb.New(*key.Expiration)
-	}
-
-	if key.CreatedAt != nil {
-		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
-	}
-
-	if key.LastSeen != nil {
-		protoKey.LastSeen = timestamppb.New(*key.LastSeen)
-	}
-
-	return &protoKey
 }

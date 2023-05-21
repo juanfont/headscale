@@ -23,7 +23,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -60,7 +60,7 @@ type HeadscaleInContainer struct {
 	port             int
 	extraPorts       []string
 	hostPortBindings map[string][]string
-	aclPolicy        *hscontrol.ACLPolicy
+	aclPolicy        *policy.ACLPolicy
 	env              map[string]string
 	tlsCert          []byte
 	tlsKey           []byte
@@ -73,7 +73,7 @@ type Option = func(c *HeadscaleInContainer)
 
 // WithACLPolicy adds a hscontrol.ACLPolicy policy to the
 // HeadscaleInContainer instance.
-func WithACLPolicy(acl *hscontrol.ACLPolicy) Option {
+func WithACLPolicy(acl *policy.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		// TODO(kradalby): Move somewhere appropriate
 		hsic.env["HEADSCALE_ACL_POLICY_PATH"] = aclPolicyPath

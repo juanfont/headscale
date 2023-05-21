@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
@@ -10,13 +11,13 @@ import (
 
 func (h *Headscale) generateMapResponse(
 	mapRequest tailcfg.MapRequest,
-	machine *Machine,
+	machine *types.Machine,
 ) (*tailcfg.MapResponse, error) {
 	log.Trace().
 		Str("func", "generateMapResponse").
 		Str("machine", mapRequest.Hostinfo.Hostname).
 		Msg("Creating Map response")
-	node, err := h.db.toNode(*machine, h.aclPolicy, h.cfg.BaseDomain, h.cfg.DNSConfig)
+	node, err := h.db.TailNode(*machine, h.ACLPolicy, h.cfg.DNSConfig)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -27,7 +28,7 @@ func (h *Headscale) generateMapResponse(
 		return nil, err
 	}
 
-	peers, err := h.db.getValidPeers(h.aclPolicy, h.aclRules, machine)
+	peers, err := h.db.GetValidPeers(h.aclRules, machine)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -38,9 +39,9 @@ func (h *Headscale) generateMapResponse(
 		return nil, err
 	}
 
-	profiles := h.db.getMapResponseUserProfiles(*machine, peers)
+	profiles := h.db.GetMapResponseUserProfiles(*machine, peers)
 
-	nodePeers, err := h.db.toNodes(peers, h.aclPolicy, h.cfg.BaseDomain, h.cfg.DNSConfig)
+	nodePeers, err := h.db.TailNodes(peers, h.ACLPolicy, h.cfg.DNSConfig)
 	if err != nil {
 		log.Error().
 			Caller().

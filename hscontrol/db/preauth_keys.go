@@ -1,17 +1,14 @@
-package hscontrol
+package db
 
 import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/util"
-	"google.golang.org/protobuf/types/known/timestamppb"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
 )
 
@@ -23,28 +20,6 @@ var (
 	ErrPreAuthKeyACLTagInvalid     = errors.New("AuthKey tag is invalid")
 )
 
-// PreAuthKey describes a pre-authorization key usable in a particular user.
-type PreAuthKey struct {
-	ID        uint64 `gorm:"primary_key"`
-	Key       string
-	UserID    uint
-	User      User
-	Reusable  bool
-	Ephemeral bool `gorm:"default:false"`
-	Used      bool `gorm:"default:false"`
-	ACLTags   []PreAuthKeyACLTag
-
-	CreatedAt  *time.Time
-	Expiration *time.Time
-}
-
-// PreAuthKeyACLTag describes an autmatic tag applied to a node when registered with the associated PreAuthKey.
-type PreAuthKeyACLTag struct {
-	ID           uint64 `gorm:"primary_key"`
-	PreAuthKeyID uint64
-	Tag          string
-}
-
 // CreatePreAuthKey creates a new PreAuthKey in a user, and returns it.
 func (hsdb *HSDatabase) CreatePreAuthKey(
 	userName string,
@@ -52,7 +27,7 @@ func (hsdb *HSDatabase) CreatePreAuthKey(
 	ephemeral bool,
 	expiration *time.Time,
 	aclTags []string,
-) (*PreAuthKey, error) {
+) (*types.PreAuthKey, error) {
 	user, err := hsdb.GetUser(userName)
 	if err != nil {
 		return nil, err
@@ -74,7 +49,7 @@ func (hsdb *HSDatabase) CreatePreAuthKey(
 		return nil, err
 	}
 
-	key := PreAuthKey{
+	key := types.PreAuthKey{
 		Key:        kstr,
 		UserID:     user.ID,
 		User:       *user,
@@ -94,7 +69,7 @@ func (hsdb *HSDatabase) CreatePreAuthKey(
 
 			for _, tag := range aclTags {
 				if !seenTags[tag] {
-					if err := db.Save(&PreAuthKeyACLTag{PreAuthKeyID: key.ID, Tag: tag}).Error; err != nil {
+					if err := db.Save(&types.PreAuthKeyACLTag{PreAuthKeyID: key.ID, Tag: tag}).Error; err != nil {
 						return fmt.Errorf(
 							"failed to ceate key tag in the database: %w",
 							err,
@@ -116,14 +91,14 @@ func (hsdb *HSDatabase) CreatePreAuthKey(
 }
 
 // ListPreAuthKeys returns the list of PreAuthKeys for a user.
-func (hsdb *HSDatabase) ListPreAuthKeys(userName string) ([]PreAuthKey, error) {
+func (hsdb *HSDatabase) ListPreAuthKeys(userName string) ([]types.PreAuthKey, error) {
 	user, err := hsdb.GetUser(userName)
 	if err != nil {
 		return nil, err
 	}
 
-	keys := []PreAuthKey{}
-	if err := hsdb.db.Preload("User").Preload("ACLTags").Where(&PreAuthKey{UserID: user.ID}).Find(&keys).Error; err != nil {
+	keys := []types.PreAuthKey{}
+	if err := hsdb.db.Preload("User").Preload("ACLTags").Where(&types.PreAuthKey{UserID: user.ID}).Find(&keys).Error; err != nil {
 		return nil, err
 	}
 
@@ -131,8 +106,8 @@ func (hsdb *HSDatabase) ListPreAuthKeys(userName string) ([]PreAuthKey, error) {
 }
 
 // GetPreAuthKey returns a PreAuthKey for a given key.
-func (hsdb *HSDatabase) GetPreAuthKey(user string, key string) (*PreAuthKey, error) {
-	pak, err := hsdb.checkKeyValidity(key)
+func (hsdb *HSDatabase) GetPreAuthKey(user string, key string) (*types.PreAuthKey, error) {
+	pak, err := hsdb.ValidatePreAuthKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -146,9 +121,9 @@ func (hsdb *HSDatabase) GetPreAuthKey(user string, key string) (*PreAuthKey, err
 
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the PreAuthKey
 // does not exist.
-func (hsdb *HSDatabase) DestroyPreAuthKey(pak PreAuthKey) error {
+func (hsdb *HSDatabase) DestroyPreAuthKey(pak types.PreAuthKey) error {
 	return hsdb.db.Transaction(func(db *gorm.DB) error {
-		if result := db.Unscoped().Where(PreAuthKeyACLTag{PreAuthKeyID: pak.ID}).Delete(&PreAuthKeyACLTag{}); result.Error != nil {
+		if result := db.Unscoped().Where(types.PreAuthKeyACLTag{PreAuthKeyID: pak.ID}).Delete(&types.PreAuthKeyACLTag{}); result.Error != nil {
 			return result.Error
 		}
 
@@ -161,7 +136,7 @@ func (hsdb *HSDatabase) DestroyPreAuthKey(pak PreAuthKey) error {
 }
 
 // MarkExpirePreAuthKey marks a PreAuthKey as expired.
-func (hsdb *HSDatabase) ExpirePreAuthKey(k *PreAuthKey) error {
+func (hsdb *HSDatabase) ExpirePreAuthKey(k *types.PreAuthKey) error {
 	if err := hsdb.db.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
 		return err
 	}
@@ -170,7 +145,7 @@ func (hsdb *HSDatabase) ExpirePreAuthKey(k *PreAuthKey) error {
 }
 
 // UsePreAuthKey marks a PreAuthKey as used.
-func (hsdb *HSDatabase) UsePreAuthKey(k *PreAuthKey) error {
+func (hsdb *HSDatabase) UsePreAuthKey(k *types.PreAuthKey) error {
 	k.Used = true
 	if err := hsdb.db.Save(k).Error; err != nil {
 		return fmt.Errorf("failed to update key used status in the database: %w", err)
@@ -179,10 +154,10 @@ func (hsdb *HSDatabase) UsePreAuthKey(k *PreAuthKey) error {
 	return nil
 }
 
-// checkKeyValidity does the heavy lifting for validation of the PreAuthKey coming from a node
+// ValidatePreAuthKey does the heavy lifting for validation of the PreAuthKey coming from a node
 // If returns no error and a PreAuthKey, it can be used.
-func (hsdb *HSDatabase) checkKeyValidity(k string) (*PreAuthKey, error) {
-	pak := PreAuthKey{}
+func (hsdb *HSDatabase) ValidatePreAuthKey(k string) (*types.PreAuthKey, error) {
+	pak := types.PreAuthKey{}
 	if result := hsdb.db.Preload("User").Preload("ACLTags").First(&pak, "key = ?", k); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
@@ -198,8 +173,8 @@ func (hsdb *HSDatabase) checkKeyValidity(k string) (*PreAuthKey, error) {
 		return &pak, nil
 	}
 
-	machines := []Machine{}
-	if err := hsdb.db.Preload("AuthKey").Where(&Machine{AuthKeyID: uint(pak.ID)}).Find(&machines).Error; err != nil {
+	machines := types.Machines{}
+	if err := hsdb.db.Preload("AuthKey").Where(&types.Machine{AuthKeyID: uint(pak.ID)}).Find(&machines).Error; err != nil {
 		return nil, err
 	}
 
@@ -218,30 +193,4 @@ func (hsdb *HSDatabase) generateKey() (string, error) {
 	}
 
 	return hex.EncodeToString(bytes), nil
-}
-
-func (key *PreAuthKey) toProto() *v1.PreAuthKey {
-	protoKey := v1.PreAuthKey{
-		User:      key.User.Name,
-		Id:        strconv.FormatUint(key.ID, util.Base10),
-		Key:       key.Key,
-		Ephemeral: key.Ephemeral,
-		Reusable:  key.Reusable,
-		Used:      key.Used,
-		AclTags:   make([]string, len(key.ACLTags)),
-	}
-
-	if key.Expiration != nil {
-		protoKey.Expiration = timestamppb.New(*key.Expiration)
-	}
-
-	if key.CreatedAt != nil {
-		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
-	}
-
-	for idx := range key.ACLTags {
-		protoKey.AclTags[idx] = key.ACLTags[idx].Tag
-	}
-
-	return &protoKey
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -36,7 +37,7 @@ func (api headscaleV1APIServer) GetUser(
 		return nil, err
 	}
 
-	return &v1.GetUserResponse{User: user.toProto()}, nil
+	return &v1.GetUserResponse{User: user.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) CreateUser(
@@ -48,7 +49,7 @@ func (api headscaleV1APIServer) CreateUser(
 		return nil, err
 	}
 
-	return &v1.CreateUserResponse{User: user.toProto()}, nil
+	return &v1.CreateUserResponse{User: user.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) RenameUser(
@@ -65,7 +66,7 @@ func (api headscaleV1APIServer) RenameUser(
 		return nil, err
 	}
 
-	return &v1.RenameUserResponse{User: user.toProto()}, nil
+	return &v1.RenameUserResponse{User: user.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) DeleteUser(
@@ -91,7 +92,7 @@ func (api headscaleV1APIServer) ListUsers(
 
 	response := make([]*v1.User, len(users))
 	for index, user := range users {
-		response[index] = user.toProto()
+		response[index] = user.Proto()
 	}
 
 	log.Trace().Caller().Interface("users", response).Msg("")
@@ -128,7 +129,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		return nil, err
 	}
 
-	return &v1.CreatePreAuthKeyResponse{PreAuthKey: preAuthKey.toProto()}, nil
+	return &v1.CreatePreAuthKeyResponse{PreAuthKey: preAuthKey.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) ExpirePreAuthKey(
@@ -159,7 +160,7 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 
 	response := make([]*v1.PreAuthKey, len(preAuthKeys))
 	for index, key := range preAuthKeys {
-		response[index] = key.toProto()
+		response[index] = key.Proto()
 	}
 
 	return &v1.ListPreAuthKeysResponse{PreAuthKeys: response}, nil
@@ -179,13 +180,13 @@ func (api headscaleV1APIServer) RegisterMachine(
 		request.GetKey(),
 		request.GetUser(),
 		nil,
-		RegisterMethodCLI,
+		util.RegisterMethodCLI,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.RegisterMachineResponse{Machine: machine.toProto()}, nil
+	return &v1.RegisterMachineResponse{Machine: machine.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) GetMachine(
@@ -197,7 +198,7 @@ func (api headscaleV1APIServer) GetMachine(
 		return nil, err
 	}
 
-	return &v1.GetMachineResponse{Machine: machine.toProto()}, nil
+	return &v1.GetMachineResponse{Machine: machine.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) SetTags(
@@ -218,7 +219,7 @@ func (api headscaleV1APIServer) SetTags(
 		}
 	}
 
-	err = api.h.db.SetTags(machine, request.GetTags(), api.h.UpdateACLRules)
+	err = api.h.db.SetTags(machine, request.GetTags())
 	if err != nil {
 		return &v1.SetTagsResponse{
 			Machine: nil,
@@ -230,7 +231,7 @@ func (api headscaleV1APIServer) SetTags(
 		Strs("tags", request.GetTags()).
 		Msg("Changing tags of machine")
 
-	return &v1.SetTagsResponse{Machine: machine.toProto()}, nil
+	return &v1.SetTagsResponse{Machine: machine.Proto()}, nil
 }
 
 func validateTag(tag string) error {
@@ -283,7 +284,7 @@ func (api headscaleV1APIServer) ExpireMachine(
 		Time("expiry", *machine.Expiry).
 		Msg("machine expired")
 
-	return &v1.ExpireMachineResponse{Machine: machine.toProto()}, nil
+	return &v1.ExpireMachineResponse{Machine: machine.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) RenameMachine(
@@ -308,7 +309,7 @@ func (api headscaleV1APIServer) RenameMachine(
 		Str("new_name", request.GetNewName()).
 		Msg("machine renamed")
 
-	return &v1.RenameMachineResponse{Machine: machine.toProto()}, nil
+	return &v1.RenameMachineResponse{Machine: machine.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) ListMachines(
@@ -323,7 +324,7 @@ func (api headscaleV1APIServer) ListMachines(
 
 		response := make([]*v1.Machine, len(machines))
 		for index, machine := range machines {
-			response[index] = machine.toProto()
+			response[index] = machine.Proto()
 		}
 
 		return &v1.ListMachinesResponse{Machines: response}, nil
@@ -336,9 +337,8 @@ func (api headscaleV1APIServer) ListMachines(
 
 	response := make([]*v1.Machine, len(machines))
 	for index, machine := range machines {
-		m := machine.toProto()
-		validTags, invalidTags := getTags(
-			api.h.aclPolicy,
+		m := machine.Proto()
+		validTags, invalidTags := api.h.ACLPolicy.GetTagsOfMachine(
 			machine,
 			api.h.cfg.OIDC.StripEmaildomain,
 		)
@@ -364,7 +364,7 @@ func (api headscaleV1APIServer) MoveMachine(
 		return nil, err
 	}
 
-	return &v1.MoveMachineResponse{Machine: machine.toProto()}, nil
+	return &v1.MoveMachineResponse{Machine: machine.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) GetRoutes(
@@ -377,7 +377,7 @@ func (api headscaleV1APIServer) GetRoutes(
 	}
 
 	return &v1.GetRoutesResponse{
-		Routes: Routes(routes).toProto(),
+		Routes: types.Routes(routes).Proto(),
 	}, nil
 }
 
@@ -420,7 +420,7 @@ func (api headscaleV1APIServer) GetMachineRoutes(
 	}
 
 	return &v1.GetMachineRoutesResponse{
-		Routes: Routes(routes).toProto(),
+		Routes: types.Routes(routes).Proto(),
 	}, nil
 }
 
@@ -459,7 +459,7 @@ func (api headscaleV1APIServer) ExpireApiKey(
 	ctx context.Context,
 	request *v1.ExpireApiKeyRequest,
 ) (*v1.ExpireApiKeyResponse, error) {
-	var apiKey *APIKey
+	var apiKey *types.APIKey
 	var err error
 
 	apiKey, err = api.h.db.GetAPIKey(request.Prefix)
@@ -486,7 +486,7 @@ func (api headscaleV1APIServer) ListApiKeys(
 
 	response := make([]*v1.ApiKey, len(apiKeys))
 	for index, key := range apiKeys {
-		response[index] = key.toProto()
+		response[index] = key.Proto()
 	}
 
 	return &v1.ListApiKeysResponse{ApiKeys: response}, nil
@@ -524,7 +524,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		return nil, err
 	}
 
-	newMachine := Machine{
+	newMachine := types.Machine{
 		MachineKey: request.GetKey(),
 		Hostname:   request.GetName(),
 		GivenName:  givenName,
@@ -534,7 +534,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		LastSeen:             &time.Time{},
 		LastSuccessfulUpdate: &time.Time{},
 
-		HostInfo: HostInfo(hostinfo),
+		HostInfo: types.HostInfo(hostinfo),
 	}
 
 	nodeKey := key.NodePublic{}
@@ -549,7 +549,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		registerCacheExpiration,
 	)
 
-	return &v1.DebugCreateMachineResponse{Machine: newMachine.toProto()}, nil
+	return &v1.DebugCreateMachineResponse{Machine: newMachine.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}

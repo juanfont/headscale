@@ -1,55 +1,19 @@
-package hscontrol
+package db
 
 import (
 	"errors"
-	"fmt"
 	"net/netip"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 )
 
-var (
-	ErrRouteIsNotAvailable = errors.New("route is not available")
-	ExitRouteV4            = netip.MustParsePrefix("0.0.0.0/0")
-	ExitRouteV6            = netip.MustParsePrefix("::/0")
-)
+var ErrRouteIsNotAvailable = errors.New("route is not available")
 
-type Route struct {
-	gorm.Model
-
-	MachineID uint64
-	Machine   Machine
-	Prefix    IPPrefix
-
-	Advertised bool
-	Enabled    bool
-	IsPrimary  bool
-}
-
-type Routes []Route
-
-func (r *Route) String() string {
-	return fmt.Sprintf("%s:%s", r.Machine, netip.Prefix(r.Prefix).String())
-}
-
-func (r *Route) isExitRoute() bool {
-	return netip.Prefix(r.Prefix) == ExitRouteV4 || netip.Prefix(r.Prefix) == ExitRouteV6
-}
-
-func (rs Routes) toPrefixes() []netip.Prefix {
-	prefixes := make([]netip.Prefix, len(rs))
-	for i, r := range rs {
-		prefixes[i] = netip.Prefix(r.Prefix)
-	}
-
-	return prefixes
-}
-
-func (hsdb *HSDatabase) GetRoutes() ([]Route, error) {
-	var routes []Route
+func (hsdb *HSDatabase) GetRoutes() (types.Routes, error) {
+	var routes types.Routes
 	err := hsdb.db.Preload("Machine").Find(&routes).Error
 	if err != nil {
 		return nil, err
@@ -58,8 +22,21 @@ func (hsdb *HSDatabase) GetRoutes() ([]Route, error) {
 	return routes, nil
 }
 
-func (hsdb *HSDatabase) GetMachineRoutes(m *Machine) ([]Route, error) {
-	var routes []Route
+func (hsdb *HSDatabase) GetMachineAdvertisedRoutes(machine *types.Machine) (types.Routes, error) {
+	var routes types.Routes
+	err := hsdb.db.
+		Preload("Machine").
+		Where("machine_id = ? AND advertised = true", machine.ID).
+		Find(&routes).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return routes, nil
+}
+
+func (hsdb *HSDatabase) GetMachineRoutes(m *types.Machine) (types.Routes, error) {
+	var routes types.Routes
 	err := hsdb.db.
 		Preload("Machine").
 		Where("machine_id = ?", m.ID).
@@ -71,8 +48,8 @@ func (hsdb *HSDatabase) GetMachineRoutes(m *Machine) ([]Route, error) {
 	return routes, nil
 }
 
-func (hsdb *HSDatabase) GetRoute(id uint64) (*Route, error) {
-	var route Route
+func (hsdb *HSDatabase) GetRoute(id uint64) (*types.Route, error) {
+	var route types.Route
 	err := hsdb.db.Preload("Machine").First(&route, id).Error
 	if err != nil {
 		return nil, err
@@ -90,8 +67,12 @@ func (hsdb *HSDatabase) EnableRoute(id uint64) error {
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
-	if route.isExitRoute() {
-		return hsdb.enableRoutes(&route.Machine, ExitRouteV4.String(), ExitRouteV6.String())
+	if route.IsExitRoute() {
+		return hsdb.enableRoutes(
+			&route.Machine,
+			types.ExitRouteV4.String(),
+			types.ExitRouteV6.String(),
+		)
 	}
 
 	return hsdb.enableRoutes(&route.Machine, netip.Prefix(route.Prefix).String())
@@ -106,7 +87,7 @@ func (hsdb *HSDatabase) DisableRoute(id uint64) error {
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
-	if !route.isExitRoute() {
+	if !route.IsExitRoute() {
 		route.Enabled = false
 		route.IsPrimary = false
 		err = hsdb.db.Save(route).Error
@@ -114,7 +95,7 @@ func (hsdb *HSDatabase) DisableRoute(id uint64) error {
 			return err
 		}
 
-		return hsdb.handlePrimarySubnetFailover()
+		return hsdb.HandlePrimarySubnetFailover()
 	}
 
 	routes, err := hsdb.GetMachineRoutes(&route.Machine)
@@ -123,7 +104,7 @@ func (hsdb *HSDatabase) DisableRoute(id uint64) error {
 	}
 
 	for i := range routes {
-		if routes[i].isExitRoute() {
+		if routes[i].IsExitRoute() {
 			routes[i].Enabled = false
 			routes[i].IsPrimary = false
 			err = hsdb.db.Save(&routes[i]).Error
@@ -133,7 +114,7 @@ func (hsdb *HSDatabase) DisableRoute(id uint64) error {
 		}
 	}
 
-	return hsdb.handlePrimarySubnetFailover()
+	return hsdb.HandlePrimarySubnetFailover()
 }
 
 func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
@@ -145,12 +126,12 @@ func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
-	if !route.isExitRoute() {
+	if !route.IsExitRoute() {
 		if err := hsdb.db.Unscoped().Delete(&route).Error; err != nil {
 			return err
 		}
 
-		return hsdb.handlePrimarySubnetFailover()
+		return hsdb.HandlePrimarySubnetFailover()
 	}
 
 	routes, err := hsdb.GetMachineRoutes(&route.Machine)
@@ -158,9 +139,9 @@ func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
 		return err
 	}
 
-	routesToDelete := []Route{}
+	routesToDelete := types.Routes{}
 	for _, r := range routes {
-		if r.isExitRoute() {
+		if r.IsExitRoute() {
 			routesToDelete = append(routesToDelete, r)
 		}
 	}
@@ -169,10 +150,10 @@ func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
 		return err
 	}
 
-	return hsdb.handlePrimarySubnetFailover()
+	return hsdb.HandlePrimarySubnetFailover()
 }
 
-func (hsdb *HSDatabase) DeleteMachineRoutes(m *Machine) error {
+func (hsdb *HSDatabase) DeleteMachineRoutes(m *types.Machine) error {
 	routes, err := hsdb.GetMachineRoutes(m)
 	if err != nil {
 		return err
@@ -184,14 +165,14 @@ func (hsdb *HSDatabase) DeleteMachineRoutes(m *Machine) error {
 		}
 	}
 
-	return hsdb.handlePrimarySubnetFailover()
+	return hsdb.HandlePrimarySubnetFailover()
 }
 
 // isUniquePrefix returns if there is another machine providing the same route already.
-func (hsdb *HSDatabase) isUniquePrefix(route Route) bool {
+func (hsdb *HSDatabase) isUniquePrefix(route types.Route) bool {
 	var count int64
 	hsdb.db.
-		Model(&Route{}).
+		Model(&types.Route{}).
 		Where("prefix = ? AND machine_id != ? AND advertised = ? AND enabled = ?",
 			route.Prefix,
 			route.MachineID,
@@ -200,11 +181,11 @@ func (hsdb *HSDatabase) isUniquePrefix(route Route) bool {
 	return count == 0
 }
 
-func (hsdb *HSDatabase) getPrimaryRoute(prefix netip.Prefix) (*Route, error) {
-	var route Route
+func (hsdb *HSDatabase) getPrimaryRoute(prefix netip.Prefix) (*types.Route, error) {
+	var route types.Route
 	err := hsdb.db.
 		Preload("Machine").
-		Where("prefix = ? AND advertised = ? AND enabled = ? AND is_primary = ?", IPPrefix(prefix), true, true, true).
+		Where("prefix = ? AND advertised = ? AND enabled = ? AND is_primary = ?", types.IPPrefix(prefix), true, true, true).
 		First(&route).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -219,8 +200,8 @@ func (hsdb *HSDatabase) getPrimaryRoute(prefix netip.Prefix) (*Route, error) {
 
 // getMachinePrimaryRoutes returns the routes that are enabled and marked as primary (for subnet failover)
 // Exit nodes are not considered for this, as they are never marked as Primary.
-func (hsdb *HSDatabase) getMachinePrimaryRoutes(m *Machine) ([]Route, error) {
-	var routes []Route
+func (hsdb *HSDatabase) GetMachinePrimaryRoutes(m *types.Machine) (types.Routes, error) {
+	var routes types.Routes
 	err := hsdb.db.
 		Preload("Machine").
 		Where("machine_id = ? AND advertised = ? AND enabled = ? AND is_primary = ?", m.ID, true, true, true).
@@ -232,8 +213,8 @@ func (hsdb *HSDatabase) getMachinePrimaryRoutes(m *Machine) ([]Route, error) {
 	return routes, nil
 }
 
-func (hsdb *HSDatabase) processMachineRoutes(machine *Machine) error {
-	currentRoutes := []Route{}
+func (hsdb *HSDatabase) ProcessMachineRoutes(machine *types.Machine) error {
+	currentRoutes := types.Routes{}
 	err := hsdb.db.Where("machine_id = ?", machine.ID).Find(&currentRoutes).Error
 	if err != nil {
 		return err
@@ -266,9 +247,9 @@ func (hsdb *HSDatabase) processMachineRoutes(machine *Machine) error {
 
 	for prefix, exists := range advertisedRoutes {
 		if !exists {
-			route := Route{
+			route := types.Route{
 				MachineID:  machine.ID,
-				Prefix:     IPPrefix(prefix),
+				Prefix:     types.IPPrefix(prefix),
 				Advertised: true,
 				Enabled:    false,
 			}
@@ -282,9 +263,9 @@ func (hsdb *HSDatabase) processMachineRoutes(machine *Machine) error {
 	return nil
 }
 
-func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
+func (hsdb *HSDatabase) HandlePrimarySubnetFailover() error {
 	// first, get all the enabled routes
-	var routes []Route
+	var routes types.Routes
 	err := hsdb.db.
 		Preload("Machine").
 		Where("advertised = ? AND enabled = ?", true, true).
@@ -295,7 +276,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 
 	routesChanged := false
 	for pos, route := range routes {
-		if route.isExitRoute() {
+		if route.IsExitRoute() {
 			continue
 		}
 
@@ -321,7 +302,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 		}
 
 		if route.IsPrimary {
-			if route.Machine.isOnline() {
+			if route.Machine.IsOnline() {
 				continue
 			}
 
@@ -332,7 +313,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 				Msgf("machine offline, finding a new primary subnet")
 
 			// find a new primary route
-			var newPrimaryRoutes []Route
+			var newPrimaryRoutes types.Routes
 			err := hsdb.db.
 				Preload("Machine").
 				Where("prefix = ? AND machine_id != ? AND advertised = ? AND enabled = ?",
@@ -346,9 +327,9 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 				return err
 			}
 
-			var newPrimaryRoute *Route
+			var newPrimaryRoute *types.Route
 			for pos, r := range newPrimaryRoutes {
-				if r.Machine.isOnline() {
+				if r.Machine.IsOnline() {
 					newPrimaryRoute = &newPrimaryRoutes[pos]
 
 					break
@@ -399,27 +380,78 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 	return nil
 }
 
-func (rs Routes) toProto() []*v1.Route {
-	protoRoutes := []*v1.Route{}
-
-	for _, route := range rs {
-		protoRoute := v1.Route{
-			Id:         uint64(route.ID),
-			Machine:    route.Machine.toProto(),
-			Prefix:     netip.Prefix(route.Prefix).String(),
-			Advertised: route.Advertised,
-			Enabled:    route.Enabled,
-			IsPrimary:  route.IsPrimary,
-			CreatedAt:  timestamppb.New(route.CreatedAt),
-			UpdatedAt:  timestamppb.New(route.UpdatedAt),
-		}
-
-		if route.DeletedAt.Valid {
-			protoRoute.DeletedAt = timestamppb.New(route.DeletedAt.Time)
-		}
-
-		protoRoutes = append(protoRoutes, &protoRoute)
+// EnableAutoApprovedRoutes enables any routes advertised by a machine that match the ACL autoApprovers policy.
+func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
+	aclPolicy *policy.ACLPolicy,
+	machine *types.Machine,
+) error {
+	if len(machine.IPAddresses) == 0 {
+		return nil // This machine has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
-	return protoRoutes
+	routes, err := hsdb.GetMachineAdvertisedRoutes(machine)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Error().
+			Caller().
+			Err(err).
+			Str("machine", machine.Hostname).
+			Msg("Could not get advertised routes for machine")
+
+		return err
+	}
+
+	approvedRoutes := types.Routes{}
+
+	for _, advertisedRoute := range routes {
+		if advertisedRoute.Enabled {
+			continue
+		}
+
+		routeApprovers, err := aclPolicy.AutoApprovers.GetRouteApprovers(
+			netip.Prefix(advertisedRoute.Prefix),
+		)
+		if err != nil {
+			log.Err(err).
+				Str("advertisedRoute", advertisedRoute.String()).
+				Uint64("machineId", machine.ID).
+				Msg("Failed to resolve autoApprovers for advertised route")
+
+			return err
+		}
+
+		for _, approvedAlias := range routeApprovers {
+			if approvedAlias == machine.User.Name {
+				approvedRoutes = append(approvedRoutes, advertisedRoute)
+			} else {
+				// TODO(kradalby): figure out how to get this to depend on less stuff
+				approvedIps, err := aclPolicy.ExpandAlias(types.Machines{*machine}, approvedAlias, hsdb.stripEmailDomain)
+				if err != nil {
+					log.Err(err).
+						Str("alias", approvedAlias).
+						Msg("Failed to expand alias when processing autoApprovers policy")
+
+					return err
+				}
+
+				// approvedIPs should contain all of machine's IPs if it matches the rule, so check for first
+				if approvedIps.Contains(machine.IPAddresses[0]) {
+					approvedRoutes = append(approvedRoutes, advertisedRoute)
+				}
+			}
+		}
+	}
+
+	for _, approvedRoute := range approvedRoutes {
+		err := hsdb.EnableRoute(uint64(approvedRoute.ID))
+		if err != nil {
+			log.Err(err).
+				Str("approvedRoute", approvedRoute.String()).
+				Uint64("machineId", machine.ID).
+				Msg("Failed to enable approved route")
+
+			return err
+		}
+	}
+
+	return nil
 }

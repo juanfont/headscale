@@ -1,9 +1,11 @@
-package hscontrol
+package db
 
 import (
 	"net/netip"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
@@ -11,13 +13,13 @@ import (
 )
 
 func (s *Suite) TestGetRoutes(c *check.C) {
-	user, err := app.db.CreateUser("test")
+	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.db.GetMachine("test", "test_get_route_machine")
+	_, err = db.GetMachine("test", "test_get_route_machine")
 	c.Assert(err, check.NotNil)
 
 	route, err := netip.ParsePrefix("10.0.0.0/24")
@@ -27,41 +29,43 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		RoutableIPs: []netip.Prefix{route},
 	}
 
-	machine := Machine{
+	machine := types.Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_get_route_machine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo),
+		HostInfo:       types.HostInfo(hostInfo),
 	}
-	app.db.db.Save(&machine)
+	db.db.Save(&machine)
 
-	err = app.db.processMachineRoutes(&machine)
+	err = db.ProcessMachineRoutes(&machine)
 	c.Assert(err, check.IsNil)
 
-	advertisedRoutes, err := app.db.GetAdvertisedRoutes(&machine)
+	advertisedRoutes, err := db.GetAdvertisedRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(advertisedRoutes), check.Equals, 1)
 
-	err = app.db.enableRoutes(&machine, "192.168.0.0/24")
+	err = db.enableRoutes(&machine, "192.168.0.0/24")
 	c.Assert(err, check.NotNil)
 
-	err = app.db.enableRoutes(&machine, "10.0.0.0/24")
+	err = db.enableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
+
+	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetEnableRoutes(c *check.C) {
-	user, err := app.db.CreateUser("test")
+	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.db.GetMachine("test", "test_enable_route_machine")
+	_, err = db.GetMachine("test", "test_enable_route_machine")
 	c.Assert(err, check.NotNil)
 
 	route, err := netip.ParsePrefix(
@@ -78,65 +82,67 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		RoutableIPs: []netip.Prefix{route, route2},
 	}
 
-	machine := Machine{
+	machine := types.Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo),
+		HostInfo:       types.HostInfo(hostInfo),
 	}
-	app.db.db.Save(&machine)
+	db.db.Save(&machine)
 
-	err = app.db.processMachineRoutes(&machine)
+	err = db.ProcessMachineRoutes(&machine)
 	c.Assert(err, check.IsNil)
 
-	availableRoutes, err := app.db.GetAdvertisedRoutes(&machine)
+	availableRoutes, err := db.GetAdvertisedRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(availableRoutes), check.Equals, 2)
 
-	noEnabledRoutes, err := app.db.GetEnabledRoutes(&machine)
+	noEnabledRoutes, err := db.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(noEnabledRoutes), check.Equals, 0)
 
-	err = app.db.enableRoutes(&machine, "192.168.0.0/24")
+	err = db.enableRoutes(&machine, "192.168.0.0/24")
 	c.Assert(err, check.NotNil)
 
-	err = app.db.enableRoutes(&machine, "10.0.0.0/24")
+	err = db.enableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes, err := app.db.GetEnabledRoutes(&machine)
+	enabledRoutes, err := db.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes), check.Equals, 1)
 
 	// Adding it twice will just let it pass through
-	err = app.db.enableRoutes(&machine, "10.0.0.0/24")
+	err = db.enableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
 
-	enableRoutesAfterDoubleApply, err := app.db.GetEnabledRoutes(&machine)
+	enableRoutesAfterDoubleApply, err := db.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enableRoutesAfterDoubleApply), check.Equals, 1)
 
-	err = app.db.enableRoutes(&machine, "150.0.10.0/25")
+	err = db.enableRoutes(&machine, "150.0.10.0/25")
 	c.Assert(err, check.IsNil)
 
-	enabledRoutesWithAdditionalRoute, err := app.db.GetEnabledRoutes(&machine)
+	enabledRoutesWithAdditionalRoute, err := db.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutesWithAdditionalRoute), check.Equals, 2)
+
+	c.Assert(channelUpdates, check.Equals, int32(3))
 }
 
 func (s *Suite) TestIsUniquePrefix(c *check.C) {
-	user, err := app.db.CreateUser("test")
+	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.db.GetMachine("test", "test_enable_route_machine")
+	_, err = db.GetMachine("test", "test_enable_route_machine")
 	c.Assert(err, check.NotNil)
 
 	route, err := netip.ParsePrefix(
@@ -152,75 +158,77 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	hostInfo1 := tailcfg.Hostinfo{
 		RoutableIPs: []netip.Prefix{route, route2},
 	}
-	machine1 := Machine{
+	machine1 := types.Machine{
 		ID:             1,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo1),
+		HostInfo:       types.HostInfo(hostInfo1),
 	}
-	app.db.db.Save(&machine1)
+	db.db.Save(&machine1)
 
-	err = app.db.processMachineRoutes(&machine1)
+	err = db.ProcessMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine1, route.String())
+	err = db.enableRoutes(&machine1, route.String())
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine1, route2.String())
+	err = db.enableRoutes(&machine1, route2.String())
 	c.Assert(err, check.IsNil)
 
 	hostInfo2 := tailcfg.Hostinfo{
 		RoutableIPs: []netip.Prefix{route2},
 	}
-	machine2 := Machine{
+	machine2 := types.Machine{
 		ID:             2,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo2),
+		HostInfo:       types.HostInfo(hostInfo2),
 	}
-	app.db.db.Save(&machine2)
+	db.db.Save(&machine2)
 
-	err = app.db.processMachineRoutes(&machine2)
+	err = db.ProcessMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine2, route2.String())
+	err = db.enableRoutes(&machine2, route2.String())
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes1, err := app.db.GetEnabledRoutes(&machine1)
+	enabledRoutes1, err := db.GetEnabledRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes1), check.Equals, 2)
 
-	enabledRoutes2, err := app.db.GetEnabledRoutes(&machine2)
+	enabledRoutes2, err := db.GetEnabledRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes2), check.Equals, 1)
 
-	routes, err := app.db.getMachinePrimaryRoutes(&machine1)
+	routes, err := db.GetMachinePrimaryRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 2)
 
-	routes, err = app.db.getMachinePrimaryRoutes(&machine2)
+	routes, err = db.GetMachinePrimaryRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 0)
+
+	c.Assert(channelUpdates, check.Equals, int32(3))
 }
 
 func (s *Suite) TestSubnetFailover(c *check.C) {
-	user, err := app.db.CreateUser("test")
+	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.db.GetMachine("test", "test_enable_route_machine")
+	_, err = db.GetMachine("test", "test_enable_route_machine")
 	c.Assert(err, check.NotNil)
 
 	prefix, err := netip.ParsePrefix(
@@ -238,134 +246,136 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	}
 
 	now := time.Now()
-	machine1 := Machine{
+	machine1 := types.Machine{
 		ID:             1,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo1),
+		HostInfo:       types.HostInfo(hostInfo1),
 		LastSeen:       &now,
 	}
-	app.db.db.Save(&machine1)
+	db.db.Save(&machine1)
 
-	err = app.db.processMachineRoutes(&machine1)
+	err = db.ProcessMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine1, prefix.String())
+	err = db.enableRoutes(&machine1, prefix.String())
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine1, prefix2.String())
+	err = db.enableRoutes(&machine1, prefix2.String())
 	c.Assert(err, check.IsNil)
 
-	err = app.db.handlePrimarySubnetFailover()
+	err = db.HandlePrimarySubnetFailover()
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes1, err := app.db.GetEnabledRoutes(&machine1)
+	enabledRoutes1, err := db.GetEnabledRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes1), check.Equals, 2)
 
-	route, err := app.db.getPrimaryRoute(prefix)
+	route, err := db.getPrimaryRoute(prefix)
 	c.Assert(err, check.IsNil)
 	c.Assert(route.MachineID, check.Equals, machine1.ID)
 
 	hostInfo2 := tailcfg.Hostinfo{
 		RoutableIPs: []netip.Prefix{prefix2},
 	}
-	machine2 := Machine{
+	machine2 := types.Machine{
 		ID:             2,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo2),
+		HostInfo:       types.HostInfo(hostInfo2),
 		LastSeen:       &now,
 	}
-	app.db.db.Save(&machine2)
+	db.db.Save(&machine2)
 
-	err = app.db.processMachineRoutes(&machine2)
+	err = db.ProcessMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine2, prefix2.String())
+	err = db.enableRoutes(&machine2, prefix2.String())
 	c.Assert(err, check.IsNil)
 
-	err = app.db.handlePrimarySubnetFailover()
+	err = db.HandlePrimarySubnetFailover()
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes1, err = app.db.GetEnabledRoutes(&machine1)
+	enabledRoutes1, err = db.GetEnabledRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes1), check.Equals, 2)
 
-	enabledRoutes2, err := app.db.GetEnabledRoutes(&machine2)
+	enabledRoutes2, err := db.GetEnabledRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes2), check.Equals, 1)
 
-	routes, err := app.db.getMachinePrimaryRoutes(&machine1)
+	routes, err := db.GetMachinePrimaryRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 2)
 
-	routes, err = app.db.getMachinePrimaryRoutes(&machine2)
+	routes, err = db.GetMachinePrimaryRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 0)
 
 	// lets make machine1 lastseen 10 mins ago
 	before := now.Add(-10 * time.Minute)
 	machine1.LastSeen = &before
-	err = app.db.db.Save(&machine1).Error
+	err = db.db.Save(&machine1).Error
 	c.Assert(err, check.IsNil)
 
-	err = app.db.handlePrimarySubnetFailover()
+	err = db.HandlePrimarySubnetFailover()
 	c.Assert(err, check.IsNil)
 
-	routes, err = app.db.getMachinePrimaryRoutes(&machine1)
-	c.Assert(err, check.IsNil)
-	c.Assert(len(routes), check.Equals, 1)
-
-	routes, err = app.db.getMachinePrimaryRoutes(&machine2)
+	routes, err = db.GetMachinePrimaryRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 1)
 
-	machine2.HostInfo = HostInfo(tailcfg.Hostinfo{
+	routes, err = db.GetMachinePrimaryRoutes(&machine2)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(routes), check.Equals, 1)
+
+	machine2.HostInfo = types.HostInfo(tailcfg.Hostinfo{
 		RoutableIPs: []netip.Prefix{prefix, prefix2},
 	})
-	err = app.db.db.Save(&machine2).Error
+	err = db.db.Save(&machine2).Error
 	c.Assert(err, check.IsNil)
 
-	err = app.db.processMachineRoutes(&machine2)
+	err = db.ProcessMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine2, prefix.String())
+	err = db.enableRoutes(&machine2, prefix.String())
 	c.Assert(err, check.IsNil)
 
-	err = app.db.handlePrimarySubnetFailover()
+	err = db.HandlePrimarySubnetFailover()
 	c.Assert(err, check.IsNil)
 
-	routes, err = app.db.getMachinePrimaryRoutes(&machine1)
+	routes, err = db.GetMachinePrimaryRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 0)
 
-	routes, err = app.db.getMachinePrimaryRoutes(&machine2)
+	routes, err = db.GetMachinePrimaryRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 2)
+
+	c.Assert(channelUpdates, check.Equals, int32(6))
 }
 
 // TestAllowedIPRoutes tests that the AllowedIPs are correctly set for a node,
 // including both the primary routes the node is responsible for, and the
 // exit node routes if enabled.
 func (s *Suite) TestAllowedIPRoutes(c *check.C) {
-	user, err := app.db.CreateUser("test")
+	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.db.GetMachine("test", "test_enable_route_machine")
+	_, err = db.GetMachine("test", "test_enable_route_machine")
 	c.Assert(err, check.NotNil)
 
 	prefix, err := netip.ParsePrefix(
@@ -397,35 +407,35 @@ func (s *Suite) TestAllowedIPRoutes(c *check.C) {
 	machineKey := key.NewMachine()
 
 	now := time.Now()
-	machine1 := Machine{
+	machine1 := types.Machine{
 		ID:             1,
 		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
 		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       util.DiscoPublicKeyStripPrefix(discoKey.Public()),
 		Hostname:       "test_enable_route_machine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo1),
+		HostInfo:       types.HostInfo(hostInfo1),
 		LastSeen:       &now,
 	}
-	app.db.db.Save(&machine1)
+	db.db.Save(&machine1)
 
-	err = app.db.processMachineRoutes(&machine1)
+	err = db.ProcessMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine1, prefix.String())
+	err = db.enableRoutes(&machine1, prefix.String())
 	c.Assert(err, check.IsNil)
 
 	// We do not enable this one on purpose to test that it is not enabled
-	// err = app.db.enableRoutes(&machine1, prefix2.String())
+	// err = db.enableRoutes(&machine1, prefix2.String())
 	// c.Assert(err, check.IsNil)
 
-	routes, err := app.db.GetMachineRoutes(&machine1)
+	routes, err := db.GetMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	for _, route := range routes {
-		if route.isExitRoute() {
-			err = app.db.EnableRoute(uint64(route.ID))
+		if route.IsExitRoute() {
+			err = db.EnableRoute(uint64(route.ID))
 			c.Assert(err, check.IsNil)
 
 			// We only enable one exit route, so we can test that both are enabled
@@ -433,14 +443,14 @@ func (s *Suite) TestAllowedIPRoutes(c *check.C) {
 		}
 	}
 
-	err = app.db.handlePrimarySubnetFailover()
+	err = db.HandlePrimarySubnetFailover()
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes1, err := app.db.GetEnabledRoutes(&machine1)
+	enabledRoutes1, err := db.GetEnabledRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes1), check.Equals, 3)
 
-	peer, err := app.db.toNode(machine1, app.aclPolicy, "headscale.net", nil)
+	peer, err := db.TailNode(machine1, &policy.ACLPolicy{}, nil)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(peer.AllowedIPs), check.Equals, 3)
@@ -461,44 +471,46 @@ func (s *Suite) TestAllowedIPRoutes(c *check.C) {
 
 	// Now we disable only one of the exit routes
 	// and we see if both are disabled
-	var exitRouteV4 Route
+	var exitRouteV4 types.Route
 	for _, route := range routes {
-		if route.isExitRoute() && netip.Prefix(route.Prefix) == prefixExitNodeV4 {
+		if route.IsExitRoute() && netip.Prefix(route.Prefix) == prefixExitNodeV4 {
 			exitRouteV4 = route
 
 			break
 		}
 	}
 
-	err = app.db.DisableRoute(uint64(exitRouteV4.ID))
+	err = db.DisableRoute(uint64(exitRouteV4.ID))
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes1, err = app.db.GetEnabledRoutes(&machine1)
+	enabledRoutes1, err = db.GetEnabledRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes1), check.Equals, 1)
 
 	// and now we delete only one of the exit routes
 	// and we check if both are deleted
-	routes, err = app.db.GetMachineRoutes(&machine1)
+	routes, err = db.GetMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 4)
 
-	err = app.db.DeleteRoute(uint64(exitRouteV4.ID))
+	err = db.DeleteRoute(uint64(exitRouteV4.ID))
 	c.Assert(err, check.IsNil)
 
-	routes, err = app.db.GetMachineRoutes(&machine1)
+	routes, err = db.GetMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 2)
+
+	c.Assert(channelUpdates, check.Equals, int32(2))
 }
 
 func (s *Suite) TestDeleteRoutes(c *check.C) {
-	user, err := app.db.CreateUser("test")
+	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.db.GetMachine("test", "test_enable_route_machine")
+	_, err = db.GetMachine("test", "test_enable_route_machine")
 	c.Assert(err, check.NotNil)
 
 	prefix, err := netip.ParsePrefix(
@@ -516,36 +528,38 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	}
 
 	now := time.Now()
-	machine1 := Machine{
+	machine1 := types.Machine{
 		ID:             1,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_machine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo1),
+		HostInfo:       types.HostInfo(hostInfo1),
 		LastSeen:       &now,
 	}
-	app.db.db.Save(&machine1)
+	db.db.Save(&machine1)
 
-	err = app.db.processMachineRoutes(&machine1)
+	err = db.ProcessMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine1, prefix.String())
+	err = db.enableRoutes(&machine1, prefix.String())
 	c.Assert(err, check.IsNil)
 
-	err = app.db.enableRoutes(&machine1, prefix2.String())
+	err = db.enableRoutes(&machine1, prefix2.String())
 	c.Assert(err, check.IsNil)
 
-	routes, err := app.db.GetMachineRoutes(&machine1)
+	routes, err := db.GetMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
-	err = app.db.DeleteRoute(uint64(routes[0].ID))
+	err = db.DeleteRoute(uint64(routes[0].ID))
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes1, err := app.db.GetEnabledRoutes(&machine1)
+	enabledRoutes1, err := db.GetEnabledRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes1), check.Equals, 1)
+
+	c.Assert(channelUpdates, check.Equals, int32(2))
 }

@@ -1,4 +1,4 @@
-package hscontrol
+package util
 
 import (
 	"net/netip"
@@ -105,7 +105,7 @@ func Test_parseIPSet(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseIPSet(tt.args.arg, tt.args.bits)
+			got, err := ParseIPSet(tt.args.arg, tt.args.bits)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseIPSet() error = %v, wantErr %v", err, tt.wantErr)
 
