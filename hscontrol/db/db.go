@@ -1,9 +1,7 @@
-package hscontrol
+package db
 
 import (
 	"context"
-	"database/sql/driver"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -11,11 +9,12 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"tailscale.com/tailcfg"
 )
 
 const (
@@ -26,7 +25,6 @@ const (
 
 var (
 	errValueNotFound        = errors.New("not found")
-	ErrCannotParsePrefix    = errors.New("cannot parse prefix")
 	errDatabaseNotSupported = errors.New("database type not supported")
 )
 
@@ -38,8 +36,9 @@ type KV struct {
 }
 
 type HSDatabase struct {
-	db              *gorm.DB
-	notifyStateChan chan<- struct{}
+	db               *gorm.DB
+	notifyStateChan  chan<- struct{}
+	notifyPolicyChan chan<- struct{}
 
 	ipAllocationMutex sync.Mutex
 
@@ -54,6 +53,7 @@ func NewHeadscaleDatabase(
 	dbType, connectionAddr string,
 	stripEmailDomain, debug bool,
 	notifyStateChan chan<- struct{},
+	notifyPolicyChan chan<- struct{},
 	ipPrefixes []netip.Prefix,
 	baseDomain string,
 ) (*HSDatabase, error) {
@@ -63,8 +63,9 @@ func NewHeadscaleDatabase(
 	}
 
 	db := HSDatabase{
-		db:              dbConn,
-		notifyStateChan: notifyStateChan,
+		db:               dbConn,
+		notifyStateChan:  notifyStateChan,
+		notifyPolicyChan: notifyPolicyChan,
 
 		ipPrefixes:       ipPrefixes,
 		baseDomain:       baseDomain,
@@ -79,30 +80,30 @@ func NewHeadscaleDatabase(
 
 	_ = dbConn.Migrator().RenameTable("namespaces", "users")
 
-	err = dbConn.AutoMigrate(User{})
+	err = dbConn.AutoMigrate(types.User{})
 	if err != nil {
 		return nil, err
 	}
 
-	_ = dbConn.Migrator().RenameColumn(&Machine{}, "namespace_id", "user_id")
-	_ = dbConn.Migrator().RenameColumn(&PreAuthKey{}, "namespace_id", "user_id")
+	_ = dbConn.Migrator().RenameColumn(&types.Machine{}, "namespace_id", "user_id")
+	_ = dbConn.Migrator().RenameColumn(&types.PreAuthKey{}, "namespace_id", "user_id")
 
-	_ = dbConn.Migrator().RenameColumn(&Machine{}, "ip_address", "ip_addresses")
-	_ = dbConn.Migrator().RenameColumn(&Machine{}, "name", "hostname")
+	_ = dbConn.Migrator().RenameColumn(&types.Machine{}, "ip_address", "ip_addresses")
+	_ = dbConn.Migrator().RenameColumn(&types.Machine{}, "name", "hostname")
 
 	// GivenName is used as the primary source of DNS names, make sure
 	// the field is populated and normalized if it was not when the
 	// machine was registered.
-	_ = dbConn.Migrator().RenameColumn(&Machine{}, "nickname", "given_name")
+	_ = dbConn.Migrator().RenameColumn(&types.Machine{}, "nickname", "given_name")
 
 	// If the Machine table has a column for registered,
 	// find all occourences of "false" and drop them. Then
 	// remove the column.
-	if dbConn.Migrator().HasColumn(&Machine{}, "registered") {
+	if dbConn.Migrator().HasColumn(&types.Machine{}, "registered") {
 		log.Info().
 			Msg(`Database has legacy "registered" column in machine, removing...`)
 
-		machines := Machines{}
+		machines := types.Machines{}
 		if err := dbConn.Not("registered").Find(&machines).Error; err != nil {
 			log.Error().Err(err).Msg("Error accessing db")
 		}
@@ -112,7 +113,7 @@ func NewHeadscaleDatabase(
 				Str("machine", machine.Hostname).
 				Str("machine_key", machine.MachineKey).
 				Msg("Deleting unregistered machine")
-			if err := dbConn.Delete(&Machine{}, machine.ID).Error; err != nil {
+			if err := dbConn.Delete(&types.Machine{}, machine.ID).Error; err != nil {
 				log.Error().
 					Err(err).
 					Str("machine", machine.Hostname).
@@ -121,23 +122,23 @@ func NewHeadscaleDatabase(
 			}
 		}
 
-		err := dbConn.Migrator().DropColumn(&Machine{}, "registered")
+		err := dbConn.Migrator().DropColumn(&types.Machine{}, "registered")
 		if err != nil {
 			log.Error().Err(err).Msg("Error dropping registered column")
 		}
 	}
 
-	err = dbConn.AutoMigrate(&Route{})
+	err = dbConn.AutoMigrate(&types.Route{})
 	if err != nil {
 		return nil, err
 	}
 
-	if dbConn.Migrator().HasColumn(&Machine{}, "enabled_routes") {
+	if dbConn.Migrator().HasColumn(&types.Machine{}, "enabled_routes") {
 		log.Info().Msgf("Database has legacy enabled_routes column in machine, migrating...")
 
 		type MachineAux struct {
 			ID            uint64
-			EnabledRoutes IPPrefixes
+			EnabledRoutes types.IPPrefixes
 		}
 
 		machinesAux := []MachineAux{}
@@ -157,8 +158,8 @@ func NewHeadscaleDatabase(
 				}
 
 				err = dbConn.Preload("Machine").
-					Where("machine_id = ? AND prefix = ?", machine.ID, IPPrefix(prefix)).
-					First(&Route{}).
+					Where("machine_id = ? AND prefix = ?", machine.ID, types.IPPrefix(prefix)).
+					First(&types.Route{}).
 					Error
 				if err == nil {
 					log.Info().
@@ -168,11 +169,11 @@ func NewHeadscaleDatabase(
 					continue
 				}
 
-				route := Route{
+				route := types.Route{
 					MachineID:  machine.ID,
 					Advertised: true,
 					Enabled:    true,
-					Prefix:     IPPrefix(prefix),
+					Prefix:     types.IPPrefix(prefix),
 				}
 				if err := dbConn.Create(&route).Error; err != nil {
 					log.Error().Err(err).Msg("Error creating route")
@@ -185,26 +186,26 @@ func NewHeadscaleDatabase(
 			}
 		}
 
-		err = dbConn.Migrator().DropColumn(&Machine{}, "enabled_routes")
+		err = dbConn.Migrator().DropColumn(&types.Machine{}, "enabled_routes")
 		if err != nil {
 			log.Error().Err(err).Msg("Error dropping enabled_routes column")
 		}
 	}
 
-	err = dbConn.AutoMigrate(&Machine{})
+	err = dbConn.AutoMigrate(&types.Machine{})
 	if err != nil {
 		return nil, err
 	}
 
-	if dbConn.Migrator().HasColumn(&Machine{}, "given_name") {
-		machines := Machines{}
+	if dbConn.Migrator().HasColumn(&types.Machine{}, "given_name") {
+		machines := types.Machines{}
 		if err := dbConn.Find(&machines).Error; err != nil {
 			log.Error().Err(err).Msg("Error accessing db")
 		}
 
 		for item, machine := range machines {
 			if machine.GivenName == "" {
-				normalizedHostname, err := NormalizeToFQDNRules(
+				normalizedHostname, err := util.NormalizeToFQDNRules(
 					machine.Hostname,
 					stripEmailDomain,
 				)
@@ -233,19 +234,19 @@ func NewHeadscaleDatabase(
 		return nil, err
 	}
 
-	err = dbConn.AutoMigrate(&PreAuthKey{})
+	err = dbConn.AutoMigrate(&types.PreAuthKey{})
 	if err != nil {
 		return nil, err
 	}
 
-	err = dbConn.AutoMigrate(&PreAuthKeyACLTag{})
+	err = dbConn.AutoMigrate(&types.PreAuthKeyACLTag{})
 	if err != nil {
 		return nil, err
 	}
 
 	_ = dbConn.Migrator().DropTable("shared_machines")
 
-	err = dbConn.AutoMigrate(&APIKey{})
+	err = dbConn.AutoMigrate(&types.APIKey{})
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +340,7 @@ func (hsdb *HSDatabase) setValue(key string, value string) error {
 	return nil
 }
 
-func (hsdb *HSDatabase) pingDB(ctx context.Context) error {
+func (hsdb *HSDatabase) PingDB(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	sqlDB, err := hsdb.db.DB()
@@ -350,97 +351,11 @@ func (hsdb *HSDatabase) pingDB(ctx context.Context) error {
 	return sqlDB.PingContext(ctx)
 }
 
-// This is a "wrapper" type around tailscales
-// Hostinfo to allow us to add database "serialization"
-// methods. This allows us to use a typed values throughout
-// the code and not have to marshal/unmarshal and error
-// check all over the code.
-type HostInfo tailcfg.Hostinfo
-
-func (hi *HostInfo) Scan(destination interface{}) error {
-	switch value := destination.(type) {
-	case []byte:
-		return json.Unmarshal(value, hi)
-
-	case string:
-		return json.Unmarshal([]byte(value), hi)
-
-	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+func (hsdb *HSDatabase) Close() error {
+	db, err := hsdb.db.DB()
+	if err != nil {
+		return err
 	}
-}
 
-// Value return json value, implement driver.Valuer interface.
-func (hi HostInfo) Value() (driver.Value, error) {
-	bytes, err := json.Marshal(hi)
-
-	return string(bytes), err
-}
-
-type IPPrefix netip.Prefix
-
-func (i *IPPrefix) Scan(destination interface{}) error {
-	switch value := destination.(type) {
-	case string:
-		prefix, err := netip.ParsePrefix(value)
-		if err != nil {
-			return err
-		}
-		*i = IPPrefix(prefix)
-
-		return nil
-	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrCannotParsePrefix, destination)
-	}
-}
-
-// Value return json value, implement driver.Valuer interface.
-func (i IPPrefix) Value() (driver.Value, error) {
-	prefixStr := netip.Prefix(i).String()
-
-	return prefixStr, nil
-}
-
-type IPPrefixes []netip.Prefix
-
-func (i *IPPrefixes) Scan(destination interface{}) error {
-	switch value := destination.(type) {
-	case []byte:
-		return json.Unmarshal(value, i)
-
-	case string:
-		return json.Unmarshal([]byte(value), i)
-
-	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
-	}
-}
-
-// Value return json value, implement driver.Valuer interface.
-func (i IPPrefixes) Value() (driver.Value, error) {
-	bytes, err := json.Marshal(i)
-
-	return string(bytes), err
-}
-
-type StringList []string
-
-func (i *StringList) Scan(destination interface{}) error {
-	switch value := destination.(type) {
-	case []byte:
-		return json.Unmarshal(value, i)
-
-	case string:
-		return json.Unmarshal([]byte(value), i)
-
-	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
-	}
-}
-
-// Value return json value, implement driver.Valuer interface.
-func (i StringList) Value() (driver.Value, error) {
-	bytes, err := json.Marshal(i)
-
-	return string(bytes), err
+	return db.Close()
 }

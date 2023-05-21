@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -165,7 +166,7 @@ func generateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 //
 // This will produce a resolver like:
 // `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
-func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine Machine) {
+func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine types.Machine) {
 	for _, resolver := range resolvers {
 		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
 			attrs := url.Values{
@@ -185,8 +186,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine Machine) {
 func getMapResponseDNSConfig(
 	dnsConfigOrig *tailcfg.DNSConfig,
 	baseDomain string,
-	machine Machine,
-	peers Machines,
+	machine types.Machine,
+	peers types.Machines,
 ) *tailcfg.DNSConfig {
 	var dnsConfig *tailcfg.DNSConfig = dnsConfigOrig.Clone()
 	if dnsConfigOrig != nil && dnsConfigOrig.Proxied { // if MagicDNS is enabled
@@ -200,7 +201,7 @@ func getMapResponseDNSConfig(
 			),
 		)
 
-		userSet := mapset.NewSet[User]()
+		userSet := mapset.NewSet[types.User]()
 		userSet.Add(machine.User)
 		for _, p := range peers {
 			userSet.Add(p.User)

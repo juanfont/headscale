@@ -18,7 +18,7 @@ type Suite struct{}
 
 var (
 	tmpDir string
-	app    Headscale
+	app    *Headscale
 )
 
 func (s *Suite) SetUpTest(c *check.C) {
@@ -34,11 +34,15 @@ func (s *Suite) ResetDB(c *check.C) {
 		os.RemoveAll(tmpDir)
 	}
 	var err error
-	tmpDir, err = os.MkdirTemp("", "autoygg-client-test")
+	tmpDir, err = os.MkdirTemp("", "autoygg-client-test2")
 	if err != nil {
 		c.Fatal(err)
 	}
 	cfg := Config{
+		PrivateKeyPath:      tmpDir + "/private.key",
+		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+		DBtype:              "sqlite3",
+		DBpath:              tmpDir + "/headscale_test.db",
 		IPPrefixes: []netip.Prefix{
 			netip.MustParsePrefix("10.27.0.0/23"),
 		},
@@ -47,29 +51,8 @@ func (s *Suite) ResetDB(c *check.C) {
 		},
 	}
 
-	// TODO(kradalby): make this use NewHeadscale properly so it doesnt drift
-	app = Headscale{
-		cfg:      &cfg,
-		dbType:   "sqlite3",
-		dbString: tmpDir + "/headscale_test.db",
-
-		stateUpdateChan:       make(chan struct{}),
-		cancelStateUpdateChan: make(chan struct{}),
-	}
-
-	go app.watchStateChannel()
-
-	db, err := NewHeadscaleDatabase(
-		app.dbType,
-		app.dbString,
-		cfg.OIDC.StripEmaildomain,
-		false,
-		app.stateUpdateChan,
-		cfg.IPPrefixes,
-		"",
-	)
+	app, err = NewHeadscale(&cfg)
 	if err != nil {
 		c.Fatal(err)
 	}
-	app.db = db
 }

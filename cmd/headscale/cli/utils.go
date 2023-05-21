@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -41,13 +42,15 @@ func getHeadscaleApp() (*hscontrol.Headscale, error) {
 
 	if cfg.ACL.PolicyPath != "" {
 		aclPath := util.AbsolutePathFromConfigPath(cfg.ACL.PolicyPath)
-		err = app.LoadACLPolicyFromPath(aclPath)
+		pol, err := policy.LoadACLPolicyFromPath(aclPath)
 		if err != nil {
 			log.Fatal().
 				Str("path", aclPath).
 				Err(err).
 				Msg("Could not load the ACL policy")
 		}
+
+		app.ACLPolicy = pol
 	}
 
 	return app, nil

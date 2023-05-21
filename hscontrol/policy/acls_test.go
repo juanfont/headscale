@@ -1,4 +1,4 @@
-package hscontrol
+package policy
 
 import (
 	"errors"
@@ -7,15 +7,24 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
-	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 )
 
+func Test(t *testing.T) {
+	check.TestingT(t)
+}
+
+var _ = check.Suite(&Suite{})
+
+type Suite struct{}
+
 func (s *Suite) TestWrongPath(c *check.C) {
-	err := app.LoadACLPolicyFromPath("asdfg")
+	_, err := LoadACLPolicyFromPath("asdfg")
 	c.Assert(err, check.NotNil)
 }
 
@@ -23,7 +32,7 @@ func (s *Suite) TestBrokenHuJson(c *check.C) {
 	acl := []byte(`
 {
 	`)
-	err := app.LoadACLPolicyFromBytes(acl, "hujson")
+	_, err := LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.NotNil)
 }
 
@@ -34,9 +43,9 @@ func (s *Suite) TestInvalidPolicyHuson(c *check.C) {
 	"but_a_policy_though": false
 }
 	`)
-	err := app.LoadACLPolicyFromBytes(acl, "hujson")
+	_, err := LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.NotNil)
-	c.Assert(err, check.Equals, errEmptyPolicy)
+	c.Assert(err, check.Equals, ErrEmptyPolicy)
 }
 
 func (s *Suite) TestParseHosts(c *check.C) {
@@ -185,8 +194,13 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 	],
 }
 	`)
-	err := app.LoadACLPolicyFromBytes(acl, "hujson")
+	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
+	c.Assert(pol.ACLs, check.HasLen, 6)
+	c.Assert(err, check.IsNil)
+
+	rules, err := pol.generateFilterRules(types.Machines{}, false)
 	c.Assert(err, check.NotNil)
+	c.Assert(rules, check.IsNil)
 }
 
 func (s *Suite) TestBasicRule(c *check.C) {
@@ -212,17 +226,17 @@ func (s *Suite) TestBasicRule(c *check.C) {
 	],
 }
 	`)
-	err := app.LoadACLPolicyFromBytes(acl, "hujson")
+	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
 
-	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
+	rules, err := pol.generateFilterRules(types.Machines{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 }
 
 // TODO(kradalby): Make tests values safe, independent and descriptive.
 func (s *Suite) TestInvalidAction(c *check.C) {
-	app.aclPolicy = &ACLPolicy{
+	pol := &ACLPolicy{
 		ACLs: []ACL{
 			{
 				Action:       "invalidAction",
@@ -231,88 +245,13 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 			},
 		},
 	}
-	err := app.UpdateACLRules()
-	c.Assert(errors.Is(err, errInvalidAction), check.Equals, true)
-}
-
-func (s *Suite) TestSshRules(c *check.C) {
-	envknob.Setenv("HEADSCALE_EXPERIMENTAL_FEATURE_SSH", "1")
-
-	user, err := app.db.CreateUser("user1")
-	c.Assert(err, check.IsNil)
-
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = app.db.GetMachine("user1", "testmachine")
-	c.Assert(err, check.NotNil)
-	hostInfo := tailcfg.Hostinfo{
-		OS:          "centos",
-		Hostname:    "testmachine",
-		RequestTags: []string{"tag:test"},
-	}
-
-	machine := Machine{
-		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "testmachine",
-		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo),
-	}
-	app.db.db.Save(&machine)
-
-	app.aclPolicy = &ACLPolicy{
-		Groups: Groups{
-			"group:test": []string{"user1"},
-		},
-		Hosts: Hosts{
-			"client": netip.PrefixFrom(netip.MustParseAddr("100.64.99.42"), 32),
-		},
-		ACLs: []ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"*"},
-				Destinations: []string{"*:*"},
-			},
-		},
-		SSHs: []SSH{
-			{
-				Action:       "accept",
-				Sources:      []string{"group:test"},
-				Destinations: []string{"client"},
-				Users:        []string{"autogroup:nonroot"},
-			},
-			{
-				Action:       "accept",
-				Sources:      []string{"*"},
-				Destinations: []string{"client"},
-				Users:        []string{"autogroup:nonroot"},
-			},
-		},
-	}
-
-	err = app.UpdateACLRules()
-
-	c.Assert(err, check.IsNil)
-	c.Assert(app.sshPolicy, check.NotNil)
-	c.Assert(app.sshPolicy.Rules, check.HasLen, 2)
-	c.Assert(app.sshPolicy.Rules[0].SSHUsers, check.HasLen, 1)
-	c.Assert(app.sshPolicy.Rules[0].Principals, check.HasLen, 1)
-	c.Assert(app.sshPolicy.Rules[0].Principals[0].UserLogin, check.Matches, "user1")
-
-	c.Assert(app.sshPolicy.Rules[1].SSHUsers, check.HasLen, 1)
-	c.Assert(app.sshPolicy.Rules[1].Principals, check.HasLen, 1)
-	c.Assert(app.sshPolicy.Rules[1].Principals[0].NodeIP, check.Matches, "*")
+	_, _, err := GenerateFilterRules(pol, types.Machines{}, false)
+	c.Assert(errors.Is(err, ErrInvalidAction), check.Equals, true)
 }
 
 func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
 	// this ACL is wrong because the group in Sources sections doesn't exist
-	app.aclPolicy = &ACLPolicy{
+	pol := &ACLPolicy{
 		Groups: Groups{
 			"group:test":  []string{"foo"},
 			"group:error": []string{"foo", "group:test"},
@@ -325,13 +264,13 @@ func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
 			},
 		},
 	}
-	err := app.UpdateACLRules()
-	c.Assert(errors.Is(err, errInvalidGroup), check.Equals, true)
+	_, _, err := GenerateFilterRules(pol, types.Machines{}, false)
+	c.Assert(errors.Is(err, ErrInvalidGroup), check.Equals, true)
 }
 
 func (s *Suite) TestInvalidTagOwners(c *check.C) {
 	// this ACL is wrong because no tagOwners own the requested tag for the server
-	app.aclPolicy = &ACLPolicy{
+	pol := &ACLPolicy{
 		ACLs: []ACL{
 			{
 				Action:       "accept",
@@ -340,232 +279,9 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 			},
 		},
 	}
-	err := app.UpdateACLRules()
-	c.Assert(errors.Is(err, errInvalidTag), check.Equals, true)
-}
 
-// this test should validate that we can expand a group in a TagOWner section and
-// match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
-// the tag is matched in the Sources section.
-func (s *Suite) TestValidExpandTagOwnersInSources(c *check.C) {
-	user, err := app.db.CreateUser("user1")
-	c.Assert(err, check.IsNil)
-
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = app.db.GetMachine("user1", "testmachine")
-	c.Assert(err, check.NotNil)
-	hostInfo := tailcfg.Hostinfo{
-		OS:          "centos",
-		Hostname:    "testmachine",
-		RequestTags: []string{"tag:test"},
-	}
-
-	machine := Machine{
-		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "testmachine",
-		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo),
-	}
-	app.db.db.Save(&machine)
-
-	app.aclPolicy = &ACLPolicy{
-		Groups:    Groups{"group:test": []string{"user1", "user2"}},
-		TagOwners: TagOwners{"tag:test": []string{"user3", "group:test"}},
-		ACLs: []ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"tag:test"},
-				Destinations: []string{"*:*"},
-			},
-		},
-	}
-	err = app.UpdateACLRules()
-	c.Assert(err, check.IsNil)
-	c.Assert(app.aclRules, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1/32")
-}
-
-// this test should validate that we can expand a group in a TagOWner section and
-// match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
-// the tag is matched in the Destinations section.
-func (s *Suite) TestValidExpandTagOwnersInDestinations(c *check.C) {
-	user, err := app.db.CreateUser("user1")
-	c.Assert(err, check.IsNil)
-
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = app.db.GetMachine("user1", "testmachine")
-	c.Assert(err, check.NotNil)
-	hostInfo := tailcfg.Hostinfo{
-		OS:          "centos",
-		Hostname:    "testmachine",
-		RequestTags: []string{"tag:test"},
-	}
-
-	machine := Machine{
-		ID:             1,
-		MachineKey:     "12345",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "testmachine",
-		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo),
-	}
-	app.db.db.Save(&machine)
-
-	app.aclPolicy = &ACLPolicy{
-		Groups:    Groups{"group:test": []string{"user1", "user2"}},
-		TagOwners: TagOwners{"tag:test": []string{"user3", "group:test"}},
-		ACLs: []ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"*"},
-				Destinations: []string{"tag:test:*"},
-			},
-		},
-	}
-	err = app.UpdateACLRules()
-	c.Assert(err, check.IsNil)
-	c.Assert(app.aclRules, check.HasLen, 1)
-	c.Assert(app.aclRules[0].DstPorts, check.HasLen, 1)
-	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
-}
-
-// need a test with:
-// tag on a host that isn't owned by a tag owners. So the user
-// of the host should be valid.
-func (s *Suite) TestInvalidTagValidUser(c *check.C) {
-	user, err := app.db.CreateUser("user1")
-	c.Assert(err, check.IsNil)
-
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = app.db.GetMachine("user1", "testmachine")
-	c.Assert(err, check.NotNil)
-	hostInfo := tailcfg.Hostinfo{
-		OS:          "centos",
-		Hostname:    "testmachine",
-		RequestTags: []string{"tag:foo"},
-	}
-
-	machine := Machine{
-		ID:             1,
-		MachineKey:     "12345",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "testmachine",
-		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo),
-	}
-	app.db.db.Save(&machine)
-
-	app.aclPolicy = &ACLPolicy{
-		TagOwners: TagOwners{"tag:test": []string{"user1"}},
-		ACLs: []ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"user1"},
-				Destinations: []string{"*:*"},
-			},
-		},
-	}
-	err = app.UpdateACLRules()
-	c.Assert(err, check.IsNil)
-	c.Assert(app.aclRules, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.1/32")
-}
-
-// tag on a host is owned by a tag owner, the tag is valid.
-// an ACL rule is matching the tag to a user. It should not be valid since the
-// host should be tied to the tag now.
-func (s *Suite) TestValidTagInvalidUser(c *check.C) {
-	user, err := app.db.CreateUser("user1")
-	c.Assert(err, check.IsNil)
-
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = app.db.GetMachine("user1", "webserver")
-	c.Assert(err, check.NotNil)
-	hostInfo := tailcfg.Hostinfo{
-		OS:          "centos",
-		Hostname:    "webserver",
-		RequestTags: []string{"tag:webapp"},
-	}
-
-	machine := Machine{
-		ID:             1,
-		MachineKey:     "12345",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "webserver",
-		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo),
-	}
-	app.db.db.Save(&machine)
-	_, err = app.db.GetMachine("user1", "user")
-	hostInfo2 := tailcfg.Hostinfo{
-		OS:       "debian",
-		Hostname: "Hostname",
-	}
-	c.Assert(err, check.NotNil)
-	machine = Machine{
-		ID:             2,
-		MachineKey:     "56789",
-		NodeKey:        "bar2",
-		DiscoKey:       "faab",
-		Hostname:       "user",
-		IPAddresses:    MachineAddresses{netip.MustParseAddr("100.64.0.2")},
-		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
-		HostInfo:       HostInfo(hostInfo2),
-	}
-	app.db.db.Save(&machine)
-
-	app.aclPolicy = &ACLPolicy{
-		TagOwners: TagOwners{"tag:webapp": []string{"user1"}},
-		ACLs: []ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"user1"},
-				Destinations: []string{"tag:webapp:80,443"},
-			},
-		},
-	}
-	err = app.UpdateACLRules()
-	c.Assert(err, check.IsNil)
-	c.Assert(app.aclRules, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(app.aclRules[0].SrcIPs[0], check.Equals, "100.64.0.2/32")
-	c.Assert(app.aclRules[0].DstPorts, check.HasLen, 2)
-	c.Assert(app.aclRules[0].DstPorts[0].Ports.First, check.Equals, uint16(80))
-	c.Assert(app.aclRules[0].DstPorts[0].Ports.Last, check.Equals, uint16(80))
-	c.Assert(app.aclRules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
-	c.Assert(app.aclRules[0].DstPorts[1].Ports.First, check.Equals, uint16(443))
-	c.Assert(app.aclRules[0].DstPorts[1].Ports.Last, check.Equals, uint16(443))
-	c.Assert(app.aclRules[0].DstPorts[1].IP, check.Equals, "100.64.0.1/32")
+	_, _, err := GenerateFilterRules(pol, types.Machines{}, false)
+	c.Assert(errors.Is(err, ErrInvalidTag), check.Equals, true)
 }
 
 func (s *Suite) TestPortRange(c *check.C) {
@@ -589,10 +305,11 @@ func (s *Suite) TestPortRange(c *check.C) {
 	],
 }
 	`)
-	err := app.LoadACLPolicyFromBytes(acl, "hujson")
+	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
+	c.Assert(pol, check.NotNil)
 
-	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
+	rules, err := pol.generateFilterRules(types.Machines{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -644,10 +361,11 @@ func (s *Suite) TestProtocolParsing(c *check.C) {
 	],
 }
 	`)
-	err := app.LoadACLPolicyFromBytes(acl, "hujson")
+	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
+	c.Assert(pol, check.NotNil)
 
-	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
+	rules, err := pol.generateFilterRules(types.Machines{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -678,10 +396,11 @@ func (s *Suite) TestPortWildcard(c *check.C) {
 	],
 }
 	`)
-	err := app.LoadACLPolicyFromBytes(acl, "hujson")
+	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
 	c.Assert(err, check.IsNil)
+	c.Assert(pol, check.NotNil)
 
-	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
+	rules, err := pol.generateFilterRules(types.Machines{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -704,10 +423,11 @@ acls:
       - "*"
     dst:
       - host-1:*`)
-	err := app.LoadACLPolicyFromBytes(acl, "yaml")
+	pol, err := LoadACLPolicyFromBytes(acl, "yaml")
 	c.Assert(err, check.IsNil)
+	c.Assert(pol, check.NotNil)
 
-	rules, err := app.aclPolicy.generateFilterRules([]Machine{}, false)
+	rules, err := pol.generateFilterRules(types.Machines{}, false)
 	c.Assert(err, check.IsNil)
 	c.Assert(rules, check.NotNil)
 
@@ -717,138 +437,6 @@ acls:
 	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
 	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
 	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
-}
-
-func (s *Suite) TestPortUser(c *check.C) {
-	user, err := app.db.CreateUser("testuser")
-	c.Assert(err, check.IsNil)
-
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = app.db.GetMachine("testuser", "testmachine")
-	c.Assert(err, check.NotNil)
-	ips, _ := app.db.getAvailableIPs()
-	machine := Machine{
-		ID:             0,
-		MachineKey:     "12345",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "testmachine",
-		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    ips,
-		AuthKeyID:      uint(pak.ID),
-	}
-	app.db.db.Save(&machine)
-
-	acl := []byte(`
-{
-	"hosts": {
-		"host-1": "100.100.100.100",
-		"subnet-1": "100.100.101.100/24",
-	},
-
-	"acls": [
-		{
-			"action": "accept",
-			"src": [
-				"testuser",
-			],
-			"dst": [
-				"host-1:*",
-			],
-		},
-	],
-}
-	`)
-	err = app.LoadACLPolicyFromBytes(acl, "hujson")
-	c.Assert(err, check.IsNil)
-
-	machines, err := app.db.ListMachines()
-	c.Assert(err, check.IsNil)
-
-	rules, err := app.aclPolicy.generateFilterRules(machines, false)
-	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-
-	c.Assert(rules, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
-	c.Assert(len(ips), check.Equals, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String()+"/32")
-}
-
-func (s *Suite) TestPortGroup(c *check.C) {
-	user, err := app.db.CreateUser("testuser")
-	c.Assert(err, check.IsNil)
-
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = app.db.GetMachine("testuser", "testmachine")
-	c.Assert(err, check.NotNil)
-	ips, _ := app.db.getAvailableIPs()
-	machine := Machine{
-		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "testmachine",
-		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
-		IPAddresses:    ips,
-		AuthKeyID:      uint(pak.ID),
-	}
-	app.db.db.Save(&machine)
-
-	acl := []byte(`
-{
-	"groups": {
-		"group:example": [
-			"testuser",
-		],
-	},
-
-	"hosts": {
-		"host-1": "100.100.100.100",
-		"subnet-1": "100.100.101.100/24",
-	},
-
-	"acls": [
-		{
-			"action": "accept",
-			"src": [
-				"group:example",
-			],
-			"dst": [
-				"host-1:*",
-			],
-		},
-	],
-}
-	`)
-	err = app.LoadACLPolicyFromBytes(acl, "hujson")
-	c.Assert(err, check.IsNil)
-
-	machines, err := app.db.ListMachines()
-	c.Assert(err, check.IsNil)
-
-	rules, err := app.aclPolicy.generateFilterRules(machines, false)
-	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-
-	c.Assert(rules, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Not(check.Equals), "not an ip")
-	c.Assert(len(ips), check.Equals, 1)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, ips[0].String()+"/32")
 }
 
 func Test_expandGroup(t *testing.T) {
@@ -1151,54 +739,54 @@ func Test_expandPorts(t *testing.T) {
 
 func Test_listMachinesInUser(t *testing.T) {
 	type args struct {
-		machines []Machine
+		machines types.Machines
 		user     string
 	}
 	tests := []struct {
 		name string
 		args args
-		want []Machine
+		want types.Machines
 	}{
 		{
 			name: "1 machine in user",
 			args: args{
-				machines: []Machine{
-					{User: User{Name: "joe"}},
+				machines: types.Machines{
+					{User: types.User{Name: "joe"}},
 				},
 				user: "joe",
 			},
-			want: []Machine{
-				{User: User{Name: "joe"}},
+			want: types.Machines{
+				{User: types.User{Name: "joe"}},
 			},
 		},
 		{
 			name: "3 machines, 2 in user",
 			args: args{
-				machines: []Machine{
-					{ID: 1, User: User{Name: "joe"}},
-					{ID: 2, User: User{Name: "marc"}},
-					{ID: 3, User: User{Name: "marc"}},
+				machines: types.Machines{
+					{ID: 1, User: types.User{Name: "joe"}},
+					{ID: 2, User: types.User{Name: "marc"}},
+					{ID: 3, User: types.User{Name: "marc"}},
 				},
 				user: "marc",
 			},
-			want: []Machine{
-				{ID: 2, User: User{Name: "marc"}},
-				{ID: 3, User: User{Name: "marc"}},
+			want: types.Machines{
+				{ID: 2, User: types.User{Name: "marc"}},
+				{ID: 3, User: types.User{Name: "marc"}},
 			},
 		},
 		{
 			name: "5 machines, 0 in user",
 			args: args{
-				machines: []Machine{
-					{ID: 1, User: User{Name: "joe"}},
-					{ID: 2, User: User{Name: "marc"}},
-					{ID: 3, User: User{Name: "marc"}},
-					{ID: 4, User: User{Name: "marc"}},
-					{ID: 5, User: User{Name: "marc"}},
+				machines: types.Machines{
+					{ID: 1, User: types.User{Name: "joe"}},
+					{ID: 2, User: types.User{Name: "marc"}},
+					{ID: 3, User: types.User{Name: "marc"}},
+					{ID: 4, User: types.User{Name: "marc"}},
+					{ID: 5, User: types.User{Name: "marc"}},
 				},
 				user: "mickael",
 			},
-			want: []Machine{},
+			want: types.Machines{},
 		},
 	}
 	for _, test := range tests {
@@ -1234,7 +822,7 @@ func Test_expandAlias(t *testing.T) {
 		pol ACLPolicy
 	}
 	type args struct {
-		machines         []Machine
+		machines         types.Machines
 		aclPolicy        ACLPolicy
 		alias            string
 		stripEmailDomain bool
@@ -1253,10 +841,10 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "*",
-				machines: []Machine{
-					{IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.1")}},
+				machines: types.Machines{
+					{IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.1")}},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.78.84.227"),
 						},
 					},
@@ -1278,30 +866,30 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "group:accountant",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						User: User{Name: "marc"},
+						User: types.User{Name: "marc"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1320,30 +908,30 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "group:hr",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						User: User{Name: "marc"},
+						User: types.User{Name: "marc"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1358,7 +946,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias:            "10.0.0.3",
-				machines:         []Machine{},
+				machines:         types.Machines{},
 				stripEmailDomain: true,
 			},
 			want: set([]string{
@@ -1373,7 +961,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias:            "10.0.0.1",
-				machines:         []Machine{},
+				machines:         types.Machines{},
 				stripEmailDomain: true,
 			},
 			want: set([]string{
@@ -1388,12 +976,12 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "10.0.0.1",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1410,13 +998,13 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "10.0.0.1",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
 							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1433,13 +1021,13 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
 							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1460,7 +1048,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias:            "testy",
-				machines:         []Machine{},
+				machines:         types.Machines{},
 				stripEmailDomain: true,
 			},
 			want:    set([]string{}, []string{"10.0.0.132/32"}),
@@ -1477,7 +1065,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias:            "homeNetwork",
-				machines:         []Machine{},
+				machines:         types.Machines{},
 				stripEmailDomain: true,
 			},
 			want:    set([]string{}, []string{"192.168.1.0/24"}),
@@ -1490,7 +1078,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias:            "10.0.0.0/16",
-				machines:         []Machine{},
+				machines:         types.Machines{},
 				aclPolicy:        ACLPolicy{},
 				stripEmailDomain: true,
 			},
@@ -1506,40 +1094,40 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						User: User{Name: "marc"},
+						User: types.User{Name: "marc"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1561,30 +1149,30 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						User: User{Name: "marc"},
+						User: types.User{Name: "marc"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1599,32 +1187,32 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User:       User{Name: "joe"},
+						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User:       User{Name: "joe"},
+						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						User: User{Name: "marc"},
+						User: types.User{Name: "marc"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1643,36 +1231,36 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User:       User{Name: "joe"},
+						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						User: User{Name: "marc"},
+						User: types.User{Name: "marc"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1689,40 +1277,40 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "joe",
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						User: User{Name: "marc"},
+						User: types.User{Name: "marc"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 				},
 				stripEmailDomain: true,
@@ -1733,7 +1321,7 @@ func Test_expandAlias(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := test.field.pol.expandAlias(
+			got, err := test.field.pol.ExpandAlias(
 				test.args.machines,
 				test.args.alias,
 				test.args.stripEmailDomain,
@@ -1753,14 +1341,14 @@ func Test_expandAlias(t *testing.T) {
 func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 	type args struct {
 		aclPolicy        *ACLPolicy
-		nodes            []Machine
+		nodes            types.Machines
 		user             string
 		stripEmailDomain bool
 	}
 	tests := []struct {
 		name    string
 		args    args
-		want    []Machine
+		want    types.Machines
 		wantErr bool
 	}{
 		{
@@ -1769,43 +1357,43 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
-				nodes: []Machine{
+				nodes: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 				},
 				user:             "joe",
 				stripEmailDomain: true,
 			},
-			want: []Machine{
+			want: types.Machines{
 				{
-					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					User:        User{Name: "joe"},
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.4")},
+					User:        types.User{Name: "joe"},
 				},
 			},
 		},
@@ -1820,43 +1408,43 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						"tag:accountant-webserver": []string{"group:accountant"},
 					},
 				},
-				nodes: []Machine{
+				nodes: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 				},
 				user:             "joe",
 				stripEmailDomain: true,
 			},
-			want: []Machine{
+			want: types.Machines{
 				{
-					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					User:        User{Name: "joe"},
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.4")},
+					User:        types.User{Name: "joe"},
 				},
 			},
 		},
@@ -1866,39 +1454,39 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
-				nodes: []Machine{
+				nodes: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User:       User{Name: "joe"},
+						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:accountant-webserver"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 				},
 				user:             "joe",
 				stripEmailDomain: true,
 			},
-			want: []Machine{
+			want: types.Machines{
 				{
-					IPAddresses: MachineAddresses{netip.MustParseAddr("100.64.0.4")},
-					User:        User{Name: "joe"},
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.4")},
+					User:        types.User{Name: "joe"},
 				},
 			},
 		},
@@ -1908,67 +1496,67 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
-				nodes: []Machine{
+				nodes: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "hr-web1",
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
-						User: User{Name: "joe"},
-						HostInfo: HostInfo{
+						User: types.User{Name: "joe"},
+						HostInfo: types.HostInfo{
 							OS:          "centos",
 							Hostname:    "hr-web2",
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: User{Name: "joe"},
+						User: types.User{Name: "joe"},
 					},
 				},
 				user:             "joe",
 				stripEmailDomain: true,
 			},
-			want: []Machine{
+			want: types.Machines{
 				{
-					IPAddresses: MachineAddresses{
+					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 					},
-					User: User{Name: "joe"},
-					HostInfo: HostInfo{
+					User: types.User{Name: "joe"},
+					HostInfo: types.HostInfo{
 						OS:          "centos",
 						Hostname:    "hr-web1",
 						RequestTags: []string{"tag:hr-webserver"},
 					},
 				},
 				{
-					IPAddresses: MachineAddresses{
+					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.2"),
 					},
-					User: User{Name: "joe"},
-					HostInfo: HostInfo{
+					User: types.User{Name: "joe"},
+					HostInfo: types.HostInfo{
 						OS:          "centos",
 						Hostname:    "hr-web2",
 						RequestTags: []string{"tag:hr-webserver"},
 					},
 				},
 				{
-					IPAddresses: MachineAddresses{
+					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.4"),
 					},
-					User: User{Name: "joe"},
+					User: types.User{Name: "joe"},
 				},
 			},
 		},
@@ -1993,7 +1581,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 		pol ACLPolicy
 	}
 	type args struct {
-		machines         []Machine
+		machines         types.Machines
 		stripEmailDomain bool
 	}
 	tests := []struct {
@@ -2024,7 +1612,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				machines:         []Machine{},
+				machines:         types.Machines{},
 				stripEmailDomain: true,
 			},
 			want: []tailcfg.FilterRule{
@@ -2064,27 +1652,30 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				machines: []Machine{
+				machines: types.Machines{
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 					{
-						IPAddresses: MachineAddresses{
+						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
 						},
-						User: User{Name: "mickael"},
+						User: types.User{Name: "mickael"},
 					},
 				},
 				stripEmailDomain: true,
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1/32", "fd7a:115c:a1e0:ab12:4843:2222:6273:2221/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"fd7a:115c:a1e0:ab12:4843:2222:6273:2221/128",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP: "100.64.0.2/32",
@@ -2113,14 +1704,631 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				tt.args.stripEmailDomain,
 			)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ACLPolicy.generateFilterRules() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ACLgenerateFilterRules() error = %v, wantErr %v", err, tt.wantErr)
 
 				return
 			}
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				log.Trace().Interface("got", got).Msg("result")
-				t.Errorf("ACLPolicy.generateFilterRules() = %v, want %v", got, tt.want)
+				t.Errorf("ACLgenerateFilterRules() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_getTags(t *testing.T) {
+	type args struct {
+		aclPolicy        *ACLPolicy
+		machine          types.Machine
+		stripEmailDomain bool
+	}
+	tests := []struct {
+		name        string
+		args        args
+		wantInvalid []string
+		wantValid   []string
+	}{
+		{
+			name: "valid tag one machine",
+			args: args{
+				aclPolicy: &ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:valid": []string{"joe"},
+					},
+				},
+				machine: types.Machine{
+					User: types.User{
+						Name: "joe",
+					},
+					HostInfo: types.HostInfo{
+						RequestTags: []string{"tag:valid"},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   []string{"tag:valid"},
+			wantInvalid: nil,
+		},
+		{
+			name: "invalid tag and valid tag one machine",
+			args: args{
+				aclPolicy: &ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:valid": []string{"joe"},
+					},
+				},
+				machine: types.Machine{
+					User: types.User{
+						Name: "joe",
+					},
+					HostInfo: types.HostInfo{
+						RequestTags: []string{"tag:valid", "tag:invalid"},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   []string{"tag:valid"},
+			wantInvalid: []string{"tag:invalid"},
+		},
+		{
+			name: "multiple invalid and identical tags, should return only one invalid tag",
+			args: args{
+				aclPolicy: &ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:valid": []string{"joe"},
+					},
+				},
+				machine: types.Machine{
+					User: types.User{
+						Name: "joe",
+					},
+					HostInfo: types.HostInfo{
+						RequestTags: []string{
+							"tag:invalid",
+							"tag:valid",
+							"tag:invalid",
+						},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   []string{"tag:valid"},
+			wantInvalid: []string{"tag:invalid"},
+		},
+		{
+			name: "only invalid tags",
+			args: args{
+				aclPolicy: &ACLPolicy{
+					TagOwners: TagOwners{
+						"tag:valid": []string{"joe"},
+					},
+				},
+				machine: types.Machine{
+					User: types.User{
+						Name: "joe",
+					},
+					HostInfo: types.HostInfo{
+						RequestTags: []string{"tag:invalid", "very-invalid"},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   nil,
+			wantInvalid: []string{"tag:invalid", "very-invalid"},
+		},
+		{
+			name: "empty ACLPolicy should return empty tags and should not panic",
+			args: args{
+				aclPolicy: &ACLPolicy{},
+				machine: types.Machine{
+					User: types.User{
+						Name: "joe",
+					},
+					HostInfo: types.HostInfo{
+						RequestTags: []string{"tag:invalid", "very-invalid"},
+					},
+				},
+				stripEmailDomain: false,
+			},
+			wantValid:   nil,
+			wantInvalid: []string{"tag:invalid", "very-invalid"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotValid, gotInvalid := test.args.aclPolicy.GetTagsOfMachine(
+				test.args.machine,
+				test.args.stripEmailDomain,
+			)
+			for _, valid := range gotValid {
+				if !util.StringOrPrefixListContains(test.wantValid, valid) {
+					t.Errorf(
+						"valids: getTags() = %v, want %v",
+						gotValid,
+						test.wantValid,
+					)
+
+					break
+				}
+			}
+			for _, invalid := range gotInvalid {
+				if !util.StringOrPrefixListContains(test.wantInvalid, invalid) {
+					t.Errorf(
+						"invalids: getTags() = %v, want %v",
+						gotInvalid,
+						test.wantInvalid,
+					)
+
+					break
+				}
+			}
+		})
+	}
+}
+
+func Test_getFilteredByACLPeers(t *testing.T) {
+	type args struct {
+		machines types.Machines
+		rules    []tailcfg.FilterRule
+		machine  *types.Machine
+	}
+	tests := []struct {
+		name string
+		args args
+		want types.Machines
+	}{
+		{
+			name: "all hosts can talk to each other",
+			args: args{
+				machines: types.Machines{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+						},
+						User: types.User{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+						},
+						User: types.User{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+						},
+						User: types.User{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*"},
+						},
+					},
+				},
+				machine: &types.Machine{ // current machine
+					ID:          1,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.1")},
+					User:        types.User{Name: "joe"},
+				},
+			},
+			want: types.Machines{
+				{
+					ID:          2,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.2")},
+					User:        types.User{Name: "marc"},
+				},
+				{
+					ID:          3,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.3")},
+					User:        types.User{Name: "mickael"},
+				},
+			},
+		},
+		{
+			name: "One host can talk to another, but not all hosts",
+			args: args{
+				machines: types.Machines{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+						},
+						User: types.User{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+						},
+						User: types.User{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+						},
+						User: types.User{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.2"},
+						},
+					},
+				},
+				machine: &types.Machine{ // current machine
+					ID:          1,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.1")},
+					User:        types.User{Name: "joe"},
+				},
+			},
+			want: types.Machines{
+				{
+					ID:          2,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.2")},
+					User:        types.User{Name: "marc"},
+				},
+			},
+		},
+		{
+			name: "host cannot directly talk to destination, but return path is authorized",
+			args: args{
+				machines: types.Machines{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+						},
+						User: types.User{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+						},
+						User: types.User{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+						},
+						User: types.User{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"100.64.0.3"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.2"},
+						},
+					},
+				},
+				machine: &types.Machine{ // current machine
+					ID:          2,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.2")},
+					User:        types.User{Name: "marc"},
+				},
+			},
+			want: types.Machines{
+				{
+					ID:          3,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.3")},
+					User:        types.User{Name: "mickael"},
+				},
+			},
+		},
+		{
+			name: "rules allows all hosts to reach one destination",
+			args: args{
+				machines: types.Machines{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+						},
+						User: types.User{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+						},
+						User: types.User{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+						},
+						User: types.User{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.2"},
+						},
+					},
+				},
+				machine: &types.Machine{ // current machine
+					ID: 1,
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.1"),
+					},
+					User: types.User{Name: "joe"},
+				},
+			},
+			want: types.Machines{
+				{
+					ID: 2,
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.2"),
+					},
+					User: types.User{Name: "marc"},
+				},
+			},
+		},
+		{
+			name: "rules allows all hosts to reach one destination, destination can reach all hosts",
+			args: args{
+				machines: types.Machines{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+						},
+						User: types.User{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+						},
+						User: types.User{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+						},
+						User: types.User{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.2"},
+						},
+					},
+				},
+				machine: &types.Machine{ // current machine
+					ID: 2,
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.2"),
+					},
+					User: types.User{Name: "marc"},
+				},
+			},
+			want: types.Machines{
+				{
+					ID: 1,
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.1"),
+					},
+					User: types.User{Name: "joe"},
+				},
+				{
+					ID: 3,
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.3"),
+					},
+					User: types.User{Name: "mickael"},
+				},
+			},
+		},
+		{
+			name: "rule allows all hosts to reach all destinations",
+			args: args{
+				machines: types.Machines{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+						},
+						User: types.User{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+						},
+						User: types.User{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+						},
+						User: types.User{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						SrcIPs: []string{"*"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*"},
+						},
+					},
+				},
+				machine: &types.Machine{ // current machine
+					ID:          2,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.2")},
+					User:        types.User{Name: "marc"},
+				},
+			},
+			want: types.Machines{
+				{
+					ID: 1,
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.1"),
+					},
+					User: types.User{Name: "joe"},
+				},
+				{
+					ID:          3,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.3")},
+					User:        types.User{Name: "mickael"},
+				},
+			},
+		},
+		{
+			name: "without rule all communications are forbidden",
+			args: args{
+				machines: types.Machines{ // list of all machines in the database
+					{
+						ID: 1,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+						},
+						User: types.User{Name: "joe"},
+					},
+					{
+						ID: 2,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+						},
+						User: types.User{Name: "marc"},
+					},
+					{
+						ID: 3,
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+						},
+						User: types.User{Name: "mickael"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+				},
+				machine: &types.Machine{ // current machine
+					ID:          2,
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.2")},
+					User:        types.User{Name: "marc"},
+				},
+			},
+			want: types.Machines{},
+		},
+		{
+			// Investigating 699
+			// Found some machines: [ts-head-8w6paa ts-unstable-lys2ib ts-head-upcrmb ts-unstable-rlwpvr] machine=ts-head-8w6paa
+			// ACL rules generated ACL=[{"DstPorts":[{"Bits":null,"IP":"*","Ports":{"First":0,"Last":65535}}],"SrcIPs":["fd7a:115c:a1e0::3","100.64.0.3","fd7a:115c:a1e0::4","100.64.0.4"]}]
+			// ACL Cache Map={"100.64.0.3":{"*":{}},"100.64.0.4":{"*":{}},"fd7a:115c:a1e0::3":{"*":{}},"fd7a:115c:a1e0::4":{"*":{}}}
+			name: "issue-699-broken-star",
+			args: args{
+				machines: types.Machines{ //
+					{
+						ID:       1,
+						Hostname: "ts-head-upcrmb",
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.3"),
+							netip.MustParseAddr("fd7a:115c:a1e0::3"),
+						},
+						User: types.User{Name: "user1"},
+					},
+					{
+						ID:       2,
+						Hostname: "ts-unstable-rlwpvr",
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.4"),
+							netip.MustParseAddr("fd7a:115c:a1e0::4"),
+						},
+						User: types.User{Name: "user1"},
+					},
+					{
+						ID:       3,
+						Hostname: "ts-head-8w6paa",
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+							netip.MustParseAddr("fd7a:115c:a1e0::1"),
+						},
+						User: types.User{Name: "user2"},
+					},
+					{
+						ID:       4,
+						Hostname: "ts-unstable-lys2ib",
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+							netip.MustParseAddr("fd7a:115c:a1e0::2"),
+						},
+						User: types.User{Name: "user2"},
+					},
+				},
+				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+					{
+						DstPorts: []tailcfg.NetPortRange{
+							{
+								IP:    "*",
+								Ports: tailcfg.PortRange{First: 0, Last: 65535},
+							},
+						},
+						SrcIPs: []string{
+							"fd7a:115c:a1e0::3", "100.64.0.3",
+							"fd7a:115c:a1e0::4", "100.64.0.4",
+						},
+					},
+				},
+				machine: &types.Machine{ // current machine
+					ID:       3,
+					Hostname: "ts-head-8w6paa",
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.1"),
+						netip.MustParseAddr("fd7a:115c:a1e0::1"),
+					},
+					User: types.User{Name: "user2"},
+				},
+			},
+			want: types.Machines{
+				{
+					ID:       1,
+					Hostname: "ts-head-upcrmb",
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.3"),
+						netip.MustParseAddr("fd7a:115c:a1e0::3"),
+					},
+					User: types.User{Name: "user1"},
+				},
+				{
+					ID:       2,
+					Hostname: "ts-unstable-rlwpvr",
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.4"),
+						netip.MustParseAddr("fd7a:115c:a1e0::4"),
+					},
+					User: types.User{Name: "user1"},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FilterMachinesByACL(
+				tt.args.machine,
+				tt.args.machines,
+				tt.args.rules,
+			)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("filterMachinesByACL() = %v, want %v", got, tt.want)
 			}
 		})
 	}

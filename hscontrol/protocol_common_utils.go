@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
@@ -15,7 +16,7 @@ import (
 
 func (h *Headscale) getMapResponseData(
 	mapRequest tailcfg.MapRequest,
-	machine *Machine,
+	machine *types.Machine,
 	isNoise bool,
 ) ([]byte, error) {
 	mapResponse, err := h.generateMapResponse(mapRequest, machine)
@@ -43,7 +44,7 @@ func (h *Headscale) getMapResponseData(
 
 func (h *Headscale) getMapKeepAliveResponseData(
 	mapRequest tailcfg.MapRequest,
-	machine *Machine,
+	machine *types.Machine,
 	isNoise bool,
 ) ([]byte, error) {
 	keepAliveResponse := tailcfg.MapResponse{

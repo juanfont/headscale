@@ -1,14 +1,16 @@
-package hscontrol
+package db
 
 import (
 	"net/netip"
 
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
 )
 
 func (s *Suite) TestGetAvailableIp(c *check.C) {
-	ips, err := app.db.getAvailableIPs()
+	ips, err := db.getAvailableIPs()
 
 	c.Assert(err, check.IsNil)
 
@@ -19,32 +21,32 @@ func (s *Suite) TestGetAvailableIp(c *check.C) {
 }
 
 func (s *Suite) TestGetUsedIps(c *check.C) {
-	ips, err := app.db.getAvailableIPs()
+	ips, err := db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
-	user, err := app.db.CreateUser("test-ip")
+	user, err := db.CreateUser("test-ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.db.GetMachine("test", "testmachine")
+	_, err = db.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
-	machine := Machine{
+	machine := types.Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		IPAddresses:    ips,
 	}
-	app.db.db.Save(&machine)
+	db.db.Save(&machine)
 
-	usedIps, err := app.db.getUsedIPs()
+	usedIps, err := db.getUsedIPs()
 
 	c.Assert(err, check.IsNil)
 
@@ -56,46 +58,48 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	c.Assert(usedIps.Equal(expectedIPSet), check.Equals, true)
 	c.Assert(usedIps.Contains(expected), check.Equals, true)
 
-	machine1, err := app.db.GetMachineByID(0)
+	machine1, err := db.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
 	c.Assert(machine1.IPAddresses[0], check.Equals, expected)
+
+	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetMultiIp(c *check.C) {
-	user, err := app.db.CreateUser("test-ip-multi")
+	user, err := db.CreateUser("test-ip-multi")
 	c.Assert(err, check.IsNil)
 
 	for index := 1; index <= 350; index++ {
-		app.db.ipAllocationMutex.Lock()
+		db.ipAllocationMutex.Lock()
 
-		ips, err := app.db.getAvailableIPs()
+		ips, err := db.getAvailableIPs()
 		c.Assert(err, check.IsNil)
 
-		pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+		pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 
-		_, err = app.db.GetMachine("test", "testmachine")
+		_, err = db.GetMachine("test", "testmachine")
 		c.Assert(err, check.NotNil)
 
-		machine := Machine{
+		machine := types.Machine{
 			ID:             uint64(index),
 			MachineKey:     "foo",
 			NodeKey:        "bar",
 			DiscoKey:       "faa",
 			Hostname:       "testmachine",
 			UserID:         user.ID,
-			RegisterMethod: RegisterMethodAuthKey,
+			RegisterMethod: util.RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 			IPAddresses:    ips,
 		}
-		app.db.db.Save(&machine)
+		db.db.Save(&machine)
 
-		app.db.ipAllocationMutex.Unlock()
+		db.ipAllocationMutex.Unlock()
 	}
 
-	usedIps, err := app.db.getUsedIPs()
+	usedIps, err := db.getUsedIPs()
 	c.Assert(err, check.IsNil)
 
 	expected0 := netip.MustParseAddr("10.27.0.1")
@@ -117,7 +121,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(usedIps.Contains(expected300), check.Equals, true)
 
 	// Check that we can read back the IPs
-	machine1, err := app.db.GetMachineByID(1)
+	machine1, err := db.GetMachineByID(1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
 	c.Assert(
@@ -126,7 +130,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		netip.MustParseAddr("10.27.0.1"),
 	)
 
-	machine50, err := app.db.GetMachineByID(50)
+	machine50, err := db.GetMachineByID(50)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(machine50.IPAddresses), check.Equals, 1)
 	c.Assert(
@@ -136,7 +140,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	)
 
 	expectedNextIP := netip.MustParseAddr("10.27.1.95")
-	nextIP, err := app.db.getAvailableIPs()
+	nextIP, err := db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(nextIP), check.Equals, 1)
@@ -144,15 +148,17 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 
 	// If we call get Available again, we should receive
 	// the same IP, as it has not been reserved.
-	nextIP2, err := app.db.getAvailableIPs()
+	nextIP2, err := db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(nextIP2), check.Equals, 1)
 	c.Assert(nextIP2[0].String(), check.Equals, expectedNextIP.String())
+
+	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
-	ips, err := app.db.getAvailableIPs()
+	ips, err := db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
 	expected := netip.MustParseAddr("10.27.0.1")
@@ -160,30 +166,32 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 	c.Assert(len(ips), check.Equals, 1)
 	c.Assert(ips[0].String(), check.Equals, expected.String())
 
-	user, err := app.db.CreateUser("test-ip")
+	user, err := db.CreateUser("test-ip")
 	c.Assert(err, check.IsNil)
 
-	pak, err := app.db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = app.db.GetMachine("test", "testmachine")
+	_, err = db.GetMachine("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
-	machine := Machine{
+	machine := types.Machine{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
 		Hostname:       "testmachine",
 		UserID:         user.ID,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	app.db.db.Save(&machine)
+	db.db.Save(&machine)
 
-	ips2, err := app.db.getAvailableIPs()
+	ips2, err := db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(ips2), check.Equals, 1)
 	c.Assert(ips2[0].String(), check.Equals, expected.String())
+
+	c.Assert(channelUpdates, check.Equals, int32(0))
 }

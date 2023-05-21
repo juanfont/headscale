@@ -14,6 +14,8 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
@@ -638,7 +640,7 @@ func getUserName(
 	claims *IDTokenClaims,
 	stripEmaildomain bool,
 ) (string, error) {
-	userName, err := NormalizeToFQDNRules(
+	userName, err := util.NormalizeToFQDNRules(
 		claims.Email,
 		stripEmaildomain,
 	)
@@ -663,9 +665,9 @@ func getUserName(
 func (h *Headscale) findOrCreateNewUserForOIDCCallback(
 	writer http.ResponseWriter,
 	userName string,
-) (*User, error) {
+) (*types.User, error) {
 	user, err := h.db.GetUser(userName)
-	if errors.Is(err, ErrUserNotFound) {
+	if errors.Is(err, db.ErrUserNotFound) {
 		user, err = h.db.CreateUser(userName)
 
 		if err != nil {
@@ -709,7 +711,7 @@ func (h *Headscale) findOrCreateNewUserForOIDCCallback(
 
 func (h *Headscale) registerMachineForOIDCCallback(
 	writer http.ResponseWriter,
-	user *User,
+	user *types.User,
 	nodeKey *key.NodePublic,
 	expiry time.Time,
 ) error {
@@ -719,7 +721,7 @@ func (h *Headscale) registerMachineForOIDCCallback(
 		nodeKey.String(),
 		user.Name,
 		&expiry,
-		RegisterMethodOIDC,
+		util.RegisterMethodOIDC,
 	); err != nil {
 		log.Error().
 			Caller().

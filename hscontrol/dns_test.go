@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/netip"
 
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -160,7 +162,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 	_, err = app.db.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
-	machineInShared1 := &Machine{
+	machineInShared1 := &types.Machine{
 		ID:             1,
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
@@ -168,16 +170,17 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Hostname:       "test_get_shared_nodes_1",
 		UserID:         userShared1.ID,
 		User:           *userShared1,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
-	app.db.db.Save(machineInShared1)
+	err = app.db.MachineSave(machineInShared1)
+	c.Assert(err, check.IsNil)
 
 	_, err = app.db.GetMachine(userShared1.Name, machineInShared1.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machineInShared2 := &Machine{
+	machineInShared2 := &types.Machine{
 		ID:             2,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -185,16 +188,17 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Hostname:       "test_get_shared_nodes_2",
 		UserID:         userShared2.ID,
 		User:           *userShared2,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
-	app.db.db.Save(machineInShared2)
+	err = app.db.MachineSave(machineInShared2)
+	c.Assert(err, check.IsNil)
 
 	_, err = app.db.GetMachine(userShared2.Name, machineInShared2.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machineInShared3 := &Machine{
+	machineInShared3 := &types.Machine{
 		ID:             3,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -202,16 +206,17 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Hostname:       "test_get_shared_nodes_3",
 		UserID:         userShared3.ID,
 		User:           *userShared3,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
-	app.db.db.Save(machineInShared3)
+	err = app.db.MachineSave(machineInShared3)
+	c.Assert(err, check.IsNil)
 
 	_, err = app.db.GetMachine(userShared3.Name, machineInShared3.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machine2InShared1 := &Machine{
+	machine2InShared1 := &types.Machine{
 		ID:             4,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -219,11 +224,12 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Hostname:       "test_get_shared_nodes_4",
 		UserID:         userShared1.ID,
 		User:           *userShared1,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.4")},
 		AuthKeyID:      uint(PreAuthKey2InShared1.ID),
 	}
-	app.db.db.Save(machine2InShared1)
+	err = app.db.MachineSave(machine2InShared1)
+	c.Assert(err, check.IsNil)
 
 	baseDomain := "foobar.headscale.net"
 	dnsConfigOrig := tailcfg.DNSConfig{
@@ -232,7 +238,7 @@ func (s *Suite) TestDNSConfigMapResponseWithMagicDNS(c *check.C) {
 		Proxied: true,
 	}
 
-	peersOfMachineInShared1, err := app.db.getPeers(app.aclPolicy, app.aclRules, machineInShared1)
+	peersOfMachineInShared1, err := app.db.GetValidPeers(app.aclRules, machineInShared1)
 	c.Assert(err, check.IsNil)
 
 	dnsConfig := getMapResponseDNSConfig(
@@ -307,7 +313,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 	_, err = app.db.GetMachine(userShared1.Name, "test_get_shared_nodes_1")
 	c.Assert(err, check.NotNil)
 
-	machineInShared1 := &Machine{
+	machineInShared1 := &types.Machine{
 		ID:             1,
 		MachineKey:     "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
 		NodeKey:        "686824e749f3b7f2a5927ee6c1e422aee5292592d9179a271ed7b3e659b44a66",
@@ -315,16 +321,17 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Hostname:       "test_get_shared_nodes_1",
 		UserID:         userShared1.ID,
 		User:           *userShared1,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		AuthKeyID:      uint(preAuthKeyInShared1.ID),
 	}
-	app.db.db.Save(machineInShared1)
+	err = app.db.MachineSave(machineInShared1)
+	c.Assert(err, check.IsNil)
 
 	_, err = app.db.GetMachine(userShared1.Name, machineInShared1.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machineInShared2 := &Machine{
+	machineInShared2 := &types.Machine{
 		ID:             2,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -332,16 +339,17 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Hostname:       "test_get_shared_nodes_2",
 		UserID:         userShared2.ID,
 		User:           *userShared2,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		AuthKeyID:      uint(preAuthKeyInShared2.ID),
 	}
-	app.db.db.Save(machineInShared2)
+	err = app.db.MachineSave(machineInShared2)
+	c.Assert(err, check.IsNil)
 
 	_, err = app.db.GetMachine(userShared2.Name, machineInShared2.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machineInShared3 := &Machine{
+	machineInShared3 := &types.Machine{
 		ID:             3,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -349,16 +357,17 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Hostname:       "test_get_shared_nodes_3",
 		UserID:         userShared3.ID,
 		User:           *userShared3,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		AuthKeyID:      uint(preAuthKeyInShared3.ID),
 	}
-	app.db.db.Save(machineInShared3)
+	err = app.db.MachineSave(machineInShared3)
+	c.Assert(err, check.IsNil)
 
 	_, err = app.db.GetMachine(userShared3.Name, machineInShared3.Hostname)
 	c.Assert(err, check.IsNil)
 
-	machine2InShared1 := &Machine{
+	machine2InShared1 := &types.Machine{
 		ID:             4,
 		MachineKey:     "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
 		NodeKey:        "dec46ef9dc45c7d2f03bfcd5a640d9e24e3cc68ce3d9da223867c9bc6d5e9863",
@@ -366,11 +375,12 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Hostname:       "test_get_shared_nodes_4",
 		UserID:         userShared1.ID,
 		User:           *userShared1,
-		RegisterMethod: RegisterMethodAuthKey,
+		RegisterMethod: util.RegisterMethodAuthKey,
 		IPAddresses:    []netip.Addr{netip.MustParseAddr("100.64.0.4")},
 		AuthKeyID:      uint(preAuthKey2InShared1.ID),
 	}
-	app.db.db.Save(machine2InShared1)
+	err = app.db.MachineSave(machine2InShared1)
+	c.Assert(err, check.IsNil)
 
 	baseDomain := "foobar.headscale.net"
 	dnsConfigOrig := tailcfg.DNSConfig{
@@ -379,7 +389,7 @@ func (s *Suite) TestDNSConfigMapResponseWithoutMagicDNS(c *check.C) {
 		Proxied: false,
 	}
 
-	peersOfMachine1Shared1, err := app.db.getPeers(app.aclPolicy, app.aclRules, machineInShared1)
+	peersOfMachine1Shared1, err := app.db.GetValidPeers(app.aclRules, machineInShared1)
 	c.Assert(err, check.IsNil)
 
 	dnsConfig := getMapResponseDNSConfig(

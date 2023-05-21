@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
@@ -24,16 +25,16 @@ const machineNameContextKey = contextKey("machineName")
 func (h *Headscale) handlePollCommon(
 	writer http.ResponseWriter,
 	ctx context.Context,
-	machine *Machine,
+	machine *types.Machine,
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
 ) {
 	machine.Hostname = mapRequest.Hostinfo.Hostname
-	machine.HostInfo = HostInfo(*mapRequest.Hostinfo)
+	machine.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
 	machine.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
 	now := time.Now().UTC()
 
-	err := h.db.processMachineRoutes(machine)
+	err := h.db.ProcessMachineRoutes(machine)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -43,18 +44,13 @@ func (h *Headscale) handlePollCommon(
 	}
 
 	// update ACLRules with peer informations (to update server tags if necessary)
-	if h.aclPolicy != nil {
-		err := h.UpdateACLRules()
-		if err != nil {
-			log.Error().
-				Caller().
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Err(err)
-		}
+	if h.ACLPolicy != nil {
+		// TODO(kradalby): Since this is not blocking, I might have introduced a bug here.
+		// It will be resolved later as we change up the policy stuff.
+		h.policyUpdateChan <- struct{}{}
 
 		// update routes with peer information
-		err = h.db.EnableAutoApprovedRoutes(h.aclPolicy, machine)
+		err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, machine)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -78,19 +74,17 @@ func (h *Headscale) handlePollCommon(
 		machine.LastSeen = &now
 	}
 
-	if err := h.db.db.Updates(machine).Error; err != nil {
-		if err != nil {
-			log.Error().
-				Str("handler", "PollNetMap").
-				Bool("noise", isNoise).
-				Str("node_key", machine.NodeKey).
-				Str("machine", machine.Hostname).
-				Err(err).
-				Msg("Failed to persist/update machine in the database")
-			http.Error(writer, "", http.StatusInternalServerError)
+	if err := h.db.MachineSave(machine); err != nil {
+		log.Error().
+			Str("handler", "PollNetMap").
+			Bool("noise", isNoise).
+			Str("node_key", machine.NodeKey).
+			Str("machine", machine.Hostname).
+			Err(err).
+			Msg("Failed to persist/update machine in the database")
+		http.Error(writer, "", http.StatusInternalServerError)
 
-			return
-		}
+		return
 	}
 
 	mapResp, err := h.getMapResponseData(mapRequest, machine, isNoise)
@@ -244,7 +238,7 @@ func (h *Headscale) handlePollCommon(
 func (h *Headscale) pollNetMapStream(
 	writer http.ResponseWriter,
 	ctxReq context.Context,
-	machine *Machine,
+	machine *types.Machine,
 	mapRequest tailcfg.MapRequest,
 	pollDataChan chan []byte,
 	keepAliveChan chan []byte,
@@ -457,7 +451,7 @@ func (h *Headscale) pollNetMapStream(
 			updateRequestsReceivedOnChannel.WithLabelValues(machine.User.Name, machine.Hostname).
 				Inc()
 
-			if h.db.isOutdated(machine, h.getLastStateChange()) {
+			if h.db.IsOutdated(machine, h.getLastStateChange()) {
 				var lastUpdate time.Time
 				if machine.LastSuccessfulUpdate != nil {
 					lastUpdate = *machine.LastSuccessfulUpdate
@@ -626,7 +620,7 @@ func (h *Headscale) scheduledPollWorker(
 	updateChan chan struct{},
 	keepAliveChan chan []byte,
 	mapRequest tailcfg.MapRequest,
-	machine *Machine,
+	machine *types.Machine,
 	isNoise bool,
 ) {
 	keepAliveTicker := time.NewTicker(keepAliveInterval)

@@ -3,21 +3,22 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package hscontrol
+package db
 
 import (
 	"errors"
 	"fmt"
 	"net/netip"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 )
 
 var ErrCouldNotAllocateIP = errors.New("could not find any suitable IP")
 
-func (hsdb *HSDatabase) getAvailableIPs() (MachineAddresses, error) {
-	var ips MachineAddresses
+func (hsdb *HSDatabase) getAvailableIPs() (types.MachineAddresses, error) {
+	var ips types.MachineAddresses
 	var err error
 	for _, ipPrefix := range hsdb.ipPrefixes {
 		var ip *netip.Addr
@@ -68,11 +69,11 @@ func (hsdb *HSDatabase) getUsedIPs() (*netipx.IPSet, error) {
 	// but this was quick to get running and it should be enough
 	// to begin experimenting with a dual stack tailnet.
 	var addressesSlices []string
-	hsdb.db.Model(&Machine{}).Pluck("ip_addresses", &addressesSlices)
+	hsdb.db.Model(&types.Machine{}).Pluck("ip_addresses", &addressesSlices)
 
 	var ips netipx.IPSetBuilder
 	for _, slice := range addressesSlices {
-		var machineAddresses MachineAddresses
+		var machineAddresses types.MachineAddresses
 		err := machineAddresses.Scan(slice)
 		if err != nil {
 			return &netipx.IPSet{}, fmt.Errorf(

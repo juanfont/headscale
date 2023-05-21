@@ -1,4 +1,4 @@
-package hscontrol
+package policy
 
 import (
 	"encoding/json"
