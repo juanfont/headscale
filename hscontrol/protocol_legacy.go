@@ -45,7 +45,7 @@ func (h *Headscale) RegistrationHandler(
 		return
 	}
 	registerRequest := tailcfg.RegisterRequest{}
-	err = util.DecodeAndUnmarshalNaCl(body, &registerRequest, &machineKey, h.privateKey)
+	err = util.DecodeAndUnmarshalNaCl(body, &registerRequest, &machineKey, h.privateKey2019)
 	if err != nil {
 		log.Error().
 			Caller().

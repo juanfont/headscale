@@ -32,7 +32,7 @@ type DERPServer struct {
 
 func (h *Headscale) NewDERPServer() (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
-	server := derp.NewServer(key.NodePrivate(*h.privateKey), log.Info().Msgf)
+	server := derp.NewServer(key.NodePrivate(*h.privateKey2019), log.Info().Msgf)
 	region, err := h.generateRegionLocalDERP()
 	if err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (h *Headscale) DERPHandler(
 	log.Trace().Caller().Msgf("Hijacked connection from %v", req.RemoteAddr)
 
 	if !fastStart {
-		pubKey := h.privateKey.Public()
+		pubKey := h.privateKey2019.Public()
 		pubKeyStr, _ := pubKey.MarshalText() //nolint
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\n"+
 			"Upgrade: DERP\r\n"+

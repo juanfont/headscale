@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -29,6 +30,19 @@ func (h *Headscale) handlePollCommon(
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
 ) {
+	// TODO(kradalby): This is a stepping stone, mapper should be initiated once
+	// per client or something similar
+	mapp := mapper.NewMapper(h.db,
+		h.privateKey2019,
+		isNoise,
+		h.DERPMap,
+		h.cfg.BaseDomain,
+		h.cfg.DNSConfig,
+		h.cfg.LogTail.Enabled,
+		h.cfg.RandomizeClientPort,
+		h.cfg.OIDC.StripEmaildomain,
+	)
+
 	machine.Hostname = mapRequest.Hostinfo.Hostname
 	machine.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
 	machine.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
@@ -87,7 +101,7 @@ func (h *Headscale) handlePollCommon(
 		return
 	}
 
-	mapResp, err := h.getMapResponseData(mapRequest, machine, isNoise)
+	mapResp, err := mapp.CreateMapResponse(mapRequest, machine, h.ACLPolicy)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").
@@ -245,6 +259,19 @@ func (h *Headscale) pollNetMapStream(
 	updateChan chan struct{},
 	isNoise bool,
 ) {
+	// TODO(kradalby): This is a stepping stone, mapper should be initiated once
+	// per client or something similar
+	mapp := mapper.NewMapper(h.db,
+		h.privateKey2019,
+		isNoise,
+		h.DERPMap,
+		h.cfg.BaseDomain,
+		h.cfg.DNSConfig,
+		h.cfg.LogTail.Enabled,
+		h.cfg.RandomizeClientPort,
+		h.cfg.OIDC.StripEmaildomain,
+	)
+
 	h.pollNetMapStreamWG.Add(1)
 	defer h.pollNetMapStreamWG.Done()
 
@@ -463,7 +490,7 @@ func (h *Headscale) pollNetMapStream(
 					Time("last_successful_update", lastUpdate).
 					Time("last_state_change", h.getLastStateChange(machine.User)).
 					Msgf("There has been updates since the last successful update to %s", machine.Hostname)
-				data, err := h.getMapResponseData(mapRequest, machine, isNoise)
+				data, err := mapp.CreateMapResponse(mapRequest, machine, h.ACLPolicy)
 				if err != nil {
 					log.Error().
 						Str("handler", "PollNetMapStream").
@@ -623,6 +650,19 @@ func (h *Headscale) scheduledPollWorker(
 	machine *types.Machine,
 	isNoise bool,
 ) {
+	// TODO(kradalby): This is a stepping stone, mapper should be initiated once
+	// per client or something similar
+	mapp := mapper.NewMapper(h.db,
+		h.privateKey2019,
+		isNoise,
+		h.DERPMap,
+		h.cfg.BaseDomain,
+		h.cfg.DNSConfig,
+		h.cfg.LogTail.Enabled,
+		h.cfg.RandomizeClientPort,
+		h.cfg.OIDC.StripEmaildomain,
+	)
+
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
 	updateCheckerTicker := time.NewTicker(h.cfg.NodeUpdateCheckInterval)
 
@@ -643,7 +683,7 @@ func (h *Headscale) scheduledPollWorker(
 			return
 
 		case <-keepAliveTicker.C:
-			data, err := h.getMapKeepAliveResponseData(mapRequest, machine, isNoise)
+			data, err := mapp.CreateKeepAliveResponse(mapRequest, machine)
 			if err != nil {
 				log.Error().
 					Str("func", "keepAlive").

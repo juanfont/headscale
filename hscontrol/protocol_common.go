@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -61,7 +62,7 @@ func (h *Headscale) KeyHandler(
 		// TS2021 (Tailscale v2 protocol) requires to have a different key
 		if clientCapabilityVersion >= NoiseCapabilityVersion {
 			resp := tailcfg.OverTLSPublicKeyResponse{
-				LegacyPublicKey: h.privateKey.Public(),
+				LegacyPublicKey: h.privateKey2019.Public(),
 				PublicKey:       h.noisePrivateKey.Public(),
 			}
 			writer.Header().Set("Content-Type", "application/json")
@@ -84,7 +85,7 @@ func (h *Headscale) KeyHandler(
 	// Old clients don't send a 'v' parameter, so we send the legacy public key
 	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	_, err := writer.Write([]byte(util.MachinePublicKeyStripPrefix(h.privateKey.Public())))
+	_, err := writer.Write([]byte(util.MachinePublicKeyStripPrefix(h.privateKey2019.Public())))
 	if err != nil {
 		log.Error().
 			Caller().
@@ -323,7 +324,7 @@ func (h *Headscale) handleAuthKeyCommon(
 			Msg("Failed authentication via AuthKey")
 		resp.MachineAuthorized = false
 
-		respBody, err := h.marshalResponse(resp, machineKey, isNoise)
+		respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -483,7 +484,7 @@ func (h *Headscale) handleAuthKeyCommon(
 	// Otherwise it will need to exec `tailscale up` twice to fetch the *LoginName*
 	resp.Login = *pak.User.TailscaleLogin()
 
-	respBody, err := h.marshalResponse(resp, machineKey, isNoise)
+	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -548,7 +549,7 @@ func (h *Headscale) handleNewMachineCommon(
 			registerRequest.NodeKey)
 	}
 
-	respBody, err := h.marshalResponse(resp, machineKey, isNoise)
+	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -609,7 +610,7 @@ func (h *Headscale) handleMachineLogOutCommon(
 	resp.MachineAuthorized = false
 	resp.NodeKeyExpired = true
 	resp.User = *machine.User.TailscaleUser()
-	respBody, err := h.marshalResponse(resp, machineKey, isNoise)
+	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -673,7 +674,7 @@ func (h *Headscale) handleMachineValidRegistrationCommon(
 	resp.User = *machine.User.TailscaleUser()
 	resp.Login = *machine.User.TailscaleLogin()
 
-	respBody, err := h.marshalResponse(resp, machineKey, isNoise)
+	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -735,7 +736,7 @@ func (h *Headscale) handleMachineRefreshKeyCommon(
 
 	resp.AuthURL = ""
 	resp.User = *machine.User.TailscaleUser()
-	respBody, err := h.marshalResponse(resp, machineKey, isNoise)
+	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -802,7 +803,7 @@ func (h *Headscale) handleMachineExpiredOrLoggedOutCommon(
 			registerRequest.NodeKey)
 	}
 
-	respBody, err := h.marshalResponse(resp, machineKey, isNoise)
+	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
