@@ -57,7 +57,7 @@ func (h *Headscale) PollNetMapHandler(
 		return
 	}
 	mapRequest := tailcfg.MapRequest{}
-	err = util.DecodeAndUnmarshalNaCl(body, &mapRequest, &machineKey, h.privateKey)
+	err = util.DecodeAndUnmarshalNaCl(body, &mapRequest, &machineKey, h.privateKey2019)
 	if err != nil {
 		log.Error().
 			Str("handler", "PollNetMap").

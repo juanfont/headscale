@@ -80,7 +80,7 @@ type Headscale struct {
 	dbString        string
 	dbType          string
 	dbDebug         bool
-	privateKey      *key.MachinePrivate
+	privateKey2019  *key.MachinePrivate
 	noisePrivateKey *key.MachinePrivate
 
 	DERPMap    *tailcfg.DERPMap
@@ -166,7 +166,7 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		cfg:                cfg,
 		dbType:             cfg.DBtype,
 		dbString:           dbString,
-		privateKey:         privateKey,
+		privateKey2019:     privateKey,
 		noisePrivateKey:    noisePrivateKey,
 		aclRules:           tailcfg.FilterAllowAll, // default allowall
 		registrationCache:  registrationCache,

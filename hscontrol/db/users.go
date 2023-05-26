@@ -2,13 +2,11 @@ package db
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
-	"tailscale.com/tailcfg"
 )
 
 var (
@@ -162,33 +160,4 @@ func (hsdb *HSDatabase) SetMachineUser(machine *types.Machine, username string) 
 	}
 
 	return nil
-}
-
-func (hsdb *HSDatabase) GetMapResponseUserProfiles(
-	machine types.Machine,
-	peers types.Machines,
-) []tailcfg.UserProfile {
-	userMap := make(map[string]types.User)
-	userMap[machine.User.Name] = machine.User
-	for _, peer := range peers {
-		userMap[peer.User.Name] = peer.User // not worth checking if already is there
-	}
-
-	profiles := []tailcfg.UserProfile{}
-	for _, user := range userMap {
-		displayName := user.Name
-
-		if hsdb.baseDomain != "" {
-			displayName = fmt.Sprintf("%s@%s", user.Name, hsdb.baseDomain)
-		}
-
-		profiles = append(profiles,
-			tailcfg.UserProfile{
-				ID:          tailcfg.UserID(user.ID),
-				LoginName:   user.Name,
-				DisplayName: displayName,
-			})
-	}
-
-	return profiles
 }

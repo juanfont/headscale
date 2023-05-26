@@ -39,15 +39,7 @@ var (
 	)
 )
 
-// filterMachinesByACL wrapper function to not have devs pass around locks and maps
-// related to the application outside of tests.
-func (hsdb *HSDatabase) filterMachinesByACL(
-	aclRules []tailcfg.FilterRule,
-	currentMachine *types.Machine, peers types.Machines,
-) types.Machines {
-	return policy.FilterMachinesByACL(currentMachine, peers, aclRules)
-}
-
+// ListPeers returns all peers of machine, regardless of any Policy.
 func (hsdb *HSDatabase) ListPeers(machine *types.Machine) (types.Machines, error) {
 	log.Trace().
 		Caller().
@@ -70,67 +62,6 @@ func (hsdb *HSDatabase) ListPeers(machine *types.Machine) (types.Machines, error
 		Msgf("Found peers: %s", machines.String())
 
 	return machines, nil
-}
-
-func (hsdb *HSDatabase) getPeers(
-	aclRules []tailcfg.FilterRule,
-	machine *types.Machine,
-) (types.Machines, error) {
-	var peers types.Machines
-	var err error
-
-	// If ACLs rules are defined, filter visible host list with the ACLs
-	// else use the classic user scope
-	if len(aclRules) > 0 {
-		var machines []types.Machine
-		machines, err = hsdb.ListMachines()
-		if err != nil {
-			log.Error().Err(err).Msg("Error retrieving list of machines")
-
-			return types.Machines{}, err
-		}
-		peers = hsdb.filterMachinesByACL(aclRules, machine, machines)
-	} else {
-		peers, err = hsdb.ListPeers(machine)
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Cannot fetch peers")
-
-			return types.Machines{}, err
-		}
-	}
-
-	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
-
-	log.Trace().
-		Caller().
-		Str("self", machine.Hostname).
-		Str("peers", peers.String()).
-		Msg("Peers returned to caller")
-
-	return peers, nil
-}
-
-func (hsdb *HSDatabase) GetValidPeers(
-	aclRules []tailcfg.FilterRule,
-	machine *types.Machine,
-) (types.Machines, error) {
-	validPeers := make(types.Machines, 0)
-
-	peers, err := hsdb.getPeers(aclRules, machine)
-	if err != nil {
-		return types.Machines{}, err
-	}
-
-	for _, peer := range peers {
-		if !peer.IsExpired() {
-			validPeers = append(validPeers, peer)
-		}
-	}
-
-	return validPeers, nil
 }
 
 func (hsdb *HSDatabase) ListMachines() ([]types.Machine, error) {
