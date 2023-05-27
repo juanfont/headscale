@@ -760,7 +760,6 @@ func (h *Headscale) Serve() error {
 				// Stop listening (and unlink the socket if unix type):
 				socketListener.Close()
 
-				<-h.cancelStateUpdateChan
 				close(h.stateUpdateChan)
 				close(h.cancelStateUpdateChan)
 
@@ -775,6 +774,7 @@ func (h *Headscale) Serve() error {
 
 				// And we're done:
 				cancel()
+				return
 			}
 		}
 	}
