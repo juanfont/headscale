@@ -175,11 +175,13 @@ func (api headscaleV1APIServer) RegisterMachine(
 		Str("node_key", request.GetKey()).
 		Msg("Registering machine")
 
+	expiryTime := time.Now().Add(api.h.cfg.DefaultExpiryTime)
+	
 	machine, err := api.h.db.RegisterMachineFromAuthCallback(
 		api.h.registrationCache,
 		request.GetKey(),
 		request.GetUser(),
-		nil,
+		&expiryTime,
 		util.RegisterMethodCLI,
 	)
 	if err != nil {

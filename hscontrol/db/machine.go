@@ -24,7 +24,6 @@ const (
 	MachineGivenNameHashLength = 8
 	MachineGivenNameTrimSize   = 2
 	MaxHostnameLength          = 255
-	DefaultKeyExpireTime       = 60 * time.Minute
 )
 
 var (
@@ -432,12 +431,7 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 
 			registrationMachine.UserID = user.ID
 			registrationMachine.RegisterMethod = registrationMethod
-			expiryTime := time.Now().Add(DefaultKeyExpireTime)
-			if machineExpiry != nil {
-				registrationMachine.Expiry = machineExpiry
-			} else {
-				registrationMachine.Expiry = &expiryTime
-			}
+			registrationMachine.Expiry = machineExpiry
 
 			machine, err := hsdb.RegisterMachine(
 				registrationMachine,

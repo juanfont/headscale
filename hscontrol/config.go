@@ -30,8 +30,6 @@ const (
 	TextLogFormat = "text"
 
 	defaultOIDCExpiryTime = 180 * 24 * time.Hour // 180 Days
-	// defaultClientExpiryTime               = 365 * 24 * time.Hour // 365 Days.
-	defaultClientExpiryTime               = 1 * time.Minute
 	maxDuration             time.Duration = 1<<63 - 1
 )
 
@@ -587,13 +585,10 @@ func GetHeadscaleConfig() (*Config, error) {
 		GRPCAddr:           viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
-		DefaultExpiryTime: func() time.Duration {
-			switch viper.GetString("db_type") {
-			case "postgres":
-				return defaultClientExpiryTime
-			default:
-				return 0
-			}
+		DefaultExpiryTime:  func () time.Duration {
+			clientExpirtyTime := viper.GetDuration("client_expiry_time")
+			expiryTime :=  clientExpirtyTime * 24 * time.Hour
+			return expiryTime
 		}(),
 
 		IPPrefixes: prefixes,

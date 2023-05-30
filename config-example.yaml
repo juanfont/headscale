@@ -324,3 +324,7 @@ logtail:
 # default static port 41641. This option is intended as a workaround for some buggy
 # firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
 randomize_client_port: false
+
+# Client default expiration time is 365 days.
+# And Headscale will automatically update the client's expiration time.
+client_expiry_time: 365
