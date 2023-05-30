@@ -172,13 +172,14 @@ func (h *Headscale) handleRegisterCommon(
 		// that we rely on a method that calls back some how (OpenID or CLI)
 		// We create the machine and then keep it around until a callback
 		// happens
+		expiryTime := time.Now().Add(h.cfg.DefaultExpiryTime)
 		newMachine := types.Machine{
 			MachineKey: util.MachinePublicKeyStripPrefix(machineKey),
 			Hostname:   registerRequest.Hostinfo.Hostname,
 			GivenName:  givenName,
 			NodeKey:    util.NodePublicKeyStripPrefix(registerRequest.NodeKey),
 			LastSeen:   &now,
-			Expiry:     &time.Time{},
+			Expiry:     &expiryTime,
 		}
 
 		if !registerRequest.Expiry.IsZero() {
@@ -721,7 +722,8 @@ func (h *Headscale) handleMachineRefreshKeyCommon(
 		Bool("noise", isNoise).
 		Str("machine", machine.Hostname).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
-
+	expiryTime := time.Now().Add(h.cfg.DefaultExpiryTime)
+	machine.Expiry = &expiryTime
 	err := h.db.MachineSetNodeKey(&machine, registerRequest.NodeKey)
 	if err != nil {
 		log.Error().

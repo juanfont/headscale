@@ -29,8 +29,10 @@ const (
 	JSONLogFormat = "json"
 	TextLogFormat = "text"
 
-	defaultOIDCExpiryTime               = 180 * 24 * time.Hour // 180 Days
-	maxDuration           time.Duration = 1<<63 - 1
+	defaultOIDCExpiryTime = 180 * 24 * time.Hour // 180 Days
+	// defaultClientExpiryTime               = 365 * 24 * time.Hour // 365 Days.
+	defaultClientExpiryTime               = 1 * time.Minute
+	maxDuration             time.Duration = 1<<63 - 1
 )
 
 var errOidcMutuallyExclusive = errors.New(
@@ -52,6 +54,7 @@ type Config struct {
 	BaseDomain                     string
 	Log                            LogConfig
 	DisableUpdateCheck             bool
+	DefaultExpiryTime              time.Duration
 
 	DERP DERPConfig
 
@@ -584,6 +587,14 @@ func GetHeadscaleConfig() (*Config, error) {
 		GRPCAddr:           viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
+		DefaultExpiryTime: func() time.Duration {
+			switch viper.GetString("db_type") {
+			case "postgres":
+				return defaultClientExpiryTime
+			default:
+				return 0
+			}
+		}(),
 
 		IPPrefixes: prefixes,
 		PrivateKeyPath: util.AbsolutePathFromConfigPath(

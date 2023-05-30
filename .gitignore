@@ -43,3 +43,5 @@ integration_test/etc/config.dump.yaml
 /site
 
 __debug_bin
+.vscode
+.devcontainer

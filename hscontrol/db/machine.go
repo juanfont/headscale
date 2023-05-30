@@ -24,6 +24,7 @@ const (
 	MachineGivenNameHashLength = 8
 	MachineGivenNameTrimSize   = 2
 	MaxHostnameLength          = 255
+	DefaultKeyExpireTime       = 60 * time.Minute
 )
 
 var (
@@ -349,6 +350,7 @@ func (hsdb *HSDatabase) TouchMachine(machine *types.Machine) error {
 		ID:                   machine.ID,
 		LastSeen:             machine.LastSeen,
 		LastSuccessfulUpdate: machine.LastSuccessfulUpdate,
+		Expiry:               machine.Expiry,
 	}).Error
 }
 
@@ -430,9 +432,11 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 
 			registrationMachine.UserID = user.ID
 			registrationMachine.RegisterMethod = registrationMethod
-
+			expiryTime := time.Now().Add(DefaultKeyExpireTime)
 			if machineExpiry != nil {
 				registrationMachine.Expiry = machineExpiry
+			} else {
+				registrationMachine.Expiry = &expiryTime
 			}
 
 			machine, err := hsdb.RegisterMachine(

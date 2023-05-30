@@ -19,7 +19,7 @@ PROTO_SOURCES = $(call rwildcard,,*.proto)
 
 
 build:
-	nix build
+	nix build --extra-experimental-features nix-command --extra-experimental-features flakes
 
 dev: lint test build
 

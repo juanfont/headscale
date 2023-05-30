@@ -420,6 +420,8 @@ func (h *Headscale) pollNetMapStream(
 			}
 			now := time.Now().UTC()
 			machine.LastSeen = &now
+			expiryTime := now.Add(h.cfg.DefaultExpiryTime)
+			machine.Expiry = &expiryTime
 			err = h.db.TouchMachine(machine)
 			if err != nil {
 				log.Error().
