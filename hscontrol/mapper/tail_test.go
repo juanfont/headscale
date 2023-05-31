@@ -99,6 +99,12 @@ func TestTailNode(t *testing.T) {
 						Enabled:    true,
 						IsPrimary:  true,
 					},
+					{
+						Prefix:     types.IPPrefix(netip.MustParsePrefix("172.0.0.0/10")),
+						Advertised: true,
+						Enabled:    false,
+						IsPrimary:  true,
+					},
 				},
 				CreatedAt: created,
 			},
