@@ -48,7 +48,6 @@ func (hsdb *HSDatabase) ListPeers(machine *types.Machine) (types.Machines, error
 		Preload("Routes").
 		Where("node_key <> ?",
 			machine.NodeKey).Find(&machines).Error; err != nil {
-
 		return types.Machines{}, err
 	}
 
@@ -70,7 +69,6 @@ func (hsdb *HSDatabase) ListMachines() ([]types.Machine, error) {
 		Preload("User").
 		Preload("Routes").
 		Find(&machines).Error; err != nil {
-
 		return nil, err
 	}
 
@@ -85,7 +83,6 @@ func (hsdb *HSDatabase) ListMachinesByGivenName(givenName string) (types.Machine
 		Preload("User").
 		Preload("Routes").
 		Where("given_name = ?", givenName).Find(&machines).Error; err != nil {
-
 		return nil, err
 	}
 
@@ -129,34 +126,34 @@ func (hsdb *HSDatabase) GetMachineByGivenName(
 
 // GetMachineByID finds a Machine by ID and returns the Machine struct.
 func (hsdb *HSDatabase) GetMachineByID(id uint64) (*types.Machine, error) {
-	m := types.Machine{}
+	mach := types.Machine{}
 	if result := hsdb.db.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
 		Preload("Routes").
-		Find(&types.Machine{ID: id}).First(&m); result.Error != nil {
+		Find(&types.Machine{ID: id}).First(&mach); result.Error != nil {
 		return nil, result.Error
 	}
 
-	return &m, nil
+	return &mach, nil
 }
 
 // GetMachineByMachineKey finds a Machine by its MachineKey and returns the Machine struct.
 func (hsdb *HSDatabase) GetMachineByMachineKey(
 	machineKey key.MachinePublic,
 ) (*types.Machine, error) {
-	m := types.Machine{}
+	mach := types.Machine{}
 	if result := hsdb.db.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
 		Preload("Routes").
-		First(&m, "machine_key = ?", util.MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
+		First(&mach, "machine_key = ?", util.MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
 		return nil, result.Error
 	}
 
-	return &m, nil
+	return &mach, nil
 }
 
 // GetMachineByNodeKey finds a Machine by its current NodeKey.
