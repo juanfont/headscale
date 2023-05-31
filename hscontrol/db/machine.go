@@ -47,9 +47,13 @@ func (hsdb *HSDatabase) ListPeers(machine *types.Machine) (types.Machines, error
 		Msg("Finding direct peers")
 
 	machines := types.Machines{}
-	if err := hsdb.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where("node_key <> ?",
-		machine.NodeKey).Find(&machines).Error; err != nil {
-		log.Error().Err(err).Msg("Error accessing db")
+	if err := hsdb.db.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		Where("node_key <> ?",
+			machine.NodeKey).Find(&machines).Error; err != nil {
 
 		return types.Machines{}, err
 	}
@@ -66,7 +70,13 @@ func (hsdb *HSDatabase) ListPeers(machine *types.Machine) (types.Machines, error
 
 func (hsdb *HSDatabase) ListMachines() ([]types.Machine, error) {
 	machines := []types.Machine{}
-	if err := hsdb.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Find(&machines).Error; err != nil {
+	if err := hsdb.db.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		Find(&machines).Error; err != nil {
+
 		return nil, err
 	}
 
@@ -75,7 +85,13 @@ func (hsdb *HSDatabase) ListMachines() ([]types.Machine, error) {
 
 func (hsdb *HSDatabase) ListMachinesByGivenName(givenName string) (types.Machines, error) {
 	machines := types.Machines{}
-	if err := hsdb.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where("given_name = ?", givenName).Find(&machines).Error; err != nil {
+	if err := hsdb.db.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		Where("given_name = ?", givenName).Find(&machines).Error; err != nil {
+
 		return nil, err
 	}
 
@@ -120,7 +136,12 @@ func (hsdb *HSDatabase) GetMachineByGivenName(
 // GetMachineByID finds a Machine by ID and returns the Machine struct.
 func (hsdb *HSDatabase) GetMachineByID(id uint64) (*types.Machine, error) {
 	m := types.Machine{}
-	if result := hsdb.db.Preload("AuthKey").Preload("User").Find(&types.Machine{ID: id}).First(&m); result.Error != nil {
+	if result := hsdb.db.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		Find(&types.Machine{ID: id}).First(&m); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -132,7 +153,12 @@ func (hsdb *HSDatabase) GetMachineByMachineKey(
 	machineKey key.MachinePublic,
 ) (*types.Machine, error) {
 	m := types.Machine{}
-	if result := hsdb.db.Preload("AuthKey").Preload("User").First(&m, "machine_key = ?", util.MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
+	if result := hsdb.db.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		First(&m, "machine_key = ?", util.MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -144,8 +170,13 @@ func (hsdb *HSDatabase) GetMachineByNodeKey(
 	nodeKey key.NodePublic,
 ) (*types.Machine, error) {
 	machine := types.Machine{}
-	if result := hsdb.db.Preload("AuthKey").Preload("User").First(&machine, "node_key = ?",
-		util.NodePublicKeyStripPrefix(nodeKey)); result.Error != nil {
+	if result := hsdb.db.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		First(&machine, "node_key = ?",
+			util.NodePublicKeyStripPrefix(nodeKey)); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -157,10 +188,15 @@ func (hsdb *HSDatabase) GetMachineByAnyKey(
 	machineKey key.MachinePublic, nodeKey key.NodePublic, oldNodeKey key.NodePublic,
 ) (*types.Machine, error) {
 	machine := types.Machine{}
-	if result := hsdb.db.Preload("AuthKey").Preload("User").First(&machine, "machine_key = ? OR node_key = ? OR node_key = ?",
-		util.MachinePublicKeyStripPrefix(machineKey),
-		util.NodePublicKeyStripPrefix(nodeKey),
-		util.NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
+	if result := hsdb.db.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		First(&machine, "machine_key = ? OR node_key = ? OR node_key = ?",
+			util.MachinePublicKeyStripPrefix(machineKey),
+			util.NodePublicKeyStripPrefix(nodeKey),
+			util.NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
 		return nil, result.Error
 	}
 
