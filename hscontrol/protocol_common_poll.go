@@ -59,10 +59,6 @@ func (h *Headscale) handlePollCommon(
 
 	// update ACLRules with peer informations (to update server tags if necessary)
 	if h.ACLPolicy != nil {
-		// TODO(kradalby): Since this is not blocking, I might have introduced a bug here.
-		// It will be resolved later as we change up the policy stuff.
-		h.policyUpdateChan <- struct{}{}
-
 		// update routes with peer information
 		err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, machine)
 		if err != nil {

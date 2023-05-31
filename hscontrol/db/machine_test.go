@@ -459,7 +459,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 		types.StringList([]string{"tag:bar", "tag:test", "tag:unknown"}),
 	)
 
-	c.Assert(channelUpdates, check.Equals, int32(4))
+	c.Assert(channelUpdates, check.Equals, int32(2))
 }
 
 func TestHeadscale_generateGivenName(t *testing.T) {

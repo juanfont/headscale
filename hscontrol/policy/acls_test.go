@@ -2319,6 +2319,48 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "failing-edge-case-during-p3-refactor",
+			args: args{
+				machines: []types.Machine{
+					{
+						ID:          1,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+						Hostname:    "peer1",
+						User:        types.User{Name: "mini"},
+					},
+					{
+						ID:          2,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+						Hostname:    "peer2",
+						User:        types.User{Name: "peer2"},
+					},
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.1/32"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.3/32", Ports: tailcfg.PortRangeAny},
+							{IP: "::/0", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+				machine: &types.Machine{
+					ID:          0,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+					Hostname:    "mini",
+					User:        types.User{Name: "mini"},
+				},
+			},
+			want: []types.Machine{
+				{
+					ID:          2,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+					Hostname:    "peer2",
+					User:        types.User{Name: "peer2"},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

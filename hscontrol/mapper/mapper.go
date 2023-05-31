@@ -16,6 +16,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -69,33 +70,18 @@ func NewMapper(
 	}
 }
 
-func (m *Mapper) tempWrap(
-	machine *types.Machine,
-	pol *policy.ACLPolicy,
-) (*tailcfg.MapResponse, error) {
-	peers, err := m.db.ListPeers(machine)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot fetch peers")
+// TODO: Optimise
+// As this work continues, the idea is that there will be one Mapper instance
+// per node, attached to the open stream between the control and client.
+// This means that this can hold a state per machine and we can use that to
+// improve the mapresponses sent.
+// We could:
+// - Keep information about the previous mapresponse so we can send a diff
+// - Store hashes
+// - Create a "minifier" that removes info not needed for the node
 
-		return nil, err
-	}
-
-	return fullMapResponse(
-		pol,
-		machine,
-		peers,
-		m.stripEmailDomain,
-		m.baseDomain,
-		m.dnsCfg,
-		m.derpMap,
-		m.logtail,
-		m.randomClientPort,
-	)
-}
-
+// fullMapResponse is the internal function for generating a MapResponse
+// for a machine.
 func fullMapResponse(
 	pol *policy.ACLPolicy,
 	machine *types.Machine,
@@ -113,11 +99,23 @@ func fullMapResponse(
 		return nil, err
 	}
 
-	rules, sshPolicy, err := policy.GenerateFilterRules(pol, peers, stripEmailDomain)
+	rules, sshPolicy, err := policy.GenerateFilterRules(
+		pol,
+		// The policy is currently calculated for the entire Headscale network
+		append(peers, *machine),
+		stripEmailDomain,
+	)
 	if err != nil {
 		return nil, err
 	}
 
+	// Filter out peers that have expired.
+	peers = lo.Filter(peers, func(item types.Machine, index int) bool {
+		return !item.IsExpired()
+	})
+
+	// If there are filter rules present, see if there are any machines that cannot
+	// access eachother at all and remove them from the peers.
 	if len(rules) > 0 {
 		peers = policy.FilterMachinesByACL(machine, peers, rules)
 	}
@@ -278,12 +276,33 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine types.Machine) {
 	}
 }
 
+// CreateMapResponse returns a MapResponse for the given machine.
 func (m Mapper) CreateMapResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	mapResponse, err := m.tempWrap(machine, pol)
+	peers, err := m.db.ListPeers(machine)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot fetch peers")
+
+		return nil, err
+	}
+
+	mapResponse, err := fullMapResponse(
+		pol,
+		machine,
+		peers,
+		m.stripEmailDomain,
+		m.baseDomain,
+		m.dnsCfg,
+		m.derpMap,
+		m.logtail,
+		m.randomClientPort,
+	)
 	if err != nil {
 		return nil, err
 	}

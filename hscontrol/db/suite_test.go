@@ -62,7 +62,6 @@ func (s *Suite) ResetDB(c *check.C) {
 		false,
 		false,
 		sink,
-		sink,
 		[]netip.Prefix{
 			netip.MustParsePrefix("10.27.0.0/23"),
 		},
