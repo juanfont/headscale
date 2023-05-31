@@ -126,7 +126,7 @@ func GenerateFilterRules(
 	stripEmailDomain bool,
 ) ([]tailcfg.FilterRule, *tailcfg.SSHPolicy, error) {
 	if policy == nil {
-		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, ErrEmptyPolicy
+		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, nil
 	}
 
 	rules, err := policy.generateFilterRules(machines, stripEmailDomain)
