@@ -69,27 +69,11 @@ func NewMapper(
 	}
 }
 
-func (m Mapper) fullMapResponse(
+func (m *Mapper) tempWrap(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 	pol *policy.ACLPolicy,
 ) (*tailcfg.MapResponse, error) {
-	log.Trace().
-		Caller().
-		Str("machine", mapRequest.Hostinfo.Hostname).
-		Msg("Creating Map response")
-
-	// TODO(kradalby): Decouple this from DB?
-	node, err := m.db.TailNode(*machine, pol, m.dnsCfg)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot convert to node")
-
-		return nil, err
-	}
-
 	peers, err := m.db.ListPeers(machine)
 	if err != nil {
 		log.Error().
@@ -100,7 +84,39 @@ func (m Mapper) fullMapResponse(
 		return nil, err
 	}
 
-	rules, sshPolicy, err := policy.GenerateFilterRules(pol, peers, m.stripEmailDomain)
+	return fullMapResponse(
+		mapRequest,
+		pol,
+		machine,
+		peers,
+		m.stripEmailDomain,
+		m.baseDomain,
+		m.dnsCfg,
+		m.derpMap,
+		m.logtail,
+		m.randomClientPort,
+	)
+}
+
+func fullMapResponse(
+	mapRequest tailcfg.MapRequest,
+	pol *policy.ACLPolicy,
+	machine *types.Machine,
+	peers types.Machines,
+
+	stripEmailDomain bool,
+	baseDomain string,
+	dnsCfg *tailcfg.DNSConfig,
+	derpMap *tailcfg.DERPMap,
+	logtail bool,
+	randomClientPort bool,
+) (*tailcfg.MapResponse, error) {
+	tailnode, err := tailNode(*machine, pol, dnsCfg, baseDomain, stripEmailDomain)
+	if err != nil {
+		return nil, err
+	}
+
+	rules, sshPolicy, err := policy.GenerateFilterRules(pol, peers, stripEmailDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -109,38 +125,31 @@ func (m Mapper) fullMapResponse(
 		peers = policy.FilterMachinesByACL(machine, peers, rules)
 	}
 
-	profiles := generateUserProfiles(machine, peers, m.baseDomain)
+	profiles := generateUserProfiles(machine, peers, baseDomain)
 
-	// TODO(kradalby): Decouple this from DB?
-	nodePeers, err := m.db.TailNodes(peers, pol, m.dnsCfg)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to convert peers to Tailscale nodes")
-
-		return nil, err
-	}
-
-	// TODO(kradalby): Shold this mutation happen before TailNode(s) is called?
 	dnsConfig := generateDNSConfig(
-		m.dnsCfg,
-		m.baseDomain,
+		dnsCfg,
+		baseDomain,
 		*machine,
 		peers,
 	)
+
+	tailPeers, err := tailNodes(peers, pol, dnsCfg, baseDomain, stripEmailDomain)
+	if err != nil {
+		return nil, err
+	}
 
 	now := time.Now()
 
 	resp := tailcfg.MapResponse{
 		KeepAlive: false,
-		Node:      node,
+		Node:      tailnode,
 
 		// TODO: Only send if updated
-		DERPMap: m.derpMap,
+		DERPMap: derpMap,
 
 		// TODO: Only send if updated
-		Peers: nodePeers,
+		Peers: tailPeers,
 
 		// TODO(kradalby): Implement:
 		// https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L1351-L1374
@@ -154,7 +163,7 @@ func (m Mapper) fullMapResponse(
 		DNSConfig: dnsConfig,
 
 		// TODO: Only send if updated
-		Domain: m.baseDomain,
+		Domain: baseDomain,
 
 		// Do not instruct clients to collect services, we do not
 		// support or do anything with them
@@ -171,8 +180,8 @@ func (m Mapper) fullMapResponse(
 		ControlTime: &now,
 
 		Debug: &tailcfg.Debug{
-			DisableLogTail:      !m.logtail,
-			RandomizeClientPort: m.randomClientPort,
+			DisableLogTail:      !logtail,
+			RandomizeClientPort: randomClientPort,
 		},
 	}
 
@@ -283,7 +292,7 @@ func (m Mapper) CreateMapResponse(
 	machine *types.Machine,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	mapResponse, err := m.fullMapResponse(mapRequest, machine, pol)
+	mapResponse, err := m.tempWrap(mapRequest, machine, pol)
 	if err != nil {
 		return nil, err
 	}

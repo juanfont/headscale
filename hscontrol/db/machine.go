@@ -5,25 +5,20 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"gorm.io/gorm"
-	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
 const (
 	MachineGivenNameHashLength = 8
 	MachineGivenNameTrimSize   = 2
-	MaxHostnameLength          = 255
 )
 
 var (
@@ -33,7 +28,6 @@ var (
 		"machine not found in registration cache",
 	)
 	ErrCouldNotConvertMachineInterface = errors.New("failed to convert machine interface")
-	ErrHostnameTooLong                 = errors.New("hostname too long")
 	ErrDifferentRegisteredUser         = errors.New(
 		"machine was previously registered with a different user",
 	)
@@ -471,7 +465,7 @@ func (hsdb *HSDatabase) RegisterMachine(machine types.Machine,
 	log.Trace().
 		Caller().
 		Str("machine", machine.Hostname).
-		Str("ip", strings.Join(ips.ToStringSlice(), ",")).
+		Str("ip", strings.Join(ips.StringSlice(), ",")).
 		Msg("Machine registered with the database")
 
 	return &machine, nil
@@ -784,170 +778,4 @@ func (hsdb *HSDatabase) ExpireExpiredMachines(lastChange time.Time) {
 			hsdb.notifyStateChange()
 		}
 	}
-}
-
-func (hsdb *HSDatabase) TailNodes(
-	machines types.Machines,
-	pol *policy.ACLPolicy,
-	dnsConfig *tailcfg.DNSConfig,
-) ([]*tailcfg.Node, error) {
-	nodes := make([]*tailcfg.Node, len(machines))
-
-	for index, machine := range machines {
-		node, err := hsdb.TailNode(machine, pol, dnsConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		nodes[index] = node
-	}
-
-	return nodes, nil
-}
-
-// TailNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
-// as per the expected behaviour in the official SaaS.
-func (hsdb *HSDatabase) TailNode(
-	machine types.Machine,
-	pol *policy.ACLPolicy,
-	dnsConfig *tailcfg.DNSConfig,
-) (*tailcfg.Node, error) {
-	var nodeKey key.NodePublic
-	err := nodeKey.UnmarshalText([]byte(util.NodePublicKeyEnsurePrefix(machine.NodeKey)))
-	if err != nil {
-		log.Trace().
-			Caller().
-			Str("node_key", machine.NodeKey).
-			Msgf("Failed to parse node public key from hex")
-
-		return nil, fmt.Errorf("failed to parse node public key: %w", err)
-	}
-
-	var machineKey key.MachinePublic
-	// MachineKey is only used in the legacy protocol
-	if machine.MachineKey != "" {
-		err = machineKey.UnmarshalText(
-			[]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse machine public key: %w", err)
-		}
-	}
-
-	var discoKey key.DiscoPublic
-	if machine.DiscoKey != "" {
-		err := discoKey.UnmarshalText(
-			[]byte(util.DiscoPublicKeyEnsurePrefix(machine.DiscoKey)),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse disco public key: %w", err)
-		}
-	} else {
-		discoKey = key.DiscoPublic{}
-	}
-
-	addrs := []netip.Prefix{}
-	for _, machineAddress := range machine.IPAddresses {
-		ip := netip.PrefixFrom(machineAddress, machineAddress.BitLen())
-		addrs = append(addrs, ip)
-	}
-
-	allowedIPs := append(
-		[]netip.Prefix{},
-		addrs...) // we append the node own IP, as it is required by the clients
-
-	primaryRoutes, err := hsdb.GetMachinePrimaryRoutes(&machine)
-	if err != nil {
-		return nil, err
-	}
-	primaryPrefixes := primaryRoutes.Prefixes()
-
-	machineRoutes, err := hsdb.GetMachineRoutes(&machine)
-	if err != nil {
-		return nil, err
-	}
-	for _, route := range machineRoutes {
-		if route.Enabled && (route.IsPrimary || route.IsExitRoute()) {
-			allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix))
-		}
-	}
-
-	var derp string
-	if machine.HostInfo.NetInfo != nil {
-		derp = fmt.Sprintf("127.3.3.40:%d", machine.HostInfo.NetInfo.PreferredDERP)
-	} else {
-		derp = "127.3.3.40:0" // Zero means disconnected or unknown.
-	}
-
-	var keyExpiry time.Time
-	if machine.Expiry != nil {
-		keyExpiry = *machine.Expiry
-	} else {
-		keyExpiry = time.Time{}
-	}
-
-	var hostname string
-	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
-		hostname = fmt.Sprintf(
-			"%s.%s.%s",
-			machine.GivenName,
-			machine.User.Name,
-			hsdb.baseDomain,
-		)
-		if len(hostname) > MaxHostnameLength {
-			return nil, fmt.Errorf(
-				"hostname %q is too long it cannot except 255 ASCII chars: %w",
-				hostname,
-				ErrHostnameTooLong,
-			)
-		}
-	} else {
-		hostname = machine.GivenName
-	}
-
-	hostInfo := machine.GetHostInfo()
-
-	online := machine.IsOnline()
-
-	tags, _ := pol.GetTagsOfMachine(machine, hsdb.stripEmailDomain)
-	tags = lo.Uniq(append(tags, machine.ForcedTags...))
-
-	node := tailcfg.Node{
-		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
-		StableID: tailcfg.StableNodeID(
-			strconv.FormatUint(machine.ID, util.Base10),
-		), // in headscale, unlike tailcontrol server, IDs are permanent
-		Name: hostname,
-
-		User: tailcfg.UserID(machine.UserID),
-
-		Key:       nodeKey,
-		KeyExpiry: keyExpiry,
-
-		Machine:    machineKey,
-		DiscoKey:   discoKey,
-		Addresses:  addrs,
-		AllowedIPs: allowedIPs,
-		Endpoints:  machine.Endpoints,
-		DERP:       derp,
-		Hostinfo:   hostInfo.View(),
-		Created:    machine.CreatedAt,
-
-		Tags: tags,
-
-		PrimaryRoutes: primaryPrefixes,
-
-		LastSeen:          machine.LastSeen,
-		Online:            &online,
-		KeepAlive:         true,
-		MachineAuthorized: !machine.IsExpired(),
-
-		Capabilities: []string{
-			tailcfg.CapabilityFileSharing,
-			tailcfg.CapabilityAdmin,
-			tailcfg.CapabilitySSH,
-		},
-	}
-
-	return &node, nil
 }

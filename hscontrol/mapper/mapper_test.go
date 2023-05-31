@@ -124,7 +124,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 			)
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("expandAlias() = %v, want %v", got, tt.want)
+				t.Errorf("expandAlias() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}
