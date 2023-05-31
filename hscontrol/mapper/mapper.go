@@ -70,7 +70,6 @@ func NewMapper(
 }
 
 func (m *Mapper) tempWrap(
-	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 	pol *policy.ACLPolicy,
 ) (*tailcfg.MapResponse, error) {
@@ -85,7 +84,6 @@ func (m *Mapper) tempWrap(
 	}
 
 	return fullMapResponse(
-		mapRequest,
 		pol,
 		machine,
 		peers,
@@ -99,7 +97,6 @@ func (m *Mapper) tempWrap(
 }
 
 func fullMapResponse(
-	mapRequest tailcfg.MapRequest,
 	pol *policy.ACLPolicy,
 	machine *types.Machine,
 	peers types.Machines,
@@ -184,12 +181,6 @@ func fullMapResponse(
 			RandomizeClientPort: randomClientPort,
 		},
 	}
-
-	log.Trace().
-		Caller().
-		Str("machine", mapRequest.Hostinfo.Hostname).
-		// Interface("payload", resp).
-		Msgf("Generated map response: %s", util.TailMapResponseToString(resp))
 
 	return &resp, nil
 }
@@ -292,7 +283,7 @@ func (m Mapper) CreateMapResponse(
 	machine *types.Machine,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	mapResponse, err := m.tempWrap(mapRequest, machine, pol)
+	mapResponse, err := m.tempWrap(machine, pol)
 	if err != nil {
 		return nil, err
 	}
@@ -345,8 +336,12 @@ func (m Mapper) CreateKeepAliveResponse(
 	return m.marshalMapResponse(keepAliveResponse, machineKey, mapRequest.Compress)
 }
 
+// MarshalResponse takes an Tailscale Response, marhsal it to JSON.
+// If isNoise is set, then the JSON body will be returned
+// If !isNoise and privateKey2019 is set, the JSON body will be sealed in a Nacl box.
 func MarshalResponse(
 	resp interface{},
+	isNoise bool,
 	privateKey2019 *key.MachinePrivate,
 	machineKey key.MachinePublic,
 ) ([]byte, error) {
@@ -360,7 +355,7 @@ func MarshalResponse(
 		return nil, err
 	}
 
-	if privateKey2019 != nil {
+	if !isNoise && privateKey2019 != nil {
 		return privateKey2019.SealTo(machineKey, jsonBody), nil
 	}
 

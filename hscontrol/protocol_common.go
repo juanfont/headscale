@@ -324,7 +324,7 @@ func (h *Headscale) handleAuthKeyCommon(
 			Msg("Failed authentication via AuthKey")
 		resp.MachineAuthorized = false
 
-		respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
+		respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -484,7 +484,7 @@ func (h *Headscale) handleAuthKeyCommon(
 	// Otherwise it will need to exec `tailscale up` twice to fetch the *LoginName*
 	resp.Login = *pak.User.TailscaleLogin()
 
-	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
+	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -549,7 +549,7 @@ func (h *Headscale) handleNewMachineCommon(
 			registerRequest.NodeKey)
 	}
 
-	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
+	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -610,7 +610,7 @@ func (h *Headscale) handleMachineLogOutCommon(
 	resp.MachineAuthorized = false
 	resp.NodeKeyExpired = true
 	resp.User = *machine.User.TailscaleUser()
-	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
+	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -674,7 +674,7 @@ func (h *Headscale) handleMachineValidRegistrationCommon(
 	resp.User = *machine.User.TailscaleUser()
 	resp.Login = *machine.User.TailscaleLogin()
 
-	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
+	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -736,7 +736,7 @@ func (h *Headscale) handleMachineRefreshKeyCommon(
 
 	resp.AuthURL = ""
 	resp.User = *machine.User.TailscaleUser()
-	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
+	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -803,7 +803,7 @@ func (h *Headscale) handleMachineExpiredOrLoggedOutCommon(
 			registerRequest.NodeKey)
 	}
 
-	respBody, err := mapper.MarshalResponse(resp, h.privateKey2019, machineKey)
+	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
 	if err != nil {
 		log.Error().
 			Caller().
