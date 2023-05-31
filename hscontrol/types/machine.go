@@ -10,17 +10,23 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 const (
 	// TODO(kradalby): Move out of here when we got circdeps under control.
 	keepAliveInterval = 60 * time.Second
+	MaxHostnameLength = 255
 )
 
-var ErrMachineAddressesInvalid = errors.New("failed to parse machine addresses")
+var (
+	ErrMachineAddressesInvalid = errors.New("failed to parse machine addresses")
+	ErrHostnameTooLong         = errors.New("hostname too long")
+)
 
 // Machine is a Headscale client.
 type Machine struct {
@@ -73,7 +79,7 @@ type (
 
 type MachineAddresses []netip.Addr
 
-func (ma MachineAddresses) ToStringSlice() []string {
+func (ma MachineAddresses) StringSlice() []string {
 	strSlice := make([]string, 0, len(ma))
 	for _, addr := range ma {
 		strSlice = append(strSlice, addr.String())
@@ -125,7 +131,7 @@ func (ma *MachineAddresses) Scan(destination interface{}) error {
 
 // Value return json value, implement driver.Valuer interface.
 func (ma MachineAddresses) Value() (driver.Value, error) {
-	addresses := strings.Join(ma.ToStringSlice(), ",")
+	addresses := strings.Join(ma.StringSlice(), ",")
 
 	return addresses, nil
 }
@@ -201,7 +207,7 @@ func (machine *Machine) Proto() *v1.Machine {
 
 		NodeKey:     machine.NodeKey,
 		DiscoKey:    machine.DiscoKey,
-		IpAddresses: machine.IPAddresses.ToStringSlice(),
+		IpAddresses: machine.IPAddresses.StringSlice(),
 		Name:        machine.Hostname,
 		GivenName:   machine.GivenName,
 		User:        machine.User.Proto(),
@@ -238,6 +244,70 @@ func (machine *Machine) Proto() *v1.Machine {
 // GetHostInfo returns a Hostinfo struct for the machine.
 func (machine *Machine) GetHostInfo() tailcfg.Hostinfo {
 	return tailcfg.Hostinfo(machine.HostInfo)
+}
+
+func (machine *Machine) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (string, error) {
+	var hostname string
+	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
+		hostname = fmt.Sprintf(
+			"%s.%s.%s",
+			machine.GivenName,
+			machine.User.Name,
+			baseDomain,
+		)
+		if len(hostname) > MaxHostnameLength {
+			return "", fmt.Errorf(
+				"hostname %q is too long it cannot except 255 ASCII chars: %w",
+				hostname,
+				ErrHostnameTooLong,
+			)
+		}
+	} else {
+		hostname = machine.GivenName
+	}
+
+	return hostname, nil
+}
+
+func (machine *Machine) MachinePublicKey() (key.MachinePublic, error) {
+	var machineKey key.MachinePublic
+
+	if machine.MachineKey != "" {
+		err := machineKey.UnmarshalText(
+			[]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+		)
+		if err != nil {
+			return key.MachinePublic{}, fmt.Errorf("failed to parse machine public key: %w", err)
+		}
+	}
+
+	return machineKey, nil
+}
+
+func (machine *Machine) DiscoPublicKey() (key.DiscoPublic, error) {
+	var discoKey key.DiscoPublic
+	if machine.DiscoKey != "" {
+		err := discoKey.UnmarshalText(
+			[]byte(util.DiscoPublicKeyEnsurePrefix(machine.DiscoKey)),
+		)
+		if err != nil {
+			return key.DiscoPublic{}, fmt.Errorf("failed to parse disco public key: %w", err)
+		}
+	} else {
+		discoKey = key.DiscoPublic{}
+	}
+
+	return discoKey, nil
+}
+
+func (machine *Machine) NodePublicKey() (key.NodePublic, error) {
+	var nodeKey key.NodePublic
+	err := nodeKey.UnmarshalText([]byte(util.NodePublicKeyEnsurePrefix(machine.NodeKey)))
+	if err != nil {
+		return key.NodePublic{}, fmt.Errorf("failed to parse node public key: %w", err)
+	}
+
+	return nodeKey, nil
 }
 
 func (machine Machine) String() string {

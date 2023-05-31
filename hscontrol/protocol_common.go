@@ -516,7 +516,7 @@ func (h *Headscale) handleAuthKeyCommon(
 		Str("func", "handleAuthKeyCommon").
 		Bool("noise", isNoise).
 		Str("machine", registerRequest.Hostinfo.Hostname).
-		Str("ips", strings.Join(machine.IPAddresses.ToStringSlice(), ", ")).
+		Str("ips", strings.Join(machine.IPAddresses.StringSlice(), ", ")).
 		Msg("Successfully authenticated via AuthKey")
 }
 

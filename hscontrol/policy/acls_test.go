@@ -1332,7 +1332,7 @@ func Test_expandAlias(t *testing.T) {
 				return
 			}
 			if diff := cmp.Diff(test.want, got); diff != "" {
-				t.Errorf("expandAlias() = %v, want %v", got, test.want)
+				t.Errorf("expandAlias() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -1711,7 +1711,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				log.Trace().Interface("got", got).Msg("result")
-				t.Errorf("ACLgenerateFilterRules() = %v, want %v", got, tt.want)
+				t.Errorf("ACLgenerateFilterRules() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}
