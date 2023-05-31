@@ -59,6 +59,8 @@ type Machine struct {
 	HostInfo  HostInfo
 	Endpoints StringList
 
+	Routes []Route
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time
@@ -78,6 +80,16 @@ func (ma MachineAddresses) ToStringSlice() []string {
 	}
 
 	return strSlice
+}
+
+func (ma MachineAddresses) Prefixes() []netip.Prefix {
+	addrs := []netip.Prefix{}
+	for _, machineAddress := range ma {
+		ip := netip.PrefixFrom(machineAddress, machineAddress.BitLen())
+		addrs = append(addrs, ip)
+	}
+
+	return addrs
 }
 
 // AppendToIPSet adds the individual ips in MachineAddresses to a
