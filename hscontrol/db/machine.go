@@ -33,7 +33,7 @@ var (
 	)
 )
 
-// ListPeers returns all peers of machine, regardless of any Policy.
+// ListPeers returns all peers of machine, regardless of any Policy or if the node is expired.
 func (hsdb *HSDatabase) ListPeers(machine *types.Machine) (types.Machines, error) {
 	log.Trace().
 		Caller().
@@ -218,7 +218,6 @@ func (hsdb *HSDatabase) SetTags(
 	}
 	machine.ForcedTags = newTags
 
-	hsdb.notifyPolicyChan <- struct{}{}
 	hsdb.notifyStateChange()
 
 	if err := hsdb.db.Save(machine).Error; err != nil {

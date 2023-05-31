@@ -125,8 +125,9 @@ func GenerateFilterRules(
 	machines types.Machines,
 	stripEmailDomain bool,
 ) ([]tailcfg.FilterRule, *tailcfg.SSHPolicy, error) {
+	// If there is no policy defined, we default to allow all
 	if policy == nil {
-		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, nil
+		return tailcfg.FilterAllowAll, &tailcfg.SSHPolicy{}, nil
 	}
 
 	rules, err := policy.generateFilterRules(machines, stripEmailDomain)

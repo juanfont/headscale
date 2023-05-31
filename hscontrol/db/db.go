@@ -36,9 +36,8 @@ type KV struct {
 }
 
 type HSDatabase struct {
-	db               *gorm.DB
-	notifyStateChan  chan<- struct{}
-	notifyPolicyChan chan<- struct{}
+	db              *gorm.DB
+	notifyStateChan chan<- struct{}
 
 	ipAllocationMutex sync.Mutex
 
@@ -53,7 +52,6 @@ func NewHeadscaleDatabase(
 	dbType, connectionAddr string,
 	stripEmailDomain, debug bool,
 	notifyStateChan chan<- struct{},
-	notifyPolicyChan chan<- struct{},
 	ipPrefixes []netip.Prefix,
 	baseDomain string,
 ) (*HSDatabase, error) {
@@ -63,9 +61,8 @@ func NewHeadscaleDatabase(
 	}
 
 	db := HSDatabase{
-		db:               dbConn,
-		notifyStateChan:  notifyStateChan,
-		notifyPolicyChan: notifyPolicyChan,
+		db:              dbConn,
+		notifyStateChan: notifyStateChan,
 
 		ipPrefixes:       ipPrefixes,
 		baseDomain:       baseDomain,

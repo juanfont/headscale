@@ -87,8 +87,6 @@ type Headscale struct {
 	DERPServer *DERPServer
 
 	ACLPolicy *policy.ACLPolicy
-	aclRules  []tailcfg.FilterRule
-	sshPolicy *tailcfg.SSHPolicy
 
 	lastStateChange *xsync.MapOf[string, time.Time]
 
@@ -102,12 +100,6 @@ type Headscale struct {
 
 	stateUpdateChan       chan struct{}
 	cancelStateUpdateChan chan struct{}
-
-	// TODO(kradalby): Temporary measure to make sure we can update policy
-	// across modules, will be removed when aclRules are no longer stored
-	// globally but generated per node basis.
-	policyUpdateChan       chan struct{}
-	cancelPolicyUpdateChan chan struct{}
 }
 
 func NewHeadscale(cfg *Config) (*Headscale, error) {
@@ -168,20 +160,15 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		dbString:           dbString,
 		privateKey2019:     privateKey,
 		noisePrivateKey:    noisePrivateKey,
-		aclRules:           tailcfg.FilterAllowAll, // default allowall
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
 		lastStateChange:    xsync.NewMapOf[time.Time](),
 
 		stateUpdateChan:       make(chan struct{}),
 		cancelStateUpdateChan: make(chan struct{}),
-
-		policyUpdateChan:       make(chan struct{}),
-		cancelPolicyUpdateChan: make(chan struct{}),
 	}
 
 	go app.watchStateChannel()
-	go app.watchPolicyChannel()
 
 	database, err := db.NewHeadscaleDatabase(
 		cfg.DBtype,
@@ -189,7 +176,6 @@ func NewHeadscale(cfg *Config) (*Headscale, error) {
 		cfg.OIDC.StripEmaildomain,
 		app.dbDebug,
 		app.stateUpdateChan,
-		app.policyUpdateChan,
 		cfg.IPPrefixes,
 		cfg.BaseDomain)
 	if err != nil {
@@ -750,10 +736,6 @@ func (h *Headscale) Serve() error {
 				close(h.stateUpdateChan)
 				close(h.cancelStateUpdateChan)
 
-				<-h.cancelPolicyUpdateChan
-				close(h.policyUpdateChan)
-				close(h.cancelPolicyUpdateChan)
-
 				// Close db connections
 				err = h.db.Close()
 				if err != nil {
@@ -857,30 +839,6 @@ func (h *Headscale) watchStateChannel() {
 			h.setLastStateChangeToNow()
 
 		case <-h.cancelStateUpdateChan:
-			return
-		}
-	}
-}
-
-// TODO(kradalby): baby steps, make this more robust.
-func (h *Headscale) watchPolicyChannel() {
-	for {
-		select {
-		case <-h.policyUpdateChan:
-			machines, err := h.db.ListMachines()
-			if err != nil {
-				log.Error().Err(err).Msg("failed to fetch machines during policy update")
-			}
-
-			rules, sshPolicy, err := policy.GenerateFilterRules(h.ACLPolicy, machines, h.cfg.OIDC.StripEmaildomain)
-			if err != nil {
-				log.Error().Err(err).Msg("failed to update ACL rules")
-			}
-
-			h.aclRules = rules
-			h.sshPolicy = sshPolicy
-
-		case <-h.cancelPolicyUpdateChan:
 			return
 		}
 	}
