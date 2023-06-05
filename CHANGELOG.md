@@ -8,6 +8,8 @@
 
 ### Changes
 
+- Adjust the template for the OIDC callback login page [#1484](https://github.com/juanfont/headscale/pull/1484)
+
 ## 0.22.3 (2023-05-12)
 
 ### Changes

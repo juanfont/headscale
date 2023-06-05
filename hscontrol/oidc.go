@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -182,15 +183,11 @@ type oidcCallbackTemplateConfig struct {
 	Verb string
 }
 
+//go:embed assets/oidc_callback_template.html
+var oidcCallbackTemplateContent string
+
 var oidcCallbackTemplate = template.Must(
-	template.New("oidccallback").Parse(`<html>
-	<body>
-	<h1>headscale</h1>
-	<p>
-			{{.Verb}} as {{.User}}, you can now close this window.
-	</p>
-	</body>
-	</html>`),
+	template.New("oidccallback").Parse(oidcCallbackTemplateContent),
 )
 
 // OIDCCallback handles the callback from the OIDC endpoint
