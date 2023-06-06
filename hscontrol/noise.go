@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -100,12 +101,12 @@ func (h *Headscale) NoiseUpgradeHandler(
 	router.HandleFunc("/machine/map", noiseServer.NoisePollNetMapHandler)
 
 	server := http.Server{
-		ReadTimeout: HTTPReadTimeout,
+		ReadTimeout: types.HTTPReadTimeout,
 	}
 
 	noiseServer.httpBaseConfig = &http.Server{
 		Handler:           router,
-		ReadHeaderTimeout: HTTPReadTimeout,
+		ReadHeaderTimeout: types.HTTPReadTimeout,
 	}
 	noiseServer.http2Server = &http2.Server{}
 

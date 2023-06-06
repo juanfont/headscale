@@ -17,12 +17,6 @@ import (
 	"tailscale.com/types/key"
 )
 
-const (
-	// TODO(kradalby): Move out of here when we got circdeps under control.
-	keepAliveInterval = 60 * time.Second
-	MaxHostnameLength = 255
-)
-
 var (
 	ErrMachineAddressesInvalid = errors.New("failed to parse machine addresses")
 	ErrHostnameTooLong         = errors.New("hostname too long")
@@ -160,7 +154,7 @@ func (machine *Machine) IsOnline() bool {
 		return false
 	}
 
-	return machine.LastSeen.After(time.Now().Add(-keepAliveInterval))
+	return machine.LastSeen.After(time.Now().Add(-KeepAliveInterval))
 }
 
 // IsEphemeral returns if the machine is registered as an Ephemeral node.

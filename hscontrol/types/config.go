@@ -23,12 +23,6 @@ import (
 )
 
 const (
-	TlsALPN01ChallengeType = "TLS-ALPN-01"
-	Http01ChallengeType    = "HTTP-01"
-
-	JSONLogFormat = "json"
-	TextLogFormat = "text"
-
 	defaultOIDCExpiryTime               = 180 * 24 * time.Hour // 180 Days
 	maxDuration           time.Duration = 1<<63 - 1
 )

@@ -1,4 +1,4 @@
-package hscontrol
+package derp
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
@@ -32,7 +31,7 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 }
 
 func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), HTTPReadTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), types.HTTPReadTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, addr.String(), nil)
@@ -41,7 +40,7 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 	}
 
 	client := http.Client{
-		Timeout: HTTPReadTimeout,
+		Timeout: types.HTTPReadTimeout,
 	}
 
 	resp, err := client.Do(req)
@@ -132,27 +131,4 @@ func GetDERPMap(cfg types.DERPConfig) *tailcfg.DERPMap {
 	}
 
 	return derpMap
-}
-
-func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
-	log.Info().
-		Dur("frequency", h.cfg.DERP.UpdateFrequency).
-		Msg("Setting up a DERPMap update worker")
-	ticker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
-
-	for {
-		select {
-		case <-cancelChan:
-			return
-
-		case <-ticker.C:
-			log.Info().Msg("Fetching DERPMap updates")
-			h.DERPMap = GetDERPMap(h.cfg.DERP)
-			if h.cfg.DERP.ServerEnabled {
-				h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
-			}
-
-			h.setLastStateChangeToNow()
-		}
-	}
 }
