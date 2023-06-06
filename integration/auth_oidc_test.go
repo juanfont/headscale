@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -214,7 +214,7 @@ func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 	return nil
 }
 
-func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*hscontrol.OIDCConfig, error) {
+func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*types.OIDCConfig, error) {
 	port, err := dockertestutil.RandomFreeHostPort()
 	if err != nil {
 		log.Fatalf("could not find an open port: %s", err)
@@ -288,7 +288,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*hscontrol.OIDC
 
 	log.Printf("headscale mock oidc is ready for tests at %s", hostEndpoint)
 
-	return &hscontrol.OIDCConfig{
+	return &types.OIDCConfig{
 		Issuer: fmt.Sprintf(
 			"http://%s/oidc",
 			net.JoinHostPort(s.mockOIDC.GetIPInNetwork(s.network), strconv.Itoa(port)),

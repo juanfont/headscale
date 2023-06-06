@@ -5,7 +5,7 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -38,18 +38,18 @@ func initConfig() {
 		cfgFile = os.Getenv("HEADSCALE_CONFIG")
 	}
 	if cfgFile != "" {
-		err := hscontrol.LoadConfig(cfgFile, true)
+		err := types.LoadConfig(cfgFile, true)
 		if err != nil {
 			log.Fatal().Caller().Err(err).Msgf("Error loading config file %s", cfgFile)
 		}
 	} else {
-		err := hscontrol.LoadConfig("", false)
+		err := types.LoadConfig("", false)
 		if err != nil {
 			log.Fatal().Caller().Err(err).Msgf("Error loading config")
 		}
 	}
 
-	cfg, err := hscontrol.GetHeadscaleConfig()
+	cfg, err := types.GetHeadscaleConfig()
 	if err != nil {
 		log.Fatal().Caller().Err(err)
 	}
@@ -64,7 +64,7 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	if cfg.Log.Format == hscontrol.JSONLogFormat {
+	if cfg.Log.Format == types.JSONLogFormat {
 		log.Logger = log.Output(os.Stdout)
 	}
 

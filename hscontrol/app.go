@@ -75,7 +75,7 @@ const (
 
 // Headscale represents the base app of the service.
 type Headscale struct {
-	cfg             *Config
+	cfg             *types.Config
 	db              *db.HSDatabase
 	dbString        string
 	dbType          string
@@ -102,7 +102,7 @@ type Headscale struct {
 	cancelStateUpdateChan chan struct{}
 }
 
-func NewHeadscale(cfg *Config) (*Headscale, error) {
+func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	privateKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read or create private key: %w", err)
@@ -778,13 +778,13 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		}
 
 		switch h.cfg.TLS.LetsEncrypt.ChallengeType {
-		case tlsALPN01ChallengeType:
+		case types.TlsALPN01ChallengeType:
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
 			// must be reachable on port 443.
 			return certManager.TLSConfig(), nil
 
-		case http01ChallengeType:
+		case types.Http01ChallengeType:
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.

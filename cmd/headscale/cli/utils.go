@@ -11,6 +11,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -25,7 +26,7 @@ const (
 )
 
 func getHeadscaleApp() (*hscontrol.Headscale, error) {
-	cfg, err := hscontrol.GetHeadscaleConfig()
+	cfg, err := types.GetHeadscaleConfig()
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to load configuration while creating headscale instance: %w",
@@ -57,7 +58,7 @@ func getHeadscaleApp() (*hscontrol.Headscale, error) {
 }
 
 func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
-	cfg, err := hscontrol.GetHeadscaleConfig()
+	cfg, err := types.GetHeadscaleConfig()
 	if err != nil {
 		log.Fatal().
 			Err(err).
