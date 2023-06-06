@@ -5,8 +5,8 @@ import "time"
 const (
 	HTTPReadTimeout        = 30 * time.Second
 	HTTPShutdownTimeout    = 3 * time.Second
-	TlsALPN01ChallengeType = "TLS-ALPN-01"
-	Http01ChallengeType    = "HTTP-01"
+	TLSALPN01ChallengeType = "TLS-ALPN-01"
+	HTTP01ChallengeType    = "HTTP-01"
 
 	JSONLogFormat = "json"
 	TextLogFormat = "text"
