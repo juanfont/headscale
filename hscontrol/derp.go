@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
@@ -80,7 +81,7 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	return &result
 }
 
-func GetDERPMap(cfg DERPConfig) *tailcfg.DERPMap {
+func GetDERPMap(cfg types.DERPConfig) *tailcfg.DERPMap {
 	derpMaps := make([]*tailcfg.DERPMap, 0)
 
 	for _, path := range cfg.Paths {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
 )
 
@@ -38,7 +39,7 @@ func (s *Suite) ResetDB(c *check.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	cfg := Config{
+	cfg := types.Config{
 		PrivateKeyPath:      tmpDir + "/private.key",
 		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
 		DBtype:              "sqlite3",
@@ -46,7 +47,7 @@ func (s *Suite) ResetDB(c *check.C) {
 		IPPrefixes: []netip.Prefix{
 			netip.MustParsePrefix("10.27.0.0/23"),
 		},
-		OIDC: OIDCConfig{
+		OIDC: types.OIDCConfig{
 			StripEmaildomain: false,
 		},
 	}
