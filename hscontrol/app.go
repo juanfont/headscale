@@ -24,6 +24,7 @@ import (
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -59,18 +60,12 @@ var (
 )
 
 const (
-	AuthPrefix          = "Bearer "
-	updateInterval      = 5000
-	HTTPReadTimeout     = 30 * time.Second
-	HTTPShutdownTimeout = 3 * time.Second
-	privateKeyFileMode  = 0o600
+	AuthPrefix         = "Bearer "
+	updateInterval     = 5000
+	privateKeyFileMode = 0o600
 
 	registerCacheExpiration = time.Minute * 15
 	registerCacheCleanup    = time.Minute * 20
-
-	DisabledClientAuth = "disabled"
-	RelaxedClientAuth  = "relaxed"
-	EnforcedClientAuth = "enforced"
 )
 
 // Headscale represents the base app of the service.
@@ -238,6 +233,31 @@ func (h *Headscale) expireExpiredMachines(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 	for range ticker.C {
 		h.db.ExpireExpiredMachines(h.getLastStateChange())
+	}
+}
+
+// scheduledDERPMapUpdateWorker refreshes the DERPMap stored on the global object
+// at a set interval
+func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
+	log.Info().
+		Dur("frequency", h.cfg.DERP.UpdateFrequency).
+		Msg("Setting up a DERPMap update worker")
+	ticker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
+
+	for {
+		select {
+		case <-cancelChan:
+			return
+
+		case <-ticker.C:
+			log.Info().Msg("Fetching DERPMap updates")
+			h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
+			if h.cfg.DERP.ServerEnabled {
+				h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
+			}
+
+			h.setLastStateChangeToNow()
+		}
 	}
 }
 
@@ -455,7 +475,7 @@ func (h *Headscale) Serve() error {
 	var err error
 
 	// Fetch an initial DERP Map before we start serving
-	h.DERPMap = GetDERPMap(h.cfg.DERP)
+	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
@@ -615,7 +635,7 @@ func (h *Headscale) Serve() error {
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
 		Handler:     router,
-		ReadTimeout: HTTPReadTimeout,
+		ReadTimeout: types.HTTPReadTimeout,
 		// Go does not handle timeouts in HTTP very well, and there is
 		// no good way to handle streaming timeouts, therefore we need to
 		// keep this at unlimited and be careful to clean up connections
@@ -645,7 +665,7 @@ func (h *Headscale) Serve() error {
 	promHTTPServer := &http.Server{
 		Addr:         h.cfg.MetricsAddr,
 		Handler:      promMux,
-		ReadTimeout:  HTTPReadTimeout,
+		ReadTimeout:  types.HTTPReadTimeout,
 		WriteTimeout: 0,
 	}
 
@@ -709,7 +729,7 @@ func (h *Headscale) Serve() error {
 				// Gracefully shut down servers
 				ctx, cancel := context.WithTimeout(
 					context.Background(),
-					HTTPShutdownTimeout,
+					types.HTTPShutdownTimeout,
 				)
 				if err := promHTTPServer.Shutdown(ctx); err != nil {
 					log.Error().Err(err).Msg("Failed to shutdown prometheus http")
@@ -792,7 +812,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			server := &http.Server{
 				Addr:        h.cfg.TLS.LetsEncrypt.Listen,
 				Handler:     certManager.HTTPHandler(http.HandlerFunc(h.redirect)),
-				ReadTimeout: HTTPReadTimeout,
+				ReadTimeout: types.HTTPReadTimeout,
 			}
 
 			go func() {
