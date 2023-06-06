@@ -1,6 +1,11 @@
 package util
 
-import "testing"
+import (
+	"net/netip"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestNormalizeToFQDNRules(t *testing.T) {
 	type args struct {
@@ -140,4 +145,102 @@ func TestCheckForFQDNRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMagicDNSRootDomains100(t *testing.T) {
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("100.64.0.0/10"),
+	}
+	domains := GenerateMagicDNSRootDomains(prefixes)
+
+	found := false
+	for _, domain := range domains {
+		if domain == "64.100.in-addr.arpa." {
+			found = true
+
+			break
+		}
+	}
+	assert.True(t, found)
+
+	found = false
+	for _, domain := range domains {
+		if domain == "100.100.in-addr.arpa." {
+			found = true
+
+			break
+		}
+	}
+	assert.True(t, found)
+
+	found = false
+	for _, domain := range domains {
+		if domain == "127.100.in-addr.arpa." {
+			found = true
+
+			break
+		}
+	}
+	assert.True(t, found)
+}
+
+func TestMagicDNSRootDomains172(t *testing.T) {
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("172.16.0.0/16"),
+	}
+	domains := GenerateMagicDNSRootDomains(prefixes)
+
+	found := false
+	for _, domain := range domains {
+		if domain == "0.16.172.in-addr.arpa." {
+			found = true
+
+			break
+		}
+	}
+	assert.True(t, found)
+
+	found = false
+	for _, domain := range domains {
+		if domain == "255.16.172.in-addr.arpa." {
+			found = true
+
+			break
+		}
+	}
+	assert.True(t, found)
+}
+
+// Happens when netmask is a multiple of 4 bits (sounds likely).
+func TestMagicDNSRootDomainsIPv6Single(t *testing.T) {
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
+	}
+	domains := GenerateMagicDNSRootDomains(prefixes)
+
+	assert.Len(t, domains, 1)
+	assert.Equal(t, "0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.", domains[0].WithTrailingDot())
+}
+
+func TestMagicDNSRootDomainsIPv6SingleMultiple(t *testing.T) {
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("fd7a:115c:a1e0::/50"),
+	}
+	domains := GenerateMagicDNSRootDomains(prefixes)
+
+	yieldsRoot := func(dom string) bool {
+		for _, candidate := range domains {
+			if candidate.WithTrailingDot() == dom {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	assert.Len(t, domains, 4)
+	assert.True(t, yieldsRoot("0.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."))
+	assert.True(t, yieldsRoot("1.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."))
+	assert.True(t, yieldsRoot("2.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."))
+	assert.True(t, yieldsRoot("3.0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa."))
 }
