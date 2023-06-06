@@ -40,5 +40,5 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 
 	ns.nodeKey = registerRequest.NodeKey
 
-	ns.headscale.handleRegisterCommon(writer, req, registerRequest, ns.conn.Peer(), true)
+	ns.headscale.handleRegister(writer, req, registerRequest, ns.conn.Peer(), true)
 }

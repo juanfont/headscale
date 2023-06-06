@@ -21,9 +21,9 @@ type contextKey string
 
 const machineNameContextKey = contextKey("machineName")
 
-// handlePollCommon is the common code for the legacy and Noise protocols to
+// handlePoll is the common code for the legacy and Noise protocols to
 // managed the poll loop.
-func (h *Headscale) handlePollCommon(
+func (h *Headscale) handlePoll(
 	writer http.ResponseWriter,
 	ctx context.Context,
 	machine *types.Machine,
