@@ -1,4 +1,4 @@
-package hscontrol
+package server
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/derp"
 	"tailscale.com/net/stun"
@@ -26,23 +27,30 @@ import (
 const fastStartHeader = "Derp-Fast-Start"
 
 type DERPServer struct {
+	serverURL     string
+	key           key.NodePrivate
+	cfg           *types.DERPConfig
 	tailscaleDERP *derp.Server
-	region        tailcfg.DERPRegion
 }
 
-func (h *Headscale) NewDERPServer() (*DERPServer, error) {
+func NewDERPServer(
+	serverURL string,
+	derpKey key.NodePrivate,
+	cfg *types.DERPConfig,
+) (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
-	server := derp.NewServer(key.NodePrivate(*h.privateKey2019), log.Info().Msgf)
-	region, err := h.generateRegionLocalDERP()
-	if err != nil {
-		return nil, err
-	}
+	server := derp.NewServer(derpKey, log.Debug().Msgf)
 
-	return &DERPServer{server, region}, nil
+	return &DERPServer{
+		serverURL:     serverURL,
+		key:           derpKey,
+		cfg:           cfg,
+		tailscaleDERP: server,
+	}, nil
 }
 
-func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
-	serverURL, err := url.Parse(h.cfg.ServerURL)
+func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
+	serverURL, err := url.Parse(d.serverURL)
 	if err != nil {
 		return tailcfg.DERPRegion{}, err
 	}
@@ -65,21 +73,21 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 	}
 
 	localDERPregion := tailcfg.DERPRegion{
-		RegionID:   h.cfg.DERP.ServerRegionID,
-		RegionCode: h.cfg.DERP.ServerRegionCode,
-		RegionName: h.cfg.DERP.ServerRegionName,
+		RegionID:   d.cfg.ServerRegionID,
+		RegionCode: d.cfg.ServerRegionCode,
+		RegionName: d.cfg.ServerRegionName,
 		Avoid:      false,
 		Nodes: []*tailcfg.DERPNode{
 			{
-				Name:     fmt.Sprintf("%d", h.cfg.DERP.ServerRegionID),
-				RegionID: h.cfg.DERP.ServerRegionID,
+				Name:     fmt.Sprintf("%d", d.cfg.ServerRegionID),
+				RegionID: d.cfg.ServerRegionID,
 				HostName: host,
 				DERPPort: port,
 			},
 		},
 	}
 
-	_, portSTUNStr, err := net.SplitHostPort(h.cfg.DERP.STUNAddr)
+	_, portSTUNStr, err := net.SplitHostPort(d.cfg.STUNAddr)
 	if err != nil {
 		return tailcfg.DERPRegion{}, err
 	}
@@ -94,7 +102,7 @@ func (h *Headscale) generateRegionLocalDERP() (tailcfg.DERPRegion, error) {
 	return localDERPregion, nil
 }
 
-func (h *Headscale) DERPHandler(
+func (d *DERPServer) DERPHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
@@ -156,7 +164,7 @@ func (h *Headscale) DERPHandler(
 	log.Trace().Caller().Msgf("Hijacked connection from %v", req.RemoteAddr)
 
 	if !fastStart {
-		pubKey := h.privateKey2019.Public()
+		pubKey := d.key.Public()
 		pubKeyStr, _ := pubKey.MarshalText() //nolint
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\n"+
 			"Upgrade: DERP\r\n"+
@@ -167,12 +175,12 @@ func (h *Headscale) DERPHandler(
 			string(pubKeyStr))
 	}
 
-	h.DERPServer.tailscaleDERP.Accept(req.Context(), netConn, conn, netConn.RemoteAddr().String())
+	d.tailscaleDERP.Accept(req.Context(), netConn, conn, netConn.RemoteAddr().String())
 }
 
 // DERPProbeHandler is the endpoint that js/wasm clients hit to measure
 // DERP latency, since they can't do UDP STUN queries.
-func (h *Headscale) DERPProbeHandler(
+func DERPProbeHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
@@ -199,43 +207,47 @@ func (h *Headscale) DERPProbeHandler(
 // The initial implementation is here https://github.com/tailscale/tailscale/pull/1406
 // They have a cache, but not clear if that is really necessary at Headscale, uh, scale.
 // An example implementation is found here https://derp.tailscale.com/bootstrap-dns
-func (h *Headscale) DERPBootstrapDNSHandler(
-	writer http.ResponseWriter,
-	req *http.Request,
-) {
-	dnsEntries := make(map[string][]net.IP)
+func DERPBootstrapDNSHandler(
+	derpMap *tailcfg.DERPMap,
+) func(http.ResponseWriter, *http.Request) {
+	return func(
+		writer http.ResponseWriter,
+		req *http.Request,
+	) {
+		dnsEntries := make(map[string][]net.IP)
 
-	resolvCtx, cancel := context.WithTimeout(req.Context(), time.Minute)
-	defer cancel()
-	var resolver net.Resolver
-	for _, region := range h.DERPMap.Regions {
-		for _, node := range region.Nodes { // we don't care if we override some nodes
-			addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName)
-			if err != nil {
-				log.Trace().
-					Caller().
-					Err(err).
-					Msgf("bootstrap DNS lookup failed %q", node.HostName)
+		resolvCtx, cancel := context.WithTimeout(req.Context(), time.Minute)
+		defer cancel()
+		var resolver net.Resolver
+		for _, region := range derpMap.Regions {
+			for _, node := range region.Nodes { // we don't care if we override some nodes
+				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName)
+				if err != nil {
+					log.Trace().
+						Caller().
+						Err(err).
+						Msgf("bootstrap DNS lookup failed %q", node.HostName)
 
-				continue
+					continue
+				}
+				dnsEntries[node.HostName] = addrs
 			}
-			dnsEntries[node.HostName] = addrs
 		}
-	}
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	err := json.NewEncoder(writer).Encode(dnsEntries)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		err := json.NewEncoder(writer).Encode(dnsEntries)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
 	}
 }
 
 // ServeSTUN starts a STUN server on the configured addr.
-func (h *Headscale) ServeSTUN() {
-	packetConn, err := net.ListenPacket("udp", h.cfg.DERP.STUNAddr)
+func (d *DERPServer) ServeSTUN() {
+	packetConn, err := net.ListenPacket("udp", d.cfg.STUNAddr)
 	if err != nil {
 		log.Fatal().Msgf("failed to open STUN listener: %v", err)
 	}

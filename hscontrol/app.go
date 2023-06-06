@@ -25,6 +25,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
+	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -79,7 +80,7 @@ type Headscale struct {
 	noisePrivateKey *key.MachinePrivate
 
 	DERPMap    *tailcfg.DERPMap
-	DERPServer *DERPServer
+	DERPServer *derpServer.DERPServer
 
 	ACLPolicy *policy.ACLPolicy
 
@@ -202,7 +203,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	if cfg.DERP.ServerEnabled {
-		embeddedDERPServer, err := app.NewDERPServer()
+		// TODO(kradalby): replace this key with a dedicated DERP key.
+		embeddedDERPServer, err := derpServer.NewDERPServer(cfg.ServerURL, key.NodePrivate(*privateKey), &cfg.DERP)
 		if err != nil {
 			return nil, err
 		}
@@ -237,7 +239,7 @@ func (h *Headscale) expireExpiredMachines(milliSeconds int64) {
 }
 
 // scheduledDERPMapUpdateWorker refreshes the DERPMap stored on the global object
-// at a set interval
+// at a set interval.
 func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 	log.Info().
 		Dur("frequency", h.cfg.DERP.UpdateFrequency).
@@ -253,7 +255,8 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 			log.Info().Msg("Fetching DERPMap updates")
 			h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
 			if h.cfg.DERP.ServerEnabled {
-				h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
+				region, _ := h.DERPServer.GenerateRegion()
+				h.DERPMap.Regions[region.RegionID] = &region
 			}
 
 			h.setLastStateChangeToNow()
@@ -456,9 +459,9 @@ func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
 		Methods(http.MethodGet)
 
 	if h.cfg.DERP.ServerEnabled {
-		router.HandleFunc("/derp", h.DERPHandler)
-		router.HandleFunc("/derp/probe", h.DERPProbeHandler)
-		router.HandleFunc("/bootstrap-dns", h.DERPBootstrapDNSHandler)
+		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
+		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
+		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.DERPMap))
 	}
 
 	apiRouter := router.PathPrefix("/api").Subrouter()
@@ -483,8 +486,14 @@ func (h *Headscale) Serve() error {
 			return errSTUNAddressNotSet
 		}
 
-		h.DERPMap.Regions[h.DERPServer.region.RegionID] = &h.DERPServer.region
-		go h.ServeSTUN()
+		region, err := h.DERPServer.GenerateRegion()
+		if err != nil {
+			return err
+		}
+
+		h.DERPMap.Regions[region.RegionID] = &region
+
+		go h.DERPServer.ServeSTUN()
 	}
 
 	if h.cfg.DERP.AutoUpdate {
