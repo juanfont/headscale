@@ -1,11 +1,9 @@
 package hscontrol
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,86 +16,10 @@ import (
 	"tailscale.com/types/key"
 )
 
-const (
-	// The CapabilityVersion is used by Tailscale clients to indicate
-	// their codebase version. Tailscale clients can communicate over TS2021
-	// from CapabilityVersion 28, but we only have good support for it
-	// since https://github.com/tailscale/tailscale/pull/4323 (Noise in any HTTPS port).
-	//
-	// Related to this change, there is https://github.com/tailscale/tailscale/pull/5379,
-	// where CapabilityVersion 39 is introduced to indicate #4323 was merged.
-	//
-	// See also https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go
-	NoiseCapabilityVersion = 39
-)
-
-// KeyHandler provides the Headscale pub key
-// Listens in /key.
-func (h *Headscale) KeyHandler(
-	writer http.ResponseWriter,
-	req *http.Request,
-) {
-	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
-	clientCapabilityStr := req.URL.Query().Get("v")
-	if clientCapabilityStr != "" {
-		log.Debug().
-			Str("handler", "/key").
-			Str("v", clientCapabilityStr).
-			Msg("New noise client")
-		clientCapabilityVersion, err := strconv.Atoi(clientCapabilityStr)
-		if err != nil {
-			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			writer.WriteHeader(http.StatusBadRequest)
-			_, err := writer.Write([]byte("Wrong params"))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-
-			return
-		}
-
-		// TS2021 (Tailscale v2 protocol) requires to have a different key
-		if clientCapabilityVersion >= NoiseCapabilityVersion {
-			resp := tailcfg.OverTLSPublicKeyResponse{
-				LegacyPublicKey: h.privateKey2019.Public(),
-				PublicKey:       h.noisePrivateKey.Public(),
-			}
-			writer.Header().Set("Content-Type", "application/json")
-			writer.WriteHeader(http.StatusOK)
-			err = json.NewEncoder(writer).Encode(resp)
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-
-			return
-		}
-	}
-	log.Debug().
-		Str("handler", "/key").
-		Msg("New legacy client")
-
-	// Old clients don't send a 'v' parameter, so we send the legacy public key
-	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	writer.WriteHeader(http.StatusOK)
-	_, err := writer.Write([]byte(util.MachinePublicKeyStripPrefix(h.privateKey2019.Public())))
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
-	}
-}
-
-// handleRegisterCommon is the common logic for registering a client in the legacy and Noise protocols
+// handleRegister is the common logic for registering a client in the legacy and Noise protocols
 //
 // When using Noise, the machineKey is Zero.
-func (h *Headscale) handleRegisterCommon(
+func (h *Headscale) handleRegister(
 	writer http.ResponseWriter,
 	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
@@ -109,7 +31,7 @@ func (h *Headscale) handleRegisterCommon(
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the machine has AuthKey set, handle registration via PreAuthKeys
 		if registerRequest.Auth.AuthKey != "" {
-			h.handleAuthKeyCommon(writer, registerRequest, machineKey, isNoise)
+			h.handleAuthKey(writer, registerRequest, machineKey, isNoise)
 
 			return
 		}
@@ -138,7 +60,7 @@ func (h *Headscale) handleRegisterCommon(
 				case <-req.Context().Done():
 					return
 				case <-time.After(registrationHoldoff):
-					h.handleNewMachineCommon(writer, registerRequest, machineKey, isNoise)
+					h.handleNewMachine(writer, registerRequest, machineKey, isNoise)
 
 					return
 				}
@@ -198,7 +120,7 @@ func (h *Headscale) handleRegisterCommon(
 			registerCacheExpiration,
 		)
 
-		h.handleNewMachineCommon(writer, registerRequest, machineKey, isNoise)
+		h.handleNewMachine(writer, registerRequest, machineKey, isNoise)
 
 		return
 	}
@@ -238,7 +160,7 @@ func (h *Headscale) handleRegisterCommon(
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !registerRequest.Expiry.IsZero() &&
 				registerRequest.Expiry.UTC().Before(now) {
-				h.handleMachineLogOutCommon(writer, *machine, machineKey, isNoise)
+				h.handleMachineLogOut(writer, *machine, machineKey, isNoise)
 
 				return
 			}
@@ -246,7 +168,7 @@ func (h *Headscale) handleRegisterCommon(
 			// If machine is not expired, and it is register, we have a already accepted this machine,
 			// let it proceed with a valid registration
 			if !machine.IsExpired() {
-				h.handleMachineValidRegistrationCommon(writer, *machine, machineKey, isNoise)
+				h.handleMachineWithValidRegistration(writer, *machine, machineKey, isNoise)
 
 				return
 			}
@@ -255,7 +177,7 @@ func (h *Headscale) handleRegisterCommon(
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
 		if machine.NodeKey == util.NodePublicKeyStripPrefix(registerRequest.OldNodeKey) &&
 			!machine.IsExpired() {
-			h.handleMachineRefreshKeyCommon(
+			h.handleMachineKeyRefresh(
 				writer,
 				registerRequest,
 				*machine,
@@ -275,7 +197,7 @@ func (h *Headscale) handleRegisterCommon(
 		}
 
 		// The machine has expired or it is logged out
-		h.handleMachineExpiredOrLoggedOutCommon(writer, registerRequest, *machine, machineKey, isNoise)
+		h.handleMachineExpiredOrLoggedOut(writer, registerRequest, *machine, machineKey, isNoise)
 
 		// TODO(juan): RegisterRequest includes an Expiry time, that we could optionally use
 		machine.Expiry = &time.Time{}
@@ -295,19 +217,19 @@ func (h *Headscale) handleRegisterCommon(
 	}
 }
 
-// handleAuthKeyCommon contains the logic to manage auth key client registration
+// handleAuthKey contains the logic to manage auth key client registration
 // It is used both by the legacy and the new Noise protocol.
 // When using Noise, the machineKey is Zero.
 //
 // TODO: check if any locks are needed around IP allocation.
-func (h *Headscale) handleAuthKeyCommon(
+func (h *Headscale) handleAuthKey(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 	isNoise bool,
 ) {
 	log.Debug().
-		Str("func", "handleAuthKeyCommon").
+		Caller().
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Bool("noise", isNoise).
 		Msgf("Processing auth key for %s", registerRequest.Hostinfo.Hostname)
@@ -317,7 +239,6 @@ func (h *Headscale) handleAuthKeyCommon(
 	if err != nil {
 		log.Error().
 			Caller().
-			Str("func", "handleAuthKeyCommon").
 			Bool("noise", isNoise).
 			Str("machine", registerRequest.Hostinfo.Hostname).
 			Err(err).
@@ -328,7 +249,6 @@ func (h *Headscale) handleAuthKeyCommon(
 		if err != nil {
 			log.Error().
 				Caller().
-				Str("func", "handleAuthKeyCommon").
 				Bool("noise", isNoise).
 				Str("machine", registerRequest.Hostinfo.Hostname).
 				Err(err).
@@ -353,7 +273,6 @@ func (h *Headscale) handleAuthKeyCommon(
 
 		log.Error().
 			Caller().
-			Str("func", "handleAuthKeyCommon").
 			Bool("noise", isNoise).
 			Str("machine", registerRequest.Hostinfo.Hostname).
 			Msg("Failed authentication via AuthKey")
@@ -369,7 +288,7 @@ func (h *Headscale) handleAuthKeyCommon(
 	}
 
 	log.Debug().
-		Str("func", "handleAuthKeyCommon").
+		Caller().
 		Bool("noise", isNoise).
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Msg("Authentication key was valid, proceeding to acquire IP addresses")
@@ -489,7 +408,6 @@ func (h *Headscale) handleAuthKeyCommon(
 		log.Error().
 			Caller().
 			Bool("noise", isNoise).
-			Str("func", "handleAuthKeyCommon").
 			Str("machine", registerRequest.Hostinfo.Hostname).
 			Err(err).
 			Msg("Cannot encode message")
@@ -513,16 +431,15 @@ func (h *Headscale) handleAuthKeyCommon(
 	}
 
 	log.Info().
-		Str("func", "handleAuthKeyCommon").
 		Bool("noise", isNoise).
 		Str("machine", registerRequest.Hostinfo.Hostname).
 		Str("ips", strings.Join(machine.IPAddresses.StringSlice(), ", ")).
 		Msg("Successfully authenticated via AuthKey")
 }
 
-// handleNewMachineCommon exposes for both legacy and Noise the functionality to get a URL
+// handleNewMachine exposes for both legacy and Noise the functionality to get a URL
 // for authorizing the machine. This url is then showed to the user by the local Tailscale client.
-func (h *Headscale) handleNewMachineCommon(
+func (h *Headscale) handleNewMachine(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
@@ -580,7 +497,7 @@ func (h *Headscale) handleNewMachineCommon(
 		Msg("Successfully sent auth url")
 }
 
-func (h *Headscale) handleMachineLogOutCommon(
+func (h *Headscale) handleMachineLogOut(
 	writer http.ResponseWriter,
 	machine types.Machine,
 	machineKey key.MachinePublic,
@@ -598,7 +515,6 @@ func (h *Headscale) handleMachineLogOutCommon(
 		log.Error().
 			Caller().
 			Bool("noise", isNoise).
-			Str("func", "handleMachineLogOutCommon").
 			Err(err).
 			Msg("Failed to expire machine")
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
@@ -654,7 +570,7 @@ func (h *Headscale) handleMachineLogOutCommon(
 		Msg("Successfully logged out")
 }
 
-func (h *Headscale) handleMachineValidRegistrationCommon(
+func (h *Headscale) handleMachineWithValidRegistration(
 	writer http.ResponseWriter,
 	machine types.Machine,
 	machineKey key.MachinePublic,
@@ -708,7 +624,7 @@ func (h *Headscale) handleMachineValidRegistrationCommon(
 		Msg("Machine successfully authorized")
 }
 
-func (h *Headscale) handleMachineRefreshKeyCommon(
+func (h *Headscale) handleMachineKeyRefresh(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
 	machine types.Machine,
@@ -768,7 +684,7 @@ func (h *Headscale) handleMachineRefreshKeyCommon(
 		Msg("Node key successfully refreshed")
 }
 
-func (h *Headscale) handleMachineExpiredOrLoggedOutCommon(
+func (h *Headscale) handleMachineExpiredOrLoggedOut(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
 	machine types.Machine,
@@ -778,7 +694,7 @@ func (h *Headscale) handleMachineExpiredOrLoggedOutCommon(
 	resp := tailcfg.RegisterResponse{}
 
 	if registerRequest.Auth.AuthKey != "" {
-		h.handleAuthKeyCommon(writer, registerRequest, machineKey, isNoise)
+		h.handleAuthKey(writer, registerRequest, machineKey, isNoise)
 
 		return
 	}

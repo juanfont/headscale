@@ -93,5 +93,5 @@ func (h *Headscale) PollNetMapHandler(
 		Str("machine", machine.Hostname).
 		Msg("A machine is entering polling via the legacy protocol")
 
-	h.handlePollCommon(writer, req.Context(), machine, mapRequest, false)
+	h.handlePoll(writer, req.Context(), machine, mapRequest, false)
 }

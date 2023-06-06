@@ -74,5 +74,5 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		Str("machine", machine.Hostname).
 		Msg("A machine is entering polling via the Noise protocol")
 
-	ns.headscale.handlePollCommon(writer, req.Context(), machine, mapRequest, true)
+	ns.headscale.handlePoll(writer, req.Context(), machine, mapRequest, true)
 }
