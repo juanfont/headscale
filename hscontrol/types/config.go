@@ -159,7 +159,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.AutomaticEnv()
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
-	viper.SetDefault("tls_letsencrypt_challenge_type", Http01ChallengeType)
+	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
 
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", TextLogFormat)
@@ -216,15 +216,15 @@ func LoadConfig(path string, isFile bool) error {
 	}
 
 	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
-		(viper.GetString("tls_letsencrypt_challenge_type") == TlsALPN01ChallengeType) &&
+		(viper.GetString("tls_letsencrypt_challenge_type") == TLSALPN01ChallengeType) &&
 		(!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
 		log.Warn().
 			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
-	if (viper.GetString("tls_letsencrypt_challenge_type") != Http01ChallengeType) &&
-		(viper.GetString("tls_letsencrypt_challenge_type") != TlsALPN01ChallengeType) {
+	if (viper.GetString("tls_letsencrypt_challenge_type") != HTTP01ChallengeType) &&
+		(viper.GetString("tls_letsencrypt_challenge_type") != TLSALPN01ChallengeType) {
 		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
 	}
 
