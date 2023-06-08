@@ -9,90 +9,12 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/check.v1"
-	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 )
 
 // TODO(kradalby):
 // Convert these tests to being non-database dependent and table driven. They are
 // very verbose, and dont really need the database.
-
-func (s *Suite) TestSshRules(c *check.C) {
-	envknob.Setenv("HEADSCALE_EXPERIMENTAL_FEATURE_SSH", "1")
-
-	user, err := db.CreateUser("user1")
-	c.Assert(err, check.IsNil)
-
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.GetMachine("user1", "testmachine")
-	c.Assert(err, check.NotNil)
-	hostInfo := tailcfg.Hostinfo{
-		OS:          "centos",
-		Hostname:    "testmachine",
-		RequestTags: []string{"tag:test"},
-	}
-
-	machine := types.Machine{
-		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "testmachine",
-		IPAddresses:    types.MachineAddresses{netip.MustParseAddr("100.64.0.1")},
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
-		HostInfo:       types.HostInfo(hostInfo),
-	}
-	err = db.MachineSave(&machine)
-	c.Assert(err, check.IsNil)
-
-	aclPolicy := &policy.ACLPolicy{
-		Groups: policy.Groups{
-			"group:test": []string{"user1"},
-		},
-		Hosts: policy.Hosts{
-			"client": netip.PrefixFrom(netip.MustParseAddr("100.64.99.42"), 32),
-		},
-		ACLs: []policy.ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"*"},
-				Destinations: []string{"*:*"},
-			},
-		},
-		SSHs: []policy.SSH{
-			{
-				Action:       "accept",
-				Sources:      []string{"group:test"},
-				Destinations: []string{"client"},
-				Users:        []string{"autogroup:nonroot"},
-			},
-			{
-				Action:       "accept",
-				Sources:      []string{"*"},
-				Destinations: []string{"client"},
-				Users:        []string{"autogroup:nonroot"},
-			},
-		},
-	}
-
-	_, sshPolicy, err := policy.GenerateFilterRules(aclPolicy, &machine, types.Machines{}, false)
-
-	c.Assert(err, check.IsNil)
-	c.Assert(sshPolicy, check.NotNil)
-	c.Assert(sshPolicy.Rules, check.HasLen, 2)
-	c.Assert(sshPolicy.Rules[0].SSHUsers, check.HasLen, 1)
-	c.Assert(sshPolicy.Rules[0].Principals, check.HasLen, 1)
-	c.Assert(sshPolicy.Rules[0].Principals[0].UserLogin, check.Matches, "user1")
-
-	c.Assert(sshPolicy.Rules[1].SSHUsers, check.HasLen, 1)
-	c.Assert(sshPolicy.Rules[1].Principals, check.HasLen, 1)
-	c.Assert(sshPolicy.Rules[1].Principals[0].NodeIP, check.Matches, "*")
-}
 
 // this test should validate that we can expand a group in a TagOWner section and
 // match properly the IP's of the related hosts. The owner is valid and the tag is also valid.
@@ -376,7 +298,10 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 	}
 
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("TestValidExpandTagOwnersInDestinations() unexpected result (-want +got):\n%s", diff)
+		t.Errorf(
+			"TestValidExpandTagOwnersInDestinations() unexpected result (-want +got):\n%s",
+			diff,
+		)
 	}
 }
 

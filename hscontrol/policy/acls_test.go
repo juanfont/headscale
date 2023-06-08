@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
@@ -2409,6 +2410,187 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("filterMachinesByACL() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSSHRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		machine types.Machine
+		peers   types.Machines
+		pol     ACLPolicy
+		want    []*tailcfg.SSHRule
+	}{
+		{
+			name: "peers-can-connect",
+			machine: types.Machine{
+				Hostname:    "testmachine",
+				IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.99.42")},
+				UserID:      0,
+				User: types.User{
+					Name: "user1",
+				},
+			},
+			peers: types.Machines{
+				types.Machine{
+					Hostname:    "testmachine2",
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.1")},
+					UserID:      0,
+					User: types.User{
+						Name: "user1",
+					},
+				},
+			},
+			pol: ACLPolicy{
+				Groups: Groups{
+					"group:test": []string{"user1"},
+				},
+				Hosts: Hosts{
+					"client": netip.PrefixFrom(netip.MustParseAddr("100.64.99.42"), 32),
+				},
+				ACLs: []ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      []string{"group:test"},
+						Destinations: []string{"client"},
+						Users:        []string{"autogroup:nonroot"},
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"client"},
+						Users:        []string{"autogroup:nonroot"},
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"group:test"},
+						Destinations: []string{"100.64.99.42"},
+						Users:        []string{"autogroup:nonroot"},
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"100.64.99.42"},
+						Users:        []string{"autogroup:nonroot"},
+					},
+				},
+			},
+			want: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{
+							UserLogin: "user1",
+						},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
+				},
+				{
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Principals: []*tailcfg.SSHPrincipal{
+						{
+							Any: true,
+						},
+					},
+					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
+				},
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{
+							UserLogin: "user1",
+						},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
+				},
+				{
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Principals: []*tailcfg.SSHPrincipal{
+						{
+							Any: true,
+						},
+					},
+					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
+				},
+			},
+		},
+		{
+			name: "peers-cannot-connect",
+			machine: types.Machine{
+				Hostname:    "testmachine",
+				IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.1")},
+				UserID:      0,
+				User: types.User{
+					Name: "user1",
+				},
+			},
+			peers: types.Machines{
+				types.Machine{
+					Hostname:    "testmachine2",
+					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.99.42")},
+					UserID:      0,
+					User: types.User{
+						Name: "user1",
+					},
+				},
+			},
+			pol: ACLPolicy{
+				Groups: Groups{
+					"group:test": []string{"user1"},
+				},
+				Hosts: Hosts{
+					"client": netip.PrefixFrom(netip.MustParseAddr("100.64.99.42"), 32),
+				},
+				ACLs: []ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      []string{"group:test"},
+						Destinations: []string{"100.64.99.42"},
+						Users:        []string{"autogroup:nonroot"},
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"100.64.99.42"},
+						Users:        []string{"autogroup:nonroot"},
+					},
+				},
+			},
+			want: []*tailcfg.SSHRule{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.pol.generateSSHRules(&tt.machine, tt.peers, false)
+			assert.NoError(t, err)
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("TestSSHRules() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}
