@@ -8,7 +8,8 @@
 
 ### Changes
 
-- Adjust the template for the OIDC callback login page [#1484](https://github.com/juanfont/headscale/pull/1484)
+- Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
+- SSH is no longer experimental [#1487](https://github.com/juanfont/headscale/pull/1487)
 
 ## 0.22.3 (2023-05-12)
 

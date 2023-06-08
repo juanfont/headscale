@@ -92,6 +92,16 @@ func (ma MachineAddresses) Prefixes() []netip.Prefix {
 	return addrs
 }
 
+func (ma MachineAddresses) InIPSet(set *netipx.IPSet) bool {
+	for _, machineAddr := range ma {
+		if set.Contains(machineAddr) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // AppendToIPSet adds the individual ips in MachineAddresses to a
 // given netipx.IPSetBuilder.
 func (ma MachineAddresses) AppendToIPSet(build *netipx.IPSetBuilder) {

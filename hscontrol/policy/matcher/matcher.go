@@ -14,17 +14,26 @@ type Match struct {
 }
 
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
+	dests := []string{}
+	for _, dest := range rule.DstPorts {
+		dests = append(dests, dest.IP)
+	}
+
+	return MatchFromStrings(rule.SrcIPs, dests)
+}
+
+func MatchFromStrings(sources, destinations []string) Match {
 	srcs := new(netipx.IPSetBuilder)
 	dests := new(netipx.IPSetBuilder)
 
-	for _, srcIP := range rule.SrcIPs {
+	for _, srcIP := range sources {
 		set, _ := util.ParseIPSet(srcIP, nil)
 
 		srcs.AddSet(set)
 	}
 
-	for _, dest := range rule.DstPorts {
-		set, _ := util.ParseIPSet(dest.IP, nil)
+	for _, dest := range destinations {
+		set, _ := util.ParseIPSet(dest, nil)
 
 		dests.AddSet(set)
 	}

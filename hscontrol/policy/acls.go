@@ -136,7 +136,7 @@ func GenerateFilterRules(
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 
 	var sshPolicy *tailcfg.SSHPolicy
-	sshRules, err := generateSSHRules(policy, append(peers, *machine), stripEmailDomain)
+	sshRules, err := policy.generateSSHRules(machine, peers, stripEmailDomain)
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
@@ -215,16 +215,12 @@ func (pol *ACLPolicy) generateFilterRules(
 	return rules, nil
 }
 
-func generateSSHRules(
-	policy *ACLPolicy,
-	machines types.Machines,
+func (pol *ACLPolicy) generateSSHRules(
+	machine *types.Machine,
+	peers types.Machines,
 	stripEmailDomain bool,
 ) ([]*tailcfg.SSHRule, error) {
 	rules := []*tailcfg.SSHRule{}
-
-	if policy == nil {
-		return nil, ErrEmptyPolicy
-	}
 
 	acceptAction := tailcfg.SSHAction{
 		Message:                  "",
@@ -246,7 +242,25 @@ func generateSSHRules(
 		AllowLocalPortForwarding: false,
 	}
 
-	for index, sshACL := range policy.SSHs {
+	for index, sshACL := range pol.SSHs {
+		var dest netipx.IPSetBuilder
+		for _, src := range sshACL.Destinations {
+			expanded, err := pol.ExpandAlias(append(peers, *machine), src, stripEmailDomain)
+			if err != nil {
+				return nil, err
+			}
+			dest.AddSet(expanded)
+		}
+
+		destSet, err := dest.IPSet()
+		if err != nil {
+			return nil, err
+		}
+
+		if !machine.IPAddresses.InIPSet(destSet) {
+			continue
+		}
+
 		action := rejectAction
 		switch sshACL.Action {
 		case "accept":
@@ -273,7 +287,7 @@ func generateSSHRules(
 					Any: true,
 				})
 			} else if isGroup(rawSrc) {
-				users, err := policy.getUsersInGroup(rawSrc, stripEmailDomain)
+				users, err := pol.getUsersInGroup(rawSrc, stripEmailDomain)
 				if err != nil {
 					log.Error().
 						Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
@@ -287,8 +301,8 @@ func generateSSHRules(
 					})
 				}
 			} else {
-				expandedSrcs, err := policy.ExpandAlias(
-					machines,
+				expandedSrcs, err := pol.ExpandAlias(
+					peers,
 					rawSrc,
 					stripEmailDomain,
 				)
