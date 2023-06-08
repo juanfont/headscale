@@ -245,7 +245,7 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 			},
 		},
 	}
-	_, _, err := GenerateFilterRules(pol, types.Machines{}, false)
+	_, _, err := GenerateFilterRules(pol, &types.Machine{}, types.Machines{}, false)
 	c.Assert(errors.Is(err, ErrInvalidAction), check.Equals, true)
 }
 
@@ -264,7 +264,7 @@ func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
 			},
 		},
 	}
-	_, _, err := GenerateFilterRules(pol, types.Machines{}, false)
+	_, _, err := GenerateFilterRules(pol, &types.Machine{}, types.Machines{}, false)
 	c.Assert(errors.Is(err, ErrInvalidGroup), check.Equals, true)
 }
 
@@ -280,7 +280,7 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 		},
 	}
 
-	_, _, err := GenerateFilterRules(pol, types.Machines{}, false)
+	_, _, err := GenerateFilterRules(pol, &types.Machine{}, types.Machines{}, false)
 	c.Assert(errors.Is(err, ErrInvalidTag), check.Equals, true)
 }
 

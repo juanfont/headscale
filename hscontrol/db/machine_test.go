@@ -287,14 +287,20 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Logf("Machine(%v), user: %v", testMachine.Hostname, testMachine.User)
 	c.Assert(err, check.IsNil)
 
-	machines, err := db.ListMachines()
+	adminPeers, err := db.ListPeers(adminMachine)
 	c.Assert(err, check.IsNil)
 
-	aclRules, _, err := policy.GenerateFilterRules(aclPolicy, machines, false)
+	testPeers, err := db.ListPeers(testMachine)
 	c.Assert(err, check.IsNil)
 
-	peersOfTestMachine := policy.FilterMachinesByACL(testMachine, machines, aclRules)
-	peersOfAdminMachine := policy.FilterMachinesByACL(adminMachine, machines, aclRules)
+	adminRules, _, err := policy.GenerateFilterRules(aclPolicy, adminMachine, adminPeers, false)
+	c.Assert(err, check.IsNil)
+
+	testRules, _, err := policy.GenerateFilterRules(aclPolicy, testMachine, testPeers, false)
+	c.Assert(err, check.IsNil)
+
+	peersOfAdminMachine := policy.FilterMachinesByACL(adminMachine, adminPeers, adminRules)
+	peersOfTestMachine := policy.FilterMachinesByACL(testMachine, testPeers, testRules)
 
 	c.Log(peersOfTestMachine)
 	c.Assert(len(peersOfTestMachine), check.Equals, 9)

@@ -360,7 +360,7 @@ func Test_fullMapResponse(t *testing.T) {
 				CollectServices: "false",
 				PacketFilter:    []tailcfg.FilterRule{},
 				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
-				SSHPolicy:       nil,
+				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime:     &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
@@ -393,7 +393,7 @@ func Test_fullMapResponse(t *testing.T) {
 				CollectServices: "false",
 				PacketFilter:    []tailcfg.FilterRule{},
 				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
-				SSHPolicy:       nil,
+				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime:     &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
@@ -442,7 +442,7 @@ func Test_fullMapResponse(t *testing.T) {
 					},
 				},
 				UserProfiles: []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
-				SSHPolicy:    nil,
+				SSHPolicy:    &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime:  &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,

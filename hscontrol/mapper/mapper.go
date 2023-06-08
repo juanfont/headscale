@@ -101,8 +101,8 @@ func fullMapResponse(
 
 	rules, sshPolicy, err := policy.GenerateFilterRules(
 		pol,
-		// The policy is currently calculated for the entire Headscale network
-		append(peers, *machine),
+		machine,
+		peers,
 		stripEmailDomain,
 	)
 	if err != nil {
