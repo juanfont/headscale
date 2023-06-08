@@ -18,7 +18,6 @@ import (
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"gopkg.in/yaml.v3"
-	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 )
 
@@ -53,8 +52,6 @@ const (
 	protocolSCTP     = 132 // Stream Control Transmission Protocol
 	ProtocolFC       = 133 // Fibre Channel
 )
-
-var featureEnableSSH = envknob.RegisterBool("HEADSCALE_EXPERIMENTAL_FEATURE_SSH")
 
 // LoadACLPolicyFromPath loads the ACL policy from the specify path, and generates the ACL rules.
 func LoadACLPolicyFromPath(path string) (*ACLPolicy, error) {
@@ -122,7 +119,8 @@ func LoadACLPolicyFromBytes(acl []byte, format string) (*ACLPolicy, error) {
 // per node and that should be taken into account.
 func GenerateFilterRules(
 	policy *ACLPolicy,
-	machines types.Machines,
+	machine *types.Machine,
+	peers types.Machines,
 	stripEmailDomain bool,
 ) ([]tailcfg.FilterRule, *tailcfg.SSHPolicy, error) {
 	// If there is no policy defined, we default to allow all
@@ -130,7 +128,7 @@ func GenerateFilterRules(
 		return tailcfg.FilterAllowAll, &tailcfg.SSHPolicy{}, nil
 	}
 
-	rules, err := policy.generateFilterRules(machines, stripEmailDomain)
+	rules, err := policy.generateFilterRules(append(peers, *machine), stripEmailDomain)
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
@@ -138,19 +136,15 @@ func GenerateFilterRules(
 	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
 
 	var sshPolicy *tailcfg.SSHPolicy
-	if featureEnableSSH() {
-		sshRules, err := generateSSHRules(policy, machines, stripEmailDomain)
-		if err != nil {
-			return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
-		}
-		log.Trace().Interface("SSH", sshRules).Msg("SSH rules generated")
-		if sshPolicy == nil {
-			sshPolicy = &tailcfg.SSHPolicy{}
-		}
-		sshPolicy.Rules = sshRules
-	} else if policy != nil && len(policy.SSHs) > 0 {
-		log.Info().Msg("SSH ACLs has been defined, but HEADSCALE_EXPERIMENTAL_FEATURE_SSH is not enabled, this is a unstable feature, check docs before activating")
+	sshRules, err := generateSSHRules(policy, append(peers, *machine), stripEmailDomain)
+	if err != nil {
+		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
+	log.Trace().Interface("SSH", sshRules).Msg("SSH rules generated")
+	if sshPolicy == nil {
+		sshPolicy = &tailcfg.SSHPolicy{}
+	}
+	sshPolicy.Rules = sshRules
 
 	return rules, sshPolicy, nil
 }
