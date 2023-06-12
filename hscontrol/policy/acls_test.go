@@ -2557,3 +2557,66 @@ func TestSSHRules(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDestination(t *testing.T) {
+	tests := []struct {
+		dest      string
+		wantAlias string
+		wantPort  string
+	}{
+		{
+			dest:      "git-server:*",
+			wantAlias: "git-server",
+			wantPort:  "*",
+		},
+		{
+			dest:      "192.168.1.0/24:22",
+			wantAlias: "192.168.1.0/24",
+			wantPort:  "22",
+		},
+		{
+			dest:      "192.168.1.1:22",
+			wantAlias: "192.168.1.1",
+			wantPort:  "22",
+		},
+		{
+			dest:      "fd7a:115c:a1e0::2:22",
+			wantAlias: "fd7a:115c:a1e0::2",
+			wantPort:  "22",
+		},
+		{
+			dest:      "fd7a:115c:a1e0::2/128:22",
+			wantAlias: "fd7a:115c:a1e0::2/128",
+			wantPort:  "22",
+		},
+		{
+			dest:      "tag:montreal-webserver:80,443",
+			wantAlias: "tag:montreal-webserver",
+			wantPort:  "80,443",
+		},
+		{
+			dest:      "tag:api-server:443",
+			wantAlias: "tag:api-server",
+			wantPort:  "443",
+		},
+		{
+			dest:      "example-host-1:*",
+			wantAlias: "example-host-1",
+			wantPort:  "*",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.dest, func(t *testing.T) {
+			alias, port, _ := parseDestination(tt.dest)
+
+			if alias != tt.wantAlias {
+				t.Errorf("unexpected alias: want(%s) != got(%s)", tt.wantAlias, alias)
+			}
+
+			if port != tt.wantPort {
+				t.Errorf("unexpected port: want(%s) != got(%s)", tt.wantPort, port)
+			}
+		})
+	}
+}

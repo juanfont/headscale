@@ -375,9 +375,39 @@ func (pol *ACLPolicy) getNetPortRangeFromDestination(
 	machines types.Machines,
 	needsWildcard bool,
 ) ([]tailcfg.NetPortRange, error) {
-	var tokens []string
+	alias, port, err := parseDestination(dest)
+	if err != nil {
+		return nil, err
+	}
 
-	log.Trace().Str("destination", dest).Msg("generating policy destination")
+	expanded, err := pol.ExpandAlias(
+		machines,
+		alias,
+	)
+	if err != nil {
+		return nil, err
+	}
+	ports, err := expandPorts(port, needsWildcard)
+	if err != nil {
+		return nil, err
+	}
+
+	dests := []tailcfg.NetPortRange{}
+	for _, dest := range expanded.Prefixes() {
+		for _, port := range *ports {
+			pr := tailcfg.NetPortRange{
+				IP:    dest.String(),
+				Ports: port,
+			}
+			dests = append(dests, pr)
+		}
+	}
+
+	return dests, nil
+}
+
+func parseDestination(dest string) (string, string, error) {
+	var tokens []string
 
 	// Check if there is a IPv4/6:Port combination, IPv6 has more than
 	// three ":".
@@ -397,7 +427,7 @@ func (pol *ACLPolicy) getNetPortRangeFromDestination(
 		if maybeIPv6, err := netip.ParseAddr(filteredMaybeIPv6Str); err != nil && !maybeIPv6.Is6() {
 			log.Trace().Err(err).Msg("trying to parse as IPv6")
 
-			return nil, fmt.Errorf(
+			return "", "", fmt.Errorf(
 				"failed to parse destination, tokens %v: %w",
 				tokens,
 				ErrInvalidPortFormat,
@@ -406,8 +436,6 @@ func (pol *ACLPolicy) getNetPortRangeFromDestination(
 			tokens = []string{maybeIPv6Str, port}
 		}
 	}
-
-	log.Trace().Strs("tokens", tokens).Msg("generating policy destination")
 
 	var alias string
 	// We can have here stuff like:
@@ -424,30 +452,7 @@ func (pol *ACLPolicy) getNetPortRangeFromDestination(
 		alias = fmt.Sprintf("%s:%s", tokens[0], tokens[1])
 	}
 
-	expanded, err := pol.ExpandAlias(
-		machines,
-		alias,
-	)
-	if err != nil {
-		return nil, err
-	}
-	ports, err := expandPorts(tokens[len(tokens)-1], needsWildcard)
-	if err != nil {
-		return nil, err
-	}
-
-	dests := []tailcfg.NetPortRange{}
-	for _, dest := range expanded.Prefixes() {
-		for _, port := range *ports {
-			pr := tailcfg.NetPortRange{
-				IP:    dest.String(),
-				Ports: port,
-			}
-			dests = append(dests, pr)
-		}
-	}
-
-	return dests, nil
+	return alias, tokens[len(tokens)-1], nil
 }
 
 // parseProtocol reads the proto field of the ACL and generates a list of
