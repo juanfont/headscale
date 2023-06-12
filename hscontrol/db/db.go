@@ -41,16 +41,15 @@ type HSDatabase struct {
 
 	ipAllocationMutex sync.Mutex
 
-	ipPrefixes       []netip.Prefix
-	baseDomain       string
-	stripEmailDomain bool
+	ipPrefixes []netip.Prefix
+	baseDomain string
 }
 
 // TODO(kradalby): assemble this struct from toptions or something typed
 // rather than arguments.
 func NewHeadscaleDatabase(
 	dbType, connectionAddr string,
-	stripEmailDomain, debug bool,
+	debug bool,
 	notifyStateChan chan<- struct{},
 	ipPrefixes []netip.Prefix,
 	baseDomain string,
@@ -64,9 +63,8 @@ func NewHeadscaleDatabase(
 		db:              dbConn,
 		notifyStateChan: notifyStateChan,
 
-		ipPrefixes:       ipPrefixes,
-		baseDomain:       baseDomain,
-		stripEmailDomain: stripEmailDomain,
+		ipPrefixes: ipPrefixes,
+		baseDomain: baseDomain,
 	}
 
 	log.Debug().Msgf("database %#v", dbConn)
@@ -202,9 +200,8 @@ func NewHeadscaleDatabase(
 
 		for item, machine := range machines {
 			if machine.GivenName == "" {
-				normalizedHostname, err := util.NormalizeToFQDNRules(
+				normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
 					machine.Hostname,
-					stripEmailDomain,
 				)
 				if err != nil {
 					log.Error().

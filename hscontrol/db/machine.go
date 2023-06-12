@@ -632,9 +632,8 @@ func (hsdb *HSDatabase) enableRoutes(machine *types.Machine, routeStrs ...string
 }
 
 func (hsdb *HSDatabase) generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
-	normalizedHostname, err := util.NormalizeToFQDNRules(
+	normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
 		suppliedName,
-		hsdb.stripEmailDomain,
 	)
 	if err != nil {
 		return "", err

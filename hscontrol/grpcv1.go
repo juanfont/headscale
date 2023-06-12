@@ -340,7 +340,6 @@ func (api headscaleV1APIServer) ListMachines(
 		m := machine.Proto()
 		validTags, invalidTags := api.h.ACLPolicy.GetTagsOfMachine(
 			machine,
-			api.h.cfg.OIDC.StripEmaildomain,
 		)
 		m.InvalidTags = invalidTags
 		m.ValidTags = validTags

@@ -18,7 +18,6 @@ func tailNodes(
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,
-	stripEmailDomain bool,
 ) ([]*tailcfg.Node, error) {
 	nodes := make([]*tailcfg.Node, len(machines))
 
@@ -28,7 +27,6 @@ func tailNodes(
 			pol,
 			dnsConfig,
 			baseDomain,
-			stripEmailDomain,
 		)
 		if err != nil {
 			return nil, err
@@ -47,7 +45,6 @@ func tailNode(
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,
-	stripEmailDomain bool,
 ) (*tailcfg.Node, error) {
 	nodeKey, err := machine.NodePublicKey()
 	if err != nil {
@@ -107,7 +104,7 @@ func tailNode(
 
 	online := machine.IsOnline()
 
-	tags, _ := pol.GetTagsOfMachine(machine, stripEmailDomain)
+	tags, _ := pol.GetTagsOfMachine(machine)
 	tags = lo.Uniq(append(tags, machine.ForcedTags...))
 
 	node := tailcfg.Node{

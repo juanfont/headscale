@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/spf13/viper"
 	"go4.org/netipx"
 	"tailscale.com/util/dnsname"
 )
@@ -23,6 +24,12 @@ const (
 var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var ErrInvalidUserName = errors.New("invalid user name")
+
+func NormalizeToFQDNRulesConfigFromViper(name string) (string, error) {
+	strip := viper.GetBool("oidc.strip_email_domain")
+
+	return NormalizeToFQDNRules(name, strip)
+}
 
 // NormalizeToFQDNRules will replace forbidden chars in user
 // it can also return an error if the user doesn't respect RFC 952 and 1123.

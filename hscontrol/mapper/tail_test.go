@@ -44,24 +44,22 @@ func TestTailNode(t *testing.T) {
 	expire := time.Date(2500, time.November, 11, 23, 0, 0, 0, time.UTC)
 
 	tests := []struct {
-		name             string
-		machine          types.Machine
-		pol              *policy.ACLPolicy
-		dnsConfig        *tailcfg.DNSConfig
-		baseDomain       string
-		stripEmailDomain bool
-		want             *tailcfg.Node
-		wantErr          bool
+		name       string
+		machine    types.Machine
+		pol        *policy.ACLPolicy
+		dnsConfig  *tailcfg.DNSConfig
+		baseDomain string
+		want       *tailcfg.Node
+		wantErr    bool
 	}{
 		{
-			name:             "empty-machine",
-			machine:          types.Machine{},
-			pol:              &policy.ACLPolicy{},
-			dnsConfig:        &tailcfg.DNSConfig{},
-			baseDomain:       "",
-			stripEmailDomain: false,
-			want:             nil,
-			wantErr:          true,
+			name:       "empty-machine",
+			machine:    types.Machine{},
+			pol:        &policy.ACLPolicy{},
+			dnsConfig:  &tailcfg.DNSConfig{},
+			baseDomain: "",
+			want:       nil,
+			wantErr:    true,
 		},
 		{
 			name: "minimal-machine",
@@ -108,10 +106,9 @@ func TestTailNode(t *testing.T) {
 				},
 				CreatedAt: created,
 			},
-			pol:              &policy.ACLPolicy{},
-			dnsConfig:        &tailcfg.DNSConfig{},
-			baseDomain:       "",
-			stripEmailDomain: false,
+			pol:        &policy.ACLPolicy{},
+			dnsConfig:  &tailcfg.DNSConfig{},
+			baseDomain: "",
 			want: &tailcfg.Node{
 				ID:       0,
 				StableID: "0",
@@ -172,7 +169,6 @@ func TestTailNode(t *testing.T) {
 				tt.pol,
 				tt.dnsConfig,
 				tt.baseDomain,
-				tt.stripEmailDomain,
 			)
 
 			if (err != nil) != tt.wantErr {
