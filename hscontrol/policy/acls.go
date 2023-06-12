@@ -128,7 +128,7 @@ func GenerateFilterRules(
 		return tailcfg.FilterAllowAll, &tailcfg.SSHPolicy{}, nil
 	}
 
-	rules, err := policy.generateFilterRules(append(peers, *machine), stripEmailDomain)
+	rules, err := policy.generateFilterRules(machine, peers, stripEmailDomain)
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
@@ -152,10 +152,12 @@ func GenerateFilterRules(
 // generateFilterRules takes a set of machines and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
 func (pol *ACLPolicy) generateFilterRules(
-	machines types.Machines,
+	machine *types.Machine,
+	peers types.Machines,
 	stripEmailDomain bool,
 ) ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
+	machines := append(peers, *machine)
 
 	for index, acl := range pol.ACLs {
 		if acl.Action != "accept" {
