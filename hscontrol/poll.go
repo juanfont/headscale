@@ -40,7 +40,6 @@ func (h *Headscale) handlePoll(
 		h.cfg.DNSConfig,
 		h.cfg.LogTail.Enabled,
 		h.cfg.RandomizeClientPort,
-		h.cfg.OIDC.StripEmaildomain,
 	)
 
 	machine.Hostname = mapRequest.Hostinfo.Hostname
@@ -265,7 +264,6 @@ func (h *Headscale) pollNetMapStream(
 		h.cfg.DNSConfig,
 		h.cfg.LogTail.Enabled,
 		h.cfg.RandomizeClientPort,
-		h.cfg.OIDC.StripEmaildomain,
 	)
 
 	h.pollNetMapStreamWG.Add(1)
@@ -656,7 +654,6 @@ func (h *Headscale) scheduledPollWorker(
 		h.cfg.DNSConfig,
 		h.cfg.LogTail.Enabled,
 		h.cfg.RandomizeClientPort,
-		h.cfg.OIDC.StripEmaildomain,
 	)
 
 	keepAliveTicker := time.NewTicker(keepAliveInterval)

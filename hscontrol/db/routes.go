@@ -424,7 +424,7 @@ func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
 				// TODO(kradalby): figure out how to get this to depend on less stuff
-				approvedIps, err := aclPolicy.ExpandAlias(types.Machines{*machine}, approvedAlias, hsdb.stripEmailDomain)
+				approvedIps, err := aclPolicy.ExpandAlias(types.Machines{*machine}, approvedAlias)
 				if err != nil {
 					log.Err(err).
 						Str("alias", approvedAlias).

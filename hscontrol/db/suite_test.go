@@ -60,7 +60,6 @@ func (s *Suite) ResetDB(c *check.C) {
 		"sqlite3",
 		tmpDir+"/headscale_test.db",
 		false,
-		false,
 		sink,
 		[]netip.Prefix{
 			netip.MustParsePrefix("10.27.0.0/23"),

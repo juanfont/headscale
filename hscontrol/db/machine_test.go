@@ -293,10 +293,10 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	testPeers, err := db.ListPeers(testMachine)
 	c.Assert(err, check.IsNil)
 
-	adminRules, _, err := policy.GenerateFilterRules(aclPolicy, adminMachine, adminPeers, false)
+	adminRules, _, err := policy.GenerateFilterRules(aclPolicy, adminMachine, adminPeers)
 	c.Assert(err, check.IsNil)
 
-	testRules, _, err := policy.GenerateFilterRules(aclPolicy, testMachine, testPeers, false)
+	testRules, _, err := policy.GenerateFilterRules(aclPolicy, testMachine, testPeers)
 	c.Assert(err, check.IsNil)
 
 	peersOfAdminMachine := policy.FilterMachinesByACL(adminMachine, adminPeers, adminRules)
@@ -482,9 +482,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 	}{
 		{
 			name: "simple machine name generation",
-			db: &HSDatabase{
-				stripEmailDomain: true,
-			},
+			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "testmachine",
 				randomSuffix: false,
@@ -494,9 +492,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 53 chars",
-			db: &HSDatabase{
-				stripEmailDomain: true,
-			},
+			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
 				randomSuffix: false,
@@ -506,9 +502,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 63 chars",
-			db: &HSDatabase{
-				stripEmailDomain: true,
-			},
+			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
 				randomSuffix: false,
@@ -518,9 +512,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 64 chars",
-			db: &HSDatabase{
-				stripEmailDomain: true,
-			},
+			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234",
 				randomSuffix: false,
@@ -530,9 +522,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 73 chars",
-			db: &HSDatabase{
-				stripEmailDomain: true,
-			},
+			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234567890123",
 				randomSuffix: false,
@@ -542,9 +532,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with random suffix",
-			db: &HSDatabase{
-				stripEmailDomain: true,
-			},
+			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "test",
 				randomSuffix: true,
@@ -554,9 +542,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 63 chars with random suffix",
-			db: &HSDatabase{
-				stripEmailDomain: true,
-			},
+			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
 				randomSuffix: true,

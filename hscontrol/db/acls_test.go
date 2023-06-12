@@ -53,7 +53,7 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 		},
 	}
 
-	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{}, false)
+	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -107,7 +107,7 @@ func TestInvalidTagValidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{}, false)
+	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -169,7 +169,7 @@ func TestPortGroup(t *testing.T) {
 	pol, err := policy.LoadACLPolicyFromBytes(acl, "hujson")
 	assert.NoError(t, err)
 
-	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{}, false)
+	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -224,7 +224,7 @@ func TestPortUser(t *testing.T) {
 	pol, err := policy.LoadACLPolicyFromBytes(acl, "hujson")
 	assert.NoError(t, err)
 
-	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{}, false)
+	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -285,7 +285,7 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 	// c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	// c.Assert(rules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 
-	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{}, false)
+	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -361,7 +361,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{machine2}, false)
+	got, _, err := policy.GenerateFilterRules(pol, &machine, types.Machines{machine2})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{

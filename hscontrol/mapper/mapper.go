@@ -41,7 +41,6 @@ type Mapper struct {
 	dnsCfg           *tailcfg.DNSConfig
 	logtail          bool
 	randomClientPort bool
-	stripEmailDomain bool
 }
 
 func NewMapper(
@@ -53,7 +52,6 @@ func NewMapper(
 	dnsCfg *tailcfg.DNSConfig,
 	logtail bool,
 	randomClientPort bool,
-	stripEmailDomain bool,
 ) *Mapper {
 	return &Mapper{
 		db: db,
@@ -66,7 +64,6 @@ func NewMapper(
 		dnsCfg:           dnsCfg,
 		logtail:          logtail,
 		randomClientPort: randomClientPort,
-		stripEmailDomain: stripEmailDomain,
 	}
 }
 
@@ -87,14 +84,13 @@ func fullMapResponse(
 	machine *types.Machine,
 	peers types.Machines,
 
-	stripEmailDomain bool,
 	baseDomain string,
 	dnsCfg *tailcfg.DNSConfig,
 	derpMap *tailcfg.DERPMap,
 	logtail bool,
 	randomClientPort bool,
 ) (*tailcfg.MapResponse, error) {
-	tailnode, err := tailNode(*machine, pol, dnsCfg, baseDomain, stripEmailDomain)
+	tailnode, err := tailNode(*machine, pol, dnsCfg, baseDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +99,6 @@ func fullMapResponse(
 		pol,
 		machine,
 		peers,
-		stripEmailDomain,
 	)
 	if err != nil {
 		return nil, err
@@ -129,7 +124,7 @@ func fullMapResponse(
 		peers,
 	)
 
-	tailPeers, err := tailNodes(peers, pol, dnsCfg, baseDomain, stripEmailDomain)
+	tailPeers, err := tailNodes(peers, pol, dnsCfg, baseDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +291,6 @@ func (m Mapper) CreateMapResponse(
 		pol,
 		machine,
 		peers,
-		m.stripEmailDomain,
 		m.baseDomain,
 		m.dnsCfg,
 		m.derpMap,

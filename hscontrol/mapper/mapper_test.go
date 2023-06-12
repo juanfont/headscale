@@ -320,7 +320,6 @@ func Test_fullMapResponse(t *testing.T) {
 		machine *types.Machine
 		peers   types.Machines
 
-		stripEmailDomain bool
 		baseDomain       string
 		dnsConfig        *tailcfg.DNSConfig
 		derpMap          *tailcfg.DERPMap
@@ -335,7 +334,6 @@ func Test_fullMapResponse(t *testing.T) {
 		// 	pol:              &policy.ACLPolicy{},
 		// 	dnsConfig:        &tailcfg.DNSConfig{},
 		// 	baseDomain:       "",
-		// 	stripEmailDomain: false,
 		// 	want:             nil,
 		// 	wantErr:          true,
 		// },
@@ -344,7 +342,6 @@ func Test_fullMapResponse(t *testing.T) {
 			pol:              &policy.ACLPolicy{},
 			machine:          mini,
 			peers:            []types.Machine{},
-			stripEmailDomain: false,
 			baseDomain:       "",
 			dnsConfig:        &tailcfg.DNSConfig{},
 			derpMap:          &tailcfg.DERPMap{},
@@ -375,7 +372,6 @@ func Test_fullMapResponse(t *testing.T) {
 			peers: []types.Machine{
 				peer1,
 			},
-			stripEmailDomain: false,
 			baseDomain:       "",
 			dnsConfig:        &tailcfg.DNSConfig{},
 			derpMap:          &tailcfg.DERPMap{},
@@ -417,7 +413,6 @@ func Test_fullMapResponse(t *testing.T) {
 				peer1,
 				peer2,
 			},
-			stripEmailDomain: false,
 			baseDomain:       "",
 			dnsConfig:        &tailcfg.DNSConfig{},
 			derpMap:          &tailcfg.DERPMap{},
@@ -458,7 +453,6 @@ func Test_fullMapResponse(t *testing.T) {
 				tt.pol,
 				tt.machine,
 				tt.peers,
-				tt.stripEmailDomain,
 				tt.baseDomain,
 				tt.dnsConfig,
 				tt.derpMap,

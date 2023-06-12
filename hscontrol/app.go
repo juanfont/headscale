@@ -169,7 +169,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	database, err := db.NewHeadscaleDatabase(
 		cfg.DBtype,
 		dbString,
-		cfg.OIDC.StripEmaildomain,
 		app.dbDebug,
 		app.stateUpdateChan,
 		cfg.IPPrefixes,
