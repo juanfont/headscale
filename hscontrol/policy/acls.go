@@ -177,7 +177,7 @@ func (pol *ACLPolicy) generateFilterRules(
 			srcIPs = append(srcIPs, srcs...)
 		}
 
-		protocols, needsWildcard, err := parseProtocol(acl.Protocol)
+		protocols, isWildcard, err := parseProtocol(acl.Protocol)
 		if err != nil {
 			log.Error().
 				Msgf("Error parsing ACL %d. protocol unknown %s", index, acl.Protocol)
@@ -185,23 +185,50 @@ func (pol *ACLPolicy) generateFilterRules(
 			return nil, err
 		}
 
-		destPorts := []tailcfg.NetPortRange{}
-		for destIndex, dest := range acl.Destinations {
-			dests, err := pol.getNetPortRangeFromDestination(
-				dest,
-				machines,
-				needsWildcard,
-			)
-			if err != nil {
-				log.Error().
-					Interface("dest", dest).
-					Int("ACL index", index).
-					Int("dest index", destIndex).
-					Msgf("Error parsing ACL")
+		// record if the rule is actually relevant for the given machine.
+		isRelevant := false
 
+		destPorts := []tailcfg.NetPortRange{}
+		for _, dest := range acl.Destinations {
+			alias, port, err := parseDestination(dest)
+			if err != nil {
 				return nil, err
 			}
+
+			expanded, err := pol.ExpandAlias(
+				machines,
+				alias,
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			if machine.IPAddresses.InIPSet(expanded) {
+				isRelevant = true
+			}
+
+			ports, err := expandPorts(port, isWildcard)
+			if err != nil {
+				return nil, err
+			}
+
+			dests := []tailcfg.NetPortRange{}
+			for _, dest := range expanded.Prefixes() {
+				for _, port := range *ports {
+					pr := tailcfg.NetPortRange{
+						IP:    dest.String(),
+						Ports: port,
+					}
+					dests = append(dests, pr)
+				}
+			}
 			destPorts = append(destPorts, dests...)
+		}
+
+		// if the rule does not apply to the machine we are evaluating,
+		// do not add it to the list and continue.
+		if !isRelevant {
+			continue
 		}
 
 		rules = append(rules, tailcfg.FilterRule{
@@ -366,44 +393,6 @@ func (pol *ACLPolicy) getIPsFromSource(
 	}
 
 	return prefixes, nil
-}
-
-// getNetPortRangeFromDestination returns a set of tailcfg.NetPortRange
-// which are associated with the dest alias.
-func (pol *ACLPolicy) getNetPortRangeFromDestination(
-	dest string,
-	machines types.Machines,
-	needsWildcard bool,
-) ([]tailcfg.NetPortRange, error) {
-	alias, port, err := parseDestination(dest)
-	if err != nil {
-		return nil, err
-	}
-
-	expanded, err := pol.ExpandAlias(
-		machines,
-		alias,
-	)
-	if err != nil {
-		return nil, err
-	}
-	ports, err := expandPorts(port, needsWildcard)
-	if err != nil {
-		return nil, err
-	}
-
-	dests := []tailcfg.NetPortRange{}
-	for _, dest := range expanded.Prefixes() {
-		for _, port := range *ports {
-			pr := tailcfg.NetPortRange{
-				IP:    dest.String(),
-				Ports: port,
-			}
-			dests = append(dests, pr)
-		}
-	}
-
-	return dests, nil
 }
 
 func parseDestination(dest string) (string, string, error) {
@@ -605,14 +594,14 @@ func excludeCorrectlyTaggedNodes(
 	return out
 }
 
-func expandPorts(portsStr string, needsWildcard bool) (*[]tailcfg.PortRange, error) {
+func expandPorts(portsStr string, isWild bool) (*[]tailcfg.PortRange, error) {
 	if isWildcard(portsStr) {
 		return &[]tailcfg.PortRange{
 			{First: portRangeBegin, Last: portRangeEnd},
 		}, nil
 	}
 
-	if needsWildcard {
+	if isWild {
 		return nil, ErrWildcardIsNeeded
 	}
 

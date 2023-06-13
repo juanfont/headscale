@@ -30,42 +30,388 @@ func (s *Suite) TestWrongPath(c *check.C) {
 	c.Assert(err, check.NotNil)
 }
 
-func (s *Suite) TestBrokenHuJson(c *check.C) {
-	acl := []byte(`
+func TestParsing(t *testing.T) {
+	tests := []struct {
+		name    string
+		format  string
+		acl     string
+		want    []tailcfg.FilterRule
+		wantErr bool
+	}{
+		{
+			name:   "invalid-hujson",
+			format: "hujson",
+			acl: `
 {
-	`)
-	_, err := LoadACLPolicyFromBytes(acl, "hujson")
-	c.Assert(err, check.NotNil)
-}
-
-func (s *Suite) TestInvalidPolicyHuson(c *check.C) {
-	acl := []byte(`
+		`,
+			want:    []tailcfg.FilterRule{},
+			wantErr: true,
+		},
+		{
+			name:   "valid-hujson-invalid-content",
+			format: "hujson",
+			acl: `
 {
-	"valid_json": true,
-	"but_a_policy_though": false
+  "valid_json": true,
+  "but_a_policy_though": false
 }
-	`)
-	_, err := LoadACLPolicyFromBytes(acl, "hujson")
-	c.Assert(err, check.NotNil)
-	c.Assert(err, check.Equals, ErrEmptyPolicy)
-}
+				`,
+			want:    []tailcfg.FilterRule{},
+			wantErr: true,
+		},
+		{
+			name:   "invalid-cidr",
+			format: "hujson",
+			acl: `
+{"example-host-1": "100.100.100.100/42"}
+				`,
+			want:    []tailcfg.FilterRule{},
+			wantErr: true,
+		},
+		{
+			name:   "basic-rule",
+			format: "hujson",
+			acl: `
+{
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
 
-func (s *Suite) TestParseHosts(c *check.C) {
-	var hosts Hosts
-	err := hosts.UnmarshalJSON(
-		[]byte(
-			`{"example-host-1": "100.100.100.100","example-host-2": "100.100.101.100/24"}`,
-		),
-	)
-	c.Assert(hosts, check.NotNil)
-	c.Assert(err, check.IsNil)
+	"acls": [
+		{
+			"action": "accept",
+			"src": [
+				"subnet-1",
+				"192.168.1.0/24"
+			],
+			"dst": [
+				"*:22,3389",
+				"host-1:*",
+			],
+		},
+	],
 }
+		`,
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.100.101.0/24", "192.168.1.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "0.0.0.0/0", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "0.0.0.0/0", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
+						{IP: "::/0", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "::/0", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:   "parse-protocol",
+			format: "hujson",
+			acl: `
+{
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
 
-func (s *Suite) TestParseInvalidCIDR(c *check.C) {
-	var hosts Hosts
-	err := hosts.UnmarshalJSON([]byte(`{"example-host-1": "100.100.100.100/42"}`))
-	c.Assert(hosts, check.IsNil)
-	c.Assert(err, check.NotNil)
+	"acls": [
+		{
+			"Action": "accept",
+			"src": [
+				"*",
+			],
+			"proto": "tcp",
+			"dst": [
+				"host-1:*",
+			],
+		},
+		{
+			"Action": "accept",
+			"src": [
+				"*",
+			],
+			"proto": "udp",
+			"dst": [
+				"host-1:53",
+			],
+		},
+		{
+			"Action": "accept",
+			"src": [
+				"*",
+			],
+			"proto": "icmp",
+			"dst": [
+				"host-1:*",
+			],
+		},
+	],
+}`,
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+					},
+					IPProto: []int{protocolTCP},
+				},
+				{
+					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRange{First: 53, Last: 53}},
+					},
+					IPProto: []int{protocolUDP},
+				},
+				{
+					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+					},
+					IPProto: []int{protocolICMP, protocolIPv6ICMP},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:   "port-wildcard",
+			format: "hujson",
+			acl: `
+{
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"acls": [
+		{
+			"Action": "accept",
+			"src": [
+				"*",
+			],
+			"dst": [
+				"host-1:*",
+			],
+		},
+	],
+}
+`,
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:   "port-range",
+			format: "hujson",
+			acl: `
+{
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"acls": [
+		{
+			"action": "accept",
+			"src": [
+				"subnet-1",
+			],
+			"dst": [
+				"host-1:5400-5500",
+			],
+		},
+	],
+}
+`,
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.100.101.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP:    "100.100.100.100/32",
+							Ports: tailcfg.PortRange{First: 5400, Last: 5500},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:   "port-group",
+			format: "hujson",
+			acl: `
+{
+	"groups": {
+		"group:example": [
+			"testuser",
+		],
+	},
+
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"acls": [
+		{
+			"action": "accept",
+			"src": [
+				"group:example",
+			],
+			"dst": [
+				"host-1:*",
+			],
+		},
+	],
+}
+`,
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"200.200.200.200/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:   "port-user",
+			format: "hujson",
+			acl: `
+{
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"acls": [
+		{
+			"action": "accept",
+			"src": [
+				"testuser",
+			],
+			"dst": [
+				"host-1:*",
+			],
+		},
+	],
+}
+`,
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"200.200.200.200/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:   "port-wildcard-yaml",
+			format: "yaml",
+			acl: `
+---
+hosts:
+  host-1: 100.100.100.100/32
+  subnet-1: 100.100.101.100/24
+acls:
+  - action: accept
+    src:
+      - "*"
+    dst:
+      - host-1:*
+`,
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:   "ipv6-yaml",
+			format: "yaml",
+			acl: `
+---
+hosts:
+  host-1: 100.100.100.100/32
+  subnet-1: 100.100.101.100/24
+acls:
+  - action: accept
+    src:
+      - "*"
+    dst:
+      - host-1:*
+`,
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pol, err := LoadACLPolicyFromBytes([]byte(tt.acl), tt.format)
+
+			if tt.wantErr && err == nil {
+				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			} else if !tt.wantErr && err != nil {
+				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			}
+
+			if err != nil {
+				return
+			}
+
+			rules, err := pol.generateFilterRules(&types.Machine{
+				IPAddresses: types.MachineAddresses{
+					netip.MustParseAddr("100.100.100.100"),
+				},
+			}, types.Machines{
+				types.Machine{
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("200.200.200.200"),
+					},
+					User: types.User{
+						Name: "testuser",
+					},
+				},
+			})
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, rules); diff != "" {
+				t.Errorf("parsing() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
 }
 
 func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
@@ -205,37 +551,6 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 	c.Assert(rules, check.IsNil)
 }
 
-func (s *Suite) TestBasicRule(c *check.C) {
-	acl := []byte(`
-{
-	"hosts": {
-		"host-1": "100.100.100.100",
-		"subnet-1": "100.100.101.100/24",
-	},
-
-	"acls": [
-		{
-			"action": "accept",
-			"src": [
-				"subnet-1",
-				"192.168.1.0/24"
-			],
-			"dst": [
-				"*:22,3389",
-				"host-1:*",
-			],
-		},
-	],
-}
-	`)
-	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
-	c.Assert(err, check.IsNil)
-
-	rules, err := pol.generateFilterRules(&types.Machine{}, types.Machines{})
-	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-}
-
 // TODO(kradalby): Make tests values safe, independent and descriptive.
 func (s *Suite) TestInvalidAction(c *check.C) {
 	pol := &ACLPolicy{
@@ -284,199 +599,6 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 
 	_, _, err := GenerateFilterRules(pol, &types.Machine{}, types.Machines{})
 	c.Assert(errors.Is(err, ErrInvalidTag), check.Equals, true)
-}
-
-func (s *Suite) TestPortRange(c *check.C) {
-	acl := []byte(`
-{
-	"hosts": {
-		"host-1": "100.100.100.100",
-		"subnet-1": "100.100.101.100/24",
-	},
-
-	"acls": [
-		{
-			"action": "accept",
-			"src": [
-				"subnet-1",
-			],
-			"dst": [
-				"host-1:5400-5500",
-			],
-		},
-	],
-}
-	`)
-	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
-	c.Assert(err, check.IsNil)
-	c.Assert(pol, check.NotNil)
-
-	rules, err := pol.generateFilterRules(&types.Machine{}, types.Machines{})
-	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-
-	c.Assert(rules, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(5400))
-	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(5500))
-}
-
-func (s *Suite) TestProtocolParsing(c *check.C) {
-	acl := []byte(`
-{
-	"hosts": {
-		"host-1": "100.100.100.100",
-		"subnet-1": "100.100.101.100/24",
-	},
-
-	"acls": [
-		{
-			"Action": "accept",
-			"src": [
-				"*",
-			],
-			"proto": "tcp",
-			"dst": [
-				"host-1:*",
-			],
-		},
-		{
-			"Action": "accept",
-			"src": [
-				"*",
-			],
-			"proto": "udp",
-			"dst": [
-				"host-1:53",
-			],
-		},
-		{
-			"Action": "accept",
-			"src": [
-				"*",
-			],
-			"proto": "icmp",
-			"dst": [
-				"host-1:*",
-			],
-		},
-	],
-}
-	`)
-	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
-	c.Assert(err, check.IsNil)
-	c.Assert(pol, check.NotNil)
-
-	rules, err := pol.generateFilterRules(&types.Machine{}, types.Machines{})
-	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-
-	c.Assert(rules, check.HasLen, 3)
-	c.Assert(rules[0].IPProto[0], check.Equals, protocolTCP)
-	c.Assert(rules[1].IPProto[0], check.Equals, protocolUDP)
-	c.Assert(rules[2].IPProto[1], check.Equals, protocolIPv6ICMP)
-}
-
-func (s *Suite) TestPortWildcard(c *check.C) {
-	acl := []byte(`
-{
-	"hosts": {
-		"host-1": "100.100.100.100",
-		"subnet-1": "100.100.101.100/24",
-	},
-
-	"acls": [
-		{
-			"Action": "accept",
-			"src": [
-				"*",
-			],
-			"dst": [
-				"host-1:*",
-			],
-		},
-	],
-}
-	`)
-	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
-	c.Assert(err, check.IsNil)
-	c.Assert(pol, check.NotNil)
-
-	rules, err := pol.generateFilterRules(&types.Machine{}, types.Machines{})
-	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-
-	c.Assert(rules, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
-}
-
-func (s *Suite) TestPortWildcardYAML(c *check.C) {
-	acl := []byte(`---
-hosts:
-  host-1: 100.100.100.100/32
-  subnet-1: 100.100.101.100/24
-acls:
-  - action: accept
-    src:
-      - "*"
-    dst:
-      - host-1:*`)
-	pol, err := LoadACLPolicyFromBytes(acl, "yaml")
-	c.Assert(err, check.IsNil)
-	c.Assert(pol, check.NotNil)
-
-	rules, err := pol.generateFilterRules(&types.Machine{}, types.Machines{})
-	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-
-	c.Assert(rules, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
-}
-
-func (s *Suite) TestBasicIpv6YAML(c *check.C) {
-	acl := []byte(`
----
-hosts:
-  host-1: 100.100.100.100/32
-  subnet-1: 100.100.101.100/24
-acls:
-  - action: accept
-    src:
-      - "*"
-    dst:
-      - 0.0.0.0/0:*
-      - ::/0:*
-      - fd7a:115c:a1e0::2:22
-`)
-	pol, err := LoadACLPolicyFromBytes(acl, "yaml")
-	c.Assert(err, check.IsNil)
-	c.Assert(pol, check.NotNil)
-
-	rules, err := pol.generateFilterRules(&types.Machine{}, types.Machines{})
-	c.Assert(err, check.IsNil)
-	c.Assert(rules, check.NotNil)
-
-	c.Assert(rules, check.HasLen, 1)
-	c.Assert(rules[0].DstPorts, check.HasLen, 3)
-	c.Assert(rules[0].DstPorts[0].IP, check.Equals, "0.0.0.0/0")
-	c.Assert(rules[0].DstPorts[0].Ports.First, check.Equals, uint16(0))
-	c.Assert(rules[0].DstPorts[0].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].DstPorts[1].IP, check.Equals, "::/0")
-	c.Assert(rules[0].DstPorts[1].Ports.First, check.Equals, uint16(0))
-	c.Assert(rules[0].DstPorts[1].Ports.Last, check.Equals, uint16(65535))
-	c.Assert(rules[0].DstPorts[2].IP, check.Equals, "fd7a:115c:a1e0::2/128")
-	c.Assert(rules[0].DstPorts[2].Ports.First, check.Equals, uint16(22))
-	c.Assert(rules[0].DstPorts[2].Ports.Last, check.Equals, uint16(22))
-	c.Assert(rules[0].SrcIPs, check.HasLen, 2)
-	c.Assert(rules[0].SrcIPs[0], check.Equals, "0.0.0.0/0")
 }
 
 func Test_expandGroup(t *testing.T) {
@@ -1621,8 +1743,13 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				machine: types.Machine{},
-				peers:   types.Machines{},
+				machine: types.Machine{
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.1"),
+						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+					},
+				},
+				peers: types.Machines{},
 			},
 			want: []tailcfg.FilterRule{
 				{
@@ -1648,7 +1775,64 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "host1-can-reach-host2",
+			name: "host1-can-reach-host2-no-rules",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"100.64.0.2"},
+							Destinations: []string{"100.64.0.1:*"},
+						},
+					},
+				},
+			},
+			args: args{
+				machine: types.Machine{
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.1"),
+						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+					},
+					User: types.User{Name: "mickael"},
+				},
+				peers: types.Machines{
+					{
+						IPAddresses: types.MachineAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
+						},
+						User: types.User{Name: "mickael"},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0:ab12:4843:2222:6273:2222/128",
+					},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP: "100.64.0.1/32",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+						{
+							IP: "fd7a:115c:a1e0:ab12:4843:2222:6273:2221/128",
+							Ports: tailcfg.PortRange{
+								First: 0,
+								Last:  65535,
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "host1-can-reach-host2-no-rules",
 			field: field{
 				pol: ACLPolicy{
 					ACLs: []ACL{
@@ -1678,30 +1862,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 					},
 				},
 			},
-			want: []tailcfg.FilterRule{
-				{
-					SrcIPs: []string{
-						"100.64.0.1/32",
-						"fd7a:115c:a1e0:ab12:4843:2222:6273:2221/128",
-					},
-					DstPorts: []tailcfg.NetPortRange{
-						{
-							IP: "100.64.0.2/32",
-							Ports: tailcfg.PortRange{
-								First: 0,
-								Last:  65535,
-							},
-						},
-						{
-							IP: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222/128",
-							Ports: tailcfg.PortRange{
-								First: 0,
-								Last:  65535,
-							},
-						},
-					},
-				},
-			},
+			want:    []tailcfg.FilterRule{},
 			wantErr: false,
 		},
 	}
