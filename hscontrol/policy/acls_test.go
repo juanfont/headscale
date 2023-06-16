@@ -1775,7 +1775,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "host1-can-reach-host2-no-rules",
+			name: "host1-can-reach-host2-full",
 			field: field{
 				pol: ACLPolicy{
 					ACLs: []ACL{
@@ -1831,40 +1831,6 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "host1-can-reach-host2-no-rules",
-			field: field{
-				pol: ACLPolicy{
-					ACLs: []ACL{
-						{
-							Action:       "accept",
-							Sources:      []string{"100.64.0.1"},
-							Destinations: []string{"100.64.0.2:*"},
-						},
-					},
-				},
-			},
-			args: args{
-				machine: types.Machine{
-					IPAddresses: types.MachineAddresses{
-						netip.MustParseAddr("100.64.0.1"),
-						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
-					},
-					User: types.User{Name: "mickael"},
-				},
-				peers: types.Machines{
-					{
-						IPAddresses: types.MachineAddresses{
-							netip.MustParseAddr("100.64.0.2"),
-							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
-						},
-						User: types.User{Name: "mickael"},
-					},
-				},
-			},
-			want:    []tailcfg.FilterRule{},
-			wantErr: false,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1881,6 +1847,62 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				log.Trace().Interface("got", got).Msg("result")
 				t.Errorf("ACLgenerateFilterRules() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestReduceFilterRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		machine types.Machine
+		peers   types.Machines
+		pol     ACLPolicy
+		want    []tailcfg.FilterRule
+	}{
+		{
+			name: "host1-can-reach-host2-no-rules",
+			pol: ACLPolicy{
+				ACLs: []ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"100.64.0.1"},
+						Destinations: []string{"100.64.0.2:*"},
+					},
+				},
+			},
+			machine: types.Machine{
+				IPAddresses: types.MachineAddresses{
+					netip.MustParseAddr("100.64.0.1"),
+					netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+				},
+				User: types.User{Name: "mickael"},
+			},
+			peers: types.Machines{
+				{
+					IPAddresses: types.MachineAddresses{
+						netip.MustParseAddr("100.64.0.2"),
+						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
+					},
+					User: types.User{Name: "mickael"},
+				},
+			},
+			want: []tailcfg.FilterRule{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rules, _ := tt.pol.generateFilterRules(
+				&tt.machine,
+				tt.peers,
+			)
+
+			got := ReduceFilterRules(&tt.machine, rules)
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				log.Trace().Interface("got", got).Msg("result")
+				t.Errorf("TestReduceFilterRules() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -2030,6 +2052,10 @@ func Test_getTags(t *testing.T) {
 }
 
 func Test_getFilteredByACLPeers(t *testing.T) {
+	ipComparer := cmp.Comparer(func(x, y netip.Addr) bool {
+		return x.Compare(y) == 0
+	})
+
 	type args struct {
 		machines types.Machines
 		rules    []tailcfg.FilterRule
@@ -2523,6 +2549,168 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "p4-host-in-netmap-user2-dest-bug",
+			args: args{
+				machines: []types.Machine{
+					{
+						ID:          1,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+						Hostname:    "user1-2",
+						User:        types.User{Name: "user1"},
+					},
+					{
+						ID:          0,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+						Hostname:    "user1-1",
+						User:        types.User{Name: "user1"},
+					},
+					{
+						ID:          3,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.4")},
+						Hostname:    "user2-2",
+						User:        types.User{Name: "user2"},
+					},
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{
+							"100.64.0.3/32",
+							"100.64.0.4/32",
+							"fd7a:115c:a1e0::3/128",
+							"fd7a:115c:a1e0::4/128",
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.3/32", Ports: tailcfg.PortRangeAny},
+							{IP: "100.64.0.4/32", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::3/128", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::4/128", Ports: tailcfg.PortRangeAny},
+						},
+					},
+					{
+						SrcIPs: []string{
+							"100.64.0.1/32",
+							"100.64.0.2/32",
+							"fd7a:115c:a1e0::1/128",
+							"fd7a:115c:a1e0::2/128",
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.3/32", Ports: tailcfg.PortRangeAny},
+							{IP: "100.64.0.4/32", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::3/128", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::4/128", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+				machine: &types.Machine{
+					ID:          2,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+					Hostname:    "user-2-1",
+					User:        types.User{Name: "user2"},
+				},
+			},
+			want: []types.Machine{
+				{
+					ID:          1,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+					Hostname:    "user1-2",
+					User:        types.User{Name: "user1"},
+				},
+				{
+					ID:          0,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+					Hostname:    "user1-1",
+					User:        types.User{Name: "user1"},
+				},
+				{
+					ID:          3,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.4")},
+					Hostname:    "user2-2",
+					User:        types.User{Name: "user2"},
+				},
+			},
+		},
+		{
+			name: "p4-host-in-netmap-user1-dest-bug",
+			args: args{
+				machines: []types.Machine{
+					{
+						ID:          1,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+						Hostname:    "user1-2",
+						User:        types.User{Name: "user1"},
+					},
+					{
+						ID:          2,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+						Hostname:    "user-2-1",
+						User:        types.User{Name: "user2"},
+					},
+					{
+						ID:          3,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.4")},
+						Hostname:    "user2-2",
+						User:        types.User{Name: "user2"},
+					},
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{
+							"100.64.0.1/32",
+							"100.64.0.2/32",
+							"fd7a:115c:a1e0::1/128",
+							"fd7a:115c:a1e0::2/128",
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.1/32", Ports: tailcfg.PortRangeAny},
+							{IP: "100.64.0.2/32", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::1/128", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::2/128", Ports: tailcfg.PortRangeAny},
+						},
+					},
+					{
+						SrcIPs: []string{
+							"100.64.0.1/32",
+							"100.64.0.2/32",
+							"fd7a:115c:a1e0::1/128",
+							"fd7a:115c:a1e0::2/128",
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.3/32", Ports: tailcfg.PortRangeAny},
+							{IP: "100.64.0.4/32", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::3/128", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::4/128", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+				machine: &types.Machine{
+					ID:          0,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+					Hostname:    "user1-1",
+					User:        types.User{Name: "user1"},
+				},
+			},
+			want: []types.Machine{
+				{
+					ID:          1,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+					Hostname:    "user1-2",
+					User:        types.User{Name: "user1"},
+				},
+				{
+					ID:          2,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+					Hostname:    "user-2-1",
+					User:        types.User{Name: "user2"},
+				},
+				{
+					ID:          3,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.4")},
+					Hostname:    "user2-2",
+					User:        types.User{Name: "user2"},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2531,8 +2719,8 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				tt.args.machines,
 				tt.args.rules,
 			)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("filterMachinesByACL() = %v, want %v", got, tt.want)
+			if diff := cmp.Diff(tt.want, got, ipComparer); diff != "" {
+				t.Errorf("FilterMachinesByACL() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}

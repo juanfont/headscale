@@ -132,14 +132,19 @@ func GenerateFilterRules(
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
 
-	log.Trace().Interface("ACL", rules).Msg("ACL rules generated")
+	log.Trace().Interface("ACL", rules).Str("machine", machine.GivenName).Msg("ACL rules")
 
 	var sshPolicy *tailcfg.SSHPolicy
 	sshRules, err := policy.generateSSHRules(machine, peers)
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
-	log.Trace().Interface("SSH", sshRules).Msg("SSH rules generated")
+
+	log.Trace().
+		Interface("SSH", sshRules).
+		Str("machine", machine.GivenName).
+		Msg("SSH rules")
+
 	if sshPolicy == nil {
 		sshPolicy = &tailcfg.SSHPolicy{}
 	}
@@ -185,9 +190,6 @@ func (pol *ACLPolicy) generateFilterRules(
 			return nil, err
 		}
 
-		// record if the rule is actually relevant for the given machine.
-		isRelevant := false
-
 		destPorts := []tailcfg.NetPortRange{}
 		for _, dest := range acl.Destinations {
 			alias, port, err := parseDestination(dest)
@@ -201,10 +203,6 @@ func (pol *ACLPolicy) generateFilterRules(
 			)
 			if err != nil {
 				return nil, err
-			}
-
-			if machine.IPAddresses.InIPSet(expanded) {
-				isRelevant = true
 			}
 
 			ports, err := expandPorts(port, isWildcard)
@@ -225,12 +223,6 @@ func (pol *ACLPolicy) generateFilterRules(
 			destPorts = append(destPorts, dests...)
 		}
 
-		// if the rule does not apply to the machine we are evaluating,
-		// do not add it to the list and continue.
-		if !isRelevant {
-			continue
-		}
-
 		rules = append(rules, tailcfg.FilterRule{
 			SrcIPs:   srcIPs,
 			DstPorts: destPorts,
@@ -239,6 +231,40 @@ func (pol *ACLPolicy) generateFilterRules(
 	}
 
 	return rules, nil
+}
+
+// ReduceFilterRules takes a machine and a set of rules and removes all rules and destinations
+// that are not relevant to that particular node.
+func ReduceFilterRules(machine *types.Machine, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+	ret := []tailcfg.FilterRule{}
+
+	for _, rule := range rules {
+		// record if the rule is actually relevant for the given machine.
+		dests := []tailcfg.NetPortRange{}
+
+		for _, dest := range rule.DstPorts {
+			expanded, err := util.ParseIPSet(dest.IP, nil)
+			// Fail closed, if we cant parse it, then we should not allow
+			// access.
+			if err != nil {
+				continue
+			}
+
+			if machine.IPAddresses.InIPSet(expanded) {
+				dests = append(dests, dest)
+			}
+		}
+
+		if len(dests) > 0 {
+			ret = append(ret, tailcfg.FilterRule{
+				SrcIPs:   rule.SrcIPs,
+				DstPorts: dests,
+				IPProto:  rule.IPProto,
+			})
+		}
+	}
+
+	return ret
 }
 
 func (pol *ACLPolicy) generateSSHRules(

@@ -433,7 +433,6 @@ func Test_fullMapResponse(t *testing.T) {
 						SrcIPs: []string{"100.64.0.2/32"},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.64.0.1/32", Ports: tailcfg.PortRangeAny},
-							{IP: "100.64.0.2/32", Ports: tailcfg.PortRangeAny},
 						},
 					},
 				},

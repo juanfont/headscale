@@ -160,7 +160,7 @@ func fullMapResponse(
 		CollectServices: "false",
 
 		// TODO: Only send if updated
-		PacketFilter: rules,
+		PacketFilter: policy.ReduceFilterRules(machine, rules),
 
 		UserProfiles: profiles,
 
