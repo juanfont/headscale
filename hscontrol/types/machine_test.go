@@ -16,18 +16,44 @@ func Test_MachineCanAccess(t *testing.T) {
 		want     bool
 	}{
 		{
-			name: "other-cant-access-src",
+			name: "no-rules",
 			machine1: Machine{
-				ID:          0,
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
-				Hostname:    "mini",
-				User:        User{Name: "mini"},
+				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
 			},
 			machine2: Machine{
-				ID:          2,
+				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
+			},
+			rules: []tailcfg.FilterRule{},
+			want:  false,
+		},
+		{
+			name: "wildcard",
+			machine1: Machine{
+				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
+			},
+			machine2: Machine{
+				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP:    "*",
+							Ports: tailcfg.PortRangeAny,
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "other-cant-access-src",
+			machine1: Machine{
+				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+			},
+			machine2: Machine{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
-				Hostname:    "peer2",
-				User:        User{Name: "peer2"},
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -42,16 +68,10 @@ func Test_MachineCanAccess(t *testing.T) {
 		{
 			name: "dest-cant-access-src",
 			machine1: Machine{
-				ID:          2,
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
-				Hostname:    "peer2",
-				User:        User{Name: "peer2"},
 			},
 			machine2: Machine{
-				ID:          0,
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
-				Hostname:    "mini",
-				User:        User{Name: "mini"},
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -66,16 +86,10 @@ func Test_MachineCanAccess(t *testing.T) {
 		{
 			name: "src-can-access-dest",
 			machine1: Machine{
-				ID:          0,
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
-				Hostname:    "mini",
-				User:        User{Name: "mini"},
 			},
 			machine2: Machine{
-				ID:          2,
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
-				Hostname:    "peer2",
-				User:        User{Name: "peer2"},
 			},
 			rules: []tailcfg.FilterRule{
 				{
