@@ -119,7 +119,80 @@ func (h *Headscale) LoadACLPolicyFromBytes(acl []byte, format string) error {
 
 	h.aclPolicy = &policy
 
+	machines, err := h.ListMachines()
+	if err != nil {
+		return err
+	}
+
+	if h.aclPolicy.ForcedTags != nil {
+		forcedTagsByIp := make(map[netip.Addr][]string)
+
+		for tag, _ := range h.aclPolicy.ForcedTags {
+			var expandedHosts []string
+
+			err := expandNestedTagsToHosts(h.aclPolicy.ForcedTags, tag, &expandedHosts, 0)
+			if err != nil {
+				return err
+			}
+
+			for _, expandedHost := range expandedHosts {
+				ipForExpandedHost := h.aclPolicy.Hosts[expandedHost].Addr()
+
+				forcedTags, _ := forcedTagsByIp[ipForExpandedHost]
+
+				forcedTagsByIp[ipForExpandedHost] = append(forcedTags, tag)
+			}
+		}
+
+		for _, machine := range machines {
+			machine, err := h.GetMachineByID(machine.ID)
+			if err != nil {
+				return err
+			}
+
+			machine.ForcedTags = []string{}
+
+			for _, ip := range machine.IPAddresses {
+				forcedTags, ok := forcedTagsByIp[ip]
+
+				if ok {
+					log.Info().
+						Str("machine", machine.String()).
+						Strs("forcedTags", forcedTags).
+						Msg("Setting forced tags")
+
+					machine.ForcedTags = forcedTags
+				}
+			}
+
+			if err := h.db.Save(machine).Error; err != nil {
+				return fmt.Errorf("failed to update tags for machine in the database: %w", err)
+			}
+		}
+
+		h.setLastStateChangeToNow()
+	}
+
 	return h.UpdateACLRules()
+}
+
+func expandNestedTagsToHosts(forcedTags ForcedTags, tag string, into *[]string, depth int) error {
+	if depth > 5 {
+		log.Error().
+			Msgf("Recursed too deeply trying to expand %s, expanded %v so far", tag, *into)
+
+		return fmt.Errorf("Recursed too deeply")
+	}
+
+	for _, hostOrTag := range forcedTags[tag] {
+		if !strings.HasPrefix(hostOrTag, "tag:") {
+			*into = append(*into, hostOrTag)
+		} else {
+			expandNestedTagsToHosts(forcedTags, hostOrTag, into, depth + 1)
+		}
+	}
+
+	return nil
 }
 
 func (h *Headscale) UpdateACLRules() error {
