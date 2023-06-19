@@ -338,7 +338,7 @@ func (api headscaleV1APIServer) ListMachines(
 	response := make([]*v1.Machine, len(machines))
 	for index, machine := range machines {
 		m := machine.Proto()
-		validTags, invalidTags := api.h.ACLPolicy.GetTagsOfMachine(
+		validTags, invalidTags := api.h.ACLPolicy.TagsOfMachine(
 			machine,
 		)
 		m.InvalidTags = invalidTags

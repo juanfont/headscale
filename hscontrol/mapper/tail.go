@@ -104,7 +104,7 @@ func tailNode(
 
 	online := machine.IsOnline()
 
-	tags, _ := pol.GetTagsOfMachine(machine)
+	tags, _ := pol.TagsOfMachine(machine)
 	tags = lo.Uniq(append(tags, machine.ForcedTags...))
 
 	node := tailcfg.Node{
