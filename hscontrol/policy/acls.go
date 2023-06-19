@@ -117,7 +117,7 @@ func LoadACLPolicyFromBytes(acl []byte, format string) (*ACLPolicy, error) {
 // TODO(kradalby): This needs to be replace with something that generates
 // the rules as needed and not stores it on the global object, rules are
 // per node and that should be taken into account.
-func GenerateFilterRules(
+func GenerateFilterAndSSHRules(
 	policy *ACLPolicy,
 	machine *types.Machine,
 	peers types.Machines,

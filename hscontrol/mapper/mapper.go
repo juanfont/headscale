@@ -95,7 +95,7 @@ func fullMapResponse(
 		return nil, err
 	}
 
-	rules, sshPolicy, err := policy.GenerateFilterRules(
+	rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
 		pol,
 		machine,
 		peers,
