@@ -690,7 +690,7 @@ func Test_expandGroup(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			viper.Set("oidc.strip_email_domain", test.args.stripEmail)
 
-			got, err := test.field.pol.getUsersInGroup(
+			got, err := test.field.pol.expandUsersFromGroup(
 				test.args.group,
 			)
 
@@ -779,7 +779,7 @@ func Test_expandTagOwners(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := getTagOwners(
+			got, err := expandOwnersFromTag(
 				test.args.aclPolicy,
 				test.args.tag,
 			)
@@ -2022,7 +2022,7 @@ func Test_getTags(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			gotValid, gotInvalid := test.args.aclPolicy.GetTagsOfMachine(
+			gotValid, gotInvalid := test.args.aclPolicy.TagsOfMachine(
 				test.args.machine,
 			)
 			for _, valid := range gotValid {
