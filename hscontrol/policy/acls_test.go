@@ -3,7 +3,6 @@ package policy
 import (
 	"errors"
 	"net/netip"
-	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -16,6 +15,10 @@ import (
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
 )
+
+var ipComparer = cmp.Comparer(func(x, y netip.Addr) bool {
+	return x.Compare(y) == 0
+})
 
 func Test(t *testing.T) {
 	check.TestingT(t)
@@ -788,8 +791,8 @@ func Test_expandTagOwners(t *testing.T) {
 
 				return
 			}
-			if !reflect.DeepEqual(got, test.want) {
-				t.Errorf("expandTagOwners() = %v, want %v", got, test.want)
+			if diff := cmp.Diff(test.want, got); diff != "" {
+				t.Errorf("expandTagOwners() = (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -885,8 +888,8 @@ func Test_expandPorts(t *testing.T) {
 
 				return
 			}
-			if !reflect.DeepEqual(got, test.want) {
-				t.Errorf("expandPorts() = %v, want %v", got, test.want)
+			if diff := cmp.Diff(test.want, got); diff != "" {
+				t.Errorf("expandPorts() = (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -946,11 +949,10 @@ func Test_listMachinesInUser(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := filterMachinesByUser(test.args.machines, test.args.user); !reflect.DeepEqual(
-				got,
-				test.want,
-			) {
-				t.Errorf("listMachinesInUser() = %v, want %v", got, test.want)
+			got := filterMachinesByUser(test.args.machines, test.args.user)
+
+			if diff := cmp.Diff(test.want, got); diff != "" {
+				t.Errorf("listMachinesInUser() = (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -1700,8 +1702,8 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				test.args.nodes,
 				test.args.user,
 			)
-			if !reflect.DeepEqual(got, test.want) {
-				t.Errorf("excludeCorrectlyTaggedNodes() = %v, want %v", got, test.want)
+			if diff := cmp.Diff(test.want, got, ipComparer); diff != "" {
+				t.Errorf("excludeCorrectlyTaggedNodes() (-want +got):\n%s", diff)
 			}
 		})
 	}
