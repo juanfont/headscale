@@ -39,8 +39,6 @@ func (s *Suite) TestGetMachine(c *check.C) {
 
 	_, err = db.GetMachine("test", "testmachine")
 	c.Assert(err, check.IsNil)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetMachineByID(c *check.C) {
@@ -67,8 +65,6 @@ func (s *Suite) TestGetMachineByID(c *check.C) {
 
 	_, err = db.GetMachineByID(0)
 	c.Assert(err, check.IsNil)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
@@ -98,8 +94,6 @@ func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
 
 	_, err = db.GetMachineByNodeKey(nodeKey.Public())
 	c.Assert(err, check.IsNil)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
@@ -131,8 +125,6 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 
 	_, err = db.GetMachineByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
 	c.Assert(err, check.IsNil)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestDeleteMachine(c *check.C) {
@@ -155,8 +147,6 @@ func (s *Suite) TestDeleteMachine(c *check.C) {
 
 	_, err = db.GetMachine(user.Name, "testmachine")
 	c.Assert(err, check.NotNil)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestHardDeleteMachine(c *check.C) {
@@ -179,8 +169,6 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 
 	_, err = db.GetMachine(user.Name, "testmachine3")
 	c.Assert(err, check.NotNil)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestListPeers(c *check.C) {
@@ -217,8 +205,6 @@ func (s *Suite) TestListPeers(c *check.C) {
 	c.Assert(peersOfMachine0[0].Hostname, check.Equals, "testmachine2")
 	c.Assert(peersOfMachine0[5].Hostname, check.Equals, "testmachine7")
 	c.Assert(peersOfMachine0[8].Hostname, check.Equals, "testmachine10")
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
@@ -312,8 +298,6 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Assert(peersOfAdminMachine[0].Hostname, check.Equals, "testmachine2")
 	c.Assert(peersOfAdminMachine[2].Hostname, check.Equals, "testmachine4")
 	c.Assert(peersOfAdminMachine[5].Hostname, check.Equals, "testmachine7")
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestExpireMachine(c *check.C) {
@@ -349,8 +333,6 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	c.Assert(machineFromDB.IsExpired(), check.Equals, true)
-
-	c.Assert(channelUpdates, check.Equals, int32(1))
 }
 
 func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
@@ -372,8 +354,6 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 	for i := range deserialized {
 		c.Assert(deserialized[i], check.Equals, input[i])
 	}
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGenerateGivenName(c *check.C) {
@@ -418,8 +398,6 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	comment = check.Commentf("Unique users, unique machines, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestSetTags(c *check.C) {
@@ -463,8 +441,6 @@ func (s *Suite) TestSetTags(c *check.C) {
 		check.DeepEquals,
 		types.StringList([]string{"tag:bar", "tag:test", "tag:unknown"}),
 	)
-
-	c.Assert(channelUpdates, check.Equals, int32(2))
 }
 
 func TestHeadscale_generateGivenName(t *testing.T) {
@@ -655,6 +631,4 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	enabledRoutes, err := db.GetEnabledRoutes(machine0ByID)
 	c.Assert(err, check.IsNil)
 	c.Assert(enabledRoutes, check.HasLen, 4)
-
-	c.Assert(channelUpdates, check.Equals, int32(4))
 }

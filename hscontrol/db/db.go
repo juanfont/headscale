@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -36,8 +37,8 @@ type KV struct {
 }
 
 type HSDatabase struct {
-	db              *gorm.DB
-	notifyStateChan chan<- struct{}
+	db       *gorm.DB
+	notifier *notifier.Notifier
 
 	ipAllocationMutex sync.Mutex
 
@@ -50,7 +51,7 @@ type HSDatabase struct {
 func NewHeadscaleDatabase(
 	dbType, connectionAddr string,
 	debug bool,
-	notifyStateChan chan<- struct{},
+	notifier *notifier.Notifier,
 	ipPrefixes []netip.Prefix,
 	baseDomain string,
 ) (*HSDatabase, error) {
@@ -60,8 +61,8 @@ func NewHeadscaleDatabase(
 	}
 
 	db := HSDatabase{
-		db:              dbConn,
-		notifyStateChan: notifyStateChan,
+		db:       dbConn,
+		notifier: notifier,
 
 		ipPrefixes: ipPrefixes,
 		baseDomain: baseDomain,
@@ -295,10 +296,6 @@ func openDB(dbType, connectionAddr string, debug bool) (*gorm.DB, error) {
 		dbType,
 		errDatabaseNotSupported,
 	)
-}
-
-func (hsdb *HSDatabase) notifyStateChange() {
-	hsdb.notifyStateChan <- struct{}{}
 }
 
 // getValue returns the value for the given key in KV.

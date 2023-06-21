@@ -218,7 +218,7 @@ func (hsdb *HSDatabase) SetTags(
 	}
 	machine.ForcedTags = newTags
 
-	hsdb.notifyStateChange()
+	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
 
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
@@ -232,7 +232,7 @@ func (hsdb *HSDatabase) ExpireMachine(machine *types.Machine) error {
 	now := time.Now()
 	machine.Expiry = &now
 
-	hsdb.notifyStateChange()
+	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
 
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to expire machine in the database: %w", err)
@@ -259,7 +259,7 @@ func (hsdb *HSDatabase) RenameMachine(machine *types.Machine, newName string) er
 	}
 	machine.GivenName = newName
 
-	hsdb.notifyStateChange()
+	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
 
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to rename machine in the database: %w", err)
@@ -275,7 +275,7 @@ func (hsdb *HSDatabase) RefreshMachine(machine *types.Machine, expiry time.Time)
 	machine.LastSuccessfulUpdate = &now
 	machine.Expiry = &expiry
 
-	hsdb.notifyStateChange()
+	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
 
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return fmt.Errorf(
@@ -321,32 +321,6 @@ func (hsdb *HSDatabase) HardDeleteMachine(machine *types.Machine) error {
 	}
 
 	return nil
-}
-
-func (hsdb *HSDatabase) IsOutdated(machine *types.Machine, lastChange time.Time) bool {
-	if err := hsdb.UpdateMachineFromDatabase(machine); err != nil {
-		// It does not seem meaningful to propagate this error as the end result
-		// will have to be that the machine has to be considered outdated.
-		return true
-	}
-
-	// Get the last update from all headscale users to compare with our nodes
-	// last update.
-	// TODO(kradalby): Only request updates from users where we can talk to nodes
-	// This would mostly be for a bit of performance, and can be calculated based on
-	// ACLs.
-	lastUpdate := machine.CreatedAt
-	if machine.LastSuccessfulUpdate != nil {
-		lastUpdate = *machine.LastSuccessfulUpdate
-	}
-	log.Trace().
-		Caller().
-		Str("machine", machine.Hostname).
-		Time("last_successful_update", lastChange).
-		Time("last_state_change", lastUpdate).
-		Msgf("Checking if %s is missing updates", machine.Hostname)
-
-	return lastUpdate.Before(lastChange)
 }
 
 func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
@@ -626,7 +600,7 @@ func (hsdb *HSDatabase) enableRoutes(machine *types.Machine, routeStrs ...string
 		}
 	}
 
-	hsdb.notifyStateChange()
+	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
 
 	return nil
 }
@@ -723,17 +697,22 @@ func (hsdb *HSDatabase) ExpireEphemeralMachines(inactivityThreshhold time.Durati
 		}
 
 		if expiredFound {
-			hsdb.notifyStateChange()
+			hsdb.notifier.NotifyAll()
 		}
 	}
 }
 
-func (hsdb *HSDatabase) ExpireExpiredMachines(lastChange time.Time) {
+func (hsdb *HSDatabase) ExpireExpiredMachines(lastCheck time.Time) time.Time {
+	// use the time of the start of the function to ensure we
+	// dont miss some machines by returning it _after_ we have
+	// checked everything.
+	started := time.Now()
+
 	users, err := hsdb.ListUsers()
 	if err != nil {
 		log.Error().Err(err).Msg("Error listing users")
 
-		return
+		return time.Unix(0, 0)
 	}
 
 	for _, user := range users {
@@ -744,13 +723,13 @@ func (hsdb *HSDatabase) ExpireExpiredMachines(lastChange time.Time) {
 				Str("user", user.Name).
 				Msg("Error listing machines in user")
 
-			return
+			return time.Unix(0, 0)
 		}
 
 		expiredFound := false
 		for index, machine := range machines {
 			if machine.IsExpired() &&
-				machine.Expiry.After(lastChange) {
+				machine.Expiry.After(lastCheck) {
 				expiredFound = true
 
 				err := hsdb.ExpireMachine(&machines[index])
@@ -770,7 +749,9 @@ func (hsdb *HSDatabase) ExpireExpiredMachines(lastChange time.Time) {
 		}
 
 		if expiredFound {
-			hsdb.notifyStateChange()
+			hsdb.notifier.NotifyAll()
 		}
 	}
+
+	return started
 }

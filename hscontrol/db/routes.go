@@ -374,7 +374,7 @@ func (hsdb *HSDatabase) HandlePrimarySubnetFailover() error {
 	}
 
 	if routesChanged {
-		hsdb.notifyStateChange()
+		hsdb.notifier.NotifyAll()
 	}
 
 	return nil
