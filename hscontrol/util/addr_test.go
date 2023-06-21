@@ -2,9 +2,9 @@ package util
 
 import (
 	"net/netip"
-	"reflect"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"go4.org/netipx"
 )
 
@@ -111,8 +111,8 @@ func Test_parseIPSet(t *testing.T) {
 
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("parseIPSet() = %v, want %v", got, tt.want)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("parseIPSet() = (-want +got):\n%s", diff)
 			}
 		})
 	}
