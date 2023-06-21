@@ -3,9 +3,9 @@ package db
 import (
 	"net/netip"
 	"os"
-	"sync/atomic"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/notifier"
 	"gopkg.in/check.v1"
 )
 
@@ -20,26 +20,14 @@ type Suite struct{}
 var (
 	tmpDir string
 	db     *HSDatabase
-
-	// channelUpdates counts the number of times
-	// either of the channels was notified.
-	channelUpdates int32
 )
 
 func (s *Suite) SetUpTest(c *check.C) {
-	atomic.StoreInt32(&channelUpdates, 0)
 	s.ResetDB(c)
 }
 
 func (s *Suite) TearDownTest(c *check.C) {
 	os.RemoveAll(tmpDir)
-}
-
-func notificationSink(c <-chan struct{}) {
-	for {
-		<-c
-		atomic.AddInt32(&channelUpdates, 1)
-	}
 }
 
 func (s *Suite) ResetDB(c *check.C) {
@@ -52,15 +40,11 @@ func (s *Suite) ResetDB(c *check.C) {
 		c.Fatal(err)
 	}
 
-	sink := make(chan struct{})
-
-	go notificationSink(sink)
-
 	db, err = NewHeadscaleDatabase(
 		"sqlite3",
 		tmpDir+"/headscale_test.db",
 		false,
-		sink,
+		notifier.NewNotifier(),
 		[]netip.Prefix{
 			netip.MustParsePrefix("10.27.0.0/23"),
 		},

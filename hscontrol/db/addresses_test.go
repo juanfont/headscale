@@ -63,8 +63,6 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 
 	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
 	c.Assert(machine1.IPAddresses[0], check.Equals, expected)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetMultiIp(c *check.C) {
@@ -153,8 +151,6 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 
 	c.Assert(len(nextIP2), check.Equals, 1)
 	c.Assert(nextIP2[0].String(), check.Equals, expectedNextIP.String())
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
@@ -192,6 +188,4 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 
 	c.Assert(len(ips2), check.Equals, 1)
 	c.Assert(ips2[0].String(), check.Equals, expected.String())
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }

@@ -22,8 +22,6 @@ func (*Suite) TestCreateAPIKey(c *check.C) {
 	keys, err := db.ListAPIKeys()
 	c.Assert(err, check.IsNil)
 	c.Assert(len(keys), check.Equals, 1)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (*Suite) TestAPIKeyDoesNotExist(c *check.C) {
@@ -41,8 +39,6 @@ func (*Suite) TestValidateAPIKeyOk(c *check.C) {
 	valid, err := db.ValidateAPIKey(apiKeyStr)
 	c.Assert(err, check.IsNil)
 	c.Assert(valid, check.Equals, true)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (*Suite) TestValidateAPIKeyNotOk(c *check.C) {
@@ -71,8 +67,6 @@ func (*Suite) TestValidateAPIKeyNotOk(c *check.C) {
 	validWithErr, err := db.ValidateAPIKey("produceerrorkey")
 	c.Assert(err, check.NotNil)
 	c.Assert(validWithErr, check.Equals, false)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (*Suite) TestExpireAPIKey(c *check.C) {
@@ -92,6 +86,4 @@ func (*Suite) TestExpireAPIKey(c *check.C) {
 	notValid, err := db.ValidateAPIKey(apiKeyStr)
 	c.Assert(err, check.IsNil)
 	c.Assert(notValid, check.Equals, false)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }

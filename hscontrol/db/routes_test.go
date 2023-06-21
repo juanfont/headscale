@@ -52,8 +52,6 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 
 	err = db.enableRoutes(&machine, "10.0.0.0/24")
 	c.Assert(err, check.IsNil)
-
-	c.Assert(channelUpdates, check.Equals, int32(0))
 }
 
 func (s *Suite) TestGetEnableRoutes(c *check.C) {
@@ -129,8 +127,6 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	enabledRoutesWithAdditionalRoute, err := db.GetEnabledRoutes(&machine)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutesWithAdditionalRoute), check.Equals, 2)
-
-	c.Assert(channelUpdates, check.Equals, int32(3))
 }
 
 func (s *Suite) TestIsUniquePrefix(c *check.C) {
@@ -215,8 +211,6 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	routes, err = db.GetMachinePrimaryRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 0)
-
-	c.Assert(channelUpdates, check.Equals, int32(3))
 }
 
 func (s *Suite) TestSubnetFailover(c *check.C) {
@@ -359,8 +353,6 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	routes, err = db.GetMachinePrimaryRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 2)
-
-	c.Assert(channelUpdates, check.Equals, int32(6))
 }
 
 func (s *Suite) TestDeleteRoutes(c *check.C) {
@@ -420,6 +412,4 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	enabledRoutes1, err := db.GetEnabledRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enabledRoutes1), check.Equals, 1)
-
-	c.Assert(channelUpdates, check.Equals, int32(2))
 }

@@ -161,8 +161,6 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	// The machine record should have been deleted
 	_, err = db.GetMachine("test7", "testest")
 	c.Assert(err, check.NotNil)
-
-	c.Assert(channelUpdates, check.Equals, int32(1))
 }
 
 func (*Suite) TestExpirePreauthKey(c *check.C) {

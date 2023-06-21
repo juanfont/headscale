@@ -21,6 +21,38 @@ type contextKey string
 
 const machineNameContextKey = contextKey("machineName")
 
+type UpdateNode func()
+
+func logPollFunc(
+	mapRequest tailcfg.MapRequest,
+	machine *types.Machine,
+	isNoise bool,
+) (func(string), func(error, string)) {
+	return func(msg string) {
+			log.Info().
+				Caller().
+				Bool("noise", isNoise).
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Str("node_key", machine.NodeKey).
+				Str("machine", machine.Hostname).
+				Msg(msg)
+		},
+		func(err error, msg string) {
+			log.Error().
+				Caller().
+				Bool("noise", isNoise).
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Str("node_key", machine.NodeKey).
+				Str("machine", machine.Hostname).
+				Err(err).
+				Msg(msg)
+		}
+}
+
 // handlePoll is the common code for the legacy and Noise protocols to
 // managed the poll loop.
 func (h *Headscale) handlePoll(
@@ -30,6 +62,10 @@ func (h *Headscale) handlePoll(
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
 ) {
+	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
+
+	// TODO(kradalby): This is a stepping stone, mapper should be initiated once
+	// per client or something similar
 	mapp := mapper.NewMapper(
 		h.db,
 		h.privateKey2019,
@@ -48,11 +84,7 @@ func (h *Headscale) handlePoll(
 
 	err := h.db.ProcessMachineRoutes(machine)
 	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Str("machine", machine.Hostname).
-			Msg("Error processing machine routes")
+		logErr(err, "Error processing machine routes")
 	}
 
 	// update ACLRules with peer informations (to update server tags if necessary)
@@ -60,12 +92,7 @@ func (h *Headscale) handlePoll(
 		// update routes with peer information
 		err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, machine)
 		if err != nil {
-			log.Error().
-				Caller().
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Err(err).
-				Msg("Error running auto approved routes")
+			logErr(err, "Error running auto approved routes")
 		}
 	}
 
@@ -83,13 +110,7 @@ func (h *Headscale) handlePoll(
 	}
 
 	if err := h.db.MachineSave(machine); err != nil {
-		log.Error().
-			Str("handler", "PollNetMap").
-			Bool("noise", isNoise).
-			Str("node_key", machine.NodeKey).
-			Str("machine", machine.Hostname).
-			Err(err).
-			Msg("Failed to persist/update machine in the database")
+		logErr(err, "Failed to persist/update machine in the database")
 		http.Error(writer, "", http.StatusInternalServerError)
 
 		return
@@ -97,13 +118,7 @@ func (h *Headscale) handlePoll(
 
 	mapResp, err := mapp.CreateMapResponse(mapRequest, machine, h.ACLPolicy)
 	if err != nil {
-		log.Error().
-			Str("handler", "PollNetMap").
-			Bool("noise", isNoise).
-			Str("node_key", machine.NodeKey).
-			Str("machine", machine.Hostname).
-			Err(err).
-			Msg("Failed to get Map response")
+		logErr(err, "Failed to create MapResponse")
 		http.Error(writer, "", http.StatusInternalServerError)
 
 		return
@@ -114,30 +129,16 @@ func (h *Headscale) handlePoll(
 	// empty endpoints to peers)
 
 	// Details on the protocol can be found in https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L696
-	log.Debug().
-		Str("handler", "PollNetMap").
-		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
-		Bool("readOnly", mapRequest.ReadOnly).
-		Bool("omitPeers", mapRequest.OmitPeers).
-		Bool("stream", mapRequest.Stream).
-		Msg("Client map request processed")
+	logInfo("Client map request processed")
 
 	if mapRequest.ReadOnly {
-		log.Info().
-			Str("handler", "PollNetMap").
-			Bool("noise", isNoise).
-			Str("machine", machine.Hostname).
-			Msg("Client is starting up. Probably interested in a DERP map")
+		logInfo("Client is starting up. Probably interested in a DERP map")
 
 		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
 		_, err := writer.Write(mapResp)
 		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
+			logErr(err, "Failed to write response")
 		}
 
 		if f, ok := writer.(http.Flusher); ok {
@@ -147,48 +148,22 @@ func (h *Headscale) handlePoll(
 		return
 	}
 
-	// There has been an update to _any_ of the nodes that the other nodes would
-	// need to know about
-	h.setLastStateChangeToNow()
-
-	// The request is not ReadOnly, so we need to set up channels for updating
-	// peers via longpoll
-
-	// Only create update channel if it has not been created
-	log.Trace().
-		Caller().
-		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
-		Msg("Loading or creating update channel")
-
-	const chanSize = 8
-	updateChan := make(chan struct{}, chanSize)
-
-	pollDataChan := make(chan []byte, chanSize)
-	defer closeChanWithLog(pollDataChan, machine.Hostname, "pollDataChan")
-
-	keepAliveChan := make(chan []byte)
-
 	if mapRequest.OmitPeers && !mapRequest.Stream {
-		log.Info().
-			Str("handler", "PollNetMap").
-			Bool("noise", isNoise).
-			Str("machine", machine.Hostname).
-			Msg("Client sent endpoint update and is ok with a response without peer list")
+		logInfo("Client sent endpoint update and is ok with a response without peer list")
+
 		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
 		_, err := writer.Write(mapResp)
 		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
+			logErr(err, "Failed to write response")
 		}
 		// It sounds like we should update the nodes when we have received a endpoint update
 		// even tho the comments in the tailscale code dont explicitly say so.
 		updateRequestsFromNode.WithLabelValues(machine.User.Name, machine.Hostname, "endpoint-update").
 			Inc()
-		updateChan <- struct{}{}
+
+		// Tell all the other nodes about the new endpoint, but dont update ourselves.
+		h.nodeNotifier.NotifyWithIgnore(machine.MachineKey)
 
 		return
 	} else if mapRequest.OmitPeers && mapRequest.Stream {
@@ -202,43 +177,32 @@ func (h *Headscale) handlePoll(
 		return
 	}
 
-	log.Info().
-		Str("handler", "PollNetMap").
-		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
-		Msg("Client is ready to access the tailnet")
-	log.Info().
-		Str("handler", "PollNetMap").
-		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
-		Msg("Sending initial map")
-	pollDataChan <- mapResp
+	logInfo("Sending initial map")
 
-	log.Info().
-		Str("handler", "PollNetMap").
-		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
-		Msg("Notifying peers")
-	updateRequestsFromNode.WithLabelValues(machine.User.Name, machine.Hostname, "full-update").
-		Inc()
-	updateChan <- struct{}{}
+	// Send the client an update to make sure we send an initial mapresponse
+	_, err = writer.Write(mapResp)
+	if err != nil {
+		logErr(err, "Could not write the map response")
+
+		return
+	}
+
+	if flusher, ok := writer.(http.Flusher); ok {
+		flusher.Flush()
+	} else {
+		return
+	}
 
 	h.pollNetMapStream(
 		writer,
 		ctx,
 		machine,
+		mapp,
 		mapRequest,
-		pollDataChan,
-		keepAliveChan,
-		updateChan,
 		isNoise,
 	)
 
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
-		Msg("Finished stream, closing PollNetMap session")
+	logInfo("Finished stream, closing PollNetMap session")
 }
 
 // pollNetMapStream stream logic for /machine/map,
@@ -247,23 +211,16 @@ func (h *Headscale) pollNetMapStream(
 	writer http.ResponseWriter,
 	ctxReq context.Context,
 	machine *types.Machine,
+	mapp *mapper.Mapper,
 	mapRequest tailcfg.MapRequest,
-	pollDataChan chan []byte,
-	keepAliveChan chan []byte,
-	updateChan chan struct{},
 	isNoise bool,
 ) {
-	// TODO(kradalby): This is a stepping stone, mapper should be initiated once
-	// per client or something similar
-	mapp := mapper.NewMapper(h.db,
-		h.privateKey2019,
-		isNoise,
-		h.DERPMap,
-		h.cfg.BaseDomain,
-		h.cfg.DNSConfig,
-		h.cfg.LogTail.Enabled,
-		h.cfg.RandomizeClientPort,
-	)
+	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
+
+	keepAliveTicker := time.NewTicker(keepAliveInterval)
+
+	const chanSize = 8
+	updateChan := make(chan struct{}, chanSize)
 
 	h.pollNetMapStreamWG.Add(1)
 	defer h.pollNetMapStreamWG.Done()
@@ -273,443 +230,89 @@ func (h *Headscale) pollNetMapStream(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	go h.scheduledPollWorker(
-		ctx,
-		updateChan,
-		keepAliveChan,
-		mapRequest,
-		machine,
-		isNoise,
-	)
-
-	log.Trace().
-		Str("handler", "pollNetMapStream").
-		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
-		Msg("Waiting for data to stream...")
-
-	log.Trace().
-		Str("handler", "pollNetMapStream").
-		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
-		Msgf("pollData is %#v, keepAliveChan is %#v, updateChan is %#v", pollDataChan, keepAliveChan, updateChan)
+	// Register the node's update channel
+	h.nodeNotifier.AddNode(machine.MachineKey, updateChan)
+	defer h.nodeNotifier.RemoveNode(machine.MachineKey)
+	defer closeChanWithLog(updateChan, machine.Hostname, "updateChan")
 
 	for {
 		select {
-		case data := <-pollDataChan:
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Str("channel", "pollData").
-				Int("bytes", len(data)).
-				Msg("Sending data received via pollData channel")
-			_, err := writer.Write(data)
+		case <-keepAliveTicker.C:
+			data, err := mapp.CreateKeepAliveResponse(mapRequest, machine)
 			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "pollData").
-					Err(err).
-					Msg("Cannot write data")
+				logErr(err, "Error generating the keep alive msg")
 
 				return
 			}
+			_, err = writer.Write(data)
+			if err != nil {
+				logErr(err, "Cannot write keep alive message")
 
-			flusher, ok := writer.(http.Flusher)
-			if !ok {
-				log.Error().
-					Caller().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "pollData").
-					Msg("Cannot cast writer to http.Flusher")
-			} else {
+				return
+			}
+			if flusher, ok := writer.(http.Flusher); ok {
 				flusher.Flush()
-			}
-
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Str("channel", "pollData").
-				Int("bytes", len(data)).
-				Msg("Data from pollData channel written successfully")
-				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
-				// when an outdated machine object is kept alive, e.g. db is update from
-				// command line, but then overwritten.
-			err = h.db.UpdateMachineFromDatabase(machine)
-			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "pollData").
-					Err(err).
-					Msg("Cannot update machine from database")
-
-				// client has been removed from database
-				// since the stream opened, terminate connection.
+			} else {
 				return
 			}
-			now := time.Now().UTC()
-			machine.LastSeen = &now
-
-			lastStateUpdate.WithLabelValues(machine.User.Name, machine.Hostname).
-				Set(float64(now.Unix()))
-			machine.LastSuccessfulUpdate = &now
 
 			err = h.db.TouchMachine(machine)
 			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "pollData").
-					Err(err).
-					Msg("Cannot update machine LastSuccessfulUpdate")
+				logErr(err, "Cannot update machine LastSeen")
 
 				return
 			}
-
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Str("channel", "pollData").
-				Int("bytes", len(data)).
-				Msg("Machine entry in database updated successfully after sending data")
-
-		case data := <-keepAliveChan:
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Str("machine", machine.Hostname).
-				Str("channel", "keepAlive").
-				Int("bytes", len(data)).
-				Msg("Sending keep alive message")
-			_, err := writer.Write(data)
-			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "keepAlive").
-					Err(err).
-					Msg("Cannot write keep alive message")
-
-				return
-			}
-			flusher, ok := writer.(http.Flusher)
-			if !ok {
-				log.Error().
-					Caller().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "keepAlive").
-					Msg("Cannot cast writer to http.Flusher")
-			} else {
-				flusher.Flush()
-			}
-
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Str("channel", "keepAlive").
-				Int("bytes", len(data)).
-				Msg("Keep alive sent successfully")
-				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
-				// when an outdated machine object is kept alive, e.g. db is update from
-				// command line, but then overwritten.
-			err = h.db.UpdateMachineFromDatabase(machine)
-			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "keepAlive").
-					Err(err).
-					Msg("Cannot update machine from database")
-
-				// client has been removed from database
-				// since the stream opened, terminate connection.
-				return
-			}
-			now := time.Now().UTC()
-			machine.LastSeen = &now
-			err = h.db.TouchMachine(machine)
-			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "keepAlive").
-					Err(err).
-					Msg("Cannot update machine LastSeen")
-
-				return
-			}
-
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Str("channel", "keepAlive").
-				Int("bytes", len(data)).
-				Msg("Machine updated successfully after sending keep alive")
 
 		case <-updateChan:
-			log.Trace().
-				Str("handler", "PollNetMapStream").
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Str("channel", "update").
-				Msg("Received a request for update")
-			updateRequestsReceivedOnChannel.WithLabelValues(machine.User.Name, machine.Hostname).
-				Inc()
+			data, err := mapp.CreateMapResponse(mapRequest, machine, h.ACLPolicy)
+			if err != nil {
+				logErr(err, "Could not get the map update")
 
-			if h.db.IsOutdated(machine, h.getLastStateChange()) {
-				var lastUpdate time.Time
-				if machine.LastSuccessfulUpdate != nil {
-					lastUpdate = *machine.LastSuccessfulUpdate
-				}
-				log.Debug().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Time("last_successful_update", lastUpdate).
-					Time("last_state_change", h.getLastStateChange(machine.User)).
-					Msgf("There has been updates since the last successful update to %s", machine.Hostname)
-				data, err := mapp.CreateMapResponse(mapRequest, machine, h.ACLPolicy)
-				if err != nil {
-					log.Error().
-						Str("handler", "PollNetMapStream").
-						Bool("noise", isNoise).
-						Str("machine", machine.Hostname).
-						Str("channel", "update").
-						Err(err).
-						Msg("Could not get the map update")
+				return
+			}
 
-					return
-				}
-				_, err = writer.Write(data)
-				if err != nil {
-					log.Error().
-						Str("handler", "PollNetMapStream").
-						Bool("noise", isNoise).
-						Str("machine", machine.Hostname).
-						Str("channel", "update").
-						Err(err).
-						Msg("Could not write the map response")
-					updateRequestsSentToNode.WithLabelValues(machine.User.Name, machine.Hostname, "failed").
-						Inc()
+			_, err = writer.Write(data)
+			if err != nil {
+				logErr(err, "Could not write the map response")
 
-					return
-				}
-
-				flusher, ok := writer.(http.Flusher)
-				if !ok {
-					log.Error().
-						Caller().
-						Str("handler", "PollNetMapStream").
-						Bool("noise", isNoise).
-						Str("machine", machine.Hostname).
-						Str("channel", "update").
-						Msg("Cannot cast writer to http.Flusher")
-				} else {
-					flusher.Flush()
-				}
-
-				log.Trace().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "update").
-					Msg("Updated Map has been sent")
-				updateRequestsSentToNode.WithLabelValues(machine.User.Name, machine.Hostname, "success").
+				updateRequestsSentToNode.WithLabelValues(machine.User.Name, machine.Hostname, "failed").
 					Inc()
 
-				// Keep track of the last successful update,
-				// we sometimes end in a state were the update
-				// is not picked up by a client and we use this
-				// to determine if we should "force" an update.
-				// TODO(kradalby): Abstract away all the database calls, this can cause race conditions
-				// when an outdated machine object is kept alive, e.g. db is update from
-				// command line, but then overwritten.
-				err = h.db.UpdateMachineFromDatabase(machine)
-				if err != nil {
-					log.Error().
-						Str("handler", "PollNetMapStream").
-						Bool("noise", isNoise).
-						Str("machine", machine.Hostname).
-						Str("channel", "update").
-						Err(err).
-						Msg("Cannot update machine from database")
+				return
+			}
 
-					// client has been removed from database
-					// since the stream opened, terminate connection.
-					return
-				}
-				now := time.Now().UTC()
-
-				lastStateUpdate.WithLabelValues(machine.User.Name, machine.Hostname).
-					Set(float64(now.Unix()))
-				machine.LastSuccessfulUpdate = &now
-
-				err = h.db.TouchMachine(machine)
-				if err != nil {
-					log.Error().
-						Str("handler", "PollNetMapStream").
-						Bool("noise", isNoise).
-						Str("machine", machine.Hostname).
-						Str("channel", "update").
-						Err(err).
-						Msg("Cannot update machine LastSuccessfulUpdate")
-
-					return
-				}
+			if flusher, ok := writer.(http.Flusher); ok {
+				flusher.Flush()
 			} else {
-				var lastUpdate time.Time
-				if machine.LastSuccessfulUpdate != nil {
-					lastUpdate = *machine.LastSuccessfulUpdate
-				}
-				log.Trace().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Time("last_successful_update", lastUpdate).
-					Time("last_state_change", h.getLastStateChange(machine.User)).
-					Msgf("%s is up to date", machine.Hostname)
+				return
+			}
+
+			// Keep track of the last successful update,
+			// we sometimes end in a state were the update
+			// is not picked up by a client and we use this
+			// to determine if we should "force" an update.
+			err = h.db.TouchMachine(machine)
+			if err != nil {
+				logErr(err, "Cannot update machine LastSuccessfulUpdate")
+
+				return
 			}
 
 		case <-ctx.Done():
-			log.Info().
-				Str("handler", "PollNetMapStream").
-				Str("machine", machine.Hostname).
-				Msg("The client has closed the connection")
-				// TODO: Abstract away all the database calls, this can cause race conditions
-				// when an outdated machine object is kept alive, e.g. db is update from
-				// command line, but then overwritten.
-			err := h.db.UpdateMachineFromDatabase(machine)
-			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "Done").
-					Err(err).
-					Msg("Cannot update machine from database")
+			logInfo("The client has closed the connection")
 
-				// client has been removed from database
-				// since the stream opened, terminate connection.
-				return
-			}
-			now := time.Now().UTC()
-			machine.LastSeen = &now
-			err = h.db.TouchMachine(machine)
+			err := h.db.TouchMachine(machine)
 			if err != nil {
-				log.Error().
-					Str("handler", "PollNetMapStream").
-					Bool("noise", isNoise).
-					Str("machine", machine.Hostname).
-					Str("channel", "Done").
-					Err(err).
-					Msg("Cannot update machine LastSeen")
+				logErr(err, "Cannot update machine LastSeen")
 			}
 
 			// The connection has been closed, so we can stop polling.
 			return
 
 		case <-h.shutdownChan:
-			log.Info().
-				Str("handler", "PollNetMapStream").
-				Bool("noise", isNoise).
-				Str("machine", machine.Hostname).
-				Msg("The long-poll handler is shutting down")
+			logInfo("The long-poll handler is shutting down")
 
 			return
-		}
-	}
-}
-
-func (h *Headscale) scheduledPollWorker(
-	ctx context.Context,
-	updateChan chan struct{},
-	keepAliveChan chan []byte,
-	mapRequest tailcfg.MapRequest,
-	machine *types.Machine,
-	isNoise bool,
-) {
-	// TODO(kradalby): This is a stepping stone, mapper should be initiated once
-	// per client or something similar
-	mapp := mapper.NewMapper(h.db,
-		h.privateKey2019,
-		isNoise,
-		h.DERPMap,
-		h.cfg.BaseDomain,
-		h.cfg.DNSConfig,
-		h.cfg.LogTail.Enabled,
-		h.cfg.RandomizeClientPort,
-	)
-
-	keepAliveTicker := time.NewTicker(keepAliveInterval)
-	updateCheckerTicker := time.NewTicker(h.cfg.NodeUpdateCheckInterval)
-
-	defer closeChanWithLog(
-		updateChan,
-		fmt.Sprint(ctx.Value(machineNameContextKey)),
-		"updateChan",
-	)
-	defer closeChanWithLog(
-		keepAliveChan,
-		fmt.Sprint(ctx.Value(machineNameContextKey)),
-		"keepAliveChan",
-	)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-
-		case <-keepAliveTicker.C:
-			data, err := mapp.CreateKeepAliveResponse(mapRequest, machine)
-			if err != nil {
-				log.Error().
-					Str("func", "keepAlive").
-					Bool("noise", isNoise).
-					Err(err).
-					Msg("Error generating the keep alive msg")
-
-				return
-			}
-
-			log.Debug().
-				Str("func", "keepAlive").
-				Str("machine", machine.Hostname).
-				Bool("noise", isNoise).
-				Msg("Sending keepalive")
-			select {
-			case keepAliveChan <- data:
-			case <-ctx.Done():
-				return
-			}
-
-		case <-updateCheckerTicker.C:
-			log.Debug().
-				Str("func", "scheduledPollWorker").
-				Str("machine", machine.Hostname).
-				Bool("noise", isNoise).
-				Msg("Sending update request")
-			updateRequestsFromNode.WithLabelValues(machine.User.Name, machine.Hostname, "scheduled-update").
-				Inc()
-			select {
-			case updateChan <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
 		}
 	}
 }
