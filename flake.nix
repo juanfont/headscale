@@ -96,6 +96,7 @@
           nfpm
           gotestsum
           gotests
+          ksh
 
           # 'dot' is needed for pprof graphs
           # go tool pprof -http=: <source>
