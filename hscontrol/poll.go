@@ -30,9 +30,8 @@ func (h *Headscale) handlePoll(
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
 ) {
-	// TODO(kradalby): This is a stepping stone, mapper should be initiated once
-	// per client or something similar
-	mapp := mapper.NewMapper(h.db,
+	mapp := mapper.NewMapper(
+		h.db,
 		h.privateKey2019,
 		isNoise,
 		h.DERPMap,
