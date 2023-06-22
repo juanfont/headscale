@@ -64,8 +64,6 @@ func (h *Headscale) handlePoll(
 ) {
 	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
 
-	// TODO(kradalby): This is a stepping stone, mapper should be initiated once
-	// per client or something similar
 	mapp := mapper.NewMapper(
 		h.db,
 		h.privateKey2019,
