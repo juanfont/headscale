@@ -26,7 +26,9 @@ jobs:
             integration_test/
             config-example.yaml
 
-      - uses: cachix/install-nix-action@v16
+      - uses: DeterminateSystems/nix-installer-action@main
+        if: steps.changed-files.outputs.any_changed == 'true'
+      - uses: DeterminateSystems/magic-nix-cache-action@main
         if: steps.changed-files.outputs.any_changed == 'true'
 
       - name: Run tests

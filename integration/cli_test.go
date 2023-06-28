@@ -1473,7 +1473,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assert.Contains(
 		t,
 		moveToNonExistingNSResult,
-		"User not found",
+		"user not found",
 	)
 	assert.Equal(t, machine.User.Name, "new-user")
 
