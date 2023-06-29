@@ -116,7 +116,7 @@ func (h *Headscale) handlePoll(
 		return
 	}
 
-	mapResp, err := mapp.CreateMapResponse(mapRequest, machine, h.ACLPolicy)
+	mapResp, err := mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
 	if err != nil {
 		logErr(err, "Failed to create MapResponse")
 		http.Error(writer, "", http.StatusInternalServerError)
@@ -163,7 +163,12 @@ func (h *Headscale) handlePoll(
 			Inc()
 
 		// Tell all the other nodes about the new endpoint, but dont update ourselves.
-		h.nodeNotifier.NotifyWithIgnore(machine.MachineKey)
+		h.nodeNotifier.NotifyWithIgnore(
+			types.StateUpdate{
+				Type:    types.StatePeerChanged,
+				Changed: []uint64{machine.ID},
+			},
+			machine.MachineKey)
 
 		return
 	} else if mapRequest.OmitPeers && mapRequest.Stream {
@@ -220,7 +225,7 @@ func (h *Headscale) pollNetMapStream(
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
 
 	const chanSize = 8
-	updateChan := make(chan struct{}, chanSize)
+	updateChan := make(chan types.StateUpdate, chanSize)
 
 	h.pollNetMapStreamWG.Add(1)
 	defer h.pollNetMapStreamWG.Done()
@@ -238,7 +243,7 @@ func (h *Headscale) pollNetMapStream(
 	for {
 		select {
 		case <-keepAliveTicker.C:
-			data, err := mapp.CreateKeepAliveResponse(mapRequest, machine)
+			data, err := mapp.KeepAliveResponse(mapRequest, machine)
 			if err != nil {
 				logErr(err, "Error generating the keep alive msg")
 
@@ -263,10 +268,23 @@ func (h *Headscale) pollNetMapStream(
 				return
 			}
 
-		case <-updateChan:
-			data, err := mapp.CreateMapResponse(mapRequest, machine, h.ACLPolicy)
+		case update := <-updateChan:
+			var data []byte
+			var err error
+
+			switch update.Type {
+			case types.StateFullUpdate:
+				data, err = mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
+			case types.StatePeerChanged:
+				data, err = mapp.PeerChangedResponse(mapRequest, machine, update.Changed, h.ACLPolicy)
+			case types.StatePeerRemoved:
+				data, err = mapp.PeerRemovedResponse(mapRequest, machine, update.Removed)
+			case types.StateDERPUpdated:
+				data, err = mapp.DERPMapResponse(mapRequest, machine, update.DERPMap)
+			}
+
 			if err != nil {
-				logErr(err, "Could not get the map update")
+				logErr(err, "Could not get the create map update")
 
 				return
 			}
@@ -317,7 +335,7 @@ func (h *Headscale) pollNetMapStream(
 	}
 }
 
-func closeChanWithLog[C chan []byte | chan struct{}](channel C, machine, name string) {
+func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](channel C, machine, name string) {
 	log.Trace().
 		Str("handler", "PollNetMap").
 		Str("machine", machine).

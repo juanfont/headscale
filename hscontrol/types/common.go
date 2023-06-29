@@ -106,3 +106,32 @@ func (i StringList) Value() (driver.Value, error) {
 
 	return string(bytes), err
 }
+
+type StateUpdateType int
+
+const (
+	StateFullUpdate StateUpdateType = iota
+	StatePeerChanged
+	StatePeerRemoved
+	StateDERPUpdated
+)
+
+// StateUpdate is an internal message containing information about
+// a state change that has happened to the network.
+type StateUpdate struct {
+	// The type of update
+	Type StateUpdateType
+
+	// Changed must be set when Type is StatePeerChanged and
+	// contain the Machine IDs of machines that has changed.
+	Changed []uint64
+
+	// Removed must be set when Type is StatePeerRemoved and
+	// contain a list of the nodes that has been removed from
+	// the network.
+	Removed []tailcfg.NodeID
+
+	// DERPMap must be set when Type is StateDERPUpdated and
+	// contain the new DERP Map.
+	DERPMap tailcfg.DERPMap
+}

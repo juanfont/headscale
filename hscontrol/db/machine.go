@@ -13,6 +13,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -218,7 +219,10 @@ func (hsdb *HSDatabase) SetTags(
 	}
 	machine.ForcedTags = newTags
 
-	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
+	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
+		Type:    types.StatePeerChanged,
+		Changed: []uint64{machine.ID},
+	}, machine.MachineKey)
 
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
@@ -232,7 +236,10 @@ func (hsdb *HSDatabase) ExpireMachine(machine *types.Machine) error {
 	now := time.Now()
 	machine.Expiry = &now
 
-	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
+	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
+		Type:    types.StatePeerChanged,
+		Changed: []uint64{machine.ID},
+	}, machine.MachineKey)
 
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to expire machine in the database: %w", err)
@@ -259,7 +266,10 @@ func (hsdb *HSDatabase) RenameMachine(machine *types.Machine, newName string) er
 	}
 	machine.GivenName = newName
 
-	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
+	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
+		Type:    types.StatePeerChanged,
+		Changed: []uint64{machine.ID},
+	}, machine.MachineKey)
 
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return fmt.Errorf("failed to rename machine in the database: %w", err)
@@ -275,7 +285,10 @@ func (hsdb *HSDatabase) RefreshMachine(machine *types.Machine, expiry time.Time)
 	machine.LastSuccessfulUpdate = &now
 	machine.Expiry = &expiry
 
-	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
+	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
+		Type:    types.StatePeerChanged,
+		Changed: []uint64{machine.ID},
+	}, machine.MachineKey)
 
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return fmt.Errorf(
@@ -549,6 +562,27 @@ func (hsdb *HSDatabase) IsRoutesEnabled(machine *types.Machine, routeStr string)
 	return false
 }
 
+func OnlineMachineMap(peers types.Machines) map[tailcfg.NodeID]bool {
+	ret := make(map[tailcfg.NodeID]bool)
+
+	for _, peer := range peers {
+		ret[tailcfg.NodeID(peer.ID)] = peer.IsOnline()
+	}
+
+	return ret
+}
+
+func (hsdb *HSDatabase) ListOnlineMachines(
+	machine *types.Machine,
+) (map[tailcfg.NodeID]bool, error) {
+	peers, err := hsdb.ListPeers(machine)
+	if err != nil {
+		return nil, err
+	}
+
+	return OnlineMachineMap(peers), nil
+}
+
 // enableRoutes enables new routes based on a list of new routes.
 func (hsdb *HSDatabase) enableRoutes(machine *types.Machine, routeStrs ...string) error {
 	newRoutes := make([]netip.Prefix, len(routeStrs))
@@ -600,7 +634,10 @@ func (hsdb *HSDatabase) enableRoutes(machine *types.Machine, routeStrs ...string
 		}
 	}
 
-	hsdb.notifier.NotifyWithIgnore(machine.MachineKey)
+	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
+		Type:    types.StatePeerChanged,
+		Changed: []uint64{machine.ID},
+	}, machine.MachineKey)
 
 	return nil
 }
@@ -676,12 +713,13 @@ func (hsdb *HSDatabase) ExpireEphemeralMachines(inactivityThreshhold time.Durati
 			return
 		}
 
-		expiredFound := false
+		expired := make([]tailcfg.NodeID, 0)
 		for idx, machine := range machines {
 			if machine.IsEphemeral() && machine.LastSeen != nil &&
 				time.Now().
 					After(machine.LastSeen.Add(inactivityThreshhold)) {
-				expiredFound = true
+				expired = append(expired, tailcfg.NodeID(machine.ID))
+
 				log.Info().
 					Str("machine", machine.Hostname).
 					Msg("Ephemeral client removed from database")
@@ -696,8 +734,11 @@ func (hsdb *HSDatabase) ExpireEphemeralMachines(inactivityThreshhold time.Durati
 			}
 		}
 
-		if expiredFound {
-			hsdb.notifier.NotifyAll()
+		if len(expired) > 0 {
+			hsdb.notifier.NotifyAll(types.StateUpdate{
+				Type:    types.StatePeerRemoved,
+				Removed: expired,
+			})
 		}
 	}
 }
@@ -726,11 +767,11 @@ func (hsdb *HSDatabase) ExpireExpiredMachines(lastCheck time.Time) time.Time {
 			return time.Unix(0, 0)
 		}
 
-		expiredFound := false
+		expired := make([]tailcfg.NodeID, 0)
 		for index, machine := range machines {
 			if machine.IsExpired() &&
 				machine.Expiry.After(lastCheck) {
-				expiredFound = true
+				expired = append(expired, tailcfg.NodeID(machine.ID))
 
 				err := hsdb.ExpireMachine(&machines[index])
 				if err != nil {
@@ -748,8 +789,11 @@ func (hsdb *HSDatabase) ExpireExpiredMachines(lastCheck time.Time) time.Time {
 			}
 		}
 
-		if expiredFound {
-			hsdb.notifier.NotifyAll()
+		if len(expired) > 0 {
+			hsdb.notifier.NotifyAll(types.StateUpdate{
+				Type:    types.StatePeerRemoved,
+				Removed: expired,
+			})
 		}
 	}
 
