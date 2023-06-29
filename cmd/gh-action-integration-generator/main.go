@@ -41,7 +41,7 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
-      - uses: satackey/action-docker-layer-caching@main
+      - uses: satackey/action-docker-layer-caching@v0.0.11
         continue-on-error: true
 
       - name: Get changed files
