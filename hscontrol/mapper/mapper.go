@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -129,45 +130,35 @@ func fullMapResponse(
 		return nil, err
 	}
 
+	// Peers is always returned sorted by Node.ID.
+	sort.SliceStable(tailPeers, func(x, y int) bool {
+		return tailPeers[x].ID < tailPeers[y].ID
+	})
+
 	now := time.Now()
 
 	resp := tailcfg.MapResponse{
-		KeepAlive: false,
-		Node:      tailnode,
-
-		// TODO: Only send if updated
-		DERPMap: derpMap,
-
-		// TODO: Only send if updated
+		Node:  tailnode,
 		Peers: tailPeers,
 
-		// TODO(kradalby): Implement:
-		// https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L1351-L1374
-		// PeersChanged
-		// PeersRemoved
-		// PeersChangedPatch
-		// PeerSeenChange
-		// OnlineChange
+		DERPMap: derpMap,
 
-		// TODO: Only send if updated
 		DNSConfig: dnsConfig,
+		Domain:    baseDomain,
 
-		// TODO: Only send if updated
-		Domain: baseDomain,
-
-		// Do not instruct clients to collect services, we do not
+		// Do not instruct clients to collect services we do not
 		// support or do anything with them
 		CollectServices: "false",
 
-		// TODO: Only send if updated
 		PacketFilter: policy.ReduceFilterRules(machine, rules),
 
 		UserProfiles: profiles,
 
-		// TODO: Only send if updated
 		SSHPolicy: sshPolicy,
 
-		ControlTime: &now,
+		ControlTime:  &now,
+		KeepAlive:    false,
+		OnlineChange: db.OnlineMachineMap(peers),
 
 		Debug: &tailcfg.Debug{
 			DisableLogTail:      !logtail,
@@ -271,8 +262,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine types.Machine) {
 	}
 }
 
-// CreateMapResponse returns a MapResponse for the given machine.
-func (m Mapper) CreateMapResponse(
+// FullMapResponse returns a MapResponse for the given machine.
+func (m Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 	pol *policy.ACLPolicy,
@@ -302,39 +293,107 @@ func (m Mapper) CreateMapResponse(
 	}
 
 	if m.isNoise {
-		return m.marshalMapResponse(mapResponse, key.MachinePublic{}, mapRequest.Compress)
+		return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
 	}
 
-	var machineKey key.MachinePublic
-	err = machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)))
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot parse client key")
-
-		return nil, err
-	}
-
-	return m.marshalMapResponse(mapResponse, machineKey, mapRequest.Compress)
+	return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
 }
 
-func (m Mapper) CreateKeepAliveResponse(
+func (m Mapper) KeepAliveResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 ) ([]byte, error) {
-	keepAliveResponse := tailcfg.MapResponse{
-		KeepAlive: true,
+	resp := m.baseMapResponse(machine)
+	resp.KeepAlive = true
+
+	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
+}
+
+func (m Mapper) DERPMapResponse(
+	mapRequest tailcfg.MapRequest,
+	machine *types.Machine,
+	derpMap tailcfg.DERPMap,
+) ([]byte, error) {
+	resp := m.baseMapResponse(machine)
+	resp.DERPMap = &derpMap
+
+	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
+}
+
+func (m Mapper) PeerChangedResponse(
+	mapRequest tailcfg.MapRequest,
+	machine *types.Machine,
+	machineKeys []uint64,
+	pol *policy.ACLPolicy,
+) ([]byte, error) {
+	var err error
+	changed := make(types.Machines, len(machineKeys))
+	lastSeen := make(map[tailcfg.NodeID]bool)
+	for idx, machineKey := range machineKeys {
+		peer, err := m.db.GetMachineByID(machineKey)
+		if err != nil {
+			return nil, err
+		}
+
+		changed[idx] = *peer
+
+		// We have just seen the node, let the peers update their list.
+		lastSeen[tailcfg.NodeID(peer.ID)] = true
 	}
 
-	if m.isNoise {
-		return m.marshalMapResponse(
-			keepAliveResponse,
-			key.MachinePublic{},
-			mapRequest.Compress,
-		)
+	rules, _, err := policy.GenerateFilterAndSSHRules(
+		pol,
+		machine,
+		changed,
+	)
+	if err != nil {
+		return nil, err
 	}
 
+	// Filter out peers that have expired.
+	changed = lo.Filter(changed, func(item types.Machine, index int) bool {
+		return !item.IsExpired()
+	})
+
+	// If there are filter rules present, see if there are any machines that cannot
+	// access eachother at all and remove them from the changed.
+	if len(rules) > 0 {
+		changed = policy.FilterMachinesByACL(machine, changed, rules)
+	}
+
+	tailPeers, err := tailNodes(changed, pol, m.dnsCfg, m.baseDomain)
+	if err != nil {
+		return nil, err
+	}
+
+	// Peers is always returned sorted by Node.ID.
+	sort.SliceStable(tailPeers, func(x, y int) bool {
+		return tailPeers[x].ID < tailPeers[y].ID
+	})
+
+	resp := m.baseMapResponse(machine)
+	resp.PeersChanged = tailPeers
+	resp.PeerSeenChange = lastSeen
+
+	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
+}
+
+func (m Mapper) PeerRemovedResponse(
+	mapRequest tailcfg.MapRequest,
+	machine *types.Machine,
+	removed []tailcfg.NodeID,
+) ([]byte, error) {
+	resp := m.baseMapResponse(machine)
+	resp.PeersRemoved = removed
+
+	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
+}
+
+func (m Mapper) marshalMapResponse(
+	resp *tailcfg.MapResponse,
+	machine *types.Machine,
+	compression string,
+) ([]byte, error) {
 	var machineKey key.MachinePublic
 	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)))
 	if err != nil {
@@ -346,40 +405,6 @@ func (m Mapper) CreateKeepAliveResponse(
 		return nil, err
 	}
 
-	return m.marshalMapResponse(keepAliveResponse, machineKey, mapRequest.Compress)
-}
-
-// MarshalResponse takes an Tailscale Response, marhsal it to JSON.
-// If isNoise is set, then the JSON body will be returned
-// If !isNoise and privateKey2019 is set, the JSON body will be sealed in a Nacl box.
-func MarshalResponse(
-	resp interface{},
-	isNoise bool,
-	privateKey2019 *key.MachinePrivate,
-	machineKey key.MachinePublic,
-) ([]byte, error) {
-	jsonBody, err := json.Marshal(resp)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot marshal response")
-
-		return nil, err
-	}
-
-	if !isNoise && privateKey2019 != nil {
-		return privateKey2019.SealTo(machineKey, jsonBody), nil
-	}
-
-	return jsonBody, nil
-}
-
-func (m Mapper) marshalMapResponse(
-	resp interface{},
-	machineKey key.MachinePublic,
-	compression string,
-) ([]byte, error) {
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().
@@ -409,6 +434,32 @@ func (m Mapper) marshalMapResponse(
 	return data, nil
 }
 
+// MarshalResponse takes an Tailscale Response, marhsal it to JSON.
+// If isNoise is set, then the JSON body will be returned
+// If !isNoise and privateKey2019 is set, the JSON body will be sealed in a Nacl box.
+func MarshalResponse(
+	resp interface{},
+	isNoise bool,
+	privateKey2019 *key.MachinePrivate,
+	machineKey key.MachinePublic,
+) ([]byte, error) {
+	jsonBody, err := json.Marshal(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot marshal response")
+
+		return nil, err
+	}
+
+	if !isNoise && privateKey2019 != nil {
+		return privateKey2019.SealTo(machineKey, jsonBody), nil
+	}
+
+	return jsonBody, nil
+}
+
 func zstdEncode(in []byte) []byte {
 	encoder, ok := zstdEncoderPool.Get().(*zstd.Encoder)
 	if !ok {
@@ -432,4 +483,20 @@ var zstdEncoderPool = &sync.Pool{
 
 		return encoder
 	},
+}
+
+func (m *Mapper) baseMapResponse(machine *types.Machine) tailcfg.MapResponse {
+	now := time.Now()
+
+	resp := tailcfg.MapResponse{
+		KeepAlive:   false,
+		ControlTime: &now,
+	}
+
+	online, err := m.db.ListOnlineMachines(machine)
+	if err == nil {
+		resp.OnlineChange = online
+	}
+
+	return resp
 }

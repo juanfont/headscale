@@ -274,7 +274,7 @@ func (hsdb *HSDatabase) HandlePrimarySubnetFailover() error {
 		log.Error().Err(err).Msg("error getting routes")
 	}
 
-	routesChanged := false
+	changedMachines := make([]uint64, 0)
 	for pos, route := range routes {
 		if route.IsExitRoute() {
 			continue
@@ -295,7 +295,7 @@ func (hsdb *HSDatabase) HandlePrimarySubnetFailover() error {
 					return err
 				}
 
-				routesChanged = true
+				changedMachines = append(changedMachines, route.MachineID)
 
 				continue
 			}
@@ -369,12 +369,15 @@ func (hsdb *HSDatabase) HandlePrimarySubnetFailover() error {
 				return err
 			}
 
-			routesChanged = true
+			changedMachines = append(changedMachines, route.MachineID)
 		}
 	}
 
-	if routesChanged {
-		hsdb.notifier.NotifyAll()
+	if len(changedMachines) > 0 {
+		hsdb.notifier.NotifyAll(types.StateUpdate{
+			Type:    types.StatePeerChanged,
+			Changed: changedMachines,
+		})
 	}
 
 	return nil

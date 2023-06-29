@@ -3,24 +3,25 @@ package notifier
 import (
 	"sync"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 type Notifier struct {
 	l     sync.RWMutex
-	nodes map[string]chan<- struct{}
+	nodes map[string]chan<- types.StateUpdate
 }
 
 func NewNotifier() *Notifier {
 	return &Notifier{}
 }
 
-func (n *Notifier) AddNode(machineKey string, c chan<- struct{}) {
+func (n *Notifier) AddNode(machineKey string, c chan<- types.StateUpdate) {
 	n.l.Lock()
 	defer n.l.Unlock()
 
 	if n.nodes == nil {
-		n.nodes = make(map[string]chan<- struct{})
+		n.nodes = make(map[string]chan<- types.StateUpdate)
 	}
 
 	n.nodes[machineKey] = c
@@ -37,11 +38,11 @@ func (n *Notifier) RemoveNode(machineKey string) {
 	delete(n.nodes, machineKey)
 }
 
-func (n *Notifier) NotifyAll() {
-	n.NotifyWithIgnore()
+func (n *Notifier) NotifyAll(update types.StateUpdate) {
+	n.NotifyWithIgnore(update)
 }
 
-func (n *Notifier) NotifyWithIgnore(ignore ...string) {
+func (n *Notifier) NotifyWithIgnore(update types.StateUpdate, ignore ...string) {
 	n.l.RLock()
 	defer n.l.RUnlock()
 
@@ -50,6 +51,6 @@ func (n *Notifier) NotifyWithIgnore(ignore ...string) {
 			continue
 		}
 
-		c <- struct{}{}
+		c <- update
 	}
 }

@@ -257,7 +257,10 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 				h.DERPMap.Regions[region.RegionID] = &region
 			}
 
-			h.nodeNotifier.NotifyAll()
+			h.nodeNotifier.NotifyAll(types.StateUpdate{
+				Type:    types.StateDERPUpdated,
+				DERPMap: *h.DERPMap,
+			})
 		}
 	}
 }
@@ -721,7 +724,9 @@ func (h *Headscale) Serve() error {
 						Str("path", aclPath).
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
-					h.nodeNotifier.NotifyAll()
+					h.nodeNotifier.NotifyAll(types.StateUpdate{
+						Type: types.StateFullUpdate,
+					})
 				}
 
 			default:

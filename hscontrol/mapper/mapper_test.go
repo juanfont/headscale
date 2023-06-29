@@ -387,6 +387,7 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
+				OnlineChange:    map[tailcfg.NodeID]bool{tailPeer1.ID: false},
 				PacketFilter:    []tailcfg.FilterRule{},
 				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
 				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
@@ -428,6 +429,7 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
+				OnlineChange:    map[tailcfg.NodeID]bool{tailPeer1.ID: false},
 				PacketFilter: []tailcfg.FilterRule{
 					{
 						SrcIPs: []string{"100.64.0.2/32"},
