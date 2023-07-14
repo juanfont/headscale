@@ -222,21 +222,21 @@ func (h *Headscale) pollNetMapStream(
 
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
 
-	const chanSize = 8
-	updateChan := make(chan types.StateUpdate, chanSize)
-
 	h.pollNetMapStreamWG.Add(1)
 	defer h.pollNetMapStreamWG.Done()
+
+	const chanSize = 8
+	updateChan := make(chan types.StateUpdate, chanSize)
+	defer closeChanWithLog(updateChan, machine.Hostname, "updateChan")
+
+	// Register the node's update channel
+	h.nodeNotifier.AddNode(machine.MachineKey, updateChan)
+	defer h.nodeNotifier.RemoveNode(machine.MachineKey)
 
 	ctx := context.WithValue(ctxReq, machineNameContextKey, machine.Hostname)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	// Register the node's update channel
-	h.nodeNotifier.AddNode(machine.MachineKey, updateChan)
-	defer h.nodeNotifier.RemoveNode(machine.MachineKey)
-	defer closeChanWithLog(updateChan, machine.Hostname, "updateChan")
 
 	for {
 		select {
