@@ -275,8 +275,11 @@ func (api headscaleV1APIServer) ExpireMachine(
 		return nil, err
 	}
 
-	api.h.db.ExpireMachine(
+	now := time.Now()
+
+	api.h.db.MachineSetExpiry(
 		machine,
+		now,
 	)
 
 	log.Trace().
@@ -358,7 +361,7 @@ func (api headscaleV1APIServer) MoveMachine(
 		return nil, err
 	}
 
-	err = api.h.db.SetMachineUser(machine, request.GetUser())
+	err = api.h.db.AssignMachineToUser(machine, request.GetUser())
 	if err != nil {
 		return nil, err
 	}

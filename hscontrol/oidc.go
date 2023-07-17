@@ -523,7 +523,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 			Str("machine", machine.Hostname).
 			Msg("machine already registered, reauthenticating")
 
-		err := h.db.RefreshMachine(machine, expiry)
+		err := h.db.MachineSetExpiry(machine, expiry)
 		if err != nil {
 			util.LogErr(err, "Failed to refresh machine")
 			http.Error(

@@ -107,6 +107,7 @@ func (h *Headscale) handlePoll(
 		machine.LastSeen = &now
 	}
 
+	// TODO(kradalby): Save specific stuff, not whole object.
 	if err := h.db.MachineSave(machine); err != nil {
 		logErr(err, "Failed to persist/update machine in the database")
 		http.Error(writer, "", http.StatusInternalServerError)

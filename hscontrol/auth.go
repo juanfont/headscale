@@ -309,7 +309,7 @@ func (h *Headscale) handleAuthKey(
 
 		machine.NodeKey = nodeKey
 		machine.AuthKeyID = uint(pak.ID)
-		err := h.db.RefreshMachine(machine, registerRequest.Expiry)
+		err := h.db.MachineSetExpiry(machine, registerRequest.Expiry)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -510,7 +510,8 @@ func (h *Headscale) handleMachineLogOut(
 		Str("machine", machine.Hostname).
 		Msg("Client requested logout")
 
-	err := h.db.ExpireMachine(&machine)
+	now := time.Now()
+	err := h.db.MachineSetExpiry(&machine, now)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -552,7 +553,7 @@ func (h *Headscale) handleMachineLogOut(
 	}
 
 	if machine.IsEphemeral() {
-		err = h.db.HardDeleteMachine(&machine)
+		err = h.db.DeleteMachine(&machine)
 		if err != nil {
 			log.Error().
 				Err(err).

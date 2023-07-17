@@ -40,6 +40,8 @@ type HSDatabase struct {
 	db       *gorm.DB
 	notifier *notifier.Notifier
 
+	mu sync.RWMutex
+
 	ipAllocationMutex sync.Mutex
 
 	ipPrefixes []netip.Prefix
