@@ -212,6 +212,7 @@ func New(
 	env := []string{
 		"HEADSCALE_PROFILING_ENABLED=1",
 		"HEADSCALE_PROFILING_PATH=/tmp/profile",
+		"HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH=/tmp/mapresponses",
 	}
 	for key, value := range hsic.env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
@@ -339,6 +340,14 @@ func (t *HeadscaleInContainer) Shutdown() error {
 		)
 	}
 
+	err = t.SaveMapResponses("/tmp/control")
+	if err != nil {
+		log.Printf(
+			"Failed to save mapresponses from control: %s",
+			fmt.Errorf("failed to save mapresponses from control: %w", err),
+		)
+	}
+
 	return t.pool.Purge(t.container)
 }
 
@@ -350,6 +359,24 @@ func (t *HeadscaleInContainer) SaveLog(path string) error {
 
 func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
 	tarFile, err := t.FetchPath("/tmp/profile")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(
+		path.Join(savePath, t.hostname+"maps.tar"),
+		tarFile,
+		os.ModePerm,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
+	tarFile, err := t.FetchPath("/tmp/mapresponses")
 	if err != nil {
 		return err
 	}

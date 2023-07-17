@@ -4,10 +4,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/url"
+	"os"
+	"path"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -18,6 +22,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
+	"tailscale.com/envknob"
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -28,6 +33,8 @@ const (
 	nextDNSDoHPrefix           = "https://dns.nextdns.io"
 	reservedResponseHeaderSize = 4
 )
+
+var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH")
 
 type Mapper struct {
 	db *db.HSDatabase
@@ -411,6 +418,41 @@ func (m Mapper) marshalMapResponse(
 			Caller().
 			Err(err).
 			Msg("Cannot marshal map response")
+	}
+
+	if debugDumpMapResponsePath != "" {
+		data := map[string]interface{}{
+			"MapRequest":  mapRequest,
+			"MapResponse": resp,
+		}
+
+		body, err := json.Marshal(data)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Cannot marshal map response")
+		}
+
+		perms := fs.FileMode(debugMapResponsePerm)
+		mPath := path.Join(debugDumpMapResponsePath, machine.Hostname)
+		err = os.MkdirAll(mPath, perms)
+		if err != nil {
+			panic(err)
+		}
+
+		now := time.Now().Unix()
+
+		mapResponsePath := path.Join(
+			mPath,
+			fmt.Sprintf("%d-%s-%d.json", now, m.uid, atomic.LoadUint64(&m.seq)),
+		)
+
+		log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
+		err = os.WriteFile(mapResponsePath, body, perms)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	var respBody []byte
