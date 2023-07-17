@@ -535,10 +535,10 @@ func (m *Mapper) baseMapResponse(machine *types.Machine) tailcfg.MapResponse {
 		ControlTime: &now,
 	}
 
-	online, err := m.db.ListOnlineMachines(machine)
-	if err == nil {
-		resp.OnlineChange = online
-	}
+	// online, err := m.db.ListOnlineMachines(machine)
+	// if err == nil {
+	// 	resp.OnlineChange = online
+	// }
 
 	return resp
 }
