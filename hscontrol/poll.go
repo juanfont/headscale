@@ -225,8 +225,7 @@ func (h *Headscale) pollNetMapStream(
 	h.pollNetMapStreamWG.Add(1)
 	defer h.pollNetMapStreamWG.Done()
 
-	const chanSize = 8
-	updateChan := make(chan types.StateUpdate, chanSize)
+	updateChan := make(chan types.StateUpdate)
 	defer closeChanWithLog(updateChan, machine.Hostname, "updateChan")
 
 	// Register the node's update channel
@@ -271,14 +270,18 @@ func (h *Headscale) pollNetMapStream(
 			var err error
 
 			switch update.Type {
-			case types.StateFullUpdate:
-				data, err = mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
 			case types.StatePeerChanged:
+				logInfo("Sending PeerChanged MapResponse")
 				data, err = mapp.PeerChangedResponse(mapRequest, machine, update.Changed, h.ACLPolicy)
 			case types.StatePeerRemoved:
+				logInfo("Sending PeerRemoved MapResponse")
 				data, err = mapp.PeerRemovedResponse(mapRequest, machine, update.Removed)
 			case types.StateDERPUpdated:
+				logInfo("Sending DERPUpdate MapResponse")
 				data, err = mapp.DERPMapResponse(mapRequest, machine, update.DERPMap)
+			case types.StateFullUpdate:
+				logInfo("Sending Full MapResponse")
+				data, err = mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
 			}
 
 			if err != nil {
