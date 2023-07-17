@@ -10,6 +10,8 @@ issues:
 linters:
   enable-all: true
   disable:
+    - depguard
+
     - exhaustivestruct
     - revive
     - lll
