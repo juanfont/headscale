@@ -127,28 +127,6 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 }
 
-func (s *Suite) TestDeleteMachine(c *check.C) {
-	user, err := db.CreateUser("test")
-	c.Assert(err, check.IsNil)
-	machine := types.Machine{
-		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
-		Hostname:       "testmachine",
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(1),
-	}
-	db.db.Save(&machine)
-
-	err = db.DeleteMachine(&machine)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.GetMachine(user.Name, "testmachine")
-	c.Assert(err, check.NotNil)
-}
-
 func (s *Suite) TestHardDeleteMachine(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
@@ -164,7 +142,7 @@ func (s *Suite) TestHardDeleteMachine(c *check.C) {
 	}
 	db.db.Save(&machine)
 
-	err = db.HardDeleteMachine(&machine)
+	err = db.DeleteMachine(&machine)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.GetMachine(user.Name, "testmachine3")
@@ -329,7 +307,8 @@ func (s *Suite) TestExpireMachine(c *check.C) {
 
 	c.Assert(machineFromDB.IsExpired(), check.Equals, false)
 
-	err = db.ExpireMachine(machineFromDB)
+	now := time.Now()
+	err = db.MachineSetExpiry(machineFromDB, now)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(machineFromDB.IsExpired(), check.Equals, true)
@@ -450,14 +429,12 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
-		db      *HSDatabase
 		args    args
 		want    *regexp.Regexp
 		wantErr bool
 	}{
 		{
 			name: "simple machine name generation",
-			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "testmachine",
 				randomSuffix: false,
@@ -467,7 +444,6 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 53 chars",
-			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
 				randomSuffix: false,
@@ -477,7 +453,6 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 63 chars",
-			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
 				randomSuffix: false,
@@ -487,7 +462,6 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 64 chars",
-			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234",
 				randomSuffix: false,
@@ -497,7 +471,6 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 73 chars",
-			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234567890123",
 				randomSuffix: false,
@@ -507,7 +480,6 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with random suffix",
-			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "test",
 				randomSuffix: true,
@@ -517,7 +489,6 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		},
 		{
 			name: "machine name with 63 chars with random suffix",
-			db:   &HSDatabase{},
 			args: args{
 				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
 				randomSuffix: true,
@@ -528,7 +499,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.db.generateGivenName(tt.args.suppliedName, tt.args.randomSuffix)
+			got, err := generateGivenName(tt.args.suppliedName, tt.args.randomSuffix)
 			if (err != nil) != tt.wantErr {
 				t.Errorf(
 					"Headscale.GenerateGivenName() error = %v, wantErr %v",

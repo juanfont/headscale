@@ -36,6 +36,13 @@ var (
 
 // ListPeers returns all peers of machine, regardless of any Policy or if the node is expired.
 func (hsdb *HSDatabase) ListPeers(machine *types.Machine) (types.Machines, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
+	return hsdb.listPeers(machine)
+}
+
+func (hsdb *HSDatabase) listPeers(machine *types.Machine) (types.Machines, error) {
 	log.Trace().
 		Caller().
 		Str("machine", machine.Hostname).
@@ -63,6 +70,13 @@ func (hsdb *HSDatabase) ListPeers(machine *types.Machine) (types.Machines, error
 }
 
 func (hsdb *HSDatabase) ListMachines() ([]types.Machine, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
+	return hsdb.listMachines()
+}
+
+func (hsdb *HSDatabase) listMachines() ([]types.Machine, error) {
 	machines := []types.Machine{}
 	if err := hsdb.db.
 		Preload("AuthKey").
@@ -77,6 +91,13 @@ func (hsdb *HSDatabase) ListMachines() ([]types.Machine, error) {
 }
 
 func (hsdb *HSDatabase) ListMachinesByGivenName(givenName string) (types.Machines, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
+	return hsdb.listMachinesByGivenName(givenName)
+}
+
+func (hsdb *HSDatabase) listMachinesByGivenName(givenName string) (types.Machines, error) {
 	machines := types.Machines{}
 	if err := hsdb.db.
 		Preload("AuthKey").
@@ -92,6 +113,9 @@ func (hsdb *HSDatabase) ListMachinesByGivenName(givenName string) (types.Machine
 
 // GetMachine finds a Machine by name and user and returns the Machine struct.
 func (hsdb *HSDatabase) GetMachine(user string, name string) (*types.Machine, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
 	machines, err := hsdb.ListMachinesByUser(user)
 	if err != nil {
 		return nil, err
@@ -111,15 +135,17 @@ func (hsdb *HSDatabase) GetMachineByGivenName(
 	user string,
 	givenName string,
 ) (*types.Machine, error) {
-	machines, err := hsdb.ListMachinesByUser(user)
-	if err != nil {
-		return nil, err
-	}
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
 
-	for _, m := range machines {
-		if m.GivenName == givenName {
-			return &m, nil
-		}
+	machine := types.Machine{}
+	if err := hsdb.db.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		Where("given_name = ?", givenName).First(&machine).Error; err != nil {
+		return nil, err
 	}
 
 	return nil, ErrMachineNotFound
@@ -127,6 +153,9 @@ func (hsdb *HSDatabase) GetMachineByGivenName(
 
 // GetMachineByID finds a Machine by ID and returns the Machine struct.
 func (hsdb *HSDatabase) GetMachineByID(id uint64) (*types.Machine, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
 	mach := types.Machine{}
 	if result := hsdb.db.
 		Preload("AuthKey").
@@ -144,6 +173,9 @@ func (hsdb *HSDatabase) GetMachineByID(id uint64) (*types.Machine, error) {
 func (hsdb *HSDatabase) GetMachineByMachineKey(
 	machineKey key.MachinePublic,
 ) (*types.Machine, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
 	mach := types.Machine{}
 	if result := hsdb.db.
 		Preload("AuthKey").
@@ -161,6 +193,9 @@ func (hsdb *HSDatabase) GetMachineByMachineKey(
 func (hsdb *HSDatabase) GetMachineByNodeKey(
 	nodeKey key.NodePublic,
 ) (*types.Machine, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
 	machine := types.Machine{}
 	if result := hsdb.db.
 		Preload("AuthKey").
@@ -179,6 +214,9 @@ func (hsdb *HSDatabase) GetMachineByNodeKey(
 func (hsdb *HSDatabase) GetMachineByAnyKey(
 	machineKey key.MachinePublic, nodeKey key.NodePublic, oldNodeKey key.NodePublic,
 ) (*types.Machine, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
 	machine := types.Machine{}
 	if result := hsdb.db.
 		Preload("AuthKey").
@@ -195,10 +233,10 @@ func (hsdb *HSDatabase) GetMachineByAnyKey(
 	return &machine, nil
 }
 
-// TODO(kradalby): rename this, it sounds like a mix of getting and setting to db
-// UpdateMachineFromDatabase takes a Machine struct pointer (typically already loaded from database
-// and updates it with the latest data from the database.
-func (hsdb *HSDatabase) UpdateMachineFromDatabase(machine *types.Machine) error {
+func (hsdb *HSDatabase) MachineReloadFromDatabase(machine *types.Machine) error {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
 	if result := hsdb.db.Find(machine).First(&machine); result.Error != nil {
 		return result.Error
 	}
@@ -211,39 +249,26 @@ func (hsdb *HSDatabase) SetTags(
 	machine *types.Machine,
 	tags []string,
 ) error {
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
 	newTags := []string{}
 	for _, tag := range tags {
 		if !util.StringOrPrefixListContains(newTags, tag) {
 			newTags = append(newTags, tag)
 		}
 	}
-	machine.ForcedTags = newTags
 
-	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
-		Type:    types.StatePeerChanged,
-		Changed: []uint64{machine.ID},
-	}, machine.MachineKey)
-
-	if err := hsdb.db.Save(machine).Error; err != nil {
+	if err := hsdb.db.Model(machine).Updates(types.Machine{
+		ForcedTags: newTags,
+	}).Error; err != nil {
 		return fmt.Errorf("failed to update tags for machine in the database: %w", err)
 	}
 
-	return nil
-}
-
-// ExpireMachine takes a Machine struct and sets the expire field to now.
-func (hsdb *HSDatabase) ExpireMachine(machine *types.Machine) error {
-	now := time.Now()
-	machine.Expiry = &now
-
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
 		Changed: []uint64{machine.ID},
 	}, machine.MachineKey)
-
-	if err := hsdb.db.Save(machine).Error; err != nil {
-		return fmt.Errorf("failed to expire machine in the database: %w", err)
-	}
 
 	return nil
 }
@@ -251,6 +276,9 @@ func (hsdb *HSDatabase) ExpireMachine(machine *types.Machine) error {
 // RenameMachine takes a Machine struct and a new GivenName for the machines
 // and renames it.
 func (hsdb *HSDatabase) RenameMachine(machine *types.Machine, newName string) error {
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
 	err := util.CheckForFQDNRules(
 		newName,
 	)
@@ -260,80 +288,91 @@ func (hsdb *HSDatabase) RenameMachine(machine *types.Machine, newName string) er
 			Str("func", "RenameMachine").
 			Str("machine", machine.Hostname).
 			Str("newName", newName).
-			Err(err)
+			Err(err).
+			Msg("failed to rename machine")
 
 		return err
 	}
 	machine.GivenName = newName
 
+	if err := hsdb.db.Model(machine).Updates(types.Machine{
+		GivenName: newName,
+	}).Error; err != nil {
+		return fmt.Errorf("failed to rename machine in the database: %w", err)
+	}
+
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
 		Changed: []uint64{machine.ID},
 	}, machine.MachineKey)
-
-	if err := hsdb.db.Save(machine).Error; err != nil {
-		return fmt.Errorf("failed to rename machine in the database: %w", err)
-	}
 
 	return nil
 }
 
-// RefreshMachine takes a Machine struct and  a new expiry time.
-func (hsdb *HSDatabase) RefreshMachine(machine *types.Machine, expiry time.Time) error {
+// MachineSetExpiry takes a Machine struct and  a new expiry time.
+func (hsdb *HSDatabase) MachineSetExpiry(machine *types.Machine, expiry time.Time) error {
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
+	return hsdb.machineSetExpiry(machine, expiry)
+}
+
+func (hsdb *HSDatabase) machineSetExpiry(machine *types.Machine, expiry time.Time) error {
 	now := time.Now()
 
-	machine.LastSuccessfulUpdate = &now
-	machine.Expiry = &expiry
-
-	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
-		Type:    types.StatePeerChanged,
-		Changed: []uint64{machine.ID},
-	}, machine.MachineKey)
-
-	if err := hsdb.db.Save(machine).Error; err != nil {
+	if err := hsdb.db.Model(machine).Updates(types.Machine{
+		LastSuccessfulUpdate: &now,
+		Expiry:               &expiry,
+	}).Error; err != nil {
 		return fmt.Errorf(
 			"failed to refresh machine (update expiration) in the database: %w",
 			err,
 		)
 	}
 
+	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
+		Type:    types.StatePeerChanged,
+		Changed: []uint64{machine.ID},
+	}, machine.MachineKey)
+
 	return nil
 }
 
-// DeleteMachine softs deletes a Machine from the database.
+// DeleteMachine deletes a Machine from the database.
 func (hsdb *HSDatabase) DeleteMachine(machine *types.Machine) error {
-	err := hsdb.DeleteMachineRoutes(machine)
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
+	return hsdb.deleteMachine(machine)
+}
+
+func (hsdb *HSDatabase) deleteMachine(machine *types.Machine) error {
+	err := hsdb.deleteMachineRoutes(machine)
 	if err != nil {
 		return err
 	}
 
-	if err := hsdb.db.Delete(&machine).Error; err != nil {
+	// Unscoped causes the machine to be fully removed from the database.
+	if err := hsdb.db.Unscoped().Delete(&machine).Error; err != nil {
 		return err
 	}
+
+	hsdb.notifier.NotifyAll(types.StateUpdate{
+		Type:    types.StatePeerRemoved,
+		Removed: []tailcfg.NodeID{tailcfg.NodeID(machine.ID)},
+	})
 
 	return nil
 }
 
 func (hsdb *HSDatabase) TouchMachine(machine *types.Machine) error {
-	return hsdb.db.Updates(types.Machine{
-		ID:                   machine.ID,
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
+	return hsdb.db.Model(machine).Updates(types.Machine{
 		LastSeen:             machine.LastSeen,
 		LastSuccessfulUpdate: machine.LastSuccessfulUpdate,
 	}).Error
-}
-
-// HardDeleteMachine hard deletes a Machine from the database.
-func (hsdb *HSDatabase) HardDeleteMachine(machine *types.Machine) error {
-	err := hsdb.DeleteMachineRoutes(machine)
-	if err != nil {
-		return err
-	}
-
-	if err := hsdb.db.Unscoped().Delete(&machine).Error; err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
@@ -343,6 +382,9 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 	machineExpiry *time.Time,
 	registrationMethod string,
 ) (*types.Machine, error) {
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
 	nodeKey := key.NodePublic{}
 	err := nodeKey.UnmarshalText([]byte(nodeKeyStr))
 	if err != nil {
@@ -358,7 +400,7 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 
 	if machineInterface, ok := cache.Get(util.NodePublicKeyStripPrefix(nodeKey)); ok {
 		if registrationMachine, ok := machineInterface.(types.Machine); ok {
-			user, err := hsdb.GetUser(userName)
+			user, err := hsdb.getUser(userName)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"failed to find user in register machine from auth callback, %w",
@@ -379,7 +421,7 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 				registrationMachine.Expiry = machineExpiry
 			}
 
-			machine, err := hsdb.RegisterMachine(
+			machine, err := hsdb.registerMachine(
 				registrationMachine,
 			)
 
@@ -397,8 +439,14 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 }
 
 // RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
-func (hsdb *HSDatabase) RegisterMachine(machine types.Machine,
-) (*types.Machine, error) {
+func (hsdb *HSDatabase) RegisterMachine(machine types.Machine) (*types.Machine, error) {
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
+	return hsdb.registerMachine(machine)
+}
+
+func (hsdb *HSDatabase) registerMachine(machine types.Machine) (*types.Machine, error) {
 	log.Debug().
 		Str("machine", machine.Hostname).
 		Str("machine_key", machine.MachineKey).
@@ -456,9 +504,12 @@ func (hsdb *HSDatabase) RegisterMachine(machine types.Machine,
 
 // MachineSetNodeKey sets the node key of a machine and saves it to the database.
 func (hsdb *HSDatabase) MachineSetNodeKey(machine *types.Machine, nodeKey key.NodePublic) error {
-	machine.NodeKey = util.NodePublicKeyStripPrefix(nodeKey)
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
 
-	if err := hsdb.db.Save(machine).Error; err != nil {
+	if err := hsdb.db.Model(machine).Updates(types.Machine{
+		NodeKey: util.NodePublicKeyStripPrefix(nodeKey),
+	}).Error; err != nil {
 		return err
 	}
 
@@ -468,11 +519,14 @@ func (hsdb *HSDatabase) MachineSetNodeKey(machine *types.Machine, nodeKey key.No
 // MachineSetMachineKey sets the machine key of a machine and saves it to the database.
 func (hsdb *HSDatabase) MachineSetMachineKey(
 	machine *types.Machine,
-	nodeKey key.MachinePublic,
+	machineKey key.MachinePublic,
 ) error {
-	machine.MachineKey = util.MachinePublicKeyStripPrefix(nodeKey)
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
 
-	if err := hsdb.db.Save(machine).Error; err != nil {
+	if err := hsdb.db.Model(machine).Updates(types.Machine{
+		MachineKey: util.MachinePublicKeyStripPrefix(machineKey),
+	}).Error; err != nil {
 		return err
 	}
 
@@ -482,6 +536,9 @@ func (hsdb *HSDatabase) MachineSetMachineKey(
 // MachineSave saves a machine object to the database, prefer to use a specific save method rather
 // than this. It is intended to be used when we are changing or.
 func (hsdb *HSDatabase) MachineSave(machine *types.Machine) error {
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
 	if err := hsdb.db.Save(machine).Error; err != nil {
 		return err
 	}
@@ -491,6 +548,13 @@ func (hsdb *HSDatabase) MachineSave(machine *types.Machine) error {
 
 // GetAdvertisedRoutes returns the routes that are be advertised by the given machine.
 func (hsdb *HSDatabase) GetAdvertisedRoutes(machine *types.Machine) ([]netip.Prefix, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
+	return hsdb.getAdvertisedRoutes(machine)
+}
+
+func (hsdb *HSDatabase) getAdvertisedRoutes(machine *types.Machine) ([]netip.Prefix, error) {
 	routes := types.Routes{}
 
 	err := hsdb.db.
@@ -516,6 +580,13 @@ func (hsdb *HSDatabase) GetAdvertisedRoutes(machine *types.Machine) ([]netip.Pre
 
 // GetEnabledRoutes returns the routes that are enabled for the machine.
 func (hsdb *HSDatabase) GetEnabledRoutes(machine *types.Machine) ([]netip.Prefix, error) {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
+	return hsdb.getEnabledRoutes(machine)
+}
+
+func (hsdb *HSDatabase) getEnabledRoutes(machine *types.Machine) ([]netip.Prefix, error) {
 	routes := types.Routes{}
 
 	err := hsdb.db.
@@ -541,12 +612,15 @@ func (hsdb *HSDatabase) GetEnabledRoutes(machine *types.Machine) ([]netip.Prefix
 }
 
 func (hsdb *HSDatabase) IsRoutesEnabled(machine *types.Machine, routeStr string) bool {
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
 	route, err := netip.ParsePrefix(routeStr)
 	if err != nil {
 		return false
 	}
 
-	enabledRoutes, err := hsdb.GetEnabledRoutes(machine)
+	enabledRoutes, err := hsdb.getEnabledRoutes(machine)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not get enabled routes")
 
@@ -575,7 +649,10 @@ func OnlineMachineMap(peers types.Machines) map[tailcfg.NodeID]bool {
 func (hsdb *HSDatabase) ListOnlineMachines(
 	machine *types.Machine,
 ) (map[tailcfg.NodeID]bool, error) {
-	peers, err := hsdb.ListPeers(machine)
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
+	peers, err := hsdb.listPeers(machine)
 	if err != nil {
 		return nil, err
 	}
@@ -595,7 +672,7 @@ func (hsdb *HSDatabase) enableRoutes(machine *types.Machine, routeStrs ...string
 		newRoutes[index] = route
 	}
 
-	advertisedRoutes, err := hsdb.GetAdvertisedRoutes(machine)
+	advertisedRoutes, err := hsdb.getAdvertisedRoutes(machine)
 	if err != nil {
 		return err
 	}
@@ -642,7 +719,7 @@ func (hsdb *HSDatabase) enableRoutes(machine *types.Machine, routeStrs ...string
 	return nil
 }
 
-func (hsdb *HSDatabase) generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
+func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 	normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
 		suppliedName,
 	)
@@ -669,20 +746,23 @@ func (hsdb *HSDatabase) generateGivenName(suppliedName string, randomSuffix bool
 }
 
 func (hsdb *HSDatabase) GenerateGivenName(machineKey string, suppliedName string) (string, error) {
-	givenName, err := hsdb.generateGivenName(suppliedName, false)
+	hsdb.mu.RLock()
+	defer hsdb.mu.RUnlock()
+
+	givenName, err := generateGivenName(suppliedName, false)
 	if err != nil {
 		return "", err
 	}
 
 	// Tailscale rules (may differ) https://tailscale.com/kb/1098/machine-names/
-	machines, err := hsdb.ListMachinesByGivenName(givenName)
+	machines, err := hsdb.listMachinesByGivenName(givenName)
 	if err != nil {
 		return "", err
 	}
 
 	for _, machine := range machines {
 		if machine.MachineKey != machineKey && machine.GivenName == givenName {
-			postfixedName, err := hsdb.generateGivenName(suppliedName, true)
+			postfixedName, err := generateGivenName(suppliedName, true)
 			if err != nil {
 				return "", err
 			}
@@ -695,7 +775,10 @@ func (hsdb *HSDatabase) GenerateGivenName(machineKey string, suppliedName string
 }
 
 func (hsdb *HSDatabase) ExpireEphemeralMachines(inactivityThreshhold time.Duration) {
-	users, err := hsdb.ListUsers()
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
+	users, err := hsdb.listUsers()
 	if err != nil {
 		log.Error().Err(err).Msg("Error listing users")
 
@@ -703,7 +786,7 @@ func (hsdb *HSDatabase) ExpireEphemeralMachines(inactivityThreshhold time.Durati
 	}
 
 	for _, user := range users {
-		machines, err := hsdb.ListMachinesByUser(user.Name)
+		machines, err := hsdb.listMachinesByUser(user.Name)
 		if err != nil {
 			log.Error().
 				Err(err).
@@ -724,7 +807,7 @@ func (hsdb *HSDatabase) ExpireEphemeralMachines(inactivityThreshhold time.Durati
 					Str("machine", machine.Hostname).
 					Msg("Ephemeral client removed from database")
 
-				err = hsdb.HardDeleteMachine(&machines[idx])
+				err = hsdb.deleteMachine(&machines[idx])
 				if err != nil {
 					log.Error().
 						Err(err).
@@ -744,12 +827,15 @@ func (hsdb *HSDatabase) ExpireEphemeralMachines(inactivityThreshhold time.Durati
 }
 
 func (hsdb *HSDatabase) ExpireExpiredMachines(lastCheck time.Time) time.Time {
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
+
 	// use the time of the start of the function to ensure we
 	// dont miss some machines by returning it _after_ we have
 	// checked everything.
 	started := time.Now()
 
-	users, err := hsdb.ListUsers()
+	users, err := hsdb.listUsers()
 	if err != nil {
 		log.Error().Err(err).Msg("Error listing users")
 
@@ -757,7 +843,7 @@ func (hsdb *HSDatabase) ExpireExpiredMachines(lastCheck time.Time) time.Time {
 	}
 
 	for _, user := range users {
-		machines, err := hsdb.ListMachinesByUser(user.Name)
+		machines, err := hsdb.listMachinesByUser(user.Name)
 		if err != nil {
 			log.Error().
 				Err(err).
@@ -773,7 +859,8 @@ func (hsdb *HSDatabase) ExpireExpiredMachines(lastCheck time.Time) time.Time {
 				machine.Expiry.After(lastCheck) {
 				expired = append(expired, tailcfg.NodeID(machine.ID))
 
-				err := hsdb.ExpireMachine(&machines[index])
+				now := time.Now()
+				err := hsdb.machineSetExpiry(&machines[index], now)
 				if err != nil {
 					log.Error().
 						Err(err).

@@ -114,15 +114,15 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	db.db.Save(&machine)
 	c.Assert(machine.UserID, check.Equals, oldUser.ID)
 
-	err = db.SetMachineUser(&machine, newUser.Name)
+	err = db.AssignMachineToUser(&machine, newUser.Name)
 	c.Assert(err, check.IsNil)
 	c.Assert(machine.UserID, check.Equals, newUser.ID)
 	c.Assert(machine.User.Name, check.Equals, newUser.Name)
 
-	err = db.SetMachineUser(&machine, "non-existing-user")
+	err = db.AssignMachineToUser(&machine, "non-existing-user")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	err = db.SetMachineUser(&machine, newUser.Name)
+	err = db.AssignMachineToUser(&machine, newUser.Name)
 	c.Assert(err, check.IsNil)
 	c.Assert(machine.UserID, check.Equals, newUser.ID)
 	c.Assert(machine.User.Name, check.Equals, newUser.Name)
