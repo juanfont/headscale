@@ -113,3 +113,29 @@ func Test_MachineCanAccess(t *testing.T) {
 		})
 	}
 }
+
+func TestMachineAddressesOrder(t *testing.T) {
+	machineAddresses := MachineAddresses{
+		netip.MustParseAddr("2001:db8::2"),
+		netip.MustParseAddr("100.64.0.2"),
+		netip.MustParseAddr("2001:db8::1"),
+		netip.MustParseAddr("100.64.0.1"),
+	}
+
+	strSlice := machineAddresses.StringSlice()
+	expected := []string{
+		"100.64.0.1",
+		"100.64.0.2",
+		"2001:db8::1",
+		"2001:db8::2",
+	}
+
+	if len(strSlice) != len(expected) {
+		t.Fatalf("unexpected slice length: got %v, want %v", len(strSlice), len(expected))
+	}
+	for i, addr := range strSlice {
+		if addr != expected[i] {
+			t.Errorf("unexpected address at index %v: got %v, want %v", i, addr, expected[i])
+		}
+	}
+}
