@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"sort"
 	"strings"
 	"time"
 
@@ -73,7 +74,23 @@ type (
 
 type MachineAddresses []netip.Addr
 
+func (ma MachineAddresses) Sort() {
+	sort.Slice(ma, func(index1, index2 int) bool {
+		if ma[index1].Is4() && ma[index2].Is6() {
+
+			return true
+		}
+		if ma[index1].Is6() && ma[index2].Is4() {
+
+			return false
+		}
+
+		return ma[index1].Compare(ma[index2]) < 0
+	})
+}
+
 func (ma MachineAddresses) StringSlice() []string {
+	ma.Sort()
 	strSlice := make([]string, 0, len(ma))
 	for _, addr := range ma {
 		strSlice = append(strSlice, addr.String())
