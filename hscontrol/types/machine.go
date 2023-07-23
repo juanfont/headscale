@@ -77,11 +77,9 @@ type MachineAddresses []netip.Addr
 func (ma MachineAddresses) Sort() {
 	sort.Slice(ma, func(index1, index2 int) bool {
 		if ma[index1].Is4() && ma[index2].Is6() {
-
 			return true
 		}
 		if ma[index1].Is6() && ma[index2].Is4() {
-
 			return false
 		}
 
