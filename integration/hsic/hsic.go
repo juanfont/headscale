@@ -364,7 +364,7 @@ func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
 	}
 
 	err = os.WriteFile(
-		path.Join(savePath, t.hostname+"maps.tar"),
+		path.Join(savePath, t.hostname+".pprof.tar"),
 		tarFile,
 		os.ModePerm,
 	)
@@ -382,7 +382,7 @@ func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
 	}
 
 	err = os.WriteFile(
-		path.Join(savePath, t.hostname+".pprof.tar"),
+		path.Join(savePath, t.hostname+".maps.tar"),
 		tarFile,
 		os.ModePerm,
 	)

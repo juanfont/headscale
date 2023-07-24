@@ -5,6 +5,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 )
 
 type Notifier struct {
@@ -25,6 +26,11 @@ func (n *Notifier) AddNode(machineKey string, c chan<- types.StateUpdate) {
 	}
 
 	n.nodes[machineKey] = c
+
+	log.Trace().
+		Str("machine_key", machineKey).
+		Int("open_chans", len(n.nodes)).
+		Msg("Added new channel")
 }
 
 func (n *Notifier) RemoveNode(machineKey string) {
@@ -36,6 +42,11 @@ func (n *Notifier) RemoveNode(machineKey string) {
 	}
 
 	delete(n.nodes, machineKey)
+
+	log.Trace().
+		Str("machine_key", machineKey).
+		Int("open_chans", len(n.nodes)).
+		Msg("Removed channel")
 }
 
 func (n *Notifier) NotifyAll(update types.StateUpdate) {

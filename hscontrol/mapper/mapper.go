@@ -49,9 +49,14 @@ type Mapper struct {
 	dnsCfg           *tailcfg.DNSConfig
 	logtail          bool
 	randomClientPort bool
+
+	uid     string
+	created time.Time
+	seq     uint64
 }
 
 func NewMapper(
+	machine *types.Machine,
 	db *db.HSDatabase,
 	privateKey *key.MachinePrivate,
 	isNoise bool,
@@ -61,6 +66,14 @@ func NewMapper(
 	logtail bool,
 	randomClientPort bool,
 ) *Mapper {
+	log.Debug().
+		Caller().
+		Bool("noise", isNoise).
+		Str("machine", machine.Hostname).
+		Msg("creating new mapper")
+
+	uid, _ := util.GenerateRandomStringDNSSafe(8)
+
 	return &Mapper{
 		db: db,
 
@@ -72,7 +85,15 @@ func NewMapper(
 		dnsCfg:           dnsCfg,
 		logtail:          logtail,
 		randomClientPort: randomClientPort,
+
+		uid:     uid,
+		created: time.Now(),
+		seq:     0,
 	}
+}
+
+func (m *Mapper) String() string {
+	return fmt.Sprintf("Mapper: { seq: %d, uid: %s, created: %s }", m.seq, m.uid, m.created)
 }
 
 // TODO: Optimise
@@ -270,7 +291,7 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine types.Machine) {
 }
 
 // FullMapResponse returns a MapResponse for the given machine.
-func (m Mapper) FullMapResponse(
+func (m *Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 	pol *policy.ACLPolicy,
@@ -306,7 +327,7 @@ func (m Mapper) FullMapResponse(
 	return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
 }
 
-func (m Mapper) KeepAliveResponse(
+func (m *Mapper) KeepAliveResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 ) ([]byte, error) {
@@ -316,7 +337,7 @@ func (m Mapper) KeepAliveResponse(
 	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
 }
 
-func (m Mapper) DERPMapResponse(
+func (m *Mapper) DERPMapResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 	derpMap tailcfg.DERPMap,
@@ -327,7 +348,7 @@ func (m Mapper) DERPMapResponse(
 	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
 }
 
-func (m Mapper) PeerChangedResponse(
+func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 	machineKeys []uint64,
@@ -380,12 +401,12 @@ func (m Mapper) PeerChangedResponse(
 
 	resp := m.baseMapResponse(machine)
 	resp.PeersChanged = tailPeers
-	resp.PeerSeenChange = lastSeen
+	// resp.PeerSeenChange = lastSeen
 
 	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
 }
 
-func (m Mapper) PeerRemovedResponse(
+func (m *Mapper) PeerRemovedResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
 	removed []tailcfg.NodeID,
@@ -396,11 +417,13 @@ func (m Mapper) PeerRemovedResponse(
 	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
 }
 
-func (m Mapper) marshalMapResponse(
+func (m *Mapper) marshalMapResponse(
 	resp *tailcfg.MapResponse,
 	machine *types.Machine,
 	compression string,
 ) ([]byte, error) {
+	atomic.AddUint64(&m.seq, 1)
+
 	var machineKey key.MachinePublic
 	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)))
 	if err != nil {
@@ -445,11 +468,11 @@ func (m Mapper) marshalMapResponse(
 
 		mapResponsePath := path.Join(
 			mPath,
-			fmt.Sprintf("%d-%s-%d.json", now, m.uid, atomic.LoadUint64(&m.seq)),
+			fmt.Sprintf("%d-%s-%d.json", atomic.LoadUint64(&m.seq), m.uid, now),
 		)
 
 		log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
-		err = os.WriteFile(mapResponsePath, body, perms)
+		err = os.WriteFile(mapResponsePath, jsonBody, perms)
 		if err != nil {
 			panic(err)
 		}

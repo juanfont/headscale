@@ -65,6 +65,7 @@ func (h *Headscale) handlePoll(
 	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
 
 	mapp := mapper.NewMapper(
+		machine,
 		h.db,
 		h.privateKey2019,
 		isNoise,
@@ -176,7 +177,6 @@ func (h *Headscale) handlePoll(
 			Bool("noise", isNoise).
 			Str("machine", machine.Hostname).
 			Msg("Ignoring request, don't know how to handle it")
-		http.Error(writer, "", http.StatusBadRequest)
 
 		return
 	}
@@ -239,6 +239,7 @@ func (h *Headscale) pollNetMapStream(
 	defer cancel()
 
 	for {
+		logInfo("Waiting for update on stream channel")
 		select {
 		case <-keepAliveTicker.C:
 			data, err := mapp.KeepAliveResponse(mapRequest, machine)
@@ -256,6 +257,8 @@ func (h *Headscale) pollNetMapStream(
 			if flusher, ok := writer.(http.Flusher); ok {
 				flusher.Flush()
 			} else {
+				log.Error().Msg("Failed to create http flusher")
+
 				return
 			}
 
@@ -267,6 +270,8 @@ func (h *Headscale) pollNetMapStream(
 			}
 
 		case update := <-updateChan:
+			logInfo("Received update")
+
 			var data []byte
 			var err error
 
@@ -304,6 +309,8 @@ func (h *Headscale) pollNetMapStream(
 			if flusher, ok := writer.(http.Flusher); ok {
 				flusher.Flush()
 			} else {
+				log.Error().Msg("Failed to create http flusher")
+
 				return
 			}
 
@@ -318,6 +325,7 @@ func (h *Headscale) pollNetMapStream(
 				return
 			}
 
+			logInfo("Update sent")
 		case <-ctx.Done():
 			logInfo("The client has closed the connection")
 
@@ -335,6 +343,8 @@ func (h *Headscale) pollNetMapStream(
 			return
 		}
 	}
+
+	logInfo("Finishing map stream session")
 }
 
 func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](channel C, machine, name string) {
