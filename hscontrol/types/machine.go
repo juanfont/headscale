@@ -30,6 +30,7 @@ type Machine struct {
 	NodeKey     string
 	DiscoKey    string
 	IPAddresses MachineAddresses
+	RequestedIP string
 
 	// Hostname represents the name given by the Tailscale
 	// client during registration

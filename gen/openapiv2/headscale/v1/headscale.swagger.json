@@ -193,6 +193,12 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "ip",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [

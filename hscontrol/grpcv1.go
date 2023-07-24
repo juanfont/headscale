@@ -173,6 +173,7 @@ func (api headscaleV1APIServer) RegisterMachine(
 	log.Trace().
 		Str("user", request.GetUser()).
 		Str("node_key", request.GetKey()).
+		Str("ip", request.GetIp()).
 		Msg("Registering machine")
 
 	machine, err := api.h.db.RegisterMachineFromAuthCallback(
@@ -181,6 +182,7 @@ func (api headscaleV1APIServer) RegisterMachine(
 		request.GetUser(),
 		nil,
 		util.RegisterMethodCLI,
+		request.GetIp(),
 	)
 	if err != nil {
 		return nil, err
