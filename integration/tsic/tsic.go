@@ -181,7 +181,7 @@ func New(
 		withEntrypoint: []string{
 			"/bin/sh",
 			"-c",
-			"/bin/sleep 3 ; update-ca-certificates ; tailscaled --tun=tsdev",
+			"/bin/sleep 3 ; update-ca-certificates ; tailscaled --tun=tsdev --verbose=10",
 		},
 	}
 
