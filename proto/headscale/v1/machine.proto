@@ -50,6 +50,7 @@ message Machine {
 message RegisterMachineRequest {
     string user = 1;
     string key       = 2;
+    string ip = 3;
 }
 
 message RegisterMachineResponse {

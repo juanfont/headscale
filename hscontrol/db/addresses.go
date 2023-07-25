@@ -17,6 +17,24 @@ import (
 
 var ErrCouldNotAllocateIP = errors.New("could not find any suitable IP")
 
+func (hsdb *HSDatabase) isInRange(address netip.Addr) (bool, error) {
+	counter := 0
+	for _, ipPrefix := range hsdb.ipPrefixes {
+		ipPrefixNetworkAddress, ipPrefixBroadcastAddress := util.GetIPPrefixEndpoints(ipPrefix)
+
+		if ipPrefixNetworkAddress.Compare(address) == -1 &&
+			ipPrefixBroadcastAddress.Compare(address) == 1 {
+			counter += 1
+		}
+	}
+
+	if counter > 0 {
+		return true, nil
+	}
+
+	return false, ErrRequestedIPNotInPrefixRange
+}
+
 func (hsdb *HSDatabase) getAvailableIPs() (types.MachineAddresses, error) {
 	var ips types.MachineAddresses
 	var err error

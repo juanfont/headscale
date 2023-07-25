@@ -31,6 +31,7 @@ var (
 	ErrDifferentRegisteredUser         = errors.New(
 		"machine was previously registered with a different user",
 	)
+	ErrRequestedIPNotInPrefixRange = errors.New("the ip you provided is not in the configured prefix range")
 )
 
 // ListPeers returns all peers of machine, regardless of any Policy or if the node is expired.
@@ -355,6 +356,7 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 	userName string,
 	machineExpiry *time.Time,
 	registrationMethod string,
+	requestedIP string,
 ) (*types.Machine, error) {
 	nodeKey := key.NodePublic{}
 	err := nodeKey.UnmarshalText([]byte(nodeKeyStr))
@@ -365,6 +367,7 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 	log.Debug().
 		Str("nodeKey", nodeKey.ShortString()).
 		Str("userName", userName).
+		Str("requestedIp", requestedIP).
 		Str("registrationMethod", registrationMethod).
 		Str("expiresAt", fmt.Sprintf("%v", machineExpiry)).
 		Msg("Registering machine from API/CLI or auth callback")
@@ -394,6 +397,7 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 
 			machine, err := hsdb.RegisterMachine(
 				registrationMachine,
+				requestedIP,
 			)
 
 			if err == nil {
@@ -410,13 +414,14 @@ func (hsdb *HSDatabase) RegisterMachineFromAuthCallback(
 }
 
 // RegisterMachine is executed from the CLI to register a new Machine using its MachineKey.
-func (hsdb *HSDatabase) RegisterMachine(machine types.Machine,
+func (hsdb *HSDatabase) RegisterMachine(machine types.Machine, requestedIP string,
 ) (*types.Machine, error) {
 	log.Debug().
 		Str("machine", machine.Hostname).
 		Str("machine_key", machine.MachineKey).
 		Str("node_key", machine.NodeKey).
 		Str("user", machine.User.Name).
+		Str("requestedIp", requestedIP).
 		Msg("Registering machine")
 
 	// If the machine exists and we had already IPs for it, we just save it
@@ -452,7 +457,42 @@ func (hsdb *HSDatabase) RegisterMachine(machine types.Machine,
 		return nil, err
 	}
 
-	machine.IPAddresses = ips
+	if requestedIP != "" {
+		parsedip, err := netip.ParseAddr(requestedIP)
+		if err != nil {
+			return nil, err
+		}
+
+		inrange, err := hsdb.isInRange(parsedip)
+		if !inrange {
+			return nil, err
+		}
+
+		usedIps, err := hsdb.getUsedIPs()
+		if err != nil {
+			return nil, err
+		}
+
+		var staticip types.MachineAddresses
+		if !usedIps.Contains(parsedip) {
+			// avaliableipv6, err := netip.ParseAddr(ips.StringSlice()[1])
+			// if ips[1].Is4() {
+			//	avaliableipv6, err = netip.ParseAddr(ips.StringSlice()[0])
+			//}
+
+			// if err != nil {
+			//	return nil, err
+			//}
+
+			staticip = append(staticip, parsedip)
+
+			machine.IPAddresses = staticip
+		} else {
+			return nil, err
+		}
+	} else {
+		machine.IPAddresses = ips
+	}
 
 	if err := hsdb.db.Save(&machine).Error; err != nil {
 		return nil, fmt.Errorf("failed register(save) machine in the database: %w", err)
@@ -461,7 +501,7 @@ func (hsdb *HSDatabase) RegisterMachine(machine types.Machine,
 	log.Trace().
 		Caller().
 		Str("machine", machine.Hostname).
-		Str("ip", strings.Join(ips.StringSlice(), ",")).
+		Str("ip", strings.Join(machine.IPAddresses.StringSlice(), ",")).
 		Msg("Machine registered with the database")
 
 	return &machine, nil

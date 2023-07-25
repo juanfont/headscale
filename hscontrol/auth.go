@@ -368,6 +368,7 @@ func (h *Headscale) handleAuthKey(
 
 		machine, err = h.db.RegisterMachine(
 			machineToRegister,
+			"",
 		)
 		if err != nil {
 			log.Error().

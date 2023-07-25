@@ -79,6 +79,12 @@ Register the machine:
 headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
 ```
 
+Optionally use the --ip flag  to assign a custom IPv4 address to your machine:
+
+```shell
+headscale --user myfirstuser nodes register --ip <YOUR_CUSTOM_IP> --key <YOUR_MACHINE_KEY>
+```
+
 ### Register machine using a pre authenticated key
 
 Generate a key using the command line:

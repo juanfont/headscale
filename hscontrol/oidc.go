@@ -651,6 +651,7 @@ func (h *Headscale) registerMachineForOIDCCallback(
 		user.Name,
 		&expiry,
 		util.RegisterMethodOIDC,
+		"",
 	); err != nil {
 		util.LogErr(err, "could not register machine")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")

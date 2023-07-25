@@ -30,7 +30,7 @@ func init() {
 	nodeCmd.AddCommand(listNodesCmd)
 
 	registerNodeCmd.Flags().StringP("user", "u", "", "User")
-
+	registerNodeCmd.Flags().StringP("ip", "p", "", "Ip")
 	registerNodeCmd.Flags().StringP("namespace", "n", "", "User")
 	registerNodeNamespaceFlag := registerNodeCmd.Flags().Lookup("namespace")
 	registerNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
@@ -132,9 +132,19 @@ var registerNodeCmd = &cobra.Command{
 			return
 		}
 
+		ip, err := cmd.Flags().GetString("ip")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting node ip from flag: %s", err),
+				output,
+			)
+		}
+
 		request := &v1.RegisterMachineRequest{
 			Key:  machineKey,
 			User: user,
+			Ip:   ip,
 		}
 
 		response, err := client.RegisterMachine(ctx, request)
