@@ -9,7 +9,7 @@ import (
 )
 
 type Notifier struct {
-	l     sync.RWMutex
+	l     sync.Mutex
 	nodes map[string]chan<- types.StateUpdate
 }
 
@@ -54,8 +54,8 @@ func (n *Notifier) NotifyAll(update types.StateUpdate) {
 }
 
 func (n *Notifier) NotifyWithIgnore(update types.StateUpdate, ignore ...string) {
-	n.l.RLock()
-	defer n.l.RUnlock()
+	n.l.Lock()
+	defer n.l.Unlock()
 
 	for key, c := range n.nodes {
 		if util.IsStringInSlice(ignore, key) {
