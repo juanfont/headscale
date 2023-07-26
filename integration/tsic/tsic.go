@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -592,7 +591,7 @@ func WithPingUntilDirect(direct bool) PingOption {
 // TODO(kradalby): Make multiping, go routine magic.
 func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) error {
 	args := pingArgs{
-		timeout: time.Second,
+		timeout: 300 * time.Millisecond,
 		count:   defaultPingCount,
 		direct:  true,
 	}
@@ -610,42 +609,40 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 
 	command = append(command, hostnameOrIP)
 
-	return t.pool.Retry(func() error {
-		result, _, err := t.Execute(
-			command,
-			dockertestutil.ExecuteCommandTimeout(
-				time.Duration(int64(args.timeout)*int64(args.count)),
-			),
+	result, _, err := t.Execute(
+		command,
+		dockertestutil.ExecuteCommandTimeout(
+			time.Duration(int64(args.timeout)*int64(args.count)),
+		),
+	)
+	if err != nil {
+		log.Printf(
+			"failed to run ping command from %s to %s, err: %s",
+			t.Hostname(),
+			hostnameOrIP,
+			err,
 		)
-		if err != nil {
-			log.Printf(
-				"failed to run ping command from %s to %s, err: %s",
-				t.Hostname(),
-				hostnameOrIP,
-				err,
-			)
 
-			return err
-		}
+		return err
+	}
 
-		if strings.Contains(result, "is local") {
-			return nil
-		}
-
-		if !strings.Contains(result, "pong") {
-			return backoff.Permanent(errTailscalePingFailed)
-		}
-
-		if !args.direct {
-			if strings.Contains(result, "via DERP") {
-				return nil
-			} else {
-				return backoff.Permanent(errTailscalePingNotDERP)
-			}
-		}
-
+	if strings.Contains(result, "is local") {
 		return nil
-	})
+	}
+
+	if !strings.Contains(result, "pong") {
+		return errTailscalePingFailed
+	}
+
+	if !args.direct {
+		if strings.Contains(result, "via DERP") {
+			return nil
+		} else {
+			return errTailscalePingNotDERP
+		}
+	}
+
+	return nil
 }
 
 type (
@@ -720,24 +717,19 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	}
 
 	var result string
-	err := t.pool.Retry(func() error {
-		var err error
-		result, _, err = t.Execute(command)
-		if err != nil {
-			log.Printf(
-				"failed to run curl command from %s to %s, err: %s",
-				t.Hostname(),
-				url,
-				err,
-			)
+	result, _, err := t.Execute(command)
+	if err != nil {
+		log.Printf(
+			"failed to run curl command from %s to %s, err: %s",
+			t.Hostname(),
+			url,
+			err,
+		)
 
-			return err
-		}
+		return result, err
+	}
 
-		return nil
-	})
-
-	return result, err
+	return result, nil
 }
 
 // WriteFile save file inside the Tailscale container.
