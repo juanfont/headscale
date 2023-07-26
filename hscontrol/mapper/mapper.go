@@ -323,14 +323,14 @@ func (m *Mapper) FullMapResponse(
 	}
 
 	if m.isNoise {
-		return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
+		return m.marshalMapResponse(mapRequest, mapResponse, machine, mapRequest.Compress)
 	}
 
-	return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, mapResponse, machine, mapRequest.Compress)
 }
 
 // LiteMapResponse returns a MapResponse for the given machine.
-// Lite means that the peers has been omited, this is intended
+// Lite means that the peers has been omitted, this is intended
 // to be used to answer MapRequests with OmitPeers set to true.
 func (m *Mapper) LiteMapResponse(
 	mapRequest tailcfg.MapRequest,
@@ -352,10 +352,10 @@ func (m *Mapper) LiteMapResponse(
 	}
 
 	if m.isNoise {
-		return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
+		return m.marshalMapResponse(mapRequest, mapResponse, machine, mapRequest.Compress)
 	}
 
-	return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, mapResponse, machine, mapRequest.Compress)
 }
 
 func (m *Mapper) KeepAliveResponse(
@@ -365,7 +365,7 @@ func (m *Mapper) KeepAliveResponse(
 	resp := m.baseMapResponse(machine)
 	resp.KeepAlive = true
 
-	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
 }
 
 func (m *Mapper) DERPMapResponse(
@@ -376,7 +376,7 @@ func (m *Mapper) DERPMapResponse(
 	resp := m.baseMapResponse(machine)
 	resp.DERPMap = &derpMap
 
-	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
 }
 
 func (m *Mapper) PeerChangedResponse(
@@ -434,7 +434,7 @@ func (m *Mapper) PeerChangedResponse(
 	resp.PeersChanged = tailPeers
 	// resp.PeerSeenChange = lastSeen
 
-	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
 }
 
 func (m *Mapper) PeerRemovedResponse(
@@ -445,10 +445,11 @@ func (m *Mapper) PeerRemovedResponse(
 	resp := m.baseMapResponse(machine)
 	resp.PeersRemoved = removed
 
-	return m.marshalMapResponse(&resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
 }
 
 func (m *Mapper) marshalMapResponse(
+	mapRequest tailcfg.MapRequest,
 	resp *tailcfg.MapResponse,
 	machine *types.Machine,
 	compression string,
@@ -503,7 +504,7 @@ func (m *Mapper) marshalMapResponse(
 		)
 
 		log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
-		err = os.WriteFile(mapResponsePath, jsonBody, perms)
+		err = os.WriteFile(mapResponsePath, body, perms)
 		if err != nil {
 			panic(err)
 		}
