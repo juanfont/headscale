@@ -359,8 +359,6 @@ func (h *Headscale) pollNetMapStream(
 			return
 		}
 	}
-
-	logInfo("Finishing map stream session")
 }
 
 func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](channel C, machine, name string) {

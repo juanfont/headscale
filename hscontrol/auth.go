@@ -86,7 +86,8 @@ func (h *Headscale) handleRegister(
 				Caller().
 				Str("func", "RegistrationHandler").
 				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
-				Err(err)
+				Err(err).
+				Msg("Failed to generate given name for node")
 
 			return
 		}
@@ -348,7 +349,8 @@ func (h *Headscale) handleAuthKey(
 				Bool("noise", isNoise).
 				Str("func", "RegistrationHandler").
 				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
-				Err(err)
+				Err(err).
+				Msg("Failed to generate given name for node")
 
 			return
 		}
