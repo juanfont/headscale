@@ -241,14 +241,14 @@ func (hsdb *HSDatabase) getPrimaryRoute(prefix netip.Prefix) (*types.Route, erro
 
 // getMachinePrimaryRoutes returns the routes that are enabled and marked as primary (for subnet failover)
 // Exit nodes are not considered for this, as they are never marked as Primary.
-func (hsdb *HSDatabase) GetMachinePrimaryRoutes(m *types.Machine) (types.Routes, error) {
+func (hsdb *HSDatabase) GetMachinePrimaryRoutes(machine *types.Machine) (types.Routes, error) {
 	hsdb.mu.RLock()
 	defer hsdb.mu.RUnlock()
 
 	var routes types.Routes
 	err := hsdb.db.
 		Preload("Machine").
-		Where("machine_id = ? AND advertised = ? AND enabled = ? AND is_primary = ?", m.ID, true, true, true).
+		Where("machine_id = ? AND advertised = ? AND enabled = ? AND is_primary = ?", machine.ID, true, true, true).
 		Find(&routes).Error
 	if err != nil {
 		return nil, err

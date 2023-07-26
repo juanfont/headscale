@@ -32,6 +32,8 @@ import (
 const (
 	nextDNSDoHPrefix           = "https://dns.nextdns.io"
 	reservedResponseHeaderSize = 4
+	mapperIDLength             = 8
+	debugMapResponsePerm       = 0o755
 )
 
 var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH")
@@ -72,7 +74,7 @@ func NewMapper(
 		Str("machine", machine.Hostname).
 		Msg("creating new mapper")
 
-	uid, _ := util.GenerateRandomStringDNSSafe(8)
+	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
 		db: db,
@@ -579,7 +581,7 @@ var zstdEncoderPool = &sync.Pool{
 	},
 }
 
-func (m *Mapper) baseMapResponse(machine *types.Machine) tailcfg.MapResponse {
+func (m *Mapper) baseMapResponse(_ *types.Machine) tailcfg.MapResponse {
 	now := time.Now()
 
 	resp := tailcfg.MapResponse{
