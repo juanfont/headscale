@@ -124,65 +124,18 @@ func fullMapResponse(
 		return nil, err
 	}
 
-	rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
-		pol,
-		machine,
-		peers,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Filter out peers that have expired.
-	peers = lo.Filter(peers, func(item types.Machine, index int) bool {
-		return !item.IsExpired()
-	})
-
-	// If there are filter rules present, see if there are any machines that cannot
-	// access eachother at all and remove them from the peers.
-	if len(rules) > 0 {
-		peers = policy.FilterMachinesByACL(machine, peers, rules)
-	}
-
-	profiles := generateUserProfiles(machine, peers, baseDomain)
-
-	dnsConfig := generateDNSConfig(
-		dnsCfg,
-		baseDomain,
-		*machine,
-		peers,
-	)
-
-	tailPeers, err := tailNodes(peers, pol, dnsCfg, baseDomain)
-	if err != nil {
-		return nil, err
-	}
-
-	// Peers is always returned sorted by Node.ID.
-	sort.SliceStable(tailPeers, func(x, y int) bool {
-		return tailPeers[x].ID < tailPeers[y].ID
-	})
-
 	now := time.Now()
 
 	resp := tailcfg.MapResponse{
-		Node:  tailnode,
-		Peers: tailPeers,
+		Node: tailnode,
 
 		DERPMap: derpMap,
 
-		DNSConfig: dnsConfig,
-		Domain:    baseDomain,
+		Domain: baseDomain,
 
 		// Do not instruct clients to collect services we do not
 		// support or do anything with them
 		CollectServices: "false",
-
-		PacketFilter: policy.ReduceFilterRules(machine, rules),
-
-		UserProfiles: profiles,
-
-		SSHPolicy: sshPolicy,
 
 		ControlTime:  &now,
 		KeepAlive:    false,
@@ -192,6 +145,53 @@ func fullMapResponse(
 			DisableLogTail:      !logtail,
 			RandomizeClientPort: randomClientPort,
 		},
+	}
+
+	if peers != nil || len(peers) > 0 {
+		rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
+			pol,
+			machine,
+			peers,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Filter out peers that have expired.
+		peers = lo.Filter(peers, func(item types.Machine, index int) bool {
+			return !item.IsExpired()
+		})
+
+		// If there are filter rules present, see if there are any machines that cannot
+		// access eachother at all and remove them from the peers.
+		if len(rules) > 0 {
+			peers = policy.FilterMachinesByACL(machine, peers, rules)
+		}
+
+		profiles := generateUserProfiles(machine, peers, baseDomain)
+
+		dnsConfig := generateDNSConfig(
+			dnsCfg,
+			baseDomain,
+			*machine,
+			peers,
+		)
+
+		tailPeers, err := tailNodes(peers, pol, dnsCfg, baseDomain)
+		if err != nil {
+			return nil, err
+		}
+
+		// Peers is always returned sorted by Node.ID.
+		sort.SliceStable(tailPeers, func(x, y int) bool {
+			return tailPeers[x].ID < tailPeers[y].ID
+		})
+
+		resp.Peers = tailPeers
+		resp.DNSConfig = dnsConfig
+		resp.PacketFilter = policy.ReduceFilterRules(machine, rules)
+		resp.UserProfiles = profiles
+		resp.SSHPolicy = sshPolicy
 	}
 
 	return &resp, nil
@@ -310,6 +310,35 @@ func (m *Mapper) FullMapResponse(
 		pol,
 		machine,
 		peers,
+		m.baseDomain,
+		m.dnsCfg,
+		m.derpMap,
+		m.logtail,
+		m.randomClientPort,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if m.isNoise {
+		return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
+	}
+
+	return m.marshalMapResponse(mapResponse, machine, mapRequest.Compress)
+}
+
+// LiteMapResponse returns a MapResponse for the given machine.
+// Lite means that the peers has been omited, this is intended
+// to be used to answer MapRequests with OmitPeers set to true.
+func (m *Mapper) LiteMapResponse(
+	mapRequest tailcfg.MapRequest,
+	machine *types.Machine,
+	pol *policy.ACLPolicy,
+) ([]byte, error) {
+	mapResponse, err := fullMapResponse(
+		pol,
+		machine,
+		nil,
 		m.baseDomain,
 		m.dnsCfg,
 		m.derpMap,
