@@ -187,7 +187,7 @@ log:
   format: text
   level: info
 
-# Path to a file containg ACL policies.
+# Path to a file containing ACL policies.
 # ACLs can be defined as YAML or HUJSON.
 # https://tailscale.com/kb/1018/acls/
 acl_policy_path: ""
