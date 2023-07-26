@@ -116,14 +116,6 @@ func (h *Headscale) handlePoll(
 		return
 	}
 
-	mapResp, err := mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
-	if err != nil {
-		logErr(err, "Failed to create MapResponse")
-		http.Error(writer, "", http.StatusInternalServerError)
-
-		return
-	}
-
 	// We update our peers if the client is not sending ReadOnly in the MapRequest
 	// so we don't distribute its initial request (it comes with
 	// empty endpoints to peers)
@@ -134,9 +126,17 @@ func (h *Headscale) handlePoll(
 	if mapRequest.ReadOnly {
 		logInfo("Client is starting up. Probably interested in a DERP map")
 
+		mapResp, err := mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
+		if err != nil {
+			logErr(err, "Failed to create MapResponse")
+			http.Error(writer, "", http.StatusInternalServerError)
+
+			return
+		}
+
 		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
-		_, err := writer.Write(mapResp)
+		_, err = writer.Write(mapResp)
 		if err != nil {
 			logErr(err, "Failed to write response")
 		}
@@ -151,9 +151,17 @@ func (h *Headscale) handlePoll(
 	if mapRequest.OmitPeers && !mapRequest.Stream {
 		logInfo("Client sent endpoint update and is ok with a response without peer list")
 
+		mapResp, err := mapp.LiteMapResponse(mapRequest, machine, h.ACLPolicy)
+		if err != nil {
+			logErr(err, "Failed to create MapResponse")
+			http.Error(writer, "", http.StatusInternalServerError)
+
+			return
+		}
+
 		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
-		_, err := writer.Write(mapResp)
+		_, err = writer.Write(mapResp)
 		if err != nil {
 			logErr(err, "Failed to write response")
 		}
@@ -182,6 +190,14 @@ func (h *Headscale) handlePoll(
 	}
 
 	logInfo("Sending initial map")
+
+	mapResp, err := mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
+	if err != nil {
+		logErr(err, "Failed to create MapResponse")
+		http.Error(writer, "", http.StatusInternalServerError)
+
+		return
+	}
 
 	// Send the client an update to make sure we send an initial mapresponse
 	_, err = writer.Write(mapResp)
