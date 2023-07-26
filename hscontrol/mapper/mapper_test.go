@@ -429,7 +429,10 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				OnlineChange:    map[tailcfg.NodeID]bool{tailPeer1.ID: false},
+				OnlineChange: map[tailcfg.NodeID]bool{
+					tailPeer1.ID:             false,
+					tailcfg.NodeID(peer2.ID): false,
+				},
 				PacketFilter: []tailcfg.FilterRule{
 					{
 						SrcIPs: []string{"100.64.0.2/32"},
