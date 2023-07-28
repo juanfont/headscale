@@ -13,6 +13,8 @@ This documentation has the goal of showing a user how-to set up and run `headsca
 [Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it should
 not work with alternatives like [Podman](https://podman.io). The Docker image can be found on Docker Hub [here](https://hub.docker.com/r/headscale/headscale).
 
+At the moment only linux/amd64 and linux/arm64 are supported. Pi arm/v7 is not yet supported.
+
 ## Configure and run `headscale`
 
 1. Prepare a directory on the host Docker node in your directory of choice, used to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
