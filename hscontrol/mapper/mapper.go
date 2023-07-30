@@ -409,9 +409,11 @@ func (m *Mapper) PeerChangedResponse(
 		return nil, err
 	}
 
-	// Filter out peers that have expired.
 	changed = lo.Filter(changed, func(item types.Machine, index int) bool {
-		return !item.IsExpired()
+		// Filter out nodes that are expired OR
+		// nodes that has no endpoints, this typically means they have
+		// registered, but are not configured.
+		return !item.IsExpired() || len(item.Endpoints) > 0
 	})
 
 	// If there are filter rules present, see if there are any machines that cannot
