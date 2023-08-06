@@ -46,7 +46,7 @@ We currently support deploying `headscale` using our binaries and the DEB packag
 
 In addition to that, there are semi-official RPM packages by the Fedora infra team https://copr.fedorainfracloud.org/coprs/jonathanspw/headscale/
 
-For convenience, we also build Docker images with `headscale`. But **please be aware that we don't officially support deploying `headscale` using Docker**. We have a [Discord channel](https://discord.com/channels/896711691637780480/1070619770942148618) where you can ask for Docker-specific help to the community.
+For convenience, we also build Docker images with `headscale`. But **please be aware that we don't officially support deploying `headscale` using Docker**. On our [Discord server](https://discord.gg/c84AZQhmpx) we have a docker-issues channel where you can ask for Docker-specific help to the community.
 
 ## Why is my reverse proxy not working with Headscale?
 
