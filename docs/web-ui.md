@@ -11,4 +11,4 @@
 | headscale-ui    | [Github](https://github.com/gurucomputing/headscale-ui) | A web frontend for the headscale Tailscale-compatible coordination server | Alpha  |
 | HeadscaleUi     | [GitHub](https://github.com/simcu/headscale-ui)         | A static headscale admin ui, no backend enviroment required               | Alpha  |
 
-You can ask for support on our dedicated [Discord channel](https://discord.com/channels/896711691637780480/1105842846386356294).
+You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the web-ui channel.
