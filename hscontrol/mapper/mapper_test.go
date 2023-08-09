@@ -441,9 +441,11 @@ func Test_fullMapResponse(t *testing.T) {
 						},
 					},
 				},
-				UserProfiles: []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
-				SSHPolicy:    &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
-				ControlTime:  &time.Time{},
+				UserProfiles: []tailcfg.UserProfile{
+					{LoginName: "mini", DisplayName: "mini"},
+				},
+				SSHPolicy:   &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
+				ControlTime: &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
 				},
@@ -454,15 +456,21 @@ func Test_fullMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := fullMapResponse(
-				tt.pol,
+			mappy := NewMapper(
 				tt.machine,
 				tt.peers,
+				nil,
+				false,
+				tt.derpMap,
 				tt.baseDomain,
 				tt.dnsConfig,
-				tt.derpMap,
 				tt.logtail,
 				tt.randomClientPort,
+			)
+
+			got, err := mappy.fullMapResponse(
+				tt.machine,
+				tt.pol,
 			)
 
 			if (err != nil) != tt.wantErr {

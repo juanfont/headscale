@@ -55,6 +55,8 @@ func logPollFunc(
 
 // handlePoll is the common code for the legacy and Noise protocols to
 // managed the poll loop.
+//
+//nolint:gocyclo
 func (h *Headscale) handlePoll(
 	writer http.ResponseWriter,
 	ctx context.Context,
@@ -67,6 +69,7 @@ func (h *Headscale) handlePoll(
 	// following updates missing
 	var updateChan chan types.StateUpdate
 	if mapRequest.Stream {
+		h.pollStreamOpenMu.Lock()
 		h.pollNetMapStreamWG.Add(1)
 		defer h.pollNetMapStreamWG.Done()
 
@@ -250,6 +253,8 @@ func (h *Headscale) handlePoll(
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	h.pollStreamOpenMu.Unlock()
 
 	for {
 		logInfo("Waiting for update on stream channel")

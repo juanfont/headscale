@@ -20,10 +20,11 @@ import (
 )
 
 const (
-	tsicHashLength    = 6
-	defaultPingCount  = 10
-	dockerContextPath = "../."
-	headscaleCertPath = "/usr/local/share/ca-certificates/headscale.crt"
+	tsicHashLength     = 6
+	defaultPingTimeout = 300 * time.Millisecond
+	defaultPingCount   = 10
+	dockerContextPath  = "../."
+	headscaleCertPath  = "/usr/local/share/ca-certificates/headscale.crt"
 )
 
 var (
@@ -591,7 +592,7 @@ func WithPingUntilDirect(direct bool) PingOption {
 // TODO(kradalby): Make multiping, go routine magic.
 func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) error {
 	args := pingArgs{
-		timeout: 300 * time.Millisecond,
+		timeout: defaultPingTimeout,
 		count:   defaultPingCount,
 		direct:  true,
 	}

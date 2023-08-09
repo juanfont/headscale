@@ -407,9 +407,8 @@ func TestResolveMagicDNS(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"magicdns1": len(MustTestVersions) - 1,
-		"magicdns2": len(MustTestVersions) - 1,
+		"magicdns1": len(MustTestVersions),
+		"magicdns2": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("magicdns"))

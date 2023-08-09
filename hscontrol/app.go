@@ -92,6 +92,8 @@ type Headscale struct {
 
 	shutdownChan       chan struct{}
 	pollNetMapStreamWG sync.WaitGroup
+
+	pollStreamOpenMu sync.Mutex
 }
 
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {

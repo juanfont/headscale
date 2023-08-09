@@ -340,6 +340,8 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 			continue
 		}
 
+		machine := &route.Machine
+
 		if !route.IsPrimary {
 			_, err := hsdb.getPrimaryRoute(netip.Prefix(route.Prefix))
 			if hsdb.isUniquePrefix(route) || errors.Is(err, gorm.ErrRecordNotFound) {
@@ -355,7 +357,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 					return err
 				}
 
-				changedMachines = append(changedMachines, &route.Machine)
+				changedMachines = append(changedMachines, machine)
 
 				continue
 			}
@@ -429,7 +431,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 				return err
 			}
 
-			changedMachines = append(changedMachines, &route.Machine)
+			changedMachines = append(changedMachines, machine)
 		}
 	}
 
