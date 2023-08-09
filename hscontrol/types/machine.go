@@ -353,3 +353,13 @@ func (machines MachinesP) String() string {
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
+
+func (machines Machines) IDMap() map[uint64]Machine {
+	ret := map[uint64]Machine{}
+
+	for _, machine := range machines {
+		ret[machine.ID] = machine
+	}
+
+	return ret
+}
