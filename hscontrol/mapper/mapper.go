@@ -382,28 +382,31 @@ func (m *Mapper) DERPMapResponse(
 func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
-	machineKeys []uint64,
+	machineIDs []uint64,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
 	var err error
-	changed := make(types.Machines, len(machineKeys))
+	changed := make(types.Machines, len(machineIDs))
 	lastSeen := make(map[tailcfg.NodeID]bool)
-	for idx, machineKey := range machineKeys {
-		peer, err := m.db.GetMachineByID(machineKey)
-		if err != nil {
-			return nil, err
-		}
 
-		changed[idx] = *peer
-
-		// We have just seen the node, let the peers update their list.
-		lastSeen[tailcfg.NodeID(peer.ID)] = true
+	peersList, err := m.db.ListPeers(machine)
+	if err != nil {
+		return nil, err
 	}
 
-	rules, _, err := policy.GenerateFilterAndSSHRules(
+	peers := peersList.IDMap()
+
+	for idx, machineID := range machineIDs {
+		changed[idx] = peers[machineID]
+
+		// We have just seen the node, let the peers update their list.
+		lastSeen[tailcfg.NodeID(machineID)] = true
+	}
+
+	rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
 		pol,
 		machine,
-		changed,
+		peersList,
 	)
 	if err != nil {
 		return nil, err
@@ -434,6 +437,8 @@ func (m *Mapper) PeerChangedResponse(
 
 	resp := m.baseMapResponse(machine)
 	resp.PeersChanged = tailPeers
+	resp.PacketFilter = policy.ReduceFilterRules(machine, rules)
+	resp.SSHPolicy = sshPolicy
 	// resp.PeerSeenChange = lastSeen
 
 	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
