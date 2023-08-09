@@ -80,9 +80,21 @@ func (h *Headscale) handlePoll(
 
 	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
 
+	// When a node connects to control, list the peers it has at
+	// that given point, further updates are kept in memory in
+	// the Mapper, which lives for the duration of the polling
+	// session.
+	peers, err := h.db.ListPeers(machine)
+	if err != nil {
+		logErr(err, "Failed to list peers when opening poller")
+		http.Error(writer, "", http.StatusInternalServerError)
+
+		return
+	}
+
 	mapp := mapper.NewMapper(
 		machine,
-		h.db,
+		peers,
 		h.privateKey2019,
 		isNoise,
 		h.DERPMap,
@@ -97,7 +109,7 @@ func (h *Headscale) handlePoll(
 	machine.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
 	now := time.Now().UTC()
 
-	err := h.db.ProcessMachineRoutes(machine)
+	err = h.db.SaveMachineRoutes(machine)
 	if err != nil {
 		logErr(err, "Error processing machine routes")
 	}
@@ -142,7 +154,7 @@ func (h *Headscale) handlePoll(
 		h.nodeNotifier.NotifyWithIgnore(
 			types.StateUpdate{
 				Type:    types.StatePeerChanged,
-				Changed: []uint64{machine.ID},
+				Changed: types.Machines{machine},
 			},
 			machine.MachineKey)
 	}

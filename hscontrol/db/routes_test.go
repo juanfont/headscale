@@ -40,7 +40,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	}
 	db.db.Save(&machine)
 
-	err = db.ProcessMachineRoutes(&machine)
+	err = db.SaveMachineRoutes(&machine)
 	c.Assert(err, check.IsNil)
 
 	advertisedRoutes, err := db.GetAdvertisedRoutes(&machine)
@@ -91,7 +91,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	}
 	db.db.Save(&machine)
 
-	err = db.ProcessMachineRoutes(&machine)
+	err = db.SaveMachineRoutes(&machine)
 	c.Assert(err, check.IsNil)
 
 	availableRoutes, err := db.GetAdvertisedRoutes(&machine)
@@ -165,7 +165,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	}
 	db.db.Save(&machine1)
 
-	err = db.ProcessMachineRoutes(&machine1)
+	err = db.SaveMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
 	err = db.enableRoutes(&machine1, route.String())
@@ -190,7 +190,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	}
 	db.db.Save(&machine2)
 
-	err = db.ProcessMachineRoutes(&machine2)
+	err = db.SaveMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
 	err = db.enableRoutes(&machine2, route2.String())
@@ -252,7 +252,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	}
 	db.db.Save(&machine1)
 
-	err = db.ProcessMachineRoutes(&machine1)
+	err = db.SaveMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
 	err = db.enableRoutes(&machine1, prefix.String())
@@ -289,7 +289,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	}
 	db.db.Save(&machine2)
 
-	err = db.ProcessMachineRoutes(&machine2)
+	err = db.SaveMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
 	err = db.enableRoutes(&machine2, prefix2.String())
@@ -337,7 +337,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	err = db.db.Save(&machine2).Error
 	c.Assert(err, check.IsNil)
 
-	err = db.ProcessMachineRoutes(&machine2)
+	err = db.SaveMachineRoutes(&machine2)
 	c.Assert(err, check.IsNil)
 
 	err = db.enableRoutes(&machine2, prefix.String())
@@ -394,7 +394,7 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	}
 	db.db.Save(&machine1)
 
-	err = db.ProcessMachineRoutes(&machine1)
+	err = db.SaveMachineRoutes(&machine1)
 	c.Assert(err, check.IsNil)
 
 	err = db.enableRoutes(&machine1, prefix.String())

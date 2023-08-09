@@ -68,8 +68,7 @@ type Machine struct {
 }
 
 type (
-	Machines  []Machine
-	MachinesP []*Machine
+	Machines []*Machine
 )
 
 type MachineAddresses []netip.Addr
@@ -343,19 +342,8 @@ func (machines Machines) String() string {
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-// TODO(kradalby): Remove when we have generics...
-func (machines MachinesP) String() string {
-	temp := make([]string, len(machines))
-
-	for index, machine := range machines {
-		temp[index] = machine.Hostname
-	}
-
-	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
-}
-
-func (machines Machines) IDMap() map[uint64]Machine {
-	ret := map[uint64]Machine{}
+func (machines Machines) IDMap() map[uint64]*Machine {
+	ret := map[uint64]*Machine{}
 
 	for _, machine := range machines {
 		ret[machine.ID] = machine

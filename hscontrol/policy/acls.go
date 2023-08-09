@@ -157,7 +157,7 @@ func (pol *ACLPolicy) generateFilterRules(
 	peers types.Machines,
 ) ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
-	machines := append(peers, *machine)
+	machines := append(peers, machine)
 
 	for index, acl := range pol.ACLs {
 		if acl.Action != "accept" {
@@ -293,7 +293,7 @@ func (pol *ACLPolicy) generateSSHRules(
 	for index, sshACL := range pol.SSHs {
 		var dest netipx.IPSetBuilder
 		for _, src := range sshACL.Destinations {
-			expanded, err := pol.ExpandAlias(append(peers, *machine), src)
+			expanded, err := pol.ExpandAlias(append(peers, machine), src)
 			if err != nil {
 				return nil, err
 			}
@@ -875,7 +875,7 @@ func isTag(str string) bool {
 // Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
 // Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
 func (pol *ACLPolicy) TagsOfMachine(
-	machine types.Machine,
+	machine *types.Machine,
 ) ([]string, []string) {
 	validTags := make([]string, 0)
 	invalidTags := make([]string, 0)
@@ -935,7 +935,7 @@ func FilterMachinesByACL(
 			continue
 		}
 
-		if machine.CanAccess(filter, &machines[index]) || peer.CanAccess(filter, machine) {
+		if machine.CanAccess(filter, machines[index]) || peer.CanAccess(filter, machine) {
 			result = append(result, peer)
 		}
 	}

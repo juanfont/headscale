@@ -214,7 +214,7 @@ func NewHeadscaleDatabase(
 						Msg("Failed to normalize machine hostname in DB migration")
 				}
 
-				err = db.RenameMachine(&machines[item], normalizedHostname)
+				err = db.RenameMachine(machines[item], normalizedHostname)
 				if err != nil {
 					log.Error().
 						Caller().

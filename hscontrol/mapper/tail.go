@@ -41,7 +41,7 @@ func tailNodes(
 // tailNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS.
 func tailNode(
-	machine types.Machine,
+	machine *types.Machine,
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,

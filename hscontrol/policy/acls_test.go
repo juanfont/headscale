@@ -394,7 +394,7 @@ acls:
 					netip.MustParseAddr("100.100.100.100"),
 				},
 			}, types.Machines{
-				types.Machine{
+				&types.Machine{
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("200.200.200.200"),
 					},
@@ -909,38 +909,38 @@ func Test_listMachinesInUser(t *testing.T) {
 			name: "1 machine in user",
 			args: args{
 				machines: types.Machines{
-					types.Machine{User: types.User{Name: "joe"}},
+					&types.Machine{User: types.User{Name: "joe"}},
 				},
 				user: "joe",
 			},
 			want: types.Machines{
-				types.Machine{User: types.User{Name: "joe"}},
+				&types.Machine{User: types.User{Name: "joe"}},
 			},
 		},
 		{
 			name: "3 machines, 2 in user",
 			args: args{
 				machines: types.Machines{
-					types.Machine{ID: 1, User: types.User{Name: "joe"}},
-					types.Machine{ID: 2, User: types.User{Name: "marc"}},
-					types.Machine{ID: 3, User: types.User{Name: "marc"}},
+					&types.Machine{ID: 1, User: types.User{Name: "joe"}},
+					&types.Machine{ID: 2, User: types.User{Name: "marc"}},
+					&types.Machine{ID: 3, User: types.User{Name: "marc"}},
 				},
 				user: "marc",
 			},
 			want: types.Machines{
-				types.Machine{ID: 2, User: types.User{Name: "marc"}},
-				types.Machine{ID: 3, User: types.User{Name: "marc"}},
+				&types.Machine{ID: 2, User: types.User{Name: "marc"}},
+				&types.Machine{ID: 3, User: types.User{Name: "marc"}},
 			},
 		},
 		{
 			name: "5 machines, 0 in user",
 			args: args{
 				machines: types.Machines{
-					types.Machine{ID: 1, User: types.User{Name: "joe"}},
-					types.Machine{ID: 2, User: types.User{Name: "marc"}},
-					types.Machine{ID: 3, User: types.User{Name: "marc"}},
-					types.Machine{ID: 4, User: types.User{Name: "marc"}},
-					types.Machine{ID: 5, User: types.User{Name: "marc"}},
+					&types.Machine{ID: 1, User: types.User{Name: "joe"}},
+					&types.Machine{ID: 2, User: types.User{Name: "marc"}},
+					&types.Machine{ID: 3, User: types.User{Name: "marc"}},
+					&types.Machine{ID: 4, User: types.User{Name: "marc"}},
+					&types.Machine{ID: 5, User: types.User{Name: "marc"}},
 				},
 				user: "mickael",
 			},
@@ -998,10 +998,10 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "*",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.1")},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.78.84.227"),
 						},
@@ -1024,25 +1024,25 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "group:accountant",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1065,25 +1065,25 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "group:hr",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1130,7 +1130,7 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "10.0.0.1",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
 						},
@@ -1151,7 +1151,7 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "10.0.0.1",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
 							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
@@ -1173,7 +1173,7 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
 							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
@@ -1242,7 +1242,7 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
@@ -1253,7 +1253,7 @@ func Test_expandAlias(t *testing.T) {
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
@@ -1264,13 +1264,13 @@ func Test_expandAlias(t *testing.T) {
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1296,25 +1296,25 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1333,27 +1333,27 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1376,14 +1376,14 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "tag:hr-webserver",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
@@ -1394,13 +1394,13 @@ func Test_expandAlias(t *testing.T) {
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1421,7 +1421,7 @@ func Test_expandAlias(t *testing.T) {
 			args: args{
 				alias: "joe",
 				machines: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
@@ -1432,7 +1432,7 @@ func Test_expandAlias(t *testing.T) {
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
@@ -1443,13 +1443,13 @@ func Test_expandAlias(t *testing.T) {
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1498,7 +1498,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
@@ -1509,7 +1509,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
@@ -1520,7 +1520,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1530,7 +1530,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				user: "joe",
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.4")},
 					User:        types.User{Name: "joe"},
 				},
@@ -1548,7 +1548,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					},
 				},
 				nodes: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
@@ -1559,7 +1559,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
@@ -1570,7 +1570,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1580,7 +1580,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				user: "joe",
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.4")},
 					User:        types.User{Name: "joe"},
 				},
@@ -1593,7 +1593,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
@@ -1604,14 +1604,14 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							RequestTags: []string{"tag:accountant-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:accountant-webserver"},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1621,7 +1621,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				user: "joe",
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.4")},
 					User:        types.User{Name: "joe"},
 				},
@@ -1634,7 +1634,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					TagOwners: TagOwners{"tag:accountant-webserver": []string{"joe"}},
 				},
 				nodes: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
@@ -1645,7 +1645,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
@@ -1656,7 +1656,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							RequestTags: []string{"tag:hr-webserver"},
 						},
 					},
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
@@ -1666,7 +1666,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				user: "joe",
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 					},
@@ -1677,7 +1677,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						RequestTags: []string{"tag:hr-webserver"},
 					},
 				},
-				types.Machine{
+				&types.Machine{
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.2"),
 					},
@@ -1688,7 +1688,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						RequestTags: []string{"tag:hr-webserver"},
 					},
 				},
-				types.Machine{
+				&types.Machine{
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.4"),
 					},
@@ -1716,7 +1716,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 		pol ACLPolicy
 	}
 	type args struct {
-		machine types.Machine
+		machine *types.Machine
 		peers   types.Machines
 	}
 	tests := []struct {
@@ -1747,7 +1747,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				machine: types.Machine{
+				machine: &types.Machine{
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
@@ -1792,7 +1792,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				machine: types.Machine{
+				machine: &types.Machine{
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
@@ -1800,7 +1800,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 					User: types.User{Name: "mickael"},
 				},
 				peers: types.Machines{
-					types.Machine{
+					&types.Machine{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
@@ -1839,7 +1839,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.field.pol.generateFilterRules(
-				&tt.args.machine,
+				tt.args.machine,
 				tt.args.peers,
 			)
 			if (err != nil) != tt.wantErr {
@@ -1859,7 +1859,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 func TestReduceFilterRules(t *testing.T) {
 	tests := []struct {
 		name    string
-		machine types.Machine
+		machine *types.Machine
 		peers   types.Machines
 		pol     ACLPolicy
 		want    []tailcfg.FilterRule
@@ -1875,7 +1875,7 @@ func TestReduceFilterRules(t *testing.T) {
 					},
 				},
 			},
-			machine: types.Machine{
+			machine: &types.Machine{
 				IPAddresses: types.MachineAddresses{
 					netip.MustParseAddr("100.64.0.1"),
 					netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
@@ -1883,7 +1883,7 @@ func TestReduceFilterRules(t *testing.T) {
 				User: types.User{Name: "mickael"},
 			},
 			peers: types.Machines{
-				types.Machine{
+				&types.Machine{
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.2"),
 						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
@@ -1898,11 +1898,11 @@ func TestReduceFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rules, _ := tt.pol.generateFilterRules(
-				&tt.machine,
+				tt.machine,
 				tt.peers,
 			)
 
-			got := ReduceFilterRules(&tt.machine, rules)
+			got := ReduceFilterRules(tt.machine, rules)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				log.Trace().Interface("got", got).Msg("result")
@@ -1915,7 +1915,7 @@ func TestReduceFilterRules(t *testing.T) {
 func Test_getTags(t *testing.T) {
 	type args struct {
 		aclPolicy *ACLPolicy
-		machine   types.Machine
+		machine   *types.Machine
 	}
 	tests := []struct {
 		name        string
@@ -1931,7 +1931,7 @@ func Test_getTags(t *testing.T) {
 						"tag:valid": []string{"joe"},
 					},
 				},
-				machine: types.Machine{
+				machine: &types.Machine{
 					User: types.User{
 						Name: "joe",
 					},
@@ -1951,7 +1951,7 @@ func Test_getTags(t *testing.T) {
 						"tag:valid": []string{"joe"},
 					},
 				},
-				machine: types.Machine{
+				machine: &types.Machine{
 					User: types.User{
 						Name: "joe",
 					},
@@ -1971,7 +1971,7 @@ func Test_getTags(t *testing.T) {
 						"tag:valid": []string{"joe"},
 					},
 				},
-				machine: types.Machine{
+				machine: &types.Machine{
 					User: types.User{
 						Name: "joe",
 					},
@@ -1995,7 +1995,7 @@ func Test_getTags(t *testing.T) {
 						"tag:valid": []string{"joe"},
 					},
 				},
-				machine: types.Machine{
+				machine: &types.Machine{
 					User: types.User{
 						Name: "joe",
 					},
@@ -2011,7 +2011,7 @@ func Test_getTags(t *testing.T) {
 			name: "empty ACLPolicy should return empty tags and should not panic",
 			args: args{
 				aclPolicy: &ACLPolicy{},
-				machine: types.Machine{
+				machine: &types.Machine{
 					User: types.User{
 						Name: "joe",
 					},
@@ -2074,21 +2074,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			name: "all hosts can talk to each other",
 			args: args{
 				machines: types.Machines{ // list of all machines in the database
-					types.Machine{
+					&types.Machine{
 						ID: 1,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 2,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 3,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
@@ -2111,12 +2111,12 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					ID:          2,
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.2")},
 					User:        types.User{Name: "marc"},
 				},
-				types.Machine{
+				&types.Machine{
 					ID:          3,
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.3")},
 					User:        types.User{Name: "mickael"},
@@ -2127,21 +2127,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			name: "One host can talk to another, but not all hosts",
 			args: args{
 				machines: types.Machines{ // list of all machines in the database
-					types.Machine{
+					&types.Machine{
 						ID: 1,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 2,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 3,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
@@ -2164,7 +2164,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					ID:          2,
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.2")},
 					User:        types.User{Name: "marc"},
@@ -2175,21 +2175,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			name: "host cannot directly talk to destination, but return path is authorized",
 			args: args{
 				machines: types.Machines{ // list of all machines in the database
-					types.Machine{
+					&types.Machine{
 						ID: 1,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 2,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 3,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
@@ -2212,7 +2212,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					ID:          3,
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.3")},
 					User:        types.User{Name: "mickael"},
@@ -2223,21 +2223,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			name: "rules allows all hosts to reach one destination",
 			args: args{
 				machines: types.Machines{ // list of all machines in the database
-					types.Machine{
+					&types.Machine{
 						ID: 1,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 2,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 3,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
@@ -2262,7 +2262,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					ID: 2,
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.2"),
@@ -2275,21 +2275,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			name: "rules allows all hosts to reach one destination, destination can reach all hosts",
 			args: args{
 				machines: types.Machines{ // list of all machines in the database
-					types.Machine{
+					&types.Machine{
 						ID: 1,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 2,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 3,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
@@ -2314,14 +2314,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					ID: 1,
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 					},
 					User: types.User{Name: "joe"},
 				},
-				types.Machine{
+				&types.Machine{
 					ID: 3,
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.3"),
@@ -2334,21 +2334,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			name: "rule allows all hosts to reach all destinations",
 			args: args{
 				machines: types.Machines{ // list of all machines in the database
-					types.Machine{
+					&types.Machine{
 						ID: 1,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 2,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 3,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
@@ -2371,14 +2371,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					ID: 1,
 					IPAddresses: types.MachineAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 					},
 					User: types.User{Name: "joe"},
 				},
-				types.Machine{
+				&types.Machine{
 					ID:          3,
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.3")},
 					User:        types.User{Name: "mickael"},
@@ -2389,21 +2389,21 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			name: "without rule all communications are forbidden",
 			args: args{
 				machines: types.Machines{ // list of all machines in the database
-					types.Machine{
+					&types.Machine{
 						ID: 1,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 2,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "marc"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID: 3,
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.3"),
@@ -2429,7 +2429,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			name: "issue-699-broken-star",
 			args: args{
 				machines: types.Machines{ //
-					types.Machine{
+					&types.Machine{
 						ID:       1,
 						Hostname: "ts-head-upcrmb",
 						IPAddresses: types.MachineAddresses{
@@ -2438,7 +2438,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 						User: types.User{Name: "user1"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID:       2,
 						Hostname: "ts-unstable-rlwpvr",
 						IPAddresses: types.MachineAddresses{
@@ -2447,7 +2447,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 						User: types.User{Name: "user1"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID:       3,
 						Hostname: "ts-head-8w6paa",
 						IPAddresses: types.MachineAddresses{
@@ -2456,7 +2456,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 						User: types.User{Name: "user2"},
 					},
-					types.Machine{
+					&types.Machine{
 						ID:       4,
 						Hostname: "ts-unstable-lys2ib",
 						IPAddresses: types.MachineAddresses{
@@ -2491,7 +2491,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 			want: types.Machines{
-				types.Machine{
+				&types.Machine{
 					ID:       1,
 					Hostname: "ts-head-upcrmb",
 					IPAddresses: types.MachineAddresses{
@@ -2500,7 +2500,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					},
 					User: types.User{Name: "user1"},
 				},
-				types.Machine{
+				&types.Machine{
 					ID:       2,
 					Hostname: "ts-unstable-rlwpvr",
 					IPAddresses: types.MachineAddresses{
@@ -2514,7 +2514,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "failing-edge-case-during-p3-refactor",
 			args: args{
-				machines: []types.Machine{
+				machines: []*types.Machine{
 					{
 						ID:          1,
 						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -2544,7 +2544,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					User:        types.User{Name: "mini"},
 				},
 			},
-			want: []types.Machine{
+			want: []*types.Machine{
 				{
 					ID:          2,
 					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
@@ -2556,7 +2556,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "p4-host-in-netmap-user2-dest-bug",
 			args: args{
-				machines: []types.Machine{
+				machines: []*types.Machine{
 					{
 						ID:          1,
 						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -2613,7 +2613,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					User:        types.User{Name: "user2"},
 				},
 			},
-			want: []types.Machine{
+			want: []*types.Machine{
 				{
 					ID:          1,
 					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -2637,7 +2637,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "p4-host-in-netmap-user1-dest-bug",
 			args: args{
-				machines: []types.Machine{
+				machines: []*types.Machine{
 					{
 						ID:          1,
 						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -2694,7 +2694,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					User:        types.User{Name: "user1"},
 				},
 			},
-			want: []types.Machine{
+			want: []*types.Machine{
 				{
 					ID:          1,
 					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -2749,7 +2749,7 @@ func TestSSHRules(t *testing.T) {
 				},
 			},
 			peers: types.Machines{
-				types.Machine{
+				&types.Machine{
 					Hostname:    "testmachine2",
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.1")},
 					UserID:      0,
@@ -2857,7 +2857,7 @@ func TestSSHRules(t *testing.T) {
 				},
 			},
 			peers: types.Machines{
-				types.Machine{
+				&types.Machine{
 					Hostname:    "testmachine2",
 					IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.99.42")},
 					UserID:      0,
@@ -2984,7 +2984,7 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 		RequestTags: []string{"tag:test"},
 	}
 
-	machine := types.Machine{
+	machine := &types.Machine{
 		ID:          0,
 		MachineKey:  "foo",
 		NodeKey:     "bar",
@@ -3011,7 +3011,7 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, &machine, types.Machines{})
+	got, _, err := GenerateFilterAndSSHRules(pol, machine, types.Machines{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3039,7 +3039,7 @@ func TestInvalidTagValidUser(t *testing.T) {
 		RequestTags: []string{"tag:foo"},
 	}
 
-	machine := types.Machine{
+	machine := &types.Machine{
 		ID:          1,
 		MachineKey:  "12345",
 		NodeKey:     "bar",
@@ -3065,7 +3065,7 @@ func TestInvalidTagValidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, &machine, types.Machines{})
+	got, _, err := GenerateFilterAndSSHRules(pol, machine, types.Machines{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3093,7 +3093,7 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 		RequestTags: []string{"tag:test"},
 	}
 
-	machine := types.Machine{
+	machine := &types.Machine{
 		ID:          1,
 		MachineKey:  "12345",
 		NodeKey:     "bar",
@@ -3127,7 +3127,7 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 	// c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	// c.Assert(rules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 
-	got, _, err := GenerateFilterAndSSHRules(pol, &machine, types.Machines{})
+	got, _, err := GenerateFilterAndSSHRules(pol, machine, types.Machines{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3157,7 +3157,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 		RequestTags: []string{"tag:webapp"},
 	}
 
-	machine := types.Machine{
+	machine := &types.Machine{
 		ID:          1,
 		MachineKey:  "12345",
 		NodeKey:     "bar",
@@ -3177,7 +3177,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 		Hostname: "Hostname",
 	}
 
-	machine2 := types.Machine{
+	machine2 := &types.Machine{
 		ID:          2,
 		MachineKey:  "56789",
 		NodeKey:     "bar2",
@@ -3203,7 +3203,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, &machine, types.Machines{machine2})
+	got, _, err := GenerateFilterAndSSHRules(pol, machine, types.Machines{machine2})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{

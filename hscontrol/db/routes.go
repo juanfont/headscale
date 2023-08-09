@@ -257,14 +257,16 @@ func (hsdb *HSDatabase) GetMachinePrimaryRoutes(machine *types.Machine) (types.R
 	return routes, nil
 }
 
-func (hsdb *HSDatabase) ProcessMachineRoutes(machine *types.Machine) error {
+// SaveMachineRoutes takes a machine and updates the database with
+// the new routes.
+func (hsdb *HSDatabase) SaveMachineRoutes(machine *types.Machine) error {
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
 
-	return hsdb.processMachineRoutes(machine)
+	return hsdb.saveMachineRoutes(machine)
 }
 
-func (hsdb *HSDatabase) processMachineRoutes(machine *types.Machine) error {
+func (hsdb *HSDatabase) saveMachineRoutes(machine *types.Machine) error {
 	currentRoutes := types.Routes{}
 	err := hsdb.db.Where("machine_id = ?", machine.ID).Find(&currentRoutes).Error
 	if err != nil {
@@ -332,7 +334,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 		log.Error().Err(err).Msg("error getting routes")
 	}
 
-	changedMachines := make([]uint64, 0)
+	changedMachines := make(types.Machines, 0)
 	for pos, route := range routes {
 		if route.IsExitRoute() {
 			continue
@@ -353,7 +355,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 					return err
 				}
 
-				changedMachines = append(changedMachines, route.MachineID)
+				changedMachines = append(changedMachines, &route.Machine)
 
 				continue
 			}
@@ -427,7 +429,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 				return err
 			}
 
-			changedMachines = append(changedMachines, route.MachineID)
+			changedMachines = append(changedMachines, &route.Machine)
 		}
 	}
 
@@ -488,7 +490,7 @@ func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
 				// TODO(kradalby): figure out how to get this to depend on less stuff
-				approvedIps, err := aclPolicy.ExpandAlias(types.Machines{*machine}, approvedAlias)
+				approvedIps, err := aclPolicy.ExpandAlias(types.Machines{machine}, approvedAlias)
 				if err != nil {
 					log.Err(err).
 						Str("alias", approvedAlias).

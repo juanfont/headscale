@@ -590,7 +590,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 
 	db.db.Save(&machine)
 
-	err = db.ProcessMachineRoutes(&machine)
+	err = db.SaveMachineRoutes(&machine)
 	c.Assert(err, check.IsNil)
 
 	machine0ByID, err := db.GetMachineByID(0)
