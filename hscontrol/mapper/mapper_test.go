@@ -18,8 +18,8 @@ import (
 )
 
 func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
-	mach := func(hostname, username string, userid uint) types.Machine {
-		return types.Machine{
+	mach := func(hostname, username string, userid uint) *types.Machine {
+		return &types.Machine{
 			Hostname: hostname,
 			UserID:   userid,
 			User: types.User{
@@ -34,7 +34,7 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	machine2InShared1 := mach("test_get_shared_nodes_4", "user1", 1)
 
 	userProfiles := generateUserProfiles(
-		&machineInShared1,
+		machineInShared1,
 		types.Machines{
 			machineInShared2, machineInShared3, machine2InShared1,
 		},
@@ -91,8 +91,8 @@ func TestDNSConfigMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("with-magicdns-%v", tt.magicDNS), func(t *testing.T) {
-			mach := func(hostname, username string, userid uint) types.Machine {
-				return types.Machine{
+			mach := func(hostname, username string, userid uint) *types.Machine {
+				return &types.Machine{
 					Hostname: hostname,
 					UserID:   userid,
 					User: types.User{
@@ -243,7 +243,7 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 	}
 
-	peer1 := types.Machine{
+	peer1 := &types.Machine{
 		ID:          1,
 		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
@@ -295,7 +295,7 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 	}
 
-	peer2 := types.Machine{
+	peer2 := &types.Machine{
 		ID:          2,
 		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
@@ -341,7 +341,7 @@ func Test_fullMapResponse(t *testing.T) {
 			name:             "no-pol-no-peers-map-response",
 			pol:              &policy.ACLPolicy{},
 			machine:          mini,
-			peers:            []types.Machine{},
+			peers:            types.Machines{},
 			baseDomain:       "",
 			dnsConfig:        &tailcfg.DNSConfig{},
 			derpMap:          &tailcfg.DERPMap{},
@@ -369,7 +369,7 @@ func Test_fullMapResponse(t *testing.T) {
 			name:    "no-pol-with-peer-map-response",
 			pol:     &policy.ACLPolicy{},
 			machine: mini,
-			peers: []types.Machine{
+			peers: types.Machines{
 				peer1,
 			},
 			baseDomain:       "",
@@ -410,7 +410,7 @@ func Test_fullMapResponse(t *testing.T) {
 				},
 			},
 			machine: mini,
-			peers: []types.Machine{
+			peers: types.Machines{
 				peer1,
 				peer2,
 			},

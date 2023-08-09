@@ -45,7 +45,7 @@ func TestTailNode(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		machine    types.Machine
+		machine    *types.Machine
 		pol        *policy.ACLPolicy
 		dnsConfig  *tailcfg.DNSConfig
 		baseDomain string
@@ -54,7 +54,7 @@ func TestTailNode(t *testing.T) {
 	}{
 		{
 			name:       "empty-machine",
-			machine:    types.Machine{},
+			machine:    &types.Machine{},
 			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
@@ -63,7 +63,7 @@ func TestTailNode(t *testing.T) {
 		},
 		{
 			name: "minimal-machine",
-			machine: types.Machine{
+			machine: &types.Machine{
 				ID:         0,
 				MachineKey: "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 				NodeKey:    "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",

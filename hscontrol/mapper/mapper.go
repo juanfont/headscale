@@ -39,8 +39,6 @@ const (
 var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH")
 
 type Mapper struct {
-	db *db.HSDatabase
-
 	privateKey2019 *key.MachinePrivate
 	isNoise        bool
 
@@ -55,11 +53,16 @@ type Mapper struct {
 	uid     string
 	created time.Time
 	seq     uint64
+
+	// Map isnt concurrency safe, so we need to ensure
+	// only one func is accessing it over time.
+	mu    sync.Mutex
+	peers map[uint64]*types.Machine
 }
 
 func NewMapper(
 	machine *types.Machine,
-	db *db.HSDatabase,
+	peers types.Machines,
 	privateKey *key.MachinePrivate,
 	isNoise bool,
 	derpMap *tailcfg.DERPMap,
@@ -77,8 +80,6 @@ func NewMapper(
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
-		db: db,
-
 		privateKey2019: privateKey,
 		isNoise:        isNoise,
 
@@ -91,6 +92,9 @@ func NewMapper(
 		uid:     uid,
 		created: time.Now(),
 		seq:     0,
+
+		// TODO: populate
+		peers: peers.IDMap(),
 	}
 }
 
@@ -121,7 +125,7 @@ func fullMapResponse(
 	logtail bool,
 	randomClientPort bool,
 ) (*tailcfg.MapResponse, error) {
-	tailnode, err := tailNode(*machine, pol, dnsCfg, baseDomain)
+	tailnode, err := tailNode(machine, pol, dnsCfg, baseDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +164,7 @@ func fullMapResponse(
 		}
 
 		// Filter out peers that have expired.
-		peers = lo.Filter(peers, func(item types.Machine, index int) bool {
-			return !item.IsExpired()
-		})
+		peers = filterExpiredAndNotReady(peers)
 
 		// If there are filter rules present, see if there are any machines that cannot
 		// access eachother at all and remove them from the peers.
@@ -175,7 +177,7 @@ func fullMapResponse(
 		dnsConfig := generateDNSConfig(
 			dnsCfg,
 			baseDomain,
-			*machine,
+			machine,
 			peers,
 		)
 
@@ -232,7 +234,7 @@ func generateUserProfiles(
 func generateDNSConfig(
 	base *tailcfg.DNSConfig,
 	baseDomain string,
-	machine types.Machine,
+	machine *types.Machine,
 	peers types.Machines,
 ) *tailcfg.DNSConfig {
 	dnsConfig := base.Clone()
@@ -275,7 +277,7 @@ func generateDNSConfig(
 //
 // This will produce a resolver like:
 // `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
-func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine types.Machine) {
+func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine *types.Machine) {
 	for _, resolver := range resolvers {
 		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
 			attrs := url.Values{
@@ -298,20 +300,13 @@ func (m *Mapper) FullMapResponse(
 	machine *types.Machine,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	peers, err := m.db.ListPeers(machine)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot fetch peers")
-
-		return nil, err
-	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	mapResponse, err := fullMapResponse(
 		pol,
 		machine,
-		peers,
+		machineMapToList(m.peers),
 		m.baseDomain,
 		m.dnsCfg,
 		m.derpMap,
@@ -382,42 +377,33 @@ func (m *Mapper) DERPMapResponse(
 func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	machine *types.Machine,
-	machineIDs []uint64,
+	changed types.Machines,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	var err error
-	changed := make(types.Machines, len(machineIDs))
 	lastSeen := make(map[tailcfg.NodeID]bool)
 
-	peersList, err := m.db.ListPeers(machine)
-	if err != nil {
-		return nil, err
-	}
-
-	peers := peersList.IDMap()
-
-	for idx, machineID := range machineIDs {
-		changed[idx] = peers[machineID]
+	// Update our internal map.
+	for _, machine := range changed {
+		m.peers[machine.ID] = machine
 
 		// We have just seen the node, let the peers update their list.
-		lastSeen[tailcfg.NodeID(machineID)] = true
+		lastSeen[tailcfg.NodeID(machine.ID)] = true
 	}
 
 	rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
 		pol,
 		machine,
-		peersList,
+		machineMapToList(m.peers),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	changed = lo.Filter(changed, func(item types.Machine, index int) bool {
-		// Filter out nodes that are expired OR
-		// nodes that has no endpoints, this typically means they have
-		// registered, but are not configured.
-		return !item.IsExpired() || len(item.Endpoints) > 0
-	})
+	changed = filterExpiredAndNotReady(changed)
 
 	// If there are filter rules present, see if there are any machines that cannot
 	// access eachother at all and remove them from the changed.
@@ -449,6 +435,14 @@ func (m *Mapper) PeerRemovedResponse(
 	machine *types.Machine,
 	removed []tailcfg.NodeID,
 ) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// remove from our internal map
+	for _, id := range removed {
+		delete(m.peers, uint64(id))
+	}
+
 	resp := m.baseMapResponse(machine)
 	resp.PeersRemoved = removed
 
@@ -603,4 +597,23 @@ func (m *Mapper) baseMapResponse(_ *types.Machine) tailcfg.MapResponse {
 	// }
 
 	return resp
+}
+
+func machineMapToList(machines map[uint64]*types.Machine) types.Machines {
+	ret := make(types.Machines, 0)
+
+	for _, machine := range machines {
+		ret = append(ret, machine)
+	}
+
+	return ret
+}
+
+func filterExpiredAndNotReady(peers types.Machines) types.Machines {
+	return lo.Filter(peers, func(item *types.Machine, index int) bool {
+		// Filter out nodes that are expired OR
+		// nodes that has no endpoints, this typically means they have
+		// registered, but are not configured.
+		return !item.IsExpired() || len(item.Endpoints) > 0
+	})
 }

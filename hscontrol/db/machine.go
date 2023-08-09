@@ -123,7 +123,7 @@ func (hsdb *HSDatabase) GetMachine(user string, name string) (*types.Machine, er
 
 	for _, m := range machines {
 		if m.Hostname == name {
-			return &m, nil
+			return m, nil
 		}
 	}
 
@@ -267,7 +267,7 @@ func (hsdb *HSDatabase) SetTags(
 
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
-		Changed: []uint64{machine.ID},
+		Changed: types.Machines{machine},
 	}, machine.MachineKey)
 
 	return nil
@@ -303,7 +303,7 @@ func (hsdb *HSDatabase) RenameMachine(machine *types.Machine, newName string) er
 
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
-		Changed: []uint64{machine.ID},
+		Changed: types.Machines{machine},
 	}, machine.MachineKey)
 
 	return nil
@@ -332,7 +332,7 @@ func (hsdb *HSDatabase) machineSetExpiry(machine *types.Machine, expiry time.Tim
 
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
-		Changed: []uint64{machine.ID},
+		Changed: types.Machines{machine},
 	}, machine.MachineKey)
 
 	return nil
@@ -713,7 +713,7 @@ func (hsdb *HSDatabase) enableRoutes(machine *types.Machine, routeStrs ...string
 
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
-		Changed: []uint64{machine.ID},
+		Changed: types.Machines{machine},
 	}, machine.MachineKey)
 
 	return nil
@@ -807,7 +807,7 @@ func (hsdb *HSDatabase) ExpireEphemeralMachines(inactivityThreshhold time.Durati
 					Str("machine", machine.Hostname).
 					Msg("Ephemeral client removed from database")
 
-				err = hsdb.deleteMachine(&machines[idx])
+				err = hsdb.deleteMachine(machines[idx])
 				if err != nil {
 					log.Error().
 						Err(err).
@@ -860,7 +860,7 @@ func (hsdb *HSDatabase) ExpireExpiredMachines(lastCheck time.Time) time.Time {
 				expired = append(expired, tailcfg.NodeID(machine.ID))
 
 				now := time.Now()
-				err := hsdb.machineSetExpiry(&machines[index], now)
+				err := hsdb.machineSetExpiry(machines[index], now)
 				if err != nil {
 					log.Error().
 						Err(err).

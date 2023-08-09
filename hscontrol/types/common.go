@@ -124,7 +124,7 @@ type StateUpdate struct {
 
 	// Changed must be set when Type is StatePeerChanged and
 	// contain the Machine IDs of machines that has changed.
-	Changed []uint64
+	Changed Machines
 
 	// Removed must be set when Type is StatePeerRemoved and
 	// contain a list of the nodes that has been removed from
