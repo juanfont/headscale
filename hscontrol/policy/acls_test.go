@@ -979,7 +979,8 @@ func Test_expandAlias(t *testing.T) {
 		pol ACLPolicy
 	}
 	type args struct {
-		machines  types.Machines
+		machine   types.Machine
+		peers     types.Machines
 		aclPolicy ACLPolicy
 		alias     string
 	}
@@ -997,7 +998,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "*",
-				machines: types.Machines{
+				peers: types.Machines{
 					{IPAddresses: types.MachineAddresses{netip.MustParseAddr("100.64.0.1")}},
 					{
 						IPAddresses: types.MachineAddresses{
@@ -1021,7 +1022,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "group:accountant",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1062,7 +1063,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "group:hr",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1098,8 +1099,8 @@ func Test_expandAlias(t *testing.T) {
 				pol: ACLPolicy{},
 			},
 			args: args{
-				alias:    "10.0.0.3",
-				machines: types.Machines{},
+				alias: "10.0.0.3",
+				peers: types.Machines{},
 			},
 			want: set([]string{
 				"10.0.0.3",
@@ -1112,8 +1113,8 @@ func Test_expandAlias(t *testing.T) {
 				pol: ACLPolicy{},
 			},
 			args: args{
-				alias:    "10.0.0.1",
-				machines: types.Machines{},
+				alias: "10.0.0.1",
+				peers: types.Machines{},
 			},
 			want: set([]string{
 				"10.0.0.1",
@@ -1127,7 +1128,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "10.0.0.1",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
@@ -1148,7 +1149,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "10.0.0.1",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
@@ -1170,7 +1171,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("10.0.0.1"),
@@ -1195,8 +1196,8 @@ func Test_expandAlias(t *testing.T) {
 				},
 			},
 			args: args{
-				alias:    "testy",
-				machines: types.Machines{},
+				alias: "testy",
+				peers: types.Machines{},
 			},
 			want:    set([]string{}, []string{"10.0.0.132/32"}),
 			wantErr: false,
@@ -1211,8 +1212,8 @@ func Test_expandAlias(t *testing.T) {
 				},
 			},
 			args: args{
-				alias:    "homeNetwork",
-				machines: types.Machines{},
+				alias: "homeNetwork",
+				peers: types.Machines{},
 			},
 			want:    set([]string{}, []string{"192.168.1.0/24"}),
 			wantErr: false,
@@ -1224,7 +1225,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias:     "10.0.0.0/16",
-				machines:  types.Machines{},
+				peers:     types.Machines{},
 				aclPolicy: ACLPolicy{},
 			},
 			want:    set([]string{}, []string{"10.0.0.0/16"}),
@@ -1239,7 +1240,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1293,7 +1294,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1330,7 +1331,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1373,7 +1374,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1418,7 +1419,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "joe",
-				machines: types.Machines{
+				peers: types.Machines{
 					{
 						IPAddresses: types.MachineAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1462,7 +1463,8 @@ func Test_expandAlias(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := test.field.pol.ExpandAlias(
-				test.args.machines,
+				test.args.machine,
+				test.args.peers,
 				test.args.alias,
 			)
 			if (err != nil) != test.wantErr {
@@ -2421,7 +2423,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		},
 		{
 			// Investigating 699
-			// Found some machines: [ts-head-8w6paa ts-unstable-lys2ib ts-head-upcrmb ts-unstable-rlwpvr] machine=ts-head-8w6paa
+			// Found some peers: [ts-head-8w6paa ts-unstable-lys2ib ts-head-upcrmb ts-unstable-rlwpvr] machine=ts-head-8w6paa
 			// ACL rules generated ACL=[{"DstPorts":[{"Bits":null,"IP":"*","Ports":{"First":0,"Last":65535}}],"SrcIPs":["fd7a:115c:a1e0::3","100.64.0.3","fd7a:115c:a1e0::4","100.64.0.4"]}]
 			// ACL Cache Map={"100.64.0.3":{"*":{}},"100.64.0.4":{"*":{}},"fd7a:115c:a1e0::3":{"*":{}},"fd7a:115c:a1e0::4":{"*":{}}}
 			name: "issue-699-broken-star",

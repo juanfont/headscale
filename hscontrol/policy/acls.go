@@ -157,7 +157,6 @@ func (pol *ACLPolicy) generateFilterRules(
 	peers types.Machines,
 ) ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
-	machines := append(peers, *machine)
 
 	for index, acl := range pol.ACLs {
 		if acl.Action != "accept" {
@@ -166,7 +165,7 @@ func (pol *ACLPolicy) generateFilterRules(
 
 		srcIPs := []string{}
 		for srcIndex, src := range acl.Sources {
-			srcs, err := pol.expandSource(src, machines)
+			srcs, err := pol.expandSource(src, *machine, peers)
 			if err != nil {
 				log.Error().
 					Interface("src", src).
@@ -195,7 +194,8 @@ func (pol *ACLPolicy) generateFilterRules(
 			}
 
 			expanded, err := pol.ExpandAlias(
-				machines,
+				*machine,
+				peers,
 				alias,
 			)
 			if err != nil {
@@ -293,7 +293,7 @@ func (pol *ACLPolicy) generateSSHRules(
 	for index, sshACL := range pol.SSHs {
 		var dest netipx.IPSetBuilder
 		for _, src := range sshACL.Destinations {
-			expanded, err := pol.ExpandAlias(append(peers, *machine), src)
+			expanded, err := pol.ExpandAlias(*machine, peers, src)
 			if err != nil {
 				return nil, err
 			}
@@ -350,6 +350,7 @@ func (pol *ACLPolicy) generateSSHRules(
 				}
 			} else {
 				expandedSrcs, err := pol.ExpandAlias(
+					*machine,
 					peers,
 					rawSrc,
 				)
@@ -501,9 +502,10 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 // with the given src alias.
 func (pol *ACLPolicy) expandSource(
 	src string,
-	machines types.Machines,
+	machine types.Machine,
+	peers types.Machines,
 ) ([]string, error) {
-	ipSet, err := pol.ExpandAlias(machines, src)
+	ipSet, err := pol.ExpandAlias(machine, peers, src)
 	if err != nil {
 		return []string{}, err
 	}
@@ -526,7 +528,8 @@ func (pol *ACLPolicy) expandSource(
 // - a cidr
 // and transform these in IPAddresses.
 func (pol *ACLPolicy) ExpandAlias(
-	machines types.Machines,
+	machine types.Machine,
+	peers types.Machines,
 	alias string,
 ) (*netipx.IPSet, error) {
 	if isWildcard(alias) {
@@ -535,22 +538,24 @@ func (pol *ACLPolicy) ExpandAlias(
 
 	build := netipx.IPSetBuilder{}
 
+	allMachines := append(peers, machine)
+
 	log.Debug().
 		Str("alias", alias).
 		Msg("Expanding")
 
 	// if alias is a group
 	if isGroup(alias) {
-		return pol.expandIPsFromGroup(alias, machines)
+		return pol.expandIPsFromGroup(alias, allMachines)
 	}
 
 	// if alias is a tag
 	if isTag(alias) {
-		return pol.expandIPsFromTag(alias, machines)
+		return pol.expandIPsFromTag(alias, allMachines)
 	}
 
 	// if alias is a user
-	if ips, err := pol.expandIPsFromUser(alias, machines); ips != nil {
+	if ips, err := pol.expandIPsFromUser(alias, allMachines); ips != nil {
 		return ips, err
 	}
 
@@ -559,17 +564,17 @@ func (pol *ACLPolicy) ExpandAlias(
 	if h, ok := pol.Hosts[alias]; ok {
 		log.Trace().Str("host", h.String()).Msg("ExpandAlias got hosts entry")
 
-		return pol.ExpandAlias(machines, h.String())
+		return pol.ExpandAlias(machine, peers, h.String())
 	}
 
 	// if alias is an IP
 	if ip, err := netip.ParseAddr(alias); err == nil {
-		return pol.expandIPsFromSingleIP(ip, machines)
+		return pol.expandIPsFromSingleIP(ip, allMachines)
 	}
 
 	// if alias is an IP Prefix (CIDR)
 	if prefix, err := netip.ParsePrefix(alias); err == nil {
-		return pol.expandIPsFromIPPrefix(prefix, machines)
+		return pol.expandIPsFromIPPrefix(prefix, allMachines)
 	}
 
 	log.Warn().Msgf("No IPs found with the alias %v", alias)
@@ -869,6 +874,10 @@ func isGroup(str string) bool {
 
 func isTag(str string) bool {
 	return strings.HasPrefix(str, "tag:")
+}
+
+func isAutogroup(str string) bool {
+	return strings.HasPrefix(str, "autogroup:")
 }
 
 // TagsOfMachine will return the tags of the current machine.
