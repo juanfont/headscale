@@ -25,6 +25,14 @@ message GetRoutesResponse {
     repeated Route routes = 1;
 }
 
+message GetRouteRequest {
+    uint64 route_id = 1;
+}
+
+message GetRouteResponse {
+    Route route = 1;
+}
+
 message EnableRouteRequest {
     uint64 route_id = 1;
 }

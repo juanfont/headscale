@@ -37,6 +37,7 @@ const (
 	HeadscaleService_ListMachines_FullMethodName       = "/headscale.v1.HeadscaleService/ListMachines"
 	HeadscaleService_MoveMachine_FullMethodName        = "/headscale.v1.HeadscaleService/MoveMachine"
 	HeadscaleService_GetRoutes_FullMethodName          = "/headscale.v1.HeadscaleService/GetRoutes"
+	HeadscaleService_GetRoute_FullMethodName           = "/headscale.v1.HeadscaleService/GetRoute"
 	HeadscaleService_EnableRoute_FullMethodName        = "/headscale.v1.HeadscaleService/EnableRoute"
 	HeadscaleService_DisableRoute_FullMethodName       = "/headscale.v1.HeadscaleService/DisableRoute"
 	HeadscaleService_GetMachineRoutes_FullMethodName   = "/headscale.v1.HeadscaleService/GetMachineRoutes"
@@ -72,6 +73,7 @@ type HeadscaleServiceClient interface {
 	MoveMachine(ctx context.Context, in *MoveMachineRequest, opts ...grpc.CallOption) (*MoveMachineResponse, error)
 	// --- Route start ---
 	GetRoutes(ctx context.Context, in *GetRoutesRequest, opts ...grpc.CallOption) (*GetRoutesResponse, error)
+	GetRoute(ctx context.Context, in *GetRouteRequest, opts ...grpc.CallOption) (*GetRouteResponse, error)
 	EnableRoute(ctx context.Context, in *EnableRouteRequest, opts ...grpc.CallOption) (*EnableRouteResponse, error)
 	DisableRoute(ctx context.Context, in *DisableRouteRequest, opts ...grpc.CallOption) (*DisableRouteResponse, error)
 	GetMachineRoutes(ctx context.Context, in *GetMachineRoutesRequest, opts ...grpc.CallOption) (*GetMachineRoutesResponse, error)
@@ -252,6 +254,15 @@ func (c *headscaleServiceClient) GetRoutes(ctx context.Context, in *GetRoutesReq
 	return out, nil
 }
 
+func (c *headscaleServiceClient) GetRoute(ctx context.Context, in *GetRouteRequest, opts ...grpc.CallOption) (*GetRouteResponse, error) {
+	out := new(GetRouteResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_GetRoute_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *headscaleServiceClient) EnableRoute(ctx context.Context, in *EnableRouteRequest, opts ...grpc.CallOption) (*EnableRouteResponse, error) {
 	out := new(EnableRouteResponse)
 	err := c.cc.Invoke(ctx, HeadscaleService_EnableRoute_FullMethodName, in, out, opts...)
@@ -341,6 +352,7 @@ type HeadscaleServiceServer interface {
 	MoveMachine(context.Context, *MoveMachineRequest) (*MoveMachineResponse, error)
 	// --- Route start ---
 	GetRoutes(context.Context, *GetRoutesRequest) (*GetRoutesResponse, error)
+	GetRoute(context.Context, *GetRouteRequest) (*GetRouteResponse, error)
 	EnableRoute(context.Context, *EnableRouteRequest) (*EnableRouteResponse, error)
 	DisableRoute(context.Context, *DisableRouteRequest) (*DisableRouteResponse, error)
 	GetMachineRoutes(context.Context, *GetMachineRoutesRequest) (*GetMachineRoutesResponse, error)
@@ -409,6 +421,9 @@ func (UnimplementedHeadscaleServiceServer) MoveMachine(context.Context, *MoveMac
 }
 func (UnimplementedHeadscaleServiceServer) GetRoutes(context.Context, *GetRoutesRequest) (*GetRoutesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRoutes not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) GetRoute(context.Context, *GetRouteRequest) (*GetRouteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRoute not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) EnableRoute(context.Context, *EnableRouteRequest) (*EnableRouteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EnableRoute not implemented")
@@ -768,6 +783,24 @@ func _HeadscaleService_GetRoutes_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_GetRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).GetRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HeadscaleService_GetRoute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).GetRoute(ctx, req.(*GetRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HeadscaleService_EnableRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EnableRouteRequest)
 	if err := dec(in); err != nil {
@@ -972,6 +1005,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRoutes",
 			Handler:    _HeadscaleService_GetRoutes_Handler,
+		},
+		{
+			MethodName: "GetRoute",
+			Handler:    _HeadscaleService_GetRoute_Handler,
 		},
 		{
 			MethodName: "EnableRoute",

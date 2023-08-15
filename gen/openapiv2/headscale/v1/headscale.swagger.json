@@ -536,6 +536,37 @@
         ]
       }
     },
+    "/api/v1/route/{routeId}": {
+      "get": {
+        "operationId": "HeadscaleService_GetRoute",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetRouteResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "routeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/routes": {
       "get": {
         "summary": "--- Route start ---",
@@ -1009,6 +1040,14 @@
           "items": {
             "$ref": "#/definitions/v1Route"
           }
+        }
+      }
+    },
+    "v1GetRouteResponse": {
+      "type": "object",
+      "properties": {
+        "route": {
+          "$ref": "#/definitions/v1Route"
         }
       }
     },

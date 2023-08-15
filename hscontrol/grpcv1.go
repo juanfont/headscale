@@ -380,6 +380,16 @@ func (api headscaleV1APIServer) GetRoutes(
 	}, nil
 }
 
+func (api headscaleV1APIServer) GetRoute(ctx context.Context, request *v1.GetRouteRequest) (*v1.GetRouteResponse, error) {
+	route, err := api.h.db.GetRoute(request.RouteId)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.GetRouteResponse{
+		Route: route.Proto(),
+	}, nil
+}
+
 func (api headscaleV1APIServer) EnableRoute(
 	ctx context.Context,
 	request *v1.EnableRouteRequest,

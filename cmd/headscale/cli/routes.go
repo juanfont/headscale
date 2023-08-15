@@ -29,6 +29,13 @@ func init() {
 	}
 	routesCmd.AddCommand(enableRouteCmd)
 
+	getRouteCmd.Flags().Uint64P("route", "r", 0, "Route identifier (ID)")
+	err = getRouteCmd.MarkFlagRequired("route")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	routesCmd.AddCommand(getRouteCmd)
+
 	disableRouteCmd.Flags().Uint64P("route", "r", 0, "Route identifier (ID)")
 	err = disableRouteCmd.MarkFlagRequired("route")
 	if err != nil {
@@ -136,6 +143,67 @@ var listRoutesCmd = &cobra.Command{
 	},
 }
 
+var getRouteCmd = &cobra.Command{
+	Use:   "get",
+	Short: "Get a route",
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		routeID, err := cmd.Flags().GetUint64("route")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting route id from flag: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		defer cancel()
+		defer conn.Close()
+
+		response, err := client.GetRoute(ctx, &v1.GetRouteRequest{
+			RouteId: routeID,
+		})
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot get route: %s", status.Convert(err).Message()),
+				output,
+			)
+
+			return
+		}
+		if output != "" {
+			SuccessOutput(response.Route, "", output)
+
+			return
+		}
+
+		routes := []*v1.Route{response.Route}
+
+		tableData := routesToPtables(routes)
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+
+			return
+		}
+
+		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to render pterm table: %s", err),
+				output,
+			)
+
+			return
+		}
+	},
+}
+
 var enableRouteCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Set a route as enabled",
@@ -147,7 +215,7 @@ var enableRouteCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				fmt.Sprintf("Error getting route id from flag: %s", err),
 				output,
 			)
 
@@ -190,7 +258,7 @@ var disableRouteCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				fmt.Sprintf("Error getting route id from flag: %s", err),
 				output,
 			)
 
@@ -233,7 +301,7 @@ var deleteRouteCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error getting machine id from flag: %s", err),
+				fmt.Sprintf("Error getting route id from flag: %s", err),
 				output,
 			)
 

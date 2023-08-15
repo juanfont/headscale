@@ -45,26 +45,30 @@ func (rs Routes) Prefixes() []netip.Prefix {
 	return prefixes
 }
 
+func (r *Route) Proto() *v1.Route {
+	return &v1.Route{
+		Id:         uint64(r.ID),
+		Machine:    r.Machine.Proto(),
+		Prefix:     netip.Prefix(r.Prefix).String(),
+		Advertised: r.Advertised,
+		Enabled:    r.Enabled,
+		IsPrimary:  r.IsPrimary,
+		CreatedAt:  timestamppb.New(r.CreatedAt),
+		UpdatedAt:  timestamppb.New(r.UpdatedAt),
+	}
+}
+
 func (rs Routes) Proto() []*v1.Route {
 	protoRoutes := []*v1.Route{}
 
 	for _, route := range rs {
-		protoRoute := v1.Route{
-			Id:         uint64(route.ID),
-			Machine:    route.Machine.Proto(),
-			Prefix:     netip.Prefix(route.Prefix).String(),
-			Advertised: route.Advertised,
-			Enabled:    route.Enabled,
-			IsPrimary:  route.IsPrimary,
-			CreatedAt:  timestamppb.New(route.CreatedAt),
-			UpdatedAt:  timestamppb.New(route.UpdatedAt),
-		}
+		protoRoute := route.Proto()
 
 		if route.DeletedAt.Valid {
 			protoRoute.DeletedAt = timestamppb.New(route.DeletedAt.Time)
 		}
 
-		protoRoutes = append(protoRoutes, &protoRoute)
+		protoRoutes = append(protoRoutes, protoRoute)
 	}
 
 	return protoRoutes

@@ -132,6 +132,12 @@ service HeadscaleService {
         };
     }
 
+    rpc GetRoute(GetRouteRequest) returns(GetRouteResponse) {
+        option(google.api.http) = {
+            get : "/api/v1/route/{route_id}"
+        };
+    }
+
     rpc EnableRoute(EnableRouteRequest) returns(EnableRouteResponse) {
         option(google.api.http) = {
             post : "/api/v1/routes/{route_id}/enable"

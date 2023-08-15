@@ -217,6 +217,100 @@ func (x *GetRoutesResponse) GetRoutes() []*Route {
 	return nil
 }
 
+type GetRouteRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	RouteId uint64 `protobuf:"varint,1,opt,name=route_id,json=routeId,proto3" json:"route_id,omitempty"`
+}
+
+func (x *GetRouteRequest) Reset() {
+	*x = GetRouteRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_headscale_v1_routes_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRouteRequest) ProtoMessage() {}
+
+func (x *GetRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_routes_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRouteRequest.ProtoReflect.Descriptor instead.
+func (*GetRouteRequest) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GetRouteRequest) GetRouteId() uint64 {
+	if x != nil {
+		return x.RouteId
+	}
+	return 0
+}
+
+type GetRouteResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Route *Route `protobuf:"bytes,1,opt,name=route,proto3" json:"route,omitempty"`
+}
+
+func (x *GetRouteResponse) Reset() {
+	*x = GetRouteResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_headscale_v1_routes_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetRouteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRouteResponse) ProtoMessage() {}
+
+func (x *GetRouteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_routes_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRouteResponse.ProtoReflect.Descriptor instead.
+func (*GetRouteResponse) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetRouteResponse) GetRoute() *Route {
+	if x != nil {
+		return x.Route
+	}
+	return nil
+}
+
 type EnableRouteRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -228,7 +322,7 @@ type EnableRouteRequest struct {
 func (x *EnableRouteRequest) Reset() {
 	*x = EnableRouteRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_headscale_v1_routes_proto_msgTypes[3]
+		mi := &file_headscale_v1_routes_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -241,7 +335,7 @@ func (x *EnableRouteRequest) String() string {
 func (*EnableRouteRequest) ProtoMessage() {}
 
 func (x *EnableRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_routes_proto_msgTypes[3]
+	mi := &file_headscale_v1_routes_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -254,7 +348,7 @@ func (x *EnableRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableRouteRequest.ProtoReflect.Descriptor instead.
 func (*EnableRouteRequest) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{3}
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *EnableRouteRequest) GetRouteId() uint64 {
@@ -273,7 +367,7 @@ type EnableRouteResponse struct {
 func (x *EnableRouteResponse) Reset() {
 	*x = EnableRouteResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_headscale_v1_routes_proto_msgTypes[4]
+		mi := &file_headscale_v1_routes_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -286,7 +380,7 @@ func (x *EnableRouteResponse) String() string {
 func (*EnableRouteResponse) ProtoMessage() {}
 
 func (x *EnableRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_routes_proto_msgTypes[4]
+	mi := &file_headscale_v1_routes_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -299,7 +393,7 @@ func (x *EnableRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableRouteResponse.ProtoReflect.Descriptor instead.
 func (*EnableRouteResponse) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{4}
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{6}
 }
 
 type DisableRouteRequest struct {
@@ -313,7 +407,7 @@ type DisableRouteRequest struct {
 func (x *DisableRouteRequest) Reset() {
 	*x = DisableRouteRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_headscale_v1_routes_proto_msgTypes[5]
+		mi := &file_headscale_v1_routes_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -326,7 +420,7 @@ func (x *DisableRouteRequest) String() string {
 func (*DisableRouteRequest) ProtoMessage() {}
 
 func (x *DisableRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_routes_proto_msgTypes[5]
+	mi := &file_headscale_v1_routes_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -339,7 +433,7 @@ func (x *DisableRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableRouteRequest.ProtoReflect.Descriptor instead.
 func (*DisableRouteRequest) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{5}
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DisableRouteRequest) GetRouteId() uint64 {
@@ -358,7 +452,7 @@ type DisableRouteResponse struct {
 func (x *DisableRouteResponse) Reset() {
 	*x = DisableRouteResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_headscale_v1_routes_proto_msgTypes[6]
+		mi := &file_headscale_v1_routes_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -371,7 +465,7 @@ func (x *DisableRouteResponse) String() string {
 func (*DisableRouteResponse) ProtoMessage() {}
 
 func (x *DisableRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_routes_proto_msgTypes[6]
+	mi := &file_headscale_v1_routes_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -384,7 +478,7 @@ func (x *DisableRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableRouteResponse.ProtoReflect.Descriptor instead.
 func (*DisableRouteResponse) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{6}
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{8}
 }
 
 type GetMachineRoutesRequest struct {
@@ -398,7 +492,7 @@ type GetMachineRoutesRequest struct {
 func (x *GetMachineRoutesRequest) Reset() {
 	*x = GetMachineRoutesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_headscale_v1_routes_proto_msgTypes[7]
+		mi := &file_headscale_v1_routes_proto_msgTypes[9]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -411,7 +505,7 @@ func (x *GetMachineRoutesRequest) String() string {
 func (*GetMachineRoutesRequest) ProtoMessage() {}
 
 func (x *GetMachineRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_routes_proto_msgTypes[7]
+	mi := &file_headscale_v1_routes_proto_msgTypes[9]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -424,7 +518,7 @@ func (x *GetMachineRoutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMachineRoutesRequest.ProtoReflect.Descriptor instead.
 func (*GetMachineRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{7}
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetMachineRoutesRequest) GetMachineId() uint64 {
@@ -445,7 +539,7 @@ type GetMachineRoutesResponse struct {
 func (x *GetMachineRoutesResponse) Reset() {
 	*x = GetMachineRoutesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_headscale_v1_routes_proto_msgTypes[8]
+		mi := &file_headscale_v1_routes_proto_msgTypes[10]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -458,7 +552,7 @@ func (x *GetMachineRoutesResponse) String() string {
 func (*GetMachineRoutesResponse) ProtoMessage() {}
 
 func (x *GetMachineRoutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_routes_proto_msgTypes[8]
+	mi := &file_headscale_v1_routes_proto_msgTypes[10]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -471,7 +565,7 @@ func (x *GetMachineRoutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMachineRoutesResponse.ProtoReflect.Descriptor instead.
 func (*GetMachineRoutesResponse) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{8}
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetMachineRoutesResponse) GetRoutes() []*Route {
@@ -492,7 +586,7 @@ type DeleteRouteRequest struct {
 func (x *DeleteRouteRequest) Reset() {
 	*x = DeleteRouteRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_headscale_v1_routes_proto_msgTypes[9]
+		mi := &file_headscale_v1_routes_proto_msgTypes[11]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -505,7 +599,7 @@ func (x *DeleteRouteRequest) String() string {
 func (*DeleteRouteRequest) ProtoMessage() {}
 
 func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_routes_proto_msgTypes[9]
+	mi := &file_headscale_v1_routes_proto_msgTypes[11]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -518,7 +612,7 @@ func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRouteRequest) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{9}
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteRouteRequest) GetRouteId() uint64 {
@@ -537,7 +631,7 @@ type DeleteRouteResponse struct {
 func (x *DeleteRouteResponse) Reset() {
 	*x = DeleteRouteResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_headscale_v1_routes_proto_msgTypes[10]
+		mi := &file_headscale_v1_routes_proto_msgTypes[12]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -550,7 +644,7 @@ func (x *DeleteRouteResponse) String() string {
 func (*DeleteRouteResponse) ProtoMessage() {}
 
 func (x *DeleteRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_routes_proto_msgTypes[10]
+	mi := &file_headscale_v1_routes_proto_msgTypes[12]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -563,7 +657,7 @@ func (x *DeleteRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteRouteResponse) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{10}
+	return file_headscale_v1_routes_proto_rawDescGZIP(), []int{12}
 }
 
 var File_headscale_v1_routes_proto protoreflect.FileDescriptor
@@ -603,32 +697,39 @@ var file_headscale_v1_routes_proto_rawDesc = []byte{
 	0x75, 0x74, 0x65, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2b, 0x0a, 0x06,
 	0x72, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x68,
 	0x65, 0x61, 0x64, 0x73, 0x63, 0x61, 0x6c, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x6f, 0x75, 0x74,
-	0x65, 0x52, 0x06, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x22, 0x2f, 0x0a, 0x12, 0x45, 0x6e, 0x61,
-	0x62, 0x6c, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12,
-	0x19, 0x0a, 0x08, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x04, 0x52, 0x07, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x49, 0x64, 0x22, 0x15, 0x0a, 0x13, 0x45, 0x6e,
-	0x61, 0x62, 0x6c, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
-	0x65, 0x22, 0x30, 0x0a, 0x13, 0x44, 0x69, 0x73, 0x61, 0x62, 0x6c, 0x65, 0x52, 0x6f, 0x75, 0x74,
-	0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x72, 0x6f, 0x75, 0x74,
-	0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x07, 0x72, 0x6f, 0x75, 0x74,
-	0x65, 0x49, 0x64, 0x22, 0x16, 0x0a, 0x14, 0x44, 0x69, 0x73, 0x61, 0x62, 0x6c, 0x65, 0x52, 0x6f,
-	0x75, 0x74, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x38, 0x0a, 0x17, 0x47,
-	0x65, 0x74, 0x4d, 0x61, 0x63, 0x68, 0x69, 0x6e, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x1d, 0x0a, 0x0a, 0x6d, 0x61, 0x63, 0x68, 0x69, 0x6e,
-	0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x09, 0x6d, 0x61, 0x63, 0x68,
-	0x69, 0x6e, 0x65, 0x49, 0x64, 0x22, 0x47, 0x0a, 0x18, 0x47, 0x65, 0x74, 0x4d, 0x61, 0x63, 0x68,
-	0x69, 0x6e, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
-	0x65, 0x12, 0x2b, 0x0a, 0x06, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28,
-	0x0b, 0x32, 0x13, 0x2e, 0x68, 0x65, 0x61, 0x64, 0x73, 0x63, 0x61, 0x6c, 0x65, 0x2e, 0x76, 0x31,
-	0x2e, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x06, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x22, 0x2f,
-	0x0a, 0x12, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65, 0x71,
-	0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x5f, 0x69, 0x64,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x07, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x49, 0x64, 0x22,
-	0x15, 0x0a, 0x13, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
-	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6a, 0x75, 0x61, 0x6e, 0x66, 0x6f, 0x6e, 0x74, 0x2f, 0x68, 0x65,
-	0x61, 0x64, 0x73, 0x63, 0x61, 0x6c, 0x65, 0x2f, 0x67, 0x65, 0x6e, 0x2f, 0x67, 0x6f, 0x2f, 0x76,
-	0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x65, 0x52, 0x06, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x22, 0x2c, 0x0a, 0x0f, 0x47, 0x65, 0x74,
+	0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08,
+	0x72, 0x6f, 0x75, 0x74, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x07,
+	0x72, 0x6f, 0x75, 0x74, 0x65, 0x49, 0x64, 0x22, 0x3d, 0x0a, 0x10, 0x47, 0x65, 0x74, 0x52, 0x6f,
+	0x75, 0x74, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x29, 0x0a, 0x05, 0x72,
+	0x6f, 0x75, 0x74, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x68, 0x65, 0x61,
+	0x64, 0x73, 0x63, 0x61, 0x6c, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52,
+	0x05, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x22, 0x2f, 0x0a, 0x12, 0x45, 0x6e, 0x61, 0x62, 0x6c, 0x65,
+	0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08,
+	0x72, 0x6f, 0x75, 0x74, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x07,
+	0x72, 0x6f, 0x75, 0x74, 0x65, 0x49, 0x64, 0x22, 0x15, 0x0a, 0x13, 0x45, 0x6e, 0x61, 0x62, 0x6c,
+	0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x30,
+	0x0a, 0x13, 0x44, 0x69, 0x73, 0x61, 0x62, 0x6c, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x5f, 0x69,
+	0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x07, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x49, 0x64,
+	0x22, 0x16, 0x0a, 0x14, 0x44, 0x69, 0x73, 0x61, 0x62, 0x6c, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x38, 0x0a, 0x17, 0x47, 0x65, 0x74, 0x4d,
+	0x61, 0x63, 0x68, 0x69, 0x6e, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x12, 0x1d, 0x0a, 0x0a, 0x6d, 0x61, 0x63, 0x68, 0x69, 0x6e, 0x65, 0x5f, 0x69,
+	0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x09, 0x6d, 0x61, 0x63, 0x68, 0x69, 0x6e, 0x65,
+	0x49, 0x64, 0x22, 0x47, 0x0a, 0x18, 0x47, 0x65, 0x74, 0x4d, 0x61, 0x63, 0x68, 0x69, 0x6e, 0x65,
+	0x52, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2b,
+	0x0a, 0x06, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x13,
+	0x2e, 0x68, 0x65, 0x61, 0x64, 0x73, 0x63, 0x61, 0x6c, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x6f,
+	0x75, 0x74, 0x65, 0x52, 0x06, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x73, 0x22, 0x2f, 0x0a, 0x12, 0x44,
+	0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x12, 0x19, 0x0a, 0x08, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x04, 0x52, 0x07, 0x72, 0x6f, 0x75, 0x74, 0x65, 0x49, 0x64, 0x22, 0x15, 0x0a, 0x13,
+	0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x6f, 0x75, 0x74, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f,
+	0x6d, 0x2f, 0x6a, 0x75, 0x61, 0x6e, 0x66, 0x6f, 0x6e, 0x74, 0x2f, 0x68, 0x65, 0x61, 0x64, 0x73,
+	0x63, 0x61, 0x6c, 0x65, 0x2f, 0x67, 0x65, 0x6e, 0x2f, 0x67, 0x6f, 0x2f, 0x76, 0x31, 0x62, 0x06,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -643,34 +744,37 @@ func file_headscale_v1_routes_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_routes_proto_rawDescData
 }
 
-var file_headscale_v1_routes_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_headscale_v1_routes_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_headscale_v1_routes_proto_goTypes = []interface{}{
 	(*Route)(nil),                    // 0: headscale.v1.Route
 	(*GetRoutesRequest)(nil),         // 1: headscale.v1.GetRoutesRequest
 	(*GetRoutesResponse)(nil),        // 2: headscale.v1.GetRoutesResponse
-	(*EnableRouteRequest)(nil),       // 3: headscale.v1.EnableRouteRequest
-	(*EnableRouteResponse)(nil),      // 4: headscale.v1.EnableRouteResponse
-	(*DisableRouteRequest)(nil),      // 5: headscale.v1.DisableRouteRequest
-	(*DisableRouteResponse)(nil),     // 6: headscale.v1.DisableRouteResponse
-	(*GetMachineRoutesRequest)(nil),  // 7: headscale.v1.GetMachineRoutesRequest
-	(*GetMachineRoutesResponse)(nil), // 8: headscale.v1.GetMachineRoutesResponse
-	(*DeleteRouteRequest)(nil),       // 9: headscale.v1.DeleteRouteRequest
-	(*DeleteRouteResponse)(nil),      // 10: headscale.v1.DeleteRouteResponse
-	(*Machine)(nil),                  // 11: headscale.v1.Machine
-	(*timestamppb.Timestamp)(nil),    // 12: google.protobuf.Timestamp
+	(*GetRouteRequest)(nil),          // 3: headscale.v1.GetRouteRequest
+	(*GetRouteResponse)(nil),         // 4: headscale.v1.GetRouteResponse
+	(*EnableRouteRequest)(nil),       // 5: headscale.v1.EnableRouteRequest
+	(*EnableRouteResponse)(nil),      // 6: headscale.v1.EnableRouteResponse
+	(*DisableRouteRequest)(nil),      // 7: headscale.v1.DisableRouteRequest
+	(*DisableRouteResponse)(nil),     // 8: headscale.v1.DisableRouteResponse
+	(*GetMachineRoutesRequest)(nil),  // 9: headscale.v1.GetMachineRoutesRequest
+	(*GetMachineRoutesResponse)(nil), // 10: headscale.v1.GetMachineRoutesResponse
+	(*DeleteRouteRequest)(nil),       // 11: headscale.v1.DeleteRouteRequest
+	(*DeleteRouteResponse)(nil),      // 12: headscale.v1.DeleteRouteResponse
+	(*Machine)(nil),                  // 13: headscale.v1.Machine
+	(*timestamppb.Timestamp)(nil),    // 14: google.protobuf.Timestamp
 }
 var file_headscale_v1_routes_proto_depIdxs = []int32{
-	11, // 0: headscale.v1.Route.machine:type_name -> headscale.v1.Machine
-	12, // 1: headscale.v1.Route.created_at:type_name -> google.protobuf.Timestamp
-	12, // 2: headscale.v1.Route.updated_at:type_name -> google.protobuf.Timestamp
-	12, // 3: headscale.v1.Route.deleted_at:type_name -> google.protobuf.Timestamp
+	13, // 0: headscale.v1.Route.machine:type_name -> headscale.v1.Machine
+	14, // 1: headscale.v1.Route.created_at:type_name -> google.protobuf.Timestamp
+	14, // 2: headscale.v1.Route.updated_at:type_name -> google.protobuf.Timestamp
+	14, // 3: headscale.v1.Route.deleted_at:type_name -> google.protobuf.Timestamp
 	0,  // 4: headscale.v1.GetRoutesResponse.routes:type_name -> headscale.v1.Route
-	0,  // 5: headscale.v1.GetMachineRoutesResponse.routes:type_name -> headscale.v1.Route
-	6,  // [6:6] is the sub-list for method output_type
-	6,  // [6:6] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	0,  // 5: headscale.v1.GetRouteResponse.route:type_name -> headscale.v1.Route
+	0,  // 6: headscale.v1.GetMachineRoutesResponse.routes:type_name -> headscale.v1.Route
+	7,  // [7:7] is the sub-list for method output_type
+	7,  // [7:7] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_headscale_v1_routes_proto_init() }
@@ -717,7 +821,7 @@ func file_headscale_v1_routes_proto_init() {
 			}
 		}
 		file_headscale_v1_routes_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*EnableRouteRequest); i {
+			switch v := v.(*GetRouteRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -729,7 +833,7 @@ func file_headscale_v1_routes_proto_init() {
 			}
 		}
 		file_headscale_v1_routes_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*EnableRouteResponse); i {
+			switch v := v.(*GetRouteResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -741,7 +845,7 @@ func file_headscale_v1_routes_proto_init() {
 			}
 		}
 		file_headscale_v1_routes_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*DisableRouteRequest); i {
+			switch v := v.(*EnableRouteRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -753,7 +857,7 @@ func file_headscale_v1_routes_proto_init() {
 			}
 		}
 		file_headscale_v1_routes_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*DisableRouteResponse); i {
+			switch v := v.(*EnableRouteResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -765,7 +869,7 @@ func file_headscale_v1_routes_proto_init() {
 			}
 		}
 		file_headscale_v1_routes_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetMachineRoutesRequest); i {
+			switch v := v.(*DisableRouteRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -777,7 +881,7 @@ func file_headscale_v1_routes_proto_init() {
 			}
 		}
 		file_headscale_v1_routes_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetMachineRoutesResponse); i {
+			switch v := v.(*DisableRouteResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -789,7 +893,7 @@ func file_headscale_v1_routes_proto_init() {
 			}
 		}
 		file_headscale_v1_routes_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*DeleteRouteRequest); i {
+			switch v := v.(*GetMachineRoutesRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -801,6 +905,30 @@ func file_headscale_v1_routes_proto_init() {
 			}
 		}
 		file_headscale_v1_routes_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetMachineRoutesResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_headscale_v1_routes_proto_msgTypes[11].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*DeleteRouteRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_headscale_v1_routes_proto_msgTypes[12].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*DeleteRouteResponse); i {
 			case 0:
 				return &v.state
@@ -819,7 +947,7 @@ func file_headscale_v1_routes_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_headscale_v1_routes_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
