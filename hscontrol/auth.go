@@ -551,16 +551,13 @@ func (h *Headscale) handleMachineLogOut(
 		return
 	}
 
-	if machine.IsEphemeral() {
-		err = h.db.HardDeleteMachine(&machine)
-		if err != nil {
-			log.Error().
-				Err(err).
-				Str("machine", machine.Hostname).
-				Msg("Cannot delete ephemeral machine from the database")
-		}
-
-		return
+	// Machine is not need after logout
+	err = h.db.HardDeleteMachine(&machine)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("machine", machine.Hostname).
+			Msg("Cannot delete ephemeral machine from the database")
 	}
 
 	log.Info().
