@@ -34,8 +34,13 @@ var (
 	errTailscaleWrongPeerCount         = errors.New("wrong peer count")
 	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
 	errTailscaleNotConnected           = errors.New("tailscale not connected")
+	errTailscaledNotReadyForLogin      = errors.New("tailscaled not ready for login")
 	errTailscaleNotLoggedOut           = errors.New("tailscale not logged out")
 )
+
+func errTailscaleStatus(hostname string, err error) error {
+	return fmt.Errorf("%s failed to fetch tailscale status: %w", hostname, err)
+}
 
 // TailscaleInContainer is an implementation of TailscaleClient which
 // sets up a Tailscale instance inside a container.
@@ -165,7 +170,7 @@ func New(
 		network: network,
 
 		withEntrypoint: []string{
-			"/bin/bash",
+			"/bin/sh",
 			"-c",
 			"/bin/sleep 3 ; update-ca-certificates ; tailscaled --tun=tsdev",
 		},
@@ -204,16 +209,48 @@ func New(
 		return nil, err
 	}
 
-	container, err := pool.BuildAndRunWithBuildOptions(
-		createTailscaleBuildOptions(version),
-		tailscaleOptions,
-		dockertestutil.DockerRestartPolicy,
-		dockertestutil.DockerAllowLocalIPv6,
-		dockertestutil.DockerAllowNetworkAdministration,
-	)
+	var container *dockertest.Resource
+	switch version {
+	case "head":
+		buildOptions := &dockertest.BuildOptions{
+			Dockerfile: "Dockerfile.tailscale-HEAD",
+			ContextDir: dockerContextPath,
+			BuildArgs:  []docker.BuildArg{},
+		}
+
+		container, err = pool.BuildAndRunWithBuildOptions(
+			buildOptions,
+			tailscaleOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+	case "unstable":
+		tailscaleOptions.Repository = "tailscale/tailscale"
+		tailscaleOptions.Tag = version
+
+		container, err = pool.RunWithOptions(
+			tailscaleOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+	default:
+		tailscaleOptions.Repository = "tailscale/tailscale"
+		tailscaleOptions.Tag = "v" + version
+
+		container, err = pool.RunWithOptions(
+			tailscaleOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf(
-			"could not start tailscale container (version: %s): %w",
+			"%s could not start tailscale container (version: %s): %w",
+			hostname,
 			version,
 			err,
 		)
@@ -270,7 +307,7 @@ func (t *TailscaleInContainer) Execute(
 		options...,
 	)
 	if err != nil {
-		log.Printf("command stderr: %s\n", stderr)
+		// log.Printf("command stderr: %s\n", stderr)
 
 		if stdout != "" {
 			log.Printf("command stdout: %s\n", stdout)
@@ -288,18 +325,15 @@ func (t *TailscaleInContainer) Execute(
 
 // Up runs the login routine on the given Tailscale instance.
 // This login mechanism uses the authorised key for authentication.
-func (t *TailscaleInContainer) Up(
+func (t *TailscaleInContainer) Login(
 	loginServer, authKey string,
 ) error {
 	command := []string{
 		"tailscale",
 		"up",
-		"-login-server",
-		loginServer,
-		"--authkey",
-		authKey,
-		"--hostname",
-		t.hostname,
+		"--login-server=" + loginServer,
+		"--authkey=" + authKey,
+		"--hostname=" + t.hostname,
 	}
 
 	if t.withSSH {
@@ -313,7 +347,12 @@ func (t *TailscaleInContainer) Up(
 	}
 
 	if _, _, err := t.Execute(command); err != nil {
-		return fmt.Errorf("failed to join tailscale client: %w", err)
+		return fmt.Errorf(
+			"%s failed to join tailscale client (%s): %w",
+			t.hostname,
+			strings.Join(command, " "),
+			err,
+		)
 	}
 
 	return nil
@@ -321,16 +360,14 @@ func (t *TailscaleInContainer) Up(
 
 // Up runs the login routine on the given Tailscale instance.
 // This login mechanism uses web + command line flow for authentication.
-func (t *TailscaleInContainer) UpWithLoginURL(
+func (t *TailscaleInContainer) LoginWithURL(
 	loginServer string,
 ) (*url.URL, error) {
 	command := []string{
 		"tailscale",
 		"up",
-		"-login-server",
-		loginServer,
-		"--hostname",
-		t.hostname,
+		"--login-server=" + loginServer,
+		"--hostname=" + t.hostname,
 	}
 
 	_, stderr, err := t.Execute(command)
@@ -378,7 +415,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 
 	result, _, err := t.Execute(command)
 	if err != nil {
-		return []netip.Addr{}, fmt.Errorf("failed to join tailscale client: %w", err)
+		return []netip.Addr{}, fmt.Errorf("%s failed to join tailscale client: %w", t.hostname, err)
 	}
 
 	for _, address := range strings.Split(result, "\n") {
@@ -432,17 +469,35 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 	return status.Self.DNSName, nil
 }
 
-// WaitForReady blocks until the Tailscale (tailscaled) instance is ready
-// to login or be used.
-func (t *TailscaleInContainer) WaitForReady() error {
+// WaitForNeedsLogin blocks until the Tailscale (tailscaled) instance has
+// started and needs to be logged into.
+func (t *TailscaleInContainer) WaitForNeedsLogin() error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
 		if err != nil {
-			return fmt.Errorf("failed to fetch tailscale status: %w", err)
+			return errTailscaleStatus(t.hostname, err)
 		}
 
-		if status.CurrentTailnet != nil {
+		// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
+		// https://github.com/tailscale/tailscale/pull/3865
+		//
+		// Before that, we can check the BackendState to see if the
+		// tailscaled daemon is connected to the control system.
+		if status.BackendState == "NeedsLogin" {
 			return nil
+		}
+
+		return errTailscaledNotReadyForLogin
+	})
+}
+
+// WaitForRunning blocks until the Tailscale (tailscaled) instance is logged in
+// and ready to be used.
+func (t *TailscaleInContainer) WaitForRunning() error {
+	return t.pool.Retry(func() error {
+		status, err := t.Status()
+		if err != nil {
+			return errTailscaleStatus(t.hostname, err)
 		}
 
 		// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
@@ -460,10 +515,10 @@ func (t *TailscaleInContainer) WaitForReady() error {
 
 // WaitForLogout blocks until the Tailscale instance has logged out.
 func (t *TailscaleInContainer) WaitForLogout() error {
-	return t.pool.Retry(func() error {
+	return fmt.Errorf("%s err: %w", t.hostname, t.pool.Retry(func() error {
 		status, err := t.Status()
 		if err != nil {
-			return fmt.Errorf("failed to fetch tailscale status: %w", err)
+			return errTailscaleStatus(t.hostname, err)
 		}
 
 		if status.CurrentTailnet == nil {
@@ -471,7 +526,7 @@ func (t *TailscaleInContainer) WaitForLogout() error {
 		}
 
 		return errTailscaleNotLoggedOut
-	})
+	}))
 }
 
 // WaitForPeers blocks until N number of peers is present in the
@@ -480,11 +535,17 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
 		if err != nil {
-			return fmt.Errorf("failed to fetch tailscale status: %w", err)
+			return errTailscaleStatus(t.hostname, err)
 		}
 
 		if peers := status.Peers(); len(peers) != expected {
-			return errTailscaleWrongPeerCount
+			return fmt.Errorf(
+				"%s err: %w expected %d, got %d",
+				t.hostname,
+				errTailscaleWrongPeerCount,
+				expected,
+				len(peers),
+			)
 		}
 
 		return nil
@@ -682,48 +743,4 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 // WriteFile save file inside the Tailscale container.
 func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
-}
-
-func createTailscaleBuildOptions(version string) *dockertest.BuildOptions {
-	var tailscaleBuildOptions *dockertest.BuildOptions
-	switch version {
-	case "head":
-		tailscaleBuildOptions = &dockertest.BuildOptions{
-			Dockerfile: "Dockerfile.tailscale-HEAD",
-			ContextDir: dockerContextPath,
-			BuildArgs:  []docker.BuildArg{},
-		}
-	case "unstable":
-		tailscaleBuildOptions = &dockertest.BuildOptions{
-			Dockerfile: "Dockerfile.tailscale",
-			ContextDir: dockerContextPath,
-			BuildArgs: []docker.BuildArg{
-				{
-					Name:  "TAILSCALE_VERSION",
-					Value: "*", // Installs the latest version https://askubuntu.com/a/824926
-				},
-				{
-					Name:  "TAILSCALE_CHANNEL",
-					Value: "unstable",
-				},
-			},
-		}
-	default:
-		tailscaleBuildOptions = &dockertest.BuildOptions{
-			Dockerfile: "Dockerfile.tailscale",
-			ContextDir: dockerContextPath,
-			BuildArgs: []docker.BuildArg{
-				{
-					Name:  "TAILSCALE_VERSION",
-					Value: version,
-				},
-				{
-					Name:  "TAILSCALE_CHANNEL",
-					Value: "stable",
-				},
-			},
-		}
-	}
-
-	return tailscaleBuildOptions
 }

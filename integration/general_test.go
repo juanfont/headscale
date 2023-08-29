@@ -21,9 +21,8 @@ func TestPingAllByIP(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	if err != nil {
-		t.Errorf("failed to create scenario: %s", err)
-	}
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"user1": len(TailscaleVersions),
@@ -31,24 +30,16 @@ func TestPingAllByIP(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
-	if err != nil {
-		t.Errorf("failed to create headscale environment: %s", err)
-	}
+	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClientIPs(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -56,11 +47,6 @@ func TestPingAllByIP(t *testing.T) {
 
 	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
-
-	err = scenario.Shutdown()
-	if err != nil {
-		t.Errorf("failed to tear down scenario: %s", err)
-	}
 }
 
 func TestAuthKeyLogoutAndRelogin(t *testing.T) {
@@ -68,9 +54,8 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	if err != nil {
-		t.Errorf("failed to create scenario: %s", err)
-	}
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"user1": len(TailscaleVersions),
@@ -78,25 +63,19 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
-	if err != nil {
-		t.Errorf("failed to create headscale environment: %s", err)
-	}
+	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	clientIPs := make(map[TailscaleClient][]netip.Addr)
 	for _, client := range allClients {
 		ips, err := client.IPs()
 		if err != nil {
-			t.Errorf("failed to get IPs for client %s: %s", client.Hostname(), err)
+			t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 		}
 		clientIPs[client] = ips
 	}
@@ -104,45 +83,38 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	for _, client := range allClients {
 		err := client.Logout()
 		if err != nil {
-			t.Errorf("failed to logout client %s: %s", client.Hostname(), err)
+			t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
 		}
 	}
 
-	scenario.WaitForTailscaleLogout()
+	err = scenario.WaitForTailscaleLogout()
+	assertNoErrLogout(t, err)
 
 	t.Logf("all clients logged out")
 
 	headscale, err := scenario.Headscale()
-	if err != nil {
-		t.Errorf("failed to get headscale server: %s", err)
-	}
+	assertNoErrGetHeadscale(t, err)
 
 	for userName := range spec {
 		key, err := scenario.CreatePreAuthKey(userName, true, false)
 		if err != nil {
-			t.Errorf("failed to create pre-auth key for user %s: %s", userName, err)
+			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 		}
 
 		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
-			t.Errorf("failed to run tailscale up for user %s: %s", userName, err)
+			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
 		}
 	}
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	allClients, err = scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClientIPs(t, err)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -154,12 +126,12 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	for _, client := range allClients {
 		ips, err := client.IPs()
 		if err != nil {
-			t.Errorf("failed to get IPs for client %s: %s", client.Hostname(), err)
+			t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 		}
 
 		// lets check if the IPs are the same
 		if len(ips) != len(clientIPs[client]) {
-			t.Errorf("IPs changed for client %s", client.Hostname())
+			t.Fatalf("IPs changed for client %s", client.Hostname())
 		}
 
 		for _, ip := range ips {
@@ -173,7 +145,7 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 			}
 
 			if !found {
-				t.Errorf(
+				t.Fatalf(
 					"IPs changed for client %s. Used to be %v now %v",
 					client.Hostname(),
 					clientIPs[client],
@@ -182,13 +154,6 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 			}
 		}
 	}
-
-	t.Logf("all clients IPs are the same")
-
-	err = scenario.Shutdown()
-	if err != nil {
-		t.Errorf("failed to tear down scenario: %s", err)
-	}
 }
 
 func TestEphemeral(t *testing.T) {
@@ -196,9 +161,8 @@ func TestEphemeral(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	if err != nil {
-		t.Errorf("failed to create scenario: %s", err)
-	}
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"user1": len(TailscaleVersions),
@@ -206,46 +170,38 @@ func TestEphemeral(t *testing.T) {
 	}
 
 	headscale, err := scenario.Headscale(hsic.WithTestName("ephemeral"))
-	if err != nil {
-		t.Errorf("failed to create headscale environment: %s", err)
-	}
+	assertNoErrHeadscaleEnv(t, err)
 
 	for userName, clientCount := range spec {
 		err = scenario.CreateUser(userName)
 		if err != nil {
-			t.Errorf("failed to create user %s: %s", userName, err)
+			t.Fatalf("failed to create user %s: %s", userName, err)
 		}
 
 		err = scenario.CreateTailscaleNodesInUser(userName, "all", clientCount, []tsic.Option{}...)
 		if err != nil {
-			t.Errorf("failed to create tailscale nodes in user %s: %s", userName, err)
+			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
 		}
 
 		key, err := scenario.CreatePreAuthKey(userName, true, true)
 		if err != nil {
-			t.Errorf("failed to create pre-auth key for user %s: %s", userName, err)
+			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 		}
 
 		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
-			t.Errorf("failed to run tailscale up for user %s: %s", userName, err)
+			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
 		}
 	}
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClientIPs(t, err)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -257,11 +213,12 @@ func TestEphemeral(t *testing.T) {
 	for _, client := range allClients {
 		err := client.Logout()
 		if err != nil {
-			t.Errorf("failed to logout client %s: %s", client.Hostname(), err)
+			t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
 		}
 	}
 
-	scenario.WaitForTailscaleLogout()
+	err = scenario.WaitForTailscaleLogout()
+	assertNoErrLogout(t, err)
 
 	t.Logf("all clients logged out")
 
@@ -277,13 +234,8 @@ func TestEphemeral(t *testing.T) {
 		}
 
 		if len(machines) != 0 {
-			t.Errorf("expected no machines, got %d in user %s", len(machines), userName)
+			t.Fatalf("expected no machines, got %d in user %s", len(machines), userName)
 		}
-	}
-
-	err = scenario.Shutdown()
-	if err != nil {
-		t.Errorf("failed to tear down scenario: %s", err)
 	}
 }
 
@@ -292,9 +244,8 @@ func TestPingAllByHostname(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	if err != nil {
-		t.Errorf("failed to create scenario: %s", err)
-	}
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		// Omit 1.16.2 (-1) because it does not have the FQDN field
@@ -303,33 +254,20 @@ func TestPingAllByHostname(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyname"))
-	if err != nil {
-		t.Errorf("failed to create headscale environment: %s", err)
-	}
+	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
-	if err != nil {
-		t.Errorf("failed to get FQDNs: %s", err)
-	}
+	assertNoErrListFQDN(t, err)
 
 	success := pingAllHelper(t, allClients, allHostnames)
 
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allClients))
-
-	err = scenario.Shutdown()
-	if err != nil {
-		t.Errorf("failed to tear down scenario: %s", err)
-	}
 }
 
 // If subtests are parallel, then they will start before setup is run.
@@ -354,9 +292,8 @@ func TestTaildrop(t *testing.T) {
 	}
 
 	scenario, err := NewScenario()
-	if err != nil {
-		t.Errorf("failed to create scenario: %s", err)
-	}
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		// Omit 1.16.2 (-1) because it does not have the FQDN field
@@ -364,31 +301,23 @@ func TestTaildrop(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("taildrop"))
-	if err != nil {
-		t.Errorf("failed to create headscale environment: %s", err)
-	}
+	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	// This will essentially fetch and cache all the FQDNs
 	_, err = scenario.ListTailscaleClientsFQDNs()
-	if err != nil {
-		t.Errorf("failed to get FQDNs: %s", err)
-	}
+	assertNoErrListFQDN(t, err)
 
 	for _, client := range allClients {
 		command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", client.Hostname())}
 
 		if _, _, err := client.Execute(command); err != nil {
-			t.Errorf("failed to create taildrop file on %s, err: %s", client.Hostname(), err)
+			t.Fatalf("failed to create taildrop file on %s, err: %s", client.Hostname(), err)
 		}
 
 		for _, peer := range allClients {
@@ -417,7 +346,7 @@ func TestTaildrop(t *testing.T) {
 					return err
 				})
 				if err != nil {
-					t.Errorf(
+					t.Fatalf(
 						"failed to send taildrop file on %s, err: %s",
 						client.Hostname(),
 						err,
@@ -434,7 +363,7 @@ func TestTaildrop(t *testing.T) {
 			"/tmp/",
 		}
 		if _, _, err := client.Execute(command); err != nil {
-			t.Errorf("failed to get taildrop file on %s, err: %s", client.Hostname(), err)
+			t.Fatalf("failed to get taildrop file on %s, err: %s", client.Hostname(), err)
 		}
 
 		for _, peer := range allClients {
@@ -454,13 +383,11 @@ func TestTaildrop(t *testing.T) {
 				)
 
 				result, _, err := client.Execute(command)
-				if err != nil {
-					t.Errorf("failed to execute command to ls taildrop: %s", err)
-				}
+				assertNoErrf(t, "failed to execute command to ls taildrop: %s", err)
 
 				log.Printf("Result for %s: %s\n", peer.Hostname(), result)
 				if fmt.Sprintf("/tmp/file_from_%s\n", peer.Hostname()) != result {
-					t.Errorf(
+					t.Fatalf(
 						"taildrop result is not correct %s, wanted %s",
 						result,
 						fmt.Sprintf("/tmp/file_from_%s\n", peer.Hostname()),
@@ -469,11 +396,6 @@ func TestTaildrop(t *testing.T) {
 			})
 		}
 	}
-
-	err = scenario.Shutdown()
-	if err != nil {
-		t.Errorf("failed to tear down scenario: %s", err)
-	}
 }
 
 func TestResolveMagicDNS(t *testing.T) {
@@ -481,9 +403,8 @@ func TestResolveMagicDNS(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	if err != nil {
-		t.Errorf("failed to create scenario: %s", err)
-	}
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		// Omit 1.16.2 (-1) because it does not have the FQDN field
@@ -492,30 +413,20 @@ func TestResolveMagicDNS(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("magicdns"))
-	if err != nil {
-		t.Errorf("failed to create headscale environment: %s", err)
-	}
+	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	// Poor mans cache
 	_, err = scenario.ListTailscaleClientsFQDNs()
-	if err != nil {
-		t.Errorf("failed to get FQDNs: %s", err)
-	}
+	assertNoErrListFQDN(t, err)
 
 	_, err = scenario.ListTailscaleClientsIPs()
-	if err != nil {
-		t.Errorf("failed to get IPs: %s", err)
-	}
+	assertNoErrListClientIPs(t, err)
 
 	for _, client := range allClients {
 		for _, peer := range allClients {
@@ -528,7 +439,7 @@ func TestResolveMagicDNS(t *testing.T) {
 			}
 			result, _, err := client.Execute(command)
 			if err != nil {
-				t.Errorf(
+				t.Fatalf(
 					"failed to execute resolve/ip command %s from %s: %s",
 					peerFQDN,
 					client.Hostname(),
@@ -538,7 +449,7 @@ func TestResolveMagicDNS(t *testing.T) {
 
 			ips, err := peer.IPs()
 			if err != nil {
-				t.Errorf(
+				t.Fatalf(
 					"failed to get ips for %s: %s",
 					peer.Hostname(),
 					err,
@@ -547,15 +458,10 @@ func TestResolveMagicDNS(t *testing.T) {
 
 			for _, ip := range ips {
 				if !strings.Contains(result, ip.String()) {
-					t.Errorf("ip %s is not found in \n%s\n", ip.String(), result)
+					t.Fatalf("ip %s is not found in \n%s\n", ip.String(), result)
 				}
 			}
 		}
-	}
-
-	err = scenario.Shutdown()
-	if err != nil {
-		t.Errorf("failed to tear down scenario: %s", err)
 	}
 }
 
@@ -564,33 +470,24 @@ func TestExpireNode(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	if err != nil {
-		t.Errorf("failed to create scenario: %s", err)
-	}
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"user1": len(TailscaleVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("expirenode"))
-	if err != nil {
-		t.Errorf("failed to create headscale environment: %s", err)
-	}
+	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClientIPs(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -601,25 +498,25 @@ func TestExpireNode(t *testing.T) {
 
 	for _, client := range allClients {
 		status, err := client.Status()
-		assert.NoError(t, err)
+		assertNoErr(t, err)
 
 		// Assert that we have the original count - self
 		assert.Len(t, status.Peers(), len(TailscaleVersions)-1)
 	}
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	// TODO(kradalby): This is Headscale specific and would not play nicely
 	// with other implementations of the ControlServer interface
 	result, err := headscale.Execute([]string{
 		"headscale", "nodes", "expire", "--identifier", "0", "--output", "json",
 	})
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var machine v1.Machine
 	err = json.Unmarshal([]byte(result), &machine)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	time.Sleep(30 * time.Second)
 
@@ -627,7 +524,7 @@ func TestExpireNode(t *testing.T) {
 	// of connected nodes.
 	for _, client := range allClients {
 		status, err := client.Status()
-		assert.NoError(t, err)
+		assertNoErr(t, err)
 
 		for _, peerKey := range status.Peers() {
 			peerStatus := status.Peer[peerKey]
@@ -641,10 +538,5 @@ func TestExpireNode(t *testing.T) {
 			// Assert that we have the original count - self - expired node
 			assert.Len(t, status.Peers(), len(TailscaleVersions)-2)
 		}
-	}
-
-	err = scenario.Shutdown()
-	if err != nil {
-		t.Errorf("failed to tear down scenario: %s", err)
 	}
 }

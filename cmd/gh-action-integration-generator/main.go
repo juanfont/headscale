@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  {{.Name}}:
     runs-on: ubuntu-latest
 
     steps:
@@ -55,7 +55,7 @@ jobs:
             integration_test/
             config-example.yaml
 
-      - name: Run general integration tests
+      - name: Run {{.Name}}
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
             nix develop --command -- docker run \

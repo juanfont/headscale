@@ -428,9 +428,9 @@ func (t *HeadscaleInContainer) GetHostname() string {
 	return t.hostname
 }
 
-// WaitForReady blocks until the Headscale instance is ready to
+// WaitForRunning blocks until the Headscale instance is ready to
 // serve clients.
-func (t *HeadscaleInContainer) WaitForReady() error {
+func (t *HeadscaleInContainer) WaitForRunning() error {
 	url := t.GetHealthEndpoint()
 
 	log.Printf("waiting for headscale to be ready at %s", url)

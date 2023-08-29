@@ -33,7 +33,8 @@ func TestUserCommand(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"user1": 0,
@@ -41,10 +42,10 @@ func TestUserCommand(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var listUsers []v1.User
 	err = executeAndUnmarshal(headscale,
@@ -57,7 +58,7 @@ func TestUserCommand(t *testing.T) {
 		},
 		&listUsers,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	result := []string{listUsers[0].Name, listUsers[1].Name}
 	sort.Strings(result)
@@ -79,7 +80,7 @@ func TestUserCommand(t *testing.T) {
 			"newname",
 		},
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var listAfterRenameUsers []v1.User
 	err = executeAndUnmarshal(headscale,
@@ -92,7 +93,7 @@ func TestUserCommand(t *testing.T) {
 		},
 		&listAfterRenameUsers,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	result = []string{listAfterRenameUsers[0].Name, listAfterRenameUsers[1].Name}
 	sort.Strings(result)
@@ -102,9 +103,6 @@ func TestUserCommand(t *testing.T) {
 		[]string{"newname", "user1"},
 		result,
 	)
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestPreAuthKeyCommand(t *testing.T) {
@@ -115,20 +113,21 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	count := 3
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		user: 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipak"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	keys := make([]*v1.PreAuthKey, count)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	for index := 0; index < count; index++ {
 		var preAuthKey v1.PreAuthKey
@@ -150,7 +149,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			},
 			&preAuthKey,
 		)
-		assert.NoError(t, err)
+		assertNoErr(t, err)
 
 		keys[index] = &preAuthKey
 	}
@@ -171,7 +170,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		},
 		&listedPreAuthKeys,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 4)
@@ -222,7 +221,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			listedPreAuthKeys[1].Key,
 		},
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var listedPreAuthKeysAfterExpire []v1.PreAuthKey
 	err = executeAndUnmarshal(
@@ -238,14 +237,11 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		},
 		&listedPreAuthKeysAfterExpire,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	assert.True(t, listedPreAuthKeysAfterExpire[1].Expiration.AsTime().Before(time.Now()))
 	assert.True(t, listedPreAuthKeysAfterExpire[2].Expiration.AsTime().After(time.Now()))
 	assert.True(t, listedPreAuthKeysAfterExpire[3].Expiration.AsTime().After(time.Now()))
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
@@ -255,17 +251,18 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	user := "pre-auth-key-without-exp-user"
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		user: 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipaknaexp"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var preAuthKey v1.PreAuthKey
 	err = executeAndUnmarshal(
@@ -282,7 +279,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		},
 		&preAuthKey,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var listedPreAuthKeys []v1.PreAuthKey
 	err = executeAndUnmarshal(
@@ -298,7 +295,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		},
 		&listedPreAuthKeys,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 2)
@@ -308,9 +305,6 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		t,
 		listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Minute*70)),
 	)
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
@@ -320,17 +314,18 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	user := "pre-auth-key-reus-ephm-user"
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		user: 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipakresueeph"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var preAuthReusableKey v1.PreAuthKey
 	err = executeAndUnmarshal(
@@ -347,7 +342,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		},
 		&preAuthReusableKey,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var preAuthEphemeralKey v1.PreAuthKey
 	err = executeAndUnmarshal(
@@ -364,7 +359,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		},
 		&preAuthEphemeralKey,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	assert.True(t, preAuthEphemeralKey.GetEphemeral())
 	assert.False(t, preAuthEphemeralKey.GetReusable())
@@ -383,13 +378,10 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		},
 		&listedPreAuthKeys,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 3)
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestEnablingRoutes(t *testing.T) {
@@ -399,27 +391,24 @@ func TestEnablingRoutes(t *testing.T) {
 	user := "enable-routing"
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErrf(t, "failed to create scenario: %s", err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		user: 3,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
-	assert.NoError(t, err)
+	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	if err != nil {
-		t.Errorf("failed to get clients: %s", err)
-	}
+	assertNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErrGetHeadscale(t, err)
 
 	// advertise routes using the up command
 	for i, client := range allClients {
@@ -432,13 +421,11 @@ func TestEnablingRoutes(t *testing.T) {
 			"-login-server", headscale.GetEndpoint(),
 			"--hostname", hostname,
 		})
-		assert.NoError(t, err)
+		assertNoErrf(t, "failed to advertise route: %s", err)
 	}
 
 	err = scenario.WaitForTailscaleSync()
-	if err != nil {
-		t.Errorf("failed wait for tailscale clients to be in sync: %s", err)
-	}
+	assertNoErrSync(t, err)
 
 	var routes []*v1.Route
 	err = executeAndUnmarshal(
@@ -453,7 +440,7 @@ func TestEnablingRoutes(t *testing.T) {
 		&routes,
 	)
 
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 	assert.Len(t, routes, 3)
 
 	for _, route := range routes {
@@ -471,7 +458,7 @@ func TestEnablingRoutes(t *testing.T) {
 				"--route",
 				strconv.Itoa(int(route.Id)),
 			})
-		assert.NoError(t, err)
+		assertNoErr(t, err)
 	}
 
 	var enablingRoutes []*v1.Route
@@ -486,7 +473,7 @@ func TestEnablingRoutes(t *testing.T) {
 		},
 		&enablingRoutes,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	for _, route := range enablingRoutes {
 		assert.Equal(t, route.Advertised, true)
@@ -504,7 +491,7 @@ func TestEnablingRoutes(t *testing.T) {
 			"--route",
 			strconv.Itoa(int(routeIDToBeDisabled)),
 		})
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	var disablingRoutes []*v1.Route
 	err = executeAndUnmarshal(
@@ -518,7 +505,7 @@ func TestEnablingRoutes(t *testing.T) {
 		},
 		&disablingRoutes,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	for _, route := range disablingRoutes {
 		assert.Equal(t, true, route.Advertised)
@@ -540,7 +527,8 @@ func TestApiKeyCommand(t *testing.T) {
 	count := 5
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"user1": 0,
@@ -548,10 +536,10 @@ func TestApiKeyCommand(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	keys := make([]string, count)
 
@@ -675,9 +663,6 @@ func TestApiKeyCommand(t *testing.T) {
 			)
 		}
 	}
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestNodeTagCommand(t *testing.T) {
@@ -685,17 +670,18 @@ func TestNodeTagCommand(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"user1": 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	machineKeys := []string{
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
@@ -810,9 +796,6 @@ func TestNodeTagCommand(t *testing.T) {
 		found,
 		"should find a machine with the tag 'tag:test' in the list of machines",
 	)
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestNodeCommand(t *testing.T) {
@@ -820,7 +803,8 @@ func TestNodeCommand(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"machine-user": 0,
@@ -828,10 +812,10 @@ func TestNodeCommand(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	// Randomly generated machine keys
 	machineKeys := []string{
@@ -1053,9 +1037,6 @@ func TestNodeCommand(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Len(t, listOnlyMachineUserAfterDelete, 4)
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestNodeExpireCommand(t *testing.T) {
@@ -1063,17 +1044,18 @@ func TestNodeExpireCommand(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"machine-expire-user": 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	// Randomly generated machine keys
 	machineKeys := []string{
@@ -1182,9 +1164,6 @@ func TestNodeExpireCommand(t *testing.T) {
 	assert.True(t, listAllAfterExpiry[2].Expiry.AsTime().Before(time.Now()))
 	assert.True(t, listAllAfterExpiry[3].Expiry.AsTime().IsZero())
 	assert.True(t, listAllAfterExpiry[4].Expiry.AsTime().IsZero())
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestNodeRenameCommand(t *testing.T) {
@@ -1192,17 +1171,18 @@ func TestNodeRenameCommand(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"machine-rename-command": 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	// Randomly generated machine keys
 	machineKeys := []string{
@@ -1349,9 +1329,6 @@ func TestNodeRenameCommand(t *testing.T) {
 	assert.Equal(t, "newmachine-3", listAllAfterRenameAttempt[2].GetGivenName())
 	assert.Contains(t, listAllAfterRenameAttempt[3].GetGivenName(), "machine-4")
 	assert.Contains(t, listAllAfterRenameAttempt[4].GetGivenName(), "machine-5")
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
 
 func TestNodeMoveCommand(t *testing.T) {
@@ -1359,7 +1336,8 @@ func TestNodeMoveCommand(t *testing.T) {
 	t.Parallel()
 
 	scenario, err := NewScenario()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"old-user": 0,
@@ -1367,10 +1345,10 @@ func TestNodeMoveCommand(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	// Randomly generated machine key
 	machineKey := "nodekey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
@@ -1514,7 +1492,4 @@ func TestNodeMoveCommand(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, machine.User.Name, "old-user")
-
-	err = scenario.Shutdown()
-	assert.NoError(t, err)
 }
