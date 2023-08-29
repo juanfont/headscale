@@ -12,6 +12,53 @@ const (
 	derpPingCount   = 10
 )
 
+func assertNoErr(t *testing.T, err error) {
+	t.Helper()
+	assertNoErrf(t, "unexpected error: %s", err)
+}
+
+func assertNoErrf(t *testing.T, msg string, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf(msg, err)
+	}
+}
+
+func assertNoErrHeadscaleEnv(t *testing.T, err error) {
+	t.Helper()
+	assertNoErrf(t, "failed to create headscale environment: %s", err)
+}
+
+func assertNoErrGetHeadscale(t *testing.T, err error) {
+	t.Helper()
+	assertNoErrf(t, "failed to get headscale: %s", err)
+}
+
+func assertNoErrListClients(t *testing.T, err error) {
+	t.Helper()
+	assertNoErrf(t, "failed to list clients: %s", err)
+}
+
+func assertNoErrListClientIPs(t *testing.T, err error) {
+	t.Helper()
+	assertNoErrf(t, "failed to get client IPs: %s", err)
+}
+
+func assertNoErrSync(t *testing.T, err error) {
+	t.Helper()
+	assertNoErrf(t, "failed to have all clients sync up: %s", err)
+}
+
+func assertNoErrListFQDN(t *testing.T, err error) {
+	t.Helper()
+	assertNoErrf(t, "failed to list FQDNs: %s", err)
+}
+
+func assertNoErrLogout(t *testing.T, err error) {
+	t.Helper()
+	assertNoErrf(t, "failed to log out tailscale nodes: %s", err)
+}
+
 func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
 	t.Helper()
 	success := 0
@@ -20,7 +67,7 @@ func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int 
 		for _, addr := range addrs {
 			err := client.Ping(addr)
 			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
+				t.Fatalf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
 			} else {
 				success++
 			}
@@ -47,7 +94,7 @@ func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) 
 				tsic.WithPingUntilDirect(false),
 			)
 			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
+				t.Fatalf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
 			} else {
 				success++
 			}
