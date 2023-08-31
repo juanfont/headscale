@@ -50,7 +50,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
 	}
 
 	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL)
@@ -105,7 +105,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
 	}
 
 	oidcConfig, err := scenario.runMockOIDC(shortAccessTTL)

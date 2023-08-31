@@ -102,7 +102,7 @@ func TestSSHOneUserAllToAll(t *testing.T) {
 				},
 			},
 		},
-		len(TailscaleVersions)-5,
+		len(MustTestVersions)-2,
 	)
 	defer scenario.Shutdown()
 
@@ -151,7 +151,7 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 				},
 			},
 		},
-		len(TailscaleVersions)-5,
+		len(MustTestVersions)-2,
 	)
 	defer scenario.Shutdown()
 
@@ -197,7 +197,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 			},
 			SSHs: []policy.SSH{},
 		},
-		len(TailscaleVersions)-5,
+		len(MustTestVersions)-2,
 	)
 	defer scenario.Shutdown()
 
@@ -246,7 +246,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 				},
 			},
 		},
-		len(TailscaleVersions)-5,
+		len(MustTestVersions)-2,
 	)
 	defer scenario.Shutdown()
 
@@ -302,7 +302,7 @@ func TestSSUserOnlyIsolation(t *testing.T) {
 				},
 			},
 		},
-		len(TailscaleVersions)-5,
+		len(MustTestVersions)-2,
 	)
 	defer scenario.Shutdown()
 
