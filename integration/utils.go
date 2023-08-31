@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -57,6 +58,13 @@ func assertNoErrListFQDN(t *testing.T, err error) {
 func assertNoErrLogout(t *testing.T, err error) {
 	t.Helper()
 	assertNoErrf(t, "failed to log out tailscale nodes: %s", err)
+}
+
+func assertContains(t *testing.T, str, subStr string) {
+	t.Helper()
+	if !strings.Contains(str, subStr) {
+		t.Fatalf("%#v does not contain %#v", str, subStr)
+	}
 }
 
 func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {

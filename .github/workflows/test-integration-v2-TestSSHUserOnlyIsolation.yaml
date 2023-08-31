@@ -1,7 +1,7 @@
 # DO NOT EDIT, generated with cmd/gh-action-integration-generator/main.go
 # To regenerate, run "go generate" in cmd/gh-action-integration-generator/
 
-name: Integration Test v2 - TestSSHOneUserAllToAll
+name: Integration Test v2 - TestSSHUserOnlyIsolation
 
 on: [pull_request]
 
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  TestSSHOneUserAllToAll:
+  TestSSHUserOnlyIsolation:
     runs-on: ubuntu-latest
 
     steps:
@@ -34,7 +34,7 @@ jobs:
             integration_test/
             config-example.yaml
 
-      - name: Run TestSSHOneUserAllToAll
+      - name: Run TestSSHUserOnlyIsolation
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
             nix develop --command -- docker run \
@@ -50,7 +50,7 @@ jobs:
                   -failfast \
                   -timeout 120m \
                   -parallel 1 \
-                  -run "^TestSSHOneUserAllToAll$"
+                  -run "^TestSSHUserOnlyIsolation$"
 
       - uses: actions/upload-artifact@v3
         if: always() && steps.changed-files.outputs.any_changed == 'true'

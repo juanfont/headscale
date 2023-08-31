@@ -26,7 +26,6 @@ type TailscaleClient interface {
 	Status() (*ipnstate.Status, error)
 	WaitForNeedsLogin() error
 	WaitForRunning() error
-	WaitForLogout() error
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)

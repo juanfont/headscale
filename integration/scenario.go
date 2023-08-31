@@ -78,14 +78,14 @@ var (
 	)
 
 	// MustTestVersions is the minimum set of versions we should test.
-	// At the moment, this is arbitrarily choosen as:
+	// At the moment, this is arbitrarily chosen as:
 	//
 	// - Two unstable (HEAD and unstable)
 	// - Two latest versions
-	// - Two oldest versions
+	// - Two oldest versions.
 	MustTestVersions = append(
 		tailscaleVersions2021[0:4],
-		tailscaleVersions2019[len(tailscaleVersions2019)-2:len(tailscaleVersions2019)]...,
+		tailscaleVersions2019[len(tailscaleVersions2019)-2:]...,
 	)
 )
 
@@ -573,7 +573,7 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 		for _, client := range user.Clients {
 			c := client
 			user.syncWaitGroup.Go(func() error {
-				return c.WaitForLogout()
+				return c.WaitForNeedsLogin()
 			})
 		}
 		if err := user.syncWaitGroup.Wait(); err != nil {

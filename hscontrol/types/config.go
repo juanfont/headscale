@@ -480,6 +480,8 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			baseDomain = "headscale.net" // does not really matter when MagicDNS is not enabled
 		}
 
+		log.Trace().Interface("dns_config", dnsConfig).Msg("DNS configuration loaded")
+
 		return dnsConfig, baseDomain
 	}
 

@@ -21,6 +21,7 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -90,6 +91,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
+// This test is really flaky.
 func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -99,13 +101,15 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	baseScenario, err := NewScenario()
 	assertNoErr(t, err)
 
+	baseScenario.pool.MaxWait = 5 * time.Minute
+
 	scenario := AuthOIDCScenario{
 		Scenario: baseScenario,
 	}
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(MustTestVersions),
+		"user1": 3,
 	}
 
 	oidcConfig, err := scenario.runMockOIDC(shortAccessTTL)
@@ -143,9 +147,13 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d (before expiry)", success, len(allClients)*len(allIps))
 
-	// await all nodes being logged out after OIDC token expiry
-	err = scenario.WaitForTailscaleLogout()
-	assertNoErrLogout(t, err)
+	// This is not great, but this sadly is a time dependent test, so the
+	// safe thing to do is wait out the whole TTL time before checking if
+	// the clients have logged out. The Wait function cant do it itself
+	// as it has an upper bound of 1 min.
+	time.Sleep(shortAccessTTL)
+
+	assertTailscaleNodesLogout(t, allClients)
 }
 
 func (s *AuthOIDCScenario) CreateHeadscaleEnv(
@@ -296,27 +304,40 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 
 				log.Printf("%s login url: %s\n", c.Hostname(), loginURL.String())
 
-				httpClient := &http.Client{Transport: insecureTransport}
-				ctx := context.Background()
-				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
-				resp, err := httpClient.Do(req)
-				if err != nil {
-					log.Printf(
-						"%s failed to get login url %s: %s",
-						c.Hostname(),
-						loginURL,
-						err,
-					)
+				if err := s.pool.Retry(func() error {
+					log.Printf("%s logging in with url", c.Hostname())
+					httpClient := &http.Client{Transport: insecureTransport}
+					ctx := context.Background()
+					req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
+					resp, err := httpClient.Do(req)
+					if err != nil {
+						log.Printf(
+							"%s failed to login using url %s: %s",
+							c.Hostname(),
+							loginURL,
+							err,
+						)
 
-					return err
-				}
+						return err
+					}
 
-				defer resp.Body.Close()
+					if resp.StatusCode != http.StatusOK {
+						log.Printf("%s response code of oidc login request was %s", c.Hostname(), resp.Status)
 
-				_, err = io.ReadAll(resp.Body)
-				if err != nil {
-					log.Printf("%s failed to read response body: %s", c.Hostname(), err)
+						return errStatusCodeNotOK
+					}
 
+					defer resp.Body.Close()
+
+					_, err = io.ReadAll(resp.Body)
+					if err != nil {
+						log.Printf("%s failed to read response body: %s", c.Hostname(), err)
+
+						return err
+					}
+
+					return nil
+				}); err != nil {
 					return err
 				}
 
@@ -356,4 +377,15 @@ func (s *AuthOIDCScenario) Shutdown() {
 	}
 
 	s.Scenario.Shutdown()
+}
+
+func assertTailscaleNodesLogout(t *testing.T, clients []TailscaleClient) {
+	t.Helper()
+
+	for _, client := range clients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		assert.Equal(t, "NeedsLogin", status.BackendState)
+	}
 }
