@@ -35,7 +35,6 @@ var (
 	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
 	errTailscaleNotConnected           = errors.New("tailscale not connected")
 	errTailscaledNotReadyForLogin      = errors.New("tailscaled not ready for login")
-	errTailscaleNotLoggedOut           = errors.New("tailscale not logged out")
 )
 
 func errTailscaleStatus(hostname string, err error) error {
@@ -64,6 +63,7 @@ type TailscaleInContainer struct {
 	withEntrypoint    []string
 	withExtraHosts    []string
 	workdir           string
+	netfilter         string
 }
 
 // Option represent optional settings that can be given to a
@@ -145,6 +145,15 @@ func WithExtraHosts(hosts []string) Option {
 func WithDockerEntrypoint(args []string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withEntrypoint = args
+	}
+}
+
+// WithNetfilter configures Tailscales parameter --netfilter-mode
+// allowing us to turn of modifying ip[6]tables/nftables.
+// It takes: "on", "off", "nodivert".
+func WithNetfilter(state string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.netfilter = state
 	}
 }
 
@@ -340,6 +349,10 @@ func (t *TailscaleInContainer) Login(
 		command = append(command, "--ssh")
 	}
 
+	if t.netfilter != "" {
+		command = append(command, "--netfilter-mode="+t.netfilter)
+	}
+
 	if len(t.withTags) > 0 {
 		command = append(command,
 			fmt.Sprintf(`--advertise-tags=%s`, strings.Join(t.withTags, ",")),
@@ -511,22 +524,6 @@ func (t *TailscaleInContainer) WaitForRunning() error {
 
 		return errTailscaleNotConnected
 	})
-}
-
-// WaitForLogout blocks until the Tailscale instance has logged out.
-func (t *TailscaleInContainer) WaitForLogout() error {
-	return fmt.Errorf("%s err: %w", t.hostname, t.pool.Retry(func() error {
-		status, err := t.Status()
-		if err != nil {
-			return errTailscaleStatus(t.hostname, err)
-		}
-
-		if status.CurrentTailnet == nil {
-			return nil
-		}
-
-		return errTailscaleNotLoggedOut
-	}))
 }
 
 // WaitForPeers blocks until N number of peers is present in the

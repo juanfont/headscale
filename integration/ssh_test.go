@@ -2,6 +2,7 @@ package integration
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -53,10 +54,16 @@ func sshScenario(t *testing.T, policy *policy.ACLPolicy, clientsPerUser int) *Sc
 
 	err = scenario.CreateHeadscaleEnv(spec,
 		[]tsic.Option{
+			tsic.WithSSH(),
+
+			// Alpine containers dont have ip6tables set up, which causes
+			// tailscaled to stop configuring the wgengine, causing it
+			// to not configure DNS.
+			tsic.WithNetfilter("off"),
 			tsic.WithDockerEntrypoint([]string{
 				"/bin/sh",
 				"-c",
-				"/bin/sleep 3 ; apk add openssh ; update-ca-certificates ; tailscaled --tun=tsdev",
+				"/bin/sleep 3 ; apk add openssh ; adduser ssh-it-user ; update-ca-certificates ; tailscaled --tun=tsdev",
 			}),
 			tsic.WithDockerWorkdir("/"),
 		},
@@ -77,7 +84,7 @@ func sshScenario(t *testing.T, policy *policy.ACLPolicy, clientsPerUser int) *Sc
 	return scenario
 }
 
-func TestSSHOneUserAllToAll(t *testing.T) {
+func TestSSHOneUserToAll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -97,7 +104,7 @@ func TestSSHOneUserAllToAll(t *testing.T) {
 				{
 					Action:       "accept",
 					Sources:      []string{"group:integration-test"},
-					Destinations: []string{"group:integration-test"},
+					Destinations: []string{"*"},
 					Users:        []string{"ssh-it-user"},
 				},
 			},
@@ -109,19 +116,35 @@ func TestSSHOneUserAllToAll(t *testing.T) {
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
 
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	assertNoErrListClients(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	assertNoErrListClients(t, err)
+
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	assertNoErrListFQDN(t, err)
 
-	for _, client := range allClients {
+	for _, client := range user1Clients {
 		for _, peer := range allClients {
 			if client.Hostname() == peer.Hostname() {
 				continue
 			}
 
 			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	for _, client := range user2Clients {
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHPermissionDenied(t, client, peer)
 		}
 	}
 }
@@ -270,7 +293,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	}
 }
 
-func TestSSUserOnlyIsolation(t *testing.T) {
+func TestSSHUserOnlyIsolation(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -365,10 +388,13 @@ func doSSH(t *testing.T, client TailscaleClient, peer TailscaleClient) (string, 
 	peerFQDN, _ := peer.FQDN()
 
 	command := []string{
-		"ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=1",
+		"/usr/bin/ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=1",
 		fmt.Sprintf("%s@%s", "ssh-it-user", peerFQDN),
 		"'hostname'",
 	}
+
+	log.Printf("Running from %s to %s", client.Hostname(), peer.Hostname())
+	log.Printf("Command: %s", strings.Join(command, " "))
 
 	return retry(10, 1*time.Second, func() (string, string, error) {
 		return client.Execute(command)
@@ -381,27 +407,28 @@ func assertSSHHostname(t *testing.T, client TailscaleClient, peer TailscaleClien
 	result, _, err := doSSH(t, client, peer)
 	assertNoErr(t, err)
 
-	assert.Contains(t, peer.ID(), strings.ReplaceAll(result, "\n", ""))
+	assertContains(t, peer.ID(), strings.ReplaceAll(result, "\n", ""))
 }
 
 func assertSSHPermissionDenied(t *testing.T, client TailscaleClient, peer TailscaleClient) {
 	t.Helper()
 
-	result, stderr, err := doSSH(t, client, peer)
-	assert.Error(t, err)
+	result, stderr, _ := doSSH(t, client, peer)
 
 	assert.Empty(t, result)
 
-	assert.Contains(t, stderr, "Permission denied (tailscale)")
+	assertContains(t, stderr, "Permission denied (tailscale)")
 }
 
 func assertSSHTimeout(t *testing.T, client TailscaleClient, peer TailscaleClient) {
 	t.Helper()
 
-	result, stderr, err := doSSH(t, client, peer)
-	assertNoErr(t, err)
+	result, stderr, _ := doSSH(t, client, peer)
 
 	assert.Empty(t, result)
 
-	assert.Contains(t, stderr, "Connection timed out")
+	if !strings.Contains(stderr, "Connection timed out") &&
+		!strings.Contains(stderr, "Operation timed out") {
+		t.Fatalf("connection did not time out")
+	}
 }

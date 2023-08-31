@@ -61,6 +61,10 @@ func aclScenario(
 
 	err = scenario.CreateHeadscaleEnv(spec,
 		[]tsic.Option{
+			// Alpine containers dont have ip6tables set up, which causes
+			// tailscaled to stop configuring the wgengine, causing it
+			// to not configure DNS.
+			tsic.WithNetfilter("off"),
 			tsic.WithDockerEntrypoint([]string{
 				"/bin/sh",
 				"-c",
