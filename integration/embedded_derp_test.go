@@ -33,7 +33,7 @@ func TestDERPServerScenario(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
 	}
 
 	headscaleConfig := map[string]string{}
@@ -164,7 +164,7 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 
 			version := requestedVersion
 			if requestedVersion == "all" {
-				version = TailscaleVersions[clientN%len(TailscaleVersions)]
+				version = MustTestVersions[clientN%len(MustTestVersions)]
 			}
 
 			cert := hsServer.GetCert()

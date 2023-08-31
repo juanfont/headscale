@@ -37,8 +37,8 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
-		"user2": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
+		"user2": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("webauthping"))
@@ -74,8 +74,8 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
-		"user2": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
+		"user2": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("weblogout"))

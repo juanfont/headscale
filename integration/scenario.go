@@ -49,7 +49,7 @@ var (
 	tailscaleVersions2019 = []string{
 		"1.28",
 		"1.26",
-		"1.24",
+		"1.24", // Tailscale SSH
 		"1.22",
 		"1.20",
 		"1.18",
@@ -63,7 +63,7 @@ var (
 	// "1.8.7",
 	// }.
 
-	// TailscaleVersions represents a list of Tailscale versions the suite
+	// AllVersions represents a list of Tailscale versions the suite
 	// uses to test compatibility with the ControlServer.
 	//
 	// The list contains two special cases, "head" and "unstable" which
@@ -72,9 +72,20 @@ var (
 	//
 	// The rest of the version represents Tailscale versions that can be
 	// found in Tailscale's apt repository.
-	TailscaleVersions = append(
+	AllVersions = append(
 		tailscaleVersions2021,
 		tailscaleVersions2019...,
+	)
+
+	// MustTestVersions is the minimum set of versions we should test.
+	// At the moment, this is arbitrarily choosen as:
+	//
+	// - Two unstable (HEAD and unstable)
+	// - Two latest versions
+	// - Two oldest versions
+	MustTestVersions = append(
+		tailscaleVersions2021[0:4],
+		tailscaleVersions2019[len(tailscaleVersions2019)-2:len(tailscaleVersions2019)]...,
 	)
 )
 
@@ -277,7 +288,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 		for i := 0; i < count; i++ {
 			version := requestedVersion
 			if requestedVersion == "all" {
-				version = TailscaleVersions[i%len(TailscaleVersions)]
+				version = MustTestVersions[i%len(MustTestVersions)]
 			}
 
 			headscale, err := s.Headscale()

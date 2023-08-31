@@ -21,7 +21,7 @@ func main() {
 		log.Fatalf("failed to create or get network: %s", err)
 	}
 
-	for _, version := range integration.TailscaleVersions {
+	for _, version := range integration.AllVersions {
 		log.Printf("creating container image for Tailscale (%s)", version)
 
 		tsClient, err := tsic.New(

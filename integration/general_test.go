@@ -25,8 +25,8 @@ func TestPingAllByIP(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
-		"user2": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
+		"user2": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
@@ -58,8 +58,8 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
-		"user2": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
+		"user2": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
@@ -165,8 +165,8 @@ func TestEphemeral(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
-		"user2": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
+		"user2": len(MustTestVersions),
 	}
 
 	headscale, err := scenario.Headscale(hsic.WithTestName("ephemeral"))
@@ -249,8 +249,8 @@ func TestPingAllByHostname(t *testing.T) {
 
 	spec := map[string]int{
 		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"user3": len(TailscaleVersions) - 1,
-		"user4": len(TailscaleVersions) - 1,
+		"user3": len(MustTestVersions) - 1,
+		"user4": len(MustTestVersions) - 1,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyname"))
@@ -297,7 +297,7 @@ func TestTaildrop(t *testing.T) {
 
 	spec := map[string]int{
 		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"taildrop": len(TailscaleVersions) - 1,
+		"taildrop": len(MustTestVersions) - 1,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("taildrop"))
@@ -408,8 +408,8 @@ func TestResolveMagicDNS(t *testing.T) {
 
 	spec := map[string]int{
 		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"magicdns1": len(TailscaleVersions) - 1,
-		"magicdns2": len(TailscaleVersions) - 1,
+		"magicdns1": len(MustTestVersions) - 1,
+		"magicdns2": len(MustTestVersions) - 1,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("magicdns"))
@@ -474,7 +474,7 @@ func TestExpireNode(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(TailscaleVersions),
+		"user1": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("expirenode"))
@@ -501,7 +501,7 @@ func TestExpireNode(t *testing.T) {
 		assertNoErr(t, err)
 
 		// Assert that we have the original count - self
-		assert.Len(t, status.Peers(), len(TailscaleVersions)-1)
+		assert.Len(t, status.Peers(), len(MustTestVersions)-1)
 	}
 
 	headscale, err := scenario.Headscale()
@@ -536,7 +536,7 @@ func TestExpireNode(t *testing.T) {
 
 		if client.Hostname() != machine.Name {
 			// Assert that we have the original count - self - expired node
-			assert.Len(t, status.Peers(), len(TailscaleVersions)-2)
+			assert.Len(t, status.Peers(), len(MustTestVersions)-2)
 		}
 	}
 }
