@@ -316,6 +316,7 @@ func (t *TailscaleInContainer) Execute(
 		options...,
 	)
 	if err != nil {
+		// log.Printf("command issued: %s", strings.Join(command, " "))
 		// log.Printf("command stderr: %s\n", stderr)
 
 		if stdout != "" {
@@ -343,6 +344,7 @@ func (t *TailscaleInContainer) Login(
 		"--login-server=" + loginServer,
 		"--authkey=" + authKey,
 		"--hostname=" + t.hostname,
+		"--accept-routes",
 	}
 
 	if t.withSSH {
@@ -381,6 +383,7 @@ func (t *TailscaleInContainer) LoginWithURL(
 		"up",
 		"--login-server=" + loginServer,
 		"--hostname=" + t.hostname,
+		"--accept-routes",
 	}
 
 	_, stderr, err := t.Execute(command)
