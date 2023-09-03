@@ -344,7 +344,7 @@ func (t *TailscaleInContainer) Login(
 		"--login-server=" + loginServer,
 		"--authkey=" + authKey,
 		"--hostname=" + t.hostname,
-		"--accept-routes",
+		"--accept-routes=false",
 	}
 
 	if t.withSSH {
@@ -383,7 +383,7 @@ func (t *TailscaleInContainer) LoginWithURL(
 		"up",
 		"--login-server=" + loginServer,
 		"--hostname=" + t.hostname,
-		"--accept-routes",
+		"--accept-routes=false",
 	}
 
 	_, stderr, err := t.Execute(command)
