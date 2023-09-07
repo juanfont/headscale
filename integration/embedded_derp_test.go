@@ -197,7 +197,9 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 					)
 				}
 
+				s.headscaleLock.Lock()
 				user.Clients[tsClient.Hostname()] = tsClient
+				s.headscaleLock.Unlock()
 
 				return nil
 			})

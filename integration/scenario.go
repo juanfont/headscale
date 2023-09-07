@@ -328,7 +328,9 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 					)
 				}
 
+				s.headscaleLock.Lock()
 				user.Clients[tsClient.Hostname()] = tsClient
+				s.headscaleLock.Unlock()
 
 				return nil
 			})
