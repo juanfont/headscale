@@ -16,11 +16,6 @@ var (
 		Help:      "The total amount of registered machine attempts",
 	}, []string{"action", "auth", "status", "user"})
 
-	updateRequestsFromNode = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "update_request_from_node_total",
-		Help:      "The number of updates requested by a node/update function",
-	}, []string{"user", "machine", "state"})
 	updateRequestsSentToNode = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "update_request_sent_to_node_total",

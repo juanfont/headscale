@@ -20,11 +20,12 @@ import (
 )
 
 const (
-	tsicHashLength     = 6
-	defaultPingTimeout = 300 * time.Millisecond
-	defaultPingCount   = 10
-	dockerContextPath  = "../."
-	headscaleCertPath  = "/usr/local/share/ca-certificates/headscale.crt"
+	tsicHashLength       = 6
+	defaultPingTimeout   = 300 * time.Millisecond
+	defaultPingCount     = 10
+	dockerContextPath    = "../."
+	headscaleCertPath    = "/usr/local/share/ca-certificates/headscale.crt"
+	dockerExecuteTimeout = 60 * time.Second
 )
 
 var (
@@ -361,7 +362,7 @@ func (t *TailscaleInContainer) Login(
 		)
 	}
 
-	if _, _, err := t.Execute(command); err != nil {
+	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
 		return fmt.Errorf(
 			"%s failed to join tailscale client (%s): %w",
 			t.hostname,

@@ -9,7 +9,7 @@ import (
 	"github.com/ory/dockertest/v3"
 )
 
-const dockerExecuteTimeout = time.Second * 10
+const dockerExecuteTimeout = time.Second * 30
 
 var (
 	ErrDockertestCommandFailed  = errors.New("dockertest command failed")
