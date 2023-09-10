@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"os"
 	"sync"
-	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -21,7 +20,6 @@ import (
 
 const (
 	scenarioHashLength = 6
-	maxWait            = 60 * time.Second
 )
 
 var (
@@ -130,7 +128,7 @@ func NewScenario() (*Scenario, error) {
 		return nil, fmt.Errorf("could not connect to docker: %w", err)
 	}
 
-	pool.MaxWait = maxWait
+	pool.MaxWait = dockertestMaxWait()
 
 	networkName := fmt.Sprintf("hs-%s", hash)
 	if overrideNetworkName := os.Getenv("HEADSCALE_TEST_NETWORK_NAME"); overrideNetworkName != "" {

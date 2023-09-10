@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -130,6 +131,38 @@ func isSelfClient(client TailscaleClient, addr string) bool {
 
 	return false
 }
+
+func isCI() bool {
+	if _, ok := os.LookupEnv("CI"); ok {
+		return true
+	}
+
+	if _, ok := os.LookupEnv("GITHUB_RUN_ID"); ok {
+		return true
+	}
+
+	return false
+}
+
+func dockertestMaxWait() time.Duration {
+	wait := 60 * time.Second //nolint
+
+	if isCI() {
+		wait = 300 * time.Second //nolint
+	}
+
+	return wait
+}
+
+// func dockertestCommandTimeout() time.Duration {
+// 	timeout := 10 * time.Second //nolint
+//
+// 	if isCI() {
+// 		timeout = 60 * time.Second //nolint
+// 	}
+//
+// 	return timeout
+// }
 
 // pingAllNegativeHelper is intended to have 1 or more nodes timeing out from the ping,
 // it counts failures instead of successes.
