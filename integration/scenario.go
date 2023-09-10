@@ -112,7 +112,7 @@ type Scenario struct {
 	pool    *dockertest.Pool
 	network *dockertest.Network
 
-	headscaleLock sync.Mutex
+	mu sync.Mutex
 }
 
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
@@ -212,8 +212,8 @@ func (s *Scenario) Users() []string {
 // will be return, otherwise a new instance will be created.
 // TODO(kradalby): make port and headscale configurable, multiple instances support?
 func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
-	s.headscaleLock.Lock()
-	defer s.headscaleLock.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if headscale, ok := s.controlServers.Load("headscale"); ok {
 		return headscale, nil
@@ -326,7 +326,9 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 					)
 				}
 
+				s.mu.Lock()
 				user.Clients[tsClient.Hostname()] = tsClient
+				s.mu.Unlock()
 
 				return nil
 			})
