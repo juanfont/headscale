@@ -362,13 +362,15 @@ func (hsdb *HSDatabase) deleteMachine(machine *types.Machine) error {
 	return nil
 }
 
-func (hsdb *HSDatabase) TouchMachine(machine *types.Machine) error {
-	hsdb.mu.Lock()
-	defer hsdb.mu.Unlock()
-
+// UpdateLastSeen sets a machine's last seen field indicating that we
+// have recently communicating with this machine.
+// This is mostly used to indicate if a machine is online and is not
+// extremely important to make sure is fully correct and to avoid
+// holding up the hot path, does not contain any locks and isnt
+// concurrency safe. But that should be ok.
+func (hsdb *HSDatabase) UpdateLastSeen(machine *types.Machine) error {
 	return hsdb.db.Model(machine).Updates(types.Machine{
-		LastSeen:             machine.LastSeen,
-		LastSuccessfulUpdate: machine.LastSuccessfulUpdate,
+		LastSeen: machine.LastSeen,
 	}).Error
 }
 
