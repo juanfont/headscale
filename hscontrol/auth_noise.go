@@ -23,6 +23,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 
 	log.Trace().
 		Any("headers", req.Header).
+		Caller().
 		Msg("Headers")
 
 	body, _ := io.ReadAll(req.Body)
