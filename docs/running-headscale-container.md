@@ -6,72 +6,98 @@
     written by community members. It is _not_ verified by `headscale` developers.
 
     **It might be outdated and it might miss necessary steps**.
-
+    
+    Last update : 01/05/2023 - Headscale 0.22.1
+ 
 ## Goal
 
-This documentation has the goal of showing a user how-to set up and run `headscale` in a container.
-[Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it should
-not work with alternatives like [Podman](https://podman.io). The Docker image can be found on Docker Hub [here](https://hub.docker.com/r/headscale/headscale).
+This documentation has the goal of showing a user how-to set up and run `headscale` in a [Docker](https://www.docker.com) container.
+
+The Docker image can be found on Docker Hub [here](https://hub.docker.com/r/headscale/headscale).
 
 ## Configure and run `headscale`
 
-1. Prepare a directory on the host Docker node in your directory of choice, used to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
+# 1. Prepare a directory on the host Docker node in your directory of choice, used to hold `headscale` files. 
 
 ```shell
-mkdir -p ./headscale/config
-cd ./headscale
-```
-
-2. Create an empty SQlite datebase in the headscale directory:
+mkdir -p ./headscale/config && cd ./headscale/config
+``` 
+    
+!!! info "Database"
+    
+    This tutorial uses SQLite for simplicity reasons, in a large environnement, it's recommended to use Postgres,  
+    please refer the configuration file
+    
+# 2. Create an empty [SQLite](https://www.sqlite.org/) datebase in the headscale directory:
 
 ```shell
 touch ./config/db.sqlite
 ```
 
-3. **(Strongly Recommended)** Download a copy of the [example configuration][config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
-
-Using wget:
+# 3. Create an ACL file in the headscale directory:
 
 ```shell
-wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
+touch ./config/ACL.json
 ```
 
-Using curl:
+Edit the file and put a base ACL in it :
 
-```shell
-curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
+```json
+{
+    "acls": [
+      { "action": "accept", "src": ["*:*"], "dst": ["*:*"] }
+    ]
+}  
 ```
 
-**(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
+# 4. Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository and place it at ./config/config.yaml
 
 ```shell
-touch ./config/config.yaml
+wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml || curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
 ```
 
 Modify the config file to your preferences before launching Docker container.
-Here are some settings that you likely want:
+Here are some settings that you likely want to change:
+
+Change `Headscale's` server url to your hostname or host IP
 
 ```yaml
-# Change to your hostname or host IP
 server_url: http://your-host-name:8080
-# Listen to 0.0.0.0 so it's accessible outside the container
-metrics_listen_addr: 0.0.0.0:9090
-# The default /var/lib/headscale path is not writable in the container
-private_key_path: /etc/headscale/private.key
-# The default /var/lib/headscale path is not writable in the container
-noise:
-  private_key_path: /etc/headscale/noise_private.key
-# The default /var/lib/headscale path is not writable  in the container
-db_type: sqlite3
-db_path: /etc/headscale/db.sqlite
 ```
 
-4. Start the headscale server while working in the host headscale directory:
+Listen to 0.0.0.0 so the services are accessible outside the container
+
+```yaml
+listen_addr: 0.0.0.0:8080 #For Headscale
+metrics_listen_addr: 0.0.0.0:9090 #For the metrics 
+```
+
+Bind the ACL file we created above:
+
+```yaml
+acl_policy_path: "/etc/headscale/ACL.json"
+```
+
+!!! warning "/var/lib isn't an editable path in the container"
+
+    Because /var/lib isn't an editable path in the container, we will need to replace
+    in the config file all those /var/lib paths to /etc.
+    
+    Example :
+    ```yaml
+    # The default /var/lib path is not writable in the container
+    private_key_path: /etc/headscale/private.key
+    ```
+
+# 5. Start the headscale server while working in the host headscale directory:
+
+Replace <VERSION> with the current version, and your good to go !
 
 ```shell
 docker run \
   --name headscale \
   --detach \
+  --restart unless-stopped \
   --volume $(pwd)/config:/etc/headscale/ \
   --publish 127.0.0.1:8080:8080 \
   --publish 127.0.0.1:9090:9090 \
@@ -80,12 +106,17 @@ docker run \
 
 ```
 
-Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
+!!! note "About the docker run command"
+    
+    Use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
 
-This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
-`headscale` instance becomes available and then detach so headscale runs in the background.
+    This command will mount `config/` (outside the container) under `/etc/headscale` (inside the container), 
+    forward port 8080 out of the container so the `headscale` instance becomes available and then detach so 
+    headscale runs in the background.
+    
+    The restart flag will made the instance restart unless if you stopped it manually
 
-5. Verify `headscale` is running:
+# 6. Verify `headscale` is running:
 
 Follow the container logs:
 
@@ -105,67 +136,26 @@ Verify `headscale` is available:
 curl http://127.0.0.1:9090/metrics
 ```
 
-6. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
-
-```shell
-docker exec headscale \
-  headscale users create myfirstuser
+# 7. Launch command in the container :
+ 
+```shell    
+docker exec headscale <COMMAND>
 ```
+    
+!!! note "Debugging & using a shell with Headscale"
 
-### Register a machine (normal login)
+    The `headscale/headscale` Docker container does not contain a shell or any other debug tools. 
+    If you need to debug your application running in the Docker container, you can use the 
+    `-debug` variant, for example `headscale/headscale:0.22.1-debug`.
 
-On a client machine, execute the `tailscale` login command:
 
-```shell
-tailscale up --login-server YOUR_HEADSCALE_URL
-```
+    To run the debug Docker container, use the exact same run command as above, but replace         
+    `headscale/headscale:<VERSION>` with `headscale/headscale:<VERSION>-debug`. The two 
+    containers are compatible with each other, so you can alternate between them.
 
-To register a machine when running `headscale` in a container, take the headscale command and pass it to the container:
 
-```shell
-docker exec headscale \
-  headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
-```
+    To launch a shell in the container, use:
 
-### Register machine using a pre authenticated key
-
-Generate a key using the command line:
-
-```shell
-docker exec headscale \
-  headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
-```
-
-This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
-
-```shell
-tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
-```
-
-## Debugging headscale running in Docker
-
-The `headscale/headscale` Docker container is based on a "distroless" image that does not contain a shell or any other debug tools. If you need to debug your application running in the Docker container, you can use the `-debug` variant, for example `headscale/headscale:x.x.x-debug`.
-
-### Running the debug Docker container
-
-To run the debug Docker container, use the exact same commands as above, but replace `headscale/headscale:x.x.x` with `headscale/headscale:x.x.x-debug` (`x.x.x` is the version of headscale). The two containers are compatible with each other, so you can alternate between them.
-
-### Executing commands in the debug container
-
-The default command in the debug container is to run `headscale`, which is located at `/bin/headscale` inside the container.
-
-Additionally, the debug container includes a minimalist Busybox shell.
-
-To launch a shell in the container, use:
-
-```
-docker run -it headscale/headscale:x.x.x-debug sh
-```
-
-You can also execute commands directly, such as `ls /bin` in this example:
-
-```
-docker run headscale/headscale:x.x.x-debug ls /bin
-```
-
-Using `docker exec` allows you to run commands in an existing container.
+    ```
+    docker run -it headscale sh
+    ```
