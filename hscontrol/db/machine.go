@@ -318,11 +318,8 @@ func (hsdb *HSDatabase) MachineSetExpiry(machine *types.Machine, expiry time.Tim
 }
 
 func (hsdb *HSDatabase) machineSetExpiry(machine *types.Machine, expiry time.Time) error {
-	now := time.Now()
-
 	if err := hsdb.db.Model(machine).Updates(types.Machine{
-		LastSuccessfulUpdate: &now,
-		Expiry:               &expiry,
+		Expiry: &expiry,
 	}).Error; err != nil {
 		return fmt.Errorf(
 			"failed to refresh machine (update expiration) in the database: %w",

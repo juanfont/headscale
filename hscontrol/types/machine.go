@@ -53,9 +53,8 @@ type Machine struct {
 	AuthKeyID uint
 	AuthKey   *PreAuthKey
 
-	LastSeen             *time.Time
-	LastSuccessfulUpdate *time.Time
-	Expiry               *time.Time
+	LastSeen *time.Time
+	Expiry   *time.Time
 
 	HostInfo  HostInfo
 	Endpoints StringList
@@ -244,12 +243,6 @@ func (machine *Machine) Proto() *v1.Machine {
 
 	if machine.LastSeen != nil {
 		machineProto.LastSeen = timestamppb.New(*machine.LastSeen)
-	}
-
-	if machine.LastSuccessfulUpdate != nil {
-		machineProto.LastSuccessfulUpdate = timestamppb.New(
-			*machine.LastSuccessfulUpdate,
-		)
 	}
 
 	if machine.Expiry != nil {
