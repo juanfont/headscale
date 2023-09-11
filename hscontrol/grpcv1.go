@@ -532,9 +532,8 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		GivenName:  givenName,
 		User:       *user,
 
-		Expiry:               &time.Time{},
-		LastSeen:             &time.Time{},
-		LastSuccessfulUpdate: &time.Time{},
+		Expiry:   &time.Time{},
+		LastSeen: &time.Time{},
 
 		HostInfo: types.HostInfo(hostinfo),
 	}
