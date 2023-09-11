@@ -409,7 +409,7 @@ func (m *Mapper) marshalMapResponse(
 
 		mapResponsePath := path.Join(
 			mPath,
-			fmt.Sprintf("%d-%s-%d.json", atomic.LoadUint64(&m.seq), m.uid, now),
+			fmt.Sprintf("%d-%s-%d.json", now, m.uid, atomic.LoadUint64(&m.seq)),
 		)
 
 		log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
