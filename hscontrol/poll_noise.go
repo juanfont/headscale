@@ -31,6 +31,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 	log.Trace().
 		Any("headers", req.Header).
+		Caller().
 		Msg("Headers")
 
 	body, _ := io.ReadAll(req.Body)
