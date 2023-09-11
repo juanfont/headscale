@@ -8,8 +8,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	_ "net/http/pprof" //nolint
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,7 +21,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
@@ -97,6 +99,10 @@ type Headscale struct {
 }
 
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
+	if _, enableProfile := os.LookupEnv("HEADSCALE_PROFILING_ENABLED"); enableProfile {
+		runtime.SetBlockProfileRate(1)
+	}
+
 	privateKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read or create private key: %w", err)
@@ -437,8 +443,9 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
-func (h *Headscale) createRouter(grpcMux *runtime.ServeMux) *mux.Router {
+func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
+	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
 	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost)
 
@@ -545,7 +552,7 @@ func (h *Headscale) Serve() error {
 		return fmt.Errorf("failed change permission of gRPC socket: %w", err)
 	}
 
-	grpcGatewayMux := runtime.NewServeMux()
+	grpcGatewayMux := grpcRuntime.NewServeMux()
 
 	// Make the grpc-gateway connect to grpc over socket
 	grpcGatewayConn, err := grpc.Dial(
