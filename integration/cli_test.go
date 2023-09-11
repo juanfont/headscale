@@ -413,14 +413,12 @@ func TestEnablingRoutes(t *testing.T) {
 	// advertise routes using the up command
 	for i, client := range allClients {
 		routeStr := fmt.Sprintf("10.0.%d.0/24", i)
-		hostname, _ := client.FQDN()
-		_, _, err = client.Execute([]string{
+		command := []string{
 			"tailscale",
-			"up",
-			fmt.Sprintf("--advertise-routes=%s", routeStr),
-			"-login-server", headscale.GetEndpoint(),
-			"--hostname", hostname,
-		})
+			"set",
+			"--advertise-routes=" + routeStr,
+		}
+		_, _, err := client.Execute(command)
 		assertNoErrf(t, "failed to advertise route: %s", err)
 	}
 
@@ -474,6 +472,7 @@ func TestEnablingRoutes(t *testing.T) {
 		&enablingRoutes,
 	)
 	assertNoErr(t, err)
+	assert.Len(t, enablingRoutes, 3)
 
 	for _, route := range enablingRoutes {
 		assert.Equal(t, route.Advertised, true)
