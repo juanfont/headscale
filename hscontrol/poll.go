@@ -66,6 +66,9 @@ func (h *Headscale) handlePoll(
 ) {
 	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
 
+	// This is the mechanism where the node gives us inforamtion about its
+	// current configuration.
+	//
 	// If OmitPeers is true, Stream is false, and ReadOnly is false,
 	// then te server will let clients update their endpoints without
 	// breaking existing long-polling (Stream == true) connections.
@@ -84,11 +87,22 @@ func (h *Headscale) handlePoll(
 			Msg("Received endpoint update")
 
 		now := time.Now().UTC()
-		machine.Endpoints = mapRequest.Endpoints
 		machine.LastSeen = &now
+		machine.Hostname = mapRequest.Hostinfo.Hostname
+		machine.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
+		machine.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
+		machine.Endpoints = mapRequest.Endpoints
 
 		if err := h.db.MachineSave(machine); err != nil {
 			logErr(err, "Failed to persist/update machine in the database")
+			http.Error(writer, "", http.StatusInternalServerError)
+
+			return
+		}
+
+		err := h.db.SaveMachineRoutes(machine)
+		if err != nil {
+			logErr(err, "Error processing machine routes")
 			http.Error(writer, "", http.StatusInternalServerError)
 
 			return
@@ -134,6 +148,8 @@ func (h *Headscale) handlePoll(
 		return
 	}
 
+	now := time.Now().UTC()
+	machine.LastSeen = &now
 	machine.Hostname = mapRequest.Hostinfo.Hostname
 	machine.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
 	machine.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)

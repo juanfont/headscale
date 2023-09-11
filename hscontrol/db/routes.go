@@ -278,6 +278,12 @@ func (hsdb *HSDatabase) saveMachineRoutes(machine *types.Machine) error {
 		advertisedRoutes[prefix] = false
 	}
 
+	log.Trace().
+		Str("machine", machine.Hostname).
+		Interface("advertisedRoutes", advertisedRoutes).
+		Interface("currentRoutes", currentRoutes).
+		Msg("updating routes")
+
 	for pos, route := range currentRoutes {
 		if _, ok := advertisedRoutes[netip.Prefix(route.Prefix)]; ok {
 			if !route.Advertised {
