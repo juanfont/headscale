@@ -1,5 +1,5 @@
 # Builder image
-FROM docker.io/golang:1.20-bullseye AS build
+FROM docker.io/golang:1.21-bookworm AS build
 ARG VERSION=dev
 ENV GOPATH /go
 WORKDIR /go/src/headscale
@@ -14,7 +14,7 @@ RUN strip /go/bin/headscale
 RUN test -e /go/bin/headscale
 
 # Production image
-FROM docker.io/debian:bullseye-slim
+FROM docker.io/debian:bookworm-slim
 
 RUN apt-get update \
     && apt-get install -y ca-certificates \
