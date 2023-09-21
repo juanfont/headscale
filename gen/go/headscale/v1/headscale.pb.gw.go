@@ -363,8 +363,8 @@ func local_request_HeadscaleService_ListPreAuthKeys_0(ctx context.Context, marsh
 
 }
 
-func request_HeadscaleService_DebugCreateMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq DebugCreateMachineRequest
+func request_HeadscaleService_DebugCreateNode_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DebugCreateNodeRequest
 	var metadata runtime.ServerMetadata
 
 	newReader, berr := utilities.IOReaderFactory(req.Body)
@@ -375,13 +375,13 @@ func request_HeadscaleService_DebugCreateMachine_0(ctx context.Context, marshale
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := client.DebugCreateMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.DebugCreateNode(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_DebugCreateMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq DebugCreateMachineRequest
+func local_request_HeadscaleService_DebugCreateNode_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DebugCreateNodeRequest
 	var metadata runtime.ServerMetadata
 
 	newReader, berr := utilities.IOReaderFactory(req.Body)
@@ -392,13 +392,13 @@ func local_request_HeadscaleService_DebugCreateMachine_0(ctx context.Context, ma
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := server.DebugCreateMachine(ctx, &protoReq)
+	msg, err := server.DebugCreateNode(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
-func request_HeadscaleService_GetMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq GetMachineRequest
+func request_HeadscaleService_GetNode_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq GetNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -408,23 +408,23 @@ func request_HeadscaleService_GetMachine_0(ctx context.Context, marshaler runtim
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
-	msg, err := client.GetMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.GetNode(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_GetMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq GetMachineRequest
+func local_request_HeadscaleService_GetNode_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq GetNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -434,17 +434,17 @@ func local_request_HeadscaleService_GetMachine_0(ctx context.Context, marshaler 
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
-	msg, err := server.GetMachine(ctx, &protoReq)
+	msg, err := server.GetNode(ctx, &protoReq)
 	return msg, metadata, err
 
 }
@@ -468,14 +468,14 @@ func request_HeadscaleService_SetTags_0(ctx context.Context, marshaler runtime.M
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
 	msg, err := client.SetTags(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -502,14 +502,14 @@ func local_request_HeadscaleService_SetTags_0(ctx context.Context, marshaler run
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
 	msg, err := server.SetTags(ctx, &protoReq)
@@ -518,43 +518,43 @@ func local_request_HeadscaleService_SetTags_0(ctx context.Context, marshaler run
 }
 
 var (
-	filter_HeadscaleService_RegisterMachine_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+	filter_HeadscaleService_RegisterNode_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 )
 
-func request_HeadscaleService_RegisterMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq RegisterMachineRequest
+func request_HeadscaleService_RegisterNode_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq RegisterNodeRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_RegisterMachine_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_RegisterNode_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := client.RegisterMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.RegisterNode(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_RegisterMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq RegisterMachineRequest
+func local_request_HeadscaleService_RegisterNode_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq RegisterNodeRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_RegisterMachine_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_RegisterNode_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := server.RegisterMachine(ctx, &protoReq)
+	msg, err := server.RegisterNode(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
-func request_HeadscaleService_DeleteMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq DeleteMachineRequest
+func request_HeadscaleService_DeleteNode_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DeleteNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -564,23 +564,23 @@ func request_HeadscaleService_DeleteMachine_0(ctx context.Context, marshaler run
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
-	msg, err := client.DeleteMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.DeleteNode(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_DeleteMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq DeleteMachineRequest
+func local_request_HeadscaleService_DeleteNode_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DeleteNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -590,23 +590,23 @@ func local_request_HeadscaleService_DeleteMachine_0(ctx context.Context, marshal
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
-	msg, err := server.DeleteMachine(ctx, &protoReq)
+	msg, err := server.DeleteNode(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
-func request_HeadscaleService_ExpireMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ExpireMachineRequest
+func request_HeadscaleService_ExpireNode_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ExpireNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -616,23 +616,23 @@ func request_HeadscaleService_ExpireMachine_0(ctx context.Context, marshaler run
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
-	msg, err := client.ExpireMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.ExpireNode(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_ExpireMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ExpireMachineRequest
+func local_request_HeadscaleService_ExpireNode_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ExpireNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -642,23 +642,23 @@ func local_request_HeadscaleService_ExpireMachine_0(ctx context.Context, marshal
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
-	msg, err := server.ExpireMachine(ctx, &protoReq)
+	msg, err := server.ExpireNode(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
-func request_HeadscaleService_RenameMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq RenameMachineRequest
+func request_HeadscaleService_RenameNode_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq RenameNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -668,14 +668,14 @@ func request_HeadscaleService_RenameMachine_0(ctx context.Context, marshaler run
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
 	val, ok = pathParams["new_name"]
@@ -688,13 +688,13 @@ func request_HeadscaleService_RenameMachine_0(ctx context.Context, marshaler run
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "new_name", err)
 	}
 
-	msg, err := client.RenameMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.RenameNode(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_RenameMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq RenameMachineRequest
+func local_request_HeadscaleService_RenameNode_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq RenameNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -704,14 +704,14 @@ func local_request_HeadscaleService_RenameMachine_0(ctx context.Context, marshal
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
 	val, ok = pathParams["new_name"]
@@ -724,53 +724,53 @@ func local_request_HeadscaleService_RenameMachine_0(ctx context.Context, marshal
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "new_name", err)
 	}
 
-	msg, err := server.RenameMachine(ctx, &protoReq)
+	msg, err := server.RenameNode(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
 var (
-	filter_HeadscaleService_ListMachines_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+	filter_HeadscaleService_ListNodes_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 )
 
-func request_HeadscaleService_ListMachines_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ListMachinesRequest
+func request_HeadscaleService_ListNodes_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ListNodesRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_ListMachines_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_ListNodes_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := client.ListMachines(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.ListNodes(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_ListMachines_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ListMachinesRequest
+func local_request_HeadscaleService_ListNodes_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ListNodesRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_ListMachines_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_ListNodes_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := server.ListMachines(ctx, &protoReq)
+	msg, err := server.ListNodes(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
 var (
-	filter_HeadscaleService_MoveMachine_0 = &utilities.DoubleArray{Encoding: map[string]int{"machine_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+	filter_HeadscaleService_MoveNode_0 = &utilities.DoubleArray{Encoding: map[string]int{"node_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 )
 
-func request_HeadscaleService_MoveMachine_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq MoveMachineRequest
+func request_HeadscaleService_MoveNode_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq MoveNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -780,30 +780,30 @@ func request_HeadscaleService_MoveMachine_0(ctx context.Context, marshaler runti
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_MoveMachine_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_MoveNode_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := client.MoveMachine(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.MoveNode(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_MoveMachine_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq MoveMachineRequest
+func local_request_HeadscaleService_MoveNode_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq MoveNodeRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -813,24 +813,24 @@ func local_request_HeadscaleService_MoveMachine_0(ctx context.Context, marshaler
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_MoveMachine_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_HeadscaleService_MoveNode_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := server.MoveMachine(ctx, &protoReq)
+	msg, err := server.MoveNode(ctx, &protoReq)
 	return msg, metadata, err
 
 }
@@ -957,8 +957,8 @@ func local_request_HeadscaleService_DisableRoute_0(ctx context.Context, marshale
 
 }
 
-func request_HeadscaleService_GetMachineRoutes_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq GetMachineRoutesRequest
+func request_HeadscaleService_GetNodeRoutes_0(ctx context.Context, marshaler runtime.Marshaler, client HeadscaleServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq GetNodeRoutesRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -968,23 +968,23 @@ func request_HeadscaleService_GetMachineRoutes_0(ctx context.Context, marshaler 
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
-	msg, err := client.GetMachineRoutes(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.GetNodeRoutes(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_HeadscaleService_GetMachineRoutes_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq GetMachineRoutesRequest
+func local_request_HeadscaleService_GetNodeRoutes_0(ctx context.Context, marshaler runtime.Marshaler, server HeadscaleServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq GetNodeRoutesRequest
 	var metadata runtime.ServerMetadata
 
 	var (
@@ -994,17 +994,17 @@ func local_request_HeadscaleService_GetMachineRoutes_0(ctx context.Context, mars
 		_   = err
 	)
 
-	val, ok = pathParams["machine_id"]
+	val, ok = pathParams["node_id"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "machine_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "node_id")
 	}
 
-	protoReq.MachineId, err = runtime.Uint64(val)
+	protoReq.NodeId, err = runtime.Uint64(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "machine_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "node_id", err)
 	}
 
-	msg, err := server.GetMachineRoutes(ctx, &protoReq)
+	msg, err := server.GetNodeRoutes(ctx, &protoReq)
 	return msg, metadata, err
 
 }
@@ -1353,7 +1353,7 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_DebugCreateMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_DebugCreateNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1361,12 +1361,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/DebugCreateMachine", runtime.WithHTTPPathPattern("/api/v1/debug/machine"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/DebugCreateNode", runtime.WithHTTPPathPattern("/api/v1/debug/node"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_DebugCreateMachine_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_DebugCreateNode_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1374,11 +1374,11 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_DebugCreateMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_DebugCreateNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("GET", pattern_HeadscaleService_GetMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("GET", pattern_HeadscaleService_GetNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1386,12 +1386,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/GetMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/GetNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_GetMachine_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_GetNode_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1399,7 +1399,7 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_GetMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_GetNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -1411,7 +1411,7 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/SetTags", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/tags"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/SetTags", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/tags"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1428,7 +1428,7 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_RegisterMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_RegisterNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1436,12 +1436,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/RegisterMachine", runtime.WithHTTPPathPattern("/api/v1/machine/register"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/RegisterNode", runtime.WithHTTPPathPattern("/api/v1/node/register"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_RegisterMachine_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_RegisterNode_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1449,11 +1449,11 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_RegisterMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_RegisterNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("DELETE", pattern_HeadscaleService_DeleteMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("DELETE", pattern_HeadscaleService_DeleteNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1461,12 +1461,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/DeleteMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/DeleteNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_DeleteMachine_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_DeleteNode_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1474,11 +1474,11 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_DeleteMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_DeleteNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_ExpireMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_ExpireNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1486,12 +1486,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/ExpireMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/expire"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/ExpireNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/expire"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_ExpireMachine_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_ExpireNode_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1499,11 +1499,11 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_ExpireMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_ExpireNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_RenameMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_RenameNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1511,12 +1511,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/RenameMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/rename/{new_name}"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/RenameNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/rename/{new_name}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_RenameMachine_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_RenameNode_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1524,11 +1524,11 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_RenameMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_RenameNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("GET", pattern_HeadscaleService_ListMachines_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("GET", pattern_HeadscaleService_ListNodes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1536,12 +1536,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/ListMachines", runtime.WithHTTPPathPattern("/api/v1/machine"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/ListNodes", runtime.WithHTTPPathPattern("/api/v1/node"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_ListMachines_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_ListNodes_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1549,11 +1549,11 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_ListMachines_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_ListNodes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_MoveMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_MoveNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1561,12 +1561,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/MoveMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/user"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/MoveNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/user"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_MoveMachine_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_MoveNode_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1574,7 +1574,7 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_MoveMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_MoveNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -1653,7 +1653,7 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 
 	})
 
-	mux.Handle("GET", pattern_HeadscaleService_GetMachineRoutes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("GET", pattern_HeadscaleService_GetNodeRoutes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
@@ -1661,12 +1661,12 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/GetMachineRoutes", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/routes"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/headscale.v1.HeadscaleService/GetNodeRoutes", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/routes"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_HeadscaleService_GetMachineRoutes_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_HeadscaleService_GetNodeRoutes_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
@@ -1674,7 +1674,7 @@ func RegisterHeadscaleServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 
-		forward_HeadscaleService_GetMachineRoutes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_GetNodeRoutes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -1995,47 +1995,47 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_DebugCreateMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_DebugCreateNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/DebugCreateMachine", runtime.WithHTTPPathPattern("/api/v1/debug/machine"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/DebugCreateNode", runtime.WithHTTPPathPattern("/api/v1/debug/node"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_DebugCreateMachine_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_DebugCreateNode_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_DebugCreateMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_DebugCreateNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("GET", pattern_HeadscaleService_GetMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("GET", pattern_HeadscaleService_GetNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/GetMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/GetNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_GetMachine_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_GetNode_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_GetMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_GetNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -2045,7 +2045,7 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/SetTags", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/tags"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/SetTags", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/tags"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -2061,135 +2061,135 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_RegisterMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_RegisterNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/RegisterMachine", runtime.WithHTTPPathPattern("/api/v1/machine/register"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/RegisterNode", runtime.WithHTTPPathPattern("/api/v1/node/register"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_RegisterMachine_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_RegisterNode_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_RegisterMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_RegisterNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("DELETE", pattern_HeadscaleService_DeleteMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("DELETE", pattern_HeadscaleService_DeleteNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/DeleteMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/DeleteNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_DeleteMachine_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_DeleteNode_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_DeleteMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_DeleteNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_ExpireMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_ExpireNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/ExpireMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/expire"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/ExpireNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/expire"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_ExpireMachine_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_ExpireNode_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_ExpireMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_ExpireNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_RenameMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_RenameNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/RenameMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/rename/{new_name}"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/RenameNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/rename/{new_name}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_RenameMachine_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_RenameNode_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_RenameMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_RenameNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("GET", pattern_HeadscaleService_ListMachines_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("GET", pattern_HeadscaleService_ListNodes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/ListMachines", runtime.WithHTTPPathPattern("/api/v1/machine"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/ListNodes", runtime.WithHTTPPathPattern("/api/v1/node"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_ListMachines_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_ListNodes_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_ListMachines_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_ListNodes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_HeadscaleService_MoveMachine_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_HeadscaleService_MoveNode_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/MoveMachine", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/user"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/MoveNode", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/user"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_MoveMachine_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_MoveNode_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_MoveMachine_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_MoveNode_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -2259,25 +2259,25 @@ func RegisterHeadscaleServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 
 	})
 
-	mux.Handle("GET", pattern_HeadscaleService_GetMachineRoutes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("GET", pattern_HeadscaleService_GetNodeRoutes_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/GetMachineRoutes", runtime.WithHTTPPathPattern("/api/v1/machine/{machine_id}/routes"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/headscale.v1.HeadscaleService/GetNodeRoutes", runtime.WithHTTPPathPattern("/api/v1/node/{node_id}/routes"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_HeadscaleService_GetMachineRoutes_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_HeadscaleService_GetNodeRoutes_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_HeadscaleService_GetMachineRoutes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_HeadscaleService_GetNodeRoutes_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -2389,23 +2389,23 @@ var (
 
 	pattern_HeadscaleService_ListPreAuthKeys_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"api", "v1", "preauthkey"}, ""))
 
-	pattern_HeadscaleService_DebugCreateMachine_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"api", "v1", "debug", "machine"}, ""))
+	pattern_HeadscaleService_DebugCreateNode_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"api", "v1", "debug", "node"}, ""))
 
-	pattern_HeadscaleService_GetMachine_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"api", "v1", "machine", "machine_id"}, ""))
+	pattern_HeadscaleService_GetNode_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"api", "v1", "node", "node_id"}, ""))
 
-	pattern_HeadscaleService_SetTags_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "machine", "machine_id", "tags"}, ""))
+	pattern_HeadscaleService_SetTags_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "node", "node_id", "tags"}, ""))
 
-	pattern_HeadscaleService_RegisterMachine_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"api", "v1", "machine", "register"}, ""))
+	pattern_HeadscaleService_RegisterNode_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"api", "v1", "node", "register"}, ""))
 
-	pattern_HeadscaleService_DeleteMachine_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"api", "v1", "machine", "machine_id"}, ""))
+	pattern_HeadscaleService_DeleteNode_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"api", "v1", "node", "node_id"}, ""))
 
-	pattern_HeadscaleService_ExpireMachine_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "machine", "machine_id", "expire"}, ""))
+	pattern_HeadscaleService_ExpireNode_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "node", "node_id", "expire"}, ""))
 
-	pattern_HeadscaleService_RenameMachine_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5}, []string{"api", "v1", "machine", "machine_id", "rename", "new_name"}, ""))
+	pattern_HeadscaleService_RenameNode_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5}, []string{"api", "v1", "node", "node_id", "rename", "new_name"}, ""))
 
-	pattern_HeadscaleService_ListMachines_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"api", "v1", "machine"}, ""))
+	pattern_HeadscaleService_ListNodes_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"api", "v1", "node"}, ""))
 
-	pattern_HeadscaleService_MoveMachine_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "machine", "machine_id", "user"}, ""))
+	pattern_HeadscaleService_MoveNode_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "node", "node_id", "user"}, ""))
 
 	pattern_HeadscaleService_GetRoutes_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"api", "v1", "routes"}, ""))
 
@@ -2413,7 +2413,7 @@ var (
 
 	pattern_HeadscaleService_DisableRoute_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "routes", "route_id", "disable"}, ""))
 
-	pattern_HeadscaleService_GetMachineRoutes_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "machine", "machine_id", "routes"}, ""))
+	pattern_HeadscaleService_GetNodeRoutes_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4}, []string{"api", "v1", "node", "node_id", "routes"}, ""))
 
 	pattern_HeadscaleService_DeleteRoute_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"api", "v1", "routes", "route_id"}, ""))
 
@@ -2441,23 +2441,23 @@ var (
 
 	forward_HeadscaleService_ListPreAuthKeys_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_DebugCreateMachine_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_DebugCreateNode_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_GetMachine_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_GetNode_0 = runtime.ForwardResponseMessage
 
 	forward_HeadscaleService_SetTags_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_RegisterMachine_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_RegisterNode_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_DeleteMachine_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_DeleteNode_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_ExpireMachine_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_ExpireNode_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_RenameMachine_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_RenameNode_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_ListMachines_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_ListNodes_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_MoveMachine_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_MoveNode_0 = runtime.ForwardResponseMessage
 
 	forward_HeadscaleService_GetRoutes_0 = runtime.ForwardResponseMessage
 
@@ -2465,7 +2465,7 @@ var (
 
 	forward_HeadscaleService_DisableRoute_0 = runtime.ForwardResponseMessage
 
-	forward_HeadscaleService_GetMachineRoutes_0 = runtime.ForwardResponseMessage
+	forward_HeadscaleService_GetNodeRoutes_0 = runtime.ForwardResponseMessage
 
 	forward_HeadscaleService_DeleteRoute_0 = runtime.ForwardResponseMessage
 

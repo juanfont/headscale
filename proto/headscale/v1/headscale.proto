@@ -6,7 +6,7 @@ import "google/api/annotations.proto";
 
 import "headscale/v1/user.proto";
 import "headscale/v1/preauthkey.proto";
-import "headscale/v1/machine.proto";
+import "headscale/v1/node.proto";
 import "headscale/v1/routes.proto";
 import "headscale/v1/apikey.proto";
 // import "headscale/v1/device.proto";
@@ -67,63 +67,63 @@ service HeadscaleService {
     }
     // --- PreAuthKeys end ---
 
-    // --- Machine start ---
-    rpc DebugCreateMachine(DebugCreateMachineRequest) returns(DebugCreateMachineResponse) {
+    // --- Node start ---
+    rpc DebugCreateNode(DebugCreateNodeRequest) returns(DebugCreateNodeResponse) {
         option(google.api.http) = {
-            post : "/api/v1/debug/machine"
+            post : "/api/v1/debug/node"
             body : "*"
         };
     }
 
-    rpc GetMachine(GetMachineRequest) returns(GetMachineResponse) {
+    rpc GetNode(GetNodeRequest) returns(GetNodeResponse) {
         option(google.api.http) = {
-            get : "/api/v1/machine/{machine_id}"
+            get : "/api/v1/node/{node_id}"
         };
     }
 
     rpc SetTags(SetTagsRequest) returns(SetTagsResponse) {
         option(google.api.http) = {
-            post : "/api/v1/machine/{machine_id}/tags"
+            post : "/api/v1/node/{node_id}/tags"
             body : "*"
         };
     }
 
-    rpc RegisterMachine(RegisterMachineRequest) returns(RegisterMachineResponse) {
+    rpc RegisterNode(RegisterNodeRequest) returns(RegisterNodeResponse) {
         option(google.api.http) = {
-            post : "/api/v1/machine/register"
+            post : "/api/v1/node/register"
         };
     }
 
-    rpc DeleteMachine(DeleteMachineRequest) returns(DeleteMachineResponse) {
+    rpc DeleteNode(DeleteNodeRequest) returns(DeleteNodeResponse) {
         option(google.api.http) = {
-            delete : "/api/v1/machine/{machine_id}"
+            delete : "/api/v1/node/{node_id}"
         };
     }
 
-    rpc ExpireMachine(ExpireMachineRequest) returns(ExpireMachineResponse) {
+    rpc ExpireNode(ExpireNodeRequest) returns(ExpireNodeResponse) {
         option(google.api.http) = {
-            post : "/api/v1/machine/{machine_id}/expire"
+            post : "/api/v1/node/{node_id}/expire"
         };
     }
 
-    rpc RenameMachine(RenameMachineRequest) returns(RenameMachineResponse) {
+    rpc RenameNode(RenameNodeRequest) returns(RenameNodeResponse) {
         option(google.api.http) = {
-            post : "/api/v1/machine/{machine_id}/rename/{new_name}"
+            post : "/api/v1/node/{node_id}/rename/{new_name}"
         };
     }
 
-    rpc ListMachines(ListMachinesRequest) returns(ListMachinesResponse) {
+    rpc ListNodes(ListNodesRequest) returns(ListNodesResponse) {
         option(google.api.http) = {
-            get : "/api/v1/machine"
+            get : "/api/v1/node"
         };
     }
 
-    rpc MoveMachine(MoveMachineRequest) returns(MoveMachineResponse) {
+    rpc MoveNode(MoveNodeRequest) returns(MoveNodeResponse) {
         option(google.api.http) = {
-            post : "/api/v1/machine/{machine_id}/user"
+            post : "/api/v1/node/{node_id}/user"
         };
     }
-    // --- Machine end ---
+    // --- Node end ---
 
     // --- Route start ---
     rpc GetRoutes(GetRoutesRequest) returns(GetRoutesResponse) {
@@ -144,9 +144,9 @@ service HeadscaleService {
         };
     }
 
-    rpc GetMachineRoutes(GetMachineRoutesRequest) returns(GetMachineRoutesResponse) {
+    rpc GetNodeRoutes(GetNodeRoutesRequest) returns(GetNodeRoutesResponse) {
         option(google.api.http) = {
-            get : "/api/v1/machine/{machine_id}/routes"
+            get : "/api/v1/node/{node_id}/routes"
         };
     }
 

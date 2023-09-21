@@ -101,15 +101,15 @@
         ]
       }
     },
-    "/api/v1/debug/machine": {
+    "/api/v1/debug/node": {
       "post": {
-        "summary": "--- Machine start ---",
-        "operationId": "HeadscaleService_DebugCreateMachine",
+        "summary": "--- Node start ---",
+        "operationId": "HeadscaleService_DebugCreateNode",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1DebugCreateMachineResponse"
+              "$ref": "#/definitions/v1DebugCreateNodeResponse"
             }
           },
           "default": {
@@ -125,7 +125,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/v1DebugCreateMachineRequest"
+              "$ref": "#/definitions/v1DebugCreateNodeRequest"
             }
           }
         ],
@@ -134,14 +134,14 @@
         ]
       }
     },
-    "/api/v1/machine": {
+    "/api/v1/node": {
       "get": {
-        "operationId": "HeadscaleService_ListMachines",
+        "operationId": "HeadscaleService_ListNodes",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1ListMachinesResponse"
+              "$ref": "#/definitions/v1ListNodesResponse"
             }
           },
           "default": {
@@ -164,14 +164,14 @@
         ]
       }
     },
-    "/api/v1/machine/register": {
+    "/api/v1/node/register": {
       "post": {
-        "operationId": "HeadscaleService_RegisterMachine",
+        "operationId": "HeadscaleService_RegisterNode",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1RegisterMachineResponse"
+              "$ref": "#/definitions/v1RegisterNodeResponse"
             }
           },
           "default": {
@@ -200,14 +200,14 @@
         ]
       }
     },
-    "/api/v1/machine/{machineId}": {
+    "/api/v1/node/{nodeId}": {
       "get": {
-        "operationId": "HeadscaleService_GetMachine",
+        "operationId": "HeadscaleService_GetNode",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1GetMachineResponse"
+              "$ref": "#/definitions/v1GetNodeResponse"
             }
           },
           "default": {
@@ -219,7 +219,7 @@
         },
         "parameters": [
           {
-            "name": "machineId",
+            "name": "nodeId",
             "in": "path",
             "required": true,
             "type": "string",
@@ -231,12 +231,12 @@
         ]
       },
       "delete": {
-        "operationId": "HeadscaleService_DeleteMachine",
+        "operationId": "HeadscaleService_DeleteNode",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1DeleteMachineResponse"
+              "$ref": "#/definitions/v1DeleteNodeResponse"
             }
           },
           "default": {
@@ -248,7 +248,7 @@
         },
         "parameters": [
           {
-            "name": "machineId",
+            "name": "nodeId",
             "in": "path",
             "required": true,
             "type": "string",
@@ -260,14 +260,14 @@
         ]
       }
     },
-    "/api/v1/machine/{machineId}/expire": {
+    "/api/v1/node/{nodeId}/expire": {
       "post": {
-        "operationId": "HeadscaleService_ExpireMachine",
+        "operationId": "HeadscaleService_ExpireNode",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1ExpireMachineResponse"
+              "$ref": "#/definitions/v1ExpireNodeResponse"
             }
           },
           "default": {
@@ -279,7 +279,7 @@
         },
         "parameters": [
           {
-            "name": "machineId",
+            "name": "nodeId",
             "in": "path",
             "required": true,
             "type": "string",
@@ -291,14 +291,14 @@
         ]
       }
     },
-    "/api/v1/machine/{machineId}/rename/{newName}": {
+    "/api/v1/node/{nodeId}/rename/{newName}": {
       "post": {
-        "operationId": "HeadscaleService_RenameMachine",
+        "operationId": "HeadscaleService_RenameNode",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1RenameMachineResponse"
+              "$ref": "#/definitions/v1RenameNodeResponse"
             }
           },
           "default": {
@@ -310,7 +310,7 @@
         },
         "parameters": [
           {
-            "name": "machineId",
+            "name": "nodeId",
             "in": "path",
             "required": true,
             "type": "string",
@@ -328,14 +328,14 @@
         ]
       }
     },
-    "/api/v1/machine/{machineId}/routes": {
+    "/api/v1/node/{nodeId}/routes": {
       "get": {
-        "operationId": "HeadscaleService_GetMachineRoutes",
+        "operationId": "HeadscaleService_GetNodeRoutes",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1GetMachineRoutesResponse"
+              "$ref": "#/definitions/v1GetNodeRoutesResponse"
             }
           },
           "default": {
@@ -347,7 +347,7 @@
         },
         "parameters": [
           {
-            "name": "machineId",
+            "name": "nodeId",
             "in": "path",
             "required": true,
             "type": "string",
@@ -359,7 +359,7 @@
         ]
       }
     },
-    "/api/v1/machine/{machineId}/tags": {
+    "/api/v1/node/{nodeId}/tags": {
       "post": {
         "operationId": "HeadscaleService_SetTags",
         "responses": {
@@ -378,7 +378,7 @@
         },
         "parameters": [
           {
-            "name": "machineId",
+            "name": "nodeId",
             "in": "path",
             "required": true,
             "type": "string",
@@ -406,14 +406,14 @@
         ]
       }
     },
-    "/api/v1/machine/{machineId}/user": {
+    "/api/v1/node/{nodeId}/user": {
       "post": {
-        "operationId": "HeadscaleService_MoveMachine",
+        "operationId": "HeadscaleService_MoveNode",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1MoveMachineResponse"
+              "$ref": "#/definitions/v1MoveNodeResponse"
             }
           },
           "default": {
@@ -425,7 +425,7 @@
         },
         "parameters": [
           {
-            "name": "machineId",
+            "name": "nodeId",
             "in": "path",
             "required": true,
             "type": "string",
@@ -917,7 +917,7 @@
         }
       }
     },
-    "v1DebugCreateMachineRequest": {
+    "v1DebugCreateNodeRequest": {
       "type": "object",
       "properties": {
         "user": {
@@ -937,15 +937,15 @@
         }
       }
     },
-    "v1DebugCreateMachineResponse": {
+    "v1DebugCreateNodeResponse": {
       "type": "object",
       "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
+        "node": {
+          "$ref": "#/definitions/v1Node"
         }
       }
     },
-    "v1DeleteMachineResponse": {
+    "v1DeleteNodeResponse": {
       "type": "object"
     },
     "v1DeleteRouteResponse": {
@@ -971,11 +971,11 @@
     "v1ExpireApiKeyResponse": {
       "type": "object"
     },
-    "v1ExpireMachineResponse": {
+    "v1ExpireNodeResponse": {
       "type": "object",
       "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
+        "node": {
+          "$ref": "#/definitions/v1Node"
         }
       }
     },
@@ -993,15 +993,15 @@
     "v1ExpirePreAuthKeyResponse": {
       "type": "object"
     },
-    "v1GetMachineResponse": {
+    "v1GetNodeResponse": {
       "type": "object",
       "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
+        "node": {
+          "$ref": "#/definitions/v1Node"
         }
       }
     },
-    "v1GetMachineRoutesResponse": {
+    "v1GetNodeRoutesResponse": {
       "type": "object",
       "properties": {
         "routes": {
@@ -1042,13 +1042,13 @@
         }
       }
     },
-    "v1ListMachinesResponse": {
+    "v1ListNodesResponse": {
       "type": "object",
       "properties": {
-        "machines": {
+        "nodes": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/v1Machine"
+            "$ref": "#/definitions/v1Node"
           }
         }
       }
@@ -1075,7 +1075,15 @@
         }
       }
     },
-    "v1Machine": {
+    "v1MoveNodeResponse": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/definitions/v1Node"
+        }
+      }
+    },
+    "v1Node": {
       "type": "object",
       "properties": {
         "id": {
@@ -1151,14 +1159,6 @@
         }
       }
     },
-    "v1MoveMachineResponse": {
-      "type": "object",
-      "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
-        }
-      }
-    },
     "v1PreAuthKey": {
       "type": "object",
       "properties": {
@@ -1196,14 +1196,6 @@
         }
       }
     },
-    "v1RegisterMachineResponse": {
-      "type": "object",
-      "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
-        }
-      }
-    },
     "v1RegisterMethod": {
       "type": "string",
       "enum": [
@@ -1214,11 +1206,19 @@
       ],
       "default": "REGISTER_METHOD_UNSPECIFIED"
     },
-    "v1RenameMachineResponse": {
+    "v1RegisterNodeResponse": {
       "type": "object",
       "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
+        "node": {
+          "$ref": "#/definitions/v1Node"
+        }
+      }
+    },
+    "v1RenameNodeResponse": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/definitions/v1Node"
         }
       }
     },
@@ -1237,8 +1237,8 @@
           "type": "string",
           "format": "uint64"
         },
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
+        "node": {
+          "$ref": "#/definitions/v1Node"
         },
         "prefix": {
           "type": "string"
@@ -1269,8 +1269,8 @@
     "v1SetTagsResponse": {
       "type": "object",
       "properties": {
-        "machine": {
-          "$ref": "#/definitions/v1Machine"
+        "node": {
+          "$ref": "#/definitions/v1Node"
         }
       }
     },

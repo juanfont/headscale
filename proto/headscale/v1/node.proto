@@ -13,7 +13,7 @@ enum RegisterMethod {
     REGISTER_METHOD_OIDC        = 3;
 }
 
-message Machine {
+message Node {
     uint64          id           = 1;
     string          machine_key  = 2;
     string          node_key     = 3;
@@ -47,80 +47,80 @@ message Machine {
     bool            online       = 22;
 }
 
-message RegisterMachineRequest {
+message RegisterNodeRequest {
     string user = 1;
     string key       = 2;
 }
 
-message RegisterMachineResponse {
-    Machine machine = 1;
+message RegisterNodeResponse {
+    Node node = 1;
 }
 
-message GetMachineRequest {
-    uint64 machine_id = 1;
+message GetNodeRequest {
+    uint64 node_id = 1;
 }
 
-message GetMachineResponse {
-    Machine machine = 1;
+message GetNodeResponse {
+    Node node = 1;
 }
 
 message SetTagsRequest {
-    uint64          machine_id = 1;
+    uint64          node_id = 1;
     repeated string tags       = 2;
 }
 
 message SetTagsResponse {
-    Machine machine = 1;
+    Node node = 1;
 }
 
-message DeleteMachineRequest {
-    uint64 machine_id = 1;
+message DeleteNodeRequest {
+    uint64 node_id = 1;
 }
 
-message DeleteMachineResponse {
+message DeleteNodeResponse {
 }
 
-message ExpireMachineRequest {
-    uint64 machine_id = 1;
+message ExpireNodeRequest {
+    uint64 node_id = 1;
 }
 
-message ExpireMachineResponse {
-    Machine machine = 1;
+message ExpireNodeResponse {
+    Node node = 1;
 }
 
-message RenameMachineRequest {
-    uint64 machine_id = 1;
+message RenameNodeRequest {
+    uint64 node_id = 1;
     string new_name   = 2;
 }
 
-message RenameMachineResponse {
-    Machine machine = 1;
+message RenameNodeResponse {
+    Node node = 1;
 }
 
-message ListMachinesRequest {
+message ListNodesRequest {
     string user = 1;
 }
 
-message ListMachinesResponse {
-    repeated Machine machines = 1;
+message ListNodesResponse {
+    repeated Node nodes = 1;
 }
 
-message MoveMachineRequest {
-    uint64 machine_id = 1;
+message MoveNodeRequest {
+    uint64 node_id = 1;
     string user  = 2;
 }
 
-message MoveMachineResponse {
-    Machine machine = 1;
+message MoveNodeResponse {
+    Node node = 1;
 }
 
-message DebugCreateMachineRequest {
+message DebugCreateNodeRequest {
     string user       = 1;
     string          key    = 2;
     string          name   = 3;
     repeated string routes = 4;
 }
 
-message DebugCreateMachineResponse {
-    Machine machine = 1;
+message DebugCreateNodeResponse {
+    Node node = 1;
 }

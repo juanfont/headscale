@@ -3,11 +3,11 @@ package headscale.v1;
 option  go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 import "google/protobuf/timestamp.proto";
-import "headscale/v1/machine.proto";
+import "headscale/v1/node.proto";
 
 message Route {
     uint64  id          = 1;
-    Machine machine     = 2;
+    Node    node     = 2;
     string  prefix      = 3;
     bool    advertised   = 4;
     bool    enabled     = 5;
@@ -39,11 +39,11 @@ message DisableRouteRequest {
 message DisableRouteResponse {
 }
 
-message GetMachineRoutesRequest {
-    uint64 machine_id = 1;
+message GetNodeRoutesRequest {
+    uint64 node_id = 1;
 }
 
-message GetMachineRoutesResponse {
+message GetNodeRoutesResponse {
     repeated Route routes = 1;
 }
 
