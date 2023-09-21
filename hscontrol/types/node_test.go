@@ -7,20 +7,20 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-func Test_MachineCanAccess(t *testing.T) {
+func Test_NodeCanAccess(t *testing.T) {
 	tests := []struct {
-		name     string
-		machine1 Machine
-		machine2 Machine
-		rules    []tailcfg.FilterRule
-		want     bool
+		name  string
+		node1 Node
+		node2 Node
+		rules []tailcfg.FilterRule
+		want  bool
 	}{
 		{
 			name: "no-rules",
-			machine1: Machine{
+			node1: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
 			},
-			machine2: Machine{
+			node2: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
 			},
 			rules: []tailcfg.FilterRule{},
@@ -28,10 +28,10 @@ func Test_MachineCanAccess(t *testing.T) {
 		},
 		{
 			name: "wildcard",
-			machine1: Machine{
+			node1: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
 			},
-			machine2: Machine{
+			node2: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
 			},
 			rules: []tailcfg.FilterRule{
@@ -49,10 +49,10 @@ func Test_MachineCanAccess(t *testing.T) {
 		},
 		{
 			name: "other-cant-access-src",
-			machine1: Machine{
+			node1: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 			},
-			machine2: Machine{
+			node2: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 			},
 			rules: []tailcfg.FilterRule{
@@ -67,10 +67,10 @@ func Test_MachineCanAccess(t *testing.T) {
 		},
 		{
 			name: "dest-cant-access-src",
-			machine1: Machine{
+			node1: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 			},
-			machine2: Machine{
+			node2: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 			},
 			rules: []tailcfg.FilterRule{
@@ -85,10 +85,10 @@ func Test_MachineCanAccess(t *testing.T) {
 		},
 		{
 			name: "src-can-access-dest",
-			machine1: Machine{
+			node1: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 			},
-			machine2: Machine{
+			node2: Node{
 				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 			},
 			rules: []tailcfg.FilterRule{
@@ -105,7 +105,7 @@ func Test_MachineCanAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.machine1.CanAccess(tt.rules, &tt.machine2)
+			got := tt.node1.CanAccess(tt.rules, &tt.node2)
 
 			if got != tt.want {
 				t.Errorf("canAccess() failed: want (%t), got (%t)", tt.want, got)
@@ -114,8 +114,8 @@ func Test_MachineCanAccess(t *testing.T) {
 	}
 }
 
-func TestMachineAddressesOrder(t *testing.T) {
-	machineAddresses := MachineAddresses{
+func TestNodeAddressesOrder(t *testing.T) {
+	machineAddresses := NodeAddresses{
 		netip.MustParseAddr("2001:db8::2"),
 		netip.MustParseAddr("100.64.0.2"),
 		netip.MustParseAddr("2001:db8::1"),

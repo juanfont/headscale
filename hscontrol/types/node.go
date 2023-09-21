@@ -19,17 +19,17 @@ import (
 )
 
 var (
-	ErrMachineAddressesInvalid = errors.New("failed to parse machine addresses")
-	ErrHostnameTooLong         = errors.New("hostname too long")
+	ErrNodeAddressesInvalid = errors.New("failed to parse node addresses")
+	ErrHostnameTooLong      = errors.New("hostname too long")
 )
 
-// Machine is a Headscale client.
-type Machine struct {
+// Node is a Headscale client.
+type Node struct {
 	ID          uint64 `gorm:"primary_key"`
 	MachineKey  string `gorm:"type:varchar(64);unique_index"`
 	NodeKey     string
 	DiscoKey    string
-	IPAddresses MachineAddresses
+	IPAddresses NodeAddresses
 
 	// Hostname represents the name given by the Tailscale
 	// client during registration
@@ -67,12 +67,12 @@ type Machine struct {
 }
 
 type (
-	Machines []*Machine
+	Nodes []*Node
 )
 
-type MachineAddresses []netip.Addr
+type NodeAddresses []netip.Addr
 
-func (ma MachineAddresses) Sort() {
+func (ma NodeAddresses) Sort() {
 	sort.Slice(ma, func(index1, index2 int) bool {
 		if ma[index1].Is4() && ma[index2].Is6() {
 			return true
@@ -85,7 +85,7 @@ func (ma MachineAddresses) Sort() {
 	})
 }
 
-func (ma MachineAddresses) StringSlice() []string {
+func (ma NodeAddresses) StringSlice() []string {
 	ma.Sort()
 	strSlice := make([]string, 0, len(ma))
 	for _, addr := range ma {
@@ -95,19 +95,19 @@ func (ma MachineAddresses) StringSlice() []string {
 	return strSlice
 }
 
-func (ma MachineAddresses) Prefixes() []netip.Prefix {
+func (na NodeAddresses) Prefixes() []netip.Prefix {
 	addrs := []netip.Prefix{}
-	for _, machineAddress := range ma {
-		ip := netip.PrefixFrom(machineAddress, machineAddress.BitLen())
+	for _, nodeAddress := range na {
+		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
 		addrs = append(addrs, ip)
 	}
 
 	return addrs
 }
 
-func (ma MachineAddresses) InIPSet(set *netipx.IPSet) bool {
-	for _, machineAddr := range ma {
-		if set.Contains(machineAddr) {
+func (na NodeAddresses) InIPSet(set *netipx.IPSet) bool {
+	for _, nodeAddr := range na {
+		if set.Contains(nodeAddr) {
 			return true
 		}
 	}
@@ -115,19 +115,19 @@ func (ma MachineAddresses) InIPSet(set *netipx.IPSet) bool {
 	return false
 }
 
-// AppendToIPSet adds the individual ips in MachineAddresses to a
+// AppendToIPSet adds the individual ips in NodeAddresses to a
 // given netipx.IPSetBuilder.
-func (ma MachineAddresses) AppendToIPSet(build *netipx.IPSetBuilder) {
-	for _, ip := range ma {
+func (na NodeAddresses) AppendToIPSet(build *netipx.IPSetBuilder) {
+	for _, ip := range na {
 		build.Add(ip)
 	}
 }
 
-func (ma *MachineAddresses) Scan(destination interface{}) error {
+func (na *NodeAddresses) Scan(destination interface{}) error {
 	switch value := destination.(type) {
 	case string:
 		addresses := strings.Split(value, ",")
-		*ma = (*ma)[:0]
+		*na = (*na)[:0]
 		for _, addr := range addresses {
 			if len(addr) < 1 {
 				continue
@@ -136,66 +136,66 @@ func (ma *MachineAddresses) Scan(destination interface{}) error {
 			if err != nil {
 				return err
 			}
-			*ma = append(*ma, parsed)
+			*na = append(*na, parsed)
 		}
 
 		return nil
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
 	}
 }
 
 // Value return json value, implement driver.Valuer interface.
-func (ma MachineAddresses) Value() (driver.Value, error) {
-	addresses := strings.Join(ma.StringSlice(), ",")
+func (na NodeAddresses) Value() (driver.Value, error) {
+	addresses := strings.Join(na.StringSlice(), ",")
 
 	return addresses, nil
 }
 
-// IsExpired returns whether the machine registration has expired.
-func (machine Machine) IsExpired() bool {
+// IsExpired returns whether the node registration has expired.
+func (node Node) IsExpired() bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefor considered
 	// to mean "not expired"
-	if machine.Expiry == nil || machine.Expiry.IsZero() {
+	if node.Expiry == nil || node.Expiry.IsZero() {
 		return false
 	}
 
-	return time.Now().UTC().After(*machine.Expiry)
+	return time.Now().UTC().After(*node.Expiry)
 }
 
-// IsOnline returns if the machine is connected to Headscale.
+// IsOnline returns if the node is connected to Headscale.
 // This is really a naive implementation, as we don't really see
 // if there is a working connection between the client and the server.
-func (machine *Machine) IsOnline() bool {
-	if machine.LastSeen == nil {
+func (node *Node) IsOnline() bool {
+	if node.LastSeen == nil {
 		return false
 	}
 
-	if machine.IsExpired() {
+	if node.IsExpired() {
 		return false
 	}
 
-	return machine.LastSeen.After(time.Now().Add(-KeepAliveInterval))
+	return node.LastSeen.After(time.Now().Add(-KeepAliveInterval))
 }
 
-// IsEphemeral returns if the machine is registered as an Ephemeral node.
+// IsEphemeral returns if the node is registered as an Ephemeral node.
 // https://tailscale.com/kb/1111/ephemeral-nodes/
-func (machine *Machine) IsEphemeral() bool {
-	return machine.AuthKey != nil && machine.AuthKey.Ephemeral
+func (node *Node) IsEphemeral() bool {
+	return node.AuthKey != nil && node.AuthKey.Ephemeral
 }
 
-func (machine *Machine) CanAccess(filter []tailcfg.FilterRule, machine2 *Machine) bool {
+func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
 	for _, rule := range filter {
 		// TODO(kradalby): Cache or pregen this
 		matcher := matcher.MatchFromFilterRule(rule)
 
-		if !matcher.SrcsContainsIPs([]netip.Addr(machine.IPAddresses)) {
+		if !matcher.SrcsContainsIPs([]netip.Addr(node.IPAddresses)) {
 			continue
 		}
 
-		if matcher.DestsContainsIP([]netip.Addr(machine2.IPAddresses)) {
+		if matcher.DestsContainsIP([]netip.Addr(node2.IPAddresses)) {
 			return true
 		}
 	}
@@ -203,13 +203,13 @@ func (machine *Machine) CanAccess(filter []tailcfg.FilterRule, machine2 *Machine
 	return false
 }
 
-func (machines Machines) FilterByIP(ip netip.Addr) Machines {
-	found := make(Machines, 0)
+func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
+	found := make(Nodes, 0)
 
-	for _, machine := range machines {
-		for _, mIP := range machine.IPAddresses {
+	for _, node := range nodes {
+		for _, mIP := range node.IPAddresses {
 			if ip == mIP {
-				found = append(found, machine)
+				found = append(found, node)
 			}
 		}
 	}
@@ -217,53 +217,53 @@ func (machines Machines) FilterByIP(ip netip.Addr) Machines {
 	return found
 }
 
-func (machine *Machine) Proto() *v1.Machine {
-	machineProto := &v1.Machine{
-		Id:         machine.ID,
-		MachineKey: machine.MachineKey,
+func (node *Node) Proto() *v1.Node {
+	nodeProto := &v1.Node{
+		Id:         node.ID,
+		MachineKey: node.MachineKey,
 
-		NodeKey:     machine.NodeKey,
-		DiscoKey:    machine.DiscoKey,
-		IpAddresses: machine.IPAddresses.StringSlice(),
-		Name:        machine.Hostname,
-		GivenName:   machine.GivenName,
-		User:        machine.User.Proto(),
-		ForcedTags:  machine.ForcedTags,
-		Online:      machine.IsOnline(),
+		NodeKey:     node.NodeKey,
+		DiscoKey:    node.DiscoKey,
+		IpAddresses: node.IPAddresses.StringSlice(),
+		Name:        node.Hostname,
+		GivenName:   node.GivenName,
+		User:        node.User.Proto(),
+		ForcedTags:  node.ForcedTags,
+		Online:      node.IsOnline(),
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
 
-		CreatedAt: timestamppb.New(machine.CreatedAt),
+		CreatedAt: timestamppb.New(node.CreatedAt),
 	}
 
-	if machine.AuthKey != nil {
-		machineProto.PreAuthKey = machine.AuthKey.Proto()
+	if node.AuthKey != nil {
+		nodeProto.PreAuthKey = node.AuthKey.Proto()
 	}
 
-	if machine.LastSeen != nil {
-		machineProto.LastSeen = timestamppb.New(*machine.LastSeen)
+	if node.LastSeen != nil {
+		nodeProto.LastSeen = timestamppb.New(*node.LastSeen)
 	}
 
-	if machine.Expiry != nil {
-		machineProto.Expiry = timestamppb.New(*machine.Expiry)
+	if node.Expiry != nil {
+		nodeProto.Expiry = timestamppb.New(*node.Expiry)
 	}
 
-	return machineProto
+	return nodeProto
 }
 
-// GetHostInfo returns a Hostinfo struct for the machine.
-func (machine *Machine) GetHostInfo() tailcfg.Hostinfo {
-	return tailcfg.Hostinfo(machine.HostInfo)
+// GetHostInfo returns a Hostinfo struct for the node.
+func (node *Node) GetHostInfo() tailcfg.Hostinfo {
+	return tailcfg.Hostinfo(node.HostInfo)
 }
 
-func (machine *Machine) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (string, error) {
+func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (string, error) {
 	var hostname string
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
-			machine.GivenName,
-			machine.User.Name,
+			node.GivenName,
+			node.User.Name,
 			baseDomain,
 		)
 		if len(hostname) > MaxHostnameLength {
@@ -274,18 +274,18 @@ func (machine *Machine) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string)
 			)
 		}
 	} else {
-		hostname = machine.GivenName
+		hostname = node.GivenName
 	}
 
 	return hostname, nil
 }
 
-func (machine *Machine) MachinePublicKey() (key.MachinePublic, error) {
+func (node *Node) MachinePublicKey() (key.MachinePublic, error) {
 	var machineKey key.MachinePublic
 
-	if machine.MachineKey != "" {
+	if node.MachineKey != "" {
 		err := machineKey.UnmarshalText(
-			[]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+			[]byte(util.MachinePublicKeyEnsurePrefix(node.MachineKey)),
 		)
 		if err != nil {
 			return key.MachinePublic{}, fmt.Errorf("failed to parse machine public key: %w", err)
@@ -295,11 +295,11 @@ func (machine *Machine) MachinePublicKey() (key.MachinePublic, error) {
 	return machineKey, nil
 }
 
-func (machine *Machine) DiscoPublicKey() (key.DiscoPublic, error) {
+func (node *Node) DiscoPublicKey() (key.DiscoPublic, error) {
 	var discoKey key.DiscoPublic
-	if machine.DiscoKey != "" {
+	if node.DiscoKey != "" {
 		err := discoKey.UnmarshalText(
-			[]byte(util.DiscoPublicKeyEnsurePrefix(machine.DiscoKey)),
+			[]byte(util.DiscoPublicKeyEnsurePrefix(node.DiscoKey)),
 		)
 		if err != nil {
 			return key.DiscoPublic{}, fmt.Errorf("failed to parse disco public key: %w", err)
@@ -311,9 +311,9 @@ func (machine *Machine) DiscoPublicKey() (key.DiscoPublic, error) {
 	return discoKey, nil
 }
 
-func (machine *Machine) NodePublicKey() (key.NodePublic, error) {
+func (node *Node) NodePublicKey() (key.NodePublic, error) {
 	var nodeKey key.NodePublic
-	err := nodeKey.UnmarshalText([]byte(util.NodePublicKeyEnsurePrefix(machine.NodeKey)))
+	err := nodeKey.UnmarshalText([]byte(util.NodePublicKeyEnsurePrefix(node.NodeKey)))
 	if err != nil {
 		return key.NodePublic{}, fmt.Errorf("failed to parse node public key: %w", err)
 	}
@@ -321,25 +321,25 @@ func (machine *Machine) NodePublicKey() (key.NodePublic, error) {
 	return nodeKey, nil
 }
 
-func (machine Machine) String() string {
-	return machine.Hostname
+func (node Node) String() string {
+	return node.Hostname
 }
 
-func (machines Machines) String() string {
-	temp := make([]string, len(machines))
+func (nodes Nodes) String() string {
+	temp := make([]string, len(nodes))
 
-	for index, machine := range machines {
-		temp[index] = machine.Hostname
+	for index, node := range nodes {
+		temp[index] = node.Hostname
 	}
 
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (machines Machines) IDMap() map[uint64]*Machine {
-	ret := map[uint64]*Machine{}
+func (nodes Nodes) IDMap() map[uint64]*Node {
+	ret := map[uint64]*Node{}
 
-	for _, machine := range machines {
-		ret[machine.ID] = machine
+	for _, node := range nodes {
+		ret[node.ID] = node
 	}
 
 	return ret

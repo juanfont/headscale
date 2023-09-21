@@ -28,7 +28,7 @@ func (hi *HostInfo) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), hi)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
 	}
 }
 
@@ -74,7 +74,7 @@ func (i *IPPrefixes) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), i)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
 	}
 }
 
@@ -96,7 +96,7 @@ func (i *StringList) Scan(destination interface{}) error {
 		return json.Unmarshal([]byte(value), i)
 
 	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrMachineAddressesInvalid, destination)
+		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
 	}
 }
 
@@ -123,8 +123,8 @@ type StateUpdate struct {
 	Type StateUpdateType
 
 	// Changed must be set when Type is StatePeerChanged and
-	// contain the Machine IDs of machines that has changed.
-	Changed Machines
+	// contain the Node IDs of nodes that have changed.
+	Changed Nodes
 
 	// Removed must be set when Type is StatePeerRemoved and
 	// contain a list of the nodes that has been removed from

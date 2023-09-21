@@ -17,9 +17,9 @@ var (
 type Route struct {
 	gorm.Model
 
-	MachineID uint64
-	Machine   Machine
-	Prefix    IPPrefix
+	NodeID uint64
+	Node   Node
+	Prefix IPPrefix
 
 	Advertised bool
 	Enabled    bool
@@ -29,7 +29,7 @@ type Route struct {
 type Routes []Route
 
 func (r *Route) String() string {
-	return fmt.Sprintf("%s:%s", r.Machine, netip.Prefix(r.Prefix).String())
+	return fmt.Sprintf("%s:%s", r.Node, netip.Prefix(r.Prefix).String())
 }
 
 func (r *Route) IsExitRoute() bool {
@@ -51,7 +51,7 @@ func (rs Routes) Proto() []*v1.Route {
 	for _, route := range rs {
 		protoRoute := v1.Route{
 			Id:         uint64(route.ID),
-			Machine:    route.Machine.Proto(),
+			Node:       route.Node.Proto(),
 			Prefix:     netip.Prefix(route.Prefix).String(),
 			Advertised: route.Advertised,
 			Enabled:    route.Enabled,
