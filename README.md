@@ -788,8 +788,6 @@ make build
             <sub style="font-size:14px"><b>Philipp Krivanec</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/piec>
             <img src=https://avatars.githubusercontent.com/u/781471?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Pierre Carru/>
@@ -797,6 +795,8 @@ make build
             <sub style="font-size:14px"><b>Pierre Carru</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/Donran>
             <img src=https://avatars.githubusercontent.com/u/4838348?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Pontus N/>
@@ -830,6 +830,13 @@ make build
             <img src=https://avatars.githubusercontent.com/u/2668821?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Ryan Fowler/>
             <br />
             <sub style="font-size:14px"><b>Ryan Fowler</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/muzy>
+            <img src=https://avatars.githubusercontent.com/u/321723?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Sebastian Muszytowski/>
+            <br />
+            <sub style="font-size:14px"><b>Sebastian Muszytowski</b></sub>
         </a>
     </td>
 </tr>
@@ -885,6 +892,15 @@ make build
             <sub style="font-size:14px"><b>Teteros</b></sub>
         </a>
     </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/Teteros>
+            <img src=https://avatars.githubusercontent.com/u/5067989?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Teteros/>
+            <br />
+            <sub style="font-size:14px"><b>Teteros</b></sub>
+        </a>
+    </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/gitter-badger>
             <img src=https://avatars.githubusercontent.com/u/8518239?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=The Gitter Badger/>

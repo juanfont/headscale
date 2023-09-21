@@ -475,7 +475,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(h.httpAuthenticationMiddleware)
 	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
-
+	web(router)
 	router.PathPrefix("/").HandlerFunc(notFoundHandler)
 
 	return router
