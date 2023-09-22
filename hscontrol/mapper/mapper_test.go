@@ -18,8 +18,8 @@ import (
 )
 
 func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
-	mach := func(hostname, username string, userid uint) *types.Machine {
-		return &types.Machine{
+	mach := func(hostname, username string, userid uint) *types.Node {
+		return &types.Node{
 			Hostname: hostname,
 			UserID:   userid,
 			User: types.User{
@@ -28,15 +28,15 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		}
 	}
 
-	machineInShared1 := mach("test_get_shared_nodes_1", "user1", 1)
-	machineInShared2 := mach("test_get_shared_nodes_2", "user2", 2)
-	machineInShared3 := mach("test_get_shared_nodes_3", "user3", 3)
-	machine2InShared1 := mach("test_get_shared_nodes_4", "user1", 1)
+	nodeInShared1 := mach("test_get_shared_nodes_1", "user1", 1)
+	nodeInShared2 := mach("test_get_shared_nodes_2", "user2", 2)
+	nodeInShared3 := mach("test_get_shared_nodes_3", "user3", 3)
+	node2InShared1 := mach("test_get_shared_nodes_4", "user1", 1)
 
 	userProfiles := generateUserProfiles(
-		machineInShared1,
-		types.Machines{
-			machineInShared2, machineInShared3, machine2InShared1,
+		nodeInShared1,
+		types.Nodes{
+			nodeInShared2, nodeInShared3, node2InShared1,
 		},
 		"",
 	)
@@ -91,8 +91,8 @@ func TestDNSConfigMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("with-magicdns-%v", tt.magicDNS), func(t *testing.T) {
-			mach := func(hostname, username string, userid uint) *types.Machine {
-				return &types.Machine{
+			mach := func(hostname, username string, userid uint) *types.Node {
+				return &types.Node{
 					Hostname: hostname,
 					UserID:   userid,
 					User: types.User{
@@ -109,23 +109,23 @@ func TestDNSConfigMapResponse(t *testing.T) {
 				Proxied: tt.magicDNS,
 			}
 
-			machineInShared1 := mach("test_get_shared_nodes_1", "shared1", 1)
-			machineInShared2 := mach("test_get_shared_nodes_2", "shared2", 2)
-			machineInShared3 := mach("test_get_shared_nodes_3", "shared3", 3)
-			machine2InShared1 := mach("test_get_shared_nodes_4", "shared1", 1)
+			nodeInShared1 := mach("test_get_shared_nodes_1", "shared1", 1)
+			nodeInShared2 := mach("test_get_shared_nodes_2", "shared2", 2)
+			nodeInShared3 := mach("test_get_shared_nodes_3", "shared3", 3)
+			node2InShared1 := mach("test_get_shared_nodes_4", "shared1", 1)
 
-			peersOfMachineInShared1 := types.Machines{
-				machineInShared1,
-				machineInShared2,
-				machineInShared3,
-				machine2InShared1,
+			peersOfNodeInShared1 := types.Nodes{
+				nodeInShared1,
+				nodeInShared2,
+				nodeInShared3,
+				node2InShared1,
 			}
 
 			got := generateDNSConfig(
 				&dnsConfigOrig,
 				baseDomain,
-				machineInShared1,
-				peersOfMachineInShared1,
+				nodeInShared1,
+				peersOfNodeInShared1,
 			)
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
@@ -165,7 +165,7 @@ func Test_fullMapResponse(t *testing.T) {
 	lastSeen := time.Date(2009, time.November, 10, 23, 9, 0, 0, time.UTC)
 	expire := time.Date(2500, time.November, 11, 23, 0, 0, 0, time.UTC)
 
-	mini := &types.Machine{
+	mini := &types.Node{
 		ID:          0,
 		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
@@ -243,7 +243,7 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 	}
 
-	peer1 := &types.Machine{
+	peer1 := &types.Node{
 		ID:          1,
 		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
@@ -295,7 +295,7 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 	}
 
-	peer2 := &types.Machine{
+	peer2 := &types.Node{
 		ID:          2,
 		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
@@ -315,10 +315,10 @@ func Test_fullMapResponse(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		pol     *policy.ACLPolicy
-		machine *types.Machine
-		peers   types.Machines
+		name  string
+		pol   *policy.ACLPolicy
+		node  *types.Node
+		peers types.Nodes
 
 		baseDomain       string
 		dnsConfig        *tailcfg.DNSConfig
@@ -329,8 +329,8 @@ func Test_fullMapResponse(t *testing.T) {
 		wantErr          bool
 	}{
 		// {
-		// 	name:             "empty-machine",
-		// 	machine:          types.Machine{},
+		// 	name:             "empty-node",
+		// 	node:          types.Node{},
 		// 	pol:              &policy.ACLPolicy{},
 		// 	dnsConfig:        &tailcfg.DNSConfig{},
 		// 	baseDomain:       "",
@@ -340,8 +340,8 @@ func Test_fullMapResponse(t *testing.T) {
 		{
 			name:             "no-pol-no-peers-map-response",
 			pol:              &policy.ACLPolicy{},
-			machine:          mini,
-			peers:            types.Machines{},
+			node:             mini,
+			peers:            types.Nodes{},
 			baseDomain:       "",
 			dnsConfig:        &tailcfg.DNSConfig{},
 			derpMap:          &tailcfg.DERPMap{},
@@ -366,10 +366,10 @@ func Test_fullMapResponse(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "no-pol-with-peer-map-response",
-			pol:     &policy.ACLPolicy{},
-			machine: mini,
-			peers: types.Machines{
+			name: "no-pol-with-peer-map-response",
+			pol:  &policy.ACLPolicy{},
+			node: mini,
+			peers: types.Nodes{
 				peer1,
 			},
 			baseDomain:       "",
@@ -409,8 +409,8 @@ func Test_fullMapResponse(t *testing.T) {
 					},
 				},
 			},
-			machine: mini,
-			peers: types.Machines{
+			node: mini,
+			peers: types.Nodes{
 				peer1,
 				peer2,
 			},
@@ -457,7 +457,7 @@ func Test_fullMapResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mappy := NewMapper(
-				tt.machine,
+				tt.node,
 				tt.peers,
 				nil,
 				false,
@@ -469,7 +469,7 @@ func Test_fullMapResponse(t *testing.T) {
 			)
 
 			got, err := mappy.fullMapResponse(
-				tt.machine,
+				tt.node,
 				tt.pol,
 			)
 

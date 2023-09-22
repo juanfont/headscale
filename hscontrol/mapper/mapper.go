@@ -41,7 +41,7 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // TODO: Optimise
 // As this work continues, the idea is that there will be one Mapper instance
 // per node, attached to the open stream between the control and client.
-// This means that this can hold a state per machine and we can use that to
+// This means that this can hold a state per node and we can use that to
 // improve the mapresponses sent.
 // We could:
 // - Keep information about the previous mapresponse so we can send a diff
@@ -67,12 +67,12 @@ type Mapper struct {
 	// Map isnt concurrency safe, so we need to ensure
 	// only one func is accessing it over time.
 	mu    sync.Mutex
-	peers map[uint64]*types.Machine
+	peers map[uint64]*types.Node
 }
 
 func NewMapper(
-	machine *types.Machine,
-	peers types.Machines,
+	node *types.Node,
+	peers types.Nodes,
 	privateKey *key.MachinePrivate,
 	isNoise bool,
 	derpMap *tailcfg.DERPMap,
@@ -84,7 +84,7 @@ func NewMapper(
 	log.Debug().
 		Caller().
 		Bool("noise", isNoise).
-		Str("machine", machine.Hostname).
+		Str("node", node.Hostname).
 		Msg("creating new mapper")
 
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
@@ -113,12 +113,12 @@ func (m *Mapper) String() string {
 }
 
 func generateUserProfiles(
-	machine *types.Machine,
-	peers types.Machines,
+	node *types.Node,
+	peers types.Nodes,
 	baseDomain string,
 ) []tailcfg.UserProfile {
 	userMap := make(map[string]types.User)
-	userMap[machine.User.Name] = machine.User
+	userMap[node.User.Name] = node.User
 	for _, peer := range peers {
 		userMap[peer.User.Name] = peer.User // not worth checking if already is there
 	}
@@ -145,8 +145,8 @@ func generateUserProfiles(
 func generateDNSConfig(
 	base *tailcfg.DNSConfig,
 	baseDomain string,
-	machine *types.Machine,
-	peers types.Machines,
+	node *types.Node,
+	peers types.Nodes,
 ) *tailcfg.DNSConfig {
 	dnsConfig := base.Clone()
 
@@ -158,13 +158,13 @@ func generateDNSConfig(
 			dnsConfig.Domains,
 			fmt.Sprintf(
 				"%s.%s",
-				machine.User.Name,
+				node.User.Name,
 				baseDomain,
 			),
 		)
 
 		userSet := mapset.NewSet[types.User]()
-		userSet.Add(machine.User)
+		userSet.Add(node.User)
 		for _, p := range peers {
 			userSet.Add(p.User)
 		}
@@ -176,28 +176,28 @@ func generateDNSConfig(
 		dnsConfig = base
 	}
 
-	addNextDNSMetadata(dnsConfig.Resolvers, machine)
+	addNextDNSMetadata(dnsConfig.Resolvers, node)
 
 	return dnsConfig
 }
 
 // If any nextdns DoH resolvers are present in the list of resolvers it will
-// take metadata from the machine metadata and instruct tailscale to add it
+// take metadata from the node metadata and instruct tailscale to add it
 // to the requests. This makes it possible to identify from which device the
 // requests come in the NextDNS dashboard.
 //
 // This will produce a resolver like:
 // `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
-func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine *types.Machine) {
+func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 	for _, resolver := range resolvers {
 		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
 			attrs := url.Values{
-				"device_name":  []string{machine.Hostname},
-				"device_model": []string{machine.HostInfo.OS},
+				"device_name":  []string{node.Hostname},
+				"device_model": []string{node.HostInfo.OS},
 			}
 
-			if len(machine.IPAddresses) > 0 {
-				attrs.Add("device_ip", machine.IPAddresses[0].String())
+			if len(node.IPAddresses) > 0 {
+				attrs.Add("device_ip", node.IPAddresses[0].String())
 			}
 
 			resolver.Addr = fmt.Sprintf("%s?%s", resolver.Addr, attrs.Encode())
@@ -208,23 +208,23 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, machine *types.Machine) {
 // fullMapResponse creates a complete MapResponse for a node.
 // It is a separate function to make testing easier.
 func (m *Mapper) fullMapResponse(
-	machine *types.Machine,
+	node *types.Node,
 	pol *policy.ACLPolicy,
 ) (*tailcfg.MapResponse, error) {
-	peers := machineMapToList(m.peers)
+	peers := nodeMapToList(m.peers)
 
-	resp, err := m.baseWithConfigMapResponse(machine, pol)
+	resp, err := m.baseWithConfigMapResponse(node, pol)
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO(kradalby): Move this into appendPeerChanges?
-	resp.OnlineChange = db.OnlineMachineMap(peers)
+	resp.OnlineChange = db.OnlineNodeMap(peers)
 
 	err = appendPeerChanges(
 		resp,
 		pol,
-		machine,
+		node,
 		peers,
 		peers,
 		m.baseDomain,
@@ -237,72 +237,72 @@ func (m *Mapper) fullMapResponse(
 	return resp, nil
 }
 
-// FullMapResponse returns a MapResponse for the given machine.
+// FullMapResponse returns a MapResponse for the given node.
 func (m *Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
-	machine *types.Machine,
+	node *types.Node,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	resp, err := m.fullMapResponse(machine, pol)
+	resp, err := m.fullMapResponse(node, pol)
 	if err != nil {
 		return nil, err
 	}
 
 	if m.isNoise {
-		return m.marshalMapResponse(mapRequest, resp, machine, mapRequest.Compress)
+		return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 	}
 
-	return m.marshalMapResponse(mapRequest, resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 }
 
-// LiteMapResponse returns a MapResponse for the given machine.
+// LiteMapResponse returns a MapResponse for the given node.
 // Lite means that the peers has been omitted, this is intended
 // to be used to answer MapRequests with OmitPeers set to true.
 func (m *Mapper) LiteMapResponse(
 	mapRequest tailcfg.MapRequest,
-	machine *types.Machine,
+	node *types.Node,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	resp, err := m.baseWithConfigMapResponse(machine, pol)
+	resp, err := m.baseWithConfigMapResponse(node, pol)
 	if err != nil {
 		return nil, err
 	}
 
 	if m.isNoise {
-		return m.marshalMapResponse(mapRequest, resp, machine, mapRequest.Compress)
+		return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 	}
 
-	return m.marshalMapResponse(mapRequest, resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 }
 
 func (m *Mapper) KeepAliveResponse(
 	mapRequest tailcfg.MapRequest,
-	machine *types.Machine,
+	node *types.Node,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 	resp.KeepAlive = true
 
-	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
 
 func (m *Mapper) DERPMapResponse(
 	mapRequest tailcfg.MapRequest,
-	machine *types.Machine,
+	node *types.Node,
 	derpMap tailcfg.DERPMap,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 	resp.DERPMap = &derpMap
 
-	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
 
 func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
-	machine *types.Machine,
-	changed types.Machines,
+	node *types.Node,
+	changed types.Nodes,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
 	m.mu.Lock()
@@ -311,11 +311,11 @@ func (m *Mapper) PeerChangedResponse(
 	lastSeen := make(map[tailcfg.NodeID]bool)
 
 	// Update our internal map.
-	for _, machine := range changed {
-		m.peers[machine.ID] = machine
+	for _, node := range changed {
+		m.peers[node.ID] = node
 
 		// We have just seen the node, let the peers update their list.
-		lastSeen[tailcfg.NodeID(machine.ID)] = true
+		lastSeen[tailcfg.NodeID(node.ID)] = true
 	}
 
 	resp := m.baseMapResponse()
@@ -323,8 +323,8 @@ func (m *Mapper) PeerChangedResponse(
 	err := appendPeerChanges(
 		&resp,
 		pol,
-		machine,
-		machineMapToList(m.peers),
+		node,
+		nodeMapToList(m.peers),
 		changed,
 		m.baseDomain,
 		m.dnsCfg,
@@ -335,12 +335,12 @@ func (m *Mapper) PeerChangedResponse(
 
 	// resp.PeerSeenChange = lastSeen
 
-	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
 
 func (m *Mapper) PeerRemovedResponse(
 	mapRequest tailcfg.MapRequest,
-	machine *types.Machine,
+	node *types.Node,
 	removed []tailcfg.NodeID,
 ) ([]byte, error) {
 	m.mu.Lock()
@@ -354,19 +354,19 @@ func (m *Mapper) PeerRemovedResponse(
 	resp := m.baseMapResponse()
 	resp.PeersRemoved = removed
 
-	return m.marshalMapResponse(mapRequest, &resp, machine, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
 
 func (m *Mapper) marshalMapResponse(
 	mapRequest tailcfg.MapRequest,
 	resp *tailcfg.MapResponse,
-	machine *types.Machine,
+	node *types.Node,
 	compression string,
 ) ([]byte, error) {
 	atomic.AddUint64(&m.seq, 1)
 
 	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)))
+	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(node.MachineKey)))
 	if err != nil {
 		log.Error().
 			Caller().
@@ -399,7 +399,7 @@ func (m *Mapper) marshalMapResponse(
 		}
 
 		perms := fs.FileMode(debugMapResponsePerm)
-		mPath := path.Join(debugDumpMapResponsePath, machine.Hostname)
+		mPath := path.Join(debugDumpMapResponsePath, node.Hostname)
 		err = os.MkdirAll(mPath, perms)
 		if err != nil {
 			panic(err)
@@ -509,12 +509,12 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 // It is used in for bigger updates, such as full and lite, not
 // incremental.
 func (m *Mapper) baseWithConfigMapResponse(
-	machine *types.Machine,
+	node *types.Node,
 	pol *policy.ACLPolicy,
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(machine, pol, m.dnsCfg, m.baseDomain)
+	tailnode, err := tailNode(node, pol, m.dnsCfg, m.baseDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -538,18 +538,18 @@ func (m *Mapper) baseWithConfigMapResponse(
 	return &resp, nil
 }
 
-func machineMapToList(machines map[uint64]*types.Machine) types.Machines {
-	ret := make(types.Machines, 0)
+func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {
+	ret := make(types.Nodes, 0)
 
-	for _, machine := range machines {
-		ret = append(ret, machine)
+	for _, node := range nodes {
+		ret = append(ret, node)
 	}
 
 	return ret
 }
 
-func filterExpiredAndNotReady(peers types.Machines) types.Machines {
-	return lo.Filter(peers, func(item *types.Machine, index int) bool {
+func filterExpiredAndNotReady(peers types.Nodes) types.Nodes {
+	return lo.Filter(peers, func(item *types.Node, index int) bool {
 		// Filter out nodes that are expired OR
 		// nodes that has no endpoints, this typically means they have
 		// registered, but are not configured.
@@ -563,9 +563,9 @@ func appendPeerChanges(
 	resp *tailcfg.MapResponse,
 
 	pol *policy.ACLPolicy,
-	machine *types.Machine,
-	peers types.Machines,
-	changed types.Machines,
+	node *types.Node,
+	peers types.Nodes,
+	changed types.Nodes,
 	baseDomain string,
 	dnsCfg *tailcfg.DNSConfig,
 ) error {
@@ -573,7 +573,7 @@ func appendPeerChanges(
 
 	rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
 		pol,
-		machine,
+		node,
 		peers,
 	)
 	if err != nil {
@@ -583,18 +583,18 @@ func appendPeerChanges(
 	// Filter out peers that have expired.
 	changed = filterExpiredAndNotReady(changed)
 
-	// If there are filter rules present, see if there are any machines that cannot
+	// If there are filter rules present, see if there are any nodes that cannot
 	// access eachother at all and remove them from the peers.
 	if len(rules) > 0 {
-		changed = policy.FilterMachinesByACL(machine, changed, rules)
+		changed = policy.FilterNodesByACL(node, changed, rules)
 	}
 
-	profiles := generateUserProfiles(machine, changed, baseDomain)
+	profiles := generateUserProfiles(node, changed, baseDomain)
 
 	dnsConfig := generateDNSConfig(
 		dnsCfg,
 		baseDomain,
-		machine,
+		node,
 		peers,
 	)
 
@@ -614,7 +614,7 @@ func appendPeerChanges(
 		resp.PeersChanged = tailPeers
 	}
 	resp.DNSConfig = dnsConfig
-	resp.PacketFilter = policy.ReduceFilterRules(machine, rules)
+	resp.PacketFilter = policy.ReduceFilterRules(node, rules)
 	resp.UserProfiles = profiles
 	resp.SSHPolicy = sshPolicy
 

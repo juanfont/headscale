@@ -45,7 +45,7 @@ func TestTailNode(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		machine    *types.Machine
+		node       *types.Node
 		pol        *policy.ACLPolicy
 		dnsConfig  *tailcfg.DNSConfig
 		baseDomain string
@@ -53,8 +53,8 @@ func TestTailNode(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name:       "empty-machine",
-			machine:    &types.Machine{},
+			name:       "empty-node",
+			node:       &types.Node{},
 			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
@@ -62,8 +62,8 @@ func TestTailNode(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "minimal-machine",
-			machine: &types.Machine{
+			name: "minimal-node",
+			node: &types.Node{
 				ID:         0,
 				MachineKey: "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 				NodeKey:    "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
@@ -165,7 +165,7 @@ func TestTailNode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tailNode(
-				tt.machine,
+				tt.node,
 				tt.pol,
 				tt.dnsConfig,
 				tt.baseDomain,

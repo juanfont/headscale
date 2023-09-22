@@ -14,16 +14,16 @@ import (
 )
 
 func tailNodes(
-	machines types.Machines,
+	nodes types.Nodes,
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,
 ) ([]*tailcfg.Node, error) {
-	nodes := make([]*tailcfg.Node, len(machines))
+	tNodes := make([]*tailcfg.Node, len(nodes))
 
-	for index, machine := range machines {
+	for index, node := range nodes {
 		node, err := tailNode(
-			machine,
+			node,
 			pol,
 			dnsConfig,
 			baseDomain,
@@ -32,37 +32,36 @@ func tailNodes(
 			return nil, err
 		}
 
-		nodes[index] = node
+		tNodes[index] = node
 	}
 
-	return nodes, nil
+	return tNodes, nil
 }
 
 // tailNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS.
 func tailNode(
-	machine *types.Machine,
+	node *types.Node,
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,
 ) (*tailcfg.Node, error) {
-	nodeKey, err := machine.NodePublicKey()
+	nodeKey, err := node.NodePublicKey()
 	if err != nil {
 		return nil, err
 	}
 
-	// MachineKey is only used in the legacy protocol
-	machineKey, err := machine.MachinePublicKey()
+	machineKey, err := node.MachinePublicKey()
 	if err != nil {
 		return nil, err
 	}
 
-	discoKey, err := machine.DiscoPublicKey()
+	discoKey, err := node.DiscoPublicKey()
 	if err != nil {
 		return nil, err
 	}
 
-	addrs := machine.IPAddresses.Prefixes()
+	addrs := node.IPAddresses.Prefixes()
 
 	allowedIPs := append(
 		[]netip.Prefix{},
@@ -70,7 +69,7 @@ func tailNode(
 
 	primaryPrefixes := []netip.Prefix{}
 
-	for _, route := range machine.Routes {
+	for _, route := range node.Routes {
 		if route.Enabled {
 			if route.IsPrimary {
 				allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix))
@@ -82,39 +81,39 @@ func tailNode(
 	}
 
 	var derp string
-	if machine.HostInfo.NetInfo != nil {
-		derp = fmt.Sprintf("127.3.3.40:%d", machine.HostInfo.NetInfo.PreferredDERP)
+	if node.HostInfo.NetInfo != nil {
+		derp = fmt.Sprintf("127.3.3.40:%d", node.HostInfo.NetInfo.PreferredDERP)
 	} else {
 		derp = "127.3.3.40:0" // Zero means disconnected or unknown.
 	}
 
 	var keyExpiry time.Time
-	if machine.Expiry != nil {
-		keyExpiry = *machine.Expiry
+	if node.Expiry != nil {
+		keyExpiry = *node.Expiry
 	} else {
 		keyExpiry = time.Time{}
 	}
 
-	hostname, err := machine.GetFQDN(dnsConfig, baseDomain)
+	hostname, err := node.GetFQDN(dnsConfig, baseDomain)
 	if err != nil {
 		return nil, err
 	}
 
-	hostInfo := machine.GetHostInfo()
+	hostInfo := node.GetHostInfo()
 
-	online := machine.IsOnline()
+	online := node.IsOnline()
 
-	tags, _ := pol.TagsOfMachine(machine)
-	tags = lo.Uniq(append(tags, machine.ForcedTags...))
+	tags, _ := pol.TagsOfNode(node)
+	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
-	node := tailcfg.Node{
-		ID: tailcfg.NodeID(machine.ID), // this is the actual ID
+	tNode := tailcfg.Node{
+		ID: tailcfg.NodeID(node.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
-			strconv.FormatUint(machine.ID, util.Base10),
+			strconv.FormatUint(node.ID, util.Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name: hostname,
 
-		User: tailcfg.UserID(machine.UserID),
+		User: tailcfg.UserID(node.UserID),
 
 		Key:       nodeKey,
 		KeyExpiry: keyExpiry,
@@ -123,19 +122,19 @@ func tailNode(
 		DiscoKey:   discoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
-		Endpoints:  machine.Endpoints,
+		Endpoints:  node.Endpoints,
 		DERP:       derp,
 		Hostinfo:   hostInfo.View(),
-		Created:    machine.CreatedAt,
+		Created:    node.CreatedAt,
 
 		Tags: tags,
 
 		PrimaryRoutes: primaryPrefixes,
 
-		LastSeen:          machine.LastSeen,
+		LastSeen:          node.LastSeen,
 		Online:            &online,
 		KeepAlive:         true,
-		MachineAuthorized: !machine.IsExpired(),
+		MachineAuthorized: !node.IsExpired(),
 
 		Capabilities: []string{
 			tailcfg.CapabilityFileSharing,
@@ -144,5 +143,5 @@ func tailNode(
 		},
 	}
 
-	return &node, nil
+	return &tNode, nil
 }
