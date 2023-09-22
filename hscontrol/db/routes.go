@@ -21,7 +21,7 @@ func (hsdb *HSDatabase) GetRoutes() (types.Routes, error) {
 
 func (hsdb *HSDatabase) getRoutes() (types.Routes, error) {
 	var routes types.Routes
-	err := hsdb.db.Preload("Machine").Find(&routes).Error
+	err := hsdb.db.Preload("Node").Find(&routes).Error
 	if err != nil {
 		return nil, err
 	}
@@ -29,18 +29,18 @@ func (hsdb *HSDatabase) getRoutes() (types.Routes, error) {
 	return routes, nil
 }
 
-func (hsdb *HSDatabase) GetMachineAdvertisedRoutes(machine *types.Machine) (types.Routes, error) {
+func (hsdb *HSDatabase) GetNodeAdvertisedRoutes(node *types.Node) (types.Routes, error) {
 	hsdb.mu.RLock()
 	defer hsdb.mu.RUnlock()
 
-	return hsdb.getMachineAdvertisedRoutes(machine)
+	return hsdb.getNodeAdvertisedRoutes(node)
 }
 
-func (hsdb *HSDatabase) getMachineAdvertisedRoutes(machine *types.Machine) (types.Routes, error) {
+func (hsdb *HSDatabase) getNodeAdvertisedRoutes(node *types.Node) (types.Routes, error) {
 	var routes types.Routes
 	err := hsdb.db.
-		Preload("Machine").
-		Where("machine_id = ? AND advertised = true", machine.ID).
+		Preload("Node").
+		Where("node_id = ? AND advertised = true", node.ID).
 		Find(&routes).Error
 	if err != nil {
 		return nil, err
@@ -49,18 +49,18 @@ func (hsdb *HSDatabase) getMachineAdvertisedRoutes(machine *types.Machine) (type
 	return routes, nil
 }
 
-func (hsdb *HSDatabase) GetMachineRoutes(m *types.Machine) (types.Routes, error) {
+func (hsdb *HSDatabase) GetNodeRoutes(node *types.Node) (types.Routes, error) {
 	hsdb.mu.RLock()
 	defer hsdb.mu.RUnlock()
 
-	return hsdb.getMachineRoutes(m)
+	return hsdb.getNodeRoutes(node)
 }
 
-func (hsdb *HSDatabase) getMachineRoutes(m *types.Machine) (types.Routes, error) {
+func (hsdb *HSDatabase) getNodeRoutes(node *types.Node) (types.Routes, error) {
 	var routes types.Routes
 	err := hsdb.db.
-		Preload("Machine").
-		Where("machine_id = ?", m.ID).
+		Preload("Node").
+		Where("node_id = ?", node.ID).
 		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -78,7 +78,7 @@ func (hsdb *HSDatabase) GetRoute(id uint64) (*types.Route, error) {
 
 func (hsdb *HSDatabase) getRoute(id uint64) (*types.Route, error) {
 	var route types.Route
-	err := hsdb.db.Preload("Machine").First(&route, id).Error
+	err := hsdb.db.Preload("Node").First(&route, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -104,13 +104,13 @@ func (hsdb *HSDatabase) enableRoute(id uint64) error {
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
 	if route.IsExitRoute() {
 		return hsdb.enableRoutes(
-			&route.Machine,
+			&route.Node,
 			types.ExitRouteV4.String(),
 			types.ExitRouteV6.String(),
 		)
 	}
 
-	return hsdb.enableRoutes(&route.Machine, netip.Prefix(route.Prefix).String())
+	return hsdb.enableRoutes(&route.Node, netip.Prefix(route.Prefix).String())
 }
 
 func (hsdb *HSDatabase) DisableRoute(id uint64) error {
@@ -136,7 +136,7 @@ func (hsdb *HSDatabase) DisableRoute(id uint64) error {
 		return hsdb.handlePrimarySubnetFailover()
 	}
 
-	routes, err := hsdb.getMachineRoutes(&route.Machine)
+	routes, err := hsdb.getNodeRoutes(&route.Node)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
 		return hsdb.handlePrimarySubnetFailover()
 	}
 
-	routes, err := hsdb.getMachineRoutes(&route.Machine)
+	routes, err := hsdb.getNodeRoutes(&route.Node)
 	if err != nil {
 		return err
 	}
@@ -194,8 +194,8 @@ func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
 	return hsdb.handlePrimarySubnetFailover()
 }
 
-func (hsdb *HSDatabase) deleteMachineRoutes(m *types.Machine) error {
-	routes, err := hsdb.getMachineRoutes(m)
+func (hsdb *HSDatabase) deleteNodeRoutes(node *types.Node) error {
+	routes, err := hsdb.getNodeRoutes(node)
 	if err != nil {
 		return err
 	}
@@ -209,14 +209,14 @@ func (hsdb *HSDatabase) deleteMachineRoutes(m *types.Machine) error {
 	return hsdb.handlePrimarySubnetFailover()
 }
 
-// isUniquePrefix returns if there is another machine providing the same route already.
+// isUniquePrefix returns if there is another node providing the same route already.
 func (hsdb *HSDatabase) isUniquePrefix(route types.Route) bool {
 	var count int64
 	hsdb.db.
 		Model(&types.Route{}).
-		Where("prefix = ? AND machine_id != ? AND advertised = ? AND enabled = ?",
+		Where("prefix = ? AND node_id != ? AND advertised = ? AND enabled = ?",
 			route.Prefix,
-			route.MachineID,
+			route.NodeID,
 			true, true).Count(&count)
 
 	return count == 0
@@ -225,7 +225,7 @@ func (hsdb *HSDatabase) isUniquePrefix(route types.Route) bool {
 func (hsdb *HSDatabase) getPrimaryRoute(prefix netip.Prefix) (*types.Route, error) {
 	var route types.Route
 	err := hsdb.db.
-		Preload("Machine").
+		Preload("Node").
 		Where("prefix = ? AND advertised = ? AND enabled = ? AND is_primary = ?", types.IPPrefix(prefix), true, true, true).
 		First(&route).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -239,16 +239,16 @@ func (hsdb *HSDatabase) getPrimaryRoute(prefix netip.Prefix) (*types.Route, erro
 	return &route, nil
 }
 
-// getMachinePrimaryRoutes returns the routes that are enabled and marked as primary (for subnet failover)
+// getNodePrimaryRoutes returns the routes that are enabled and marked as primary (for subnet failover)
 // Exit nodes are not considered for this, as they are never marked as Primary.
-func (hsdb *HSDatabase) GetMachinePrimaryRoutes(machine *types.Machine) (types.Routes, error) {
+func (hsdb *HSDatabase) GetNodePrimaryRoutes(node *types.Node) (types.Routes, error) {
 	hsdb.mu.RLock()
 	defer hsdb.mu.RUnlock()
 
 	var routes types.Routes
 	err := hsdb.db.
-		Preload("Machine").
-		Where("machine_id = ? AND advertised = ? AND enabled = ? AND is_primary = ?", machine.ID, true, true, true).
+		Preload("Node").
+		Where("node_id = ? AND advertised = ? AND enabled = ? AND is_primary = ?", node.ID, true, true, true).
 		Find(&routes).Error
 	if err != nil {
 		return nil, err
@@ -257,29 +257,29 @@ func (hsdb *HSDatabase) GetMachinePrimaryRoutes(machine *types.Machine) (types.R
 	return routes, nil
 }
 
-// SaveMachineRoutes takes a machine and updates the database with
+// SaveNodeRoutes takes a node and updates the database with
 // the new routes.
-func (hsdb *HSDatabase) SaveMachineRoutes(machine *types.Machine) error {
+func (hsdb *HSDatabase) SaveNodeRoutes(node *types.Node) error {
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
 
-	return hsdb.saveMachineRoutes(machine)
+	return hsdb.saveNodeRoutes(node)
 }
 
-func (hsdb *HSDatabase) saveMachineRoutes(machine *types.Machine) error {
+func (hsdb *HSDatabase) saveNodeRoutes(node *types.Node) error {
 	currentRoutes := types.Routes{}
-	err := hsdb.db.Where("machine_id = ?", machine.ID).Find(&currentRoutes).Error
+	err := hsdb.db.Where("node_id = ?", node.ID).Find(&currentRoutes).Error
 	if err != nil {
 		return err
 	}
 
 	advertisedRoutes := map[netip.Prefix]bool{}
-	for _, prefix := range machine.HostInfo.RoutableIPs {
+	for _, prefix := range node.HostInfo.RoutableIPs {
 		advertisedRoutes[prefix] = false
 	}
 
 	log.Trace().
-		Str("machine", machine.Hostname).
+		Str("node", node.Hostname).
 		Interface("advertisedRoutes", advertisedRoutes).
 		Interface("currentRoutes", currentRoutes).
 		Msg("updating routes")
@@ -307,7 +307,7 @@ func (hsdb *HSDatabase) saveMachineRoutes(machine *types.Machine) error {
 	for prefix, exists := range advertisedRoutes {
 		if !exists {
 			route := types.Route{
-				MachineID:  machine.ID,
+				NodeID:     node.ID,
 				Prefix:     types.IPPrefix(prefix),
 				Advertised: true,
 				Enabled:    false,
@@ -333,27 +333,27 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 	// first, get all the enabled routes
 	var routes types.Routes
 	err := hsdb.db.
-		Preload("Machine").
+		Preload("Node").
 		Where("advertised = ? AND enabled = ?", true, true).
 		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Error().Err(err).Msg("error getting routes")
 	}
 
-	changedMachines := make(types.Machines, 0)
+	changedNodes := make(types.Nodes, 0)
 	for pos, route := range routes {
 		if route.IsExitRoute() {
 			continue
 		}
 
-		machine := &route.Machine
+		node := &route.Node
 
 		if !route.IsPrimary {
 			_, err := hsdb.getPrimaryRoute(netip.Prefix(route.Prefix))
 			if hsdb.isUniquePrefix(route) || errors.Is(err, gorm.ErrRecordNotFound) {
 				log.Info().
 					Str("prefix", netip.Prefix(route.Prefix).String()).
-					Str("machine", route.Machine.GivenName).
+					Str("node", route.Node.GivenName).
 					Msg("Setting primary route")
 				routes[pos].IsPrimary = true
 				err := hsdb.db.Save(&routes[pos]).Error
@@ -363,30 +363,30 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 					return err
 				}
 
-				changedMachines = append(changedMachines, machine)
+				changedNodes = append(changedNodes, node)
 
 				continue
 			}
 		}
 
 		if route.IsPrimary {
-			if route.Machine.IsOnline() {
+			if route.Node.IsOnline() {
 				continue
 			}
 
-			// machine offline, find a new primary
+			// node offline, find a new primary
 			log.Info().
-				Str("machine", route.Machine.Hostname).
+				Str("node", route.Node.Hostname).
 				Str("prefix", netip.Prefix(route.Prefix).String()).
-				Msgf("machine offline, finding a new primary subnet")
+				Msgf("node offline, finding a new primary subnet")
 
 			// find a new primary route
 			var newPrimaryRoutes types.Routes
 			err := hsdb.db.
-				Preload("Machine").
-				Where("prefix = ? AND machine_id != ? AND advertised = ? AND enabled = ?",
+				Preload("Node").
+				Where("prefix = ? AND node_id != ? AND advertised = ? AND enabled = ?",
 					route.Prefix,
-					route.MachineID,
+					route.NodeID,
 					true, true).
 				Find(&newPrimaryRoutes).Error
 			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -397,7 +397,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 
 			var newPrimaryRoute *types.Route
 			for pos, r := range newPrimaryRoutes {
-				if r.Machine.IsOnline() {
+				if r.Node.IsOnline() {
 					newPrimaryRoute = &newPrimaryRoutes[pos]
 
 					break
@@ -406,7 +406,7 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 
 			if newPrimaryRoute == nil {
 				log.Warn().
-					Str("machine", route.Machine.Hostname).
+					Str("node", route.Node.Hostname).
 					Str("prefix", netip.Prefix(route.Prefix).String()).
 					Msgf("no alternative primary route found")
 
@@ -414,9 +414,9 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 			}
 
 			log.Info().
-				Str("old_machine", route.Machine.Hostname).
+				Str("old_node", route.Node.Hostname).
 				Str("prefix", netip.Prefix(route.Prefix).String()).
-				Str("new_machine", newPrimaryRoute.Machine.Hostname).
+				Str("new_node", newPrimaryRoute.Node.Hostname).
 				Msgf("found new primary route")
 
 			// disable the old primary route
@@ -437,39 +437,39 @@ func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
 				return err
 			}
 
-			changedMachines = append(changedMachines, machine)
+			changedNodes = append(changedNodes, node)
 		}
 	}
 
-	if len(changedMachines) > 0 {
+	if len(changedNodes) > 0 {
 		hsdb.notifier.NotifyAll(types.StateUpdate{
 			Type:    types.StatePeerChanged,
-			Changed: changedMachines,
+			Changed: changedNodes,
 		})
 	}
 
 	return nil
 }
 
-// EnableAutoApprovedRoutes enables any routes advertised by a machine that match the ACL autoApprovers policy.
+// EnableAutoApprovedRoutes enables any routes advertised by a node that match the ACL autoApprovers policy.
 func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 	aclPolicy *policy.ACLPolicy,
-	machine *types.Machine,
+	node *types.Node,
 ) error {
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
 
-	if len(machine.IPAddresses) == 0 {
-		return nil // This machine has no IPAddresses, so can't possibly match any autoApprovers ACLs
+	if len(node.IPAddresses) == 0 {
+		return nil // This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
-	routes, err := hsdb.getMachineAdvertisedRoutes(machine)
+	routes, err := hsdb.getNodeAdvertisedRoutes(node)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Error().
 			Caller().
 			Err(err).
-			Str("machine", machine.Hostname).
-			Msg("Could not get advertised routes for machine")
+			Str("node", node.Hostname).
+			Msg("Could not get advertised routes for node")
 
 		return err
 	}
@@ -487,18 +487,18 @@ func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 		if err != nil {
 			log.Err(err).
 				Str("advertisedRoute", advertisedRoute.String()).
-				Uint64("machineId", machine.ID).
+				Uint64("nodeId", node.ID).
 				Msg("Failed to resolve autoApprovers for advertised route")
 
 			return err
 		}
 
 		for _, approvedAlias := range routeApprovers {
-			if approvedAlias == machine.User.Name {
+			if approvedAlias == node.User.Name {
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
 				// TODO(kradalby): figure out how to get this to depend on less stuff
-				approvedIps, err := aclPolicy.ExpandAlias(types.Machines{machine}, approvedAlias)
+				approvedIps, err := aclPolicy.ExpandAlias(types.Nodes{node}, approvedAlias)
 				if err != nil {
 					log.Err(err).
 						Str("alias", approvedAlias).
@@ -507,8 +507,8 @@ func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 					return err
 				}
 
-				// approvedIPs should contain all of machine's IPs if it matches the rule, so check for first
-				if approvedIps.Contains(machine.IPAddresses[0]) {
+				// approvedIPs should contain all of node's IPs if it matches the rule, so check for first
+				if approvedIps.Contains(node.IPAddresses[0]) {
 					approvedRoutes = append(approvedRoutes, advertisedRoute)
 				}
 			}
@@ -520,7 +520,7 @@ func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 		if err != nil {
 			log.Err(err).
 				Str("approvedRoute", approvedRoute.String()).
-				Uint64("machineId", machine.ID).
+				Uint64("nodeId", node.ID).
 				Msg("Failed to enable approved route")
 
 			return err

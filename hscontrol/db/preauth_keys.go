@@ -203,15 +203,15 @@ func (hsdb *HSDatabase) ValidatePreAuthKey(k string) (*types.PreAuthKey, error) 
 		return &pak, nil
 	}
 
-	machines := types.Machines{}
+	nodes := types.Nodes{}
 	if err := hsdb.db.
 		Preload("AuthKey").
-		Where(&types.Machine{AuthKeyID: uint(pak.ID)}).
-		Find(&machines).Error; err != nil {
+		Where(&types.Node{AuthKeyID: uint(pak.ID)}).
+		Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 
-	if len(machines) != 0 || pak.Used {
+	if len(nodes) != 0 || pak.Used {
 		return nil, ErrSingleUseAuthKeyHasBeenUsed
 	}
 

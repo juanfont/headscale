@@ -30,10 +30,10 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachine("test", "testmachine")
+	_, err = db.GetNode("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
-	machine := types.Machine{
+	machine := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
@@ -58,7 +58,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	c.Assert(usedIps.Equal(expectedIPSet), check.Equals, true)
 	c.Assert(usedIps.Contains(expected), check.Equals, true)
 
-	machine1, err := db.GetMachineByID(0)
+	machine1, err := db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
@@ -78,10 +78,10 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 
-		_, err = db.GetMachine("test", "testmachine")
+		_, err = db.GetNode("test", "testmachine")
 		c.Assert(err, check.NotNil)
 
-		machine := types.Machine{
+		machine := types.Node{
 			ID:             uint64(index),
 			MachineKey:     "foo",
 			NodeKey:        "bar",
@@ -119,7 +119,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(usedIps.Contains(expected300), check.Equals, true)
 
 	// Check that we can read back the IPs
-	machine1, err := db.GetMachineByID(1)
+	machine1, err := db.GetNodeByID(1)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
 	c.Assert(
@@ -128,7 +128,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		netip.MustParseAddr("10.27.0.1"),
 	)
 
-	machine50, err := db.GetMachineByID(50)
+	machine50, err := db.GetNodeByID(50)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(machine50.IPAddresses), check.Equals, 1)
 	c.Assert(
@@ -153,7 +153,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(nextIP2[0].String(), check.Equals, expectedNextIP.String())
 }
 
-func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
+func (s *Suite) TestGetAvailableIpNodeWithoutIP(c *check.C) {
 	ips, err := db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
 
@@ -168,10 +168,10 @@ func (s *Suite) TestGetAvailableIpMachineWithoutIP(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachine("test", "testmachine")
+	_, err = db.GetNode("test", "testmachine")
 	c.Assert(err, check.NotNil)
 
-	machine := types.Machine{
+	machine := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
