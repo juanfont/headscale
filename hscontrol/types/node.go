@@ -72,23 +72,23 @@ type (
 
 type NodeAddresses []netip.Addr
 
-func (ma NodeAddresses) Sort() {
-	sort.Slice(ma, func(index1, index2 int) bool {
-		if ma[index1].Is4() && ma[index2].Is6() {
+func (na NodeAddresses) Sort() {
+	sort.Slice(na, func(index1, index2 int) bool {
+		if na[index1].Is4() && na[index2].Is6() {
 			return true
 		}
-		if ma[index1].Is6() && ma[index2].Is4() {
+		if na[index1].Is6() && na[index2].Is4() {
 			return false
 		}
 
-		return ma[index1].Compare(ma[index2]) < 0
+		return na[index1].Compare(na[index2]) < 0
 	})
 }
 
-func (ma NodeAddresses) StringSlice() []string {
-	ma.Sort()
-	strSlice := make([]string, 0, len(ma))
-	for _, addr := range ma {
+func (na NodeAddresses) StringSlice() []string {
+	na.Sort()
+	strSlice := make([]string, 0, len(na))
+	for _, addr := range na {
 		strSlice = append(strSlice, addr.String())
 	}
 
