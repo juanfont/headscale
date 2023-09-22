@@ -142,7 +142,7 @@ var registerNodeCmd = &cobra.Command{
 			ErrorOutput(
 				err,
 				fmt.Sprintf(
-					"Cannot register machine: %s\n",
+					"Cannot register node: %s\n",
 					status.Convert(err).Message(),
 				),
 				output,
@@ -253,7 +253,7 @@ var expireNodeCmd = &cobra.Command{
 			ErrorOutput(
 				err,
 				fmt.Sprintf(
-					"Cannot expire machine: %s\n",
+					"Cannot expire node: %s\n",
 					status.Convert(err).Message(),
 				),
 				output,
@@ -268,7 +268,7 @@ var expireNodeCmd = &cobra.Command{
 
 var renameNodeCmd = &cobra.Command{
 	Use:   "rename NEW_NAME",
-	Short: "Renames a machine in your network",
+	Short: "Renames a node in your network",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
@@ -301,7 +301,7 @@ var renameNodeCmd = &cobra.Command{
 			ErrorOutput(
 				err,
 				fmt.Sprintf(
-					"Cannot rename machine: %s\n",
+					"Cannot rename node: %s\n",
 					status.Convert(err).Message(),
 				),
 				output,
@@ -480,7 +480,7 @@ var moveNodeCmd = &cobra.Command{
 func nodesToPtables(
 	currentUser string,
 	showTags bool,
-	machines []*v1.Node,
+	nodes []*v1.Node,
 ) (pterm.TableData, error) {
 	tableHeader := []string{
 		"ID",
@@ -505,23 +505,23 @@ func nodesToPtables(
 	}
 	tableData := pterm.TableData{tableHeader}
 
-	for _, machine := range machines {
+	for _, node := range nodes {
 		var ephemeral bool
-		if machine.PreAuthKey != nil && machine.PreAuthKey.Ephemeral {
+		if node.PreAuthKey != nil && node.PreAuthKey.Ephemeral {
 			ephemeral = true
 		}
 
 		var lastSeen time.Time
 		var lastSeenTime string
-		if machine.LastSeen != nil {
-			lastSeen = machine.LastSeen.AsTime()
+		if node.LastSeen != nil {
+			lastSeen = node.LastSeen.AsTime()
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
 
 		var expiry time.Time
 		var expiryTime string
-		if machine.Expiry != nil {
-			expiry = machine.Expiry.AsTime()
+		if node.Expiry != nil {
+			expiry = node.Expiry.AsTime()
 			expiryTime = expiry.Format("2006-01-02 15:04:05")
 		} else {
 			expiryTime = "N/A"
@@ -529,7 +529,7 @@ func nodesToPtables(
 
 		var machineKey key.MachinePublic
 		err := machineKey.UnmarshalText(
-			[]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)),
+			[]byte(util.MachinePublicKeyEnsurePrefix(node.MachineKey)),
 		)
 		if err != nil {
 			machineKey = key.MachinePublic{}
@@ -537,14 +537,14 @@ func nodesToPtables(
 
 		var nodeKey key.NodePublic
 		err = nodeKey.UnmarshalText(
-			[]byte(util.NodePublicKeyEnsurePrefix(machine.NodeKey)),
+			[]byte(util.NodePublicKeyEnsurePrefix(node.NodeKey)),
 		)
 		if err != nil {
 			return nil, err
 		}
 
 		var online string
-		if machine.Online {
+		if node.Online {
 			online = pterm.LightGreen("online")
 		} else {
 			online = pterm.LightRed("offline")
@@ -558,36 +558,36 @@ func nodesToPtables(
 		}
 
 		var forcedTags string
-		for _, tag := range machine.ForcedTags {
+		for _, tag := range node.ForcedTags {
 			forcedTags += "," + tag
 		}
 		forcedTags = strings.TrimLeft(forcedTags, ",")
 		var invalidTags string
-		for _, tag := range machine.InvalidTags {
-			if !contains(machine.ForcedTags, tag) {
+		for _, tag := range node.InvalidTags {
+			if !contains(node.ForcedTags, tag) {
 				invalidTags += "," + pterm.LightRed(tag)
 			}
 		}
 		invalidTags = strings.TrimLeft(invalidTags, ",")
 		var validTags string
-		for _, tag := range machine.ValidTags {
-			if !contains(machine.ForcedTags, tag) {
+		for _, tag := range node.ValidTags {
+			if !contains(node.ForcedTags, tag) {
 				validTags += "," + pterm.LightGreen(tag)
 			}
 		}
 		validTags = strings.TrimLeft(validTags, ",")
 
 		var user string
-		if currentUser == "" || (currentUser == machine.User.Name) {
-			user = pterm.LightMagenta(machine.User.Name)
+		if currentUser == "" || (currentUser == node.User.Name) {
+			user = pterm.LightMagenta(node.User.Name)
 		} else {
 			// Shared into this user
-			user = pterm.LightYellow(machine.User.Name)
+			user = pterm.LightYellow(node.User.Name)
 		}
 
 		var IPV4Address string
 		var IPV6Address string
-		for _, addr := range machine.IpAddresses {
+		for _, addr := range node.IpAddresses {
 			if netip.MustParseAddr(addr).Is4() {
 				IPV4Address = addr
 			} else {
@@ -596,9 +596,9 @@ func nodesToPtables(
 		}
 
 		nodeData := []string{
-			strconv.FormatUint(machine.Id, util.Base10),
-			machine.Name,
-			machine.GetGivenName(),
+			strconv.FormatUint(node.Id, util.Base10),
+			node.Name,
+			node.GetGivenName(),
 			machineKey.ShortString(),
 			nodeKey.ShortString(),
 			user,
@@ -653,7 +653,7 @@ var tagCmd = &cobra.Command{
 			return
 		}
 
-		// Sending tags to machine
+		// Sending tags to node
 		request := &v1.SetTagsRequest{
 			NodeId: identifier,
 			Tags:   tagsToSet,

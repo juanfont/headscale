@@ -897,8 +897,8 @@ func Test_expandPorts(t *testing.T) {
 
 func Test_listNodesInUser(t *testing.T) {
 	type args struct {
-		machines types.Nodes
-		user     string
+		nodes types.Nodes
+		user  string
 	}
 	tests := []struct {
 		name string
@@ -906,9 +906,9 @@ func Test_listNodesInUser(t *testing.T) {
 		want types.Nodes
 	}{
 		{
-			name: "1 machine in user",
+			name: "1 node in user",
 			args: args{
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{User: types.User{Name: "joe"}},
 				},
 				user: "joe",
@@ -918,9 +918,9 @@ func Test_listNodesInUser(t *testing.T) {
 			},
 		},
 		{
-			name: "3 machines, 2 in user",
+			name: "3 nodes, 2 in user",
 			args: args{
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{ID: 1, User: types.User{Name: "joe"}},
 					&types.Node{ID: 2, User: types.User{Name: "marc"}},
 					&types.Node{ID: 3, User: types.User{Name: "marc"}},
@@ -933,9 +933,9 @@ func Test_listNodesInUser(t *testing.T) {
 			},
 		},
 		{
-			name: "5 machines, 0 in user",
+			name: "5 nodes, 0 in user",
 			args: args{
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{ID: 1, User: types.User{Name: "joe"}},
 					&types.Node{ID: 2, User: types.User{Name: "marc"}},
 					&types.Node{ID: 3, User: types.User{Name: "marc"}},
@@ -949,7 +949,7 @@ func Test_listNodesInUser(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := filterNodesByUser(test.args.machines, test.args.user)
+			got := filterNodesByUser(test.args.nodes, test.args.user)
 
 			if diff := cmp.Diff(test.want, got); diff != "" {
 				t.Errorf("listNodesInUser() = (-want +got):\n%s", diff)
@@ -979,7 +979,7 @@ func Test_expandAlias(t *testing.T) {
 		pol ACLPolicy
 	}
 	type args struct {
-		machines  types.Nodes
+		nodes     types.Nodes
 		aclPolicy ACLPolicy
 		alias     string
 	}
@@ -997,7 +997,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "*",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 					},
@@ -1023,7 +1023,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "group:accountant",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1064,7 +1064,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "group:hr",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1100,8 +1100,8 @@ func Test_expandAlias(t *testing.T) {
 				pol: ACLPolicy{},
 			},
 			args: args{
-				alias:    "10.0.0.3",
-				machines: types.Nodes{},
+				alias: "10.0.0.3",
+				nodes: types.Nodes{},
 			},
 			want: set([]string{
 				"10.0.0.3",
@@ -1114,8 +1114,8 @@ func Test_expandAlias(t *testing.T) {
 				pol: ACLPolicy{},
 			},
 			args: args{
-				alias:    "10.0.0.1",
-				machines: types.Nodes{},
+				alias: "10.0.0.1",
+				nodes: types.Nodes{},
 			},
 			want: set([]string{
 				"10.0.0.1",
@@ -1129,7 +1129,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "10.0.0.1",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("10.0.0.1"),
@@ -1150,7 +1150,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "10.0.0.1",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("10.0.0.1"),
@@ -1172,7 +1172,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "fd7a:115c:a1e0:ab12:4843:2222:6273:2222",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("10.0.0.1"),
@@ -1197,8 +1197,8 @@ func Test_expandAlias(t *testing.T) {
 				},
 			},
 			args: args{
-				alias:    "testy",
-				machines: types.Nodes{},
+				alias: "testy",
+				nodes: types.Nodes{},
 			},
 			want:    set([]string{}, []string{"10.0.0.132/32"}),
 			wantErr: false,
@@ -1213,8 +1213,8 @@ func Test_expandAlias(t *testing.T) {
 				},
 			},
 			args: args{
-				alias:    "homeNetwork",
-				machines: types.Nodes{},
+				alias: "homeNetwork",
+				nodes: types.Nodes{},
 			},
 			want:    set([]string{}, []string{"192.168.1.0/24"}),
 			wantErr: false,
@@ -1226,7 +1226,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias:     "10.0.0.0/16",
-				machines:  types.Nodes{},
+				nodes:     types.Nodes{},
 				aclPolicy: ACLPolicy{},
 			},
 			want:    set([]string{}, []string{"10.0.0.0/16"}),
@@ -1241,7 +1241,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1295,7 +1295,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1332,7 +1332,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1375,7 +1375,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "tag:hr-webserver",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1420,7 +1420,7 @@ func Test_expandAlias(t *testing.T) {
 			},
 			args: args{
 				alias: "joe",
-				machines: types.Nodes{
+				nodes: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.1"),
@@ -1464,7 +1464,7 @@ func Test_expandAlias(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := test.field.pol.ExpandAlias(
-				test.args.machines,
+				test.args.nodes,
 				test.args.alias,
 			)
 			if (err != nil) != test.wantErr {
@@ -1716,8 +1716,8 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 		pol ACLPolicy
 	}
 	type args struct {
-		machine *types.Node
-		peers   types.Nodes
+		node  *types.Node
+		peers types.Nodes
 	}
 	tests := []struct {
 		name    string
@@ -1747,7 +1747,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				machine: &types.Node{
+				node: &types.Node{
 					IPAddresses: types.NodeAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
@@ -1792,7 +1792,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				machine: &types.Node{
+				node: &types.Node{
 					IPAddresses: types.NodeAddresses{
 						netip.MustParseAddr("100.64.0.1"),
 						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
@@ -1839,7 +1839,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.field.pol.generateFilterRules(
-				tt.args.machine,
+				tt.args.node,
 				tt.args.peers,
 			)
 			if (err != nil) != tt.wantErr {
@@ -1858,11 +1858,11 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 
 func TestReduceFilterRules(t *testing.T) {
 	tests := []struct {
-		name    string
-		machine *types.Node
-		peers   types.Nodes
-		pol     ACLPolicy
-		want    []tailcfg.FilterRule
+		name  string
+		node  *types.Node
+		peers types.Nodes
+		pol   ACLPolicy
+		want  []tailcfg.FilterRule
 	}{
 		{
 			name: "host1-can-reach-host2-no-rules",
@@ -1875,7 +1875,7 @@ func TestReduceFilterRules(t *testing.T) {
 					},
 				},
 			},
-			machine: &types.Node{
+			node: &types.Node{
 				IPAddresses: types.NodeAddresses{
 					netip.MustParseAddr("100.64.0.1"),
 					netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
@@ -1898,11 +1898,11 @@ func TestReduceFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rules, _ := tt.pol.generateFilterRules(
-				tt.machine,
+				tt.node,
 				tt.peers,
 			)
 
-			got := ReduceFilterRules(tt.machine, rules)
+			got := ReduceFilterRules(tt.node, rules)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				log.Trace().Interface("got", got).Msg("result")
@@ -1915,7 +1915,7 @@ func TestReduceFilterRules(t *testing.T) {
 func Test_getTags(t *testing.T) {
 	type args struct {
 		aclPolicy *ACLPolicy
-		machine   *types.Node
+		node      *types.Node
 	}
 	tests := []struct {
 		name        string
@@ -1924,14 +1924,14 @@ func Test_getTags(t *testing.T) {
 		wantValid   []string
 	}{
 		{
-			name: "valid tag one machine",
+			name: "valid tag one nodes",
 			args: args{
 				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{
 						"tag:valid": []string{"joe"},
 					},
 				},
-				machine: &types.Node{
+				node: &types.Node{
 					User: types.User{
 						Name: "joe",
 					},
@@ -1944,14 +1944,14 @@ func Test_getTags(t *testing.T) {
 			wantInvalid: nil,
 		},
 		{
-			name: "invalid tag and valid tag one machine",
+			name: "invalid tag and valid tag one nodes",
 			args: args{
 				aclPolicy: &ACLPolicy{
 					TagOwners: TagOwners{
 						"tag:valid": []string{"joe"},
 					},
 				},
-				machine: &types.Node{
+				node: &types.Node{
 					User: types.User{
 						Name: "joe",
 					},
@@ -1971,7 +1971,7 @@ func Test_getTags(t *testing.T) {
 						"tag:valid": []string{"joe"},
 					},
 				},
-				machine: &types.Node{
+				node: &types.Node{
 					User: types.User{
 						Name: "joe",
 					},
@@ -1995,7 +1995,7 @@ func Test_getTags(t *testing.T) {
 						"tag:valid": []string{"joe"},
 					},
 				},
-				machine: &types.Node{
+				node: &types.Node{
 					User: types.User{
 						Name: "joe",
 					},
@@ -2011,7 +2011,7 @@ func Test_getTags(t *testing.T) {
 			name: "empty ACLPolicy should return empty tags and should not panic",
 			args: args{
 				aclPolicy: &ACLPolicy{},
-				machine: &types.Node{
+				node: &types.Node{
 					User: types.User{
 						Name: "joe",
 					},
@@ -2027,7 +2027,7 @@ func Test_getTags(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			gotValid, gotInvalid := test.args.aclPolicy.TagsOfNode(
-				test.args.machine,
+				test.args.node,
 			)
 			for _, valid := range gotValid {
 				if !util.StringOrPrefixListContains(test.wantValid, valid) {
@@ -2061,9 +2061,9 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 	})
 
 	type args struct {
-		machines types.Nodes
-		rules    []tailcfg.FilterRule
-		machine  *types.Node
+		nodes types.Nodes
+		rules []tailcfg.FilterRule
+		node  *types.Node
 	}
 	tests := []struct {
 		name string
@@ -2073,7 +2073,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "all hosts can talk to each other",
 			args: args{
-				machines: types.Nodes{ // list of all machines in the database
+				nodes: types.Nodes{ // list of all nodess in the database
 					&types.Node{
 						ID: 1,
 						IPAddresses: types.NodeAddresses{
@@ -2104,7 +2104,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{ // current machine
+				node: &types.Node{ // current nodes
 					ID:          1,
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 					User:        types.User{Name: "joe"},
@@ -2126,7 +2126,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "One host can talk to another, but not all hosts",
 			args: args{
-				machines: types.Nodes{ // list of all machines in the database
+				nodes: types.Nodes{ // list of all nodess in the database
 					&types.Node{
 						ID: 1,
 						IPAddresses: types.NodeAddresses{
@@ -2157,7 +2157,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{ // current machine
+				node: &types.Node{ // current nodes
 					ID:          1,
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 					User:        types.User{Name: "joe"},
@@ -2174,7 +2174,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "host cannot directly talk to destination, but return path is authorized",
 			args: args{
-				machines: types.Nodes{ // list of all machines in the database
+				nodes: types.Nodes{ // list of all nodess in the database
 					&types.Node{
 						ID: 1,
 						IPAddresses: types.NodeAddresses{
@@ -2205,7 +2205,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{ // current machine
+				node: &types.Node{ // current nodes
 					ID:          2,
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.2")},
 					User:        types.User{Name: "marc"},
@@ -2222,7 +2222,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "rules allows all hosts to reach one destination",
 			args: args{
-				machines: types.Nodes{ // list of all machines in the database
+				nodes: types.Nodes{ // list of all nodess in the database
 					&types.Node{
 						ID: 1,
 						IPAddresses: types.NodeAddresses{
@@ -2253,7 +2253,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{ // current machine
+				node: &types.Node{ // current nodes
 					ID: 1,
 					IPAddresses: types.NodeAddresses{
 						netip.MustParseAddr("100.64.0.1"),
@@ -2274,7 +2274,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "rules allows all hosts to reach one destination, destination can reach all hosts",
 			args: args{
-				machines: types.Nodes{ // list of all machines in the database
+				nodes: types.Nodes{ // list of all nodess in the database
 					&types.Node{
 						ID: 1,
 						IPAddresses: types.NodeAddresses{
@@ -2305,7 +2305,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{ // current machine
+				node: &types.Node{ // current nodes
 					ID: 2,
 					IPAddresses: types.NodeAddresses{
 						netip.MustParseAddr("100.64.0.2"),
@@ -2333,7 +2333,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "rule allows all hosts to reach all destinations",
 			args: args{
-				machines: types.Nodes{ // list of all machines in the database
+				nodes: types.Nodes{ // list of all nodess in the database
 					&types.Node{
 						ID: 1,
 						IPAddresses: types.NodeAddresses{
@@ -2364,7 +2364,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{ // current machine
+				node: &types.Node{ // current nodes
 					ID:          2,
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.2")},
 					User:        types.User{Name: "marc"},
@@ -2388,7 +2388,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "without rule all communications are forbidden",
 			args: args{
-				machines: types.Nodes{ // list of all machines in the database
+				nodes: types.Nodes{ // list of all nodess in the database
 					&types.Node{
 						ID: 1,
 						IPAddresses: types.NodeAddresses{
@@ -2413,7 +2413,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
 				},
-				machine: &types.Node{ // current machine
+				node: &types.Node{ // current nodes
 					ID:          2,
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.2")},
 					User:        types.User{Name: "marc"},
@@ -2423,12 +2423,12 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		},
 		{
 			// Investigating 699
-			// Found some machines: [ts-head-8w6paa ts-unstable-lys2ib ts-head-upcrmb ts-unstable-rlwpvr] machine=ts-head-8w6paa
+			// Found some nodes: [ts-head-8w6paa ts-unstable-lys2ib ts-head-upcrmb ts-unstable-rlwpvr] nodes=ts-head-8w6paa
 			// ACL rules generated ACL=[{"DstPorts":[{"Bits":null,"IP":"*","Ports":{"First":0,"Last":65535}}],"SrcIPs":["fd7a:115c:a1e0::3","100.64.0.3","fd7a:115c:a1e0::4","100.64.0.4"]}]
 			// ACL Cache Map={"100.64.0.3":{"*":{}},"100.64.0.4":{"*":{}},"fd7a:115c:a1e0::3":{"*":{}},"fd7a:115c:a1e0::4":{"*":{}}}
 			name: "issue-699-broken-star",
 			args: args{
-				machines: types.Nodes{ //
+				nodes: types.Nodes{ //
 					&types.Node{
 						ID:       1,
 						Hostname: "ts-head-upcrmb",
@@ -2480,7 +2480,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{ // current machine
+				node: &types.Node{ // current nodes
 					ID:       3,
 					Hostname: "ts-head-8w6paa",
 					IPAddresses: types.NodeAddresses{
@@ -2514,7 +2514,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "failing-edge-case-during-p3-refactor",
 			args: args{
-				machines: []*types.Node{
+				nodes: []*types.Node{
 					{
 						ID:          1,
 						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -2537,7 +2537,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{
+				node: &types.Node{
 					ID:          0,
 					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 					Hostname:    "mini",
@@ -2556,7 +2556,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "p4-host-in-netmap-user2-dest-bug",
 			args: args{
-				machines: []*types.Node{
+				nodes: []*types.Node{
 					{
 						ID:          1,
 						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -2606,7 +2606,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{
+				node: &types.Node{
 					ID:          2,
 					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 					Hostname:    "user-2-1",
@@ -2637,7 +2637,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "p4-host-in-netmap-user1-dest-bug",
 			args: args{
-				machines: []*types.Node{
+				nodes: []*types.Node{
 					{
 						ID:          1,
 						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -2687,7 +2687,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						},
 					},
 				},
-				machine: &types.Node{
+				node: &types.Node{
 					ID:          0,
 					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 					Hostname:    "user1-1",
@@ -2719,8 +2719,8 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := FilterNodesByACL(
-				tt.args.machine,
-				tt.args.machines,
+				tt.args.node,
+				tt.args.nodes,
 				tt.args.rules,
 			)
 			if diff := cmp.Diff(tt.want, got, ipComparer); diff != "" {
@@ -2732,16 +2732,16 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 
 func TestSSHRules(t *testing.T) {
 	tests := []struct {
-		name    string
-		machine types.Node
-		peers   types.Nodes
-		pol     ACLPolicy
-		want    []*tailcfg.SSHRule
+		name  string
+		node  types.Node
+		peers types.Nodes
+		pol   ACLPolicy
+		want  []*tailcfg.SSHRule
 	}{
 		{
 			name: "peers-can-connect",
-			machine: types.Node{
-				Hostname:    "testmachine",
+			node: types.Node{
+				Hostname:    "testnodes",
 				IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.99.42")},
 				UserID:      0,
 				User: types.User{
@@ -2750,7 +2750,7 @@ func TestSSHRules(t *testing.T) {
 			},
 			peers: types.Nodes{
 				&types.Node{
-					Hostname:    "testmachine2",
+					Hostname:    "testnodes2",
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 					UserID:      0,
 					User: types.User{
@@ -2848,8 +2848,8 @@ func TestSSHRules(t *testing.T) {
 		},
 		{
 			name: "peers-cannot-connect",
-			machine: types.Node{
-				Hostname:    "testmachine",
+			node: types.Node{
+				Hostname:    "testnodes",
 				IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 				UserID:      0,
 				User: types.User{
@@ -2858,7 +2858,7 @@ func TestSSHRules(t *testing.T) {
 			},
 			peers: types.Nodes{
 				&types.Node{
-					Hostname:    "testmachine2",
+					Hostname:    "testnodes2",
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.99.42")},
 					UserID:      0,
 					User: types.User{
@@ -2901,7 +2901,7 @@ func TestSSHRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.pol.generateSSHRules(&tt.machine, tt.peers)
+			got, err := tt.pol.generateSSHRules(&tt.node, tt.peers)
 			assert.NoError(t, err)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -2980,16 +2980,16 @@ func TestParseDestination(t *testing.T) {
 func TestValidExpandTagOwnersInSources(t *testing.T) {
 	hostInfo := tailcfg.Hostinfo{
 		OS:          "centos",
-		Hostname:    "testmachine",
+		Hostname:    "testnodes",
 		RequestTags: []string{"tag:test"},
 	}
 
-	machine := &types.Node{
+	node := &types.Node{
 		ID:          0,
 		MachineKey:  "foo",
 		NodeKey:     "bar",
 		DiscoKey:    "faa",
-		Hostname:    "testmachine",
+		Hostname:    "testnodes",
 		IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 		UserID:      0,
 		User: types.User{
@@ -3011,7 +3011,7 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, machine, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRules(pol, node, types.Nodes{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3035,16 +3035,16 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 func TestInvalidTagValidUser(t *testing.T) {
 	hostInfo := tailcfg.Hostinfo{
 		OS:          "centos",
-		Hostname:    "testmachine",
+		Hostname:    "testnodes",
 		RequestTags: []string{"tag:foo"},
 	}
 
-	machine := &types.Node{
+	node := &types.Node{
 		ID:          1,
 		MachineKey:  "12345",
 		NodeKey:     "bar",
 		DiscoKey:    "faa",
-		Hostname:    "testmachine",
+		Hostname:    "testnodes",
 		IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 		UserID:      1,
 		User: types.User{
@@ -3065,7 +3065,7 @@ func TestInvalidTagValidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, machine, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRules(pol, node, types.Nodes{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3089,16 +3089,16 @@ func TestInvalidTagValidUser(t *testing.T) {
 func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 	hostInfo := tailcfg.Hostinfo{
 		OS:          "centos",
-		Hostname:    "testmachine",
+		Hostname:    "testnodes",
 		RequestTags: []string{"tag:test"},
 	}
 
-	machine := &types.Node{
+	node := &types.Node{
 		ID:          1,
 		MachineKey:  "12345",
 		NodeKey:     "bar",
 		DiscoKey:    "faa",
-		Hostname:    "testmachine",
+		Hostname:    "testnodes",
 		IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 		UserID:      1,
 		User: types.User{
@@ -3120,14 +3120,14 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 		},
 	}
 
-	// rules, _, err := GenerateFilterRules(pol, &machine, peers, false)
+	// rules, _, err := GenerateFilterRules(pol, &node, peers, false)
 	// c.Assert(err, check.IsNil)
 	//
 	// c.Assert(rules, check.HasLen, 1)
 	// c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	// c.Assert(rules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 
-	got, _, err := GenerateFilterAndSSHRules(pol, machine, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRules(pol, node, types.Nodes{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3157,7 +3157,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 		RequestTags: []string{"tag:webapp"},
 	}
 
-	machine := &types.Node{
+	node := &types.Node{
 		ID:          1,
 		MachineKey:  "12345",
 		NodeKey:     "bar",
@@ -3177,7 +3177,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 		Hostname: "Hostname",
 	}
 
-	machine2 := &types.Node{
+	nodes2 := &types.Node{
 		ID:          2,
 		MachineKey:  "56789",
 		NodeKey:     "bar2",
@@ -3203,7 +3203,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, machine, types.Nodes{machine2})
+	got, _, err := GenerateFilterAndSSHRules(pol, node, types.Nodes{nodes2})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{

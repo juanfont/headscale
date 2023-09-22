@@ -1391,7 +1391,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assert.Equal(t, "nomad-machine", node.Name)
 	assert.Equal(t, node.User.Name, "old-user")
 
-	machineID := fmt.Sprintf("%d", node.Id)
+	nodeID := fmt.Sprintf("%d", node.Id)
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1400,7 +1400,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			machineID,
+			nodeID,
 			"--user",
 			"new-user",
 			"--output",
@@ -1438,7 +1438,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			machineID,
+			nodeID,
 			"--user",
 			"non-existing-user",
 			"--output",
@@ -1461,7 +1461,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			machineID,
+			nodeID,
 			"--user",
 			"old-user",
 			"--output",
@@ -1480,7 +1480,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			machineID,
+			nodeID,
 			"--user",
 			"old-user",
 			"--output",

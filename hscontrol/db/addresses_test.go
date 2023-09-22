@@ -30,21 +30,21 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test", "testmachine")
+	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
-	machine := types.Node{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		IPAddresses:    ips,
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
 	usedIps, err := db.getUsedIPs()
 
@@ -58,11 +58,11 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	c.Assert(usedIps.Equal(expectedIPSet), check.Equals, true)
 	c.Assert(usedIps.Contains(expected), check.Equals, true)
 
-	machine1, err := db.GetNodeByID(0)
+	node1, err := db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)
 
-	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
-	c.Assert(machine1.IPAddresses[0], check.Equals, expected)
+	c.Assert(len(node1.IPAddresses), check.Equals, 1)
+	c.Assert(node1.IPAddresses[0], check.Equals, expected)
 }
 
 func (s *Suite) TestGetMultiIp(c *check.C) {
@@ -78,21 +78,21 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 
-		_, err = db.GetNode("test", "testmachine")
+		_, err = db.GetNode("test", "testnode")
 		c.Assert(err, check.NotNil)
 
-		machine := types.Node{
+		node := types.Node{
 			ID:             uint64(index),
 			MachineKey:     "foo",
 			NodeKey:        "bar",
 			DiscoKey:       "faa",
-			Hostname:       "testmachine",
+			Hostname:       "testnode",
 			UserID:         user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 			IPAddresses:    ips,
 		}
-		db.db.Save(&machine)
+		db.db.Save(&node)
 
 		db.ipAllocationMutex.Unlock()
 	}
@@ -119,20 +119,20 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 	c.Assert(usedIps.Contains(expected300), check.Equals, true)
 
 	// Check that we can read back the IPs
-	machine1, err := db.GetNodeByID(1)
+	node1, err := db.GetNodeByID(1)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(machine1.IPAddresses), check.Equals, 1)
+	c.Assert(len(node1.IPAddresses), check.Equals, 1)
 	c.Assert(
-		machine1.IPAddresses[0],
+		node1.IPAddresses[0],
 		check.Equals,
 		netip.MustParseAddr("10.27.0.1"),
 	)
 
-	machine50, err := db.GetNodeByID(50)
+	node50, err := db.GetNodeByID(50)
 	c.Assert(err, check.IsNil)
-	c.Assert(len(machine50.IPAddresses), check.Equals, 1)
+	c.Assert(len(node50.IPAddresses), check.Equals, 1)
 	c.Assert(
-		machine50.IPAddresses[0],
+		node50.IPAddresses[0],
 		check.Equals,
 		netip.MustParseAddr("10.27.0.50"),
 	)
@@ -168,20 +168,20 @@ func (s *Suite) TestGetAvailableIpNodeWithoutIP(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test", "testmachine")
+	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
-	machine := types.Node{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
 	ips2, err := db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
