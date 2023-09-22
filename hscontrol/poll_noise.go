@@ -49,7 +49,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 	ns.nodeKey = mapRequest.NodeKey
 
-	machine, err := ns.headscale.db.GetMachineByAnyKey(
+	node, err := ns.headscale.db.GetNodeByAnyKey(
 		ns.conn.Peer(),
 		mapRequest.NodeKey,
 		key.NodePublic{},
@@ -58,22 +58,22 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
 				Str("handler", "NoisePollNetMap").
-				Msgf("Ignoring request, cannot find machine with key %s", mapRequest.NodeKey.String())
+				Msgf("Ignoring request, cannot find node with key %s", mapRequest.NodeKey.String())
 			http.Error(writer, "Internal error", http.StatusNotFound)
 
 			return
 		}
 		log.Error().
 			Str("handler", "NoisePollNetMap").
-			Msgf("Failed to fetch machine from the database with node key: %s", mapRequest.NodeKey.String())
+			Msgf("Failed to fetch node from the database with node key: %s", mapRequest.NodeKey.String())
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 
 		return
 	}
 	log.Debug().
 		Str("handler", "NoisePollNetMap").
-		Str("machine", machine.Hostname).
-		Msg("A machine sending a MapRequest with Noise protocol")
+		Str("node", node.Hostname).
+		Msg("A node sending a MapRequest with Noise protocol")
 
-	ns.headscale.handlePoll(writer, req.Context(), machine, mapRequest, true)
+	ns.headscale.handlePoll(writer, req.Context(), node, mapRequest, true)
 }

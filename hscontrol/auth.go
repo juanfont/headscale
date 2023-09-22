@@ -27,7 +27,7 @@ func (h *Headscale) handleRegister(
 	isNoise bool,
 ) {
 	now := time.Now().UTC()
-	machine, err := h.db.GetMachineByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
+	machine, err := h.db.GetNodeByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the machine has AuthKey set, handle registration via PreAuthKeys
 		if registerRequest.Auth.AuthKey != "" {
@@ -54,13 +54,13 @@ func (h *Headscale) handleRegister(
 					Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
 					Str("follow_up", registerRequest.Followup).
 					Bool("noise", isNoise).
-					Msg("Machine is waiting for interactive login")
+					Msg("Node is waiting for interactive login")
 
 				select {
 				case <-req.Context().Done():
 					return
 				case <-time.After(registrationHoldoff):
-					h.handleNewMachine(writer, registerRequest, machineKey, isNoise)
+					h.handleNewNode(writer, registerRequest, machineKey, isNoise)
 
 					return
 				}
@@ -96,7 +96,7 @@ func (h *Headscale) handleRegister(
 		// that we rely on a method that calls back some how (OpenID or CLI)
 		// We create the machine and then keep it around until a callback
 		// happens
-		newMachine := types.Machine{
+		newNode := types.Node{
 			MachineKey: util.MachinePublicKeyStripPrefix(machineKey),
 			Hostname:   registerRequest.Hostinfo.Hostname,
 			GivenName:  givenName,
@@ -112,16 +112,16 @@ func (h *Headscale) handleRegister(
 				Str("machine", registerRequest.Hostinfo.Hostname).
 				Time("expiry", registerRequest.Expiry).
 				Msg("Non-zero expiry time requested")
-			newMachine.Expiry = &registerRequest.Expiry
+			newNode.Expiry = &registerRequest.Expiry
 		}
 
 		h.registrationCache.Set(
-			newMachine.NodeKey,
-			newMachine,
+			newNode.NodeKey,
+			newNode,
 			registerCacheExpiration,
 		)
 
-		h.handleNewMachine(writer, registerRequest, machineKey, isNoise)
+		h.handleNewNode(writer, registerRequest, machineKey, isNoise)
 
 		return
 	}
@@ -139,7 +139,7 @@ func (h *Headscale) handleRegister(
 			[]byte(util.MachinePublicKeyEnsurePrefix(machine.MachineKey)),
 		)
 		if err != nil || storedMachineKey.IsZero() {
-			if err := h.db.MachineSetMachineKey(machine, machineKey); err != nil {
+			if err := h.db.NodeSetMachineKey(machine, machineKey); err != nil {
 				log.Error().
 					Caller().
 					Str("func", "RegistrationHandler").
@@ -161,7 +161,7 @@ func (h *Headscale) handleRegister(
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !registerRequest.Expiry.IsZero() &&
 				registerRequest.Expiry.UTC().Before(now) {
-				h.handleMachineLogOut(writer, *machine, machineKey, isNoise)
+				h.handleNodeLogOut(writer, *machine, machineKey, isNoise)
 
 				return
 			}
@@ -169,7 +169,7 @@ func (h *Headscale) handleRegister(
 			// If machine is not expired, and it is register, we have a already accepted this machine,
 			// let it proceed with a valid registration
 			if !machine.IsExpired() {
-				h.handleMachineWithValidRegistration(writer, *machine, machineKey, isNoise)
+				h.handleNodeWithValidRegistration(writer, *machine, machineKey, isNoise)
 
 				return
 			}
@@ -178,7 +178,7 @@ func (h *Headscale) handleRegister(
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
 		if machine.NodeKey == util.NodePublicKeyStripPrefix(registerRequest.OldNodeKey) &&
 			!machine.IsExpired() {
-			h.handleMachineKeyRefresh(
+			h.handleNodeKeyRefresh(
 				writer,
 				registerRequest,
 				*machine,
@@ -198,7 +198,7 @@ func (h *Headscale) handleRegister(
 		}
 
 		// The machine has expired or it is logged out
-		h.handleMachineExpiredOrLoggedOut(writer, registerRequest, *machine, machineKey, isNoise)
+		h.handleNodeExpiredOrLoggedOut(writer, registerRequest, *machine, machineKey, isNoise)
 
 		// TODO(juan): RegisterRequest includes an Expiry time, that we could optionally use
 		machine.Expiry = &time.Time{}
@@ -300,7 +300,7 @@ func (h *Headscale) handleAuthKey(
 	// The error is not important, because if it does not
 	// exist, then this is a new machine and we will move
 	// on to registration.
-	machine, _ := h.db.GetMachineByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
+	machine, _ := h.db.GetNodeByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
 	if machine != nil {
 		log.Trace().
 			Caller().
@@ -310,7 +310,7 @@ func (h *Headscale) handleAuthKey(
 
 		machine.NodeKey = nodeKey
 		machine.AuthKeyID = uint(pak.ID)
-		err := h.db.MachineSetExpiry(machine, registerRequest.Expiry)
+		err := h.db.NodeSetExpiry(machine, registerRequest.Expiry)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -355,7 +355,7 @@ func (h *Headscale) handleAuthKey(
 			return
 		}
 
-		machineToRegister := types.Machine{
+		machineToRegister := types.Node{
 			Hostname:       registerRequest.Hostinfo.Hostname,
 			GivenName:      givenName,
 			UserID:         pak.User.ID,
@@ -368,7 +368,7 @@ func (h *Headscale) handleAuthKey(
 			ForcedTags:     pak.Proto().AclTags,
 		}
 
-		machine, err = h.db.RegisterMachine(
+		machine, err = h.db.RegisterNode(
 			machineToRegister,
 		)
 		if err != nil {
@@ -439,9 +439,9 @@ func (h *Headscale) handleAuthKey(
 		Msg("Successfully authenticated via AuthKey")
 }
 
-// handleNewMachine exposes for both legacy and Noise the functionality to get a URL
+// handleNewNode exposes for both legacy and Noise the functionality to get a URL
 // for authorizing the machine. This url is then showed to the user by the local Tailscale client.
-func (h *Headscale) handleNewMachine(
+func (h *Headscale) handleNewNode(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
@@ -499,9 +499,9 @@ func (h *Headscale) handleNewMachine(
 		Msg("Successfully sent auth url")
 }
 
-func (h *Headscale) handleMachineLogOut(
+func (h *Headscale) handleNodeLogOut(
 	writer http.ResponseWriter,
-	machine types.Machine,
+	machine types.Node,
 	machineKey key.MachinePublic,
 	isNoise bool,
 ) {
@@ -513,7 +513,7 @@ func (h *Headscale) handleMachineLogOut(
 		Msg("Client requested logout")
 
 	now := time.Now()
-	err := h.db.MachineSetExpiry(&machine, now)
+	err := h.db.NodeSetExpiry(&machine, now)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -555,7 +555,7 @@ func (h *Headscale) handleMachineLogOut(
 	}
 
 	if machine.IsEphemeral() {
-		err = h.db.DeleteMachine(&machine)
+		err = h.db.DeleteNode(&machine)
 		if err != nil {
 			log.Error().
 				Err(err).
@@ -573,9 +573,9 @@ func (h *Headscale) handleMachineLogOut(
 		Msg("Successfully logged out")
 }
 
-func (h *Headscale) handleMachineWithValidRegistration(
+func (h *Headscale) handleNodeWithValidRegistration(
 	writer http.ResponseWriter,
-	machine types.Machine,
+	machine types.Node,
 	machineKey key.MachinePublic,
 	isNoise bool,
 ) {
@@ -624,13 +624,13 @@ func (h *Headscale) handleMachineWithValidRegistration(
 		Caller().
 		Bool("noise", isNoise).
 		Str("machine", machine.Hostname).
-		Msg("Machine successfully authorized")
+		Msg("Node successfully authorized")
 }
 
-func (h *Headscale) handleMachineKeyRefresh(
+func (h *Headscale) handleNodeKeyRefresh(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
-	machine types.Machine,
+	machine types.Node,
 	machineKey key.MachinePublic,
 	isNoise bool,
 ) {
@@ -642,7 +642,7 @@ func (h *Headscale) handleMachineKeyRefresh(
 		Str("machine", machine.Hostname).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
 
-	err := h.db.MachineSetNodeKey(&machine, registerRequest.NodeKey)
+	err := h.db.NodeSetNodeKey(&machine, registerRequest.NodeKey)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -687,10 +687,10 @@ func (h *Headscale) handleMachineKeyRefresh(
 		Msg("Node key successfully refreshed")
 }
 
-func (h *Headscale) handleMachineExpiredOrLoggedOut(
+func (h *Headscale) handleNodeExpiredOrLoggedOut(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
-	machine types.Machine,
+	machine types.Node,
 	machineKey key.MachinePublic,
 	isNoise bool,
 ) {
@@ -710,7 +710,7 @@ func (h *Headscale) handleMachineExpiredOrLoggedOut(
 		Str("machine_key", machineKey.ShortString()).
 		Str("node_key", registerRequest.NodeKey.ShortString()).
 		Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
-		Msg("Machine registration has expired or logged out. Sending a auth url to register")
+		Msg("Node registration has expired or logged out. Sending a auth url to register")
 
 	if h.oauth2Config != nil {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
@@ -756,5 +756,5 @@ func (h *Headscale) handleMachineExpiredOrLoggedOut(
 		Str("node_key", registerRequest.NodeKey.ShortString()).
 		Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
 		Str("machine", machine.Hostname).
-		Msg("Machine logged out. Sent AuthURL for reauthentication")
+		Msg("Node logged out. Sent AuthURL for reauthentication")
 }

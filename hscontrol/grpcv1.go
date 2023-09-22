@@ -166,16 +166,16 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	return &v1.ListPreAuthKeysResponse{PreAuthKeys: response}, nil
 }
 
-func (api headscaleV1APIServer) RegisterMachine(
+func (api headscaleV1APIServer) RegisterNode(
 	ctx context.Context,
-	request *v1.RegisterMachineRequest,
-) (*v1.RegisterMachineResponse, error) {
+	request *v1.RegisterNodeRequest,
+) (*v1.RegisterNodeResponse, error) {
 	log.Trace().
 		Str("user", request.GetUser()).
 		Str("node_key", request.GetKey()).
-		Msg("Registering machine")
+		Msg("Registering node")
 
-	machine, err := api.h.db.RegisterMachineFromAuthCallback(
+	node, err := api.h.db.RegisterNodeFromAuthCallback(
 		api.h.registrationCache,
 		request.GetKey(),
 		request.GetUser(),
@@ -186,26 +186,26 @@ func (api headscaleV1APIServer) RegisterMachine(
 		return nil, err
 	}
 
-	return &v1.RegisterMachineResponse{Machine: machine.Proto()}, nil
+	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
 }
 
-func (api headscaleV1APIServer) GetMachine(
+func (api headscaleV1APIServer) GetNode(
 	ctx context.Context,
-	request *v1.GetMachineRequest,
-) (*v1.GetMachineResponse, error) {
-	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
+	request *v1.GetNodeRequest,
+) (*v1.GetNodeResponse, error) {
+	node, err := api.h.db.GetNodeByID(request.GetNodeId())
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.GetMachineResponse{Machine: machine.Proto()}, nil
+	return &v1.GetNodeResponse{Node: node.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) SetTags(
 	ctx context.Context,
 	request *v1.SetTagsRequest,
 ) (*v1.SetTagsResponse, error) {
-	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
+	node, err := api.h.db.GetNodeByID(request.GetNodeId())
 	if err != nil {
 		return nil, err
 	}
@@ -214,24 +214,24 @@ func (api headscaleV1APIServer) SetTags(
 		err := validateTag(tag)
 		if err != nil {
 			return &v1.SetTagsResponse{
-				Machine: nil,
+				Node: nil,
 			}, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
 
-	err = api.h.db.SetTags(machine, request.GetTags())
+	err = api.h.db.SetTags(node, request.GetTags())
 	if err != nil {
 		return &v1.SetTagsResponse{
-			Machine: nil,
+			Node: nil,
 		}, status.Error(codes.Internal, err.Error())
 	}
 
 	log.Trace().
-		Str("machine", machine.Hostname).
+		Str("node", node.Hostname).
 		Strs("tags", request.GetTags()).
-		Msg("Changing tags of machine")
+		Msg("Changing tags of node")
 
-	return &v1.SetTagsResponse{Machine: machine.Proto()}, nil
+	return &v1.SetTagsResponse{Node: node.Proto()}, nil
 }
 
 func validateTag(tag string) error {
@@ -247,60 +247,60 @@ func validateTag(tag string) error {
 	return nil
 }
 
-func (api headscaleV1APIServer) DeleteMachine(
+func (api headscaleV1APIServer) DeleteNode(
 	ctx context.Context,
-	request *v1.DeleteMachineRequest,
-) (*v1.DeleteMachineResponse, error) {
-	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
+	request *v1.DeleteNodeRequest,
+) (*v1.DeleteNodeResponse, error) {
+	node, err := api.h.db.GetNodeByID(request.GetNodeId())
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.db.DeleteMachine(
-		machine,
+	err = api.h.db.DeleteNode(
+		node,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.DeleteMachineResponse{}, nil
+	return &v1.DeleteNodeResponse{}, nil
 }
 
-func (api headscaleV1APIServer) ExpireMachine(
+func (api headscaleV1APIServer) ExpireNode(
 	ctx context.Context,
-	request *v1.ExpireMachineRequest,
-) (*v1.ExpireMachineResponse, error) {
-	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
+	request *v1.ExpireNodeRequest,
+) (*v1.ExpireNodeResponse, error) {
+	node, err := api.h.db.GetNodeByID(request.GetNodeId())
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now()
 
-	api.h.db.MachineSetExpiry(
-		machine,
+	api.h.db.NodeSetExpiry(
+		node,
 		now,
 	)
 
 	log.Trace().
-		Str("machine", machine.Hostname).
-		Time("expiry", *machine.Expiry).
-		Msg("machine expired")
+		Str("node", node.Hostname).
+		Time("expiry", *node.Expiry).
+		Msg("node expired")
 
-	return &v1.ExpireMachineResponse{Machine: machine.Proto()}, nil
+	return &v1.ExpireNodeResponse{Node: node.Proto()}, nil
 }
 
-func (api headscaleV1APIServer) RenameMachine(
+func (api headscaleV1APIServer) RenameNode(
 	ctx context.Context,
-	request *v1.RenameMachineRequest,
-) (*v1.RenameMachineResponse, error) {
-	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
+	request *v1.RenameNodeRequest,
+) (*v1.RenameNodeResponse, error) {
+	node, err := api.h.db.GetNodeByID(request.GetNodeId())
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.db.RenameMachine(
-		machine,
+	err = api.h.db.RenameNode(
+		node,
 		request.GetNewName(),
 	)
 	if err != nil {
@@ -308,65 +308,65 @@ func (api headscaleV1APIServer) RenameMachine(
 	}
 
 	log.Trace().
-		Str("machine", machine.Hostname).
+		Str("node", node.Hostname).
 		Str("new_name", request.GetNewName()).
-		Msg("machine renamed")
+		Msg("node renamed")
 
-	return &v1.RenameMachineResponse{Machine: machine.Proto()}, nil
+	return &v1.RenameNodeResponse{Node: node.Proto()}, nil
 }
 
-func (api headscaleV1APIServer) ListMachines(
+func (api headscaleV1APIServer) ListNodes(
 	ctx context.Context,
-	request *v1.ListMachinesRequest,
-) (*v1.ListMachinesResponse, error) {
+	request *v1.ListNodesRequest,
+) (*v1.ListNodesResponse, error) {
 	if request.GetUser() != "" {
-		machines, err := api.h.db.ListMachinesByUser(request.GetUser())
+		nodes, err := api.h.db.ListNodesByUser(request.GetUser())
 		if err != nil {
 			return nil, err
 		}
 
-		response := make([]*v1.Machine, len(machines))
-		for index, machine := range machines {
-			response[index] = machine.Proto()
+		response := make([]*v1.Node, len(nodes))
+		for index, node := range nodes {
+			response[index] = node.Proto()
 		}
 
-		return &v1.ListMachinesResponse{Machines: response}, nil
+		return &v1.ListNodesResponse{Nodes: response}, nil
 	}
 
-	machines, err := api.h.db.ListMachines()
+	nodes, err := api.h.db.ListNodes()
 	if err != nil {
 		return nil, err
 	}
 
-	response := make([]*v1.Machine, len(machines))
-	for index, machine := range machines {
-		m := machine.Proto()
-		validTags, invalidTags := api.h.ACLPolicy.TagsOfMachine(
-			&machine,
+	response := make([]*v1.Node, len(nodes))
+	for index, node := range nodes {
+		m := node.Proto()
+		validTags, invalidTags := api.h.ACLPolicy.TagsOfNode(
+			&node,
 		)
 		m.InvalidTags = invalidTags
 		m.ValidTags = validTags
 		response[index] = m
 	}
 
-	return &v1.ListMachinesResponse{Machines: response}, nil
+	return &v1.ListNodesResponse{Nodes: response}, nil
 }
 
-func (api headscaleV1APIServer) MoveMachine(
+func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
-	request *v1.MoveMachineRequest,
-) (*v1.MoveMachineResponse, error) {
-	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
+	request *v1.MoveNodeRequest,
+) (*v1.MoveNodeResponse, error) {
+	node, err := api.h.db.GetNodeByID(request.GetNodeId())
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.db.AssignMachineToUser(machine, request.GetUser())
+	err = api.h.db.AssignNodeToUser(node, request.GetUser())
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.MoveMachineResponse{Machine: machine.Proto()}, nil
+	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) GetRoutes(
@@ -407,21 +407,21 @@ func (api headscaleV1APIServer) DisableRoute(
 	return &v1.DisableRouteResponse{}, nil
 }
 
-func (api headscaleV1APIServer) GetMachineRoutes(
+func (api headscaleV1APIServer) GetNodeRoutes(
 	ctx context.Context,
-	request *v1.GetMachineRoutesRequest,
-) (*v1.GetMachineRoutesResponse, error) {
-	machine, err := api.h.db.GetMachineByID(request.GetMachineId())
+	request *v1.GetNodeRoutesRequest,
+) (*v1.GetNodeRoutesResponse, error) {
+	node, err := api.h.db.GetNodeByID(request.GetNodeId())
 	if err != nil {
 		return nil, err
 	}
 
-	routes, err := api.h.db.GetMachineRoutes(machine)
+	routes, err := api.h.db.GetNodeRoutes(node)
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.GetMachineRoutesResponse{
+	return &v1.GetNodeRoutesResponse{
 		Routes: types.Routes(routes).Proto(),
 	}, nil
 }
@@ -495,10 +495,10 @@ func (api headscaleV1APIServer) ListApiKeys(
 }
 
 // The following service calls are for testing and debugging
-func (api headscaleV1APIServer) DebugCreateMachine(
+func (api headscaleV1APIServer) DebugCreateNode(
 	ctx context.Context,
-	request *v1.DebugCreateMachineRequest,
-) (*v1.DebugCreateMachineResponse, error) {
+	request *v1.DebugCreateNodeRequest,
+) (*v1.DebugCreateNodeResponse, error) {
 	user, err := api.h.db.GetUser(request.GetUser())
 	if err != nil {
 		return nil, err
@@ -518,7 +518,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 	hostinfo := tailcfg.Hostinfo{
 		RoutableIPs: routes,
 		OS:          "TestOS",
-		Hostname:    "DebugTestMachine",
+		Hostname:    "DebugTestNode",
 	}
 
 	givenName, err := api.h.db.GenerateGivenName(request.GetKey(), request.GetName())
@@ -526,7 +526,7 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 		return nil, err
 	}
 
-	newMachine := types.Machine{
+	newNode := types.Node{
 		MachineKey: request.GetKey(),
 		Hostname:   request.GetName(),
 		GivenName:  givenName,
@@ -541,16 +541,16 @@ func (api headscaleV1APIServer) DebugCreateMachine(
 	nodeKey := key.NodePublic{}
 	err = nodeKey.UnmarshalText([]byte(request.GetKey()))
 	if err != nil {
-		log.Panic().Msg("can not add machine for debug. invalid node key")
+		log.Panic().Msg("can not add node for debug. invalid node key")
 	}
 
 	api.h.registrationCache.Set(
 		util.NodePublicKeyStripPrefix(nodeKey),
-		newMachine,
+		newNode,
 		registerCacheExpiration,
 	)
 
-	return &v1.DebugCreateMachineResponse{Machine: newMachine.Proto()}, nil
+	return &v1.DebugCreateNodeResponse{Node: newNode.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}

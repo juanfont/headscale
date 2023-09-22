@@ -68,7 +68,7 @@ func (h *Headscale) PollNetMapHandler(
 		return
 	}
 
-	machine, err := h.db.GetMachineByMachineKey(machineKey)
+	machine, err := h.db.GetNodeByMachineKey(machineKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
