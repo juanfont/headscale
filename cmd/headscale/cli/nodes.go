@@ -107,7 +107,7 @@ var nodeCmd = &cobra.Command{
 
 var registerNodeCmd = &cobra.Command{
 	Use:   "register",
-	Short: "Registers a machine to your network",
+	Short: "Registers a node to your network",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		user, err := cmd.Flags().GetString("user")
@@ -132,12 +132,12 @@ var registerNodeCmd = &cobra.Command{
 			return
 		}
 
-		request := &v1.RegisterMachineRequest{
+		request := &v1.RegisterNodeRequest{
 			Key:  machineKey,
 			User: user,
 		}
 
-		response, err := client.RegisterMachine(ctx, request)
+		response, err := client.RegisterNode(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -152,8 +152,8 @@ var registerNodeCmd = &cobra.Command{
 		}
 
 		SuccessOutput(
-			response.Machine,
-			fmt.Sprintf("Machine %s registered", response.Machine.GivenName), output)
+			response.Node,
+			fmt.Sprintf("Node %s registered", response.Node.GivenName), output)
 	},
 }
 
@@ -180,11 +180,11 @@ var listNodesCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.ListMachinesRequest{
+		request := &v1.ListNodesRequest{
 			User: user,
 		}
 
-		response, err := client.ListMachines(ctx, request)
+		response, err := client.ListNodes(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -196,12 +196,12 @@ var listNodesCmd = &cobra.Command{
 		}
 
 		if output != "" {
-			SuccessOutput(response.Machines, "", output)
+			SuccessOutput(response.Nodes, "", output)
 
 			return
 		}
 
-		tableData, err := nodesToPtables(user, showTags, response.Machines)
+		tableData, err := nodesToPtables(user, showTags, response.Nodes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
@@ -244,11 +244,11 @@ var expireNodeCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.ExpireMachineRequest{
-			MachineId: identifier,
+		request := &v1.ExpireNodeRequest{
+			NodeId: identifier,
 		}
 
-		response, err := client.ExpireMachine(ctx, request)
+		response, err := client.ExpireNode(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -262,7 +262,7 @@ var expireNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Machine, "Machine expired", output)
+		SuccessOutput(response.Node, "Node expired", output)
 	},
 }
 
@@ -291,12 +291,12 @@ var renameNodeCmd = &cobra.Command{
 		if len(args) > 0 {
 			newName = args[0]
 		}
-		request := &v1.RenameMachineRequest{
-			MachineId: identifier,
-			NewName:   newName,
+		request := &v1.RenameNodeRequest{
+			NodeId:  identifier,
+			NewName: newName,
 		}
 
-		response, err := client.RenameMachine(ctx, request)
+		response, err := client.RenameNode(ctx, request)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -310,7 +310,7 @@ var renameNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Machine, "Machine renamed", output)
+		SuccessOutput(response.Node, "Node renamed", output)
 	},
 }
 
@@ -336,11 +336,11 @@ var deleteNodeCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		getRequest := &v1.GetMachineRequest{
-			MachineId: identifier,
+		getRequest := &v1.GetNodeRequest{
+			NodeId: identifier,
 		}
 
-		getResponse, err := client.GetMachine(ctx, getRequest)
+		getResponse, err := client.GetNode(ctx, getRequest)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -354,8 +354,8 @@ var deleteNodeCmd = &cobra.Command{
 			return
 		}
 
-		deleteRequest := &v1.DeleteMachineRequest{
-			MachineId: identifier,
+		deleteRequest := &v1.DeleteNodeRequest{
+			NodeId: identifier,
 		}
 
 		confirm := false
@@ -364,7 +364,7 @@ var deleteNodeCmd = &cobra.Command{
 			prompt := &survey.Confirm{
 				Message: fmt.Sprintf(
 					"Do you want to remove the node %s?",
-					getResponse.GetMachine().Name,
+					getResponse.GetNode().Name,
 				),
 			}
 			err = survey.AskOne(prompt, &confirm)
@@ -374,7 +374,7 @@ var deleteNodeCmd = &cobra.Command{
 		}
 
 		if confirm || force {
-			response, err := client.DeleteMachine(ctx, deleteRequest)
+			response, err := client.DeleteNode(ctx, deleteRequest)
 			if output != "" {
 				SuccessOutput(response, "", output)
 
@@ -436,11 +436,11 @@ var moveNodeCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		getRequest := &v1.GetMachineRequest{
-			MachineId: identifier,
+		getRequest := &v1.GetNodeRequest{
+			NodeId: identifier,
 		}
 
-		_, err = client.GetMachine(ctx, getRequest)
+		_, err = client.GetNode(ctx, getRequest)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -454,12 +454,12 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		moveRequest := &v1.MoveMachineRequest{
-			MachineId: identifier,
-			User:      user,
+		moveRequest := &v1.MoveNodeRequest{
+			NodeId: identifier,
+			User:   user,
 		}
 
-		moveResponse, err := client.MoveMachine(ctx, moveRequest)
+		moveResponse, err := client.MoveNode(ctx, moveRequest)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -473,14 +473,14 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(moveResponse.Machine, "Node moved to another user", output)
+		SuccessOutput(moveResponse.Node, "Node moved to another user", output)
 	},
 }
 
 func nodesToPtables(
 	currentUser string,
 	showTags bool,
-	machines []*v1.Machine,
+	machines []*v1.Node,
 ) (pterm.TableData, error) {
 	tableHeader := []string{
 		"ID",
@@ -655,8 +655,8 @@ var tagCmd = &cobra.Command{
 
 		// Sending tags to machine
 		request := &v1.SetTagsRequest{
-			MachineId: identifier,
-			Tags:      tagsToSet,
+			NodeId: identifier,
+			Tags:   tagsToSet,
 		}
 		resp, err := client.SetTags(ctx, request)
 		if err != nil {
@@ -671,8 +671,8 @@ var tagCmd = &cobra.Command{
 
 		if resp != nil {
 			SuccessOutput(
-				resp.GetMachine(),
-				"Machine updated",
+				resp.GetNode(),
+				"Node updated",
 				output,
 			)
 		}
