@@ -144,7 +144,7 @@ func NewHeadscaleDatabase(
 		}
 
 		nodesAux := []NodeAux{}
-		err := dbConn.Table("machines").Select("id, enabled_routes").Scan(&nodesAux).Error
+		err := dbConn.Table("nodes").Select("id, enabled_routes").Scan(&nodesAux).Error
 		if err != nil {
 			log.Fatal().Err(err).Msg("Error accessing db")
 		}
