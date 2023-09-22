@@ -1358,7 +1358,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"debug",
 			"create-node",
 			"--name",
-			"nomad-machine",
+			"nomad-node",
 			"--user",
 			"old-user",
 			"--key",
@@ -1388,7 +1388,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, uint64(1), node.Id)
-	assert.Equal(t, "nomad-machine", node.Name)
+	assert.Equal(t, "nomad-node", node.Name)
 	assert.Equal(t, node.User.Name, "old-user")
 
 	nodeID := fmt.Sprintf("%d", node.Id)

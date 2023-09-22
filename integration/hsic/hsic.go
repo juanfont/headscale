@@ -547,7 +547,7 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
-// ListNodesInUser list the TailscaleClients (Machine, Headscale internal representation)
+// ListNodesInUser list the TailscaleClients (Node, Headscale internal representation)
 // associated with a user.
 func (t *HeadscaleInContainer) ListNodesInUser(
 	user string,

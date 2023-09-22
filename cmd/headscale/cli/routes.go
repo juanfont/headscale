@@ -100,7 +100,7 @@ var listRoutesCmd = &cobra.Command{
 			if err != nil {
 				ErrorOutput(
 					err,
-					fmt.Sprintf("Cannot get routes for machine %d: %s", machineID, status.Convert(err).Message()),
+					fmt.Sprintf("Cannot get routes for node %d: %s", machineID, status.Convert(err).Message()),
 					output,
 				)
 

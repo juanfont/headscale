@@ -223,7 +223,7 @@ var listNodesCmd = &cobra.Command{
 
 var expireNodeCmd = &cobra.Command{
 	Use:     "expire",
-	Short:   "Expire (log out) a machine in your network",
+	Short:   "Expire (log out) a node in your network",
 	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
 	Aliases: []string{"logout", "exp", "e"},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -646,7 +646,7 @@ var tagCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error retrieving list of tags to add to machine, %v", err),
+				fmt.Sprintf("Error retrieving list of tags to add to node, %v", err),
 				output,
 			)
 

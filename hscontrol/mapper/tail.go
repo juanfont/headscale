@@ -38,7 +38,7 @@ func tailNodes(
 	return tNodes, nil
 }
 
-// tailNode converts a Machine into a Tailscale Node. includeRoutes is false for shared nodes
+// tailNode converts a Node into a Tailscale Node. includeRoutes is false for shared nodes
 // as per the expected behaviour in the official SaaS.
 func tailNode(
 	node *types.Node,
