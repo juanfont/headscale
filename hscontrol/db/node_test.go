@@ -454,16 +454,16 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		{
 			name: "node name with 63 chars",
 			args: args{
-				suppliedName: "nodeeee12345678901234567890123456789012345678901234567890123",
+				suppliedName: "nodeeeeeee12345678901234567890123456789012345678901234567890123",
 				randomSuffix: false,
 			},
-			want:    regexp.MustCompile("^nodeeee12345678901234567890123456789012345678901234567890123$"),
+			want:    regexp.MustCompile("^nodeeeeeee12345678901234567890123456789012345678901234567890123$"),
 			wantErr: false,
 		},
 		{
 			name: "node name with 64 chars",
 			args: args{
-				suppliedName: "nodeeee123456789012345678901234567890123456789012345678901234",
+				suppliedName: "nodeeeeeee123456789012345678901234567890123456789012345678901234",
 				randomSuffix: false,
 			},
 			want:    nil,
@@ -472,7 +472,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		{
 			name: "node name with 73 chars",
 			args: args{
-				suppliedName: "nodeeee123456789012345678901234567890123456789012345678901234567890123",
+				suppliedName: "nodeeeeeee123456789012345678901234567890123456789012345678901234567890123",
 				randomSuffix: false,
 			},
 			want:    nil,
@@ -493,7 +493,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 				suppliedName: "nodeeee12345678901234567890123456789012345678901234567890123",
 				randomSuffix: true,
 			},
-			want:    regexp.MustCompile(fmt.Sprintf("^nodeeee1234567890123456789012345678901234567890123-[a-z0-9]{%d}$", NodeGivenNameHashLength)),
+			want:    regexp.MustCompile(fmt.Sprintf("^nodeeee1234567890123456789012345678901234567890123456-[a-z0-9]{%d}$", NodeGivenNameHashLength)),
 			wantErr: false,
 		},
 	}
