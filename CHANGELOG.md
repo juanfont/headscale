@@ -5,6 +5,7 @@
 ### BREAKING
 
 - Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1444](https://github.com/juanfont/headscale/pull/1444)
+- Rename Machine into Node [#1553](https://github.com/juanfont/headscale/pull/1553)
 
 ### Changes
 
