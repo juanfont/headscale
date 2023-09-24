@@ -139,15 +139,6 @@ func (h *Headscale) handlePoll(
 		return
 	}
 
-	// Handle requests not related to continouos updates immediately.
-	// TODO(kradalby): I am not sure if this has any function based on
-	// incoming requests from clients.
-	if mapRequest.ReadOnly && !mapRequest.Stream {
-		h.handleReadOnly(writer, node, mapRequest, isNoise)
-
-		return
-	}
-
 	now := time.Now().UTC()
 	node.LastSeen = &now
 	node.Hostname = mapRequest.Hostinfo.Hostname
@@ -385,52 +376,6 @@ func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](ch
 		Msg(fmt.Sprintf("Closing %s channel", name))
 
 	close(channel)
-}
-
-// TODO(kradalby): This might not actually be used,
-// observing incoming client requests indicates it
-// is not.
-func (h *Headscale) handleReadOnly(
-	writer http.ResponseWriter,
-	node *types.Node,
-	mapRequest tailcfg.MapRequest,
-	isNoise bool,
-) {
-	logInfo, logErr := logPollFunc(mapRequest, node, isNoise)
-
-	mapp := mapper.NewMapper(
-		node,
-		// TODO(kradalby): It might not be acceptable to send
-		// an empty peer list here.
-		types.Nodes{},
-		h.privateKey2019,
-		isNoise,
-		h.DERPMap,
-		h.cfg.BaseDomain,
-		h.cfg.DNSConfig,
-		h.cfg.LogTail.Enabled,
-		h.cfg.RandomizeClientPort,
-	)
-	logInfo("Client is starting up. Probably interested in a DERP map")
-
-	mapResp, err := mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
-	if err != nil {
-		logErr(err, "Failed to create MapResponse")
-		http.Error(writer, "", http.StatusInternalServerError)
-
-		return
-	}
-
-	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	writer.WriteHeader(http.StatusOK)
-	_, err = writer.Write(mapResp)
-	if err != nil {
-		logErr(err, "Failed to write response")
-	}
-
-	if f, ok := writer.(http.Flusher); ok {
-		f.Flush()
-	}
 }
 
 func (h *Headscale) handleLiteRequest(
