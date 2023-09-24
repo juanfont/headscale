@@ -2,15 +2,36 @@
 
 ## 0.23.0 (2023-XX-XX)
 
+This release is mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
+
+#### Here is a short summary of the broad topics of changes:
+
+Code has been organised into modules, reducing use of global variables/objects, isolating concerns and “putting the right things in the logical place”.
+
+The new [policy](https://github.com/juanfont/headscale/tree/main/hscontrol/policy) and [mapper](https://github.com/juanfont/headscale/tree/main/hscontrol/mapper) package, containing the ACL/Policy logic and the logic for creating the data served to clients (the network “map”) has been rewritten and improved. This change has allowed us to finish SSH support and add additional tests throughout the code to ensure correctness.
+
+The [“poller”, or streaming logic](https://github.com/juanfont/headscale/blob/main/hscontrol/poll.go) has been rewritten and instead of keeping track of the latest updates, checking at a fixed interval, it now uses go channels, implemented in our new [notifier](https://github.com/juanfont/headscale/tree/main/hscontrol/notifier) package and it allows us to send updates to connected clients immediately. This should both improve performance and potential latency before a client picks up an update.
+
+Headscale now supports sending “delta” updates, thanks to the new mapper and poller logic, allowing us to only inform nodes about new nodes, changed nodes and removed nodes. Previously we sent the entire state of the network every time an update was due.
+
+While we have a pretty good [test harness](https://github.com/search?q=repo%3Ajuanfont%2Fheadscale+path%3A_test.go&type=code) for validating our changes, we have rewritten over [10000 lines of code](https://github.com/juanfont/headscale/compare/b01f1f1867136d9b2d7b1392776eb363b482c525...main) and bugs are expected. We need help testing this release. In addition, while we think the performance should in general be better, there might be regressions in parts of the platform, particularly where we prioritised correctness over speed.
+
+There are also several bugfixes that has been encountered and fixed as part of implementing these changes, particularly
+after improving the test harness as part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
+
 ### BREAKING
 
-- Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1444](https://github.com/juanfont/headscale/pull/1444)
-- Rename Machine into Node [#1553](https://github.com/juanfont/headscale/pull/1553)
+Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1473](https://github.com/juanfont/headscale/pull/1473)
+API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
 
 ### Changes
 
-- Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
-- SSH is no longer experimental [#1487](https://github.com/juanfont/headscale/pull/1487)
+Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
+SSH support [#1487](https://github.com/juanfont/headscale/pull/1487)
+State management has been improved [#1492](https://github.com/juanfont/headscale/pull/1492)
+Use error group handling to ensure tests actually pass [#1535](https://github.com/juanfont/headscale/pull/1535) based on [#1460](https://github.com/juanfont/headscale/pull/1460)
+Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) taken from [#1480](https://github.com/juanfont/headscale/pull/1480)
+Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
 
 ## 0.22.3 (2023-05-12)
 
