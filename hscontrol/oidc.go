@@ -37,8 +37,8 @@ var (
 	errOIDCAllowedUsers  = errors.New(
 		"authenticated principal does not match any allowed user",
 	)
-	errOIDCInvalidMachineState = errors.New(
-		"requested machine state key expired before authorisation completed",
+	errOIDCInvalidNodeState = errors.New(
+		"requested node state key expired before authorisation completed",
 	)
 	errOIDCNodeKeyMissing = errors.New("could not get node key from cache")
 )
@@ -184,9 +184,9 @@ var oidcCallbackTemplate = template.Must(
 )
 
 // OIDCCallback handles the callback from the OIDC endpoint
-// Retrieves the nkey from the state cache and adds the machine to the users email user
-// TODO: A confirmation page for new machines should be added to avoid phishing vulnerabilities
-// TODO: Add groups information from OIDC tokens into machine HostInfo
+// Retrieves the nkey from the state cache and adds the node to the users email user
+// TODO: A confirmation page for new nodes should be added to avoid phishing vulnerabilities
+// TODO: Add groups information from OIDC tokens into node HostInfo
 // Listens in /oidc/callback.
 func (h *Headscale) OIDCCallback(
 	writer http.ResponseWriter,
@@ -232,13 +232,13 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	nodeKey, machineExists, err := h.validateMachineForOIDCCallback(
+	nodeKey, nodeExists, err := h.validateNodeForOIDCCallback(
 		writer,
 		state,
 		claims,
 		idTokenExpiry,
 	)
-	if err != nil || machineExists {
+	if err != nil || nodeExists {
 		return
 	}
 
@@ -247,15 +247,15 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	// register the machine if it's new
-	log.Debug().Msg("Registering new machine after successful callback")
+	// register the node if it's new
+	log.Debug().Msg("Registering new node after successful callback")
 
 	user, err := h.findOrCreateNewUserForOIDCCallback(writer, userName)
 	if err != nil {
 		return
 	}
 
-	if err := h.registerMachineForOIDCCallback(writer, user, nodeKey, idTokenExpiry); err != nil {
+	if err := h.registerNodeForOIDCCallback(writer, user, nodeKey, idTokenExpiry); err != nil {
 		return
 	}
 
@@ -453,21 +453,21 @@ func validateOIDCAllowedUsers(
 	return nil
 }
 
-// validateMachine retrieves machine information if it exist
+// validateNode retrieves node information if it exist
 // The error is not important, because if it does not
-// exist, then this is a new machine and we will move
+// exist, then this is a new node and we will move
 // on to registration.
-func (h *Headscale) validateMachineForOIDCCallback(
+func (h *Headscale) validateNodeForOIDCCallback(
 	writer http.ResponseWriter,
 	state string,
 	claims *IDTokenClaims,
 	expiry time.Time,
 ) (*key.NodePublic, bool, error) {
-	// retrieve machinekey from state cache
+	// retrieve nodekey from state cache
 	nodeKeyIf, nodeKeyFound := h.registrationCache.Get(state)
 	if !nodeKeyFound {
 		log.Trace().
-			Msg("requested machine state key expired before authorisation completed")
+			Msg("requested node state key expired before authorisation completed")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
 		_, err := writer.Write([]byte("state has expired"))
@@ -482,7 +482,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 	nodeKeyFromCache, nodeKeyOK := nodeKeyIf.(string)
 	if !nodeKeyOK {
 		log.Trace().
-			Msg("requested machine state key is not a string")
+			Msg("requested node state key is not a string")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
 		_, err := writer.Write([]byte("state is invalid"))
@@ -490,7 +490,7 @@ func (h *Headscale) validateMachineForOIDCCallback(
 			util.LogErr(err, "Failed to write response")
 		}
 
-		return nil, false, errOIDCInvalidMachineState
+		return nil, false, errOIDCInvalidNodeState
 	}
 
 	err := nodeKey.UnmarshalText(
@@ -511,33 +511,33 @@ func (h *Headscale) validateMachineForOIDCCallback(
 		return nil, false, err
 	}
 
-	// retrieve machine information if it exist
+	// retrieve node information if it exist
 	// The error is not important, because if it does not
-	// exist, then this is a new machine and we will move
+	// exist, then this is a new node and we will move
 	// on to registration.
-	machine, _ := h.db.GetMachineByNodeKey(nodeKey)
+	node, _ := h.db.GetNodeByNodeKey(nodeKey)
 
-	if machine != nil {
+	if node != nil {
 		log.Trace().
 			Caller().
-			Str("machine", machine.Hostname).
-			Msg("machine already registered, reauthenticating")
+			Str("node", node.Hostname).
+			Msg("node already registered, reauthenticating")
 
-		err := h.db.MachineSetExpiry(machine, expiry)
+		err := h.db.NodeSetExpiry(node, expiry)
 		if err != nil {
-			util.LogErr(err, "Failed to refresh machine")
+			util.LogErr(err, "Failed to refresh node")
 			http.Error(
 				writer,
-				"Failed to refresh machine",
+				"Failed to refresh node",
 				http.StatusInternalServerError,
 			)
 
 			return nil, true, err
 		}
 		log.Debug().
-			Str("machine", machine.Hostname).
+			Str("node", node.Hostname).
 			Str("expiresAt", fmt.Sprintf("%v", expiry)).
-			Msg("successfully refreshed machine")
+			Msg("successfully refreshed node")
 
 		var content bytes.Buffer
 		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
@@ -638,13 +638,13 @@ func (h *Headscale) findOrCreateNewUserForOIDCCallback(
 	return user, nil
 }
 
-func (h *Headscale) registerMachineForOIDCCallback(
+func (h *Headscale) registerNodeForOIDCCallback(
 	writer http.ResponseWriter,
 	user *types.User,
 	nodeKey *key.NodePublic,
 	expiry time.Time,
 ) error {
-	if _, err := h.db.RegisterMachineFromAuthCallback(
+	if _, err := h.db.RegisterNodeFromAuthCallback(
 		// TODO(kradalby): find a better way to use the cache across modules
 		h.registrationCache,
 		nodeKey.String(),
@@ -652,10 +652,10 @@ func (h *Headscale) registerMachineForOIDCCallback(
 		&expiry,
 		util.RegisterMethodOIDC,
 	); err != nil {
-		util.LogErr(err, "could not register machine")
+		util.LogErr(err, "could not register node")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		_, werr := writer.Write([]byte("could not register machine"))
+		_, werr := writer.Write([]byte("could not register node"))
 		if werr != nil {
 			util.LogErr(err, "Failed to write response")
 		}

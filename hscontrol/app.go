@@ -220,16 +220,16 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
-// expireEphemeralNodes deletes ephemeral machine records that have not been
+// expireEphemeralNodes deletes ephemeral node records that have not been
 // seen for longer than h.cfg.EphemeralNodeInactivityTimeout.
 func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 	for range ticker.C {
-		h.db.ExpireEphemeralMachines(h.cfg.EphemeralNodeInactivityTimeout)
+		h.db.ExpireEphemeralNodes(h.cfg.EphemeralNodeInactivityTimeout)
 	}
 }
 
-// expireExpiredMachines expires machines that have an explicit expiry set
+// expireExpiredMachines expires nodes that have an explicit expiry set
 // after that expiry time has passed.
 func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 	interval := time.Duration(intervalMs) * time.Millisecond
@@ -238,7 +238,7 @@ func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 	lastCheck := time.Unix(0, 0)
 
 	for range ticker.C {
-		lastCheck = h.db.ExpireExpiredMachines(lastCheck)
+		lastCheck = h.db.ExpireExpiredNodes(lastCheck)
 	}
 }
 

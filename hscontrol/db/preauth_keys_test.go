@@ -75,7 +75,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
@@ -85,7 +85,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
@@ -99,7 +99,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	machine := types.Machine{
+	node := types.Node{
 		ID:             1,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
@@ -109,7 +109,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.IsNil)
@@ -136,7 +136,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	now := time.Now().Add(-time.Second * 30)
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
@@ -147,19 +147,19 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 		LastSeen:       &now,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
 	_, err = db.ValidatePreAuthKey(pak.Key)
 	// Ephemeral keys are by definition reusable
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachine("test7", "testest")
+	_, err = db.GetNode("test7", "testest")
 	c.Assert(err, check.IsNil)
 
-	db.ExpireEphemeralMachines(time.Second * 20)
+	db.ExpireEphemeralNodes(time.Second * 20)
 
 	// The machine record should have been deleted
-	_, err = db.GetMachine("test7", "testest")
+	_, err = db.GetNode("test7", "testest")
 	c.Assert(err, check.NotNil)
 }
 

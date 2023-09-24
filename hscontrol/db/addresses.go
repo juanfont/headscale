@@ -17,8 +17,8 @@ import (
 
 var ErrCouldNotAllocateIP = errors.New("could not find any suitable IP")
 
-func (hsdb *HSDatabase) getAvailableIPs() (types.MachineAddresses, error) {
-	var ips types.MachineAddresses
+func (hsdb *HSDatabase) getAvailableIPs() (types.NodeAddresses, error) {
+	var ips types.NodeAddresses
 	var err error
 	for _, ipPrefix := range hsdb.ipPrefixes {
 		var ip *netip.Addr
@@ -69,11 +69,11 @@ func (hsdb *HSDatabase) getUsedIPs() (*netipx.IPSet, error) {
 	// but this was quick to get running and it should be enough
 	// to begin experimenting with a dual stack tailnet.
 	var addressesSlices []string
-	hsdb.db.Model(&types.Machine{}).Pluck("ip_addresses", &addressesSlices)
+	hsdb.db.Model(&types.Node{}).Pluck("ip_addresses", &addressesSlices)
 
 	var ips netipx.IPSetBuilder
 	for _, slice := range addressesSlices {
-		var machineAddresses types.MachineAddresses
+		var machineAddresses types.NodeAddresses
 		err := machineAddresses.Scan(slice)
 		if err != nil {
 			return &netipx.IPSet{}, fmt.Errorf(

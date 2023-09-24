@@ -39,7 +39,7 @@ func (h *Headscale) RegistrationHandler(
 			Caller().
 			Err(err).
 			Msg("Cannot parse machine key")
-		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
+		nodeRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		http.Error(writer, "Cannot parse machine key", http.StatusBadRequest)
 
 		return
@@ -51,7 +51,7 @@ func (h *Headscale) RegistrationHandler(
 			Caller().
 			Err(err).
 			Msg("Cannot decode message")
-		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
+		nodeRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		http.Error(writer, "Cannot decode message", http.StatusBadRequest)
 
 		return

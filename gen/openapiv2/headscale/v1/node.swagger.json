@@ -1,7 +1,7 @@
 {
   "swagger": "2.0",
   "info": {
-    "title": "headscale/v1/machine.proto",
+    "title": "headscale/v1/node.proto",
     "version": "version not set"
   },
   "consumes": [

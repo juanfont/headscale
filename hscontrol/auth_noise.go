@@ -9,7 +9,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// // NoiseRegistrationHandler handles the actual registration process of a machine.
+// // NoiseRegistrationHandler handles the actual registration process of a node.
 func (ns *noiseServer) NoiseRegistrationHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
@@ -33,7 +33,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 			Caller().
 			Err(err).
 			Msg("Cannot parse RegisterRequest")
-		machineRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
+		nodeRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 
 		return

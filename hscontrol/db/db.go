@@ -78,49 +78,53 @@ func NewHeadscaleDatabase(
 
 	_ = dbConn.Migrator().RenameTable("namespaces", "users")
 
+	// the big rename from Machine to Node
+	_ = dbConn.Migrator().RenameTable("machines", "nodes")
+	_ = dbConn.Migrator().RenameColumn(&types.Route{}, "machine_id", "node_id")
+
 	err = dbConn.AutoMigrate(types.User{})
 	if err != nil {
 		return nil, err
 	}
 
-	_ = dbConn.Migrator().RenameColumn(&types.Machine{}, "namespace_id", "user_id")
+	_ = dbConn.Migrator().RenameColumn(&types.Node{}, "namespace_id", "user_id")
 	_ = dbConn.Migrator().RenameColumn(&types.PreAuthKey{}, "namespace_id", "user_id")
 
-	_ = dbConn.Migrator().RenameColumn(&types.Machine{}, "ip_address", "ip_addresses")
-	_ = dbConn.Migrator().RenameColumn(&types.Machine{}, "name", "hostname")
+	_ = dbConn.Migrator().RenameColumn(&types.Node{}, "ip_address", "ip_addresses")
+	_ = dbConn.Migrator().RenameColumn(&types.Node{}, "name", "hostname")
 
 	// GivenName is used as the primary source of DNS names, make sure
 	// the field is populated and normalized if it was not when the
-	// machine was registered.
-	_ = dbConn.Migrator().RenameColumn(&types.Machine{}, "nickname", "given_name")
+	// node was registered.
+	_ = dbConn.Migrator().RenameColumn(&types.Node{}, "nickname", "given_name")
 
-	// If the Machine table has a column for registered,
+	// If the MacNodehine table has a column for registered,
 	// find all occourences of "false" and drop them. Then
 	// remove the column.
-	if dbConn.Migrator().HasColumn(&types.Machine{}, "registered") {
+	if dbConn.Migrator().HasColumn(&types.Node{}, "registered") {
 		log.Info().
-			Msg(`Database has legacy "registered" column in machine, removing...`)
+			Msg(`Database has legacy "registered" column in node, removing...`)
 
-		machines := types.Machines{}
-		if err := dbConn.Not("registered").Find(&machines).Error; err != nil {
+		nodes := types.Nodes{}
+		if err := dbConn.Not("registered").Find(&nodes).Error; err != nil {
 			log.Error().Err(err).Msg("Error accessing db")
 		}
 
-		for _, machine := range machines {
+		for _, node := range nodes {
 			log.Info().
-				Str("machine", machine.Hostname).
-				Str("machine_key", machine.MachineKey).
-				Msg("Deleting unregistered machine")
-			if err := dbConn.Delete(&types.Machine{}, machine.ID).Error; err != nil {
+				Str("node", node.Hostname).
+				Str("machine_key", node.MachineKey).
+				Msg("Deleting unregistered node")
+			if err := dbConn.Delete(&types.Node{}, node.ID).Error; err != nil {
 				log.Error().
 					Err(err).
-					Str("machine", machine.Hostname).
-					Str("machine_key", machine.MachineKey).
-					Msg("Error deleting unregistered machine")
+					Str("node", node.Hostname).
+					Str("machine_key", node.MachineKey).
+					Msg("Error deleting unregistered node")
 			}
 		}
 
-		err := dbConn.Migrator().DropColumn(&types.Machine{}, "registered")
+		err := dbConn.Migrator().DropColumn(&types.Node{}, "registered")
 		if err != nil {
 			log.Error().Err(err).Msg("Error dropping registered column")
 		}
@@ -131,21 +135,21 @@ func NewHeadscaleDatabase(
 		return nil, err
 	}
 
-	if dbConn.Migrator().HasColumn(&types.Machine{}, "enabled_routes") {
-		log.Info().Msgf("Database has legacy enabled_routes column in machine, migrating...")
+	if dbConn.Migrator().HasColumn(&types.Node{}, "enabled_routes") {
+		log.Info().Msgf("Database has legacy enabled_routes column in node, migrating...")
 
-		type MachineAux struct {
+		type NodeAux struct {
 			ID            uint64
 			EnabledRoutes types.IPPrefixes
 		}
 
-		machinesAux := []MachineAux{}
-		err := dbConn.Table("machines").Select("id, enabled_routes").Scan(&machinesAux).Error
+		nodesAux := []NodeAux{}
+		err := dbConn.Table("nodes").Select("id, enabled_routes").Scan(&nodesAux).Error
 		if err != nil {
 			log.Fatal().Err(err).Msg("Error accessing db")
 		}
-		for _, machine := range machinesAux {
-			for _, prefix := range machine.EnabledRoutes {
+		for _, node := range nodesAux {
+			for _, prefix := range node.EnabledRoutes {
 				if err != nil {
 					log.Error().
 						Err(err).
@@ -155,8 +159,8 @@ func NewHeadscaleDatabase(
 					continue
 				}
 
-				err = dbConn.Preload("Machine").
-					Where("machine_id = ? AND prefix = ?", machine.ID, types.IPPrefix(prefix)).
+				err = dbConn.Preload("Node").
+					Where("node_id = ? AND prefix = ?", node.ID, types.IPPrefix(prefix)).
 					First(&types.Route{}).
 					Error
 				if err == nil {
@@ -168,7 +172,7 @@ func NewHeadscaleDatabase(
 				}
 
 				route := types.Route{
-					MachineID:  machine.ID,
+					NodeID:     node.ID,
 					Advertised: true,
 					Enabled:    true,
 					Prefix:     types.IPPrefix(prefix),
@@ -177,50 +181,50 @@ func NewHeadscaleDatabase(
 					log.Error().Err(err).Msg("Error creating route")
 				} else {
 					log.Info().
-						Uint64("machine_id", route.MachineID).
+						Uint64("node_id", route.NodeID).
 						Str("prefix", prefix.String()).
 						Msg("Route migrated")
 				}
 			}
 		}
 
-		err = dbConn.Migrator().DropColumn(&types.Machine{}, "enabled_routes")
+		err = dbConn.Migrator().DropColumn(&types.Node{}, "enabled_routes")
 		if err != nil {
 			log.Error().Err(err).Msg("Error dropping enabled_routes column")
 		}
 	}
 
-	err = dbConn.AutoMigrate(&types.Machine{})
+	err = dbConn.AutoMigrate(&types.Node{})
 	if err != nil {
 		return nil, err
 	}
 
-	if dbConn.Migrator().HasColumn(&types.Machine{}, "given_name") {
-		machines := types.Machines{}
-		if err := dbConn.Find(&machines).Error; err != nil {
+	if dbConn.Migrator().HasColumn(&types.Node{}, "given_name") {
+		nodes := types.Nodes{}
+		if err := dbConn.Find(&nodes).Error; err != nil {
 			log.Error().Err(err).Msg("Error accessing db")
 		}
 
-		for item, machine := range machines {
-			if machine.GivenName == "" {
+		for item, node := range nodes {
+			if node.GivenName == "" {
 				normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-					machine.Hostname,
+					node.Hostname,
 				)
 				if err != nil {
 					log.Error().
 						Caller().
-						Str("hostname", machine.Hostname).
+						Str("hostname", node.Hostname).
 						Err(err).
-						Msg("Failed to normalize machine hostname in DB migration")
+						Msg("Failed to normalize node hostname in DB migration")
 				}
 
-				err = db.RenameMachine(machines[item], normalizedHostname)
+				err = db.RenameNode(nodes[item], normalizedHostname)
 				if err != nil {
 					log.Error().
 						Caller().
-						Str("hostname", machine.Hostname).
+						Str("hostname", node.Hostname).
 						Err(err).
-						Msg("Failed to save normalized machine name in DB migration")
+						Msg("Failed to save normalized node name in DB migration")
 				}
 			}
 		}

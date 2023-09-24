@@ -43,7 +43,7 @@ func (hsdb *HSDatabase) CreateUser(name string) (*types.User, error) {
 }
 
 // DestroyUser destroys a User. Returns error if the User does
-// not exist or if there are machines associated with it.
+// not exist or if there are nodes associated with it.
 func (hsdb *HSDatabase) DestroyUser(name string) error {
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
@@ -53,11 +53,11 @@ func (hsdb *HSDatabase) DestroyUser(name string) error {
 		return ErrUserNotFound
 	}
 
-	machines, err := hsdb.listMachinesByUser(name)
+	nodes, err := hsdb.listNodesByUser(name)
 	if err != nil {
 		return err
 	}
-	if len(machines) > 0 {
+	if len(nodes) > 0 {
 		return ErrUserStillHasNodes
 	}
 
@@ -148,15 +148,15 @@ func (hsdb *HSDatabase) listUsers() ([]types.User, error) {
 	return users, nil
 }
 
-// ListMachinesByUser gets all the nodes in a given user.
-func (hsdb *HSDatabase) ListMachinesByUser(name string) (types.Machines, error) {
+// ListNodesByUser gets all the nodes in a given user.
+func (hsdb *HSDatabase) ListNodesByUser(name string) (types.Nodes, error) {
 	hsdb.mu.RLock()
 	defer hsdb.mu.RUnlock()
 
-	return hsdb.listMachinesByUser(name)
+	return hsdb.listNodesByUser(name)
 }
 
-func (hsdb *HSDatabase) listMachinesByUser(name string) (types.Machines, error) {
+func (hsdb *HSDatabase) listNodesByUser(name string) (types.Nodes, error) {
 	err := util.CheckForFQDNRules(name)
 	if err != nil {
 		return nil, err
@@ -166,16 +166,16 @@ func (hsdb *HSDatabase) listMachinesByUser(name string) (types.Machines, error) 
 		return nil, err
 	}
 
-	machines := types.Machines{}
-	if err := hsdb.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&types.Machine{UserID: user.ID}).Find(&machines).Error; err != nil {
+	nodes := types.Nodes{}
+	if err := hsdb.db.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&types.Node{UserID: user.ID}).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 
-	return machines, nil
+	return nodes, nil
 }
 
-// AssignMachineToUser assigns a Machine to a user.
-func (hsdb *HSDatabase) AssignMachineToUser(machine *types.Machine, username string) error {
+// AssignNodeToUser assigns a Node to a user.
+func (hsdb *HSDatabase) AssignNodeToUser(node *types.Node, username string) error {
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
 
@@ -187,8 +187,8 @@ func (hsdb *HSDatabase) AssignMachineToUser(machine *types.Machine, username str
 	if err != nil {
 		return err
 	}
-	machine.User = *user
-	if result := hsdb.db.Save(&machine); result.Error != nil {
+	node.User = *user
+	if result := hsdb.db.Save(&node); result.Error != nil {
 		return result.Error
 	}
 

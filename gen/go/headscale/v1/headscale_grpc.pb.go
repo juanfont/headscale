@@ -19,31 +19,31 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	HeadscaleService_GetUser_FullMethodName            = "/headscale.v1.HeadscaleService/GetUser"
-	HeadscaleService_CreateUser_FullMethodName         = "/headscale.v1.HeadscaleService/CreateUser"
-	HeadscaleService_RenameUser_FullMethodName         = "/headscale.v1.HeadscaleService/RenameUser"
-	HeadscaleService_DeleteUser_FullMethodName         = "/headscale.v1.HeadscaleService/DeleteUser"
-	HeadscaleService_ListUsers_FullMethodName          = "/headscale.v1.HeadscaleService/ListUsers"
-	HeadscaleService_CreatePreAuthKey_FullMethodName   = "/headscale.v1.HeadscaleService/CreatePreAuthKey"
-	HeadscaleService_ExpirePreAuthKey_FullMethodName   = "/headscale.v1.HeadscaleService/ExpirePreAuthKey"
-	HeadscaleService_ListPreAuthKeys_FullMethodName    = "/headscale.v1.HeadscaleService/ListPreAuthKeys"
-	HeadscaleService_DebugCreateMachine_FullMethodName = "/headscale.v1.HeadscaleService/DebugCreateMachine"
-	HeadscaleService_GetMachine_FullMethodName         = "/headscale.v1.HeadscaleService/GetMachine"
-	HeadscaleService_SetTags_FullMethodName            = "/headscale.v1.HeadscaleService/SetTags"
-	HeadscaleService_RegisterMachine_FullMethodName    = "/headscale.v1.HeadscaleService/RegisterMachine"
-	HeadscaleService_DeleteMachine_FullMethodName      = "/headscale.v1.HeadscaleService/DeleteMachine"
-	HeadscaleService_ExpireMachine_FullMethodName      = "/headscale.v1.HeadscaleService/ExpireMachine"
-	HeadscaleService_RenameMachine_FullMethodName      = "/headscale.v1.HeadscaleService/RenameMachine"
-	HeadscaleService_ListMachines_FullMethodName       = "/headscale.v1.HeadscaleService/ListMachines"
-	HeadscaleService_MoveMachine_FullMethodName        = "/headscale.v1.HeadscaleService/MoveMachine"
-	HeadscaleService_GetRoutes_FullMethodName          = "/headscale.v1.HeadscaleService/GetRoutes"
-	HeadscaleService_EnableRoute_FullMethodName        = "/headscale.v1.HeadscaleService/EnableRoute"
-	HeadscaleService_DisableRoute_FullMethodName       = "/headscale.v1.HeadscaleService/DisableRoute"
-	HeadscaleService_GetMachineRoutes_FullMethodName   = "/headscale.v1.HeadscaleService/GetMachineRoutes"
-	HeadscaleService_DeleteRoute_FullMethodName        = "/headscale.v1.HeadscaleService/DeleteRoute"
-	HeadscaleService_CreateApiKey_FullMethodName       = "/headscale.v1.HeadscaleService/CreateApiKey"
-	HeadscaleService_ExpireApiKey_FullMethodName       = "/headscale.v1.HeadscaleService/ExpireApiKey"
-	HeadscaleService_ListApiKeys_FullMethodName        = "/headscale.v1.HeadscaleService/ListApiKeys"
+	HeadscaleService_GetUser_FullMethodName          = "/headscale.v1.HeadscaleService/GetUser"
+	HeadscaleService_CreateUser_FullMethodName       = "/headscale.v1.HeadscaleService/CreateUser"
+	HeadscaleService_RenameUser_FullMethodName       = "/headscale.v1.HeadscaleService/RenameUser"
+	HeadscaleService_DeleteUser_FullMethodName       = "/headscale.v1.HeadscaleService/DeleteUser"
+	HeadscaleService_ListUsers_FullMethodName        = "/headscale.v1.HeadscaleService/ListUsers"
+	HeadscaleService_CreatePreAuthKey_FullMethodName = "/headscale.v1.HeadscaleService/CreatePreAuthKey"
+	HeadscaleService_ExpirePreAuthKey_FullMethodName = "/headscale.v1.HeadscaleService/ExpirePreAuthKey"
+	HeadscaleService_ListPreAuthKeys_FullMethodName  = "/headscale.v1.HeadscaleService/ListPreAuthKeys"
+	HeadscaleService_DebugCreateNode_FullMethodName  = "/headscale.v1.HeadscaleService/DebugCreateNode"
+	HeadscaleService_GetNode_FullMethodName          = "/headscale.v1.HeadscaleService/GetNode"
+	HeadscaleService_SetTags_FullMethodName          = "/headscale.v1.HeadscaleService/SetTags"
+	HeadscaleService_RegisterNode_FullMethodName     = "/headscale.v1.HeadscaleService/RegisterNode"
+	HeadscaleService_DeleteNode_FullMethodName       = "/headscale.v1.HeadscaleService/DeleteNode"
+	HeadscaleService_ExpireNode_FullMethodName       = "/headscale.v1.HeadscaleService/ExpireNode"
+	HeadscaleService_RenameNode_FullMethodName       = "/headscale.v1.HeadscaleService/RenameNode"
+	HeadscaleService_ListNodes_FullMethodName        = "/headscale.v1.HeadscaleService/ListNodes"
+	HeadscaleService_MoveNode_FullMethodName         = "/headscale.v1.HeadscaleService/MoveNode"
+	HeadscaleService_GetRoutes_FullMethodName        = "/headscale.v1.HeadscaleService/GetRoutes"
+	HeadscaleService_EnableRoute_FullMethodName      = "/headscale.v1.HeadscaleService/EnableRoute"
+	HeadscaleService_DisableRoute_FullMethodName     = "/headscale.v1.HeadscaleService/DisableRoute"
+	HeadscaleService_GetNodeRoutes_FullMethodName    = "/headscale.v1.HeadscaleService/GetNodeRoutes"
+	HeadscaleService_DeleteRoute_FullMethodName      = "/headscale.v1.HeadscaleService/DeleteRoute"
+	HeadscaleService_CreateApiKey_FullMethodName     = "/headscale.v1.HeadscaleService/CreateApiKey"
+	HeadscaleService_ExpireApiKey_FullMethodName     = "/headscale.v1.HeadscaleService/ExpireApiKey"
+	HeadscaleService_ListApiKeys_FullMethodName      = "/headscale.v1.HeadscaleService/ListApiKeys"
 )
 
 // HeadscaleServiceClient is the client API for HeadscaleService service.
@@ -60,21 +60,21 @@ type HeadscaleServiceClient interface {
 	CreatePreAuthKey(ctx context.Context, in *CreatePreAuthKeyRequest, opts ...grpc.CallOption) (*CreatePreAuthKeyResponse, error)
 	ExpirePreAuthKey(ctx context.Context, in *ExpirePreAuthKeyRequest, opts ...grpc.CallOption) (*ExpirePreAuthKeyResponse, error)
 	ListPreAuthKeys(ctx context.Context, in *ListPreAuthKeysRequest, opts ...grpc.CallOption) (*ListPreAuthKeysResponse, error)
-	// --- Machine start ---
-	DebugCreateMachine(ctx context.Context, in *DebugCreateMachineRequest, opts ...grpc.CallOption) (*DebugCreateMachineResponse, error)
-	GetMachine(ctx context.Context, in *GetMachineRequest, opts ...grpc.CallOption) (*GetMachineResponse, error)
+	// --- Node start ---
+	DebugCreateNode(ctx context.Context, in *DebugCreateNodeRequest, opts ...grpc.CallOption) (*DebugCreateNodeResponse, error)
+	GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error)
 	SetTags(ctx context.Context, in *SetTagsRequest, opts ...grpc.CallOption) (*SetTagsResponse, error)
-	RegisterMachine(ctx context.Context, in *RegisterMachineRequest, opts ...grpc.CallOption) (*RegisterMachineResponse, error)
-	DeleteMachine(ctx context.Context, in *DeleteMachineRequest, opts ...grpc.CallOption) (*DeleteMachineResponse, error)
-	ExpireMachine(ctx context.Context, in *ExpireMachineRequest, opts ...grpc.CallOption) (*ExpireMachineResponse, error)
-	RenameMachine(ctx context.Context, in *RenameMachineRequest, opts ...grpc.CallOption) (*RenameMachineResponse, error)
-	ListMachines(ctx context.Context, in *ListMachinesRequest, opts ...grpc.CallOption) (*ListMachinesResponse, error)
-	MoveMachine(ctx context.Context, in *MoveMachineRequest, opts ...grpc.CallOption) (*MoveMachineResponse, error)
+	RegisterNode(ctx context.Context, in *RegisterNodeRequest, opts ...grpc.CallOption) (*RegisterNodeResponse, error)
+	DeleteNode(ctx context.Context, in *DeleteNodeRequest, opts ...grpc.CallOption) (*DeleteNodeResponse, error)
+	ExpireNode(ctx context.Context, in *ExpireNodeRequest, opts ...grpc.CallOption) (*ExpireNodeResponse, error)
+	RenameNode(ctx context.Context, in *RenameNodeRequest, opts ...grpc.CallOption) (*RenameNodeResponse, error)
+	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
+	MoveNode(ctx context.Context, in *MoveNodeRequest, opts ...grpc.CallOption) (*MoveNodeResponse, error)
 	// --- Route start ---
 	GetRoutes(ctx context.Context, in *GetRoutesRequest, opts ...grpc.CallOption) (*GetRoutesResponse, error)
 	EnableRoute(ctx context.Context, in *EnableRouteRequest, opts ...grpc.CallOption) (*EnableRouteResponse, error)
 	DisableRoute(ctx context.Context, in *DisableRouteRequest, opts ...grpc.CallOption) (*DisableRouteResponse, error)
-	GetMachineRoutes(ctx context.Context, in *GetMachineRoutesRequest, opts ...grpc.CallOption) (*GetMachineRoutesResponse, error)
+	GetNodeRoutes(ctx context.Context, in *GetNodeRoutesRequest, opts ...grpc.CallOption) (*GetNodeRoutesResponse, error)
 	DeleteRoute(ctx context.Context, in *DeleteRouteRequest, opts ...grpc.CallOption) (*DeleteRouteResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error)
@@ -162,18 +162,18 @@ func (c *headscaleServiceClient) ListPreAuthKeys(ctx context.Context, in *ListPr
 	return out, nil
 }
 
-func (c *headscaleServiceClient) DebugCreateMachine(ctx context.Context, in *DebugCreateMachineRequest, opts ...grpc.CallOption) (*DebugCreateMachineResponse, error) {
-	out := new(DebugCreateMachineResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_DebugCreateMachine_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) DebugCreateNode(ctx context.Context, in *DebugCreateNodeRequest, opts ...grpc.CallOption) (*DebugCreateNodeResponse, error) {
+	out := new(DebugCreateNodeResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_DebugCreateNode_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) GetMachine(ctx context.Context, in *GetMachineRequest, opts ...grpc.CallOption) (*GetMachineResponse, error) {
-	out := new(GetMachineResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_GetMachine_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error) {
+	out := new(GetNodeResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_GetNode_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -189,54 +189,54 @@ func (c *headscaleServiceClient) SetTags(ctx context.Context, in *SetTagsRequest
 	return out, nil
 }
 
-func (c *headscaleServiceClient) RegisterMachine(ctx context.Context, in *RegisterMachineRequest, opts ...grpc.CallOption) (*RegisterMachineResponse, error) {
-	out := new(RegisterMachineResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_RegisterMachine_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) RegisterNode(ctx context.Context, in *RegisterNodeRequest, opts ...grpc.CallOption) (*RegisterNodeResponse, error) {
+	out := new(RegisterNodeResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_RegisterNode_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) DeleteMachine(ctx context.Context, in *DeleteMachineRequest, opts ...grpc.CallOption) (*DeleteMachineResponse, error) {
-	out := new(DeleteMachineResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_DeleteMachine_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) DeleteNode(ctx context.Context, in *DeleteNodeRequest, opts ...grpc.CallOption) (*DeleteNodeResponse, error) {
+	out := new(DeleteNodeResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_DeleteNode_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) ExpireMachine(ctx context.Context, in *ExpireMachineRequest, opts ...grpc.CallOption) (*ExpireMachineResponse, error) {
-	out := new(ExpireMachineResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_ExpireMachine_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) ExpireNode(ctx context.Context, in *ExpireNodeRequest, opts ...grpc.CallOption) (*ExpireNodeResponse, error) {
+	out := new(ExpireNodeResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_ExpireNode_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) RenameMachine(ctx context.Context, in *RenameMachineRequest, opts ...grpc.CallOption) (*RenameMachineResponse, error) {
-	out := new(RenameMachineResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_RenameMachine_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) RenameNode(ctx context.Context, in *RenameNodeRequest, opts ...grpc.CallOption) (*RenameNodeResponse, error) {
+	out := new(RenameNodeResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_RenameNode_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) ListMachines(ctx context.Context, in *ListMachinesRequest, opts ...grpc.CallOption) (*ListMachinesResponse, error) {
-	out := new(ListMachinesResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_ListMachines_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error) {
+	out := new(ListNodesResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_ListNodes_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *headscaleServiceClient) MoveMachine(ctx context.Context, in *MoveMachineRequest, opts ...grpc.CallOption) (*MoveMachineResponse, error) {
-	out := new(MoveMachineResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_MoveMachine_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) MoveNode(ctx context.Context, in *MoveNodeRequest, opts ...grpc.CallOption) (*MoveNodeResponse, error) {
+	out := new(MoveNodeResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_MoveNode_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -270,9 +270,9 @@ func (c *headscaleServiceClient) DisableRoute(ctx context.Context, in *DisableRo
 	return out, nil
 }
 
-func (c *headscaleServiceClient) GetMachineRoutes(ctx context.Context, in *GetMachineRoutesRequest, opts ...grpc.CallOption) (*GetMachineRoutesResponse, error) {
-	out := new(GetMachineRoutesResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_GetMachineRoutes_FullMethodName, in, out, opts...)
+func (c *headscaleServiceClient) GetNodeRoutes(ctx context.Context, in *GetNodeRoutesRequest, opts ...grpc.CallOption) (*GetNodeRoutesResponse, error) {
+	out := new(GetNodeRoutesResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_GetNodeRoutes_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -329,21 +329,21 @@ type HeadscaleServiceServer interface {
 	CreatePreAuthKey(context.Context, *CreatePreAuthKeyRequest) (*CreatePreAuthKeyResponse, error)
 	ExpirePreAuthKey(context.Context, *ExpirePreAuthKeyRequest) (*ExpirePreAuthKeyResponse, error)
 	ListPreAuthKeys(context.Context, *ListPreAuthKeysRequest) (*ListPreAuthKeysResponse, error)
-	// --- Machine start ---
-	DebugCreateMachine(context.Context, *DebugCreateMachineRequest) (*DebugCreateMachineResponse, error)
-	GetMachine(context.Context, *GetMachineRequest) (*GetMachineResponse, error)
+	// --- Node start ---
+	DebugCreateNode(context.Context, *DebugCreateNodeRequest) (*DebugCreateNodeResponse, error)
+	GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error)
 	SetTags(context.Context, *SetTagsRequest) (*SetTagsResponse, error)
-	RegisterMachine(context.Context, *RegisterMachineRequest) (*RegisterMachineResponse, error)
-	DeleteMachine(context.Context, *DeleteMachineRequest) (*DeleteMachineResponse, error)
-	ExpireMachine(context.Context, *ExpireMachineRequest) (*ExpireMachineResponse, error)
-	RenameMachine(context.Context, *RenameMachineRequest) (*RenameMachineResponse, error)
-	ListMachines(context.Context, *ListMachinesRequest) (*ListMachinesResponse, error)
-	MoveMachine(context.Context, *MoveMachineRequest) (*MoveMachineResponse, error)
+	RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error)
+	DeleteNode(context.Context, *DeleteNodeRequest) (*DeleteNodeResponse, error)
+	ExpireNode(context.Context, *ExpireNodeRequest) (*ExpireNodeResponse, error)
+	RenameNode(context.Context, *RenameNodeRequest) (*RenameNodeResponse, error)
+	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
+	MoveNode(context.Context, *MoveNodeRequest) (*MoveNodeResponse, error)
 	// --- Route start ---
 	GetRoutes(context.Context, *GetRoutesRequest) (*GetRoutesResponse, error)
 	EnableRoute(context.Context, *EnableRouteRequest) (*EnableRouteResponse, error)
 	DisableRoute(context.Context, *DisableRouteRequest) (*DisableRouteResponse, error)
-	GetMachineRoutes(context.Context, *GetMachineRoutesRequest) (*GetMachineRoutesResponse, error)
+	GetNodeRoutes(context.Context, *GetNodeRoutesRequest) (*GetNodeRoutesResponse, error)
 	DeleteRoute(context.Context, *DeleteRouteRequest) (*DeleteRouteResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error)
@@ -380,32 +380,32 @@ func (UnimplementedHeadscaleServiceServer) ExpirePreAuthKey(context.Context, *Ex
 func (UnimplementedHeadscaleServiceServer) ListPreAuthKeys(context.Context, *ListPreAuthKeysRequest) (*ListPreAuthKeysResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPreAuthKeys not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) DebugCreateMachine(context.Context, *DebugCreateMachineRequest) (*DebugCreateMachineResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DebugCreateMachine not implemented")
+func (UnimplementedHeadscaleServiceServer) DebugCreateNode(context.Context, *DebugCreateNodeRequest) (*DebugCreateNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DebugCreateNode not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) GetMachine(context.Context, *GetMachineRequest) (*GetMachineResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetMachine not implemented")
+func (UnimplementedHeadscaleServiceServer) GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNode not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) SetTags(context.Context, *SetTagsRequest) (*SetTagsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetTags not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) RegisterMachine(context.Context, *RegisterMachineRequest) (*RegisterMachineResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RegisterMachine not implemented")
+func (UnimplementedHeadscaleServiceServer) RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RegisterNode not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) DeleteMachine(context.Context, *DeleteMachineRequest) (*DeleteMachineResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteMachine not implemented")
+func (UnimplementedHeadscaleServiceServer) DeleteNode(context.Context, *DeleteNodeRequest) (*DeleteNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteNode not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) ExpireMachine(context.Context, *ExpireMachineRequest) (*ExpireMachineResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ExpireMachine not implemented")
+func (UnimplementedHeadscaleServiceServer) ExpireNode(context.Context, *ExpireNodeRequest) (*ExpireNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExpireNode not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) RenameMachine(context.Context, *RenameMachineRequest) (*RenameMachineResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RenameMachine not implemented")
+func (UnimplementedHeadscaleServiceServer) RenameNode(context.Context, *RenameNodeRequest) (*RenameNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RenameNode not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) ListMachines(context.Context, *ListMachinesRequest) (*ListMachinesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ListMachines not implemented")
+func (UnimplementedHeadscaleServiceServer) ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListNodes not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) MoveMachine(context.Context, *MoveMachineRequest) (*MoveMachineResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method MoveMachine not implemented")
+func (UnimplementedHeadscaleServiceServer) MoveNode(context.Context, *MoveNodeRequest) (*MoveNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MoveNode not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) GetRoutes(context.Context, *GetRoutesRequest) (*GetRoutesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRoutes not implemented")
@@ -416,8 +416,8 @@ func (UnimplementedHeadscaleServiceServer) EnableRoute(context.Context, *EnableR
 func (UnimplementedHeadscaleServiceServer) DisableRoute(context.Context, *DisableRouteRequest) (*DisableRouteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DisableRoute not implemented")
 }
-func (UnimplementedHeadscaleServiceServer) GetMachineRoutes(context.Context, *GetMachineRoutesRequest) (*GetMachineRoutesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetMachineRoutes not implemented")
+func (UnimplementedHeadscaleServiceServer) GetNodeRoutes(context.Context, *GetNodeRoutesRequest) (*GetNodeRoutesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNodeRoutes not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) DeleteRoute(context.Context, *DeleteRouteRequest) (*DeleteRouteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteRoute not implemented")
@@ -588,38 +588,38 @@ func _HeadscaleService_ListPreAuthKeys_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_DebugCreateMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DebugCreateMachineRequest)
+func _HeadscaleService_DebugCreateNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DebugCreateNodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).DebugCreateMachine(ctx, in)
+		return srv.(HeadscaleServiceServer).DebugCreateNode(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_DebugCreateMachine_FullMethodName,
+		FullMethod: HeadscaleService_DebugCreateNode_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).DebugCreateMachine(ctx, req.(*DebugCreateMachineRequest))
+		return srv.(HeadscaleServiceServer).DebugCreateNode(ctx, req.(*DebugCreateNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_GetMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetMachineRequest)
+func _HeadscaleService_GetNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).GetMachine(ctx, in)
+		return srv.(HeadscaleServiceServer).GetNode(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_GetMachine_FullMethodName,
+		FullMethod: HeadscaleService_GetNode_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).GetMachine(ctx, req.(*GetMachineRequest))
+		return srv.(HeadscaleServiceServer).GetNode(ctx, req.(*GetNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -642,110 +642,110 @@ func _HeadscaleService_SetTags_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_RegisterMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterMachineRequest)
+func _HeadscaleService_RegisterNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterNodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).RegisterMachine(ctx, in)
+		return srv.(HeadscaleServiceServer).RegisterNode(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_RegisterMachine_FullMethodName,
+		FullMethod: HeadscaleService_RegisterNode_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).RegisterMachine(ctx, req.(*RegisterMachineRequest))
+		return srv.(HeadscaleServiceServer).RegisterNode(ctx, req.(*RegisterNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_DeleteMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteMachineRequest)
+func _HeadscaleService_DeleteNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).DeleteMachine(ctx, in)
+		return srv.(HeadscaleServiceServer).DeleteNode(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_DeleteMachine_FullMethodName,
+		FullMethod: HeadscaleService_DeleteNode_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).DeleteMachine(ctx, req.(*DeleteMachineRequest))
+		return srv.(HeadscaleServiceServer).DeleteNode(ctx, req.(*DeleteNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_ExpireMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ExpireMachineRequest)
+func _HeadscaleService_ExpireNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExpireNodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).ExpireMachine(ctx, in)
+		return srv.(HeadscaleServiceServer).ExpireNode(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_ExpireMachine_FullMethodName,
+		FullMethod: HeadscaleService_ExpireNode_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).ExpireMachine(ctx, req.(*ExpireMachineRequest))
+		return srv.(HeadscaleServiceServer).ExpireNode(ctx, req.(*ExpireNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_RenameMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RenameMachineRequest)
+func _HeadscaleService_RenameNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameNodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).RenameMachine(ctx, in)
+		return srv.(HeadscaleServiceServer).RenameNode(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_RenameMachine_FullMethodName,
+		FullMethod: HeadscaleService_RenameNode_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).RenameMachine(ctx, req.(*RenameMachineRequest))
+		return srv.(HeadscaleServiceServer).RenameNode(ctx, req.(*RenameNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_ListMachines_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListMachinesRequest)
+func _HeadscaleService_ListNodes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNodesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).ListMachines(ctx, in)
+		return srv.(HeadscaleServiceServer).ListNodes(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_ListMachines_FullMethodName,
+		FullMethod: HeadscaleService_ListNodes_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).ListMachines(ctx, req.(*ListMachinesRequest))
+		return srv.(HeadscaleServiceServer).ListNodes(ctx, req.(*ListNodesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_MoveMachine_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MoveMachineRequest)
+func _HeadscaleService_MoveNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MoveNodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).MoveMachine(ctx, in)
+		return srv.(HeadscaleServiceServer).MoveNode(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_MoveMachine_FullMethodName,
+		FullMethod: HeadscaleService_MoveNode_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).MoveMachine(ctx, req.(*MoveMachineRequest))
+		return srv.(HeadscaleServiceServer).MoveNode(ctx, req.(*MoveNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -804,20 +804,20 @@ func _HeadscaleService_DisableRoute_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_GetMachineRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetMachineRoutesRequest)
+func _HeadscaleService_GetNodeRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodeRoutesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).GetMachineRoutes(ctx, in)
+		return srv.(HeadscaleServiceServer).GetNodeRoutes(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: HeadscaleService_GetMachineRoutes_FullMethodName,
+		FullMethod: HeadscaleService_GetNodeRoutes_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).GetMachineRoutes(ctx, req.(*GetMachineRoutesRequest))
+		return srv.(HeadscaleServiceServer).GetNodeRoutes(ctx, req.(*GetNodeRoutesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -934,40 +934,40 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _HeadscaleService_ListPreAuthKeys_Handler,
 		},
 		{
-			MethodName: "DebugCreateMachine",
-			Handler:    _HeadscaleService_DebugCreateMachine_Handler,
+			MethodName: "DebugCreateNode",
+			Handler:    _HeadscaleService_DebugCreateNode_Handler,
 		},
 		{
-			MethodName: "GetMachine",
-			Handler:    _HeadscaleService_GetMachine_Handler,
+			MethodName: "GetNode",
+			Handler:    _HeadscaleService_GetNode_Handler,
 		},
 		{
 			MethodName: "SetTags",
 			Handler:    _HeadscaleService_SetTags_Handler,
 		},
 		{
-			MethodName: "RegisterMachine",
-			Handler:    _HeadscaleService_RegisterMachine_Handler,
+			MethodName: "RegisterNode",
+			Handler:    _HeadscaleService_RegisterNode_Handler,
 		},
 		{
-			MethodName: "DeleteMachine",
-			Handler:    _HeadscaleService_DeleteMachine_Handler,
+			MethodName: "DeleteNode",
+			Handler:    _HeadscaleService_DeleteNode_Handler,
 		},
 		{
-			MethodName: "ExpireMachine",
-			Handler:    _HeadscaleService_ExpireMachine_Handler,
+			MethodName: "ExpireNode",
+			Handler:    _HeadscaleService_ExpireNode_Handler,
 		},
 		{
-			MethodName: "RenameMachine",
-			Handler:    _HeadscaleService_RenameMachine_Handler,
+			MethodName: "RenameNode",
+			Handler:    _HeadscaleService_RenameNode_Handler,
 		},
 		{
-			MethodName: "ListMachines",
-			Handler:    _HeadscaleService_ListMachines_Handler,
+			MethodName: "ListNodes",
+			Handler:    _HeadscaleService_ListNodes_Handler,
 		},
 		{
-			MethodName: "MoveMachine",
-			Handler:    _HeadscaleService_MoveMachine_Handler,
+			MethodName: "MoveNode",
+			Handler:    _HeadscaleService_MoveNode_Handler,
 		},
 		{
 			MethodName: "GetRoutes",
@@ -982,8 +982,8 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _HeadscaleService_DisableRoute_Handler,
 		},
 		{
-			MethodName: "GetMachineRoutes",
-			Handler:    _HeadscaleService_GetMachineRoutes_Handler,
+			MethodName: "GetNodeRoutes",
+			Handler:    _HeadscaleService_GetNodeRoutes_Handler,
 		},
 		{
 			MethodName: "DeleteRoute",

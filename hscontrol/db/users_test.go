@@ -46,17 +46,17 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	pak, err = db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
 	err = db.DestroyUser("test")
 	c.Assert(err, check.Equals, ErrUserStillHasNodes)
@@ -101,29 +101,29 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	pak, err := db.CreatePreAuthKey(oldUser.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         oldUser.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
-	c.Assert(machine.UserID, check.Equals, oldUser.ID)
+	db.db.Save(&node)
+	c.Assert(node.UserID, check.Equals, oldUser.ID)
 
-	err = db.AssignMachineToUser(&machine, newUser.Name)
+	err = db.AssignNodeToUser(&node, newUser.Name)
 	c.Assert(err, check.IsNil)
-	c.Assert(machine.UserID, check.Equals, newUser.ID)
-	c.Assert(machine.User.Name, check.Equals, newUser.Name)
+	c.Assert(node.UserID, check.Equals, newUser.ID)
+	c.Assert(node.User.Name, check.Equals, newUser.Name)
 
-	err = db.AssignMachineToUser(&machine, "non-existing-user")
+	err = db.AssignNodeToUser(&node, "non-existing-user")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	err = db.AssignMachineToUser(&machine, newUser.Name)
+	err = db.AssignNodeToUser(&node, newUser.Name)
 	c.Assert(err, check.IsNil)
-	c.Assert(machine.UserID, check.Equals, newUser.ID)
-	c.Assert(machine.User.Name, check.Equals, newUser.Name)
+	c.Assert(node.UserID, check.Equals, newUser.ID)
+	c.Assert(node.User.Name, check.Equals, newUser.Name)
 }

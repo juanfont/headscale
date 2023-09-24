@@ -19,13 +19,13 @@ const (
 
 type contextKey string
 
-const machineNameContextKey = contextKey("machineName")
+const nodeNameContextKey = contextKey("nodeName")
 
 type UpdateNode func()
 
 func logPollFunc(
 	mapRequest tailcfg.MapRequest,
-	machine *types.Machine,
+	node *types.Node,
 	isNoise bool,
 ) (func(string), func(error, string)) {
 	return func(msg string) {
@@ -35,8 +35,8 @@ func logPollFunc(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", machine.NodeKey).
-				Str("machine", machine.Hostname).
+				Str("node_key", node.NodeKey).
+				Str("node", node.Hostname).
 				Msg(msg)
 		},
 		func(err error, msg string) {
@@ -46,8 +46,8 @@ func logPollFunc(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", machine.NodeKey).
-				Str("machine", machine.Hostname).
+				Str("node_key", node.NodeKey).
+				Str("node", node.Hostname).
 				Err(err).
 				Msg(msg)
 		}
@@ -60,11 +60,11 @@ func logPollFunc(
 func (h *Headscale) handlePoll(
 	writer http.ResponseWriter,
 	ctx context.Context,
-	machine *types.Machine,
+	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
 ) {
-	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
+	logInfo, logErr := logPollFunc(mapRequest, node, isNoise)
 
 	// This is the mechanism where the node gives us inforamtion about its
 	// current configuration.
@@ -81,28 +81,28 @@ func (h *Headscale) handlePoll(
 			Bool("readOnly", mapRequest.ReadOnly).
 			Bool("omitPeers", mapRequest.OmitPeers).
 			Bool("stream", mapRequest.Stream).
-			Str("node_key", machine.NodeKey).
-			Str("machine", machine.Hostname).
-			Strs("endpoints", machine.Endpoints).
+			Str("node_key", node.NodeKey).
+			Str("node", node.Hostname).
+			Strs("endpoints", node.Endpoints).
 			Msg("Received endpoint update")
 
 		now := time.Now().UTC()
-		machine.LastSeen = &now
-		machine.Hostname = mapRequest.Hostinfo.Hostname
-		machine.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
-		machine.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
-		machine.Endpoints = mapRequest.Endpoints
+		node.LastSeen = &now
+		node.Hostname = mapRequest.Hostinfo.Hostname
+		node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
+		node.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
+		node.Endpoints = mapRequest.Endpoints
 
-		if err := h.db.MachineSave(machine); err != nil {
-			logErr(err, "Failed to persist/update machine in the database")
+		if err := h.db.NodeSave(node); err != nil {
+			logErr(err, "Failed to persist/update node in the database")
 			http.Error(writer, "", http.StatusInternalServerError)
 
 			return
 		}
 
-		err := h.db.SaveMachineRoutes(machine)
+		err := h.db.SaveNodeRoutes(node)
 		if err != nil {
-			logErr(err, "Error processing machine routes")
+			logErr(err, "Error processing node routes")
 			http.Error(writer, "", http.StatusInternalServerError)
 
 			return
@@ -111,9 +111,9 @@ func (h *Headscale) handlePoll(
 		h.nodeNotifier.NotifyWithIgnore(
 			types.StateUpdate{
 				Type:    types.StatePeerChanged,
-				Changed: types.Machines{machine},
+				Changed: types.Nodes{node},
 			},
-			machine.MachineKey)
+			node.MachineKey)
 
 		writer.WriteHeader(http.StatusOK)
 		if f, ok := writer.(http.Flusher); ok {
@@ -130,7 +130,7 @@ func (h *Headscale) handlePoll(
 		// The intended use is for clients to discover the DERP map at
 		// start-up before their first real endpoint update.
 	} else if mapRequest.OmitPeers && !mapRequest.Stream && mapRequest.ReadOnly {
-		h.handleLiteRequest(writer, machine, mapRequest, isNoise)
+		h.handleLiteRequest(writer, node, mapRequest, isNoise)
 
 		return
 	} else if mapRequest.OmitPeers && mapRequest.Stream {
@@ -143,23 +143,23 @@ func (h *Headscale) handlePoll(
 	// TODO(kradalby): I am not sure if this has any function based on
 	// incoming requests from clients.
 	if mapRequest.ReadOnly && !mapRequest.Stream {
-		h.handleReadOnly(writer, machine, mapRequest, isNoise)
+		h.handleReadOnly(writer, node, mapRequest, isNoise)
 
 		return
 	}
 
 	now := time.Now().UTC()
-	machine.LastSeen = &now
-	machine.Hostname = mapRequest.Hostinfo.Hostname
-	machine.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
-	machine.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
-	machine.Endpoints = mapRequest.Endpoints
+	node.LastSeen = &now
+	node.Hostname = mapRequest.Hostinfo.Hostname
+	node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
+	node.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
+	node.Endpoints = mapRequest.Endpoints
 
 	// When a node connects to control, list the peers it has at
 	// that given point, further updates are kept in memory in
 	// the Mapper, which lives for the duration of the polling
 	// session.
-	peers, err := h.db.ListPeers(machine)
+	peers, err := h.db.ListPeers(node)
 	if err != nil {
 		logErr(err, "Failed to list peers when opening poller")
 		http.Error(writer, "", http.StatusInternalServerError)
@@ -168,7 +168,7 @@ func (h *Headscale) handlePoll(
 	}
 
 	mapp := mapper.NewMapper(
-		machine,
+		node,
 		peers,
 		h.privateKey2019,
 		isNoise,
@@ -179,23 +179,23 @@ func (h *Headscale) handlePoll(
 		h.cfg.RandomizeClientPort,
 	)
 
-	err = h.db.SaveMachineRoutes(machine)
+	err = h.db.SaveNodeRoutes(node)
 	if err != nil {
-		logErr(err, "Error processing machine routes")
+		logErr(err, "Error processing node routes")
 	}
 
 	// update ACLRules with peer informations (to update server tags if necessary)
 	if h.ACLPolicy != nil {
 		// update routes with peer information
-		err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, machine)
+		err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, node)
 		if err != nil {
 			logErr(err, "Error running auto approved routes")
 		}
 	}
 
 	// TODO(kradalby): Save specific stuff, not whole object.
-	if err := h.db.MachineSave(machine); err != nil {
-		logErr(err, "Failed to persist/update machine in the database")
+	if err := h.db.NodeSave(node); err != nil {
+		logErr(err, "Failed to persist/update node in the database")
 		http.Error(writer, "", http.StatusInternalServerError)
 
 		return
@@ -203,7 +203,7 @@ func (h *Headscale) handlePoll(
 
 	logInfo("Sending initial map")
 
-	mapResp, err := mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
+	mapResp, err := mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
 	if err != nil {
 		logErr(err, "Failed to create MapResponse")
 		http.Error(writer, "", http.StatusInternalServerError)
@@ -228,24 +228,24 @@ func (h *Headscale) handlePoll(
 	h.nodeNotifier.NotifyWithIgnore(
 		types.StateUpdate{
 			Type:    types.StatePeerChanged,
-			Changed: types.Machines{machine},
+			Changed: types.Nodes{node},
 		},
-		machine.MachineKey)
+		node.MachineKey)
 
 	// Set up the client stream
 	h.pollNetMapStreamWG.Add(1)
 	defer h.pollNetMapStreamWG.Done()
 
 	updateChan := make(chan types.StateUpdate)
-	defer closeChanWithLog(updateChan, machine.Hostname, "updateChan")
+	defer closeChanWithLog(updateChan, node.Hostname, "updateChan")
 
 	// Register the node's update channel
-	h.nodeNotifier.AddNode(machine.MachineKey, updateChan)
-	defer h.nodeNotifier.RemoveNode(machine.MachineKey)
+	h.nodeNotifier.AddNode(node.MachineKey, updateChan)
+	defer h.nodeNotifier.RemoveNode(node.MachineKey)
 
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
 
-	ctx = context.WithValue(ctx, machineNameContextKey, machine.Hostname)
+	ctx = context.WithValue(ctx, nodeNameContextKey, node.Hostname)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -254,7 +254,7 @@ func (h *Headscale) handlePoll(
 		logInfo("Waiting for update on stream channel")
 		select {
 		case <-keepAliveTicker.C:
-			data, err := mapp.KeepAliveResponse(mapRequest, machine)
+			data, err := mapp.KeepAliveResponse(mapRequest, node)
 			if err != nil {
 				logErr(err, "Error generating the keep alive msg")
 
@@ -280,9 +280,9 @@ func (h *Headscale) handlePoll(
 			// goroutines, but then you might have a problem without a lock
 			// if a keepalive is written at the same time as an update.
 			go func() {
-				err = h.db.UpdateLastSeen(machine)
+				err = h.db.UpdateLastSeen(node)
 				if err != nil {
-					logErr(err, "Cannot update machine LastSeen")
+					logErr(err, "Cannot update node LastSeen")
 
 					return
 				}
@@ -298,16 +298,16 @@ func (h *Headscale) handlePoll(
 			switch update.Type {
 			case types.StatePeerChanged:
 				logInfo("Sending PeerChanged MapResponse")
-				data, err = mapp.PeerChangedResponse(mapRequest, machine, update.Changed, h.ACLPolicy)
+				data, err = mapp.PeerChangedResponse(mapRequest, node, update.Changed, h.ACLPolicy)
 			case types.StatePeerRemoved:
 				logInfo("Sending PeerRemoved MapResponse")
-				data, err = mapp.PeerRemovedResponse(mapRequest, machine, update.Removed)
+				data, err = mapp.PeerRemovedResponse(mapRequest, node, update.Removed)
 			case types.StateDERPUpdated:
 				logInfo("Sending DERPUpdate MapResponse")
-				data, err = mapp.DERPMapResponse(mapRequest, machine, update.DERPMap)
+				data, err = mapp.DERPMapResponse(mapRequest, node, update.DERPMap)
 			case types.StateFullUpdate:
 				logInfo("Sending Full MapResponse")
-				data, err = mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
+				data, err = mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
 			}
 
 			if err != nil {
@@ -320,7 +320,7 @@ func (h *Headscale) handlePoll(
 			if err != nil {
 				logErr(err, "Could not write the map response")
 
-				updateRequestsSentToNode.WithLabelValues(machine.User.Name, machine.Hostname, "failed").
+				updateRequestsSentToNode.WithLabelValues(node.User.Name, node.Hostname, "failed").
 					Inc()
 
 				return
@@ -336,9 +336,9 @@ func (h *Headscale) handlePoll(
 
 			// See comment in keepAliveTicker
 			go func() {
-				err = h.db.UpdateLastSeen(machine)
+				err = h.db.UpdateLastSeen(node)
 				if err != nil {
-					logErr(err, "Cannot update machine LastSeen")
+					logErr(err, "Cannot update node LastSeen")
 
 					return
 				}
@@ -350,17 +350,17 @@ func (h *Headscale) handlePoll(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", machine.NodeKey).
-				Str("machine", machine.Hostname).
+				Str("node_key", node.NodeKey).
+				Str("node", node.Hostname).
 				TimeDiff("timeSpent", time.Now(), now).
 				Msg("update sent")
 		case <-ctx.Done():
 			logInfo("The client has closed the connection")
 
 			go func() {
-				err = h.db.UpdateLastSeen(machine)
+				err = h.db.UpdateLastSeen(node)
 				if err != nil {
-					logErr(err, "Cannot update machine LastSeen")
+					logErr(err, "Cannot update node LastSeen")
 
 					return
 				}
@@ -377,10 +377,10 @@ func (h *Headscale) handlePoll(
 	}
 }
 
-func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](channel C, machine, name string) {
+func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](channel C, node, name string) {
 	log.Trace().
 		Str("handler", "PollNetMap").
-		Str("machine", machine).
+		Str("node", node).
 		Str("channel", "Done").
 		Msg(fmt.Sprintf("Closing %s channel", name))
 
@@ -392,17 +392,17 @@ func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](ch
 // is not.
 func (h *Headscale) handleReadOnly(
 	writer http.ResponseWriter,
-	machine *types.Machine,
+	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
 ) {
-	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
+	logInfo, logErr := logPollFunc(mapRequest, node, isNoise)
 
 	mapp := mapper.NewMapper(
-		machine,
+		node,
 		// TODO(kradalby): It might not be acceptable to send
 		// an empty peer list here.
-		types.Machines{},
+		types.Nodes{},
 		h.privateKey2019,
 		isNoise,
 		h.DERPMap,
@@ -413,7 +413,7 @@ func (h *Headscale) handleReadOnly(
 	)
 	logInfo("Client is starting up. Probably interested in a DERP map")
 
-	mapResp, err := mapp.FullMapResponse(mapRequest, machine, h.ACLPolicy)
+	mapResp, err := mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
 	if err != nil {
 		logErr(err, "Failed to create MapResponse")
 		http.Error(writer, "", http.StatusInternalServerError)
@@ -435,17 +435,17 @@ func (h *Headscale) handleReadOnly(
 
 func (h *Headscale) handleLiteRequest(
 	writer http.ResponseWriter,
-	machine *types.Machine,
+	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
 ) {
-	logInfo, logErr := logPollFunc(mapRequest, machine, isNoise)
+	logInfo, logErr := logPollFunc(mapRequest, node, isNoise)
 
 	mapp := mapper.NewMapper(
-		machine,
+		node,
 		// TODO(kradalby): It might not be acceptable to send
 		// an empty peer list here.
-		types.Machines{},
+		types.Nodes{},
 		h.privateKey2019,
 		isNoise,
 		h.DERPMap,
@@ -457,7 +457,7 @@ func (h *Headscale) handleLiteRequest(
 
 	logInfo("Client asked for a lite update, responding without peers")
 
-	mapResp, err := mapp.LiteMapResponse(mapRequest, machine, h.ACLPolicy)
+	mapResp, err := mapp.LiteMapResponse(mapRequest, node, h.ACLPolicy)
 	if err != nil {
 		logErr(err, "Failed to create MapResponse")
 		http.Error(writer, "", http.StatusInternalServerError)

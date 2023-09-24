@@ -116,30 +116,30 @@ func LoadACLPolicyFromBytes(acl []byte, format string) (*ACLPolicy, error) {
 
 func GenerateFilterAndSSHRules(
 	policy *ACLPolicy,
-	machine *types.Machine,
-	peers types.Machines,
+	node *types.Node,
+	peers types.Nodes,
 ) ([]tailcfg.FilterRule, *tailcfg.SSHPolicy, error) {
 	// If there is no policy defined, we default to allow all
 	if policy == nil {
 		return tailcfg.FilterAllowAll, &tailcfg.SSHPolicy{}, nil
 	}
 
-	rules, err := policy.generateFilterRules(machine, peers)
+	rules, err := policy.generateFilterRules(node, peers)
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
 
-	log.Trace().Interface("ACL", rules).Str("machine", machine.GivenName).Msg("ACL rules")
+	log.Trace().Interface("ACL", rules).Str("node", node.GivenName).Msg("ACL rules")
 
 	var sshPolicy *tailcfg.SSHPolicy
-	sshRules, err := policy.generateSSHRules(machine, peers)
+	sshRules, err := policy.generateSSHRules(node, peers)
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
 
 	log.Trace().
 		Interface("SSH", sshRules).
-		Str("machine", machine.GivenName).
+		Str("node", node.GivenName).
 		Msg("SSH rules")
 
 	if sshPolicy == nil {
@@ -150,14 +150,14 @@ func GenerateFilterAndSSHRules(
 	return rules, sshPolicy, nil
 }
 
-// generateFilterRules takes a set of machines and an ACLPolicy and generates a
+// generateFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
 func (pol *ACLPolicy) generateFilterRules(
-	machine *types.Machine,
-	peers types.Machines,
+	node *types.Node,
+	peers types.Nodes,
 ) ([]tailcfg.FilterRule, error) {
 	rules := []tailcfg.FilterRule{}
-	machines := append(peers, machine)
+	nodes := append(peers, node)
 
 	for index, acl := range pol.ACLs {
 		if acl.Action != "accept" {
@@ -166,7 +166,7 @@ func (pol *ACLPolicy) generateFilterRules(
 
 		srcIPs := []string{}
 		for srcIndex, src := range acl.Sources {
-			srcs, err := pol.expandSource(src, machines)
+			srcs, err := pol.expandSource(src, nodes)
 			if err != nil {
 				log.Error().
 					Interface("src", src).
@@ -195,7 +195,7 @@ func (pol *ACLPolicy) generateFilterRules(
 			}
 
 			expanded, err := pol.ExpandAlias(
-				machines,
+				nodes,
 				alias,
 			)
 			if err != nil {
@@ -230,13 +230,13 @@ func (pol *ACLPolicy) generateFilterRules(
 	return rules, nil
 }
 
-// ReduceFilterRules takes a machine and a set of rules and removes all rules and destinations
+// ReduceFilterRules takes a node and a set of rules and removes all rules and destinations
 // that are not relevant to that particular node.
-func ReduceFilterRules(machine *types.Machine, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 	ret := []tailcfg.FilterRule{}
 
 	for _, rule := range rules {
-		// record if the rule is actually relevant for the given machine.
+		// record if the rule is actually relevant for the given node.
 		dests := []tailcfg.NetPortRange{}
 
 		for _, dest := range rule.DstPorts {
@@ -247,7 +247,7 @@ func ReduceFilterRules(machine *types.Machine, rules []tailcfg.FilterRule) []tai
 				continue
 			}
 
-			if machine.IPAddresses.InIPSet(expanded) {
+			if node.IPAddresses.InIPSet(expanded) {
 				dests = append(dests, dest)
 			}
 		}
@@ -265,8 +265,8 @@ func ReduceFilterRules(machine *types.Machine, rules []tailcfg.FilterRule) []tai
 }
 
 func (pol *ACLPolicy) generateSSHRules(
-	machine *types.Machine,
-	peers types.Machines,
+	node *types.Node,
+	peers types.Nodes,
 ) ([]*tailcfg.SSHRule, error) {
 	rules := []*tailcfg.SSHRule{}
 
@@ -293,7 +293,7 @@ func (pol *ACLPolicy) generateSSHRules(
 	for index, sshACL := range pol.SSHs {
 		var dest netipx.IPSetBuilder
 		for _, src := range sshACL.Destinations {
-			expanded, err := pol.ExpandAlias(append(peers, machine), src)
+			expanded, err := pol.ExpandAlias(append(peers, node), src)
 			if err != nil {
 				return nil, err
 			}
@@ -305,7 +305,7 @@ func (pol *ACLPolicy) generateSSHRules(
 			return nil, err
 		}
 
-		if !machine.IPAddresses.InIPSet(destSet) {
+		if !node.IPAddresses.InIPSet(destSet) {
 			continue
 		}
 
@@ -501,9 +501,9 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 // with the given src alias.
 func (pol *ACLPolicy) expandSource(
 	src string,
-	machines types.Machines,
+	nodes types.Nodes,
 ) ([]string, error) {
-	ipSet, err := pol.ExpandAlias(machines, src)
+	ipSet, err := pol.ExpandAlias(nodes, src)
 	if err != nil {
 		return []string{}, err
 	}
@@ -526,7 +526,7 @@ func (pol *ACLPolicy) expandSource(
 // - a cidr
 // and transform these in IPAddresses.
 func (pol *ACLPolicy) ExpandAlias(
-	machines types.Machines,
+	nodes types.Nodes,
 	alias string,
 ) (*netipx.IPSet, error) {
 	if isWildcard(alias) {
@@ -541,16 +541,16 @@ func (pol *ACLPolicy) ExpandAlias(
 
 	// if alias is a group
 	if isGroup(alias) {
-		return pol.expandIPsFromGroup(alias, machines)
+		return pol.expandIPsFromGroup(alias, nodes)
 	}
 
 	// if alias is a tag
 	if isTag(alias) {
-		return pol.expandIPsFromTag(alias, machines)
+		return pol.expandIPsFromTag(alias, nodes)
 	}
 
 	// if alias is a user
-	if ips, err := pol.expandIPsFromUser(alias, machines); ips != nil {
+	if ips, err := pol.expandIPsFromUser(alias, nodes); ips != nil {
 		return ips, err
 	}
 
@@ -559,17 +559,17 @@ func (pol *ACLPolicy) ExpandAlias(
 	if h, ok := pol.Hosts[alias]; ok {
 		log.Trace().Str("host", h.String()).Msg("ExpandAlias got hosts entry")
 
-		return pol.ExpandAlias(machines, h.String())
+		return pol.ExpandAlias(nodes, h.String())
 	}
 
 	// if alias is an IP
 	if ip, err := netip.ParseAddr(alias); err == nil {
-		return pol.expandIPsFromSingleIP(ip, machines)
+		return pol.expandIPsFromSingleIP(ip, nodes)
 	}
 
 	// if alias is an IP Prefix (CIDR)
 	if prefix, err := netip.ParsePrefix(alias); err == nil {
-		return pol.expandIPsFromIPPrefix(prefix, machines)
+		return pol.expandIPsFromIPPrefix(prefix, nodes)
 	}
 
 	log.Warn().Msgf("No IPs found with the alias %v", alias)
@@ -582,10 +582,10 @@ func (pol *ACLPolicy) ExpandAlias(
 // we assume in this function that we only have nodes from 1 user.
 func excludeCorrectlyTaggedNodes(
 	aclPolicy *ACLPolicy,
-	nodes types.Machines,
+	nodes types.Nodes,
 	user string,
-) types.Machines {
-	out := types.Machines{}
+) types.Nodes {
+	out := types.Nodes{}
 	tags := []string{}
 	for tag := range aclPolicy.TagOwners {
 		owners, _ := expandOwnersFromTag(aclPolicy, user)
@@ -594,9 +594,9 @@ func excludeCorrectlyTaggedNodes(
 			tags = append(tags, tag)
 		}
 	}
-	// for each machine if tag is in tags list, don't append it.
-	for _, machine := range nodes {
-		hi := machine.GetHostInfo()
+	// for each node if tag is in tags list, don't append it.
+	for _, node := range nodes {
+		hi := node.GetHostInfo()
 
 		found := false
 		for _, t := range hi.RequestTags {
@@ -606,11 +606,11 @@ func excludeCorrectlyTaggedNodes(
 				break
 			}
 		}
-		if len(machine.ForcedTags) > 0 {
+		if len(node.ForcedTags) > 0 {
 			found = true
 		}
 		if !found {
-			out = append(out, machine)
+			out = append(out, node)
 		}
 	}
 
@@ -733,7 +733,7 @@ func (pol *ACLPolicy) expandUsersFromGroup(
 
 func (pol *ACLPolicy) expandIPsFromGroup(
 	group string,
-	machines types.Machines,
+	nodes types.Nodes,
 ) (*netipx.IPSet, error) {
 	build := netipx.IPSetBuilder{}
 
@@ -742,9 +742,9 @@ func (pol *ACLPolicy) expandIPsFromGroup(
 		return &netipx.IPSet{}, err
 	}
 	for _, user := range users {
-		filteredMachines := filterMachinesByUser(machines, user)
-		for _, machine := range filteredMachines {
-			machine.IPAddresses.AppendToIPSet(&build)
+		filteredNodes := filterNodesByUser(nodes, user)
+		for _, node := range filteredNodes {
+			node.IPAddresses.AppendToIPSet(&build)
 		}
 	}
 
@@ -753,14 +753,14 @@ func (pol *ACLPolicy) expandIPsFromGroup(
 
 func (pol *ACLPolicy) expandIPsFromTag(
 	alias string,
-	machines types.Machines,
+	nodes types.Nodes,
 ) (*netipx.IPSet, error) {
 	build := netipx.IPSetBuilder{}
 
 	// check for forced tags
-	for _, machine := range machines {
-		if util.StringOrPrefixListContains(machine.ForcedTags, alias) {
-			machine.IPAddresses.AppendToIPSet(&build)
+	for _, node := range nodes {
+		if util.StringOrPrefixListContains(node.ForcedTags, alias) {
+			node.IPAddresses.AppendToIPSet(&build)
 		}
 	}
 
@@ -783,13 +783,13 @@ func (pol *ACLPolicy) expandIPsFromTag(
 		}
 	}
 
-	// filter out machines per tag owner
+	// filter out nodes per tag owner
 	for _, user := range owners {
-		machines := filterMachinesByUser(machines, user)
-		for _, machine := range machines {
-			hi := machine.GetHostInfo()
+		nodes := filterNodesByUser(nodes, user)
+		for _, node := range nodes {
+			hi := node.GetHostInfo()
 			if util.StringOrPrefixListContains(hi.RequestTags, alias) {
-				machine.IPAddresses.AppendToIPSet(&build)
+				node.IPAddresses.AppendToIPSet(&build)
 			}
 		}
 	}
@@ -799,20 +799,20 @@ func (pol *ACLPolicy) expandIPsFromTag(
 
 func (pol *ACLPolicy) expandIPsFromUser(
 	user string,
-	machines types.Machines,
+	nodes types.Nodes,
 ) (*netipx.IPSet, error) {
 	build := netipx.IPSetBuilder{}
 
-	filteredMachines := filterMachinesByUser(machines, user)
-	filteredMachines = excludeCorrectlyTaggedNodes(pol, filteredMachines, user)
+	filteredNodes := filterNodesByUser(nodes, user)
+	filteredNodes = excludeCorrectlyTaggedNodes(pol, filteredNodes, user)
 
-	// shortcurcuit if we have no machines to get ips from.
-	if len(filteredMachines) == 0 {
+	// shortcurcuit if we have no nodes to get ips from.
+	if len(filteredNodes) == 0 {
 		return nil, nil //nolint
 	}
 
-	for _, machine := range filteredMachines {
-		machine.IPAddresses.AppendToIPSet(&build)
+	for _, node := range filteredNodes {
+		node.IPAddresses.AppendToIPSet(&build)
 	}
 
 	return build.IPSet()
@@ -820,17 +820,17 @@ func (pol *ACLPolicy) expandIPsFromUser(
 
 func (pol *ACLPolicy) expandIPsFromSingleIP(
 	ip netip.Addr,
-	machines types.Machines,
+	nodes types.Nodes,
 ) (*netipx.IPSet, error) {
 	log.Trace().Str("ip", ip.String()).Msg("ExpandAlias got ip")
 
-	matches := machines.FilterByIP(ip)
+	matches := nodes.FilterByIP(ip)
 
 	build := netipx.IPSetBuilder{}
 	build.Add(ip)
 
-	for _, machine := range matches {
-		machine.IPAddresses.AppendToIPSet(&build)
+	for _, node := range matches {
+		node.IPAddresses.AppendToIPSet(&build)
 	}
 
 	return build.IPSet()
@@ -838,7 +838,7 @@ func (pol *ACLPolicy) expandIPsFromSingleIP(
 
 func (pol *ACLPolicy) expandIPsFromIPPrefix(
 	prefix netip.Prefix,
-	machines types.Machines,
+	nodes types.Nodes,
 ) (*netipx.IPSet, error) {
 	log.Trace().Str("prefix", prefix.String()).Msg("expandAlias got prefix")
 	build := netipx.IPSetBuilder{}
@@ -846,12 +846,12 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 
 	// This is suboptimal and quite expensive, but if we only add the prefix, we will miss all the relevant IPv6
 	// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
-	for _, machine := range machines {
-		for _, ip := range machine.IPAddresses {
+	for _, node := range nodes {
+		for _, ip := range node.IPAddresses {
 			// log.Trace().
-			// 	Msgf("checking if machine ip (%s) is part of prefix (%s): %v, is single ip prefix (%v), addr: %s", ip.String(), prefix.String(), prefix.Contains(ip), prefix.IsSingleIP(), prefix.Addr().String())
+			// 	Msgf("checking if node ip (%s) is part of prefix (%s): %v, is single ip prefix (%v), addr: %s", ip.String(), prefix.String(), prefix.Contains(ip), prefix.IsSingleIP(), prefix.Addr().String())
 			if prefix.Contains(ip) {
-				machine.IPAddresses.AppendToIPSet(&build)
+				node.IPAddresses.AppendToIPSet(&build)
 			}
 		}
 	}
@@ -871,18 +871,18 @@ func isTag(str string) bool {
 	return strings.HasPrefix(str, "tag:")
 }
 
-// TagsOfMachine will return the tags of the current machine.
+// TagsOfNode will return the tags of the current node.
 // Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
 // Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
-func (pol *ACLPolicy) TagsOfMachine(
-	machine *types.Machine,
+func (pol *ACLPolicy) TagsOfNode(
+	node *types.Node,
 ) ([]string, []string) {
 	validTags := make([]string, 0)
 	invalidTags := make([]string, 0)
 
 	validTagMap := make(map[string]bool)
 	invalidTagMap := make(map[string]bool)
-	for _, tag := range machine.HostInfo.RequestTags {
+	for _, tag := range node.HostInfo.RequestTags {
 		owners, err := expandOwnersFromTag(pol, tag)
 		if errors.Is(err, ErrInvalidTag) {
 			invalidTagMap[tag] = true
@@ -891,7 +891,7 @@ func (pol *ACLPolicy) TagsOfMachine(
 		}
 		var found bool
 		for _, owner := range owners {
-			if machine.User.Name == owner {
+			if node.User.Name == owner {
 				found = true
 			}
 		}
@@ -911,31 +911,31 @@ func (pol *ACLPolicy) TagsOfMachine(
 	return validTags, invalidTags
 }
 
-func filterMachinesByUser(machines types.Machines, user string) types.Machines {
-	out := types.Machines{}
-	for _, machine := range machines {
-		if machine.User.Name == user {
-			out = append(out, machine)
+func filterNodesByUser(nodes types.Nodes, user string) types.Nodes {
+	out := types.Nodes{}
+	for _, node := range nodes {
+		if node.User.Name == user {
+			out = append(out, node)
 		}
 	}
 
 	return out
 }
 
-// FilterMachinesByACL returns the list of peers authorized to be accessed from a given machine.
-func FilterMachinesByACL(
-	machine *types.Machine,
-	machines types.Machines,
+// FilterNodesByACL returns the list of peers authorized to be accessed from a given node.
+func FilterNodesByACL(
+	node *types.Node,
+	nodes types.Nodes,
 	filter []tailcfg.FilterRule,
-) types.Machines {
-	result := types.Machines{}
+) types.Nodes {
+	result := types.Nodes{}
 
-	for index, peer := range machines {
-		if peer.ID == machine.ID {
+	for index, peer := range nodes {
+		if peer.ID == node.ID {
 			continue
 		}
 
-		if machine.CanAccess(filter, machines[index]) || peer.CanAccess(filter, machine) {
+		if node.CanAccess(filter, nodes[index]) || peer.CanAccess(filter, node) {
 			result = append(result, peer)
 		}
 	}

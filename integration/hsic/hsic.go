@@ -547,11 +547,11 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
-// ListMachinesInUser list the TailscaleClients (Machine, Headscale internal representation)
+// ListNodesInUser list the TailscaleClients (Node, Headscale internal representation)
 // associated with a user.
-func (t *HeadscaleInContainer) ListMachinesInUser(
+func (t *HeadscaleInContainer) ListNodesInUser(
 	user string,
-) ([]*v1.Machine, error) {
+) ([]*v1.Node, error) {
 	command := []string{"headscale", "--user", user, "nodes", "list", "--output", "json"}
 
 	result, _, err := dockertestutil.ExecuteCommand(
@@ -563,7 +563,7 @@ func (t *HeadscaleInContainer) ListMachinesInUser(
 		return nil, fmt.Errorf("failed to execute list node command: %w", err)
 	}
 
-	var nodes []*v1.Machine
+	var nodes []*v1.Node
 	err = json.Unmarshal([]byte(result), &nodes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)

@@ -15,95 +15,95 @@ import (
 	"tailscale.com/types/key"
 )
 
-func (s *Suite) TestGetMachine(c *check.C) {
+func (s *Suite) TestGetNode(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachine("test", "testmachine")
+	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
-	machine := &types.Machine{
+	node := &types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(machine)
+	db.db.Save(node)
 
-	_, err = db.GetMachine("test", "testmachine")
+	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.IsNil)
 }
 
-func (s *Suite) TestGetMachineByID(c *check.C) {
+func (s *Suite) TestGetNodeByID(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachineByID(0)
+	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
-	_, err = db.GetMachineByID(0)
+	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)
 }
 
-func (s *Suite) TestGetMachineByNodeKey(c *check.C) {
+func (s *Suite) TestGetNodeByNodeKey(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachineByID(0)
+	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
 	machineKey := key.NewMachine()
 
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
 		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
-	_, err = db.GetMachineByNodeKey(nodeKey.Public())
+	_, err = db.GetNodeByNodeKey(nodeKey.Public())
 	c.Assert(err, check.IsNil)
 }
 
-func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
+func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachineByID(0)
+	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -111,41 +111,41 @@ func (s *Suite) TestGetMachineByAnyNodeKey(c *check.C) {
 
 	machineKey := key.NewMachine()
 
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
 		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
-	_, err = db.GetMachineByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
+	_, err = db.GetNodeByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
 	c.Assert(err, check.IsNil)
 }
 
-func (s *Suite) TestHardDeleteMachine(c *check.C) {
+func (s *Suite) TestHardDeleteNode(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine3",
+		Hostname:       "testnode3",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
-	err = db.DeleteMachine(&machine)
+	err = db.DeleteNode(&node)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachine(user.Name, "testmachine3")
+	_, err = db.GetNode(user.Name, "testnode3")
 	c.Assert(err, check.NotNil)
 }
 
@@ -156,33 +156,33 @@ func (s *Suite) TestListPeers(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachineByID(0)
+	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
 	for index := 0; index <= 10; index++ {
-		machine := types.Machine{
+		node := types.Node{
 			ID:             uint64(index),
 			MachineKey:     "foo" + strconv.Itoa(index),
 			NodeKey:        "bar" + strconv.Itoa(index),
 			DiscoKey:       "faa" + strconv.Itoa(index),
-			Hostname:       "testmachine" + strconv.Itoa(index),
+			Hostname:       "testnode" + strconv.Itoa(index),
 			UserID:         user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 		}
-		db.db.Save(&machine)
+		db.db.Save(&node)
 	}
 
-	machine0ByID, err := db.GetMachineByID(0)
+	node0ByID, err := db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)
 
-	peersOfMachine0, err := db.ListPeers(machine0ByID)
+	peersOfNode0, err := db.ListPeers(node0ByID)
 	c.Assert(err, check.IsNil)
 
-	c.Assert(len(peersOfMachine0), check.Equals, 9)
-	c.Assert(peersOfMachine0[0].Hostname, check.Equals, "testmachine2")
-	c.Assert(peersOfMachine0[5].Hostname, check.Equals, "testmachine7")
-	c.Assert(peersOfMachine0[8].Hostname, check.Equals, "testmachine10")
+	c.Assert(len(peersOfNode0), check.Equals, 9)
+	c.Assert(peersOfNode0[0].Hostname, check.Equals, "testnode2")
+	c.Assert(peersOfNode0[5].Hostname, check.Equals, "testnode7")
+	c.Assert(peersOfNode0[8].Hostname, check.Equals, "testnode10")
 }
 
 func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
@@ -201,24 +201,24 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		stor = append(stor, base{user, pak})
 	}
 
-	_, err := db.GetMachineByID(0)
+	_, err := db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
 	for index := 0; index <= 10; index++ {
-		machine := types.Machine{
+		node := types.Node{
 			ID:         uint64(index),
 			MachineKey: "foo" + strconv.Itoa(index),
 			NodeKey:    "bar" + strconv.Itoa(index),
 			DiscoKey:   "faa" + strconv.Itoa(index),
-			IPAddresses: types.MachineAddresses{
+			IPAddresses: types.NodeAddresses{
 				netip.MustParseAddr(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1))),
 			},
-			Hostname:       "testmachine" + strconv.Itoa(index),
+			Hostname:       "testnode" + strconv.Itoa(index),
 			UserID:         stor[index%2].user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
 			AuthKeyID:      uint(stor[index%2].key.ID),
 		}
-		db.db.Save(&machine)
+		db.db.Save(&node)
 	}
 
 	aclPolicy := &policy.ACLPolicy{
@@ -242,80 +242,80 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		Tests: []policy.ACLTest{},
 	}
 
-	adminMachine, err := db.GetMachineByID(1)
-	c.Logf("Machine(%v), user: %v", adminMachine.Hostname, adminMachine.User)
+	adminNode, err := db.GetNodeByID(1)
+	c.Logf("Node(%v), user: %v", adminNode.Hostname, adminNode.User)
 	c.Assert(err, check.IsNil)
 
-	testMachine, err := db.GetMachineByID(2)
-	c.Logf("Machine(%v), user: %v", testMachine.Hostname, testMachine.User)
+	testNode, err := db.GetNodeByID(2)
+	c.Logf("Node(%v), user: %v", testNode.Hostname, testNode.User)
 	c.Assert(err, check.IsNil)
 
-	adminPeers, err := db.ListPeers(adminMachine)
+	adminPeers, err := db.ListPeers(adminNode)
 	c.Assert(err, check.IsNil)
 
-	testPeers, err := db.ListPeers(testMachine)
+	testPeers, err := db.ListPeers(testNode)
 	c.Assert(err, check.IsNil)
 
-	adminRules, _, err := policy.GenerateFilterAndSSHRules(aclPolicy, adminMachine, adminPeers)
+	adminRules, _, err := policy.GenerateFilterAndSSHRules(aclPolicy, adminNode, adminPeers)
 	c.Assert(err, check.IsNil)
 
-	testRules, _, err := policy.GenerateFilterAndSSHRules(aclPolicy, testMachine, testPeers)
+	testRules, _, err := policy.GenerateFilterAndSSHRules(aclPolicy, testNode, testPeers)
 	c.Assert(err, check.IsNil)
 
-	peersOfAdminMachine := policy.FilterMachinesByACL(adminMachine, adminPeers, adminRules)
-	peersOfTestMachine := policy.FilterMachinesByACL(testMachine, testPeers, testRules)
+	peersOfAdminNode := policy.FilterNodesByACL(adminNode, adminPeers, adminRules)
+	peersOfTestNode := policy.FilterNodesByACL(testNode, testPeers, testRules)
 
-	c.Log(peersOfTestMachine)
-	c.Assert(len(peersOfTestMachine), check.Equals, 9)
-	c.Assert(peersOfTestMachine[0].Hostname, check.Equals, "testmachine1")
-	c.Assert(peersOfTestMachine[1].Hostname, check.Equals, "testmachine3")
-	c.Assert(peersOfTestMachine[3].Hostname, check.Equals, "testmachine5")
+	c.Log(peersOfTestNode)
+	c.Assert(len(peersOfTestNode), check.Equals, 9)
+	c.Assert(peersOfTestNode[0].Hostname, check.Equals, "testnode1")
+	c.Assert(peersOfTestNode[1].Hostname, check.Equals, "testnode3")
+	c.Assert(peersOfTestNode[3].Hostname, check.Equals, "testnode5")
 
-	c.Log(peersOfAdminMachine)
-	c.Assert(len(peersOfAdminMachine), check.Equals, 9)
-	c.Assert(peersOfAdminMachine[0].Hostname, check.Equals, "testmachine2")
-	c.Assert(peersOfAdminMachine[2].Hostname, check.Equals, "testmachine4")
-	c.Assert(peersOfAdminMachine[5].Hostname, check.Equals, "testmachine7")
+	c.Log(peersOfAdminNode)
+	c.Assert(len(peersOfAdminNode), check.Equals, 9)
+	c.Assert(peersOfAdminNode[0].Hostname, check.Equals, "testnode2")
+	c.Assert(peersOfAdminNode[2].Hostname, check.Equals, "testnode4")
+	c.Assert(peersOfAdminNode[5].Hostname, check.Equals, "testnode7")
 }
 
-func (s *Suite) TestExpireMachine(c *check.C) {
+func (s *Suite) TestExpireNode(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachine("test", "testmachine")
+	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
-	machine := &types.Machine{
+	node := &types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 		Expiry:         &time.Time{},
 	}
-	db.db.Save(machine)
+	db.db.Save(node)
 
-	machineFromDB, err := db.GetMachine("test", "testmachine")
+	nodeFromDB, err := db.GetNode("test", "testnode")
 	c.Assert(err, check.IsNil)
-	c.Assert(machineFromDB, check.NotNil)
+	c.Assert(nodeFromDB, check.NotNil)
 
-	c.Assert(machineFromDB.IsExpired(), check.Equals, false)
+	c.Assert(nodeFromDB.IsExpired(), check.Equals, false)
 
 	now := time.Now()
-	err = db.MachineSetExpiry(machineFromDB, now)
+	err = db.NodeSetExpiry(nodeFromDB, now)
 	c.Assert(err, check.IsNil)
 
-	c.Assert(machineFromDB.IsExpired(), check.Equals, true)
+	c.Assert(nodeFromDB.IsExpired(), check.Equals, true)
 }
 
 func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
-	input := types.MachineAddresses([]netip.Addr{
+	input := types.NodeAddresses([]netip.Addr{
 		netip.MustParseAddr("192.0.2.1"),
 		netip.MustParseAddr("2001:db8::1"),
 	})
@@ -325,7 +325,7 @@ func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
 		c.Assert(serial, check.Equals, "192.0.2.1,2001:db8::1")
 	}
 
-	var deserialized types.MachineAddresses
+	var deserialized types.NodeAddresses
 	err = deserialized.Scan(serialized)
 	c.Assert(err, check.IsNil)
 
@@ -342,12 +342,12 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user1.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachine("user-1", "testmachine")
+	_, err = db.GetNode("user-1", "testnode")
 	c.Assert(err, check.NotNil)
 
-	machine := &types.Machine{
+	node := &types.Node{
 		ID:             0,
-		MachineKey:     "machine-key-1",
+		MachineKey:     "node-key-1",
 		NodeKey:        "node-key-1",
 		DiscoKey:       "disco-key-1",
 		Hostname:       "hostname-1",
@@ -356,27 +356,27 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(machine)
+	db.db.Save(node)
 
-	givenName, err := db.GenerateGivenName("machine-key-2", "hostname-2")
-	comment := check.Commentf("Same user, unique machines, unique hostnames, no conflict")
+	givenName, err := db.GenerateGivenName("node-key-2", "hostname-2")
+	comment := check.Commentf("Same user, unique nodes, unique hostnames, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-2", comment)
 
-	givenName, err = db.GenerateGivenName("machine-key-1", "hostname-1")
-	comment = check.Commentf("Same user, same machine, same hostname, no conflict")
+	givenName, err = db.GenerateGivenName("node-key-1", "hostname-1")
+	comment = check.Commentf("Same user, same node, same hostname, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-1", comment)
 
-	givenName, err = db.GenerateGivenName("machine-key-2", "hostname-1")
-	comment = check.Commentf("Same user, unique machines, same hostname, conflict")
+	givenName, err = db.GenerateGivenName("node-key-2", "hostname-1")
+	comment = check.Commentf("Same user, unique nodes, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
-	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
+	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", NodeGivenNameHashLength), comment)
 
-	givenName, err = db.GenerateGivenName("machine-key-2", "hostname-1")
-	comment = check.Commentf("Unique users, unique machines, same hostname, conflict")
+	givenName, err = db.GenerateGivenName("node-key-2", "hostname-1")
+	comment = check.Commentf("Unique users, unique nodes, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
-	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", MachineGivenNameHashLength), comment)
+	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", NodeGivenNameHashLength), comment)
 }
 
 func (s *Suite) TestSetTags(c *check.C) {
@@ -386,37 +386,37 @@ func (s *Suite) TestSetTags(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetMachine("test", "testmachine")
+	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
-	machine := &types.Machine{
+	node := &types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        "bar",
 		DiscoKey:       "faa",
-		Hostname:       "testmachine",
+		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(machine)
+	db.db.Save(node)
 
 	// assign simple tags
 	sTags := []string{"tag:test", "tag:foo"}
-	err = db.SetTags(machine, sTags)
+	err = db.SetTags(node, sTags)
 	c.Assert(err, check.IsNil)
-	machine, err = db.GetMachine("test", "testmachine")
+	node, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.IsNil)
-	c.Assert(machine.ForcedTags, check.DeepEquals, types.StringList(sTags))
+	c.Assert(node.ForcedTags, check.DeepEquals, types.StringList(sTags))
 
 	// assign duplicat tags, expect no errors but no doubles in DB
 	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
-	err = db.SetTags(machine, eTags)
+	err = db.SetTags(node, eTags)
 	c.Assert(err, check.IsNil)
-	machine, err = db.GetMachine("test", "testmachine")
+	node, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(
-		machine.ForcedTags,
+		node.ForcedTags,
 		check.DeepEquals,
 		types.StringList([]string{"tag:bar", "tag:test", "tag:unknown"}),
 	)
@@ -434,16 +434,16 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "simple machine name generation",
+			name: "simple node name generation",
 			args: args{
-				suppliedName: "testmachine",
+				suppliedName: "testnode",
 				randomSuffix: false,
 			},
-			want:    regexp.MustCompile("^testmachine$"),
+			want:    regexp.MustCompile("^testnode$"),
 			wantErr: false,
 		},
 		{
-			name: "machine name with 53 chars",
+			name: "node name with 53 chars",
 			args: args{
 				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
 				randomSuffix: false,
@@ -452,48 +452,48 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "machine name with 63 chars",
+			name: "node name with 63 chars",
 			args: args{
-				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
+				suppliedName: "nodeeeeeee12345678901234567890123456789012345678901234567890123",
 				randomSuffix: false,
 			},
-			want:    regexp.MustCompile("^machineeee12345678901234567890123456789012345678901234567890123$"),
+			want:    regexp.MustCompile("^nodeeeeeee12345678901234567890123456789012345678901234567890123$"),
 			wantErr: false,
 		},
 		{
-			name: "machine name with 64 chars",
+			name: "node name with 64 chars",
 			args: args{
-				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234",
+				suppliedName: "nodeeeeeee123456789012345678901234567890123456789012345678901234",
 				randomSuffix: false,
 			},
 			want:    nil,
 			wantErr: true,
 		},
 		{
-			name: "machine name with 73 chars",
+			name: "node name with 73 chars",
 			args: args{
-				suppliedName: "machineeee123456789012345678901234567890123456789012345678901234567890123",
+				suppliedName: "nodeeeeeee123456789012345678901234567890123456789012345678901234567890123",
 				randomSuffix: false,
 			},
 			want:    nil,
 			wantErr: true,
 		},
 		{
-			name: "machine name with random suffix",
+			name: "node name with random suffix",
 			args: args{
 				suppliedName: "test",
 				randomSuffix: true,
 			},
-			want:    regexp.MustCompile(fmt.Sprintf("^test-[a-z0-9]{%d}$", MachineGivenNameHashLength)),
+			want:    regexp.MustCompile(fmt.Sprintf("^test-[a-z0-9]{%d}$", NodeGivenNameHashLength)),
 			wantErr: false,
 		},
 		{
-			name: "machine name with 63 chars with random suffix",
+			name: "node name with 63 chars with random suffix",
 			args: args{
-				suppliedName: "machineeee12345678901234567890123456789012345678901234567890123",
+				suppliedName: "nodeeee12345678901234567890123456789012345678901234567890123",
 				randomSuffix: true,
 			},
-			want:    regexp.MustCompile(fmt.Sprintf("^machineeee1234567890123456789012345678901234567890123-[a-z0-9]{%d}$", MachineGivenNameHashLength)),
+			want:    regexp.MustCompile(fmt.Sprintf("^nodeeee1234567890123456789012345678901234567890123456-[a-z0-9]{%d}$", NodeGivenNameHashLength)),
 			wantErr: false,
 		},
 	}
@@ -572,7 +572,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	// Check if a subprefix of an autoapproved route is approved
 	route2 := netip.MustParsePrefix("10.11.0.0/24")
 
-	machine := types.Machine{
+	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
 		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
@@ -588,18 +588,18 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 	}
 
-	db.db.Save(&machine)
+	db.db.Save(&node)
 
-	err = db.SaveMachineRoutes(&machine)
+	err = db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
 
-	machine0ByID, err := db.GetMachineByID(0)
+	node0ByID, err := db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)
 
-	err = db.EnableAutoApprovedRoutes(pol, machine0ByID)
+	err = db.EnableAutoApprovedRoutes(pol, node0ByID)
 	c.Assert(err, check.IsNil)
 
-	enabledRoutes, err := db.GetEnabledRoutes(machine0ByID)
+	enabledRoutes, err := db.GetEnabledRoutes(node0ByID)
 	c.Assert(err, check.IsNil)
 	c.Assert(enabledRoutes, check.HasLen, 4)
 }

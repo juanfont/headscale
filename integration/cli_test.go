@@ -686,7 +686,7 @@ func TestNodeTagCommand(t *testing.T) {
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 	}
-	machines := make([]*v1.Machine, len(machineKeys))
+	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
 
 	for index, machineKey := range machineKeys {
@@ -696,7 +696,7 @@ func TestNodeTagCommand(t *testing.T) {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("machine-%d", index+1),
+				fmt.Sprintf("node-%d", index+1),
 				"--user",
 				"user1",
 				"--key",
@@ -707,7 +707,7 @@ func TestNodeTagCommand(t *testing.T) {
 		)
 		assert.Nil(t, err)
 
-		var machine v1.Machine
+		var node v1.Node
 		err = executeAndUnmarshal(
 			headscale,
 			[]string{
@@ -721,15 +721,15 @@ func TestNodeTagCommand(t *testing.T) {
 				"--output",
 				"json",
 			},
-			&machine,
+			&node,
 		)
 		assert.Nil(t, err)
 
-		machines[index] = &machine
+		nodes[index] = &node
 	}
-	assert.Len(t, machines, len(machineKeys))
+	assert.Len(t, nodes, len(machineKeys))
 
-	var machine v1.Machine
+	var node v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -740,11 +740,11 @@ func TestNodeTagCommand(t *testing.T) {
 			"-t", "tag:test",
 			"--output", "json",
 		},
-		&machine,
+		&node,
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, []string{"tag:test"}, machine.ForcedTags)
+	assert.Equal(t, []string{"tag:test"}, node.ForcedTags)
 
 	// try to set a wrong tag and retrieve the error
 	type errOutput struct {
@@ -767,7 +767,7 @@ func TestNodeTagCommand(t *testing.T) {
 	assert.Contains(t, errorOutput.Error, "tag must start with the string 'tag:'")
 
 	// Test list all nodes after added seconds
-	resultMachines := make([]*v1.Machine, len(machineKeys))
+	resultMachines := make([]*v1.Node, len(machineKeys))
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -780,9 +780,9 @@ func TestNodeTagCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 	found := false
-	for _, machine := range resultMachines {
-		if machine.ForcedTags != nil {
-			for _, tag := range machine.ForcedTags {
+	for _, node := range resultMachines {
+		if node.ForcedTags != nil {
+			for _, tag := range node.ForcedTags {
 				if tag == "tag:test" {
 					found = true
 				}
@@ -793,7 +793,7 @@ func TestNodeTagCommand(t *testing.T) {
 		t,
 		true,
 		found,
-		"should find a machine with the tag 'tag:test' in the list of machines",
+		"should find a node with the tag 'tag:test' in the list of nodes",
 	)
 }
 
@@ -806,8 +806,8 @@ func TestNodeCommand(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"machine-user": 0,
-		"other-user":   0,
+		"node-user":  0,
+		"other-user": 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -816,7 +816,7 @@ func TestNodeCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated machine keys
+	// Randomly generated node keys
 	machineKeys := []string{
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
@@ -824,7 +824,7 @@ func TestNodeCommand(t *testing.T) {
 		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
 		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
-	machines := make([]*v1.Machine, len(machineKeys))
+	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
 
 	for index, machineKey := range machineKeys {
@@ -834,9 +834,9 @@ func TestNodeCommand(t *testing.T) {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("machine-%d", index+1),
+				fmt.Sprintf("node-%d", index+1),
 				"--user",
-				"machine-user",
+				"node-user",
 				"--key",
 				machineKey,
 				"--output",
@@ -845,31 +845,31 @@ func TestNodeCommand(t *testing.T) {
 		)
 		assert.Nil(t, err)
 
-		var machine v1.Machine
+		var node v1.Node
 		err = executeAndUnmarshal(
 			headscale,
 			[]string{
 				"headscale",
 				"nodes",
 				"--user",
-				"machine-user",
+				"node-user",
 				"register",
 				"--key",
 				machineKey,
 				"--output",
 				"json",
 			},
-			&machine,
+			&node,
 		)
 		assert.Nil(t, err)
 
-		machines[index] = &machine
+		nodes[index] = &node
 	}
 
-	assert.Len(t, machines, len(machineKeys))
+	assert.Len(t, nodes, len(machineKeys))
 
 	// Test list all nodes after added seconds
-	var listAll []v1.Machine
+	var listAll []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -891,17 +891,17 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, uint64(4), listAll[3].Id)
 	assert.Equal(t, uint64(5), listAll[4].Id)
 
-	assert.Equal(t, "machine-1", listAll[0].Name)
-	assert.Equal(t, "machine-2", listAll[1].Name)
-	assert.Equal(t, "machine-3", listAll[2].Name)
-	assert.Equal(t, "machine-4", listAll[3].Name)
-	assert.Equal(t, "machine-5", listAll[4].Name)
+	assert.Equal(t, "node-1", listAll[0].Name)
+	assert.Equal(t, "node-2", listAll[1].Name)
+	assert.Equal(t, "node-3", listAll[2].Name)
+	assert.Equal(t, "node-4", listAll[3].Name)
+	assert.Equal(t, "node-5", listAll[4].Name)
 
 	otherUserMachineKeys := []string{
 		"nodekey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
 		"nodekey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
 	}
-	otherUserMachines := make([]*v1.Machine, len(otherUserMachineKeys))
+	otherUserMachines := make([]*v1.Node, len(otherUserMachineKeys))
 	assert.Nil(t, err)
 
 	for index, machineKey := range otherUserMachineKeys {
@@ -911,7 +911,7 @@ func TestNodeCommand(t *testing.T) {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("otherUser-machine-%d", index+1),
+				fmt.Sprintf("otherUser-node-%d", index+1),
 				"--user",
 				"other-user",
 				"--key",
@@ -922,7 +922,7 @@ func TestNodeCommand(t *testing.T) {
 		)
 		assert.Nil(t, err)
 
-		var machine v1.Machine
+		var node v1.Node
 		err = executeAndUnmarshal(
 			headscale,
 			[]string{
@@ -936,17 +936,17 @@ func TestNodeCommand(t *testing.T) {
 				"--output",
 				"json",
 			},
-			&machine,
+			&node,
 		)
 		assert.Nil(t, err)
 
-		otherUserMachines[index] = &machine
+		otherUserMachines[index] = &node
 	}
 
 	assert.Len(t, otherUserMachines, len(otherUserMachineKeys))
 
 	// Test list all nodes after added otherUser
-	var listAllWithotherUser []v1.Machine
+	var listAllWithotherUser []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -960,17 +960,17 @@ func TestNodeCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	// All nodes, machines + otherUser
+	// All nodes, nodes + otherUser
 	assert.Len(t, listAllWithotherUser, 7)
 
 	assert.Equal(t, uint64(6), listAllWithotherUser[5].Id)
 	assert.Equal(t, uint64(7), listAllWithotherUser[6].Id)
 
-	assert.Equal(t, "otherUser-machine-1", listAllWithotherUser[5].Name)
-	assert.Equal(t, "otherUser-machine-2", listAllWithotherUser[6].Name)
+	assert.Equal(t, "otherUser-node-1", listAllWithotherUser[5].Name)
+	assert.Equal(t, "otherUser-node-2", listAllWithotherUser[6].Name)
 
 	// Test list all nodes after added otherUser
-	var listOnlyotherUserMachineUser []v1.Machine
+	var listOnlyotherUserMachineUser []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -993,16 +993,16 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.Equal(
 		t,
-		"otherUser-machine-1",
+		"otherUser-node-1",
 		listOnlyotherUserMachineUser[0].Name,
 	)
 	assert.Equal(
 		t,
-		"otherUser-machine-2",
+		"otherUser-node-2",
 		listOnlyotherUserMachineUser[1].Name,
 	)
 
-	// Delete a machines
+	// Delete a nodes
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
@@ -1018,8 +1018,8 @@ func TestNodeCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	// Test: list main user after machine is deleted
-	var listOnlyMachineUserAfterDelete []v1.Machine
+	// Test: list main user after node is deleted
+	var listOnlyMachineUserAfterDelete []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1027,7 +1027,7 @@ func TestNodeCommand(t *testing.T) {
 			"nodes",
 			"list",
 			"--user",
-			"machine-user",
+			"node-user",
 			"--output",
 			"json",
 		},
@@ -1047,7 +1047,7 @@ func TestNodeExpireCommand(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"machine-expire-user": 0,
+		"node-expire-user": 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -1056,7 +1056,7 @@ func TestNodeExpireCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated machine keys
+	// Randomly generated node keys
 	machineKeys := []string{
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
@@ -1064,7 +1064,7 @@ func TestNodeExpireCommand(t *testing.T) {
 		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
 		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
-	machines := make([]*v1.Machine, len(machineKeys))
+	nodes := make([]*v1.Node, len(machineKeys))
 
 	for index, machineKey := range machineKeys {
 		_, err := headscale.Execute(
@@ -1073,9 +1073,9 @@ func TestNodeExpireCommand(t *testing.T) {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("machine-%d", index+1),
+				fmt.Sprintf("node-%d", index+1),
 				"--user",
-				"machine-expire-user",
+				"node-expire-user",
 				"--key",
 				machineKey,
 				"--output",
@@ -1084,30 +1084,30 @@ func TestNodeExpireCommand(t *testing.T) {
 		)
 		assert.Nil(t, err)
 
-		var machine v1.Machine
+		var node v1.Node
 		err = executeAndUnmarshal(
 			headscale,
 			[]string{
 				"headscale",
 				"nodes",
 				"--user",
-				"machine-expire-user",
+				"node-expire-user",
 				"register",
 				"--key",
 				machineKey,
 				"--output",
 				"json",
 			},
-			&machine,
+			&node,
 		)
 		assert.Nil(t, err)
 
-		machines[index] = &machine
+		nodes[index] = &node
 	}
 
-	assert.Len(t, machines, len(machineKeys))
+	assert.Len(t, nodes, len(machineKeys))
 
-	var listAll []v1.Machine
+	var listAll []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1142,7 +1142,7 @@ func TestNodeExpireCommand(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	var listAllAfterExpiry []v1.Machine
+	var listAllAfterExpiry []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1174,7 +1174,7 @@ func TestNodeRenameCommand(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"machine-rename-command": 0,
+		"node-rename-command": 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -1183,7 +1183,7 @@ func TestNodeRenameCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated machine keys
+	// Randomly generated node keys
 	machineKeys := []string{
 		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
@@ -1191,7 +1191,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 	}
-	machines := make([]*v1.Machine, len(machineKeys))
+	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
 
 	for index, machineKey := range machineKeys {
@@ -1201,9 +1201,9 @@ func TestNodeRenameCommand(t *testing.T) {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("machine-%d", index+1),
+				fmt.Sprintf("node-%d", index+1),
 				"--user",
-				"machine-rename-command",
+				"node-rename-command",
 				"--key",
 				machineKey,
 				"--output",
@@ -1212,30 +1212,30 @@ func TestNodeRenameCommand(t *testing.T) {
 		)
 		assert.Nil(t, err)
 
-		var machine v1.Machine
+		var node v1.Node
 		err = executeAndUnmarshal(
 			headscale,
 			[]string{
 				"headscale",
 				"nodes",
 				"--user",
-				"machine-rename-command",
+				"node-rename-command",
 				"register",
 				"--key",
 				machineKey,
 				"--output",
 				"json",
 			},
-			&machine,
+			&node,
 		)
 		assert.Nil(t, err)
 
-		machines[index] = &machine
+		nodes[index] = &node
 	}
 
-	assert.Len(t, machines, len(machineKeys))
+	assert.Len(t, nodes, len(machineKeys))
 
-	var listAll []v1.Machine
+	var listAll []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1251,11 +1251,11 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.Contains(t, listAll[0].GetGivenName(), "machine-1")
-	assert.Contains(t, listAll[1].GetGivenName(), "machine-2")
-	assert.Contains(t, listAll[2].GetGivenName(), "machine-3")
-	assert.Contains(t, listAll[3].GetGivenName(), "machine-4")
-	assert.Contains(t, listAll[4].GetGivenName(), "machine-5")
+	assert.Contains(t, listAll[0].GetGivenName(), "node-1")
+	assert.Contains(t, listAll[1].GetGivenName(), "node-2")
+	assert.Contains(t, listAll[2].GetGivenName(), "node-3")
+	assert.Contains(t, listAll[3].GetGivenName(), "node-4")
+	assert.Contains(t, listAll[4].GetGivenName(), "node-5")
 
 	for idx := 0; idx < 3; idx++ {
 		_, err := headscale.Execute(
@@ -1265,13 +1265,13 @@ func TestNodeRenameCommand(t *testing.T) {
 				"rename",
 				"--identifier",
 				fmt.Sprintf("%d", listAll[idx].Id),
-				fmt.Sprintf("newmachine-%d", idx+1),
+				fmt.Sprintf("newnode-%d", idx+1),
 			},
 		)
 		assert.Nil(t, err)
 	}
 
-	var listAllAfterRename []v1.Machine
+	var listAllAfterRename []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1287,11 +1287,11 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterRename, 5)
 
-	assert.Equal(t, "newmachine-1", listAllAfterRename[0].GetGivenName())
-	assert.Equal(t, "newmachine-2", listAllAfterRename[1].GetGivenName())
-	assert.Equal(t, "newmachine-3", listAllAfterRename[2].GetGivenName())
-	assert.Contains(t, listAllAfterRename[3].GetGivenName(), "machine-4")
-	assert.Contains(t, listAllAfterRename[4].GetGivenName(), "machine-5")
+	assert.Equal(t, "newnode-1", listAllAfterRename[0].GetGivenName())
+	assert.Equal(t, "newnode-2", listAllAfterRename[1].GetGivenName())
+	assert.Equal(t, "newnode-3", listAllAfterRename[2].GetGivenName())
+	assert.Contains(t, listAllAfterRename[3].GetGivenName(), "node-4")
+	assert.Contains(t, listAllAfterRename[4].GetGivenName(), "node-5")
 
 	// Test failure for too long names
 	result, err := headscale.Execute(
@@ -1307,7 +1307,7 @@ func TestNodeRenameCommand(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Contains(t, result, "not be over 63 chars")
 
-	var listAllAfterRenameAttempt []v1.Machine
+	var listAllAfterRenameAttempt []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1323,11 +1323,11 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterRenameAttempt, 5)
 
-	assert.Equal(t, "newmachine-1", listAllAfterRenameAttempt[0].GetGivenName())
-	assert.Equal(t, "newmachine-2", listAllAfterRenameAttempt[1].GetGivenName())
-	assert.Equal(t, "newmachine-3", listAllAfterRenameAttempt[2].GetGivenName())
-	assert.Contains(t, listAllAfterRenameAttempt[3].GetGivenName(), "machine-4")
-	assert.Contains(t, listAllAfterRenameAttempt[4].GetGivenName(), "machine-5")
+	assert.Equal(t, "newnode-1", listAllAfterRenameAttempt[0].GetGivenName())
+	assert.Equal(t, "newnode-2", listAllAfterRenameAttempt[1].GetGivenName())
+	assert.Equal(t, "newnode-3", listAllAfterRenameAttempt[2].GetGivenName())
+	assert.Contains(t, listAllAfterRenameAttempt[3].GetGivenName(), "node-4")
+	assert.Contains(t, listAllAfterRenameAttempt[4].GetGivenName(), "node-5")
 }
 
 func TestNodeMoveCommand(t *testing.T) {
@@ -1349,7 +1349,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated machine key
+	// Randomly generated node key
 	machineKey := "nodekey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
 
 	_, err = headscale.Execute(
@@ -1358,7 +1358,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"debug",
 			"create-node",
 			"--name",
-			"nomad-machine",
+			"nomad-node",
 			"--user",
 			"old-user",
 			"--key",
@@ -1369,7 +1369,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	var machine v1.Machine
+	var node v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1383,15 +1383,15 @@ func TestNodeMoveCommand(t *testing.T) {
 			"--output",
 			"json",
 		},
-		&machine,
+		&node,
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, uint64(1), machine.Id)
-	assert.Equal(t, "nomad-machine", machine.Name)
-	assert.Equal(t, machine.User.Name, "old-user")
+	assert.Equal(t, uint64(1), node.Id)
+	assert.Equal(t, "nomad-node", node.Name)
+	assert.Equal(t, node.User.Name, "old-user")
 
-	machineID := fmt.Sprintf("%d", machine.Id)
+	nodeID := fmt.Sprintf("%d", node.Id)
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1400,19 +1400,19 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			machineID,
+			nodeID,
 			"--user",
 			"new-user",
 			"--output",
 			"json",
 		},
-		&machine,
+		&node,
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, machine.User.Name, "new-user")
+	assert.Equal(t, node.User.Name, "new-user")
 
-	var allNodes []v1.Machine
+	var allNodes []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1428,8 +1428,8 @@ func TestNodeMoveCommand(t *testing.T) {
 
 	assert.Len(t, allNodes, 1)
 
-	assert.Equal(t, allNodes[0].Id, machine.Id)
-	assert.Equal(t, allNodes[0].User, machine.User)
+	assert.Equal(t, allNodes[0].Id, node.Id)
+	assert.Equal(t, allNodes[0].User, node.User)
 	assert.Equal(t, allNodes[0].User.Name, "new-user")
 
 	moveToNonExistingNSResult, err := headscale.Execute(
@@ -1438,7 +1438,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			machineID,
+			nodeID,
 			"--user",
 			"non-existing-user",
 			"--output",
@@ -1452,7 +1452,7 @@ func TestNodeMoveCommand(t *testing.T) {
 		moveToNonExistingNSResult,
 		"user not found",
 	)
-	assert.Equal(t, machine.User.Name, "new-user")
+	assert.Equal(t, node.User.Name, "new-user")
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1461,17 +1461,17 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			machineID,
+			nodeID,
 			"--user",
 			"old-user",
 			"--output",
 			"json",
 		},
-		&machine,
+		&node,
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, machine.User.Name, "old-user")
+	assert.Equal(t, node.User.Name, "old-user")
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1480,15 +1480,15 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			machineID,
+			nodeID,
 			"--user",
 			"old-user",
 			"--output",
 			"json",
 		},
-		&machine,
+		&node,
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, machine.User.Name, "old-user")
+	assert.Equal(t, node.User.Name, "old-user")
 }
