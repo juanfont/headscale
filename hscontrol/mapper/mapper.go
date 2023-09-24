@@ -614,6 +614,7 @@ func appendPeerChanges(
 	resp.UserProfiles = profiles
 	resp.SSHPolicy = sshPolicy
 
+	// TODO(kradalby): This currently does not take last seen in keepalives into account
 	resp.OnlineChange = peers.OnlineNodeMap()
 
 	return nil
