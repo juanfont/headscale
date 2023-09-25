@@ -4,6 +4,8 @@
 
 This release is mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
 
+**Please remember to always back up your database between versions**
+
 #### Here is a short summary of the broad topics of changes:
 
 Code has been organised into modules, reducing use of global variables/objects, isolating concerns and “putting the right things in the logical place”.
