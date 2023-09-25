@@ -15,7 +15,6 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -217,9 +216,6 @@ func (m *Mapper) fullMapResponse(
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO(kradalby): Move this into appendPeerChanges?
-	resp.OnlineChange = db.OnlineNodeMap(peers)
 
 	err = appendPeerChanges(
 		resp,
@@ -617,6 +613,9 @@ func appendPeerChanges(
 	resp.PacketFilter = policy.ReduceFilterRules(node, rules)
 	resp.UserProfiles = profiles
 	resp.SSHPolicy = sshPolicy
+
+	// TODO(kradalby): This currently does not take last seen in keepalives into account
+	resp.OnlineChange = peers.OnlineNodeMap()
 
 	return nil
 }

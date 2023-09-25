@@ -635,16 +635,6 @@ func (hsdb *HSDatabase) IsRoutesEnabled(node *types.Node, routeStr string) bool 
 	return false
 }
 
-func OnlineNodeMap(peers types.Nodes) map[tailcfg.NodeID]bool {
-	ret := make(map[tailcfg.NodeID]bool)
-
-	for _, peer := range peers {
-		ret[tailcfg.NodeID(peer.ID)] = peer.IsOnline()
-	}
-
-	return ret
-}
-
 func (hsdb *HSDatabase) ListOnlineNodes(
 	node *types.Node,
 ) (map[tailcfg.NodeID]bool, error) {
@@ -656,7 +646,7 @@ func (hsdb *HSDatabase) ListOnlineNodes(
 		return nil, err
 	}
 
-	return OnlineNodeMap(peers), nil
+	return peers.OnlineNodeMap(), nil
 }
 
 // enableRoutes enables new routes based on a list of new routes.

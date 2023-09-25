@@ -70,6 +70,16 @@ type (
 	Nodes []*Node
 )
 
+func (nodes Nodes) OnlineNodeMap() map[tailcfg.NodeID]bool {
+	ret := make(map[tailcfg.NodeID]bool)
+
+	for _, node := range nodes {
+		ret[tailcfg.NodeID(node.ID)] = node.IsOnline()
+	}
+
+	return ret
+}
+
 type NodeAddresses []netip.Addr
 
 func (na NodeAddresses) Sort() {
