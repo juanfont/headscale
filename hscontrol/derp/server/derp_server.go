@@ -83,6 +83,8 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 				RegionID: d.cfg.ServerRegionID,
 				HostName: host,
 				DERPPort: port,
+				IPv4:     d.cfg.IPv4,
+				IPv6:     d.cfg.IPv6,
 			},
 		},
 	}
@@ -207,6 +209,7 @@ func DERPProbeHandler(
 // The initial implementation is here https://github.com/tailscale/tailscale/pull/1406
 // They have a cache, but not clear if that is really necessary at Headscale, uh, scale.
 // An example implementation is found here https://derp.tailscale.com/bootstrap-dns
+// Coordination server is included automatically, since local DERP is using the same DNS Name in d.serverURL
 func DERPBootstrapDNSHandler(
 	derpMap *tailcfg.DERPMap,
 ) func(http.ResponseWriter, *http.Request) {
