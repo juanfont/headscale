@@ -295,7 +295,7 @@ func GetDERPConfig() DERPConfig {
 	)
 	ipv4 := viper.GetString("derp.server.ipv4")
 	ipv6 := viper.GetString("derp.server.ipv6")
-	automatically_add_embedded_derp_region := viper.GetBool(
+	automaticallyAddEmbeddedDerpRegion := viper.GetBool(
 		"derp.server.automatically_add_embedded_derp_region",
 	)
 
@@ -321,7 +321,7 @@ func GetDERPConfig() DERPConfig {
 
 	paths := viper.GetStringSlice("derp.paths")
 
-	if serverEnabled && !automatically_add_embedded_derp_region && len(paths) == 0 {
+	if serverEnabled && !automaticallyAddEmbeddedDerpRegion && len(paths) == 0 {
 		log.Fatal().
 			Msg("Disabling derp.server.automatically_add_embedded_derp_region requires to configure the derp server in derp.paths")
 	}
@@ -342,7 +342,7 @@ func GetDERPConfig() DERPConfig {
 		UpdateFrequency:                    updateFrequency,
 		IPv4:                               ipv4,
 		IPv6:                               ipv6,
-		AutomaticallyAddEmbeddedDerpRegion: automatically_add_embedded_derp_region,
+		AutomaticallyAddEmbeddedDerpRegion: automaticallyAddEmbeddedDerpRegion,
 	}
 }
 

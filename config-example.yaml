@@ -94,7 +94,7 @@ derp:
     #
     private_key_path: /var/lib/headscale/derp_server_private.key
 
-    # For better connection stability (especially when using an Exit-Node and DNS is not working), 
+    # For better connection stability (especially when using an Exit-Node and DNS is not working),
     # it is possible to optionall add the public IPv4 and IPv6 address to the Derp-Map using:
     ipv4: 1.2.3.4
     ipv6: 2001:db8::1
