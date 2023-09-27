@@ -234,12 +234,12 @@ func Test_fullMapResponse(t *testing.T) {
 		PrimaryRoutes:     []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
 		LastSeen:          &lastSeen,
 		Online:            new(bool),
-		KeepAlive:         true,
 		MachineAuthorized: true,
-		Capabilities: []string{
+		Capabilities: []tailcfg.NodeCapability{
 			tailcfg.CapabilityFileSharing,
 			tailcfg.CapabilityAdmin,
 			tailcfg.CapabilitySSH,
+			tailcfg.NodeAttrDisableUPnP,
 		},
 	}
 
@@ -286,12 +286,12 @@ func Test_fullMapResponse(t *testing.T) {
 		PrimaryRoutes:     []netip.Prefix{},
 		LastSeen:          &lastSeen,
 		Online:            new(bool),
-		KeepAlive:         true,
 		MachineAuthorized: true,
-		Capabilities: []string{
+		Capabilities: []tailcfg.NodeCapability{
 			tailcfg.CapabilityFileSharing,
 			tailcfg.CapabilityAdmin,
 			tailcfg.CapabilitySSH,
+			tailcfg.NodeAttrDisableUPnP,
 		},
 	}
 
@@ -461,6 +461,7 @@ func Test_fullMapResponse(t *testing.T) {
 				tt.peers,
 				nil,
 				false,
+				0,
 				tt.derpMap,
 				tt.baseDomain,
 				tt.dnsConfig,

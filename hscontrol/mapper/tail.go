@@ -15,6 +15,7 @@ import (
 
 func tailNodes(
 	nodes types.Nodes,
+	capVer tailcfg.CapabilityVersion,
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,
@@ -24,6 +25,7 @@ func tailNodes(
 	for index, node := range nodes {
 		node, err := tailNode(
 			node,
+			capVer,
 			pol,
 			dnsConfig,
 			baseDomain,
@@ -42,6 +44,7 @@ func tailNodes(
 // as per the expected behaviour in the official SaaS.
 func tailNode(
 	node *types.Node,
+	capVer tailcfg.CapabilityVersion,
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,
@@ -133,14 +136,27 @@ func tailNode(
 
 		LastSeen:          node.LastSeen,
 		Online:            &online,
-		KeepAlive:         true,
 		MachineAuthorized: !node.IsExpired(),
+	}
 
-		Capabilities: []string{
+	//   - 74: 2023-09-18: Client understands NodeCapMap
+	if capVer >= 74 {
+		tNode.CapMap = tailcfg.NodeCapMap{
+			tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+			tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+			tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+		}
+	} else {
+		tNode.Capabilities = []tailcfg.NodeCapability{
 			tailcfg.CapabilityFileSharing,
 			tailcfg.CapabilityAdmin,
 			tailcfg.CapabilitySSH,
-		},
+		}
+	}
+
+	//   - 72: 2023-08-23: TS-2023-006 UPnP issue fixed; UPnP can now be used again
+	if capVer < 72 {
+		tNode.Capabilities = append(tNode.Capabilities, tailcfg.NodeAttrDisableUPnP)
 	}
 
 	return &tNode, nil

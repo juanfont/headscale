@@ -50,6 +50,7 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 type Mapper struct {
 	privateKey2019 *key.MachinePrivate
 	isNoise        bool
+	capVer         tailcfg.CapabilityVersion
 
 	// Configuration
 	// TODO(kradalby): figure out if this is the format we want this in
@@ -74,6 +75,7 @@ func NewMapper(
 	peers types.Nodes,
 	privateKey *key.MachinePrivate,
 	isNoise bool,
+	capVer tailcfg.CapabilityVersion,
 	derpMap *tailcfg.DERPMap,
 	baseDomain string,
 	dnsCfg *tailcfg.DNSConfig,
@@ -91,6 +93,7 @@ func NewMapper(
 	return &Mapper{
 		privateKey2019: privateKey,
 		isNoise:        isNoise,
+		capVer:         capVer,
 
 		derpMap:          derpMap,
 		baseDomain:       baseDomain,
@@ -221,6 +224,7 @@ func (m *Mapper) fullMapResponse(
 		resp,
 		pol,
 		node,
+		m.capVer,
 		peers,
 		peers,
 		m.baseDomain,
@@ -320,6 +324,7 @@ func (m *Mapper) PeerChangedResponse(
 		&resp,
 		pol,
 		node,
+		m.capVer,
 		nodeMapToList(m.peers),
 		changed,
 		m.baseDomain,
@@ -510,7 +515,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, pol, m.dnsCfg, m.baseDomain)
+	tailnode, err := tailNode(node, m.capVer, pol, m.dnsCfg, m.baseDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -559,6 +564,7 @@ func appendPeerChanges(
 
 	pol *policy.ACLPolicy,
 	node *types.Node,
+	capVer tailcfg.CapabilityVersion,
 	peers types.Nodes,
 	changed types.Nodes,
 	baseDomain string,
@@ -593,7 +599,7 @@ func appendPeerChanges(
 		peers,
 	)
 
-	tailPeers, err := tailNodes(changed, pol, dnsCfg, baseDomain)
+	tailPeers, err := tailNodes(changed, capVer, pol, dnsCfg, baseDomain)
 	if err != nil {
 		return err
 	}

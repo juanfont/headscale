@@ -63,6 +63,7 @@ func (h *Headscale) handlePoll(
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
+	capVer tailcfg.CapabilityVersion,
 ) {
 	logInfo, logErr := logPollFunc(mapRequest, node, isNoise)
 
@@ -130,7 +131,7 @@ func (h *Headscale) handlePoll(
 		// The intended use is for clients to discover the DERP map at
 		// start-up before their first real endpoint update.
 	} else if mapRequest.OmitPeers && !mapRequest.Stream && mapRequest.ReadOnly {
-		h.handleLiteRequest(writer, node, mapRequest, isNoise)
+		h.handleLiteRequest(writer, node, mapRequest, isNoise, capVer)
 
 		return
 	} else if mapRequest.OmitPeers && mapRequest.Stream {
@@ -163,6 +164,7 @@ func (h *Headscale) handlePoll(
 		peers,
 		h.privateKey2019,
 		isNoise,
+		capVer,
 		h.DERPMap,
 		h.cfg.BaseDomain,
 		h.cfg.DNSConfig,
@@ -383,6 +385,7 @@ func (h *Headscale) handleLiteRequest(
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 	isNoise bool,
+	capVer tailcfg.CapabilityVersion,
 ) {
 	logInfo, logErr := logPollFunc(mapRequest, node, isNoise)
 
@@ -393,6 +396,7 @@ func (h *Headscale) handleLiteRequest(
 		types.Nodes{},
 		h.privateKey2019,
 		isNoise,
+		capVer,
 		h.DERPMap,
 		h.cfg.BaseDomain,
 		h.cfg.DNSConfig,

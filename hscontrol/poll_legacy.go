@@ -93,5 +93,16 @@ func (h *Headscale) PollNetMapHandler(
 		Str("node", node.Hostname).
 		Msg("A node is sending a MapRequest via legacy protocol")
 
-	h.handlePoll(writer, req.Context(), node, mapRequest, false)
+	capVer, err := parseCabailityVersion(req)
+	if err != nil && !errors.Is(err, ErrNoCapabilityVersion) {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("failed to parse capVer")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+		return
+	}
+
+	h.handlePoll(writer, req.Context(), node, mapRequest, false, capVer)
 }
