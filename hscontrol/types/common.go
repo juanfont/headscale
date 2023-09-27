@@ -84,20 +84,36 @@ type StateUpdateType int
 
 const (
 	StateFullUpdate StateUpdateType = iota
+	// StatePeerChanged is used for updates that needs
+	// to be calculated with all peers and all policy rules.
+	// This would typically be things that include tags, routes
+	// and similar.
 	StatePeerChanged
+	// StatePeerChangedNoPolicy is used for updates that
+	// are not intended to be full node changes, but
+	// for smaller changes that cannot be part of
+	// StatePeerChangedPatch.
+	StatePeerChangedNoPolicy
+	StatePeerChangedPatch
 	StatePeerRemoved
 	StateDERPUpdated
 )
 
 // StateUpdate is an internal message containing information about
 // a state change that has happened to the network.
+// If type is StateFullUpdate, all fields are ignored.
 type StateUpdate struct {
 	// The type of update
 	Type StateUpdateType
 
-	// Changed must be set when Type is StatePeerChanged and
-	// contain the Node IDs of nodes that have changed.
-	Changed Nodes
+	// ChangeNodes must be set when Type is StatePeerAdded
+	// and StatePeerChanged and contains the full node
+	// object for added nodes.
+	ChangeNodes Nodes
+
+	// ChangePatches must be set when Type is StatePeerChangedPatch
+	// and contains a populated PeerChange object.
+	ChangePatches []*tailcfg.PeerChange
 
 	// Removed must be set when Type is StatePeerRemoved and
 	// contain a list of the nodes that has been removed from
@@ -106,5 +122,32 @@ type StateUpdate struct {
 
 	// DERPMap must be set when Type is StateDERPUpdated and
 	// contain the new DERP Map.
-	DERPMap tailcfg.DERPMap
+	DERPMap *tailcfg.DERPMap
+}
+
+// Valid reports if a StateUpdate is correctly filled and
+// panics if the mandatory fields for a type is not
+// filled.
+// Reports true if valid.
+func (su *StateUpdate) Valid() bool {
+	switch su.Type {
+	case StatePeerChanged, StatePeerChangedNoPolicy:
+		if su.ChangeNodes == nil {
+			panic("Mandatory field ChangeNodes is not set on StatePeerChanged, StatePeerChangedNoPolicy update")
+		}
+	case StatePeerChangedPatch:
+		if su.ChangePatches == nil {
+			panic("Mandatory field ChangePatches is not set on StatePeerChangedPatch update")
+		}
+	case StatePeerRemoved:
+		if su.Removed == nil {
+			panic("Mandatory field Removed is not set on StatePeerRemove update")
+		}
+	case StateDERPUpdated:
+		if su.DERPMap == nil {
+			panic("Mandatory field DERPMap is not set on StateDERPUpdated update")
+		}
+	}
+
+	return true
 }

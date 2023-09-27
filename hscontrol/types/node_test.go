@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"tailscale.com/tailcfg"
 )
 
@@ -137,5 +138,97 @@ func TestNodeAddressesOrder(t *testing.T) {
 		if addr != expected[i] {
 			t.Errorf("unexpected address at index %v: got %v, want %v", i, addr, expected[i])
 		}
+	}
+}
+
+func TestNodeFQDN(t *testing.T) {
+	tests := []struct {
+		name    string
+		node    Node
+		dns     tailcfg.DNSConfig
+		domain  string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "all-set",
+			node: Node{
+				GivenName: "test",
+				User: User{
+					Name: "user",
+				},
+			},
+			dns: tailcfg.DNSConfig{
+				Proxied: true,
+			},
+			domain: "example.com",
+			want:   "test.user.example.com",
+		},
+		{
+			name: "no-given-name",
+			node: Node{
+				User: User{
+					Name: "user",
+				},
+			},
+			dns: tailcfg.DNSConfig{
+				Proxied: true,
+			},
+			domain:  "example.com",
+			wantErr: "failed to create valid FQDN: node has no given name",
+		},
+		{
+			name: "no-user-name",
+			node: Node{
+				GivenName: "test",
+				User:      User{},
+			},
+			dns: tailcfg.DNSConfig{
+				Proxied: true,
+			},
+			domain:  "example.com",
+			wantErr: "failed to create valid FQDN: node user has no name",
+		},
+		{
+			name: "no-magic-dns",
+			node: Node{
+				GivenName: "test",
+				User: User{
+					Name: "user",
+				},
+			},
+			dns: tailcfg.DNSConfig{
+				Proxied: false,
+			},
+			domain: "example.com",
+			want:   "test",
+		},
+		{
+			name: "no-dnsconfig",
+			node: Node{
+				GivenName: "test",
+				User: User{
+					Name: "user",
+				},
+			},
+			domain: "example.com",
+			want:   "test",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.node.GetFQDN(&tc.dns, tc.domain)
+
+			if (err != nil) && (err.Error() != tc.wantErr) {
+				t.Errorf("GetFQDN() error = %s, wantErr %s", err, tc.wantErr)
+
+				return
+			}
+
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("GetFQDN unexpected result (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

@@ -248,9 +248,8 @@ func TestPingAllByHostname(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"user3": len(MustTestVersions) - 1,
-		"user4": len(MustTestVersions) - 1,
+		"user3": len(MustTestVersions),
+		"user4": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyname"))
@@ -296,8 +295,7 @@ func TestTaildrop(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"taildrop": len(MustTestVersions) - 1,
+		"taildrop": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("taildrop"))
@@ -347,8 +345,9 @@ func TestTaildrop(t *testing.T) {
 				})
 				if err != nil {
 					t.Fatalf(
-						"failed to send taildrop file on %s, err: %s",
+						"failed to send taildrop file on %s with command %q, err: %s",
 						client.Hostname(),
+						strings.Join(command, " "),
 						err,
 					)
 				}
@@ -537,5 +536,142 @@ func TestExpireNode(t *testing.T) {
 			// Assert that we have the original count - self - expired node
 			assert.Len(t, status.Peers(), len(MustTestVersions)-2)
 		}
+	}
+}
+
+func TestNodeOnlineLastSeenStatus(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": len(MustTestVersions),
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("onlinelastseen"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("before expire: %d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		// Assert that we have the original count - self
+		assert.Len(t, status.Peers(), len(MustTestVersions)-1)
+	}
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	keepAliveInterval := 60 * time.Second
+
+	// Duration is chosen arbitrarily, 10m is reported in #1561
+	testDuration := 12 * time.Minute
+	start := time.Now()
+	end := start.Add(testDuration)
+
+	log.Printf("Starting online test from %v to %v", start, end)
+
+	for {
+		// Let the test run continuously for X minutes to verify
+		// all nodes stay connected and has the expected status over time.
+		if end.Before(time.Now()) {
+			return
+		}
+
+		result, err := headscale.Execute([]string{
+			"headscale", "nodes", "list", "--output", "json",
+		})
+		assertNoErr(t, err)
+
+		var nodes []*v1.Node
+		err = json.Unmarshal([]byte(result), &nodes)
+		assertNoErr(t, err)
+
+		now := time.Now()
+
+		// Threshold with some leeway
+		lastSeenThreshold := now.Add(-keepAliveInterval - (10 * time.Second))
+
+		// Verify that headscale reports the nodes as online
+		for _, node := range nodes {
+			// All nodes should be online
+			assert.Truef(
+				t,
+				node.GetOnline(),
+				"expected %s to have online status in Headscale, marked as offline %s after start",
+				node.GetName(),
+				time.Since(start),
+			)
+
+			lastSeen := node.GetLastSeen().AsTime()
+			// All nodes should have been last seen between now and the keepAliveInterval
+			assert.Truef(
+				t,
+				lastSeen.After(lastSeenThreshold),
+				"lastSeen (%v) was not %s after the threshold (%v)",
+				lastSeen,
+				keepAliveInterval,
+				lastSeenThreshold,
+			)
+		}
+
+		// Verify that all nodes report all nodes to be online
+		for _, client := range allClients {
+			status, err := client.Status()
+			assertNoErr(t, err)
+
+			for _, peerKey := range status.Peers() {
+				peerStatus := status.Peer[peerKey]
+
+				// .Online is only available from CapVer 16, which
+				// is not present in 1.18 which is the lowest we
+				// test.
+				if strings.Contains(client.Hostname(), "1-18") {
+					continue
+				}
+
+				// All peers of this nodess are reporting to be
+				// connected to the control server
+				assert.Truef(
+					t,
+					peerStatus.Online,
+					"expected node %s to be marked as online in %s peer list, marked as offline %s after start",
+					peerStatus.HostName,
+					client.Hostname(),
+					time.Since(start),
+				)
+
+				// from docs: last seen to tailcontrol; only present if offline
+				// assert.Nilf(
+				// 	t,
+				// 	peerStatus.LastSeen,
+				// 	"expected node %s to not have LastSeen set, got %s",
+				// 	peerStatus.HostName,
+				// 	peerStatus.LastSeen,
+				// )
+			}
+		}
+
+		// Check maximum once per second
+		time.Sleep(time.Second)
 	}
 }

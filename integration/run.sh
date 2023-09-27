@@ -29,7 +29,7 @@ run_tests() {
 			-failfast \
 			-timeout 120m \
 			-parallel 1 \
-			-run "^$test_name\$" >/dev/null 2>&1
+			-run "^$test_name\$" >./control_logs/"$test_name"_"$i".log 2>&1
 		status=$?
 		end=$(date +%s)
 

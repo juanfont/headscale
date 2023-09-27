@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
+	"golang.org/x/exp/maps"
 	"tailscale.com/envknob"
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
@@ -45,6 +47,7 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // - Keep information about the previous mapresponse so we can send a diff
 // - Store hashes
 // - Create a "minifier" that removes info not needed for the node
+// - some sort of batching, wait for 5 or 60 seconds before sending
 
 type Mapper struct {
 	// Configuration
@@ -61,8 +64,14 @@ type Mapper struct {
 
 	// Map isnt concurrency safe, so we need to ensure
 	// only one func is accessing it over time.
-	mu    sync.Mutex
-	peers map[uint64]*types.Node
+	mu      sync.Mutex
+	peers   map[uint64]*types.Node
+	patches map[uint64][]patch
+}
+
+type patch struct {
+	timestamp time.Time
+	change    *tailcfg.PeerChange
 }
 
 func NewMapper(
@@ -93,7 +102,8 @@ func NewMapper(
 		seq:     0,
 
 		// TODO: populate
-		peers: peers.IDMap(),
+		peers:   peers.IDMap(),
+		patches: make(map[uint64][]patch),
 	}
 }
 
@@ -235,6 +245,19 @@ func (m *Mapper) FullMapResponse(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	peers := maps.Keys(m.peers)
+	peersWithPatches := maps.Keys(m.patches)
+	slices.Sort(peers)
+	slices.Sort(peersWithPatches)
+
+	if len(peersWithPatches) > 0 {
+		log.Debug().
+			Str("node", node.Hostname).
+			Uints64("peers", peers).
+			Uints64("pending_patches", peersWithPatches).
+			Msgf("node requested full map response, but has pending patches")
+	}
+
 	resp, err := m.fullMapResponse(node, pol, mapRequest.Version)
 	if err != nil {
 		return nil, err
@@ -272,10 +295,12 @@ func (m *Mapper) KeepAliveResponse(
 func (m *Mapper) DERPMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	derpMap tailcfg.DERPMap,
+	derpMap *tailcfg.DERPMap,
 ) ([]byte, error) {
+	m.derpMap = derpMap
+
 	resp := m.baseMapResponse()
-	resp.DERPMap = &derpMap
+	resp.DERPMap = derpMap
 
 	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
@@ -289,14 +314,24 @@ func (m *Mapper) PeerChangedResponse(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	lastSeen := make(map[tailcfg.NodeID]bool)
-
 	// Update our internal map.
 	for _, node := range changed {
-		m.peers[node.ID] = node
+		if patches, ok := m.patches[node.ID]; ok {
+			// preserve online status in case the patch has an outdated one
+			online := node.IsOnline
 
-		// We have just seen the node, let the peers update their list.
-		lastSeen[tailcfg.NodeID(node.ID)] = true
+			for _, p := range patches {
+				// TODO(kradalby): Figure if this needs to be sorted by timestamp
+				node.ApplyPeerChange(p.change)
+			}
+
+			// Ensure the patches are not applied again later
+			delete(m.patches, node.ID)
+
+			node.IsOnline = online
+		}
+
+		m.peers[node.ID] = node
 	}
 
 	resp := m.baseMapResponse()
@@ -316,11 +351,109 @@ func (m *Mapper) PeerChangedResponse(
 		return nil, err
 	}
 
-	// resp.PeerSeenChange = lastSeen
+	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
+}
+
+// PeerChangedResponse creates a MapResponse of nodes that have
+// changed, but requires less calculation. This contains updates
+// that can not be sent via a PeerChangedPatchResponse.
+// This update type omits fields that are related to ACL.
+func (m *Mapper) PeerChangedWithoutACLResponse(
+	mapRequest tailcfg.MapRequest,
+	node *types.Node,
+	changed types.Nodes,
+	pol *policy.ACLPolicy,
+) ([]byte, error) {
+	resp := m.baseMapResponse()
+
+	// Update our internal map.
+	for _, node := range changed {
+		if patches, ok := m.patches[node.ID]; ok {
+			// preserve online status in case the patch has an outdated one
+			online := node.IsOnline
+
+			for _, p := range patches {
+				// TODO(kradalby): Figure if this needs to be sorted by timestamp
+				node.ApplyPeerChange(p.change)
+			}
+
+			// Ensure the patches are not applied again later
+			delete(m.patches, node.ID)
+
+			node.IsOnline = online
+		}
+
+		m.peers[node.ID] = node
+	}
+
+	tailPeers, err := tailNodes(
+		changed,
+		mapRequest.Version,
+		pol,
+		m.dnsCfg,
+		m.baseDomain,
+		m.randomClientPort,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Peers is always returned sorted by Node.ID.
+	sort.SliceStable(tailPeers, func(x, y int) bool {
+		return tailPeers[x].ID < tailPeers[y].ID
+	})
+
+	resp.PeersChanged = tailPeers
 
 	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
 
+// PeerChangedPatchResponse creates a patch MapResponse with
+// incoming update from a state change.
+func (m *Mapper) PeerChangedPatchResponse(
+	mapRequest tailcfg.MapRequest,
+	node *types.Node,
+	changed []*tailcfg.PeerChange,
+	pol *policy.ACLPolicy,
+) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	sendUpdate := false
+	// patch the internal map
+	for _, change := range changed {
+		if peer, ok := m.peers[uint64(change.NodeID)]; ok {
+			peer.ApplyPeerChange(change)
+			sendUpdate = true
+		} else {
+			log.Trace().Str("node", node.Hostname).Msgf("Node with ID %s is missing from mapper for Node %s, saving patch for when node is available", change.NodeID, node.Hostname)
+
+			p := patch{
+				timestamp: time.Now(),
+				change:    change,
+			}
+
+			if patches, ok := m.patches[uint64(change.NodeID)]; ok {
+				patches := append(patches, p)
+
+				m.patches[uint64(change.NodeID)] = patches
+			} else {
+				m.patches[uint64(change.NodeID)] = []patch{p}
+			}
+		}
+	}
+
+	if !sendUpdate {
+		return nil, nil
+	}
+
+	resp := m.baseMapResponse()
+	resp.PeersChangedPatch = changed
+
+	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
+}
+
+// TODO(kradalby): We need some integration tests for this.
 func (m *Mapper) PeerRemovedResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
@@ -332,6 +465,7 @@ func (m *Mapper) PeerRemovedResponse(
 	// remove from our internal map
 	for _, id := range removed {
 		delete(m.peers, uint64(id))
+		delete(m.patches, uint64(id))
 	}
 
 	resp := m.baseMapResponse()
@@ -362,6 +496,19 @@ func (m *Mapper) marshalMapResponse(
 			"MapResponse": resp,
 		}
 
+		responseType := "keepalive"
+
+		switch {
+		case resp.Peers != nil && len(resp.Peers) > 0:
+			responseType = "full"
+		case resp.PeersChanged != nil && len(resp.PeersChanged) > 0:
+			responseType = "changed"
+		case resp.PeersChangedPatch != nil && len(resp.PeersChangedPatch) > 0:
+			responseType = "patch"
+		case resp.PeersRemoved != nil && len(resp.PeersRemoved) > 0:
+			responseType = "removed"
+		}
+
 		body, err := json.Marshal(data)
 		if err != nil {
 			log.Error().
@@ -381,7 +528,7 @@ func (m *Mapper) marshalMapResponse(
 
 		mapResponsePath := path.Join(
 			mPath,
-			fmt.Sprintf("%d-%s-%d.json", now, m.uid, atomic.LoadUint64(&m.seq)),
+			fmt.Sprintf("%d-%s-%d-%s.json", now, m.uid, atomic.LoadUint64(&m.seq), responseType),
 		)
 
 		log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
@@ -438,6 +585,7 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 	resp := tailcfg.MapResponse{
 		KeepAlive:   false,
 		ControlTime: &now,
+		// TODO(kradalby): Implement PingRequest?
 	}
 
 	return resp
@@ -558,9 +706,6 @@ func appendPeerChanges(
 	resp.PacketFilter = policy.ReduceFilterRules(node, rules)
 	resp.UserProfiles = profiles
 	resp.SSHPolicy = sshPolicy
-
-	// TODO(kradalby): This currently does not take last seen in keepalives into account
-	resp.OnlineChange = peers.OnlineNodeMap()
 
 	return nil
 }

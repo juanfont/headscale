@@ -93,7 +93,7 @@ var (
 	//
 	// - Two unstable (HEAD and unstable)
 	// - Two latest versions
-	// - Two oldest versions.
+	// - Two oldest supported version.
 	MustTestVersions = append(
 		AllVersions[0:4],
 		AllVersions[len(AllVersions)-2:]...,
@@ -403,7 +403,17 @@ func (s *Scenario) CountTailscale() int {
 func (s *Scenario) WaitForTailscaleSync() error {
 	tsCount := s.CountTailscale()
 
-	return s.WaitForTailscaleSyncWithPeerCount(tsCount - 1)
+	err := s.WaitForTailscaleSyncWithPeerCount(tsCount - 1)
+	if err != nil {
+		for _, user := range s.users {
+			for _, client := range user.Clients {
+				peers, _ := client.PrettyPeers()
+				log.Println(peers)
+			}
+		}
+	}
+
+	return err
 }
 
 // WaitForTailscaleSyncWithPeerCount blocks execution until all the TailscaleClient reports

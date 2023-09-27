@@ -1,6 +1,8 @@
 package notifier
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -56,6 +58,19 @@ func (n *Notifier) RemoveNode(machineKey key.MachinePublic) {
 		Msg("Removed channel")
 }
 
+// IsConnected reports if a node is connected to headscale and has a
+// poll session open.
+func (n *Notifier) IsConnected(machineKey key.MachinePublic) bool {
+	n.l.RLock()
+	defer n.l.RUnlock()
+
+	if _, ok := n.nodes[machineKey.String()]; ok {
+		return true
+	}
+
+	return false
+}
+
 func (n *Notifier) NotifyAll(update types.StateUpdate) {
 	n.NotifyWithIgnore(update)
 }
@@ -78,4 +93,17 @@ func (n *Notifier) NotifyWithIgnore(update types.StateUpdate, ignore ...string) 
 		log.Trace().Caller().Str("machine", key).Strs("ignoring", ignore).Msg("sending update")
 		c <- update
 	}
+}
+
+func (n *Notifier) String() string {
+	n.l.RLock()
+	defer n.l.RUnlock()
+
+	str := []string{"Notifier, in map:\n"}
+
+	for k, v := range n.nodes {
+		str = append(str, fmt.Sprintf("\t%s: %v\n", k, v))
+	}
+
+	return strings.Join(str, "")
 }

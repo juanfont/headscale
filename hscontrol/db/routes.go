@@ -7,7 +7,9 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"gorm.io/gorm"
+	"tailscale.com/types/key"
 )
 
 var ErrRouteIsNotAvailable = errors.New("route is not available")
@@ -21,7 +23,38 @@ func (hsdb *HSDatabase) GetRoutes() (types.Routes, error) {
 
 func (hsdb *HSDatabase) getRoutes() (types.Routes, error) {
 	var routes types.Routes
-	err := hsdb.db.Preload("Node").Find(&routes).Error
+	err := hsdb.db.
+		Preload("Node").
+		Preload("Node.User").
+		Find(&routes).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return routes, nil
+}
+
+func (hsdb *HSDatabase) getAdvertisedAndEnabledRoutes() (types.Routes, error) {
+	var routes types.Routes
+	err := hsdb.db.
+		Preload("Node").
+		Preload("Node.User").
+		Where("advertised = ? AND enabled = ?", true, true).
+		Find(&routes).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return routes, nil
+}
+
+func (hsdb *HSDatabase) getRoutesByPrefix(pref netip.Prefix) (types.Routes, error) {
+	var routes types.Routes
+	err := hsdb.db.
+		Preload("Node").
+		Preload("Node.User").
+		Where("prefix = ?", types.IPPrefix(pref)).
+		Find(&routes).Error
 	if err != nil {
 		return nil, err
 	}
@@ -40,6 +73,7 @@ func (hsdb *HSDatabase) getNodeAdvertisedRoutes(node *types.Node) (types.Routes,
 	var routes types.Routes
 	err := hsdb.db.
 		Preload("Node").
+		Preload("Node.User").
 		Where("node_id = ? AND advertised = true", node.ID).
 		Find(&routes).Error
 	if err != nil {
@@ -60,6 +94,7 @@ func (hsdb *HSDatabase) getNodeRoutes(node *types.Node) (types.Routes, error) {
 	var routes types.Routes
 	err := hsdb.db.
 		Preload("Node").
+		Preload("Node.User").
 		Where("node_id = ?", node.ID).
 		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -78,7 +113,10 @@ func (hsdb *HSDatabase) GetRoute(id uint64) (*types.Route, error) {
 
 func (hsdb *HSDatabase) getRoute(id uint64) (*types.Route, error) {
 	var route types.Route
-	err := hsdb.db.Preload("Node").First(&route, id).Error
+	err := hsdb.db.
+		Preload("Node").
+		Preload("Node.User").
+		First(&route, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -122,37 +160,60 @@ func (hsdb *HSDatabase) DisableRoute(id uint64) error {
 		return err
 	}
 
+	var routes types.Routes
+	node := route.Node
+
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
 	if !route.IsExitRoute() {
+		err = hsdb.failoverRouteWithNotify(route)
+		if err != nil {
+			return err
+		}
+
 		route.Enabled = false
 		route.IsPrimary = false
 		err = hsdb.db.Save(route).Error
 		if err != nil {
 			return err
 		}
+	} else {
+		routes, err = hsdb.getNodeRoutes(&node)
+		if err != nil {
+			return err
+		}
 
-		return hsdb.handlePrimarySubnetFailover()
-	}
-
-	routes, err := hsdb.getNodeRoutes(&route.Node)
-	if err != nil {
-		return err
-	}
-
-	for i := range routes {
-		if routes[i].IsExitRoute() {
-			routes[i].Enabled = false
-			routes[i].IsPrimary = false
-			err = hsdb.db.Save(&routes[i]).Error
-			if err != nil {
-				return err
+		for i := range routes {
+			if routes[i].IsExitRoute() {
+				routes[i].Enabled = false
+				routes[i].IsPrimary = false
+				err = hsdb.db.Save(&routes[i]).Error
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
 
-	return hsdb.handlePrimarySubnetFailover()
+	if routes == nil {
+		routes, err = hsdb.getNodeRoutes(&node)
+		if err != nil {
+			return err
+		}
+	}
+
+	node.Routes = routes
+
+	stateUpdate := types.StateUpdate{
+		Type:        types.StatePeerChanged,
+		ChangeNodes: types.Nodes{&node},
+	}
+	if stateUpdate.Valid() {
+		hsdb.notifier.NotifyAll(stateUpdate)
+	}
+
+	return nil
 }
 
 func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
@@ -164,34 +225,57 @@ func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
 		return err
 	}
 
+	var routes types.Routes
+	node := route.Node
+
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
 	if !route.IsExitRoute() {
+		err := hsdb.failoverRouteWithNotify(route)
+		if err != nil {
+			return nil
+		}
+
 		if err := hsdb.db.Unscoped().Delete(&route).Error; err != nil {
 			return err
 		}
+	} else {
+		routes, err := hsdb.getNodeRoutes(&node)
+		if err != nil {
+			return err
+		}
 
-		return hsdb.handlePrimarySubnetFailover()
-	}
+		routesToDelete := types.Routes{}
+		for _, r := range routes {
+			if r.IsExitRoute() {
+				routesToDelete = append(routesToDelete, r)
+			}
+		}
 
-	routes, err := hsdb.getNodeRoutes(&route.Node)
-	if err != nil {
-		return err
-	}
-
-	routesToDelete := types.Routes{}
-	for _, r := range routes {
-		if r.IsExitRoute() {
-			routesToDelete = append(routesToDelete, r)
+		if err := hsdb.db.Unscoped().Delete(&routesToDelete).Error; err != nil {
+			return err
 		}
 	}
 
-	if err := hsdb.db.Unscoped().Delete(&routesToDelete).Error; err != nil {
-		return err
+	if routes == nil {
+		routes, err = hsdb.getNodeRoutes(&node)
+		if err != nil {
+			return err
+		}
 	}
 
-	return hsdb.handlePrimarySubnetFailover()
+	node.Routes = routes
+
+	stateUpdate := types.StateUpdate{
+		Type:        types.StatePeerChanged,
+		ChangeNodes: types.Nodes{&node},
+	}
+	if stateUpdate.Valid() {
+		hsdb.notifier.NotifyAll(stateUpdate)
+	}
+
+	return nil
 }
 
 func (hsdb *HSDatabase) deleteNodeRoutes(node *types.Node) error {
@@ -204,9 +288,13 @@ func (hsdb *HSDatabase) deleteNodeRoutes(node *types.Node) error {
 		if err := hsdb.db.Unscoped().Delete(&routes[i]).Error; err != nil {
 			return err
 		}
+
+		// TODO(kradalby): This is a bit too aggressive, we could probably
+		// figure out which routes needs to be failed over rather than all.
+		hsdb.failoverRouteWithNotify(&routes[i])
 	}
 
-	return hsdb.handlePrimarySubnetFailover()
+	return nil
 }
 
 // isUniquePrefix returns if there is another node providing the same route already.
@@ -322,133 +410,213 @@ func (hsdb *HSDatabase) saveNodeRoutes(node *types.Node) error {
 	return nil
 }
 
-func (hsdb *HSDatabase) HandlePrimarySubnetFailover() error {
-	hsdb.mu.Lock()
-	defer hsdb.mu.Unlock()
-
-	return hsdb.handlePrimarySubnetFailover()
-}
-
-func (hsdb *HSDatabase) handlePrimarySubnetFailover() error {
-	// first, get all the enabled routes
-	var routes types.Routes
-	err := hsdb.db.
-		Preload("Node").
-		Where("advertised = ? AND enabled = ?", true, true).
-		Find(&routes).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Error().Err(err).Msg("error getting routes")
+// EnsureFailoverRouteIsAvailable takes a node and checks if the node's route
+// currently have a functioning host that exposes the network.
+func (hsdb *HSDatabase) EnsureFailoverRouteIsAvailable(node *types.Node) error {
+	nodeRoutes, err := hsdb.getNodeRoutes(node)
+	if err != nil {
+		return nil
 	}
 
-	changedNodes := make(types.Nodes, 0)
-	for pos, route := range routes {
-		if route.IsExitRoute() {
-			continue
+	for _, nodeRoute := range nodeRoutes {
+		routes, err := hsdb.getRoutesByPrefix(netip.Prefix(nodeRoute.Prefix))
+		if err != nil {
+			return err
 		}
 
-		node := &route.Node
+		for _, route := range routes {
+			if route.IsPrimary {
+				// if we have a primary route, and the node is connected
+				// nothing needs to be done.
+				if hsdb.notifier.IsConnected(route.Node.MachineKey) {
+					continue
+				}
 
-		if !route.IsPrimary {
-			_, err := hsdb.getPrimaryRoute(netip.Prefix(route.Prefix))
-			if hsdb.isUniquePrefix(route) || errors.Is(err, gorm.ErrRecordNotFound) {
-				log.Info().
-					Str("prefix", netip.Prefix(route.Prefix).String()).
-					Str("node", route.Node.GivenName).
-					Msg("Setting primary route")
-				routes[pos].IsPrimary = true
-				err := hsdb.db.Save(&routes[pos]).Error
+				// if not, we need to failover the route
+				err := hsdb.failoverRouteWithNotify(&route)
 				if err != nil {
-					log.Error().Err(err).Msg("error marking route as primary")
-
 					return err
 				}
-
-				changedNodes = append(changedNodes, node)
-
-				continue
 			}
 		}
-
-		if route.IsPrimary {
-			if route.Node.IsOnline() {
-				continue
-			}
-
-			// node offline, find a new primary
-			log.Info().
-				Str("node", route.Node.Hostname).
-				Str("prefix", netip.Prefix(route.Prefix).String()).
-				Msgf("node offline, finding a new primary subnet")
-
-			// find a new primary route
-			var newPrimaryRoutes types.Routes
-			err := hsdb.db.
-				Preload("Node").
-				Where("prefix = ? AND node_id != ? AND advertised = ? AND enabled = ?",
-					route.Prefix,
-					route.NodeID,
-					true, true).
-				Find(&newPrimaryRoutes).Error
-			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				log.Error().Err(err).Msg("error finding new primary route")
-
-				return err
-			}
-
-			var newPrimaryRoute *types.Route
-			for pos, r := range newPrimaryRoutes {
-				if r.Node.IsOnline() {
-					newPrimaryRoute = &newPrimaryRoutes[pos]
-
-					break
-				}
-			}
-
-			if newPrimaryRoute == nil {
-				log.Warn().
-					Str("node", route.Node.Hostname).
-					Str("prefix", netip.Prefix(route.Prefix).String()).
-					Msgf("no alternative primary route found")
-
-				continue
-			}
-
-			log.Info().
-				Str("old_node", route.Node.Hostname).
-				Str("prefix", netip.Prefix(route.Prefix).String()).
-				Str("new_node", newPrimaryRoute.Node.Hostname).
-				Msgf("found new primary route")
-
-			// disable the old primary route
-			routes[pos].IsPrimary = false
-			err = hsdb.db.Save(&routes[pos]).Error
-			if err != nil {
-				log.Error().Err(err).Msg("error disabling old primary route")
-
-				return err
-			}
-
-			// enable the new primary route
-			newPrimaryRoute.IsPrimary = true
-			err = hsdb.db.Save(&newPrimaryRoute).Error
-			if err != nil {
-				log.Error().Err(err).Msg("error enabling new primary route")
-
-				return err
-			}
-
-			changedNodes = append(changedNodes, node)
-		}
-	}
-
-	if len(changedNodes) > 0 {
-		hsdb.notifier.NotifyAll(types.StateUpdate{
-			Type:    types.StatePeerChanged,
-			Changed: changedNodes,
-		})
 	}
 
 	return nil
+}
+
+func (hsdb *HSDatabase) FailoverNodeRoutesWithNotify(node *types.Node) error {
+	routes, err := hsdb.getNodeRoutes(node)
+	if err != nil {
+		return nil
+	}
+
+	var changedKeys []key.MachinePublic
+
+	for _, route := range routes {
+		changed, err := hsdb.failoverRoute(&route)
+		if err != nil {
+			return err
+		}
+
+		changedKeys = append(changedKeys, changed...)
+	}
+
+	changedKeys = lo.Uniq(changedKeys)
+
+	var nodes types.Nodes
+
+	for _, key := range changedKeys {
+		node, err := hsdb.GetNodeByMachineKey(key)
+		if err != nil {
+			return err
+		}
+
+		nodes = append(nodes, node)
+	}
+
+	if nodes != nil {
+		stateUpdate := types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: nodes,
+		}
+		if stateUpdate.Valid() {
+			hsdb.notifier.NotifyAll(stateUpdate)
+		}
+	}
+
+	return nil
+}
+
+func (hsdb *HSDatabase) failoverRouteWithNotify(r *types.Route) error {
+	changedKeys, err := hsdb.failoverRoute(r)
+	if err != nil {
+		return err
+	}
+
+	if len(changedKeys) == 0 {
+		return nil
+	}
+
+	var nodes types.Nodes
+
+	log.Trace().
+		Str("hostname", r.Node.Hostname).
+		Msg("loading machines with new primary routes from db")
+
+	for _, key := range changedKeys {
+		node, err := hsdb.getNodeByMachineKey(key)
+		if err != nil {
+			return err
+		}
+
+		nodes = append(nodes, node)
+	}
+
+	log.Trace().
+		Str("hostname", r.Node.Hostname).
+		Msg("notifying peers about primary route change")
+
+	if nodes != nil {
+		stateUpdate := types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: nodes,
+		}
+		if stateUpdate.Valid() {
+			hsdb.notifier.NotifyAll(stateUpdate)
+		}
+	}
+
+	log.Trace().
+		Str("hostname", r.Node.Hostname).
+		Msg("notified peers about primary route change")
+
+	return nil
+}
+
+// failoverRoute takes a route that is no longer available,
+// this can be either from:
+// - being disabled
+// - being deleted
+// - host going offline
+//
+// and tries to find a new route to take over its place.
+// If the given route was not primary, it returns early.
+func (hsdb *HSDatabase) failoverRoute(r *types.Route) ([]key.MachinePublic, error) {
+	if r == nil {
+		return nil, nil
+	}
+
+	// This route is not a primary route, and it isnt
+	// being served to nodes.
+	if !r.IsPrimary {
+		return nil, nil
+	}
+
+	// We do not have to failover exit nodes
+	if r.IsExitRoute() {
+		return nil, nil
+	}
+
+	routes, err := hsdb.getRoutesByPrefix(netip.Prefix(r.Prefix))
+	if err != nil {
+		return nil, err
+	}
+
+	var newPrimary *types.Route
+
+	// Find a new suitable route
+	for idx, route := range routes {
+		if r.ID == route.ID {
+			continue
+		}
+
+		if hsdb.notifier.IsConnected(route.Node.MachineKey) {
+			newPrimary = &routes[idx]
+			break
+		}
+	}
+
+	// If a new route was not found/available,
+	// return with an error.
+	// We do not want to update the database as
+	// the one currently marked as primary is the
+	// best we got.
+	if newPrimary == nil {
+		return nil, nil
+	}
+
+	log.Trace().
+		Str("hostname", newPrimary.Node.Hostname).
+		Msg("found new primary, updating db")
+
+	// Remove primary from the old route
+	r.IsPrimary = false
+	err = hsdb.db.Save(&r).Error
+	if err != nil {
+		log.Error().Err(err).Msg("error disabling new primary route")
+
+		return nil, err
+	}
+
+	log.Trace().
+		Str("hostname", newPrimary.Node.Hostname).
+		Msg("removed primary from old route")
+
+	// Set primary for the new primary
+	newPrimary.IsPrimary = true
+	err = hsdb.db.Save(&newPrimary).Error
+	if err != nil {
+		log.Error().Err(err).Msg("error enabling new primary route")
+
+		return nil, err
+	}
+
+	log.Trace().
+		Str("hostname", newPrimary.Node.Hostname).
+		Msg("set primary to new route")
+
+	// Return a list of the machinekeys of the changed nodes.
+	return []key.MachinePublic{r.Node.MachineKey, newPrimary.Node.MachineKey}, nil
 }
 
 // EnableAutoApprovedRoutes enables any routes advertised by a node that match the ACL autoApprovers policy.

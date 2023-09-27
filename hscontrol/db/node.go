@@ -176,6 +176,12 @@ func (hsdb *HSDatabase) GetNodeByMachineKey(
 	hsdb.mu.RLock()
 	defer hsdb.mu.RUnlock()
 
+	return hsdb.getNodeByMachineKey(machineKey)
+}
+
+func (hsdb *HSDatabase) getNodeByMachineKey(
+	machineKey key.MachinePublic,
+) (*types.Node, error) {
 	mach := types.Node{}
 	if result := hsdb.db.
 		Preload("AuthKey").
@@ -265,10 +271,13 @@ func (hsdb *HSDatabase) SetTags(
 		return fmt.Errorf("failed to update tags for node in the database: %w", err)
 	}
 
-	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
-		Type:    types.StatePeerChanged,
-		Changed: types.Nodes{node},
-	}, node.MachineKey.String())
+	stateUpdate := types.StateUpdate{
+		Type:        types.StatePeerChanged,
+		ChangeNodes: types.Nodes{node},
+	}
+	if stateUpdate.Valid() {
+		hsdb.notifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+	}
 
 	return nil
 }
@@ -301,10 +310,13 @@ func (hsdb *HSDatabase) RenameNode(node *types.Node, newName string) error {
 		return fmt.Errorf("failed to rename node in the database: %w", err)
 	}
 
-	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
-		Type:    types.StatePeerChanged,
-		Changed: types.Nodes{node},
-	}, node.MachineKey.String())
+	stateUpdate := types.StateUpdate{
+		Type:        types.StatePeerChanged,
+		ChangeNodes: types.Nodes{node},
+	}
+	if stateUpdate.Valid() {
+		hsdb.notifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+	}
 
 	return nil
 }
@@ -327,10 +339,18 @@ func (hsdb *HSDatabase) nodeSetExpiry(node *types.Node, expiry time.Time) error 
 		)
 	}
 
-	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
-		Type:    types.StatePeerChanged,
-		Changed: types.Nodes{node},
-	}, node.MachineKey.String())
+	stateUpdate := types.StateUpdate{
+		Type: types.StatePeerChangedPatch,
+		ChangePatches: []*tailcfg.PeerChange{
+			{
+				NodeID:    tailcfg.NodeID(node.ID),
+				KeyExpiry: &expiry,
+			},
+		},
+	}
+	if stateUpdate.Valid() {
+		hsdb.notifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+	}
 
 	return nil
 }
@@ -354,10 +374,13 @@ func (hsdb *HSDatabase) deleteNode(node *types.Node) error {
 		return err
 	}
 
-	hsdb.notifier.NotifyAll(types.StateUpdate{
+	stateUpdate := types.StateUpdate{
 		Type:    types.StatePeerRemoved,
 		Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
-	})
+	}
+	if stateUpdate.Valid() {
+		hsdb.notifier.NotifyAll(stateUpdate)
+	}
 
 	return nil
 }
@@ -629,20 +652,6 @@ func (hsdb *HSDatabase) IsRoutesEnabled(node *types.Node, routeStr string) bool 
 	return false
 }
 
-func (hsdb *HSDatabase) ListOnlineNodes(
-	node *types.Node,
-) (map[tailcfg.NodeID]bool, error) {
-	hsdb.mu.RLock()
-	defer hsdb.mu.RUnlock()
-
-	peers, err := hsdb.listPeers(node)
-	if err != nil {
-		return nil, err
-	}
-
-	return peers.OnlineNodeMap(), nil
-}
-
 // enableRoutes enables new routes based on a list of new routes.
 func (hsdb *HSDatabase) enableRoutes(node *types.Node, routeStrs ...string) error {
 	newRoutes := make([]netip.Prefix, len(routeStrs))
@@ -694,10 +703,29 @@ func (hsdb *HSDatabase) enableRoutes(node *types.Node, routeStrs ...string) erro
 		}
 	}
 
-	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
-		Type:    types.StatePeerChanged,
-		Changed: types.Nodes{node},
-	}, node.MachineKey.String())
+	// Ensure the node has the latest routes when notifying the other
+	// nodes
+	nRoutes, err := hsdb.getNodeRoutes(node)
+	if err != nil {
+		return fmt.Errorf("failed to read back routes: %w", err)
+	}
+
+	node.Routes = nRoutes
+
+	log.Trace().
+		Caller().
+		Str("node", node.Hostname).
+		Strs("routes", routeStrs).
+		Msg("enabling routes")
+
+	stateUpdate := types.StateUpdate{
+		Type:        types.StatePeerChanged,
+		ChangeNodes: types.Nodes{node},
+	}
+	if stateUpdate.Valid() {
+		hsdb.notifier.NotifyWithIgnore(
+			stateUpdate, node.MachineKey.String())
+	}
 
 	return nil
 }
@@ -728,7 +756,10 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 	return normalizedHostname, nil
 }
 
-func (hsdb *HSDatabase) GenerateGivenName(mkey key.MachinePublic, suppliedName string) (string, error) {
+func (hsdb *HSDatabase) GenerateGivenName(
+	mkey key.MachinePublic,
+	suppliedName string,
+) (string, error) {
 	hsdb.mu.RLock()
 	defer hsdb.mu.RUnlock()
 
@@ -848,8 +879,12 @@ func (hsdb *HSDatabase) ExpireExpiredNodes(lastCheck time.Time) time.Time {
 				expired = append(expired, tailcfg.NodeID(node.ID))
 
 				now := time.Now()
-				err := hsdb.nodeSetExpiry(nodes[index], now)
-				if err != nil {
+				// Do not use setNodeExpiry as that has a notifier hook, which
+				// can cause a deadlock, we are updating all changed nodes later
+				// and there is no point in notifiying twice.
+				if err := hsdb.db.Model(nodes[index]).Updates(types.Node{
+					Expiry: &now,
+				}).Error; err != nil {
 					log.Error().
 						Err(err).
 						Str("node", node.Hostname).
@@ -864,6 +899,7 @@ func (hsdb *HSDatabase) ExpireExpiredNodes(lastCheck time.Time) time.Time {
 			}
 		}
 
+		// TODO(kradalby): Should these be removed or changed(expired)?
 		if len(expired) > 0 {
 			hsdb.notifier.NotifyAll(types.StateUpdate{
 				Type:    types.StatePeerRemoved,

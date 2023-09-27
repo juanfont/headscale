@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"testing"
 	"time"
 
@@ -22,7 +21,7 @@ func executeAndUnmarshal[T any](headscale ControlServer, command []string, resul
 
 	err = json.Unmarshal([]byte(str), result)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal: %s\n command err: %s", err, str)
 	}
 
 	return nil
@@ -178,7 +177,11 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	assert.Equal(
 		t,
 		[]string{keys[0].GetId(), keys[1].GetId(), keys[2].GetId()},
-		[]string{listedPreAuthKeys[1].GetId(), listedPreAuthKeys[2].GetId(), listedPreAuthKeys[3].GetId()},
+		[]string{
+			listedPreAuthKeys[1].GetId(),
+			listedPreAuthKeys[2].GetId(),
+			listedPreAuthKeys[3].GetId(),
+		},
 	)
 
 	assert.NotEmpty(t, listedPreAuthKeys[1].GetKey())
@@ -382,141 +385,6 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 3)
-}
-
-func TestEnablingRoutes(t *testing.T) {
-	IntegrationSkip(t)
-	t.Parallel()
-
-	user := "enable-routing"
-
-	scenario, err := NewScenario()
-	assertNoErrf(t, "failed to create scenario: %s", err)
-	defer scenario.Shutdown()
-
-	spec := map[string]int{
-		user: 3,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
-	assertNoErrHeadscaleEnv(t, err)
-
-	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
-
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
-
-	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
-
-	// advertise routes using the up command
-	for i, client := range allClients {
-		routeStr := fmt.Sprintf("10.0.%d.0/24", i)
-		command := []string{
-			"tailscale",
-			"set",
-			"--advertise-routes=" + routeStr,
-		}
-		_, _, err := client.Execute(command)
-		assertNoErrf(t, "failed to advertise route: %s", err)
-	}
-
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
-
-	var routes []*v1.Route
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"routes",
-			"list",
-			"--output",
-			"json",
-		},
-		&routes,
-	)
-
-	assertNoErr(t, err)
-	assert.Len(t, routes, 3)
-
-	for _, route := range routes {
-		assert.Equal(t, route.GetAdvertised(), true)
-		assert.Equal(t, route.GetEnabled(), false)
-		assert.Equal(t, route.GetIsPrimary(), false)
-	}
-
-	for _, route := range routes {
-		_, err = headscale.Execute(
-			[]string{
-				"headscale",
-				"routes",
-				"enable",
-				"--route",
-				strconv.Itoa(int(route.GetId())),
-			})
-		assertNoErr(t, err)
-	}
-
-	var enablingRoutes []*v1.Route
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"routes",
-			"list",
-			"--output",
-			"json",
-		},
-		&enablingRoutes,
-	)
-	assertNoErr(t, err)
-	assert.Len(t, enablingRoutes, 3)
-
-	for _, route := range enablingRoutes {
-		assert.Equal(t, route.GetAdvertised(), true)
-		assert.Equal(t, route.GetEnabled(), true)
-		assert.Equal(t, route.GetIsPrimary(), true)
-	}
-
-	routeIDToBeDisabled := enablingRoutes[0].GetId()
-
-	_, err = headscale.Execute(
-		[]string{
-			"headscale",
-			"routes",
-			"disable",
-			"--route",
-			strconv.Itoa(int(routeIDToBeDisabled)),
-		})
-	assertNoErr(t, err)
-
-	var disablingRoutes []*v1.Route
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"routes",
-			"list",
-			"--output",
-			"json",
-		},
-		&disablingRoutes,
-	)
-	assertNoErr(t, err)
-
-	for _, route := range disablingRoutes {
-		assert.Equal(t, true, route.GetAdvertised())
-
-		if route.GetId() == routeIDToBeDisabled {
-			assert.Equal(t, route.GetEnabled(), false)
-			assert.Equal(t, route.GetIsPrimary(), false)
-		} else {
-			assert.Equal(t, route.GetEnabled(), true)
-			assert.Equal(t, route.GetIsPrimary(), true)
-		}
-	}
 }
 
 func TestApiKeyCommand(t *testing.T) {

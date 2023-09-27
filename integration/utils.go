@@ -26,6 +26,13 @@ func assertNoErrf(t *testing.T, msg string, err error) {
 	}
 }
 
+func assertNotNil(t *testing.T, thing interface{}) {
+	t.Helper()
+	if thing == nil {
+		t.Fatal("got unexpected nil")
+	}
+}
+
 func assertNoErrHeadscaleEnv(t *testing.T, err error) {
 	t.Helper()
 	assertNoErrf(t, "failed to create headscale environment: %s", err)

@@ -493,7 +493,7 @@ func nodesToPtables(
 		"Ephemeral",
 		"Last seen",
 		"Expiration",
-		"Online",
+		"Connected",
 		"Expired",
 	}
 	if showTags {
