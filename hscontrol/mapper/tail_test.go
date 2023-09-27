@@ -78,7 +78,6 @@ func TestTailNode(t *testing.T) {
 					Name: "mini",
 				},
 				ForcedTags: []string{},
-				AuthKeyID:  0,
 				AuthKey:    &types.PreAuthKey{},
 				LastSeen:   &lastSeen,
 				Expiry:     &expire,

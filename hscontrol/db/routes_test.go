@@ -27,6 +27,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		RoutableIPs: []netip.Prefix{route},
 	}
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -35,10 +36,11 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		Hostname:       "test_get_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		HostInfo:       types.HostInfo(hostInfo),
 	}
-	db.db.Save(&node)
+	trx := db.db.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
@@ -78,6 +80,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		RoutableIPs: []netip.Prefix{route, route2},
 	}
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -86,10 +89,11 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		HostInfo:       types.HostInfo(hostInfo),
 	}
-	db.db.Save(&node)
+	trx := db.db.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
@@ -152,6 +156,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	hostInfo1 := tailcfg.Hostinfo{
 		RoutableIPs: []netip.Prefix{route, route2},
 	}
+	pakID := uint(pak.ID)
 	node1 := types.Node{
 		ID:             1,
 		MachineKey:     "foo",
@@ -160,10 +165,11 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		HostInfo:       types.HostInfo(hostInfo1),
 	}
-	db.db.Save(&node1)
+	trx := db.db.Save(&node1)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.SaveNodeRoutes(&node1)
 	c.Assert(err, check.IsNil)
@@ -185,10 +191,11 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		HostInfo:       types.HostInfo(hostInfo2),
 	}
-	db.db.Save(&node2)
+	trx = db.db.Save(&node2)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.SaveNodeRoutes(&node2)
 	c.Assert(err, check.IsNil)
@@ -238,6 +245,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	}
 
 	now := time.Now()
+	pakID := uint(pak.ID)
 	node1 := types.Node{
 		ID:             1,
 		MachineKey:     "foo",
@@ -246,11 +254,12 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		HostInfo:       types.HostInfo(hostInfo1),
 		LastSeen:       &now,
 	}
-	db.db.Save(&node1)
+	trx := db.db.Save(&node1)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.SaveNodeRoutes(&node1)
 	c.Assert(err, check.IsNil)
@@ -283,11 +292,12 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		HostInfo:       types.HostInfo(hostInfo2),
 		LastSeen:       &now,
 	}
-	db.db.Save(&node2)
+	trx = db.db.Save(&node2)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.saveNodeRoutes(&node2)
 	c.Assert(err, check.IsNil)
@@ -380,6 +390,7 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	}
 
 	now := time.Now()
+	pakID := uint(pak.ID)
 	node1 := types.Node{
 		ID:             1,
 		MachineKey:     "foo",
@@ -388,11 +399,12 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		HostInfo:       types.HostInfo(hostInfo1),
 		LastSeen:       &now,
 	}
-	db.db.Save(&node1)
+	trx := db.db.Save(&node1)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.SaveNodeRoutes(&node1)
 	c.Assert(err, check.IsNil)

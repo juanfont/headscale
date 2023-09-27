@@ -33,6 +33,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -41,7 +42,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		IPAddresses:    ips,
 	}
 	db.db.Save(&node)
@@ -81,6 +82,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 		_, err = db.GetNode("test", "testnode")
 		c.Assert(err, check.NotNil)
 
+		pakID := uint(pak.ID)
 		node := types.Node{
 			ID:             uint64(index),
 			MachineKey:     "foo",
@@ -89,7 +91,7 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 			Hostname:       "testnode",
 			UserID:         user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
-			AuthKeyID:      uint(pak.ID),
+			AuthKeyID:      &pakID,
 			IPAddresses:    ips,
 		}
 		db.db.Save(&node)
@@ -171,6 +173,7 @@ func (s *Suite) TestGetAvailableIpNodeWithoutIP(c *check.C) {
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -179,7 +182,7 @@ func (s *Suite) TestGetAvailableIpNodeWithoutIP(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 	db.db.Save(&node)
 

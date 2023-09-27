@@ -34,6 +34,7 @@ State management has been improved [#1492](https://github.com/juanfont/headscale
 Use error group handling to ensure tests actually pass [#1535](https://github.com/juanfont/headscale/pull/1535) based on [#1460](https://github.com/juanfont/headscale/pull/1460)
 Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) taken from [#1480](https://github.com/juanfont/headscale/pull/1480)
 Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
+Restore foreign keys and add constraints [#1562](https://github.com/juanfont/headscale/pull/1562)
 
 ## 0.22.3 (2023-05-12)
 

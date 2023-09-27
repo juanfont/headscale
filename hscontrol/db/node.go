@@ -350,7 +350,7 @@ func (hsdb *HSDatabase) deleteNode(node *types.Node) error {
 	}
 
 	// Unscoped causes the node to be fully removed from the database.
-	if err := hsdb.db.Unscoped().Delete(&node).Error; err != nil {
+	if err := hsdb.db.Unscoped().Delete(&types.Node{}, node.ID).Error; err != nil {
 		return err
 	}
 

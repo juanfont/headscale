@@ -98,6 +98,7 @@ func NewHeadscaleDatabase(
 	// node was registered.
 	_ = dbConn.Migrator().RenameColumn(&types.Node{}, "nickname", "given_name")
 
+	dbConn.Model(&types.Node{}).Where("auth_key_id = ?", 0).Update("auth_key_id", nil)
 	// If the MacNodehine table has a column for registered,
 	// find all occourences of "false" and drop them. Then
 	// remove the column.
@@ -273,8 +274,7 @@ func openDB(dbType, connectionAddr string, debug bool) (*gorm.DB, error) {
 		db, err := gorm.Open(
 			sqlite.Open(connectionAddr+"?_synchronous=1&_journal_mode=WAL"),
 			&gorm.Config{
-				DisableForeignKeyConstraintWhenMigrating: true,
-				Logger:                                   dbLogger,
+				Logger: dbLogger,
 			},
 		)
 
@@ -292,8 +292,7 @@ func openDB(dbType, connectionAddr string, debug bool) (*gorm.DB, error) {
 
 	case Postgres:
 		return gorm.Open(postgres.Open(connectionAddr), &gorm.Config{
-			DisableForeignKeyConstraintWhenMigrating: true,
-			Logger:                                   dbLogger,
+			Logger: dbLogger,
 		})
 	}
 

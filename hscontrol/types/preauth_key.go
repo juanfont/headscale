@@ -14,11 +14,11 @@ type PreAuthKey struct {
 	ID        uint64 `gorm:"primary_key"`
 	Key       string
 	UserID    uint
-	User      User
+	User      User `gorm:"constraint:OnDelete:CASCADE;"`
 	Reusable  bool
-	Ephemeral bool `gorm:"default:false"`
-	Used      bool `gorm:"default:false"`
-	ACLTags   []PreAuthKeyACLTag
+	Ephemeral bool               `gorm:"default:false"`
+	Used      bool               `gorm:"default:false"`
+	ACLTags   []PreAuthKeyACLTag `gorm:"constraint:OnDelete:CASCADE;"`
 
 	CreatedAt  *time.Time
 	Expiration *time.Time

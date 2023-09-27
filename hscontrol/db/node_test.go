@@ -25,6 +25,7 @@ func (s *Suite) TestGetNode(c *check.C) {
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
+	pakID := uint(pak.ID)
 	node := &types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -33,9 +34,10 @@ func (s *Suite) TestGetNode(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.db.Save(node)
+	trx := db.db.Save(node)
+	c.Assert(trx.Error, check.IsNil)
 
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.IsNil)
@@ -51,6 +53,7 @@ func (s *Suite) TestGetNodeByID(c *check.C) {
 	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -59,9 +62,10 @@ func (s *Suite) TestGetNodeByID(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.db.Save(&node)
+	trx := db.db.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)
@@ -80,6 +84,7 @@ func (s *Suite) TestGetNodeByNodeKey(c *check.C) {
 	nodeKey := key.NewNode()
 	machineKey := key.NewMachine()
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
@@ -88,9 +93,10 @@ func (s *Suite) TestGetNodeByNodeKey(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.db.Save(&node)
+	trx := db.db.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	_, err = db.GetNodeByNodeKey(nodeKey.Public())
 	c.Assert(err, check.IsNil)
@@ -111,6 +117,7 @@ func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
 
 	machineKey := key.NewMachine()
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
@@ -119,9 +126,10 @@ func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.db.Save(&node)
+	trx := db.db.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	_, err = db.GetNodeByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
 	c.Assert(err, check.IsNil)
@@ -138,9 +146,9 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 		Hostname:       "testnode3",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(1),
 	}
-	db.db.Save(&node)
+	trx := db.db.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.DeleteNode(&node)
 	c.Assert(err, check.IsNil)
@@ -159,6 +167,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
+	pakID := uint(pak.ID)
 	for index := 0; index <= 10; index++ {
 		node := types.Node{
 			ID:             uint64(index),
@@ -168,9 +177,10 @@ func (s *Suite) TestListPeers(c *check.C) {
 			Hostname:       "testnode" + strconv.Itoa(index),
 			UserID:         user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
-			AuthKeyID:      uint(pak.ID),
+			AuthKeyID:      &pakID,
 		}
-		db.db.Save(&node)
+		trx := db.db.Save(&node)
+		c.Assert(trx.Error, check.IsNil)
 	}
 
 	node0ByID, err := db.GetNodeByID(0)
@@ -205,6 +215,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Assert(err, check.NotNil)
 
 	for index := 0; index <= 10; index++ {
+		pakID := uint(stor[index%2].key.ID)
 		node := types.Node{
 			ID:         uint64(index),
 			MachineKey: "foo" + strconv.Itoa(index),
@@ -216,9 +227,10 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 			Hostname:       "testnode" + strconv.Itoa(index),
 			UserID:         stor[index%2].user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
-			AuthKeyID:      uint(stor[index%2].key.ID),
+			AuthKeyID:      &pakID,
 		}
-		db.db.Save(&node)
+		trx := db.db.Save(&node)
+		c.Assert(trx.Error, check.IsNil)
 	}
 
 	aclPolicy := &policy.ACLPolicy{
@@ -288,6 +300,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
+	pakID := uint(pak.ID)
 	node := &types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -296,7 +309,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		Expiry:         &time.Time{},
 	}
 	db.db.Save(node)
@@ -345,6 +358,7 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	_, err = db.GetNode("user-1", "testnode")
 	c.Assert(err, check.NotNil)
 
+	pakID := uint(pak.ID)
 	node := &types.Node{
 		ID:             0,
 		MachineKey:     "node-key-1",
@@ -354,9 +368,11 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 		GivenName:      "hostname-1",
 		UserID:         user1.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.db.Save(node)
+
+	trx := db.db.Save(node)
+	c.Assert(trx.Error, check.IsNil)
 
 	givenName, err := db.GenerateGivenName("node-key-2", "hostname-2")
 	comment := check.Commentf("Same user, unique nodes, unique hostnames, no conflict")
@@ -389,6 +405,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
+	pakID := uint(pak.ID)
 	node := &types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -397,9 +414,11 @@ func (s *Suite) TestSetTags(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.db.Save(node)
+
+	trx := db.db.Save(node)
+	c.Assert(trx.Error, check.IsNil)
 
 	// assign simple tags
 	sTags := []string{"tag:test", "tag:foo"}
@@ -572,6 +591,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	// Check if a subprefix of an autoapproved route is approved
 	route2 := netip.MustParsePrefix("10.11.0.0/24")
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
@@ -580,7 +600,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		Hostname:       "test",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		HostInfo: types.HostInfo{
 			RequestTags: []string{"tag:exit"},
 			RoutableIPs: []netip.Prefix{defaultRouteV4, defaultRouteV6, route1, route2},
@@ -588,7 +608,8 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 	}
 
-	db.db.Save(&node)
+	trx := db.db.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
