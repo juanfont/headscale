@@ -229,6 +229,7 @@ func (m *Mapper) fullMapResponse(
 		peers,
 		m.baseDomain,
 		m.dnsCfg,
+		m.randomClientPort,
 	)
 	if err != nil {
 		return nil, err
@@ -329,6 +330,7 @@ func (m *Mapper) PeerChangedResponse(
 		changed,
 		m.baseDomain,
 		m.dnsCfg,
+		m.randomClientPort,
 	)
 	if err != nil {
 		return nil, err
@@ -515,7 +517,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, m.capVer, pol, m.dnsCfg, m.baseDomain)
+	tailnode, err := tailNode(node, m.capVer, pol, m.dnsCfg, m.baseDomain, m.randomClientPort)
 	if err != nil {
 		return nil, err
 	}
@@ -569,6 +571,7 @@ func appendPeerChanges(
 	changed types.Nodes,
 	baseDomain string,
 	dnsCfg *tailcfg.DNSConfig,
+	randomClientPort bool,
 ) error {
 	fullChange := len(peers) == len(changed)
 
@@ -599,7 +602,7 @@ func appendPeerChanges(
 		peers,
 	)
 
-	tailPeers, err := tailNodes(changed, capVer, pol, dnsCfg, baseDomain)
+	tailPeers, err := tailNodes(changed, capVer, pol, dnsCfg, baseDomain, randomClientPort)
 	if err != nil {
 		return err
 	}

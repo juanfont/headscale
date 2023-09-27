@@ -19,6 +19,7 @@ func tailNodes(
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,
+	randomClientPort bool,
 ) ([]*tailcfg.Node, error) {
 	tNodes := make([]*tailcfg.Node, len(nodes))
 
@@ -29,6 +30,7 @@ func tailNodes(
 			pol,
 			dnsConfig,
 			baseDomain,
+			randomClientPort,
 		)
 		if err != nil {
 			return nil, err
@@ -48,6 +50,7 @@ func tailNode(
 	pol *policy.ACLPolicy,
 	dnsConfig *tailcfg.DNSConfig,
 	baseDomain string,
+	randomClientPort bool,
 ) (*tailcfg.Node, error) {
 	nodeKey, err := node.NodePublicKey()
 	if err != nil {
@@ -146,11 +149,19 @@ func tailNode(
 			tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
 			tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 		}
+
+		if randomClientPort {
+			tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
+		}
 	} else {
 		tNode.Capabilities = []tailcfg.NodeCapability{
 			tailcfg.CapabilityFileSharing,
 			tailcfg.CapabilityAdmin,
 			tailcfg.CapabilitySSH,
+		}
+
+		if randomClientPort {
+			tNode.Capabilities = append(tNode.Capabilities, tailcfg.NodeAttrRandomizeClientPort)
 		}
 	}
 

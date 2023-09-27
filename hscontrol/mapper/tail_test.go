@@ -170,6 +170,7 @@ func TestTailNode(t *testing.T) {
 				tt.pol,
 				tt.dnsConfig,
 				tt.baseDomain,
+				false,
 			)
 
 			if (err != nil) != tt.wantErr {
