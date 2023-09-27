@@ -527,8 +527,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 	resp.KeepAlive = false
 
 	resp.Debug = &tailcfg.Debug{
-		DisableLogTail:      !m.logtail,
-		RandomizeClientPort: m.randomClientPort,
+		DisableLogTail: !m.logtail,
 	}
 
 	return &resp, nil
