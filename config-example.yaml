@@ -95,6 +95,11 @@ derp:
     # For more details on how this works, check this great article: https://tailscale.com/blog/how-tailscale-works/
     stun_listen_addr: "0.0.0.0:3478"
 
+    # For better connection stability (especially when using an Exit-Node and DNS is not working), 
+    # it is possible to optionall add the public IPv4 and IPv6 address to the Derp-Map using:
+    IPv4: 1.2.3.4
+    IPv6: 2001:db8::1
+
   # List of externally available DERP maps encoded in JSON
   urls:
     - https://controlplane.tailscale.com/derpmap/default

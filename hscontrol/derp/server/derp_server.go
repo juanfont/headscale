@@ -100,6 +100,7 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	localDERPregion.Nodes[0].STUNPort = portSTUN
 
 	log.Info().Caller().Msgf("DERP region: %+v", localDERPregion)
+	log.Info().Caller().Msgf("DERP Nodes[0]: %+v", localDERPregion.Nodes[0])
 
 	return localDERPregion, nil
 }

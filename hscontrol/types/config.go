@@ -288,6 +288,8 @@ func GetDERPConfig() DERPConfig {
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
+	IPv4 := viper.GetString("derp.server.IPv4")
+	IPv6 := viper.GetString("derp.server.IPv6")
 
 	if serverEnabled && stunAddr == "" {
 		log.Fatal().
@@ -324,6 +326,8 @@ func GetDERPConfig() DERPConfig {
 		Paths:            paths,
 		AutoUpdate:       autoUpdate,
 		UpdateFrequency:  updateFrequency,
+		IPv4:             IPv4,
+		IPv6:             IPv6,
 	}
 }
 
