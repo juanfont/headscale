@@ -107,19 +107,19 @@ type OIDCConfig struct {
 }
 
 type DERPConfig struct {
-	ServerEnabled        bool
-	AutomaticallyAddEmbeddedDerpRegion    bool
-	ServerRegionID       int
-	ServerRegionCode     string
-	ServerRegionName     string
-	ServerPrivateKeyPath string
-	STUNAddr             string
-	URLs                 []url.URL
-	Paths                []string
-	AutoUpdate           bool
-	UpdateFrequency      time.Duration
-	IPv4             string
-	IPv6             string
+	ServerEnabled                      bool
+	AutomaticallyAddEmbeddedDerpRegion bool
+	ServerRegionID                     int
+	ServerRegionCode                   string
+	ServerRegionName                   string
+	ServerPrivateKeyPath               string
+	STUNAddr                           string
+	URLs                               []url.URL
+	Paths                              []string
+	AutoUpdate                         bool
+	UpdateFrequency                    time.Duration
+	IPv4                               string
+	IPv6                               string
 }
 
 type LogTailConfig struct {
@@ -290,10 +290,14 @@ func GetDERPConfig() DERPConfig {
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
-	privateKeyPath := util.AbsolutePathFromConfigPath(viper.GetString("derp.server.private_key_path"))
+	privateKeyPath := util.AbsolutePathFromConfigPath(
+		viper.GetString("derp.server.private_key_path"),
+	)
 	ipv4 := viper.GetString("derp.server.ipv4")
 	ipv6 := viper.GetString("derp.server.ipv6")
-	automatically_add_embedded_derp_region := viper.GetBool("derp.server.automatically_add_embedded_derp_region")
+	automatically_add_embedded_derp_region := viper.GetBool(
+		"derp.server.automatically_add_embedded_derp_region",
+	)
 
 	if serverEnabled && stunAddr == "" {
 		log.Fatal().
@@ -326,19 +330,19 @@ func GetDERPConfig() DERPConfig {
 	updateFrequency := viper.GetDuration("derp.update_frequency")
 
 	return DERPConfig{
-		ServerEnabled:        serverEnabled,
-		ServerRegionID:       serverRegionID,
-		ServerRegionCode:     serverRegionCode,
-		ServerRegionName:     serverRegionName,
-		ServerPrivateKeyPath: privateKeyPath,
-		STUNAddr:             stunAddr,
-		URLs:                 urls,
-		Paths:                paths,
-		AutoUpdate:           autoUpdate,
-		UpdateFrequency:      updateFrequency,
-		IPv4:                 ipv4,
-		IPv6:                 ipv6,
-		AutomaticallyAddEmbeddedDerpRegion:    automatically_add_embedded_derp_region,
+		ServerEnabled:                      serverEnabled,
+		ServerRegionID:                     serverRegionID,
+		ServerRegionCode:                   serverRegionCode,
+		ServerRegionName:                   serverRegionName,
+		ServerPrivateKeyPath:               privateKeyPath,
+		STUNAddr:                           stunAddr,
+		URLs:                               urls,
+		Paths:                              paths,
+		AutoUpdate:                         autoUpdate,
+		UpdateFrequency:                    updateFrequency,
+		IPv4:                               ipv4,
+		IPv6:                               ipv6,
+		AutomaticallyAddEmbeddedDerpRegion: automatically_add_embedded_derp_region,
 	}
 }
 
