@@ -298,7 +298,6 @@ func GetDERPConfig() DERPConfig {
 	automaticallyAddEmbeddedDerpRegion := viper.GetBool(
 		"derp.server.automatically_add_embedded_derp_region",
 	)
-
 	if serverEnabled && stunAddr == "" {
 		log.Fatal().
 			Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")

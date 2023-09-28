@@ -94,15 +94,15 @@ derp:
     #
     private_key_path: /var/lib/headscale/derp_server_private.key
 
-    # For better connection stability (especially when using an Exit-Node and DNS is not working),
-    # it is possible to optionall add the public IPv4 and IPv6 address to the Derp-Map using:
-    ipv4: 1.2.3.4
-    ipv6: 2001:db8::1
-
     # This flag can be used, so the DERP map entry for the embedded DERP server is not written automatically,
     # it enables the creation of your very own DERP map entry using a locally available file with the parameter DERP.paths
     # If you enable the DERP server and set this to false, it is required to add the DERP server to the DERP map using DERP.paths
     automatically_add_embedded_derp_region: true
+
+    # For better connection stability (especially when using an Exit-Node and DNS is not working),
+    # it is possible to optionall add the public IPv4 and IPv6 address to the Derp-Map using:
+    ipv4: 1.2.3.4
+    ipv6: 2001:db8::1
 
   # List of externally available DERP maps encoded in JSON
   urls:
