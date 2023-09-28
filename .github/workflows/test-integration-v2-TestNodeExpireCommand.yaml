@@ -35,9 +35,13 @@ jobs:
             config-example.yaml
 
       - name: Run TestNodeExpireCommand
+        uses: Wandalen/wretry.action@master
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
-            nix develop --command -- docker run \
+        with:
+          attempt_limit: 5
+          command: |
+              nix develop --command -- docker run \
               --tty --rm \
               --volume ~/.cache/hs-integration-go:/go \
               --name headscale-test-suite \
