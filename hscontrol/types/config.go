@@ -109,6 +109,7 @@ type OIDCConfig struct {
 
 type DERPConfig struct {
 	ServerEnabled    bool
+	ManualDerpMap    bool
 	ServerRegionID   int
 	ServerRegionCode string
 	ServerRegionName string
@@ -171,6 +172,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
+	viper.SetDefault("derp.server.manual_derp_map", false)
 
 	viper.SetDefault("unix_socket", "/var/run/headscale/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
@@ -290,6 +292,7 @@ func GetDERPConfig() DERPConfig {
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
 	IPv4 := viper.GetString("derp.server.IPv4")
 	IPv6 := viper.GetString("derp.server.IPv6")
+	manual_derp_map := viper.GetBool("derp.server.manual_derp_map")
 
 	if serverEnabled && stunAddr == "" {
 		log.Fatal().
@@ -313,6 +316,11 @@ func GetDERPConfig() DERPConfig {
 
 	paths := viper.GetStringSlice("derp.paths")
 
+	if serverEnabled && manual_derp_map && len(paths) == 0 {
+		log.Fatal().
+			Msg("Enabling derp.server.manual_derp_map requires to configure the derp server in derp.paths")
+	}
+
 	autoUpdate := viper.GetBool("derp.auto_update_enabled")
 	updateFrequency := viper.GetDuration("derp.update_frequency")
 
@@ -328,6 +336,7 @@ func GetDERPConfig() DERPConfig {
 		UpdateFrequency:  updateFrequency,
 		IPv4:             IPv4,
 		IPv6:             IPv6,
+		ManualDerpMap:    manual_derp_map,
 	}
 }
 
