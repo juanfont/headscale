@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -36,6 +37,22 @@ const (
 var ErrRegisterMethodCLIDoesNotSupportExpire = errors.New(
 	"machines registered with CLI does not support expire",
 )
+var ErrNoCapabilityVersion = errors.New("no capability version set")
+
+func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error) {
+	clientCapabilityStr := req.URL.Query().Get("v")
+
+	if clientCapabilityStr == "" {
+		return 0, ErrNoCapabilityVersion
+	}
+
+	clientCapabilityVersion, err := strconv.Atoi(clientCapabilityStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse capability version: %w", err)
+	}
+
+	return tailcfg.CapabilityVersion(clientCapabilityVersion), nil
+}
 
 // KeyHandler provides the Headscale pub key
 // Listens in /key.
@@ -44,59 +61,79 @@ func (h *Headscale) KeyHandler(
 	req *http.Request,
 ) {
 	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
-	clientCapabilityStr := req.URL.Query().Get("v")
-	if clientCapabilityStr != "" {
-		log.Debug().
-			Str("handler", "/key").
-			Str("v", clientCapabilityStr).
-			Msg("New noise client")
-		clientCapabilityVersion, err := strconv.Atoi(clientCapabilityStr)
-		if err != nil {
-			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			writer.WriteHeader(http.StatusBadRequest)
-			_, err := writer.Write([]byte("Wrong params"))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-
-			return
-		}
-
-		// TS2021 (Tailscale v2 protocol) requires to have a different key
-		if clientCapabilityVersion >= NoiseCapabilityVersion {
-			resp := tailcfg.OverTLSPublicKeyResponse{
-				LegacyPublicKey: h.privateKey2019.Public(),
-				PublicKey:       h.noisePrivateKey.Public(),
-			}
-			writer.Header().Set("Content-Type", "application/json")
-			writer.WriteHeader(http.StatusOK)
-			err = json.NewEncoder(writer).Encode(resp)
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-
-			return
-		}
-	}
-	log.Debug().
-		Str("handler", "/key").
-		Msg("New legacy client")
-
-	// Old clients don't send a 'v' parameter, so we send the legacy public key
-	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	writer.WriteHeader(http.StatusOK)
-	_, err := writer.Write([]byte(util.MachinePublicKeyStripPrefix(h.privateKey2019.Public())))
+	capVer, err := parseCabailityVersion(req)
 	if err != nil {
+		if errors.Is(err, ErrNoCapabilityVersion) {
+			log.Debug().
+				Str("handler", "/key").
+				Msg("New legacy client")
+			// Old clients don't send a 'v' parameter, so we send the legacy public key
+			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			writer.WriteHeader(http.StatusOK)
+			_, err := writer.Write(
+				[]byte(util.MachinePublicKeyStripPrefix(h.privateKey2019.Public())),
+			)
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("Failed to write response")
+			}
+
+			return
+		}
+
 		log.Error().
 			Caller().
 			Err(err).
-			Msg("Failed to write response")
+			Msg("could not get capability version")
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.WriteHeader(http.StatusInternalServerError)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
+
+		return
+	}
+
+	log.Debug().
+		Str("handler", "/key").
+		Int("v", int(capVer)).
+		Msg("New noise client")
+	if err != nil {
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.WriteHeader(http.StatusBadRequest)
+		_, err := writer.Write([]byte("Wrong params"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
+
+		return
+	}
+
+	// TS2021 (Tailscale v2 protocol) requires to have a different key
+	if capVer >= NoiseCapabilityVersion {
+		resp := tailcfg.OverTLSPublicKeyResponse{
+			LegacyPublicKey: h.privateKey2019.Public(),
+			PublicKey:       h.noisePrivateKey.Public(),
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		err = json.NewEncoder(writer).Encode(resp)
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
+
+		return
 	}
 }
 

@@ -75,5 +75,18 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		Str("node", node.Hostname).
 		Msg("A node sending a MapRequest with Noise protocol")
 
-	ns.headscale.handlePoll(writer, req.Context(), node, mapRequest, true)
+	capVer, err := parseCabailityVersion(req)
+	if err != nil && !errors.Is(err, ErrNoCapabilityVersion) {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("failed to parse capVer")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+		return
+	}
+
+	// TODO(kradalby): since we are now passing capVer, we could arguably stop passing
+	// isNoise, and rather have a isNoise function that takes capVer
+	ns.headscale.handlePoll(writer, req.Context(), node, mapRequest, true, capVer)
 }

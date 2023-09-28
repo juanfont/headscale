@@ -146,13 +146,13 @@ func TestTailNode(t *testing.T) {
 
 				LastSeen:          &lastSeen,
 				Online:            new(bool),
-				KeepAlive:         true,
 				MachineAuthorized: true,
 
-				Capabilities: []string{
+				Capabilities: []tailcfg.NodeCapability{
 					tailcfg.CapabilityFileSharing,
 					tailcfg.CapabilityAdmin,
 					tailcfg.CapabilitySSH,
+					tailcfg.NodeAttrDisableUPnP,
 				},
 			},
 			wantErr: false,
@@ -166,9 +166,11 @@ func TestTailNode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tailNode(
 				tt.node,
+				0,
 				tt.pol,
 				tt.dnsConfig,
 				tt.baseDomain,
+				false,
 			)
 
 			if (err != nil) != tt.wantErr {

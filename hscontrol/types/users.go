@@ -26,7 +26,6 @@ func (n *User) TailscaleUser() *tailcfg.User {
 		LoginName:     n.Name,
 		DisplayName:   n.Name,
 		ProfilePicURL: "",
-		Domain:        "headscale.net",
 		Logins:        []tailcfg.LoginID{},
 		Created:       time.Time{},
 	}
@@ -40,7 +39,6 @@ func (n *User) TailscaleLogin() *tailcfg.Login {
 		LoginName:     n.Name,
 		DisplayName:   n.Name,
 		ProfilePicURL: "",
-		Domain:        "headscale.net",
 	}
 
 	return &login
