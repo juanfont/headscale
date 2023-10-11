@@ -34,8 +34,8 @@ require (
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
 	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e
 	go4.org/netipx v0.0.0-20230728180743-ad4cb58a6516
-	golang.org/x/crypto v0.12.0
-	golang.org/x/net v0.14.0
+	golang.org/x/crypto v0.14.0
+	golang.org/x/net v0.17.0
 	golang.org/x/oauth2 v0.7.0
 	golang.org/x/sync v0.2.0
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
@@ -142,9 +142,9 @@ require (
 	go4.org/mem v0.0.0-20220726221520-4f986261bf13 // indirect
 	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090 // indirect
 	golang.org/x/mod v0.11.0 // indirect
-	golang.org/x/sys v0.11.0 // indirect
-	golang.org/x/term v0.11.0 // indirect
-	golang.org/x/text v0.12.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/term v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.9.1 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
