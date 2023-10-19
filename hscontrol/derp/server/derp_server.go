@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/paths"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -30,6 +35,7 @@ type DERPServer struct {
 	serverURL     string
 	key           key.NodePrivate
 	cfg           *types.DERPConfig
+	db            *db.HSDatabase
 	tailscaleDERP *derp.Server
 }
 
@@ -37,14 +43,19 @@ func NewDERPServer(
 	serverURL string,
 	derpKey key.NodePrivate,
 	cfg *types.DERPConfig,
+	db *db.HSDatabase,
 ) (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
 	server := derp.NewServer(derpKey, log.Debug().Msgf) // nolint // zerolinter complains
+	if cfg.ServerVerifyClients {
+		server.SetVerifyClient(true)
+	}
 
 	return &DERPServer{
 		serverURL:     serverURL,
 		key:           derpKey,
 		cfg:           cfg,
+		db:            db,
 		tailscaleDERP: server,
 	}, nil
 }
@@ -301,4 +312,55 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 			continue
 		}
 	}
+}
+
+func (d *DERPServer) ServeFakeStatus() error {
+	socketPath := paths.DefaultTailscaledSocket()
+
+	log.Trace().Caller().Msg("Clean up fake status socket file")
+	if err := os.RemoveAll(socketPath); err != nil {
+		return err
+	}
+
+	log.Trace().Caller().Msg("Listen fake status socket")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return err
+	}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "use GET", http.StatusMethodNotAllowed)
+				return
+			}
+
+			nodes, err := d.db.ListNodes()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			peer := make(map[key.NodePublic]*ipnstate.PeerStatus)
+			for _, node := range nodes {
+				pk := &key.NodePublic{}
+				if err = pk.UnmarshalText([]byte(util.NodePublicKeyEnsurePrefix(node.NodeKey))); err != nil {
+					log.Error().Err(err).Msg("failed to decode node public key")
+					continue
+				}
+				peer[*pk] = &ipnstate.PeerStatus{}
+			}
+			status := &ipnstate.Status{Peer: peer}
+			w.Header().Set("Content-Type", "application/json")
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			_ = e.Encode(status)
+		}),
+	}
+	go func() {
+		err := server.Serve(listener)
+		if err != nil {
+			log.Error().Err(err).Msg("Fake status server error")
+		}
+	}()
+	return nil
 }

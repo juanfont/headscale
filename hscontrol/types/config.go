@@ -108,15 +108,16 @@ type OIDCConfig struct {
 }
 
 type DERPConfig struct {
-	ServerEnabled    bool
-	ServerRegionID   int
-	ServerRegionCode string
-	ServerRegionName string
-	STUNAddr         string
-	URLs             []url.URL
-	Paths            []string
-	AutoUpdate       bool
-	UpdateFrequency  time.Duration
+	ServerEnabled       bool
+	ServerVerifyClients bool
+	ServerRegionID      int
+	ServerRegionCode    string
+	ServerRegionName    string
+	STUNAddr            string
+	URLs                []url.URL
+	Paths               []string
+	AutoUpdate          bool
+	UpdateFrequency     time.Duration
 }
 
 type LogTailConfig struct {
@@ -282,6 +283,7 @@ func GetTLSConfig() TLSConfig {
 
 func GetDERPConfig() DERPConfig {
 	serverEnabled := viper.GetBool("derp.server.enabled")
+	serverVerifyClients := viper.GetBool("derp.server.verify_clients")
 	serverRegionID := viper.GetInt("derp.server.region_id")
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
@@ -313,15 +315,16 @@ func GetDERPConfig() DERPConfig {
 	updateFrequency := viper.GetDuration("derp.update_frequency")
 
 	return DERPConfig{
-		ServerEnabled:    serverEnabled,
-		ServerRegionID:   serverRegionID,
-		ServerRegionCode: serverRegionCode,
-		ServerRegionName: serverRegionName,
-		STUNAddr:         stunAddr,
-		URLs:             urls,
-		Paths:            paths,
-		AutoUpdate:       autoUpdate,
-		UpdateFrequency:  updateFrequency,
+		ServerEnabled:       serverEnabled,
+		ServerVerifyClients: serverVerifyClients,
+		ServerRegionID:      serverRegionID,
+		ServerRegionCode:    serverRegionCode,
+		ServerRegionName:    serverRegionName,
+		STUNAddr:            stunAddr,
+		URLs:                urls,
+		Paths:               paths,
+		AutoUpdate:          autoUpdate,
+		UpdateFrequency:     updateFrequency,
 	}
 }
 
