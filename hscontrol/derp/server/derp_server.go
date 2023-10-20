@@ -349,7 +349,10 @@ func (d *DERPServer) ServeFakeStatus() error {
 				}
 				peer[*pk] = &ipnstate.PeerStatus{}
 			}
-			status := &ipnstate.Status{Peer: peer}
+			status := &ipnstate.Status{
+				Self: &ipnstate.PeerStatus{},
+				Peer: peer,
+			}
 			w.Header().Set("Content-Type", "application/json")
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
