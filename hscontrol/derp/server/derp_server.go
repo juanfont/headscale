@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"tailscale.com/ipn/ipnstate"
@@ -316,6 +317,21 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 
 func (d *DERPServer) ServeFakeStatus() error {
 	socketPath := paths.DefaultTailscaledSocket()
+	socketDir := path.Dir(socketPath)
+	st, err := os.Stat(socketDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = os.MkdirAll(socketDir, 0755)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("the socket dir path(%s) already exists, but is a file", socketDir)
+	}
 
 	log.Trace().Caller().Msg("Clean up fake status socket file")
 	if err := os.RemoveAll(socketPath); err != nil {
