@@ -80,6 +80,9 @@ derp:
     # The Headscale server_url defined above MUST be using https, DERP requires TLS to be in place
     enabled: false
 
+    # If true, derp will reject other unknown tailscale client connections
+    verify_clients: true
+
     # Region ID to use for the embedded DERP server.
     # The local DERP prevails if the region ID collides with other region ID coming from
     # the regular DERP config.
