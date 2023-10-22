@@ -14,6 +14,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"tailscale.com/client/tailscale"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/paths"
 	"time"
@@ -48,9 +49,7 @@ func NewDERPServer(
 ) (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
 	server := derp.NewServer(derpKey, log.Debug().Msgf) // nolint // zerolinter complains
-	if cfg.ServerVerifyClients {
-		server.SetVerifyClient(true)
-	}
+	server.SetVerifyClient(cfg.ServerVerifyClients)
 
 	return &DERPServer{
 		serverURL:     serverURL,
@@ -333,7 +332,14 @@ func (d *DERPServer) ServeFakeStatus() error {
 		return fmt.Errorf("the socket dir path(%s) already exists, but is a file", socketDir)
 	}
 
-	log.Trace().Caller().Msg("Clean up fake status socket file")
+	laCtx, laCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer laCancel()
+	if _, err = tailscale.Status(laCtx); err == nil {
+		return fmt.Errorf("derp simulate local socket api error: "+
+			"another tailscaled process is already listening to this service(%s)", socketPath)
+	}
+
+	log.Info().Msgf("Clean up local api socket file: %s", socketPath)
 	if err := os.RemoveAll(socketPath); err != nil {
 		return err
 	}

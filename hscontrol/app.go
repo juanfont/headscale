@@ -495,9 +495,9 @@ func (h *Headscale) Serve() error {
 			return errSTUNAddressNotSet
 		}
 
-		if h.cfg.DERP.ServerVerifyClients {
-			err = h.DERPServer.ServeFakeStatus()
-			if err != nil {
+		// Runs only when local socket api simulation is enabled
+		if h.cfg.DERP.ServerVerifyClients && h.cfg.DERP.ServerEnableSocketAPI {
+			if err = h.DERPServer.ServeFakeStatus(); err != nil {
 				return err
 			}
 		}
