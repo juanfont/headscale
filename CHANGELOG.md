@@ -28,14 +28,14 @@ API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553
 
 ### Changes
 
-Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
-SSH support [#1487](https://github.com/juanfont/headscale/pull/1487)
-State management has been improved [#1492](https://github.com/juanfont/headscale/pull/1492)
-Use error group handling to ensure tests actually pass [#1535](https://github.com/juanfont/headscale/pull/1535) based on [#1460](https://github.com/juanfont/headscale/pull/1460)
-Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) taken from [#1480](https://github.com/juanfont/headscale/pull/1480)
-Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
-Fix [TS-2023-006](https://tailscale.com/security-bulletins/#ts-2023-006) security UPnP issue [#1563](https://github.com/juanfont/headscale/pull/1563)
-DERP client validation support [#1580](https://github.com/juanfont/headscale/pull/1580)
+- Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
+- SSH support [#1487](https://github.com/juanfont/headscale/pull/1487)
+- State management has been improved [#1492](https://github.com/juanfont/headscale/pull/1492)
+- Use error group handling to ensure tests actually pass [#1535](https://github.com/juanfont/headscale/pull/1535) based on [#1460](https://github.com/juanfont/headscale/pull/1460)
+- Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) taken from [#1480](https://github.com/juanfont/headscale/pull/1480)
+- Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
+- Fix [TS-2023-006](https://tailscale.com/security-bulletins/#ts-2023-006) security UPnP issue [#1563](https://github.com/juanfont/headscale/pull/1563)
+- DERP client validation support [#1580](https://github.com/juanfont/headscale/pull/1580)
 
 ## 0.22.3 (2023-05-12)
 
