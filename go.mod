@@ -65,7 +65,7 @@ require (
 	github.com/coreos/go-iptables v0.6.0 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20230821191801-fc76608aecf0 // indirect
 	github.com/docker/cli v23.0.5+incompatible // indirect
-	github.com/docker/docker v24.0.4+incompatible // indirect
+	github.com/docker/docker v24.0.7+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
