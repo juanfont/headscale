@@ -768,17 +768,17 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/Lucalux>
+            <img src=https://avatars.githubusercontent.com/u/70356955?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Lucalux/>
+            <br />
+            <sub style="font-size:14px"><b>Lucalux</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/foxtrot>
             <img src=https://avatars.githubusercontent.com/u/4153572?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Marc/>
             <br />
             <sub style="font-size:14px"><b>Marc</b></sub>
-        </a>
-    </td>
-    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
-        <a href=https://github.com/magf>
-            <img src=https://avatars.githubusercontent.com/u/11992737?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Maxim Gajdaj/>
-            <br />
-            <sub style="font-size:14px"><b>Maxim Gajdaj</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -812,7 +812,7 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
-        <a href=https://github.com/Donran>
+        <a href=https://github.com/donran>
             <img src=https://avatars.githubusercontent.com/u/4838348?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Pontus N/>
             <br />
             <sub style="font-size:14px"><b>Pontus N</b></sub>
@@ -937,7 +937,7 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
-        <a href=https://github.com/sleepymole1>
+        <a href=https://github.com/sleepymole>
             <img src=https://avatars.githubusercontent.com/u/17199941?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Yujie Xia/>
             <br />
             <sub style="font-size:14px"><b>Yujie Xia</b></sub>
