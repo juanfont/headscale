@@ -26,7 +26,6 @@ ProcSubset=pid
 ProtectClock=true
 ProtectControlGroups=true
 ProtectHome=true
-ProtectHome=yes
 ProtectHostname=true
 ProtectKernelLogs=true
 ProtectKernelModules=true
