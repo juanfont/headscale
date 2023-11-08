@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -40,14 +41,45 @@ var (
 	errOIDCInvalidNodeState = errors.New(
 		"requested node state key expired before authorisation completed",
 	)
-	errOIDCNodeKeyMissing = errors.New("could not get node key from cache")
+	errOIDCNodeKeyMissing    = errors.New("could not get node key from cache")
+	errOIDCEmailClaimMissing = errors.New("email claim missing from ID Token")
 )
 
 type IDTokenClaims struct {
-	Name     string   `json:"name,omitempty"`
-	Groups   []string `json:"groups,omitempty"`
-	Email    string   `json:"email"`
-	Username string   `json:"preferred_username,omitempty"`
+	// in some cases the groups might be a single value and not a list
+	Groups stringOrArray
+	Email  string
+}
+
+type stringOrArray []string
+
+func (s *stringOrArray) UnmarshalJSON(b []byte) error {
+	var a []string
+	if err := json.Unmarshal(b, &a); err == nil {
+		*s = a
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(b, &str); err != nil {
+		return err
+	}
+	*s = []string{str}
+	return nil
+}
+
+type rawClaims map[string]json.RawMessage
+
+func (c rawClaims) unmarshalClaim(name string, v interface{}) error {
+	val, ok := c[name]
+	if !ok {
+		return fmt.Errorf("claim not present")
+	}
+	return json.Unmarshal([]byte(val), v)
+}
+
+func (c rawClaims) hasClaim(name string) bool {
+	_, ok := c[name]
+	return ok
 }
 
 func (h *Headscale) initOIDC() error {
@@ -215,7 +247,7 @@ func (h *Headscale) OIDCCallback(
 	// 	return
 	// }
 
-	claims, err := extractIDTokenClaims(writer, idToken)
+	claims, err := extractIDTokenClaims(writer, h.cfg.OIDC, idToken)
 	if err != nil {
 		return
 	}
@@ -355,23 +387,49 @@ func (h *Headscale) verifyIDTokenForOIDCCallback(
 
 func extractIDTokenClaims(
 	writer http.ResponseWriter,
+	cfg types.OIDCConfig,
 	idToken *oidc.IDToken,
 ) (*IDTokenClaims, error) {
 	var claims IDTokenClaims
-	if err := idToken.Claims(&claims); err != nil {
-		util.LogErr(err, "Failed to decode id token claims")
-
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusBadRequest)
-		_, werr := writer.Write([]byte("Failed to decode id token claims"))
-		if werr != nil {
-			util.LogErr(err, "Failed to write response")
-		}
+	var rawClaims rawClaims
+	if err := idToken.Claims(&rawClaims); err != nil {
+		handleClaimError(writer, err)
 
 		return nil, err
 	}
 
+	if !rawClaims.hasClaim(cfg.EmailClaim) {
+		handleClaimError(writer, errOIDCEmailClaimMissing)
+
+		return nil, errOIDCEmailClaimMissing
+	}
+
+	if err := rawClaims.unmarshalClaim(cfg.EmailClaim, &claims.Email); err != nil {
+		handleClaimError(writer, err)
+
+		return nil, err
+	}
+
+	if rawClaims.hasClaim(cfg.GroupsClaim) {
+		if err := rawClaims.unmarshalClaim(cfg.GroupsClaim, &claims.Groups); err != nil {
+			handleClaimError(writer, err)
+
+			return nil, err
+		}
+	}
+
 	return &claims, nil
+}
+
+func handleClaimError(writer http.ResponseWriter, err error) {
+	util.LogErr(err, "Failed to decode id token rawClaims")
+
+	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	writer.WriteHeader(http.StatusBadRequest)
+	_, werr := writer.Write([]byte("Failed to decode id token rawClaims"))
+	if werr != nil {
+		util.LogErr(err, "Failed to write response")
+	}
 }
 
 // validateOIDCAllowedDomains checks that if AllowedDomains is provided,
