@@ -14,7 +14,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
-	"github.com/puzpuzpuz/xsync/v2"
+	"github.com/puzpuzpuz/xsync/v3"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -162,7 +162,7 @@ func NewScenario() (*Scenario, error) {
 	}
 
 	return &Scenario{
-		controlServers: xsync.NewMapOf[ControlServer](),
+		controlServers: xsync.NewMapOf[string, ControlServer](),
 		users:          make(map[string]*User),
 
 		pool:    pool,
