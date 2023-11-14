@@ -469,6 +469,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
 		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.DERPMap))
+		router.HandleFunc("/generate_204", derpServer.DERPNoContextHandler)
 	}
 
 	apiRouter := router.PathPrefix("/api").Subrouter()

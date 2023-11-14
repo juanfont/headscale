@@ -26,6 +26,10 @@ import (
 // headers and it will begin writing & reading the DERP protocol immediately
 // following its HTTP request.
 const fastStartHeader = "Derp-Fast-Start"
+const (
+	noContentChallengeHeader = "X-Tailscale-Challenge"
+	noContentResponseHeader  = "X-Tailscale-Response"
+)
 
 type DERPServer struct {
 	serverURL     string
@@ -202,6 +206,43 @@ func DERPProbeHandler(
 				Msg("Failed to write response")
 		}
 	}
+}
+
+// DERPNoContextHandler is the endpoint clients use to determine if they are behind a captive portal
+// Clients challenge this with the X-Tailscale-Challenge header and expect the challenge value within X-Tailscale-Response
+// https://github.com/tailscale/tailscale/blob/955e2fcbfb4fe7ff9b8dbd665ba24ef2008c676e/cmd/derper/derper.go#L324
+func DERPNoContextHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	switch req.Method {
+	case http.MethodHead, http.MethodGet:
+		if challenge := req.Header.Get(noContentChallengeHeader); challenge != "" {
+			badChar := strings.IndexFunc(challenge, func(r rune) bool {
+				return !isChallengeChar(r)
+			}) != -1
+			if len(challenge) <= 64 && !badChar {
+				writer.Header().Set(noContentResponseHeader, "response "+challenge)
+			}
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	default:
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		_, err := writer.Write([]byte("bogus captive portal method"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
+	}
+}
+
+func isChallengeChar(c rune) bool {
+	// Semi-randomly chosen as a limited set of valid characters
+	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
+		('0' <= c && c <= '9') ||
+		c == '.' || c == '-' || c == '_'
 }
 
 // DERPBootstrapDNSHandler implements the /bootsrap-dns endpoint
