@@ -45,7 +45,7 @@ func (h *Headscale) handleRegister(
 		// is that the client will hammer headscale with requests until it gets a
 		// successful RegisterResponse.
 		if registerRequest.Followup != "" {
-			if _, ok := h.registrationCache.Get(util.NodePublicKeyStripPrefix(registerRequest.NodeKey)); ok {
+			if _, ok := h.registrationCache.Get(registerRequest.NodeKey.String()); ok {
 				log.Debug().
 					Caller().
 					Str("node", registerRequest.Hostinfo.Hostname).
@@ -97,10 +97,10 @@ func (h *Headscale) handleRegister(
 		// We create the node and then keep it around until a callback
 		// happens
 		newNode := types.Node{
-			MachineKey: util.MachinePublicKeyStripPrefix(machineKey),
+			MachineKey: machineKey.String(),
 			Hostname:   registerRequest.Hostinfo.Hostname,
 			GivenName:  givenName,
-			NodeKey:    util.NodePublicKeyStripPrefix(registerRequest.NodeKey),
+			NodeKey:    registerRequest.NodeKey.String(),
 			LastSeen:   &now,
 			Expiry:     &time.Time{},
 		}
@@ -136,7 +136,7 @@ func (h *Headscale) handleRegister(
 		// So if we have a not valid MachineKey (but we were able to fetch the node with the NodeKeys), we update it.
 		var storedMachineKey key.MachinePublic
 		err = storedMachineKey.UnmarshalText(
-			[]byte(util.MachinePublicKeyEnsurePrefix(node.MachineKey)),
+			[]byte(node.MachineKey),
 		)
 		if err != nil || storedMachineKey.IsZero() {
 			if err := h.db.NodeSetMachineKey(node, machineKey); err != nil {
@@ -156,7 +156,7 @@ func (h *Headscale) handleRegister(
 		// - Trying to log out (sending a expiry in the past)
 		// - A valid, registered node, looking for /map
 		// - Expired node wanting to reauthenticate
-		if node.NodeKey == util.NodePublicKeyStripPrefix(registerRequest.NodeKey) {
+		if node.NodeKey == registerRequest.NodeKey.String() {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !registerRequest.Expiry.IsZero() &&
@@ -176,7 +176,7 @@ func (h *Headscale) handleRegister(
 		}
 
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
-		if node.NodeKey == util.NodePublicKeyStripPrefix(registerRequest.OldNodeKey) &&
+		if node.NodeKey == registerRequest.OldNodeKey.String() &&
 			!node.IsExpired() {
 			h.handleNodeKeyRefresh(
 				writer,
@@ -207,9 +207,9 @@ func (h *Headscale) handleRegister(
 		// we need to make sure the NodeKey matches the one in the request
 		// TODO(juan): What happens when using fast user switching between two
 		// headscale-managed tailnets?
-		node.NodeKey = util.NodePublicKeyStripPrefix(registerRequest.NodeKey)
+		node.NodeKey = registerRequest.NodeKey.String()
 		h.registrationCache.Set(
-			util.NodePublicKeyStripPrefix(registerRequest.NodeKey),
+			registerRequest.NodeKey.String(),
 			*node,
 			registerCacheExpiration,
 		)
@@ -294,7 +294,7 @@ func (h *Headscale) handleAuthKey(
 		Str("node", registerRequest.Hostinfo.Hostname).
 		Msg("Authentication key was valid, proceeding to acquire IP addresses")
 
-	nodeKey := util.NodePublicKeyStripPrefix(registerRequest.NodeKey)
+	nodeKey := registerRequest.NodeKey.String()
 
 	// retrieve node information if it exist
 	// The error is not important, because if it does not
@@ -342,7 +342,7 @@ func (h *Headscale) handleAuthKey(
 	} else {
 		now := time.Now().UTC()
 
-		givenName, err := h.db.GenerateGivenName(util.MachinePublicKeyStripPrefix(machineKey), registerRequest.Hostinfo.Hostname)
+		givenName, err := h.db.GenerateGivenName(machineKey.String(), registerRequest.Hostinfo.Hostname)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -359,7 +359,7 @@ func (h *Headscale) handleAuthKey(
 			Hostname:       registerRequest.Hostinfo.Hostname,
 			GivenName:      givenName,
 			UserID:         pak.User.ID,
-			MachineKey:     util.MachinePublicKeyStripPrefix(machineKey),
+			MachineKey:     machineKey.String(),
 			RegisterMethod: util.RegisterMethodAuthKey,
 			Expiry:         &registerRequest.Expiry,
 			NodeKey:        nodeKey,

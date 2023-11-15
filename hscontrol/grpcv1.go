@@ -545,7 +545,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	}
 
 	api.h.registrationCache.Set(
-		util.NodePublicKeyStripPrefix(nodeKey),
+		nodeKey.String(),
 		newNode,
 		registerCacheExpiration,
 	)

@@ -369,7 +369,7 @@ func (m *Mapper) marshalMapResponse(
 	atomic.AddUint64(&m.seq, 1)
 
 	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(node.MachineKey)))
+	err := machineKey.UnmarshalText([]byte(node.MachineKey))
 	if err != nil {
 		log.Error().
 			Caller().

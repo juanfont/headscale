@@ -122,7 +122,7 @@ func (h *Headscale) RegisterOIDC(
 	// the template and log an error.
 	var nodeKey key.NodePublic
 	err := nodeKey.UnmarshalText(
-		[]byte(util.NodePublicKeyEnsurePrefix(nodeKeyStr)),
+		[]byte(nodeKeyStr),
 	)
 
 	if !ok || nodeKeyStr == "" || err != nil {
@@ -154,7 +154,7 @@ func (h *Headscale) RegisterOIDC(
 	// place the node key into the state cache, so it can be retrieved later
 	h.registrationCache.Set(
 		stateStr,
-		util.NodePublicKeyStripPrefix(nodeKey),
+		nodeKey,
 		registerCacheExpiration,
 	)
 
@@ -479,10 +479,11 @@ func (h *Headscale) validateNodeForOIDCCallback(
 	}
 
 	var nodeKey key.NodePublic
-	nodeKeyFromCache, nodeKeyOK := nodeKeyIf.(string)
+	nodeKey, nodeKeyOK := nodeKeyIf.(key.NodePublic)
 	if !nodeKeyOK {
 		log.Trace().
-			Msg("requested node state key is not a string")
+			Interface("got", nodeKeyIf).
+			Msg("requested node state key is not a nodekey")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
 		_, err := writer.Write([]byte("state is invalid"))
@@ -491,24 +492,6 @@ func (h *Headscale) validateNodeForOIDCCallback(
 		}
 
 		return nil, false, errOIDCInvalidNodeState
-	}
-
-	err := nodeKey.UnmarshalText(
-		[]byte(util.NodePublicKeyEnsurePrefix(nodeKeyFromCache)),
-	)
-	if err != nil {
-		log.Error().
-			Str("nodeKey", nodeKeyFromCache).
-			Bool("nodeKeyOK", nodeKeyOK).
-			Msg("could not parse node public key")
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusBadRequest)
-		_, werr := writer.Write([]byte("could not parse node public key"))
-		if werr != nil {
-			util.LogErr(err, "Failed to write response")
-		}
-
-		return nil, false, err
 	}
 
 	// retrieve node information if it exist

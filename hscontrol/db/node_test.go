@@ -82,8 +82,8 @@ func (s *Suite) TestGetNodeByNodeKey(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
-		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
+		MachineKey:     machineKey.Public().String(),
+		NodeKey:        nodeKey.Public().String(),
 		DiscoKey:       "faa",
 		Hostname:       "testnode",
 		UserID:         user.ID,
@@ -113,8 +113,8 @@ func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     util.MachinePublicKeyStripPrefix(machineKey.Public()),
-		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
+		MachineKey:     machineKey.Public().String(),
+		NodeKey:        nodeKey.Public().String(),
 		DiscoKey:       "faa",
 		Hostname:       "testnode",
 		UserID:         user.ID,
@@ -575,7 +575,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	node := types.Node{
 		ID:             0,
 		MachineKey:     "foo",
-		NodeKey:        util.NodePublicKeyStripPrefix(nodeKey.Public()),
+		NodeKey:        nodeKey.Public().String(),
 		DiscoKey:       "faa",
 		Hostname:       "test",
 		UserID:         user.ID,

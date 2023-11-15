@@ -11,7 +11,6 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/tailcfg"
@@ -295,7 +294,7 @@ func (node *Node) MachinePublicKey() (key.MachinePublic, error) {
 
 	if node.MachineKey != "" {
 		err := machineKey.UnmarshalText(
-			[]byte(util.MachinePublicKeyEnsurePrefix(node.MachineKey)),
+			[]byte(node.MachineKey),
 		)
 		if err != nil {
 			return key.MachinePublic{}, fmt.Errorf("failed to parse machine public key: %w", err)
@@ -309,7 +308,7 @@ func (node *Node) DiscoPublicKey() (key.DiscoPublic, error) {
 	var discoKey key.DiscoPublic
 	if node.DiscoKey != "" {
 		err := discoKey.UnmarshalText(
-			[]byte(util.DiscoPublicKeyEnsurePrefix(node.DiscoKey)),
+			[]byte(node.DiscoKey),
 		)
 		if err != nil {
 			return key.DiscoPublic{}, fmt.Errorf("failed to parse disco public key: %w", err)
@@ -323,7 +322,7 @@ func (node *Node) DiscoPublicKey() (key.DiscoPublic, error) {
 
 func (node *Node) NodePublicKey() (key.NodePublic, error) {
 	var nodeKey key.NodePublic
-	err := nodeKey.UnmarshalText([]byte(util.NodePublicKeyEnsurePrefix(node.NodeKey)))
+	err := nodeKey.UnmarshalText([]byte(node.NodeKey))
 	if err != nil {
 		return key.NodePublic{}, fmt.Errorf("failed to parse node public key: %w", err)
 	}

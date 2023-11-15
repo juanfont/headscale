@@ -11,11 +11,12 @@ import (
 )
 
 const (
-	Base8     = 8
-	Base10    = 10
-	BitSize16 = 16
-	BitSize32 = 32
-	BitSize64 = 64
+	Base8              = 8
+	Base10             = 10
+	BitSize16          = 16
+	BitSize32          = 32
+	BitSize64          = 64
+	PermissionFallback = 0o700
 )
 
 func AbsolutePathFromConfigPath(path string) string {
