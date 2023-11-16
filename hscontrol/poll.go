@@ -8,7 +8,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
@@ -91,7 +90,7 @@ func (h *Headscale) handlePoll(
 		node.LastSeen = &now
 		node.Hostname = mapRequest.Hostinfo.Hostname
 		node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
-		node.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
+		node.DiscoKey = mapRequest.DiscoKey.String()
 		node.Endpoints = mapRequest.Endpoints
 
 		if err := h.db.NodeSave(node); err != nil {
@@ -144,7 +143,7 @@ func (h *Headscale) handlePoll(
 	node.LastSeen = &now
 	node.Hostname = mapRequest.Hostinfo.Hostname
 	node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
-	node.DiscoKey = util.DiscoPublicKeyStripPrefix(mapRequest.DiscoKey)
+	node.DiscoKey = mapRequest.DiscoKey.String()
 	node.Endpoints = mapRequest.Endpoints
 
 	// When a node connects to control, list the peers it has at

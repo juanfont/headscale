@@ -33,7 +33,7 @@ func (h *Headscale) RegistrationHandler(
 	body, _ := io.ReadAll(req.Body)
 
 	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(util.MachinePublicKeyEnsurePrefix(machineKeyStr)))
+	err := machineKey.UnmarshalText([]byte("mkey:" + machineKeyStr))
 	if err != nil {
 		log.Error().
 			Caller().

@@ -348,6 +348,14 @@ func (t *HeadscaleInContainer) Shutdown() error {
 		)
 	}
 
+	err = t.SaveDatabase("/tmp/control")
+	if err != nil {
+		log.Printf(
+			"Failed to save database from control: %s",
+			fmt.Errorf("failed to save database from control: %w", err),
+		)
+	}
+
 	return t.pool.Purge(t.container)
 }
 
@@ -383,6 +391,24 @@ func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
 
 	err = os.WriteFile(
 		path.Join(savePath, t.hostname+".maps.tar"),
+		tarFile,
+		os.ModePerm,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
+	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(
+		path.Join(savePath, t.hostname+".db.tar"),
 		tarFile,
 		os.ModePerm,
 	)

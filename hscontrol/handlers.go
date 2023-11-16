@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -71,7 +72,7 @@ func (h *Headscale) KeyHandler(
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			writer.WriteHeader(http.StatusOK)
 			_, err := writer.Write(
-				[]byte(util.MachinePublicKeyStripPrefix(h.privateKey2019.Public())),
+				[]byte(strings.TrimPrefix(h.privateKey2019.Public().String(), "mkey:")),
 			)
 			if err != nil {
 				log.Error().
@@ -229,7 +230,7 @@ func (h *Headscale) RegisterWebAPI(
 	// the template and log an error.
 	var nodeKey key.NodePublic
 	err := nodeKey.UnmarshalText(
-		[]byte(util.NodePublicKeyEnsurePrefix(nodeKeyStr)),
+		[]byte(nodeKeyStr),
 	)
 
 	if !ok || nodeKeyStr == "" || err != nil {

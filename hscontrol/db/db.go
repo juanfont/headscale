@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -250,6 +251,27 @@ func NewHeadscaleDatabase(
 	err = dbConn.AutoMigrate(&types.APIKey{})
 	if err != nil {
 		return nil, err
+	}
+
+	// Ensure all keys have correct prefixes
+	// https://github.com/tailscale/tailscale/blob/main/types/key/node.go#L35
+	nodes := types.Nodes{}
+	if err := dbConn.Find(&nodes).Error; err != nil {
+		log.Error().Err(err).Msg("Error accessing db")
+	}
+
+	for _, node := range nodes {
+		if !strings.HasPrefix(node.DiscoKey, "discokey:") {
+			node.DiscoKey = "discokey:" + node.DiscoKey
+		}
+
+		if !strings.HasPrefix(node.NodeKey, "nodekey:") {
+			node.NodeKey = "nodekey:" + node.NodeKey
+		}
+
+		if !strings.HasPrefix(node.MachineKey, "mkey:") {
+			node.MachineKey = "mkey:" + node.MachineKey
+		}
 	}
 
 	// TODO(kradalby): is this needed?

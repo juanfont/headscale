@@ -182,7 +182,7 @@ func (hsdb *HSDatabase) GetNodeByMachineKey(
 		Preload("AuthKey.User").
 		Preload("User").
 		Preload("Routes").
-		First(&mach, "machine_key = ?", util.MachinePublicKeyStripPrefix(machineKey)); result.Error != nil {
+		First(&mach, "machine_key = ?", machineKey.String()); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -203,7 +203,7 @@ func (hsdb *HSDatabase) GetNodeByNodeKey(
 		Preload("User").
 		Preload("Routes").
 		First(&node, "node_key = ?",
-			util.NodePublicKeyStripPrefix(nodeKey)); result.Error != nil {
+			nodeKey.String()); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -224,9 +224,9 @@ func (hsdb *HSDatabase) GetNodeByAnyKey(
 		Preload("User").
 		Preload("Routes").
 		First(&node, "machine_key = ? OR node_key = ? OR node_key = ?",
-			util.MachinePublicKeyStripPrefix(machineKey),
-			util.NodePublicKeyStripPrefix(nodeKey),
-			util.NodePublicKeyStripPrefix(oldNodeKey)); result.Error != nil {
+			machineKey.String(),
+			nodeKey.String(),
+			oldNodeKey.String()); result.Error != nil {
 		return nil, result.Error
 	}
 
@@ -397,7 +397,7 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 		Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
 		Msg("Registering node from API/CLI or auth callback")
 
-	if nodeInterface, ok := cache.Get(util.NodePublicKeyStripPrefix(nodeKey)); ok {
+	if nodeInterface, ok := cache.Get(nodeKey.String()); ok {
 		if registrationNode, ok := nodeInterface.(types.Node); ok {
 			user, err := hsdb.getUser(userName)
 			if err != nil {
@@ -507,7 +507,7 @@ func (hsdb *HSDatabase) NodeSetNodeKey(node *types.Node, nodeKey key.NodePublic)
 	defer hsdb.mu.Unlock()
 
 	if err := hsdb.db.Model(node).Updates(types.Node{
-		NodeKey: util.NodePublicKeyStripPrefix(nodeKey),
+		NodeKey: nodeKey.String(),
 	}).Error; err != nil {
 		return err
 	}
@@ -524,7 +524,7 @@ func (hsdb *HSDatabase) NodeSetMachineKey(
 	defer hsdb.mu.Unlock()
 
 	if err := hsdb.db.Model(node).Updates(types.Node{
-		MachineKey: util.MachinePublicKeyStripPrefix(machineKey),
+		MachineKey: machineKey.String(),
 	}).Error; err != nil {
 		return err
 	}

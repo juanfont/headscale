@@ -48,9 +48,6 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -103,9 +100,6 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testnode",
 		UserID:         oldUser.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,

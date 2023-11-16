@@ -911,10 +911,9 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	}
 
 	trimmedPrivateKey := strings.TrimSpace(string(privateKey))
-	privateKeyEnsurePrefix := util.PrivateKeyEnsurePrefix(trimmedPrivateKey)
 
 	var machineKey key.MachinePrivate
-	if err = machineKey.UnmarshalText([]byte(privateKeyEnsurePrefix)); err != nil {
+	if err = machineKey.UnmarshalText([]byte(trimmedPrivateKey)); err != nil {
 		log.Info().
 			Str("path", path).
 			Msg("This might be due to a legacy (headscale pre-0.12) private key. " +
