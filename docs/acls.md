@@ -179,11 +179,11 @@ Here are the ACL's to implement the same permissions as above:
 
     // We still have to allow internal users communications since nothing guarantees that each user have
     // their own users.
-    { "action": "accept", "src": ["boss"], "dst": ["boss:*"] },
-    { "action": "accept", "src": ["dev1"], "dst": ["dev1:*"] },
-    { "action": "accept", "src": ["dev2"], "dst": ["dev2:*"] },
-    { "action": "accept", "src": ["admin1"], "dst": ["admin1:*"] },
-    { "action": "accept", "src": ["intern1"], "dst": ["intern1:*"] }
+    { "action": "accept", "src": ["group:boss"], "dst": ["group:boss:*"] },
+    { "action": "accept", "src": ["group:dev1"], "dst": ["group:dev1:*"] },
+    { "action": "accept", "src": ["group:dev2"], "dst": ["group:dev2:*"] },
+    { "action": "accept", "src": ["group:admin1"], "dst": ["group:admin1:*"] },
+    { "action": "accept", "src": ["group:intern1"], "dst": ["group:intern1:*"] }
   ]
 }
 ```
