@@ -29,9 +29,6 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "test_get_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -80,9 +77,6 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -154,9 +148,6 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	}
 	node1 := types.Node{
 		ID:             1,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -179,9 +170,6 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	}
 	node2 := types.Node{
 		ID:             2,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -240,9 +228,6 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	now := time.Now()
 	node1 := types.Node{
 		ID:             1,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -277,9 +262,6 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	}
 	node2 := types.Node{
 		ID:             2,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -382,9 +364,6 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	now := time.Now()
 	node1 := types.Node{
 		ID:             1,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,

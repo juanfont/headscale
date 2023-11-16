@@ -35,9 +35,6 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -83,9 +80,6 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 
 		node := types.Node{
 			ID:             uint64(index),
-			MachineKey:     "foo",
-			NodeKey:        "bar",
-			DiscoKey:       "faa",
 			Hostname:       "testnode",
 			UserID:         user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
@@ -173,9 +167,6 @@ func (s *Suite) TestGetAvailableIpNodeWithoutIP(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,

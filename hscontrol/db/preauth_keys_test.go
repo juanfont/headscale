@@ -77,9 +77,6 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -101,9 +98,6 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 
 	node := types.Node{
 		ID:             1,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -138,9 +132,6 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	now := time.Now().Add(-time.Second * 30)
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
