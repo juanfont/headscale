@@ -8,6 +8,11 @@
 
 ### Changes
 
+### 0.22.4
+
+### Changes
+- Allows conflicting subnet ranges across users
+
 ## 0.22.3 (2023-05-12)
 
 ### Changes

@@ -192,15 +192,27 @@ func (h *Headscale) DeleteMachineRoutes(m *Machine) error {
 
 // isUniquePrefix returns if there is another machine providing the same route already.
 func (h *Headscale) isUniquePrefix(route Route) bool {
-	var count int64
-	h.db.
-		Model(&Route{}).
+	var routes []Route
+	err := h.db.
+		Preload("Machine").
 		Where("prefix = ? AND machine_id != ? AND advertised = ? AND enabled = ?",
 			route.Prefix,
 			route.MachineID,
-			true, true).Count(&count)
-
-	return count == 0
+			true, true).
+		Find(&routes).Error
+	if err != nil {
+		return true
+	}
+	if len(routes) == 0 {
+		return true
+	}
+	for _, currentRoute := range routes {
+		//if within same namespace a uniquePrefix collision is found out then return false
+		if route.Machine.UserID == currentRoute.Machine.UserID {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *Headscale) getPrimaryRoute(prefix netip.Prefix) (*Route, error) {
