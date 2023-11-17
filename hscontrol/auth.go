@@ -45,7 +45,7 @@ func (h *Headscale) handleRegister(
 		// is that the client will hammer headscale with requests until it gets a
 		// successful RegisterResponse.
 		if registerRequest.Followup != "" {
-			if _, ok := h.registrationCache.Get(registerRequest.NodeKey.String()); ok {
+			if _, ok := h.registrationCache.Get(machineKey.String()); ok {
 				log.Debug().
 					Caller().
 					Str("node", registerRequest.Hostinfo.Hostname).
@@ -116,7 +116,7 @@ func (h *Headscale) handleRegister(
 		}
 
 		h.registrationCache.Set(
-			newNode.NodeKey.String(),
+			machineKey.String(),
 			newNode,
 			registerCacheExpiration,
 		)
@@ -205,7 +205,7 @@ func (h *Headscale) handleRegister(
 		// headscale-managed tailnets?
 		node.NodeKey = registerRequest.NodeKey
 		h.registrationCache.Set(
-			registerRequest.NodeKey.String(),
+			machineKey.String(),
 			*node,
 			registerCacheExpiration,
 		)

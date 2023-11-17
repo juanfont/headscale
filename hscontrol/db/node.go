@@ -376,7 +376,7 @@ func (hsdb *HSDatabase) UpdateLastSeen(node *types.Node) error {
 
 func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 	cache *cache.Cache,
-	nodeKeyStr string,
+	mkey key.MachinePublic,
 	userName string,
 	nodeExpiry *time.Time,
 	registrationMethod string,
@@ -384,20 +384,14 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
 
-	nodeKey := key.NodePublic{}
-	err := nodeKey.UnmarshalText([]byte(nodeKeyStr))
-	if err != nil {
-		return nil, err
-	}
-
 	log.Debug().
-		Str("nodeKey", nodeKey.ShortString()).
+		Str("machine_key", mkey.ShortString()).
 		Str("userName", userName).
 		Str("registrationMethod", registrationMethod).
 		Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
 		Msg("Registering node from API/CLI or auth callback")
 
-	if nodeInterface, ok := cache.Get(nodeKey.String()); ok {
+	if nodeInterface, ok := cache.Get(mkey.String()); ok {
 		if registrationNode, ok := nodeInterface.(types.Node); ok {
 			user, err := hsdb.getUser(userName)
 			if err != nil {
@@ -425,7 +419,7 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 			)
 
 			if err == nil {
-				cache.Delete(nodeKeyStr)
+				cache.Delete(mkey.String())
 			}
 
 			return node, err
