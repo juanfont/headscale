@@ -13,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -24,10 +25,30 @@ var (
 
 // Node is a Headscale client.
 type Node struct {
-	ID          uint64 `gorm:"primary_key"`
-	MachineKey  string `gorm:"type:varchar(64);unique_index"`
-	NodeKey     string
-	DiscoKey    string
+	ID uint64 `gorm:"primary_key"`
+
+	// MachineKeyValue is the string representation of MachineKey
+	// it is _only_ used for reading and writing the key to the
+	// database and should not be used.
+	// Use MachineKey instead.
+	MachineKeyValue string `gorm:"column:machine_key;unique_index"`
+
+	// NodeKeyValue is the string representation of NodeKey
+	// it is _only_ used for reading and writing the key to the
+	// database and should not be used.
+	// Use NodeKey instead.
+	NodeKeyValue string `gorm:"column:node_key"`
+
+	// DiscoKeyValue is the string representation of DiscoKey
+	// it is _only_ used for reading and writing the key to the
+	// database and should not be used.
+	// Use DiscoKey instead.
+	DiscoKeyValue string `gorm:"column:disco_key"`
+
+	MachineKey key.MachinePublic `gorm:"-"`
+	NodeKey    key.NodePublic    `gorm:"-"`
+	DiscoKey   key.DiscoPublic   `gorm:"-"`
+
 	IPAddresses NodeAddresses
 
 	// Hostname represents the name given by the Tailscale
@@ -174,6 +195,31 @@ func (node Node) IsExpired() bool {
 	return time.Now().UTC().After(*node.Expiry)
 }
 
+// TODO(kradalby): Try to replace the types in the DB to be correct.
+func (node *Node) EndpointsToAddrPort() ([]netip.AddrPort, error) {
+	var ret []netip.AddrPort
+	for _, ep := range node.Endpoints {
+		addrPort, err := netip.ParseAddrPort(ep)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, addrPort)
+	}
+
+	return ret, nil
+}
+
+// TODO(kradalby): Try to replace the types in the DB to be correct.
+func (node *Node) SetEndpointsFromAddrPorts(in []netip.AddrPort) {
+	var strs StringList
+	for _, addrPort := range in {
+		strs = append(strs, addrPort.String())
+	}
+
+	node.Endpoints = strs
+}
+
 // IsOnline returns if the node is connected to Headscale.
 // This is really a naive implementation, as we don't really see
 // if there is a working connection between the client and the server.
@@ -226,13 +272,52 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 	return found
 }
 
+// BeforeSave is a hook that ensures that some values that
+// cannot be directly marshalled into database values are stored
+// correctly in the database.
+// This currently means storing the keys as strings.
+func (n *Node) BeforeSave(tx *gorm.DB) (err error) {
+	n.MachineKeyValue = n.MachineKey.String()
+	n.NodeKeyValue = n.NodeKey.String()
+	n.DiscoKeyValue = n.DiscoKey.String()
+
+	return
+}
+
+// AfterFind is a hook that ensures that Node objects fields that
+// has a different type in the database is unwrapped and populated
+// correctly.
+// This currently unmarshals all the keys, stored as strings, into
+// the proper types.
+func (n *Node) AfterFind(tx *gorm.DB) (err error) {
+	var machineKey key.MachinePublic
+	if err := machineKey.UnmarshalText([]byte(n.MachineKeyValue)); err != nil {
+		return err
+	}
+	n.MachineKey = machineKey
+
+	var nodeKey key.NodePublic
+	if err := nodeKey.UnmarshalText([]byte(n.NodeKeyValue)); err != nil {
+		return err
+	}
+	n.NodeKey = nodeKey
+
+	var discoKey key.DiscoPublic
+	if err := discoKey.UnmarshalText([]byte(n.DiscoKeyValue)); err != nil {
+		return err
+	}
+	n.DiscoKey = discoKey
+
+	return
+}
+
 func (node *Node) Proto() *v1.Node {
 	nodeProto := &v1.Node{
 		Id:         node.ID,
-		MachineKey: node.MachineKey,
+		MachineKey: node.MachineKey.String(),
 
-		NodeKey:     node.NodeKey,
-		DiscoKey:    node.DiscoKey,
+		NodeKey:     node.NodeKey.String(),
+		DiscoKey:    node.DiscoKey.String(),
 		IpAddresses: node.IPAddresses.StringSlice(),
 		Name:        node.Hostname,
 		GivenName:   node.GivenName,
@@ -287,47 +372,6 @@ func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (stri
 	}
 
 	return hostname, nil
-}
-
-func (node *Node) MachinePublicKey() (key.MachinePublic, error) {
-	var machineKey key.MachinePublic
-
-	if node.MachineKey != "" {
-		err := machineKey.UnmarshalText(
-			[]byte(node.MachineKey),
-		)
-		if err != nil {
-			return key.MachinePublic{}, fmt.Errorf("failed to parse machine public key: %w", err)
-		}
-	}
-
-	return machineKey, nil
-}
-
-func (node *Node) DiscoPublicKey() (key.DiscoPublic, error) {
-	var discoKey key.DiscoPublic
-	if node.DiscoKey != "" {
-		err := discoKey.UnmarshalText(
-			[]byte(node.DiscoKey),
-		)
-		if err != nil {
-			return key.DiscoPublic{}, fmt.Errorf("failed to parse disco public key: %w", err)
-		}
-	} else {
-		discoKey = key.DiscoPublic{}
-	}
-
-	return discoKey, nil
-}
-
-func (node *Node) NodePublicKey() (key.NodePublic, error) {
-	var nodeKey key.NodePublic
-	err := nodeKey.UnmarshalText([]byte(node.NodeKey))
-	if err != nil {
-		return key.NodePublic{}, fmt.Errorf("failed to parse node public key: %w", err)
-	}
-
-	return nodeKey, nil
 }
 
 func (node Node) String() string {
