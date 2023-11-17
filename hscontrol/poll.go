@@ -34,7 +34,7 @@ func logPollFunc(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey).
+				Str("node_key", node.NodeKey.ShortString()).
 				Str("node", node.Hostname).
 				Msg(msg)
 		},
@@ -45,7 +45,7 @@ func logPollFunc(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey).
+				Str("node_key", node.NodeKey.ShortString()).
 				Str("node", node.Hostname).
 				Err(err).
 				Msg(msg)
@@ -81,7 +81,7 @@ func (h *Headscale) handlePoll(
 			Bool("readOnly", mapRequest.ReadOnly).
 			Bool("omitPeers", mapRequest.OmitPeers).
 			Bool("stream", mapRequest.Stream).
-			Str("node_key", node.NodeKey).
+			Str("node_key", node.NodeKey.ShortString()).
 			Str("node", node.Hostname).
 			Strs("endpoints", node.Endpoints).
 			Msg("Received endpoint update")
@@ -90,8 +90,8 @@ func (h *Headscale) handlePoll(
 		node.LastSeen = &now
 		node.Hostname = mapRequest.Hostinfo.Hostname
 		node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
-		node.DiscoKey = mapRequest.DiscoKey.String()
-		node.Endpoints = mapRequest.Endpoints
+		node.DiscoKey = mapRequest.DiscoKey
+		node.SetEndpointsFromAddrPorts(mapRequest.Endpoints)
 
 		if err := h.db.NodeSave(node); err != nil {
 			logErr(err, "Failed to persist/update node in the database")
@@ -113,7 +113,7 @@ func (h *Headscale) handlePoll(
 				Type:    types.StatePeerChanged,
 				Changed: types.Nodes{node},
 			},
-			node.MachineKey)
+			node.MachineKey.String())
 
 		writer.WriteHeader(http.StatusOK)
 		if f, ok := writer.(http.Flusher); ok {
@@ -143,8 +143,8 @@ func (h *Headscale) handlePoll(
 	node.LastSeen = &now
 	node.Hostname = mapRequest.Hostinfo.Hostname
 	node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
-	node.DiscoKey = mapRequest.DiscoKey.String()
-	node.Endpoints = mapRequest.Endpoints
+	node.DiscoKey = mapRequest.DiscoKey
+	node.SetEndpointsFromAddrPorts(mapRequest.Endpoints)
 
 	// When a node connects to control, list the peers it has at
 	// that given point, further updates are kept in memory in
@@ -222,7 +222,7 @@ func (h *Headscale) handlePoll(
 			Type:    types.StatePeerChanged,
 			Changed: types.Nodes{node},
 		},
-		node.MachineKey)
+		node.MachineKey.String())
 
 	// Set up the client stream
 	h.pollNetMapStreamWG.Add(1)
@@ -232,8 +232,8 @@ func (h *Headscale) handlePoll(
 	defer closeChanWithLog(updateChan, node.Hostname, "updateChan")
 
 	// Register the node's update channel
-	h.nodeNotifier.AddNode(node.MachineKey, updateChan)
-	defer h.nodeNotifier.RemoveNode(node.MachineKey)
+	h.nodeNotifier.AddNode(node.MachineKey.String(), updateChan)
+	defer h.nodeNotifier.RemoveNode(node.MachineKey.String())
 
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
 
@@ -342,7 +342,7 @@ func (h *Headscale) handlePoll(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey).
+				Str("node_key", node.NodeKey.ShortString()).
 				Str("node", node.Hostname).
 				TimeDiff("timeSpent", time.Now(), now).
 				Msg("update sent")

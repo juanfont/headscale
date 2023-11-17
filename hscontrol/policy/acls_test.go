@@ -14,11 +14,28 @@ import (
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 var ipComparer = cmp.Comparer(func(x, y netip.Addr) bool {
 	return x.Compare(y) == 0
 })
+
+var mkeyComparer = cmp.Comparer(func(x, y key.MachinePublic) bool {
+	return x.String() == y.String()
+})
+
+var nkeyComparer = cmp.Comparer(func(x, y key.NodePublic) bool {
+	return x.String() == y.String()
+})
+
+var dkeyComparer = cmp.Comparer(func(x, y key.DiscoPublic) bool {
+	return x.String() == y.String()
+})
+
+var keyComparers []cmp.Option = []cmp.Option{
+	mkeyComparer, nkeyComparer, dkeyComparer,
+}
 
 func Test(t *testing.T) {
 	check.TestingT(t)
@@ -951,7 +968,7 @@ func Test_listNodesInUser(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got := filterNodesByUser(test.args.nodes, test.args.user)
 
-			if diff := cmp.Diff(test.want, got); diff != "" {
+			if diff := cmp.Diff(test.want, got, keyComparers...); diff != "" {
 				t.Errorf("listNodesInUser() = (-want +got):\n%s", diff)
 			}
 		})
@@ -1704,7 +1721,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				test.args.nodes,
 				test.args.user,
 			)
-			if diff := cmp.Diff(test.want, got, ipComparer); diff != "" {
+			if diff := cmp.Diff(test.want, got, ipComparer, mkeyComparer, nkeyComparer, dkeyComparer); diff != "" {
 				t.Errorf("excludeCorrectlyTaggedNodes() (-want +got):\n%s", diff)
 			}
 		})
@@ -2723,7 +2740,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				tt.args.nodes,
 				tt.args.rules,
 			)
-			if diff := cmp.Diff(tt.want, got, ipComparer); diff != "" {
+			if diff := cmp.Diff(tt.want, got, ipComparer, mkeyComparer, nkeyComparer, dkeyComparer); diff != "" {
 				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)
 			}
 		})
@@ -2986,9 +3003,6 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 
 	node := &types.Node{
 		ID:          0,
-		MachineKey:  "foo",
-		NodeKey:     "bar",
-		DiscoKey:    "faa",
 		Hostname:    "testnodes",
 		IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 		UserID:      0,
@@ -3041,9 +3055,6 @@ func TestInvalidTagValidUser(t *testing.T) {
 
 	node := &types.Node{
 		ID:          1,
-		MachineKey:  "12345",
-		NodeKey:     "bar",
-		DiscoKey:    "faa",
 		Hostname:    "testnodes",
 		IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 		UserID:      1,
@@ -3095,9 +3106,6 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 
 	node := &types.Node{
 		ID:          1,
-		MachineKey:  "12345",
-		NodeKey:     "bar",
-		DiscoKey:    "faa",
 		Hostname:    "testnodes",
 		IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 		UserID:      1,
@@ -3159,9 +3167,6 @@ func TestValidTagInvalidUser(t *testing.T) {
 
 	node := &types.Node{
 		ID:          1,
-		MachineKey:  "12345",
-		NodeKey:     "bar",
-		DiscoKey:    "faa",
 		Hostname:    "webserver",
 		IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
 		UserID:      1,
@@ -3179,9 +3184,6 @@ func TestValidTagInvalidUser(t *testing.T) {
 
 	nodes2 := &types.Node{
 		ID:          2,
-		MachineKey:  "56789",
-		NodeKey:     "bar2",
-		DiscoKey:    "faab",
 		Hostname:    "user",
 		IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.2")},
 		UserID:      1,

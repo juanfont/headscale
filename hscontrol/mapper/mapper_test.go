@@ -166,10 +166,16 @@ func Test_fullMapResponse(t *testing.T) {
 	expire := time.Date(2500, time.November, 11, 23, 0, 0, 0, time.UTC)
 
 	mini := &types.Node{
-		ID:          0,
-		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		DiscoKey:    "discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		ID: 0,
+		MachineKey: mustMK(
+			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		),
+		NodeKey: mustNK(
+			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		),
+		DiscoKey: mustDK(
+			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		),
 		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		Hostname:    "mini",
 		GivenName:   "mini",
@@ -226,7 +232,6 @@ func Test_fullMapResponse(t *testing.T) {
 			netip.MustParsePrefix("0.0.0.0/0"),
 			netip.MustParsePrefix("192.168.0.0/24"),
 		},
-		Endpoints:         []string{},
 		DERP:              "127.3.3.40:0",
 		Hostinfo:          hiview(tailcfg.Hostinfo{}),
 		Created:           created,
@@ -244,10 +249,16 @@ func Test_fullMapResponse(t *testing.T) {
 	}
 
 	peer1 := &types.Node{
-		ID:          1,
-		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		DiscoKey:    "discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		ID: 1,
+		MachineKey: mustMK(
+			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		),
+		NodeKey: mustNK(
+			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		),
+		DiscoKey: mustDK(
+			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		),
 		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		Hostname:    "peer1",
 		GivenName:   "peer1",
@@ -278,7 +289,6 @@ func Test_fullMapResponse(t *testing.T) {
 		),
 		Addresses:         []netip.Prefix{netip.MustParsePrefix("100.64.0.2/32")},
 		AllowedIPs:        []netip.Prefix{netip.MustParsePrefix("100.64.0.2/32")},
-		Endpoints:         []string{},
 		DERP:              "127.3.3.40:0",
 		Hostinfo:          hiview(tailcfg.Hostinfo{}),
 		Created:           created,
@@ -296,10 +306,16 @@ func Test_fullMapResponse(t *testing.T) {
 	}
 
 	peer2 := &types.Node{
-		ID:          2,
-		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		DiscoKey:    "discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		ID: 2,
+		MachineKey: mustMK(
+			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		),
+		NodeKey: mustNK(
+			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		),
+		DiscoKey: mustDK(
+			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		),
 		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 		Hostname:    "peer2",
 		GivenName:   "peer2",

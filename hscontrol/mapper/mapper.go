@@ -368,17 +368,6 @@ func (m *Mapper) marshalMapResponse(
 ) ([]byte, error) {
 	atomic.AddUint64(&m.seq, 1)
 
-	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText([]byte(node.MachineKey))
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot parse client key")
-
-		return nil, err
-	}
-
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().
@@ -426,11 +415,11 @@ func (m *Mapper) marshalMapResponse(
 	if compression == util.ZstdCompression {
 		respBody = zstdEncode(jsonBody)
 		if !m.isNoise { // if legacy protocol
-			respBody = m.privateKey2019.SealTo(machineKey, respBody)
+			respBody = m.privateKey2019.SealTo(node.MachineKey, respBody)
 		}
 	} else {
 		if !m.isNoise { // if legacy protocol
-			respBody = m.privateKey2019.SealTo(machineKey, jsonBody)
+			respBody = m.privateKey2019.SealTo(node.MachineKey, jsonBody)
 		} else {
 			respBody = jsonBody
 		}

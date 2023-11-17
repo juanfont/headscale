@@ -521,13 +521,19 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Hostname:    "DebugTestNode",
 	}
 
-	givenName, err := api.h.db.GenerateGivenName(request.GetKey(), request.GetName())
+	var mkey key.MachinePublic
+	err = mkey.UnmarshalText([]byte(request.GetKey()))
+	if err != nil {
+		return nil, err
+	}
+
+	givenName, err := api.h.db.GenerateGivenName(mkey, request.GetName())
 	if err != nil {
 		return nil, err
 	}
 
 	newNode := types.Node{
-		MachineKey: request.GetKey(),
+		MachineKey: mkey,
 		Hostname:   request.GetName(),
 		GivenName:  givenName,
 		User:       *user,
