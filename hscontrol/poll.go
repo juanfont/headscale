@@ -232,8 +232,8 @@ func (h *Headscale) handlePoll(
 	defer closeChanWithLog(updateChan, node.Hostname, "updateChan")
 
 	// Register the node's update channel
-	h.nodeNotifier.AddNode(node.MachineKey.String(), updateChan)
-	defer h.nodeNotifier.RemoveNode(node.MachineKey.String())
+	h.nodeNotifier.AddNode(node.MachineKey, updateChan)
+	defer h.nodeNotifier.RemoveNode(node.MachineKey)
 
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
 
