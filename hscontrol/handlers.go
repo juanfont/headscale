@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -207,33 +206,16 @@ func (h *Headscale) RegisterWebAPI(
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-	nodeKeyStr, ok := vars["nkey"]
-
-	if !util.NodePublicKeyRegex.Match([]byte(nodeKeyStr)) {
-		log.Warn().Str("node_key", nodeKeyStr).Msg("Invalid node key passed to registration url")
-
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusUnauthorized)
-		_, err := writer.Write([]byte("Unauthorized"))
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
-
-		return
-	}
+	machineKeyStr := vars["mkey"]
 
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
 	// the template and log an error.
-	var nodeKey key.NodePublic
-	err := nodeKey.UnmarshalText(
-		[]byte(nodeKeyStr),
+	var machineKey key.MachinePublic
+	err := machineKey.UnmarshalText(
+		[]byte(machineKeyStr),
 	)
-
-	if !ok || nodeKeyStr == "" || err != nil {
+	if err != nil {
 		log.Warn().Err(err).Msg("Failed to parse incoming nodekey")
 
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -251,7 +233,7 @@ func (h *Headscale) RegisterWebAPI(
 
 	var content bytes.Buffer
 	if err := registerWebAPITemplate.Execute(&content, registerWebAPITemplateConfig{
-		Key: nodeKeyStr,
+		Key: machineKey.String(),
 	}); err != nil {
 		log.Error().
 			Str("func", "RegisterWebAPI").

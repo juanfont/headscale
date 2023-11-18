@@ -449,7 +449,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/register/{nkey}", h.RegisterWebAPI).Methods(http.MethodGet)
+	router.HandleFunc("/register/{mkey}", h.RegisterWebAPI).Methods(http.MethodGet)
 	h.addLegacyHandlers(router)
 
 	router.HandleFunc("/oidc/register/{mkey}", h.RegisterOIDC).Methods(http.MethodGet)
