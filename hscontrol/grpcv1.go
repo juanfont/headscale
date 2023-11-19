@@ -172,12 +172,18 @@ func (api headscaleV1APIServer) RegisterNode(
 ) (*v1.RegisterNodeResponse, error) {
 	log.Trace().
 		Str("user", request.GetUser()).
-		Str("node_key", request.GetKey()).
+		Str("machine_key", request.GetKey()).
 		Msg("Registering node")
+
+	var mkey key.MachinePublic
+	err := mkey.UnmarshalText([]byte(request.GetKey()))
+	if err != nil {
+		return nil, err
+	}
 
 	node, err := api.h.db.RegisterNodeFromAuthCallback(
 		api.h.registrationCache,
-		request.GetKey(),
+		mkey,
 		request.GetUser(),
 		nil,
 		util.RegisterMethodCLI,
@@ -521,13 +527,22 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Hostname:    "DebugTestNode",
 	}
 
-	givenName, err := api.h.db.GenerateGivenName(request.GetKey(), request.GetName())
+	var mkey key.MachinePublic
+	err = mkey.UnmarshalText([]byte(request.GetKey()))
 	if err != nil {
 		return nil, err
 	}
 
+	givenName, err := api.h.db.GenerateGivenName(mkey, request.GetName())
+	if err != nil {
+		return nil, err
+	}
+
+	nodeKey := key.NewNode()
+
 	newNode := types.Node{
-		MachineKey: request.GetKey(),
+		MachineKey: mkey,
+		NodeKey:    nodeKey.Public(),
 		Hostname:   request.GetName(),
 		GivenName:  givenName,
 		User:       *user,
@@ -538,14 +553,12 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		HostInfo: types.HostInfo(hostinfo),
 	}
 
-	nodeKey := key.NodePublic{}
-	err = nodeKey.UnmarshalText([]byte(request.GetKey()))
-	if err != nil {
-		log.Panic().Msg("can not add node for debug. invalid node key")
-	}
+	log.Debug().
+		Str("machine_key", mkey.ShortString()).
+		Msg("adding debug machine via CLI, appending to registration cache")
 
 	api.h.registrationCache.Set(
-		nodeKey.String(),
+		mkey.String(),
 		newNode,
 		registerCacheExpiration,
 	)

@@ -6,6 +6,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"tailscale.com/types/key"
 )
 
 type Notifier struct {
@@ -17,9 +18,9 @@ func NewNotifier() *Notifier {
 	return &Notifier{}
 }
 
-func (n *Notifier) AddNode(machineKey string, c chan<- types.StateUpdate) {
-	log.Trace().Caller().Str("key", machineKey).Msg("acquiring lock to add node")
-	defer log.Trace().Caller().Str("key", machineKey).Msg("releasing lock to add node")
+func (n *Notifier) AddNode(machineKey key.MachinePublic, c chan<- types.StateUpdate) {
+	log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("acquiring lock to add node")
+	defer log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("releasing lock to add node")
 
 	n.l.Lock()
 	defer n.l.Unlock()
@@ -28,17 +29,17 @@ func (n *Notifier) AddNode(machineKey string, c chan<- types.StateUpdate) {
 		n.nodes = make(map[string]chan<- types.StateUpdate)
 	}
 
-	n.nodes[machineKey] = c
+	n.nodes[machineKey.String()] = c
 
 	log.Trace().
-		Str("machine_key", machineKey).
+		Str("machine_key", machineKey.ShortString()).
 		Int("open_chans", len(n.nodes)).
 		Msg("Added new channel")
 }
 
-func (n *Notifier) RemoveNode(machineKey string) {
-	log.Trace().Caller().Str("key", machineKey).Msg("acquiring lock to remove node")
-	defer log.Trace().Caller().Str("key", machineKey).Msg("releasing lock to remove node")
+func (n *Notifier) RemoveNode(machineKey key.MachinePublic) {
+	log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("acquiring lock to remove node")
+	defer log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("releasing lock to remove node")
 
 	n.l.Lock()
 	defer n.l.Unlock()
@@ -47,10 +48,10 @@ func (n *Notifier) RemoveNode(machineKey string) {
 		return
 	}
 
-	delete(n.nodes, machineKey)
+	delete(n.nodes, machineKey.String())
 
 	log.Trace().
-		Str("machine_key", machineKey).
+		Str("machine_key", machineKey.ShortString()).
 		Int("open_chans", len(n.nodes)).
 		Msg("Removed channel")
 }

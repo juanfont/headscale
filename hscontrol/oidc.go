@@ -90,42 +90,28 @@ func (h *Headscale) determineTokenExpiration(idTokenExpiration time.Time) time.T
 
 // RegisterOIDC redirects to the OIDC provider for authentication
 // Puts NodeKey in cache so the callback can retrieve it using the oidc state param
-// Listens in /oidc/register/:nKey.
+// Listens in /oidc/register/:mKey.
 func (h *Headscale) RegisterOIDC(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-	nodeKeyStr, ok := vars["nkey"]
+	machineKeyStr, ok := vars["mkey"]
 
 	log.Debug().
 		Caller().
-		Str("node_key", nodeKeyStr).
+		Str("machine_key", machineKeyStr).
 		Bool("ok", ok).
 		Msg("Received oidc register call")
-
-	if !util.NodePublicKeyRegex.Match([]byte(nodeKeyStr)) {
-		log.Warn().Str("node_key", nodeKeyStr).Msg("Invalid node key passed to registration url")
-
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusUnauthorized)
-		_, err := writer.Write([]byte("Unauthorized"))
-		if err != nil {
-			util.LogErr(err, "Failed to write response")
-		}
-
-		return
-	}
 
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
 	// the template and log an error.
-	var nodeKey key.NodePublic
-	err := nodeKey.UnmarshalText(
-		[]byte(nodeKeyStr),
+	var machineKey key.MachinePublic
+	err := machineKey.UnmarshalText(
+		[]byte(machineKeyStr),
 	)
-
-	if !ok || nodeKeyStr == "" || err != nil {
+	if err != nil {
 		log.Warn().
 			Err(err).
 			Msg("Failed to parse incoming nodekey in OIDC registration")
@@ -154,7 +140,7 @@ func (h *Headscale) RegisterOIDC(
 	// place the node key into the state cache, so it can be retrieved later
 	h.registrationCache.Set(
 		stateStr,
-		nodeKey,
+		machineKey,
 		registerCacheExpiration,
 	)
 
@@ -232,7 +218,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	nodeKey, nodeExists, err := h.validateNodeForOIDCCallback(
+	machineKey, nodeExists, err := h.validateNodeForOIDCCallback(
 		writer,
 		state,
 		claims,
@@ -255,7 +241,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	if err := h.registerNodeForOIDCCallback(writer, user, nodeKey, idTokenExpiry); err != nil {
+	if err := h.registerNodeForOIDCCallback(writer, user, machineKey, idTokenExpiry); err != nil {
 		return
 	}
 
@@ -462,10 +448,10 @@ func (h *Headscale) validateNodeForOIDCCallback(
 	state string,
 	claims *IDTokenClaims,
 	expiry time.Time,
-) (*key.NodePublic, bool, error) {
+) (*key.MachinePublic, bool, error) {
 	// retrieve nodekey from state cache
-	nodeKeyIf, nodeKeyFound := h.registrationCache.Get(state)
-	if !nodeKeyFound {
+	machineKeyIf, machineKeyFound := h.registrationCache.Get(state)
+	if !machineKeyFound {
 		log.Trace().
 			Msg("requested node state key expired before authorisation completed")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -478,11 +464,11 @@ func (h *Headscale) validateNodeForOIDCCallback(
 		return nil, false, errOIDCNodeKeyMissing
 	}
 
-	var nodeKey key.NodePublic
-	nodeKey, nodeKeyOK := nodeKeyIf.(key.NodePublic)
-	if !nodeKeyOK {
+	var machineKey key.MachinePublic
+	machineKey, machineKeyOK := machineKeyIf.(key.MachinePublic)
+	if !machineKeyOK {
 		log.Trace().
-			Interface("got", nodeKeyIf).
+			Interface("got", machineKeyIf).
 			Msg("requested node state key is not a nodekey")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
@@ -498,7 +484,7 @@ func (h *Headscale) validateNodeForOIDCCallback(
 	// The error is not important, because if it does not
 	// exist, then this is a new node and we will move
 	// on to registration.
-	node, _ := h.db.GetNodeByNodeKey(nodeKey)
+	node, _ := h.db.GetNodeByMachineKey(machineKey)
 
 	if node != nil {
 		log.Trace().
@@ -553,7 +539,7 @@ func (h *Headscale) validateNodeForOIDCCallback(
 		return nil, true, nil
 	}
 
-	return &nodeKey, false, nil
+	return &machineKey, false, nil
 }
 
 func getUserName(
@@ -624,13 +610,13 @@ func (h *Headscale) findOrCreateNewUserForOIDCCallback(
 func (h *Headscale) registerNodeForOIDCCallback(
 	writer http.ResponseWriter,
 	user *types.User,
-	nodeKey *key.NodePublic,
+	machineKey *key.MachinePublic,
 	expiry time.Time,
 ) error {
 	if _, err := h.db.RegisterNodeFromAuthCallback(
 		// TODO(kradalby): find a better way to use the cache across modules
 		h.registrationCache,
-		nodeKey.String(),
+		*machineKey,
 		user.Name,
 		&expiry,
 		util.RegisterMethodOIDC,

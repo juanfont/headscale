@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -99,7 +100,7 @@ func NewHeadscaleDatabase(
 	// node was registered.
 	_ = dbConn.Migrator().RenameColumn(&types.Node{}, "nickname", "given_name")
 
-	// If the MacNodehine table has a column for registered,
+	// If the Node table has a column for registered,
 	// find all occourences of "false" and drop them. Then
 	// remove the column.
 	if dbConn.Migrator().HasColumn(&types.Node{}, "registered") {
@@ -114,13 +115,13 @@ func NewHeadscaleDatabase(
 		for _, node := range nodes {
 			log.Info().
 				Str("node", node.Hostname).
-				Str("machine_key", node.MachineKey).
+				Str("machine_key", node.MachineKey.ShortString()).
 				Msg("Deleting unregistered node")
 			if err := dbConn.Delete(&types.Node{}, node.ID).Error; err != nil {
 				log.Error().
 					Err(err).
 					Str("node", node.Hostname).
-					Str("machine_key", node.MachineKey).
+					Str("machine_key", node.MachineKey.ShortString()).
 					Msg("Error deleting unregistered node")
 			}
 		}
@@ -134,6 +135,50 @@ func NewHeadscaleDatabase(
 	err = dbConn.AutoMigrate(&types.Route{})
 	if err != nil {
 		return nil, err
+	}
+
+	err = dbConn.AutoMigrate(&types.Node{})
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure all keys have correct prefixes
+	// https://github.com/tailscale/tailscale/blob/main/types/key/node.go#L35
+	type result struct {
+		ID         uint64
+		MachineKey string
+		NodeKey    string
+		DiscoKey   string
+	}
+	var results []result
+	err = db.db.Raw("SELECT id, node_key, machine_key, disco_key FROM nodes").Find(&results).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range results {
+		mKey := node.MachineKey
+		if !strings.HasPrefix(node.MachineKey, "mkey:") {
+			mKey = "mkey:" + node.MachineKey
+		}
+		nKey := node.NodeKey
+		if !strings.HasPrefix(node.NodeKey, "nodekey:") {
+			nKey = "nodekey:" + node.NodeKey
+		}
+
+		dKey := node.DiscoKey
+		if !strings.HasPrefix(node.DiscoKey, "discokey:") {
+			dKey = "discokey:" + node.DiscoKey
+		}
+
+		err := db.db.Exec("UPDATE nodes SET machine_key = @mKey, node_key = @nKey, disco_key = @dKey WHERE ID = @id",
+			sql.Named("mKey", mKey),
+			sql.Named("nKey", nKey),
+			sql.Named("dKey", dKey),
+			sql.Named("id", node.ID)).Error
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if dbConn.Migrator().HasColumn(&types.Node{}, "enabled_routes") {
@@ -195,11 +240,6 @@ func NewHeadscaleDatabase(
 		}
 	}
 
-	err = dbConn.AutoMigrate(&types.Node{})
-	if err != nil {
-		return nil, err
-	}
-
 	if dbConn.Migrator().HasColumn(&types.Node{}, "given_name") {
 		nodes := types.Nodes{}
 		if err := dbConn.Find(&nodes).Error; err != nil {
@@ -251,27 +291,6 @@ func NewHeadscaleDatabase(
 	err = dbConn.AutoMigrate(&types.APIKey{})
 	if err != nil {
 		return nil, err
-	}
-
-	// Ensure all keys have correct prefixes
-	// https://github.com/tailscale/tailscale/blob/main/types/key/node.go#L35
-	nodes := types.Nodes{}
-	if err := dbConn.Find(&nodes).Error; err != nil {
-		log.Error().Err(err).Msg("Error accessing db")
-	}
-
-	for _, node := range nodes {
-		if !strings.HasPrefix(node.DiscoKey, "discokey:") {
-			node.DiscoKey = "discokey:" + node.DiscoKey
-		}
-
-		if !strings.HasPrefix(node.NodeKey, "nodekey:") {
-			node.NodeKey = "nodekey:" + node.NodeKey
-		}
-
-		if !strings.HasPrefix(node.MachineKey, "mkey:") {
-			node.MachineKey = "mkey:" + node.MachineKey
-		}
 	}
 
 	// TODO(kradalby): is this needed?

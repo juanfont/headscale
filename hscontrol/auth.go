@@ -45,7 +45,7 @@ func (h *Headscale) handleRegister(
 		// is that the client will hammer headscale with requests until it gets a
 		// successful RegisterResponse.
 		if registerRequest.Followup != "" {
-			if _, ok := h.registrationCache.Get(registerRequest.NodeKey.String()); ok {
+			if _, ok := h.registrationCache.Get(machineKey.String()); ok {
 				log.Debug().
 					Caller().
 					Str("node", registerRequest.Hostinfo.Hostname).
@@ -78,7 +78,7 @@ func (h *Headscale) handleRegister(
 			Msg("New node not yet in the database")
 
 		givenName, err := h.db.GenerateGivenName(
-			machineKey.String(),
+			machineKey,
 			registerRequest.Hostinfo.Hostname,
 		)
 		if err != nil {
@@ -97,10 +97,10 @@ func (h *Headscale) handleRegister(
 		// We create the node and then keep it around until a callback
 		// happens
 		newNode := types.Node{
-			MachineKey: machineKey.String(),
+			MachineKey: machineKey,
 			Hostname:   registerRequest.Hostinfo.Hostname,
 			GivenName:  givenName,
-			NodeKey:    registerRequest.NodeKey.String(),
+			NodeKey:    registerRequest.NodeKey,
 			LastSeen:   &now,
 			Expiry:     &time.Time{},
 		}
@@ -116,7 +116,7 @@ func (h *Headscale) handleRegister(
 		}
 
 		h.registrationCache.Set(
-			newNode.NodeKey,
+			machineKey.String(),
 			newNode,
 			registerCacheExpiration,
 		)
@@ -134,11 +134,7 @@ func (h *Headscale) handleRegister(
 		// (juan): For a while we had a bug where we were not storing the MachineKey for the nodes using the TS2021,
 		// due to a misunderstanding of the protocol https://github.com/juanfont/headscale/issues/1054
 		// So if we have a not valid MachineKey (but we were able to fetch the node with the NodeKeys), we update it.
-		var storedMachineKey key.MachinePublic
-		err = storedMachineKey.UnmarshalText(
-			[]byte(node.MachineKey),
-		)
-		if err != nil || storedMachineKey.IsZero() {
+		if err != nil || node.MachineKey.IsZero() {
 			if err := h.db.NodeSetMachineKey(node, machineKey); err != nil {
 				log.Error().
 					Caller().
@@ -156,7 +152,7 @@ func (h *Headscale) handleRegister(
 		// - Trying to log out (sending a expiry in the past)
 		// - A valid, registered node, looking for /map
 		// - Expired node wanting to reauthenticate
-		if node.NodeKey == registerRequest.NodeKey.String() {
+		if node.NodeKey.String() == registerRequest.NodeKey.String() {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !registerRequest.Expiry.IsZero() &&
@@ -176,7 +172,7 @@ func (h *Headscale) handleRegister(
 		}
 
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
-		if node.NodeKey == registerRequest.OldNodeKey.String() &&
+		if node.NodeKey.String() == registerRequest.OldNodeKey.String() &&
 			!node.IsExpired() {
 			h.handleNodeKeyRefresh(
 				writer,
@@ -207,9 +203,9 @@ func (h *Headscale) handleRegister(
 		// we need to make sure the NodeKey matches the one in the request
 		// TODO(juan): What happens when using fast user switching between two
 		// headscale-managed tailnets?
-		node.NodeKey = registerRequest.NodeKey.String()
+		node.NodeKey = registerRequest.NodeKey
 		h.registrationCache.Set(
-			registerRequest.NodeKey.String(),
+			machineKey.String(),
 			*node,
 			registerCacheExpiration,
 		)
@@ -294,7 +290,7 @@ func (h *Headscale) handleAuthKey(
 		Str("node", registerRequest.Hostinfo.Hostname).
 		Msg("Authentication key was valid, proceeding to acquire IP addresses")
 
-	nodeKey := registerRequest.NodeKey.String()
+	nodeKey := registerRequest.NodeKey
 
 	// retrieve node information if it exist
 	// The error is not important, because if it does not
@@ -342,7 +338,7 @@ func (h *Headscale) handleAuthKey(
 	} else {
 		now := time.Now().UTC()
 
-		givenName, err := h.db.GenerateGivenName(machineKey.String(), registerRequest.Hostinfo.Hostname)
+		givenName, err := h.db.GenerateGivenName(machineKey, registerRequest.Hostinfo.Hostname)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -359,7 +355,7 @@ func (h *Headscale) handleAuthKey(
 			Hostname:       registerRequest.Hostinfo.Hostname,
 			GivenName:      givenName,
 			UserID:         pak.User.ID,
-			MachineKey:     machineKey.String(),
+			MachineKey:     machineKey,
 			RegisterMethod: util.RegisterMethodAuthKey,
 			Expiry:         &registerRequest.Expiry,
 			NodeKey:        nodeKey,
@@ -460,12 +456,12 @@ func (h *Headscale) handleNewNode(
 		resp.AuthURL = fmt.Sprintf(
 			"%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			registerRequest.NodeKey,
+			machineKey.String(),
 		)
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			registerRequest.NodeKey)
+			machineKey.String())
 	}
 
 	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
@@ -715,11 +711,11 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 	if h.oauth2Config != nil {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			registerRequest.NodeKey)
+			machineKey.String())
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			registerRequest.NodeKey)
+			machineKey.String())
 	}
 
 	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)

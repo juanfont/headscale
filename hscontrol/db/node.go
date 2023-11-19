@@ -55,7 +55,7 @@ func (hsdb *HSDatabase) listPeers(node *types.Node) (types.Nodes, error) {
 		Preload("User").
 		Preload("Routes").
 		Where("node_key <> ?",
-			node.NodeKey).Find(&nodes).Error; err != nil {
+			node.NodeKey.String()).Find(&nodes).Error; err != nil {
 		return types.Nodes{}, err
 	}
 
@@ -268,7 +268,7 @@ func (hsdb *HSDatabase) SetTags(
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
 		Changed: types.Nodes{node},
-	}, node.MachineKey)
+	}, node.MachineKey.String())
 
 	return nil
 }
@@ -304,7 +304,7 @@ func (hsdb *HSDatabase) RenameNode(node *types.Node, newName string) error {
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
 		Changed: types.Nodes{node},
-	}, node.MachineKey)
+	}, node.MachineKey.String())
 
 	return nil
 }
@@ -330,7 +330,7 @@ func (hsdb *HSDatabase) nodeSetExpiry(node *types.Node, expiry time.Time) error 
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
 		Changed: types.Nodes{node},
-	}, node.MachineKey)
+	}, node.MachineKey.String())
 
 	return nil
 }
@@ -376,7 +376,7 @@ func (hsdb *HSDatabase) UpdateLastSeen(node *types.Node) error {
 
 func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 	cache *cache.Cache,
-	nodeKeyStr string,
+	mkey key.MachinePublic,
 	userName string,
 	nodeExpiry *time.Time,
 	registrationMethod string,
@@ -384,20 +384,14 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
 
-	nodeKey := key.NodePublic{}
-	err := nodeKey.UnmarshalText([]byte(nodeKeyStr))
-	if err != nil {
-		return nil, err
-	}
-
 	log.Debug().
-		Str("nodeKey", nodeKey.ShortString()).
+		Str("machine_key", mkey.ShortString()).
 		Str("userName", userName).
 		Str("registrationMethod", registrationMethod).
 		Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
 		Msg("Registering node from API/CLI or auth callback")
 
-	if nodeInterface, ok := cache.Get(nodeKey.String()); ok {
+	if nodeInterface, ok := cache.Get(mkey.String()); ok {
 		if registrationNode, ok := nodeInterface.(types.Node); ok {
 			user, err := hsdb.getUser(userName)
 			if err != nil {
@@ -425,7 +419,7 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 			)
 
 			if err == nil {
-				cache.Delete(nodeKeyStr)
+				cache.Delete(mkey.String())
 			}
 
 			return node, err
@@ -448,8 +442,8 @@ func (hsdb *HSDatabase) RegisterNode(node types.Node) (*types.Node, error) {
 func (hsdb *HSDatabase) registerNode(node types.Node) (*types.Node, error) {
 	log.Debug().
 		Str("node", node.Hostname).
-		Str("machine_key", node.MachineKey).
-		Str("node_key", node.NodeKey).
+		Str("machine_key", node.MachineKey.ShortString()).
+		Str("node_key", node.NodeKey.ShortString()).
 		Str("user", node.User.Name).
 		Msg("Registering node")
 
@@ -464,8 +458,8 @@ func (hsdb *HSDatabase) registerNode(node types.Node) (*types.Node, error) {
 		log.Trace().
 			Caller().
 			Str("node", node.Hostname).
-			Str("machine_key", node.MachineKey).
-			Str("node_key", node.NodeKey).
+			Str("machine_key", node.MachineKey.ShortString()).
+			Str("node_key", node.NodeKey.ShortString()).
 			Str("user", node.User.Name).
 			Msg("Node authorized again")
 
@@ -507,7 +501,7 @@ func (hsdb *HSDatabase) NodeSetNodeKey(node *types.Node, nodeKey key.NodePublic)
 	defer hsdb.mu.Unlock()
 
 	if err := hsdb.db.Model(node).Updates(types.Node{
-		NodeKey: nodeKey.String(),
+		NodeKey: nodeKey,
 	}).Error; err != nil {
 		return err
 	}
@@ -524,7 +518,7 @@ func (hsdb *HSDatabase) NodeSetMachineKey(
 	defer hsdb.mu.Unlock()
 
 	if err := hsdb.db.Model(node).Updates(types.Node{
-		MachineKey: machineKey.String(),
+		MachineKey: machineKey,
 	}).Error; err != nil {
 		return err
 	}
@@ -703,7 +697,7 @@ func (hsdb *HSDatabase) enableRoutes(node *types.Node, routeStrs ...string) erro
 	hsdb.notifier.NotifyWithIgnore(types.StateUpdate{
 		Type:    types.StatePeerChanged,
 		Changed: types.Nodes{node},
-	}, node.MachineKey)
+	}, node.MachineKey.String())
 
 	return nil
 }
@@ -734,7 +728,7 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 	return normalizedHostname, nil
 }
 
-func (hsdb *HSDatabase) GenerateGivenName(machineKey string, suppliedName string) (string, error) {
+func (hsdb *HSDatabase) GenerateGivenName(mkey key.MachinePublic, suppliedName string) (string, error) {
 	hsdb.mu.RLock()
 	defer hsdb.mu.RUnlock()
 
@@ -749,15 +743,20 @@ func (hsdb *HSDatabase) GenerateGivenName(machineKey string, suppliedName string
 		return "", err
 	}
 
-	for _, node := range nodes {
-		if node.MachineKey != machineKey && node.GivenName == givenName {
-			postfixedName, err := generateGivenName(suppliedName, true)
-			if err != nil {
-				return "", err
-			}
-
-			givenName = postfixedName
+	var nodeFound *types.Node
+	for idx, node := range nodes {
+		if node.GivenName == givenName {
+			nodeFound = nodes[idx]
 		}
+	}
+
+	if nodeFound != nil && nodeFound.MachineKey.String() != mkey.String() {
+		postfixedName, err := generateGivenName(suppliedName, true)
+		if err != nil {
+			return "", err
+		}
+
+		givenName = postfixedName
 	}
 
 	return givenName, nil

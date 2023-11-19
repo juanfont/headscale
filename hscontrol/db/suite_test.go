@@ -1,6 +1,7 @@
 package db
 
 import (
+	"log"
 	"net/netip"
 	"os"
 	"testing"
@@ -27,18 +28,21 @@ func (s *Suite) SetUpTest(c *check.C) {
 }
 
 func (s *Suite) TearDownTest(c *check.C) {
-	os.RemoveAll(tmpDir)
+	// os.RemoveAll(tmpDir)
 }
 
 func (s *Suite) ResetDB(c *check.C) {
-	if len(tmpDir) != 0 {
-		os.RemoveAll(tmpDir)
-	}
+	// if len(tmpDir) != 0 {
+	// 	os.RemoveAll(tmpDir)
+	// }
+
 	var err error
-	tmpDir, err = os.MkdirTemp("", "autoygg-client-test")
+	tmpDir, err = os.MkdirTemp("", "headscale-db-test-*")
 	if err != nil {
 		c.Fatal(err)
 	}
+
+	log.Printf("database path: %s", tmpDir+"/headscale_test.db")
 
 	db, err = NewHeadscaleDatabase(
 		"sqlite3",

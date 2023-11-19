@@ -25,11 +25,13 @@ func (s *Suite) TestGetNode(c *check.C) {
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+
 	node := &types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -51,11 +53,13 @@ func (s *Suite) TestGetNodeByID(c *check.C) {
 	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -82,9 +86,8 @@ func (s *Suite) TestGetNodeByNodeKey(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     machineKey.Public().String(),
-		NodeKey:        nodeKey.Public().String(),
-		DiscoKey:       "faa",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -113,9 +116,8 @@ func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     machineKey.Public().String(),
-		NodeKey:        nodeKey.Public().String(),
-		DiscoKey:       "faa",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -130,11 +132,14 @@ func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
 func (s *Suite) TestHardDeleteNode(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
+
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode3",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -160,11 +165,13 @@ func (s *Suite) TestListPeers(c *check.C) {
 	c.Assert(err, check.NotNil)
 
 	for index := 0; index <= 10; index++ {
+		nodeKey := key.NewNode()
+		machineKey := key.NewMachine()
+
 		node := types.Node{
 			ID:             uint64(index),
-			MachineKey:     "foo" + strconv.Itoa(index),
-			NodeKey:        "bar" + strconv.Itoa(index),
-			DiscoKey:       "faa" + strconv.Itoa(index),
+			MachineKey:     machineKey.Public(),
+			NodeKey:        nodeKey.Public(),
 			Hostname:       "testnode" + strconv.Itoa(index),
 			UserID:         user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
@@ -205,11 +212,13 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Assert(err, check.NotNil)
 
 	for index := 0; index <= 10; index++ {
+		nodeKey := key.NewNode()
+		machineKey := key.NewMachine()
+
 		node := types.Node{
 			ID:         uint64(index),
-			MachineKey: "foo" + strconv.Itoa(index),
-			NodeKey:    "bar" + strconv.Itoa(index),
-			DiscoKey:   "faa" + strconv.Itoa(index),
+			MachineKey: machineKey.Public(),
+			NodeKey:    nodeKey.Public(),
 			IPAddresses: types.NodeAddresses{
 				netip.MustParseAddr(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1))),
 			},
@@ -288,11 +297,13 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+
 	node := &types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -345,11 +356,15 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	_, err = db.GetNode("user-1", "testnode")
 	c.Assert(err, check.NotNil)
 
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+
+	machineKey2 := key.NewMachine()
+
 	node := &types.Node{
 		ID:             0,
-		MachineKey:     "node-key-1",
-		NodeKey:        "node-key-1",
-		DiscoKey:       "disco-key-1",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "hostname-1",
 		GivenName:      "hostname-1",
 		UserID:         user1.ID,
@@ -358,23 +373,18 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	}
 	db.db.Save(node)
 
-	givenName, err := db.GenerateGivenName("node-key-2", "hostname-2")
+	givenName, err := db.GenerateGivenName(machineKey2.Public(), "hostname-2")
 	comment := check.Commentf("Same user, unique nodes, unique hostnames, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-2", comment)
 
-	givenName, err = db.GenerateGivenName("node-key-1", "hostname-1")
+	givenName, err = db.GenerateGivenName(machineKey.Public(), "hostname-1")
 	comment = check.Commentf("Same user, same node, same hostname, no conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Equals, "hostname-1", comment)
 
-	givenName, err = db.GenerateGivenName("node-key-2", "hostname-1")
+	givenName, err = db.GenerateGivenName(machineKey2.Public(), "hostname-1")
 	comment = check.Commentf("Same user, unique nodes, same hostname, conflict")
-	c.Assert(err, check.IsNil, comment)
-	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", NodeGivenNameHashLength), comment)
-
-	givenName, err = db.GenerateGivenName("node-key-2", "hostname-1")
-	comment = check.Commentf("Unique users, unique nodes, same hostname, conflict")
 	c.Assert(err, check.IsNil, comment)
 	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", NodeGivenNameHashLength), comment)
 }
@@ -389,11 +399,13 @@ func (s *Suite) TestSetTags(c *check.C) {
 	_, err = db.GetNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+
 	node := &types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -565,6 +577,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
 
 	defaultRouteV4 := netip.MustParsePrefix("0.0.0.0/0")
 	defaultRouteV6 := netip.MustParsePrefix("::/0")
@@ -574,9 +587,8 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        nodeKey.Public().String(),
-		DiscoKey:       "faa",
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
 		Hostname:       "test",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,

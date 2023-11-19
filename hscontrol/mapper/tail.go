@@ -52,21 +52,6 @@ func tailNode(
 	baseDomain string,
 	randomClientPort bool,
 ) (*tailcfg.Node, error) {
-	nodeKey, err := node.NodePublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	machineKey, err := node.MachinePublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	discoKey, err := node.DiscoPublicKey()
-	if err != nil {
-		return nil, err
-	}
-
 	addrs := node.IPAddresses.Prefixes()
 
 	allowedIPs := append(
@@ -112,6 +97,11 @@ func tailNode(
 	tags, _ := pol.TagsOfNode(node)
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
+	endpoints, err := node.EndpointsToAddrPort()
+	if err != nil {
+		return nil, err
+	}
+
 	tNode := tailcfg.Node{
 		ID: tailcfg.NodeID(node.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
@@ -121,14 +111,14 @@ func tailNode(
 
 		User: tailcfg.UserID(node.UserID),
 
-		Key:       nodeKey,
+		Key:       node.NodeKey,
 		KeyExpiry: keyExpiry,
 
-		Machine:    machineKey,
-		DiscoKey:   discoKey,
+		Machine:    node.MachineKey,
+		DiscoKey:   node.DiscoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
-		Endpoints:  node.Endpoints,
+		Endpoints:  endpoints,
 		DERP:       derp,
 		Hostinfo:   hostInfo.View(),
 		Created:    node.CreatedAt,

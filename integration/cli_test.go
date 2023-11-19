@@ -683,8 +683,8 @@ func TestNodeTagCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	machineKeys := []string{
-		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 	}
 	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
@@ -816,13 +816,13 @@ func TestNodeCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated node keys
+	// Pregenerated machine keys
 	machineKeys := []string{
-		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
 	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
@@ -898,8 +898,8 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "node-5", listAll[4].Name)
 
 	otherUserMachineKeys := []string{
-		"nodekey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
-		"nodekey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
+		"mkey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
+		"mkey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
 	}
 	otherUserMachines := make([]*v1.Node, len(otherUserMachineKeys))
 	assert.Nil(t, err)
@@ -1056,13 +1056,13 @@ func TestNodeExpireCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated node keys
+	// Pregenerated machine keys
 	machineKeys := []string{
-		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
 	nodes := make([]*v1.Node, len(machineKeys))
 
@@ -1183,13 +1183,13 @@ func TestNodeRenameCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated node keys
+	// Pregenerated machine keys
 	machineKeys := []string{
-		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 	}
 	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
@@ -1210,7 +1210,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.Nil(t, err)
+		assertNoErr(t, err)
 
 		var node v1.Node
 		err = executeAndUnmarshal(
@@ -1228,7 +1228,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			},
 			&node,
 		)
-		assert.Nil(t, err)
+		assertNoErr(t, err)
 
 		nodes[index] = &node
 	}
@@ -1350,7 +1350,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	// Randomly generated node key
-	machineKey := "nodekey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
+	machineKey := "mkey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
 
 	_, err = headscale.Execute(
 		[]string{
