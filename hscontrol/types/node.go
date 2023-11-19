@@ -276,7 +276,7 @@ func (n *Node) BeforeSave(tx *gorm.DB) (err error) {
 
 	hi, err := json.Marshal(n.Hostinfo)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal Hostinfo to store in db: %w", err)
 	}
 	n.HostinfoDatabaseField = string(hi)
 
@@ -291,19 +291,19 @@ func (n *Node) BeforeSave(tx *gorm.DB) (err error) {
 func (n *Node) AfterFind(tx *gorm.DB) (err error) {
 	var machineKey key.MachinePublic
 	if err := machineKey.UnmarshalText([]byte(n.MachineKeyDatabaseField)); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal machine key from db: %w", err)
 	}
 	n.MachineKey = machineKey
 
 	var nodeKey key.NodePublic
 	if err := nodeKey.UnmarshalText([]byte(n.NodeKeyDatabaseField)); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal node key from db: %w", err)
 	}
 	n.NodeKey = nodeKey
 
 	var discoKey key.DiscoPublic
 	if err := discoKey.UnmarshalText([]byte(n.DiscoKeyDatabaseField)); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal disco key from db: %w", err)
 	}
 	n.DiscoKey = discoKey
 
@@ -311,7 +311,7 @@ func (n *Node) AfterFind(tx *gorm.DB) (err error) {
 	for _, ep := range n.EndpointsDatabaseField {
 		addrPort, err := netip.ParseAddrPort(ep)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to parse endpoint from db: %w", err)
 		}
 
 		endpoints = append(endpoints, addrPort)
@@ -320,7 +320,7 @@ func (n *Node) AfterFind(tx *gorm.DB) (err error) {
 
 	var hi tailcfg.Hostinfo
 	if err := json.Unmarshal([]byte(n.HostinfoDatabaseField), &hi); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal Hostinfo from db: %w", err)
 	}
 	n.Hostinfo = &hi
 
