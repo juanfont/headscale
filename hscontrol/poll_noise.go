@@ -12,6 +12,10 @@ import (
 	"tailscale.com/types/key"
 )
 
+const (
+	MinimumCapVersion tailcfg.CapabilityVersion = 36
+)
+
 // NoisePollNetMapHandler takes care of /machine/:id/map using the Noise protocol
 //
 // This is the busiest endpoint, as it keeps the HTTP long poll that updates
@@ -47,6 +51,18 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
+	// Reject unsupported versions
+	if mapRequest.Version < MinimumCapVersion {
+		log.Info().
+			Caller().
+			Int("min_version", int(MinimumCapVersion)).
+			Int("client_version", int(mapRequest.Version)).
+			Msg("unsupported client connected")
+		http.Error(writer, "Internal error", http.StatusBadRequest)
+
+		return
+	}
+
 	ns.nodeKey = mapRequest.NodeKey
 
 	node, err := ns.headscale.db.GetNodeByAnyKey(
@@ -73,20 +89,8 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	log.Debug().
 		Str("handler", "NoisePollNetMap").
 		Str("node", node.Hostname).
+		Int("cap_ver", int(mapRequest.Version)).
 		Msg("A node sending a MapRequest with Noise protocol")
 
-	capVer, err := parseCabailityVersion(req)
-	if err != nil && !errors.Is(err, ErrNoCapabilityVersion) {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("failed to parse capVer")
-		http.Error(writer, "Internal error", http.StatusInternalServerError)
-
-		return
-	}
-
-	// TODO(kradalby): since we are now passing capVer, we could arguably stop passing
-	// isNoise, and rather have a isNoise function that takes capVer
-	ns.headscale.handlePoll(writer, req.Context(), node, mapRequest, capVer)
+	ns.headscale.handlePoll(writer, req.Context(), node, mapRequest)
 }

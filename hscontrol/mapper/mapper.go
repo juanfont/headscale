@@ -47,8 +47,6 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // - Create a "minifier" that removes info not needed for the node
 
 type Mapper struct {
-	capVer tailcfg.CapabilityVersion
-
 	// Configuration
 	// TODO(kradalby): figure out if this is the format we want this in
 	derpMap          *tailcfg.DERPMap
@@ -70,7 +68,6 @@ type Mapper struct {
 func NewMapper(
 	node *types.Node,
 	peers types.Nodes,
-	capVer tailcfg.CapabilityVersion,
 	derpMap *tailcfg.DERPMap,
 	baseDomain string,
 	dnsCfg *tailcfg.DNSConfig,
@@ -85,8 +82,6 @@ func NewMapper(
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
-		capVer: capVer,
-
 		derpMap:          derpMap,
 		baseDomain:       baseDomain,
 		dnsCfg:           dnsCfg,
@@ -204,10 +199,11 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 func (m *Mapper) fullMapResponse(
 	node *types.Node,
 	pol *policy.ACLPolicy,
+	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	peers := nodeMapToList(m.peers)
 
-	resp, err := m.baseWithConfigMapResponse(node, pol)
+	resp, err := m.baseWithConfigMapResponse(node, pol, capVer)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +212,7 @@ func (m *Mapper) fullMapResponse(
 		resp,
 		pol,
 		node,
-		m.capVer,
+		capVer,
 		peers,
 		peers,
 		m.baseDomain,
@@ -239,7 +235,7 @@ func (m *Mapper) FullMapResponse(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	resp, err := m.fullMapResponse(node, pol)
+	resp, err := m.fullMapResponse(node, pol, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +251,7 @@ func (m *Mapper) LiteMapResponse(
 	node *types.Node,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	resp, err := m.baseWithConfigMapResponse(node, pol)
+	resp, err := m.baseWithConfigMapResponse(node, pol, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +305,7 @@ func (m *Mapper) PeerChangedResponse(
 		&resp,
 		pol,
 		node,
-		m.capVer,
+		mapRequest.Version,
 		nodeMapToList(m.peers),
 		changed,
 		m.baseDomain,
@@ -473,10 +469,11 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 func (m *Mapper) baseWithConfigMapResponse(
 	node *types.Node,
 	pol *policy.ACLPolicy,
+	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, m.capVer, pol, m.dnsCfg, m.baseDomain, m.randomClientPort)
+	tailnode, err := tailNode(node, capVer, pol, m.dnsCfg, m.baseDomain, m.randomClientPort)
 	if err != nil {
 		return nil, err
 	}

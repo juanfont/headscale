@@ -58,7 +58,6 @@ func (h *Headscale) handlePoll(
 	ctx context.Context,
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
-	capVer tailcfg.CapabilityVersion,
 ) {
 	logInfo, logErr := logPollFunc(mapRequest, node)
 
@@ -78,6 +77,7 @@ func (h *Headscale) handlePoll(
 			Bool("stream", mapRequest.Stream).
 			Str("node_key", node.NodeKey.ShortString()).
 			Str("node", node.Hostname).
+			Int("cap_ver", int(mapRequest.Version)).
 			Msg("Received endpoint update")
 
 		now := time.Now().UTC()
@@ -124,7 +124,7 @@ func (h *Headscale) handlePoll(
 		// The intended use is for clients to discover the DERP map at
 		// start-up before their first real endpoint update.
 	} else if mapRequest.OmitPeers && !mapRequest.Stream && mapRequest.ReadOnly {
-		h.handleLiteRequest(writer, node, mapRequest, capVer)
+		h.handleLiteRequest(writer, node, mapRequest)
 
 		return
 	} else if mapRequest.OmitPeers && mapRequest.Stream {
@@ -155,7 +155,6 @@ func (h *Headscale) handlePoll(
 	mapp := mapper.NewMapper(
 		node,
 		peers,
-		capVer,
 		h.DERPMap,
 		h.cfg.BaseDomain,
 		h.cfg.DNSConfig,
@@ -374,7 +373,6 @@ func (h *Headscale) handleLiteRequest(
 	writer http.ResponseWriter,
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
-	capVer tailcfg.CapabilityVersion,
 ) {
 	logInfo, logErr := logPollFunc(mapRequest, node)
 
@@ -383,7 +381,6 @@ func (h *Headscale) handleLiteRequest(
 		// TODO(kradalby): It might not be acceptable to send
 		// an empty peer list here.
 		types.Nodes{},
-		capVer,
 		h.DERPMap,
 		h.cfg.BaseDomain,
 		h.cfg.DNSConfig,

@@ -80,7 +80,7 @@ func (h *Headscale) KeyHandler(
 
 	log.Debug().
 		Str("handler", "/key").
-		Int("v", int(capVer)).
+		Int("cap_ver", int(capVer)).
 		Msg("New noise client")
 	if err != nil {
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")

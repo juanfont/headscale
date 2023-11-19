@@ -39,6 +39,18 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		return
 	}
 
+	// Reject unsupported versions
+	if registerRequest.Version < MinimumCapVersion {
+		log.Info().
+			Caller().
+			Int("min_version", int(MinimumCapVersion)).
+			Int("client_version", int(registerRequest.Version)).
+			Msg("unsupported client connected")
+		http.Error(writer, "Internal error", http.StatusBadRequest)
+
+		return
+	}
+
 	ns.nodeKey = registerRequest.NodeKey
 
 	ns.headscale.handleRegister(writer, req, registerRequest, ns.conn.Peer())
