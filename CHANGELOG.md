@@ -23,8 +23,10 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 
 ### BREAKING
 
-Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1473](https://github.com/juanfont/headscale/pull/1473)
-API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
+- Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1473](https://github.com/juanfont/headscale/pull/1473)
+- API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
+- Remove support for older Tailscale clients [#1611](https://github.com/juanfont/headscale/pull/1611)
+  - The latest supported client is 1.32
 
 ### Changes
 
