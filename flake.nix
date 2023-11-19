@@ -26,8 +26,6 @@
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
 
-          tags = ["ts2019"];
-
           # Only run unit tests when testing a build
           checkFlags = ["-short"];
 
@@ -129,7 +127,6 @@
         buildInputs = devDeps;
 
         shellHook = ''
-          export GOFLAGS=-tags="ts2019"
           export PATH="$PWD/result/bin:$PATH"
 
           mkdir -p ./ignored
