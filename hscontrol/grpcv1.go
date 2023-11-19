@@ -550,7 +550,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Expiry:   &time.Time{},
 		LastSeen: &time.Time{},
 
-		HostInfo: types.HostInfo(hostinfo),
+		Hostinfo: &hostinfo,
 	}
 
 	log.Debug().

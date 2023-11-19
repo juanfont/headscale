@@ -418,6 +418,7 @@ acls:
 					User: types.User{
 						Name: "testuser",
 					},
+					Hostinfo: &tailcfg.Hostinfo{},
 				},
 			})
 
@@ -1264,7 +1265,7 @@ func Test_expandAlias(t *testing.T) {
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:hr-webserver"},
@@ -1275,7 +1276,7 @@ func Test_expandAlias(t *testing.T) {
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:hr-webserver"},
@@ -1405,7 +1406,7 @@ func Test_expandAlias(t *testing.T) {
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:hr-webserver"},
@@ -1443,7 +1444,7 @@ func Test_expandAlias(t *testing.T) {
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
@@ -1454,7 +1455,7 @@ func Test_expandAlias(t *testing.T) {
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
@@ -1464,13 +1465,15 @@ func Test_expandAlias(t *testing.T) {
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.3"),
 						},
-						User: types.User{Name: "marc"},
+						User:     types.User{Name: "marc"},
+						Hostinfo: &tailcfg.Hostinfo{},
 					},
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: types.User{Name: "joe"},
+						User:     types.User{Name: "joe"},
+						Hostinfo: &tailcfg.Hostinfo{},
 					},
 				},
 			},
@@ -1520,7 +1523,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
@@ -1531,7 +1534,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
@@ -1541,7 +1544,8 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: types.User{Name: "joe"},
+						User:     types.User{Name: "joe"},
+						Hostinfo: &tailcfg.Hostinfo{},
 					},
 				},
 				user: "joe",
@@ -1550,6 +1554,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				&types.Node{
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.4")},
 					User:        types.User{Name: "joe"},
+					Hostinfo:    &tailcfg.Hostinfo{},
 				},
 			},
 		},
@@ -1570,7 +1575,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
@@ -1581,7 +1586,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
@@ -1591,7 +1596,8 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: types.User{Name: "joe"},
+						User:     types.User{Name: "joe"},
+						Hostinfo: &tailcfg.Hostinfo{},
 					},
 				},
 				user: "joe",
@@ -1600,6 +1606,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				&types.Node{
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.4")},
 					User:        types.User{Name: "joe"},
+					Hostinfo:    &tailcfg.Hostinfo{},
 				},
 			},
 		},
@@ -1615,7 +1622,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
 							RequestTags: []string{"tag:accountant-webserver"},
@@ -1627,12 +1634,14 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						},
 						User:       types.User{Name: "joe"},
 						ForcedTags: []string{"tag:accountant-webserver"},
+						Hostinfo:   &tailcfg.Hostinfo{},
 					},
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: types.User{Name: "joe"},
+						User:     types.User{Name: "joe"},
+						Hostinfo: &tailcfg.Hostinfo{},
 					},
 				},
 				user: "joe",
@@ -1641,6 +1650,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				&types.Node{
 					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.4")},
 					User:        types.User{Name: "joe"},
+					Hostinfo:    &tailcfg.Hostinfo{},
 				},
 			},
 		},
@@ -1656,7 +1666,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netip.MustParseAddr("100.64.0.1"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "hr-web1",
 							RequestTags: []string{"tag:hr-webserver"},
@@ -1667,7 +1677,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 							netip.MustParseAddr("100.64.0.2"),
 						},
 						User: types.User{Name: "joe"},
-						HostInfo: types.HostInfo{
+						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "hr-web2",
 							RequestTags: []string{"tag:hr-webserver"},
@@ -1677,7 +1687,8 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.4"),
 						},
-						User: types.User{Name: "joe"},
+						User:     types.User{Name: "joe"},
+						Hostinfo: &tailcfg.Hostinfo{},
 					},
 				},
 				user: "joe",
@@ -1688,7 +1699,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						netip.MustParseAddr("100.64.0.1"),
 					},
 					User: types.User{Name: "joe"},
-					HostInfo: types.HostInfo{
+					Hostinfo: &tailcfg.Hostinfo{
 						OS:          "centos",
 						Hostname:    "hr-web1",
 						RequestTags: []string{"tag:hr-webserver"},
@@ -1699,7 +1710,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 						netip.MustParseAddr("100.64.0.2"),
 					},
 					User: types.User{Name: "joe"},
-					HostInfo: types.HostInfo{
+					Hostinfo: &tailcfg.Hostinfo{
 						OS:          "centos",
 						Hostname:    "hr-web2",
 						RequestTags: []string{"tag:hr-webserver"},
@@ -1709,7 +1720,8 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 					IPAddresses: types.NodeAddresses{
 						netip.MustParseAddr("100.64.0.4"),
 					},
-					User: types.User{Name: "joe"},
+					User:     types.User{Name: "joe"},
+					Hostinfo: &tailcfg.Hostinfo{},
 				},
 			},
 		},
@@ -1952,7 +1964,7 @@ func Test_getTags(t *testing.T) {
 					User: types.User{
 						Name: "joe",
 					},
-					HostInfo: types.HostInfo{
+					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:valid"},
 					},
 				},
@@ -1972,7 +1984,7 @@ func Test_getTags(t *testing.T) {
 					User: types.User{
 						Name: "joe",
 					},
-					HostInfo: types.HostInfo{
+					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:valid", "tag:invalid"},
 					},
 				},
@@ -1992,7 +2004,7 @@ func Test_getTags(t *testing.T) {
 					User: types.User{
 						Name: "joe",
 					},
-					HostInfo: types.HostInfo{
+					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{
 							"tag:invalid",
 							"tag:valid",
@@ -2016,7 +2028,7 @@ func Test_getTags(t *testing.T) {
 					User: types.User{
 						Name: "joe",
 					},
-					HostInfo: types.HostInfo{
+					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:invalid", "very-invalid"},
 					},
 				},
@@ -2032,7 +2044,7 @@ func Test_getTags(t *testing.T) {
 					User: types.User{
 						Name: "joe",
 					},
-					HostInfo: types.HostInfo{
+					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:invalid", "very-invalid"},
 					},
 				},
@@ -3010,7 +3022,7 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 			Name: "user1",
 		},
 		RegisterMethod: util.RegisterMethodAuthKey,
-		HostInfo:       types.HostInfo(hostInfo),
+		Hostinfo:       &hostInfo,
 	}
 
 	pol := &ACLPolicy{
@@ -3062,7 +3074,7 @@ func TestInvalidTagValidUser(t *testing.T) {
 			Name: "user1",
 		},
 		RegisterMethod: util.RegisterMethodAuthKey,
-		HostInfo:       types.HostInfo(hostInfo),
+		Hostinfo:       &hostInfo,
 	}
 
 	pol := &ACLPolicy{
@@ -3113,7 +3125,7 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 			Name: "user1",
 		},
 		RegisterMethod: util.RegisterMethodAuthKey,
-		HostInfo:       types.HostInfo(hostInfo),
+		Hostinfo:       &hostInfo,
 	}
 
 	pol := &ACLPolicy{
@@ -3174,7 +3186,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 			Name: "user1",
 		},
 		RegisterMethod: util.RegisterMethodAuthKey,
-		HostInfo:       types.HostInfo(hostInfo),
+		Hostinfo:       &hostInfo,
 	}
 
 	hostInfo2 := tailcfg.Hostinfo{
@@ -3191,7 +3203,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 			Name: "user1",
 		},
 		RegisterMethod: util.RegisterMethodAuthKey,
-		HostInfo:       types.HostInfo(hostInfo2),
+		Hostinfo:       &hostInfo2,
 	}
 
 	pol := &ACLPolicy{

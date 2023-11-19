@@ -274,7 +274,7 @@ func (hsdb *HSDatabase) saveNodeRoutes(node *types.Node) error {
 	}
 
 	advertisedRoutes := map[netip.Prefix]bool{}
-	for _, prefix := range node.HostInfo.RoutableIPs {
+	for _, prefix := range node.Hostinfo.RoutableIPs {
 		advertisedRoutes[prefix] = false
 	}
 

@@ -12,33 +12,6 @@ import (
 
 var ErrCannotParsePrefix = errors.New("cannot parse prefix")
 
-// This is a "wrapper" type around tailscales
-// Hostinfo to allow us to add database "serialization"
-// methods. This allows us to use a typed values throughout
-// the code and not have to marshal/unmarshal and error
-// check all over the code.
-type HostInfo tailcfg.Hostinfo
-
-func (hi *HostInfo) Scan(destination interface{}) error {
-	switch value := destination.(type) {
-	case []byte:
-		return json.Unmarshal(value, hi)
-
-	case string:
-		return json.Unmarshal([]byte(value), hi)
-
-	default:
-		return fmt.Errorf("%w: unexpected data type %T", ErrNodeAddressesInvalid, destination)
-	}
-}
-
-// Value return json value, implement driver.Valuer interface.
-func (hi HostInfo) Value() (driver.Value, error) {
-	bytes, err := json.Marshal(hi)
-
-	return string(bytes), err
-}
-
 type IPPrefix netip.Prefix
 
 func (i *IPPrefix) Scan(destination interface{}) error {

@@ -88,7 +88,7 @@ func (h *Headscale) handlePoll(
 		now := time.Now().UTC()
 		node.LastSeen = &now
 		node.Hostname = mapRequest.Hostinfo.Hostname
-		node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
+		node.Hostinfo = mapRequest.Hostinfo
 		node.DiscoKey = mapRequest.DiscoKey
 		node.Endpoints = mapRequest.Endpoints
 
@@ -141,7 +141,7 @@ func (h *Headscale) handlePoll(
 	now := time.Now().UTC()
 	node.LastSeen = &now
 	node.Hostname = mapRequest.Hostinfo.Hostname
-	node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
+	node.Hostinfo = mapRequest.Hostinfo
 	node.DiscoKey = mapRequest.DiscoKey
 	node.Endpoints = mapRequest.Endpoints
 

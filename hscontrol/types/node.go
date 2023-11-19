@@ -2,6 +2,7 @@ package types
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -31,31 +32,36 @@ type Node struct {
 	// it is _only_ used for reading and writing the key to the
 	// database and should not be used.
 	// Use MachineKey instead.
-	MachineKeyDatabaseField string `gorm:"column:machine_key;unique_index"`
+	MachineKeyDatabaseField string            `gorm:"column:machine_key;unique_index"`
+	MachineKey              key.MachinePublic `gorm:"-"`
 
 	// NodeKeyDatabaseField is the string representation of NodeKey
 	// it is _only_ used for reading and writing the key to the
 	// database and should not be used.
 	// Use NodeKey instead.
-	NodeKeyDatabaseField string `gorm:"column:node_key"`
+	NodeKeyDatabaseField string         `gorm:"column:node_key"`
+	NodeKey              key.NodePublic `gorm:"-"`
 
 	// DiscoKeyDatabaseField is the string representation of DiscoKey
 	// it is _only_ used for reading and writing the key to the
 	// database and should not be used.
 	// Use DiscoKey instead.
-	DiscoKeyDatabaseField string `gorm:"column:disco_key"`
-
-	MachineKey key.MachinePublic `gorm:"-"`
-	NodeKey    key.NodePublic    `gorm:"-"`
-	DiscoKey   key.DiscoPublic   `gorm:"-"`
+	DiscoKeyDatabaseField string          `gorm:"column:disco_key"`
+	DiscoKey              key.DiscoPublic `gorm:"-"`
 
 	// EndpointsDatabaseField is the string list representation of Endpoints
 	// it is _only_ used for reading and writing the key to the
 	// database and should not be used.
 	// Use Endpoints instead.
-	EndpointsDatabaseField StringList `gorm:"column:endpoints"`
+	EndpointsDatabaseField StringList       `gorm:"column:endpoints"`
+	Endpoints              []netip.AddrPort `gorm:"-"`
 
-	Endpoints []netip.AddrPort `gorm:"-"`
+	// EndpointsDatabaseField is the string list representation of Endpoints
+	// it is _only_ used for reading and writing the key to the
+	// database and should not be used.
+	// Use Endpoints instead.
+	HostinfoDatabaseField string            `gorm:"column:hostinfo"`
+	Hostinfo              *tailcfg.Hostinfo `gorm:"-"`
 
 	IPAddresses NodeAddresses
 
@@ -83,8 +89,6 @@ type Node struct {
 
 	LastSeen *time.Time
 	Expiry   *time.Time
-
-	HostInfo HostInfo
 
 	Routes []Route
 
@@ -270,6 +274,12 @@ func (n *Node) BeforeSave(tx *gorm.DB) (err error) {
 
 	n.EndpointsDatabaseField = endpoints
 
+	hi, err := json.Marshal(n.Hostinfo)
+	if err != nil {
+		return err
+	}
+	n.HostinfoDatabaseField = string(hi)
+
 	return
 }
 
@@ -308,6 +318,12 @@ func (n *Node) AfterFind(tx *gorm.DB) (err error) {
 	}
 	n.Endpoints = endpoints
 
+	var hi tailcfg.Hostinfo
+	if err := json.Unmarshal([]byte(n.HostinfoDatabaseField), &hi); err != nil {
+		return err
+	}
+	n.Hostinfo = &hi
+
 	return
 }
 
@@ -344,11 +360,6 @@ func (node *Node) Proto() *v1.Node {
 	}
 
 	return nodeProto
-}
-
-// GetHostInfo returns a Hostinfo struct for the node.
-func (node *Node) GetHostInfo() tailcfg.Hostinfo {
-	return tailcfg.Hostinfo(node.HostInfo)
 }
 
 func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (string, error) {

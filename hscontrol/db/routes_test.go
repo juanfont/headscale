@@ -33,7 +33,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       types.HostInfo(hostInfo),
+		Hostinfo:       &hostInfo,
 	}
 	db.db.Save(&node)
 
@@ -81,7 +81,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       types.HostInfo(hostInfo),
+		Hostinfo:       &hostInfo,
 	}
 	db.db.Save(&node)
 
@@ -152,7 +152,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       types.HostInfo(hostInfo1),
+		Hostinfo:       &hostInfo1,
 	}
 	db.db.Save(&node1)
 
@@ -174,7 +174,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       types.HostInfo(hostInfo2),
+		Hostinfo:       &hostInfo2,
 	}
 	db.db.Save(&node2)
 
@@ -232,7 +232,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       types.HostInfo(hostInfo1),
+		Hostinfo:       &hostInfo1,
 		LastSeen:       &now,
 	}
 	db.db.Save(&node1)
@@ -266,7 +266,7 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       types.HostInfo(hostInfo2),
+		Hostinfo:       &hostInfo2,
 		LastSeen:       &now,
 	}
 	db.db.Save(&node2)
@@ -313,9 +313,9 @@ func (s *Suite) TestSubnetFailover(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(routes), check.Equals, 1)
 
-	node2.HostInfo = types.HostInfo(tailcfg.Hostinfo{
+	node2.Hostinfo = &tailcfg.Hostinfo{
 		RoutableIPs: []netip.Prefix{prefix, prefix2},
-	})
+	}
 	err = db.db.Save(&node2).Error
 	c.Assert(err, check.IsNil)
 
@@ -368,7 +368,7 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo:       types.HostInfo(hostInfo1),
+		Hostinfo:       &hostInfo1,
 		LastSeen:       &now,
 	}
 	db.db.Save(&node1)
