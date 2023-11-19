@@ -711,11 +711,11 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 	if h.oauth2Config != nil {
 		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			registerRequest.NodeKey)
+			machineKey.String())
 	} else {
 		resp.AuthURL = fmt.Sprintf("%s/register/%s",
 			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			registerRequest.NodeKey)
+			machineKey.String())
 	}
 
 	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
