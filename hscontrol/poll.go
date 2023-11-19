@@ -83,7 +83,6 @@ func (h *Headscale) handlePoll(
 			Bool("stream", mapRequest.Stream).
 			Str("node_key", node.NodeKey.ShortString()).
 			Str("node", node.Hostname).
-			Strs("endpoints", node.Endpoints).
 			Msg("Received endpoint update")
 
 		now := time.Now().UTC()
@@ -91,7 +90,7 @@ func (h *Headscale) handlePoll(
 		node.Hostname = mapRequest.Hostinfo.Hostname
 		node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
 		node.DiscoKey = mapRequest.DiscoKey
-		node.SetEndpointsFromAddrPorts(mapRequest.Endpoints)
+		node.Endpoints = mapRequest.Endpoints
 
 		if err := h.db.NodeSave(node); err != nil {
 			logErr(err, "Failed to persist/update node in the database")
@@ -144,7 +143,7 @@ func (h *Headscale) handlePoll(
 	node.Hostname = mapRequest.Hostinfo.Hostname
 	node.HostInfo = types.HostInfo(*mapRequest.Hostinfo)
 	node.DiscoKey = mapRequest.DiscoKey
-	node.SetEndpointsFromAddrPorts(mapRequest.Endpoints)
+	node.Endpoints = mapRequest.Endpoints
 
 	// When a node connects to control, list the peers it has at
 	// that given point, further updates are kept in memory in

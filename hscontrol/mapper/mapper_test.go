@@ -187,7 +187,6 @@ func Test_fullMapResponse(t *testing.T) {
 		LastSeen:    &lastSeen,
 		Expiry:      &expire,
 		HostInfo:    types.HostInfo{},
-		Endpoints:   []string{},
 		Routes: []types.Route{
 			{
 				Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),
@@ -268,7 +267,6 @@ func Test_fullMapResponse(t *testing.T) {
 		LastSeen:    &lastSeen,
 		Expiry:      &expire,
 		HostInfo:    types.HostInfo{},
-		Endpoints:   []string{},
 		Routes:      []types.Route{},
 		CreatedAt:   created,
 	}
@@ -325,7 +323,6 @@ func Test_fullMapResponse(t *testing.T) {
 		LastSeen:    &lastSeen,
 		Expiry:      &expire,
 		HostInfo:    types.HostInfo{},
-		Endpoints:   []string{},
 		Routes:      []types.Route{},
 		CreatedAt:   created,
 	}

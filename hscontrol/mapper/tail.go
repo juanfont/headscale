@@ -97,11 +97,6 @@ func tailNode(
 	tags, _ := pol.TagsOfNode(node)
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
-	endpoints, err := node.EndpointsToAddrPort()
-	if err != nil {
-		return nil, err
-	}
-
 	tNode := tailcfg.Node{
 		ID: tailcfg.NodeID(node.ID), // this is the actual ID
 		StableID: tailcfg.StableNodeID(
@@ -118,7 +113,7 @@ func tailNode(
 		DiscoKey:   node.DiscoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
-		Endpoints:  endpoints,
+		Endpoints:  node.Endpoints,
 		DERP:       derp,
 		Hostinfo:   hostInfo.View(),
 		Created:    node.CreatedAt,

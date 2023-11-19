@@ -103,7 +103,6 @@ func TestTailNode(t *testing.T) {
 				LastSeen:   &lastSeen,
 				Expiry:     &expire,
 				HostInfo:   types.HostInfo{},
-				Endpoints:  []string{},
 				Routes: []types.Route{
 					{
 						Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),

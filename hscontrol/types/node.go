@@ -49,6 +49,14 @@ type Node struct {
 	NodeKey    key.NodePublic    `gorm:"-"`
 	DiscoKey   key.DiscoPublic   `gorm:"-"`
 
+	// EndpointsDatabaseField is the string list representation of Endpoints
+	// it is _only_ used for reading and writing the key to the
+	// database and should not be used.
+	// Use Endpoints instead.
+	EndpointsDatabaseField StringList `gorm:"column:endpoints"`
+
+	Endpoints []netip.AddrPort `gorm:"-"`
+
 	IPAddresses NodeAddresses
 
 	// Hostname represents the name given by the Tailscale
@@ -76,8 +84,7 @@ type Node struct {
 	LastSeen *time.Time
 	Expiry   *time.Time
 
-	HostInfo  HostInfo
-	Endpoints StringList
+	HostInfo HostInfo
 
 	Routes []Route
 
@@ -195,31 +202,6 @@ func (node Node) IsExpired() bool {
 	return time.Now().UTC().After(*node.Expiry)
 }
 
-// TODO(kradalby): Try to replace the types in the DB to be correct.
-func (node *Node) EndpointsToAddrPort() ([]netip.AddrPort, error) {
-	var ret []netip.AddrPort
-	for _, ep := range node.Endpoints {
-		addrPort, err := netip.ParseAddrPort(ep)
-		if err != nil {
-			return nil, err
-		}
-
-		ret = append(ret, addrPort)
-	}
-
-	return ret, nil
-}
-
-// TODO(kradalby): Try to replace the types in the DB to be correct.
-func (node *Node) SetEndpointsFromAddrPorts(in []netip.AddrPort) {
-	var strs StringList
-	for _, addrPort := range in {
-		strs = append(strs, addrPort.String())
-	}
-
-	node.Endpoints = strs
-}
-
 // IsOnline returns if the node is connected to Headscale.
 // This is really a naive implementation, as we don't really see
 // if there is a working connection between the client and the server.
@@ -281,6 +263,13 @@ func (n *Node) BeforeSave(tx *gorm.DB) (err error) {
 	n.NodeKeyDatabaseField = n.NodeKey.String()
 	n.DiscoKeyDatabaseField = n.DiscoKey.String()
 
+	var endpoints StringList
+	for _, addrPort := range n.Endpoints {
+		endpoints = append(endpoints, addrPort.String())
+	}
+
+	n.EndpointsDatabaseField = endpoints
+
 	return
 }
 
@@ -307,6 +296,17 @@ func (n *Node) AfterFind(tx *gorm.DB) (err error) {
 		return err
 	}
 	n.DiscoKey = discoKey
+
+	var endpoints []netip.AddrPort
+	for _, ep := range n.EndpointsDatabaseField {
+		addrPort, err := netip.ParseAddrPort(ep)
+		if err != nil {
+			return err
+		}
+
+		endpoints = append(endpoints, addrPort)
+	}
+	n.Endpoints = endpoints
 
 	return
 }
