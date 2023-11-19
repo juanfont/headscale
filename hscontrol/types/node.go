@@ -27,23 +27,23 @@ var (
 type Node struct {
 	ID uint64 `gorm:"primary_key"`
 
-	// MachineKeyValue is the string representation of MachineKey
+	// MachineKeyDatabaseField is the string representation of MachineKey
 	// it is _only_ used for reading and writing the key to the
 	// database and should not be used.
 	// Use MachineKey instead.
-	MachineKeyValue string `gorm:"column:machine_key;unique_index"`
+	MachineKeyDatabaseField string `gorm:"column:machine_key;unique_index"`
 
-	// NodeKeyValue is the string representation of NodeKey
+	// NodeKeyDatabaseField is the string representation of NodeKey
 	// it is _only_ used for reading and writing the key to the
 	// database and should not be used.
 	// Use NodeKey instead.
-	NodeKeyValue string `gorm:"column:node_key"`
+	NodeKeyDatabaseField string `gorm:"column:node_key"`
 
-	// DiscoKeyValue is the string representation of DiscoKey
+	// DiscoKeyDatabaseField is the string representation of DiscoKey
 	// it is _only_ used for reading and writing the key to the
 	// database and should not be used.
 	// Use DiscoKey instead.
-	DiscoKeyValue string `gorm:"column:disco_key"`
+	DiscoKeyDatabaseField string `gorm:"column:disco_key"`
 
 	MachineKey key.MachinePublic `gorm:"-"`
 	NodeKey    key.NodePublic    `gorm:"-"`
@@ -277,9 +277,9 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 // correctly in the database.
 // This currently means storing the keys as strings.
 func (n *Node) BeforeSave(tx *gorm.DB) (err error) {
-	n.MachineKeyValue = n.MachineKey.String()
-	n.NodeKeyValue = n.NodeKey.String()
-	n.DiscoKeyValue = n.DiscoKey.String()
+	n.MachineKeyDatabaseField = n.MachineKey.String()
+	n.NodeKeyDatabaseField = n.NodeKey.String()
+	n.DiscoKeyDatabaseField = n.DiscoKey.String()
 
 	return
 }
@@ -291,19 +291,19 @@ func (n *Node) BeforeSave(tx *gorm.DB) (err error) {
 // the proper types.
 func (n *Node) AfterFind(tx *gorm.DB) (err error) {
 	var machineKey key.MachinePublic
-	if err := machineKey.UnmarshalText([]byte(n.MachineKeyValue)); err != nil {
+	if err := machineKey.UnmarshalText([]byte(n.MachineKeyDatabaseField)); err != nil {
 		return err
 	}
 	n.MachineKey = machineKey
 
 	var nodeKey key.NodePublic
-	if err := nodeKey.UnmarshalText([]byte(n.NodeKeyValue)); err != nil {
+	if err := nodeKey.UnmarshalText([]byte(n.NodeKeyDatabaseField)); err != nil {
 		return err
 	}
 	n.NodeKey = nodeKey
 
 	var discoKey key.DiscoPublic
-	if err := discoKey.UnmarshalText([]byte(n.DiscoKeyValue)); err != nil {
+	if err := discoKey.UnmarshalText([]byte(n.DiscoKeyDatabaseField)); err != nil {
 		return err
 	}
 	n.DiscoKey = discoKey
