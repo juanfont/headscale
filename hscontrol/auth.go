@@ -1,13 +1,13 @@
 package hscontrol
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -24,14 +24,13 @@ func (h *Headscale) handleRegister(
 	req *http.Request,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
-	isNoise bool,
 ) {
 	now := time.Now().UTC()
 	node, err := h.db.GetNodeByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the node has AuthKey set, handle registration via PreAuthKeys
 		if registerRequest.Auth.AuthKey != "" {
-			h.handleAuthKey(writer, registerRequest, machineKey, isNoise)
+			h.handleAuthKey(writer, registerRequest, machineKey)
 
 			return
 		}
@@ -53,14 +52,13 @@ func (h *Headscale) handleRegister(
 					Str("node_key", registerRequest.NodeKey.ShortString()).
 					Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
 					Str("follow_up", registerRequest.Followup).
-					Bool("noise", isNoise).
 					Msg("Node is waiting for interactive login")
 
 				select {
 				case <-req.Context().Done():
 					return
 				case <-time.After(registrationHoldoff):
-					h.handleNewNode(writer, registerRequest, machineKey, isNoise)
+					h.handleNewNode(writer, registerRequest, machineKey)
 
 					return
 				}
@@ -74,7 +72,6 @@ func (h *Headscale) handleRegister(
 			Str("node_key", registerRequest.NodeKey.ShortString()).
 			Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
 			Str("follow_up", registerRequest.Followup).
-			Bool("noise", isNoise).
 			Msg("New node not yet in the database")
 
 		givenName, err := h.db.GenerateGivenName(
@@ -108,7 +105,6 @@ func (h *Headscale) handleRegister(
 		if !registerRequest.Expiry.IsZero() {
 			log.Trace().
 				Caller().
-				Bool("noise", isNoise).
 				Str("node", registerRequest.Hostinfo.Hostname).
 				Time("expiry", registerRequest.Expiry).
 				Msg("Non-zero expiry time requested")
@@ -121,7 +117,7 @@ func (h *Headscale) handleRegister(
 			registerCacheExpiration,
 		)
 
-		h.handleNewNode(writer, registerRequest, machineKey, isNoise)
+		h.handleNewNode(writer, registerRequest, machineKey)
 
 		return
 	}
@@ -157,7 +153,7 @@ func (h *Headscale) handleRegister(
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !registerRequest.Expiry.IsZero() &&
 				registerRequest.Expiry.UTC().Before(now) {
-				h.handleNodeLogOut(writer, *node, machineKey, isNoise)
+				h.handleNodeLogOut(writer, *node, machineKey)
 
 				return
 			}
@@ -165,7 +161,7 @@ func (h *Headscale) handleRegister(
 			// If node is not expired, and it is register, we have a already accepted this node,
 			// let it proceed with a valid registration
 			if !node.IsExpired() {
-				h.handleNodeWithValidRegistration(writer, *node, machineKey, isNoise)
+				h.handleNodeWithValidRegistration(writer, *node, machineKey)
 
 				return
 			}
@@ -179,7 +175,6 @@ func (h *Headscale) handleRegister(
 				registerRequest,
 				*node,
 				machineKey,
-				isNoise,
 			)
 
 			return
@@ -194,7 +189,7 @@ func (h *Headscale) handleRegister(
 		}
 
 		// The node has expired or it is logged out
-		h.handleNodeExpiredOrLoggedOut(writer, registerRequest, *node, machineKey, isNoise)
+		h.handleNodeExpiredOrLoggedOut(writer, registerRequest, *node, machineKey)
 
 		// TODO(juan): RegisterRequest includes an Expiry time, that we could optionally use
 		node.Expiry = &time.Time{}
@@ -223,12 +218,10 @@ func (h *Headscale) handleAuthKey(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
-	isNoise bool,
 ) {
 	log.Debug().
 		Caller().
 		Str("node", registerRequest.Hostinfo.Hostname).
-		Bool("noise", isNoise).
 		Msgf("Processing auth key for %s", registerRequest.Hostinfo.Hostname)
 	resp := tailcfg.RegisterResponse{}
 
@@ -236,17 +229,15 @@ func (h *Headscale) handleAuthKey(
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Str("node", registerRequest.Hostinfo.Hostname).
 			Err(err).
 			Msg("Failed authentication via AuthKey")
 		resp.MachineAuthorized = false
 
-		respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
+		respBody, err := json.Marshal(resp)
 		if err != nil {
 			log.Error().
 				Caller().
-				Bool("noise", isNoise).
 				Str("node", registerRequest.Hostinfo.Hostname).
 				Err(err).
 				Msg("Cannot encode message")
@@ -263,14 +254,12 @@ func (h *Headscale) handleAuthKey(
 		if err != nil {
 			log.Error().
 				Caller().
-				Bool("noise", isNoise).
 				Err(err).
 				Msg("Failed to write response")
 		}
 
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Str("node", registerRequest.Hostinfo.Hostname).
 			Msg("Failed authentication via AuthKey")
 
@@ -286,7 +275,6 @@ func (h *Headscale) handleAuthKey(
 
 	log.Debug().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", registerRequest.Hostinfo.Hostname).
 		Msg("Authentication key was valid, proceeding to acquire IP addresses")
 
@@ -300,7 +288,6 @@ func (h *Headscale) handleAuthKey(
 	if node != nil {
 		log.Trace().
 			Caller().
-			Bool("noise", isNoise).
 			Str("node", node.Hostname).
 			Msg("node was already registered before, refreshing with new auth key")
 
@@ -310,7 +297,6 @@ func (h *Headscale) handleAuthKey(
 		if err != nil {
 			log.Error().
 				Caller().
-				Bool("noise", isNoise).
 				Str("node", node.Hostname).
 				Err(err).
 				Msg("Failed to refresh node")
@@ -326,7 +312,6 @@ func (h *Headscale) handleAuthKey(
 			if err != nil {
 				log.Error().
 					Caller().
-					Bool("noise", isNoise).
 					Str("node", node.Hostname).
 					Strs("aclTags", aclTags).
 					Err(err).
@@ -342,7 +327,6 @@ func (h *Headscale) handleAuthKey(
 		if err != nil {
 			log.Error().
 				Caller().
-				Bool("noise", isNoise).
 				Str("func", "RegistrationHandler").
 				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
 				Err(err).
@@ -370,7 +354,6 @@ func (h *Headscale) handleAuthKey(
 		if err != nil {
 			log.Error().
 				Caller().
-				Bool("noise", isNoise).
 				Err(err).
 				Msg("could not register node")
 			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
@@ -385,7 +368,6 @@ func (h *Headscale) handleAuthKey(
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Failed to use pre-auth key")
 		nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
@@ -401,11 +383,10 @@ func (h *Headscale) handleAuthKey(
 	// Otherwise it will need to exec `tailscale up` twice to fetch the *LoginName*
 	resp.Login = *pak.User.TailscaleLogin()
 
-	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
+	respBody, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Str("node", registerRequest.Hostinfo.Hostname).
 			Err(err).
 			Msg("Cannot encode message")
@@ -423,13 +404,11 @@ func (h *Headscale) handleAuthKey(
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Failed to write response")
 	}
 
 	log.Info().
-		Bool("noise", isNoise).
 		Str("node", registerRequest.Hostinfo.Hostname).
 		Str("ips", strings.Join(node.IPAddresses.StringSlice(), ", ")).
 		Msg("Successfully authenticated via AuthKey")
@@ -441,14 +420,12 @@ func (h *Headscale) handleNewNode(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
-	isNoise bool,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
 	// The node registration is new, redirect the client to the registration URL
 	log.Debug().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", registerRequest.Hostinfo.Hostname).
 		Msg("The node seems to be new, sending auth url")
 
@@ -464,11 +441,10 @@ func (h *Headscale) handleNewNode(
 			machineKey.String())
 	}
 
-	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
+	respBody, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Cannot encode message")
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
@@ -481,7 +457,6 @@ func (h *Headscale) handleNewNode(
 	_, err = writer.Write(respBody)
 	if err != nil {
 		log.Error().
-			Bool("noise", isNoise).
 			Caller().
 			Err(err).
 			Msg("Failed to write response")
@@ -489,7 +464,6 @@ func (h *Headscale) handleNewNode(
 
 	log.Info().
 		Caller().
-		Bool("noise", isNoise).
 		Str("AuthURL", resp.AuthURL).
 		Str("node", registerRequest.Hostinfo.Hostname).
 		Msg("Successfully sent auth url")
@@ -499,12 +473,10 @@ func (h *Headscale) handleNodeLogOut(
 	writer http.ResponseWriter,
 	node types.Node,
 	machineKey key.MachinePublic,
-	isNoise bool,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
 	log.Info().
-		Bool("noise", isNoise).
 		Str("node", node.Hostname).
 		Msg("Client requested logout")
 
@@ -513,7 +485,6 @@ func (h *Headscale) handleNodeLogOut(
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Failed to expire node")
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
@@ -525,11 +496,10 @@ func (h *Headscale) handleNodeLogOut(
 	resp.MachineAuthorized = false
 	resp.NodeKeyExpired = true
 	resp.User = *node.User.TailscaleUser()
-	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
+	respBody, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Cannot encode message")
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
@@ -542,7 +512,6 @@ func (h *Headscale) handleNodeLogOut(
 	_, err = writer.Write(respBody)
 	if err != nil {
 		log.Error().
-			Bool("noise", isNoise).
 			Caller().
 			Err(err).
 			Msg("Failed to write response")
@@ -564,7 +533,6 @@ func (h *Headscale) handleNodeLogOut(
 
 	log.Info().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", node.Hostname).
 		Msg("Successfully logged out")
 }
@@ -573,14 +541,12 @@ func (h *Headscale) handleNodeWithValidRegistration(
 	writer http.ResponseWriter,
 	node types.Node,
 	machineKey key.MachinePublic,
-	isNoise bool,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
 	// The node registration is valid, respond with redirect to /map
 	log.Debug().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", node.Hostname).
 		Msg("Client is registered and we have the current NodeKey. All clear to /map")
 
@@ -589,11 +555,10 @@ func (h *Headscale) handleNodeWithValidRegistration(
 	resp.User = *node.User.TailscaleUser()
 	resp.Login = *node.User.TailscaleLogin()
 
-	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
+	respBody, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Cannot encode message")
 		nodeRegistrations.WithLabelValues("update", "web", "error", node.User.Name).
@@ -611,14 +576,12 @@ func (h *Headscale) handleNodeWithValidRegistration(
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Failed to write response")
 	}
 
 	log.Info().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", node.Hostname).
 		Msg("Node successfully authorized")
 }
@@ -628,13 +591,11 @@ func (h *Headscale) handleNodeKeyRefresh(
 	registerRequest tailcfg.RegisterRequest,
 	node types.Node,
 	machineKey key.MachinePublic,
-	isNoise bool,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
 	log.Info().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", node.Hostname).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
 
@@ -651,11 +612,10 @@ func (h *Headscale) handleNodeKeyRefresh(
 
 	resp.AuthURL = ""
 	resp.User = *node.User.TailscaleUser()
-	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
+	respBody, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Cannot encode message")
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
@@ -669,14 +629,12 @@ func (h *Headscale) handleNodeKeyRefresh(
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Failed to write response")
 	}
 
 	log.Info().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node_key", registerRequest.NodeKey.ShortString()).
 		Str("old_node_key", registerRequest.OldNodeKey.ShortString()).
 		Str("node", node.Hostname).
@@ -688,12 +646,11 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 	registerRequest tailcfg.RegisterRequest,
 	node types.Node,
 	machineKey key.MachinePublic,
-	isNoise bool,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
 	if registerRequest.Auth.AuthKey != "" {
-		h.handleAuthKey(writer, registerRequest, machineKey, isNoise)
+		h.handleAuthKey(writer, registerRequest, machineKey)
 
 		return
 	}
@@ -701,7 +658,6 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 	// The client has registered before, but has expired or logged out
 	log.Trace().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", node.Hostname).
 		Str("machine_key", machineKey.ShortString()).
 		Str("node_key", registerRequest.NodeKey.ShortString()).
@@ -718,11 +674,10 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 			machineKey.String())
 	}
 
-	respBody, err := mapper.MarshalResponse(resp, isNoise, h.privateKey2019, machineKey)
+	respBody, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Cannot encode message")
 		nodeRegistrations.WithLabelValues("reauth", "web", "error", node.User.Name).
@@ -740,14 +695,12 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 	if err != nil {
 		log.Error().
 			Caller().
-			Bool("noise", isNoise).
 			Err(err).
 			Msg("Failed to write response")
 	}
 
 	log.Trace().
 		Caller().
-		Bool("noise", isNoise).
 		Str("machine_key", machineKey.ShortString()).
 		Str("node_key", registerRequest.NodeKey.ShortString()).
 		Str("node_key_old", registerRequest.OldNodeKey.ShortString()).

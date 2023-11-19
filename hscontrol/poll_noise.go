@@ -88,5 +88,5 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 	// TODO(kradalby): since we are now passing capVer, we could arguably stop passing
 	// isNoise, and rather have a isNoise function that takes capVer
-	ns.headscale.handlePoll(writer, req.Context(), node, mapRequest, true, capVer)
+	ns.headscale.handlePoll(writer, req.Context(), node, mapRequest, capVer)
 }

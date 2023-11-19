@@ -49,7 +49,6 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 
 type Mapper struct {
 	privateKey2019 *key.MachinePrivate
-	isNoise        bool
 	capVer         tailcfg.CapabilityVersion
 
 	// Configuration
@@ -74,7 +73,6 @@ func NewMapper(
 	node *types.Node,
 	peers types.Nodes,
 	privateKey *key.MachinePrivate,
-	isNoise bool,
 	capVer tailcfg.CapabilityVersion,
 	derpMap *tailcfg.DERPMap,
 	baseDomain string,
@@ -84,7 +82,6 @@ func NewMapper(
 ) *Mapper {
 	log.Debug().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", node.Hostname).
 		Msg("creating new mapper")
 
@@ -92,7 +89,6 @@ func NewMapper(
 
 	return &Mapper{
 		privateKey2019: privateKey,
-		isNoise:        isNoise,
 		capVer:         capVer,
 
 		derpMap:          derpMap,
@@ -252,10 +248,6 @@ func (m *Mapper) FullMapResponse(
 		return nil, err
 	}
 
-	if m.isNoise {
-		return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
-	}
-
 	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 }
 
@@ -270,10 +262,6 @@ func (m *Mapper) LiteMapResponse(
 	resp, err := m.baseWithConfigMapResponse(node, pol)
 	if err != nil {
 		return nil, err
-	}
-
-	if m.isNoise {
-		return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 	}
 
 	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
@@ -414,15 +402,8 @@ func (m *Mapper) marshalMapResponse(
 	var respBody []byte
 	if compression == util.ZstdCompression {
 		respBody = zstdEncode(jsonBody)
-		if !m.isNoise { // if legacy protocol
-			respBody = m.privateKey2019.SealTo(node.MachineKey, respBody)
-		}
 	} else {
-		if !m.isNoise { // if legacy protocol
-			respBody = m.privateKey2019.SealTo(node.MachineKey, jsonBody)
-		} else {
-			respBody = jsonBody
-		}
+		respBody = jsonBody
 	}
 
 	data := make([]byte, reservedResponseHeaderSize)
@@ -437,9 +418,6 @@ func (m *Mapper) marshalMapResponse(
 // If !isNoise and privateKey2019 is set, the JSON body will be sealed in a Nacl box.
 func MarshalResponse(
 	resp interface{},
-	isNoise bool,
-	privateKey2019 *key.MachinePrivate,
-	machineKey key.MachinePublic,
 ) ([]byte, error) {
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
@@ -449,10 +427,6 @@ func MarshalResponse(
 			Msg("Cannot marshal response")
 
 		return nil, err
-	}
-
-	if !isNoise && privateKey2019 != nil {
-		return privateKey2019.SealTo(machineKey, jsonBody), nil
 	}
 
 	return jsonBody, nil

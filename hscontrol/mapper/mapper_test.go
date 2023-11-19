@@ -473,7 +473,6 @@ func Test_fullMapResponse(t *testing.T) {
 				tt.node,
 				tt.peers,
 				nil,
-				false,
 				0,
 				tt.derpMap,
 				tt.baseDomain,
