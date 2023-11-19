@@ -25,7 +25,6 @@ import (
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
-	"tailscale.com/types/key"
 )
 
 const (
@@ -48,8 +47,7 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // - Create a "minifier" that removes info not needed for the node
 
 type Mapper struct {
-	privateKey2019 *key.MachinePrivate
-	capVer         tailcfg.CapabilityVersion
+	capVer tailcfg.CapabilityVersion
 
 	// Configuration
 	// TODO(kradalby): figure out if this is the format we want this in
@@ -72,7 +70,6 @@ type Mapper struct {
 func NewMapper(
 	node *types.Node,
 	peers types.Nodes,
-	privateKey *key.MachinePrivate,
 	capVer tailcfg.CapabilityVersion,
 	derpMap *tailcfg.DERPMap,
 	baseDomain string,
@@ -88,8 +85,7 @@ func NewMapper(
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
-		privateKey2019: privateKey,
-		capVer:         capVer,
+		capVer: capVer,
 
 		derpMap:          derpMap,
 		baseDomain:       baseDomain,

@@ -472,7 +472,6 @@ func Test_fullMapResponse(t *testing.T) {
 			mappy := NewMapper(
 				tt.node,
 				tt.peers,
-				nil,
 				0,
 				tt.derpMap,
 				tt.baseDomain,

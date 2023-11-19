@@ -49,8 +49,8 @@ func logPollFunc(
 		}
 }
 
-// handlePoll is the common code for the legacy and Noise protocols to
-// managed the poll loop.
+// handlePoll ensures the node gets the appropriate updates from either
+// polling or immediate responses.
 //
 //nolint:gocyclo
 func (h *Headscale) handlePoll(
@@ -155,7 +155,6 @@ func (h *Headscale) handlePoll(
 	mapp := mapper.NewMapper(
 		node,
 		peers,
-		h.privateKey2019,
 		capVer,
 		h.DERPMap,
 		h.cfg.BaseDomain,
@@ -384,7 +383,6 @@ func (h *Headscale) handleLiteRequest(
 		// TODO(kradalby): It might not be acceptable to send
 		// an empty peer list here.
 		types.Nodes{},
-		h.privateKey2019,
 		capVer,
 		h.DERPMap,
 		h.cfg.BaseDomain,

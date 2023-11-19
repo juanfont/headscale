@@ -16,9 +16,7 @@ import (
 	"tailscale.com/types/key"
 )
 
-// handleRegister is the common logic for registering a client in the legacy and Noise protocols
-//
-// When using Noise, the machineKey is Zero.
+// handleRegister is the logic for registering a client.
 func (h *Headscale) handleRegister(
 	writer http.ResponseWriter,
 	req *http.Request,
@@ -210,7 +208,6 @@ func (h *Headscale) handleRegister(
 }
 
 // handleAuthKey contains the logic to manage auth key client registration
-// It is used both by the legacy and the new Noise protocol.
 // When using Noise, the machineKey is Zero.
 //
 // TODO: check if any locks are needed around IP allocation.
@@ -414,8 +411,9 @@ func (h *Headscale) handleAuthKey(
 		Msg("Successfully authenticated via AuthKey")
 }
 
-// handleNewNode exposes for both legacy and Noise the functionality to get a URL
-// for authorizing the node. This url is then showed to the user by the local Tailscale client.
+// handleNewNode returns the authorisation URL to the client based on what type
+// of registration headscale is configured with.
+// This url is then showed to the user by the local Tailscale client.
 func (h *Headscale) handleNewNode(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,

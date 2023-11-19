@@ -8,7 +8,6 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -63,26 +62,6 @@ func (h *Headscale) KeyHandler(
 	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
 	capVer, err := parseCabailityVersion(req)
 	if err != nil {
-		if errors.Is(err, ErrNoCapabilityVersion) {
-			log.Debug().
-				Str("handler", "/key").
-				Msg("New legacy client")
-			// Old clients don't send a 'v' parameter, so we send the legacy public key
-			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			writer.WriteHeader(http.StatusOK)
-			_, err := writer.Write(
-				[]byte(strings.TrimPrefix(h.privateKey2019.Public().String(), "mkey:")),
-			)
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-
-			return
-		}
-
 		log.Error().
 			Caller().
 			Err(err).
@@ -120,8 +99,7 @@ func (h *Headscale) KeyHandler(
 	// TS2021 (Tailscale v2 protocol) requires to have a different key
 	if capVer >= NoiseCapabilityVersion {
 		resp := tailcfg.OverTLSPublicKeyResponse{
-			LegacyPublicKey: h.privateKey2019.Public(),
-			PublicKey:       h.noisePrivateKey.Public(),
+			PublicKey: h.noisePrivateKey.Public(),
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusOK)

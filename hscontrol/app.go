@@ -77,7 +77,6 @@ type Headscale struct {
 	dbString        string
 	dbType          string
 	dbDebug         bool
-	privateKey2019  *key.MachinePrivate
 	noisePrivateKey *key.MachinePrivate
 
 	DERPMap    *tailcfg.DERPMap
@@ -101,19 +100,9 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		runtime.SetBlockProfileRate(1)
 	}
 
-	privateKey, err := readOrCreatePrivateKey(cfg.PrivateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read or create private key: %w", err)
-	}
-
-	// TS2021 requires to have a different key from the legacy protocol.
 	noisePrivateKey, err := readOrCreatePrivateKey(cfg.NoisePrivateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
-	}
-
-	if privateKey.Equal(*noisePrivateKey) {
-		return nil, fmt.Errorf("private key and noise private key are the same: %w", err)
 	}
 
 	var dbString string
@@ -156,7 +145,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		cfg:                cfg,
 		dbType:             cfg.DBtype,
 		dbString:           dbString,
-		privateKey2019:     privateKey,
 		noisePrivateKey:    noisePrivateKey,
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
@@ -199,10 +187,18 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	if cfg.DERP.ServerEnabled {
-		// TODO(kradalby): replace this key with a dedicated DERP key.
+		derpServerKey, err := readOrCreatePrivateKey(cfg.DERP.ServerPrivateKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read or create DERP server private key: %w", err)
+		}
+
+		if derpServerKey.Equal(*noisePrivateKey) {
+			return nil, fmt.Errorf("DERP server private key and noise private key are the same: %w", err)
+		}
+
 		embeddedDERPServer, err := derpServer.NewDERPServer(
 			cfg.ServerURL,
-			key.NodePrivate(*privateKey),
+			key.NodePrivate(*derpServerKey),
 			&cfg.DERP,
 		)
 		if err != nil {
@@ -913,12 +909,6 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 
 	var machineKey key.MachinePrivate
 	if err = machineKey.UnmarshalText([]byte(trimmedPrivateKey)); err != nil {
-		log.Info().
-			Str("path", path).
-			Msg("This might be due to a legacy (headscale pre-0.12) private key. " +
-				"If the key is in WireGuard format, delete the key and restart headscale. " +
-				"A new key will automatically be generated. All Tailscale clients will have to be restarted")
-
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
