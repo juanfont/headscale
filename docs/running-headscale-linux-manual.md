@@ -41,7 +41,7 @@ useradd \
 	--home-dir /var/lib/headscale/ \
 	--system \
 	--user-group \
-	--shell /usr/bin/nologin \
+	--shell /usr/sbin/nologin \
 	headscale
 ```
 
