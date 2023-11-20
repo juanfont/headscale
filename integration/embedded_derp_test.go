@@ -43,6 +43,7 @@ func TestDERPServerScenario(t *testing.T) {
 	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_CODE"] = "headscale"
 	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_NAME"] = "Headscale Embedded DERP"
 	headscaleConfig["HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR"] = "0.0.0.0:3478"
+	headscaleConfig["HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH"] = "/tmp/derp.key"
 
 	err = scenario.CreateHeadscaleEnv(
 		spec,
