@@ -530,10 +530,10 @@ func TestExpireNode(t *testing.T) {
 
 			peerPublicKey := strings.TrimPrefix(peerStatus.PublicKey.String(), "nodekey:")
 
-			assert.NotEqual(t, node.NodeKey, peerPublicKey)
+			assert.NotEqual(t, node.GetNodeKey(), peerPublicKey)
 		}
 
-		if client.Hostname() != node.Name {
+		if client.Hostname() != node.GetName() {
 			// Assert that we have the original count - self - expired node
 			assert.Len(t, status.Peers(), len(MustTestVersions)-2)
 		}

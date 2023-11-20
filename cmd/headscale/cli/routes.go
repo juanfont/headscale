@@ -87,12 +87,12 @@ var listRoutesCmd = &cobra.Command{
 			}
 
 			if output != "" {
-				SuccessOutput(response.Routes, "", output)
+				SuccessOutput(response.GetRoutes(), "", output)
 
 				return
 			}
 
-			routes = response.Routes
+			routes = response.GetRoutes()
 		} else {
 			response, err := client.GetNodeRoutes(ctx, &v1.GetNodeRoutesRequest{
 				NodeId: machineID,
@@ -108,12 +108,12 @@ var listRoutesCmd = &cobra.Command{
 			}
 
 			if output != "" {
-				SuccessOutput(response.Routes, "", output)
+				SuccessOutput(response.GetRoutes(), "", output)
 
 				return
 			}
 
-			routes = response.Routes
+			routes = response.GetRoutes()
 		}
 
 		tableData := routesToPtables(routes)
@@ -271,25 +271,25 @@ func routesToPtables(routes []*v1.Route) pterm.TableData {
 
 	for _, route := range routes {
 		var isPrimaryStr string
-		prefix, err := netip.ParsePrefix(route.Prefix)
+		prefix, err := netip.ParsePrefix(route.GetPrefix())
 		if err != nil {
-			log.Printf("Error parsing prefix %s: %s", route.Prefix, err)
+			log.Printf("Error parsing prefix %s: %s", route.GetPrefix(), err)
 
 			continue
 		}
 		if prefix == types.ExitRouteV4 || prefix == types.ExitRouteV6 {
 			isPrimaryStr = "-"
 		} else {
-			isPrimaryStr = strconv.FormatBool(route.IsPrimary)
+			isPrimaryStr = strconv.FormatBool(route.GetIsPrimary())
 		}
 
 		tableData = append(tableData,
 			[]string{
-				strconv.FormatUint(route.Id, Base10),
-				route.Node.GivenName,
-				route.Prefix,
-				strconv.FormatBool(route.Advertised),
-				strconv.FormatBool(route.Enabled),
+				strconv.FormatUint(route.GetId(), Base10),
+				route.GetNode().GetGivenName(),
+				route.GetPrefix(),
+				strconv.FormatBool(route.GetAdvertised()),
+				strconv.FormatBool(route.GetEnabled()),
 				isPrimaryStr,
 			})
 	}

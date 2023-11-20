@@ -60,7 +60,7 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	result := []string{listUsers[0].Name, listUsers[1].Name}
+	result := []string{listUsers[0].GetName(), listUsers[1].GetName()}
 	sort.Strings(result)
 
 	assert.Equal(
@@ -95,7 +95,7 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	result = []string{listAfterRenameUsers[0].Name, listAfterRenameUsers[1].Name}
+	result = []string{listAfterRenameUsers[0].GetName(), listAfterRenameUsers[1].GetName()}
 	sort.Strings(result)
 
 	assert.Equal(
@@ -177,29 +177,29 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 	assert.Equal(
 		t,
-		[]string{keys[0].Id, keys[1].Id, keys[2].Id},
-		[]string{listedPreAuthKeys[1].Id, listedPreAuthKeys[2].Id, listedPreAuthKeys[3].Id},
+		[]string{keys[0].GetId(), keys[1].GetId(), keys[2].GetId()},
+		[]string{listedPreAuthKeys[1].GetId(), listedPreAuthKeys[2].GetId(), listedPreAuthKeys[3].GetId()},
 	)
 
-	assert.NotEmpty(t, listedPreAuthKeys[1].Key)
-	assert.NotEmpty(t, listedPreAuthKeys[2].Key)
-	assert.NotEmpty(t, listedPreAuthKeys[3].Key)
+	assert.NotEmpty(t, listedPreAuthKeys[1].GetKey())
+	assert.NotEmpty(t, listedPreAuthKeys[2].GetKey())
+	assert.NotEmpty(t, listedPreAuthKeys[3].GetKey())
 
-	assert.True(t, listedPreAuthKeys[1].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeys[2].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeys[3].Expiration.AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[2].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[3].GetExpiration().AsTime().After(time.Now()))
 
 	assert.True(
 		t,
-		listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedPreAuthKeys[2].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[2].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedPreAuthKeys[3].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[3].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 
 	for index := range listedPreAuthKeys {
@@ -207,7 +207,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			continue
 		}
 
-		assert.Equal(t, listedPreAuthKeys[index].AclTags, []string{"tag:test1", "tag:test2"})
+		assert.Equal(t, listedPreAuthKeys[index].GetAclTags(), []string{"tag:test1", "tag:test2"})
 	}
 
 	// Test key expiry
@@ -218,7 +218,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			"--user",
 			user,
 			"expire",
-			listedPreAuthKeys[1].Key,
+			listedPreAuthKeys[1].GetKey(),
 		},
 	)
 	assertNoErr(t, err)
@@ -239,9 +239,9 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	assert.True(t, listedPreAuthKeysAfterExpire[1].Expiration.AsTime().Before(time.Now()))
-	assert.True(t, listedPreAuthKeysAfterExpire[2].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeysAfterExpire[3].Expiration.AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[1].GetExpiration().AsTime().Before(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[2].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[3].GetExpiration().AsTime().After(time.Now()))
 }
 
 func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
@@ -300,10 +300,10 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 2)
 
-	assert.True(t, listedPreAuthKeys[1].Expiration.AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
 	assert.True(
 		t,
-		listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Minute*70)),
+		listedPreAuthKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Minute*70)),
 	)
 }
 
@@ -442,9 +442,9 @@ func TestEnablingRoutes(t *testing.T) {
 	assert.Len(t, routes, 3)
 
 	for _, route := range routes {
-		assert.Equal(t, route.Advertised, true)
-		assert.Equal(t, route.Enabled, false)
-		assert.Equal(t, route.IsPrimary, false)
+		assert.Equal(t, route.GetAdvertised(), true)
+		assert.Equal(t, route.GetEnabled(), false)
+		assert.Equal(t, route.GetIsPrimary(), false)
 	}
 
 	for _, route := range routes {
@@ -454,7 +454,7 @@ func TestEnablingRoutes(t *testing.T) {
 				"routes",
 				"enable",
 				"--route",
-				strconv.Itoa(int(route.Id)),
+				strconv.Itoa(int(route.GetId())),
 			})
 		assertNoErr(t, err)
 	}
@@ -475,12 +475,12 @@ func TestEnablingRoutes(t *testing.T) {
 	assert.Len(t, enablingRoutes, 3)
 
 	for _, route := range enablingRoutes {
-		assert.Equal(t, route.Advertised, true)
-		assert.Equal(t, route.Enabled, true)
-		assert.Equal(t, route.IsPrimary, true)
+		assert.Equal(t, route.GetAdvertised(), true)
+		assert.Equal(t, route.GetEnabled(), true)
+		assert.Equal(t, route.GetIsPrimary(), true)
 	}
 
-	routeIDToBeDisabled := enablingRoutes[0].Id
+	routeIDToBeDisabled := enablingRoutes[0].GetId()
 
 	_, err = headscale.Execute(
 		[]string{
@@ -507,14 +507,14 @@ func TestEnablingRoutes(t *testing.T) {
 	assertNoErr(t, err)
 
 	for _, route := range disablingRoutes {
-		assert.Equal(t, true, route.Advertised)
+		assert.Equal(t, true, route.GetAdvertised())
 
-		if route.Id == routeIDToBeDisabled {
-			assert.Equal(t, route.Enabled, false)
-			assert.Equal(t, route.IsPrimary, false)
+		if route.GetId() == routeIDToBeDisabled {
+			assert.Equal(t, route.GetEnabled(), false)
+			assert.Equal(t, route.GetIsPrimary(), false)
 		} else {
-			assert.Equal(t, route.Enabled, true)
-			assert.Equal(t, route.IsPrimary, true)
+			assert.Equal(t, route.GetEnabled(), true)
+			assert.Equal(t, route.GetIsPrimary(), true)
 		}
 	}
 }
@@ -577,43 +577,43 @@ func TestApiKeyCommand(t *testing.T) {
 
 	assert.Len(t, listedAPIKeys, 5)
 
-	assert.Equal(t, uint64(1), listedAPIKeys[0].Id)
-	assert.Equal(t, uint64(2), listedAPIKeys[1].Id)
-	assert.Equal(t, uint64(3), listedAPIKeys[2].Id)
-	assert.Equal(t, uint64(4), listedAPIKeys[3].Id)
-	assert.Equal(t, uint64(5), listedAPIKeys[4].Id)
+	assert.Equal(t, uint64(1), listedAPIKeys[0].GetId())
+	assert.Equal(t, uint64(2), listedAPIKeys[1].GetId())
+	assert.Equal(t, uint64(3), listedAPIKeys[2].GetId())
+	assert.Equal(t, uint64(4), listedAPIKeys[3].GetId())
+	assert.Equal(t, uint64(5), listedAPIKeys[4].GetId())
 
-	assert.NotEmpty(t, listedAPIKeys[0].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[1].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[2].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[3].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[4].Prefix)
+	assert.NotEmpty(t, listedAPIKeys[0].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[1].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[2].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[3].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[4].GetPrefix())
 
-	assert.True(t, listedAPIKeys[0].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[1].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[2].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[3].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[4].Expiration.AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[0].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[1].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[2].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[3].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[4].GetExpiration().AsTime().After(time.Now()))
 
 	assert.True(
 		t,
-		listedAPIKeys[0].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[0].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[2].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[2].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[3].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[3].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[4].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[4].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 
 	expiredPrefixes := make(map[string]bool)
@@ -626,12 +626,12 @@ func TestApiKeyCommand(t *testing.T) {
 				"apikeys",
 				"expire",
 				"--prefix",
-				listedAPIKeys[idx].Prefix,
+				listedAPIKeys[idx].GetPrefix(),
 			},
 		)
 		assert.Nil(t, err)
 
-		expiredPrefixes[listedAPIKeys[idx].Prefix] = true
+		expiredPrefixes[listedAPIKeys[idx].GetPrefix()] = true
 	}
 
 	var listedAfterExpireAPIKeys []v1.ApiKey
@@ -648,17 +648,17 @@ func TestApiKeyCommand(t *testing.T) {
 	assert.Nil(t, err)
 
 	for index := range listedAfterExpireAPIKeys {
-		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].Prefix]; ok {
+		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].GetPrefix()]; ok {
 			// Expired
 			assert.True(
 				t,
-				listedAfterExpireAPIKeys[index].Expiration.AsTime().Before(time.Now()),
+				listedAfterExpireAPIKeys[index].GetExpiration().AsTime().Before(time.Now()),
 			)
 		} else {
 			// Not expired
 			assert.False(
 				t,
-				listedAfterExpireAPIKeys[index].Expiration.AsTime().Before(time.Now()),
+				listedAfterExpireAPIKeys[index].GetExpiration().AsTime().Before(time.Now()),
 			)
 		}
 	}
@@ -744,7 +744,7 @@ func TestNodeTagCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, []string{"tag:test"}, node.ForcedTags)
+	assert.Equal(t, []string{"tag:test"}, node.GetForcedTags())
 
 	// try to set a wrong tag and retrieve the error
 	type errOutput struct {
@@ -781,8 +781,8 @@ func TestNodeTagCommand(t *testing.T) {
 	assert.Nil(t, err)
 	found := false
 	for _, node := range resultMachines {
-		if node.ForcedTags != nil {
-			for _, tag := range node.ForcedTags {
+		if node.GetForcedTags() != nil {
+			for _, tag := range node.GetForcedTags() {
 				if tag == "tag:test" {
 					found = true
 				}
@@ -885,17 +885,17 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.Equal(t, uint64(1), listAll[0].Id)
-	assert.Equal(t, uint64(2), listAll[1].Id)
-	assert.Equal(t, uint64(3), listAll[2].Id)
-	assert.Equal(t, uint64(4), listAll[3].Id)
-	assert.Equal(t, uint64(5), listAll[4].Id)
+	assert.Equal(t, uint64(1), listAll[0].GetId())
+	assert.Equal(t, uint64(2), listAll[1].GetId())
+	assert.Equal(t, uint64(3), listAll[2].GetId())
+	assert.Equal(t, uint64(4), listAll[3].GetId())
+	assert.Equal(t, uint64(5), listAll[4].GetId())
 
-	assert.Equal(t, "node-1", listAll[0].Name)
-	assert.Equal(t, "node-2", listAll[1].Name)
-	assert.Equal(t, "node-3", listAll[2].Name)
-	assert.Equal(t, "node-4", listAll[3].Name)
-	assert.Equal(t, "node-5", listAll[4].Name)
+	assert.Equal(t, "node-1", listAll[0].GetName())
+	assert.Equal(t, "node-2", listAll[1].GetName())
+	assert.Equal(t, "node-3", listAll[2].GetName())
+	assert.Equal(t, "node-4", listAll[3].GetName())
+	assert.Equal(t, "node-5", listAll[4].GetName())
 
 	otherUserMachineKeys := []string{
 		"mkey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
@@ -963,11 +963,11 @@ func TestNodeCommand(t *testing.T) {
 	// All nodes, nodes + otherUser
 	assert.Len(t, listAllWithotherUser, 7)
 
-	assert.Equal(t, uint64(6), listAllWithotherUser[5].Id)
-	assert.Equal(t, uint64(7), listAllWithotherUser[6].Id)
+	assert.Equal(t, uint64(6), listAllWithotherUser[5].GetId())
+	assert.Equal(t, uint64(7), listAllWithotherUser[6].GetId())
 
-	assert.Equal(t, "otherUser-node-1", listAllWithotherUser[5].Name)
-	assert.Equal(t, "otherUser-node-2", listAllWithotherUser[6].Name)
+	assert.Equal(t, "otherUser-node-1", listAllWithotherUser[5].GetName())
+	assert.Equal(t, "otherUser-node-2", listAllWithotherUser[6].GetName())
 
 	// Test list all nodes after added otherUser
 	var listOnlyotherUserMachineUser []v1.Node
@@ -988,18 +988,18 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.Len(t, listOnlyotherUserMachineUser, 2)
 
-	assert.Equal(t, uint64(6), listOnlyotherUserMachineUser[0].Id)
-	assert.Equal(t, uint64(7), listOnlyotherUserMachineUser[1].Id)
+	assert.Equal(t, uint64(6), listOnlyotherUserMachineUser[0].GetId())
+	assert.Equal(t, uint64(7), listOnlyotherUserMachineUser[1].GetId())
 
 	assert.Equal(
 		t,
 		"otherUser-node-1",
-		listOnlyotherUserMachineUser[0].Name,
+		listOnlyotherUserMachineUser[0].GetName(),
 	)
 	assert.Equal(
 		t,
 		"otherUser-node-2",
-		listOnlyotherUserMachineUser[1].Name,
+		listOnlyotherUserMachineUser[1].GetName(),
 	)
 
 	// Delete a nodes
@@ -1123,11 +1123,11 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.True(t, listAll[0].Expiry.AsTime().IsZero())
-	assert.True(t, listAll[1].Expiry.AsTime().IsZero())
-	assert.True(t, listAll[2].Expiry.AsTime().IsZero())
-	assert.True(t, listAll[3].Expiry.AsTime().IsZero())
-	assert.True(t, listAll[4].Expiry.AsTime().IsZero())
+	assert.True(t, listAll[0].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAll[1].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAll[2].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAll[3].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAll[4].GetExpiry().AsTime().IsZero())
 
 	for idx := 0; idx < 3; idx++ {
 		_, err := headscale.Execute(
@@ -1136,7 +1136,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				"nodes",
 				"expire",
 				"--identifier",
-				fmt.Sprintf("%d", listAll[idx].Id),
+				fmt.Sprintf("%d", listAll[idx].GetId()),
 			},
 		)
 		assert.Nil(t, err)
@@ -1158,11 +1158,11 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterExpiry, 5)
 
-	assert.True(t, listAllAfterExpiry[0].Expiry.AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[1].Expiry.AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[2].Expiry.AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[3].Expiry.AsTime().IsZero())
-	assert.True(t, listAllAfterExpiry[4].Expiry.AsTime().IsZero())
+	assert.True(t, listAllAfterExpiry[0].GetExpiry().AsTime().Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[1].GetExpiry().AsTime().Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[2].GetExpiry().AsTime().Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[3].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAllAfterExpiry[4].GetExpiry().AsTime().IsZero())
 }
 
 func TestNodeRenameCommand(t *testing.T) {
@@ -1264,7 +1264,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				"nodes",
 				"rename",
 				"--identifier",
-				fmt.Sprintf("%d", listAll[idx].Id),
+				fmt.Sprintf("%d", listAll[idx].GetId()),
 				fmt.Sprintf("newnode-%d", idx+1),
 			},
 		)
@@ -1300,7 +1300,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			"nodes",
 			"rename",
 			"--identifier",
-			fmt.Sprintf("%d", listAll[4].Id),
+			fmt.Sprintf("%d", listAll[4].GetId()),
 			"testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
 		},
 	)
@@ -1387,11 +1387,11 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, uint64(1), node.Id)
-	assert.Equal(t, "nomad-node", node.Name)
-	assert.Equal(t, node.User.Name, "old-user")
+	assert.Equal(t, uint64(1), node.GetId())
+	assert.Equal(t, "nomad-node", node.GetName())
+	assert.Equal(t, node.GetUser().GetName(), "old-user")
 
-	nodeID := fmt.Sprintf("%d", node.Id)
+	nodeID := fmt.Sprintf("%d", node.GetId())
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1410,7 +1410,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, node.User.Name, "new-user")
+	assert.Equal(t, node.GetUser().GetName(), "new-user")
 
 	var allNodes []v1.Node
 	err = executeAndUnmarshal(
@@ -1428,9 +1428,9 @@ func TestNodeMoveCommand(t *testing.T) {
 
 	assert.Len(t, allNodes, 1)
 
-	assert.Equal(t, allNodes[0].Id, node.Id)
-	assert.Equal(t, allNodes[0].User, node.User)
-	assert.Equal(t, allNodes[0].User.Name, "new-user")
+	assert.Equal(t, allNodes[0].GetId(), node.GetId())
+	assert.Equal(t, allNodes[0].GetUser(), node.GetUser())
+	assert.Equal(t, allNodes[0].GetUser().GetName(), "new-user")
 
 	moveToNonExistingNSResult, err := headscale.Execute(
 		[]string{
@@ -1452,7 +1452,7 @@ func TestNodeMoveCommand(t *testing.T) {
 		moveToNonExistingNSResult,
 		"user not found",
 	)
-	assert.Equal(t, node.User.Name, "new-user")
+	assert.Equal(t, node.GetUser().GetName(), "new-user")
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1471,7 +1471,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, node.User.Name, "old-user")
+	assert.Equal(t, node.GetUser().GetName(), "old-user")
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1490,5 +1490,5 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, node.User.Name, "old-user")
+	assert.Equal(t, node.GetUser().GetName(), "old-user")
 }

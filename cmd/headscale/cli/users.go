@@ -67,7 +67,7 @@ var createUserCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.User, "User created", output)
+		SuccessOutput(response.GetUser(), "User created", output)
 	},
 }
 
@@ -169,7 +169,7 @@ var listUsersCmd = &cobra.Command{
 		}
 
 		if output != "" {
-			SuccessOutput(response.Users, "", output)
+			SuccessOutput(response.GetUsers(), "", output)
 
 			return
 		}
@@ -236,6 +236,6 @@ var renameUserCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.User, "User renamed", output)
+		SuccessOutput(response.GetUser(), "User renamed", output)
 	},
 }

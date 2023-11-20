@@ -152,8 +152,8 @@ var registerNodeCmd = &cobra.Command{
 		}
 
 		SuccessOutput(
-			response.Node,
-			fmt.Sprintf("Node %s registered", response.Node.GivenName), output)
+			response.GetNode(),
+			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()), output)
 	},
 }
 
@@ -196,12 +196,12 @@ var listNodesCmd = &cobra.Command{
 		}
 
 		if output != "" {
-			SuccessOutput(response.Nodes, "", output)
+			SuccessOutput(response.GetNodes(), "", output)
 
 			return
 		}
 
-		tableData, err := nodesToPtables(user, showTags, response.Nodes)
+		tableData, err := nodesToPtables(user, showTags, response.GetNodes())
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 
@@ -262,7 +262,7 @@ var expireNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Node, "Node expired", output)
+		SuccessOutput(response.GetNode(), "Node expired", output)
 	},
 }
 
@@ -310,7 +310,7 @@ var renameNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Node, "Node renamed", output)
+		SuccessOutput(response.GetNode(), "Node renamed", output)
 	},
 }
 
@@ -364,7 +364,7 @@ var deleteNodeCmd = &cobra.Command{
 			prompt := &survey.Confirm{
 				Message: fmt.Sprintf(
 					"Do you want to remove the node %s?",
-					getResponse.GetNode().Name,
+					getResponse.GetNode().GetName(),
 				),
 			}
 			err = survey.AskOne(prompt, &confirm)
@@ -473,7 +473,7 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(moveResponse.Node, "Node moved to another user", output)
+		SuccessOutput(moveResponse.GetNode(), "Node moved to another user", output)
 	},
 }
 
@@ -507,21 +507,21 @@ func nodesToPtables(
 
 	for _, node := range nodes {
 		var ephemeral bool
-		if node.PreAuthKey != nil && node.PreAuthKey.Ephemeral {
+		if node.GetPreAuthKey() != nil && node.GetPreAuthKey().GetEphemeral() {
 			ephemeral = true
 		}
 
 		var lastSeen time.Time
 		var lastSeenTime string
-		if node.LastSeen != nil {
-			lastSeen = node.LastSeen.AsTime()
+		if node.GetLastSeen() != nil {
+			lastSeen = node.GetLastSeen().AsTime()
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
 
 		var expiry time.Time
 		var expiryTime string
-		if node.Expiry != nil {
-			expiry = node.Expiry.AsTime()
+		if node.GetExpiry() != nil {
+			expiry = node.GetExpiry().AsTime()
 			expiryTime = expiry.Format("2006-01-02 15:04:05")
 		} else {
 			expiryTime = "N/A"
@@ -529,7 +529,7 @@ func nodesToPtables(
 
 		var machineKey key.MachinePublic
 		err := machineKey.UnmarshalText(
-			[]byte(node.MachineKey),
+			[]byte(node.GetMachineKey()),
 		)
 		if err != nil {
 			machineKey = key.MachinePublic{}
@@ -537,14 +537,14 @@ func nodesToPtables(
 
 		var nodeKey key.NodePublic
 		err = nodeKey.UnmarshalText(
-			[]byte(node.NodeKey),
+			[]byte(node.GetNodeKey()),
 		)
 		if err != nil {
 			return nil, err
 		}
 
 		var online string
-		if node.Online {
+		if node.GetOnline() {
 			online = pterm.LightGreen("online")
 		} else {
 			online = pterm.LightRed("offline")
@@ -558,36 +558,36 @@ func nodesToPtables(
 		}
 
 		var forcedTags string
-		for _, tag := range node.ForcedTags {
+		for _, tag := range node.GetForcedTags() {
 			forcedTags += "," + tag
 		}
 		forcedTags = strings.TrimLeft(forcedTags, ",")
 		var invalidTags string
-		for _, tag := range node.InvalidTags {
-			if !contains(node.ForcedTags, tag) {
+		for _, tag := range node.GetInvalidTags() {
+			if !contains(node.GetForcedTags(), tag) {
 				invalidTags += "," + pterm.LightRed(tag)
 			}
 		}
 		invalidTags = strings.TrimLeft(invalidTags, ",")
 		var validTags string
-		for _, tag := range node.ValidTags {
-			if !contains(node.ForcedTags, tag) {
+		for _, tag := range node.GetValidTags() {
+			if !contains(node.GetForcedTags(), tag) {
 				validTags += "," + pterm.LightGreen(tag)
 			}
 		}
 		validTags = strings.TrimLeft(validTags, ",")
 
 		var user string
-		if currentUser == "" || (currentUser == node.User.Name) {
-			user = pterm.LightMagenta(node.User.Name)
+		if currentUser == "" || (currentUser == node.GetUser().GetName()) {
+			user = pterm.LightMagenta(node.GetUser().GetName())
 		} else {
 			// Shared into this user
-			user = pterm.LightYellow(node.User.Name)
+			user = pterm.LightYellow(node.GetUser().GetName())
 		}
 
 		var IPV4Address string
 		var IPV6Address string
-		for _, addr := range node.IpAddresses {
+		for _, addr := range node.GetIpAddresses() {
 			if netip.MustParseAddr(addr).Is4() {
 				IPV4Address = addr
 			} else {
@@ -596,8 +596,8 @@ func nodesToPtables(
 		}
 
 		nodeData := []string{
-			strconv.FormatUint(node.Id, util.Base10),
-			node.Name,
+			strconv.FormatUint(node.GetId(), util.Base10),
+			node.GetName(),
 			node.GetGivenName(),
 			machineKey.ShortString(),
 			nodeKey.ShortString(),

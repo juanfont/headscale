@@ -198,5 +198,5 @@ func (*Suite) TestPreAuthKeyACLTags(c *check.C) {
 
 	listedPaks, err := db.ListPreAuthKeys("test8")
 	c.Assert(err, check.IsNil)
-	c.Assert(listedPaks[0].Proto().AclTags, check.DeepEquals, tags)
+	c.Assert(listedPaks[0].Proto().GetAclTags(), check.DeepEquals, tags)
 }

@@ -301,7 +301,7 @@ func (h *Headscale) handleAuthKey(
 			return
 		}
 
-		aclTags := pak.Proto().AclTags
+		aclTags := pak.Proto().GetAclTags()
 		if len(aclTags) > 0 {
 			// This conditional preserves the existing behaviour, although SaaS would reset the tags on auth-key login
 			err = h.db.SetTags(node, aclTags)
@@ -342,7 +342,7 @@ func (h *Headscale) handleAuthKey(
 			NodeKey:        nodeKey,
 			LastSeen:       &now,
 			AuthKeyID:      uint(pak.ID),
-			ForcedTags:     pak.Proto().AclTags,
+			ForcedTags:     pak.Proto().GetAclTags(),
 		}
 
 		node, err = h.db.RegisterNode(
