@@ -405,25 +405,6 @@ func (m *Mapper) marshalMapResponse(
 	return data, nil
 }
 
-// MarshalResponse takes an Tailscale Response, marhsal it to JSON.
-// If isNoise is set, then the JSON body will be returned
-// If !isNoise and privateKey2019 is set, the JSON body will be sealed in a Nacl box.
-func MarshalResponse(
-	resp interface{},
-) ([]byte, error) {
-	jsonBody, err := json.Marshal(resp)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot marshal response")
-
-		return nil, err
-	}
-
-	return jsonBody, nil
-}
-
 func zstdEncode(in []byte) []byte {
 	encoder, ok := zstdEncoderPool.Get().(*zstd.Encoder)
 	if !ok {
