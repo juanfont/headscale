@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -593,7 +594,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
-		HostInfo: types.HostInfo{
+		Hostinfo: &tailcfg.Hostinfo{
 			RequestTags: []string{"tag:exit"},
 			RoutableIPs: []netip.Prefix{defaultRouteV4, defaultRouteV6, route1, route2},
 		},

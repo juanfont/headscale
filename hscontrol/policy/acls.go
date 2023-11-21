@@ -596,10 +596,13 @@ func excludeCorrectlyTaggedNodes(
 	}
 	// for each node if tag is in tags list, don't append it.
 	for _, node := range nodes {
-		hi := node.GetHostInfo()
-
 		found := false
-		for _, t := range hi.RequestTags {
+
+		if node.Hostinfo == nil {
+			continue
+		}
+
+		for _, t := range node.Hostinfo.RequestTags {
 			if util.StringOrPrefixListContains(tags, t) {
 				found = true
 
@@ -787,8 +790,11 @@ func (pol *ACLPolicy) expandIPsFromTag(
 	for _, user := range owners {
 		nodes := filterNodesByUser(nodes, user)
 		for _, node := range nodes {
-			hi := node.GetHostInfo()
-			if util.StringOrPrefixListContains(hi.RequestTags, alias) {
+			if node.Hostinfo == nil {
+				continue
+			}
+
+			if util.StringOrPrefixListContains(node.Hostinfo.RequestTags, alias) {
 				node.IPAddresses.AppendToIPSet(&build)
 			}
 		}
@@ -882,7 +888,7 @@ func (pol *ACLPolicy) TagsOfNode(
 
 	validTagMap := make(map[string]bool)
 	invalidTagMap := make(map[string]bool)
-	for _, tag := range node.HostInfo.RequestTags {
+	for _, tag := range node.Hostinfo.RequestTags {
 		owners, err := expandOwnersFromTag(pol, tag)
 		if errors.Is(err, ErrInvalidTag) {
 			invalidTagMap[tag] = true

@@ -53,8 +53,10 @@ func TestTailNode(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name:       "empty-node",
-			node:       &types.Node{},
+			name: "empty-node",
+			node: &types.Node{
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
 			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
@@ -102,8 +104,7 @@ func TestTailNode(t *testing.T) {
 				AuthKey:    &types.PreAuthKey{},
 				LastSeen:   &lastSeen,
 				Expiry:     &expire,
-				HostInfo:   types.HostInfo{},
-				Endpoints:  []string{},
+				Hostinfo:   &tailcfg.Hostinfo{},
 				Routes: []types.Route{
 					{
 						Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),

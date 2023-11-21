@@ -72,8 +72,8 @@ func tailNode(
 	}
 
 	var derp string
-	if node.HostInfo.NetInfo != nil {
-		derp = fmt.Sprintf("127.3.3.40:%d", node.HostInfo.NetInfo.PreferredDERP)
+	if node.Hostinfo.NetInfo != nil {
+		derp = fmt.Sprintf("127.3.3.40:%d", node.Hostinfo.NetInfo.PreferredDERP)
 	} else {
 		derp = "127.3.3.40:0" // Zero means disconnected or unknown.
 	}
@@ -90,17 +90,10 @@ func tailNode(
 		return nil, err
 	}
 
-	hostInfo := node.GetHostInfo()
-
 	online := node.IsOnline()
 
 	tags, _ := pol.TagsOfNode(node)
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
-
-	endpoints, err := node.EndpointsToAddrPort()
-	if err != nil {
-		return nil, err
-	}
 
 	tNode := tailcfg.Node{
 		ID: tailcfg.NodeID(node.ID), // this is the actual ID
@@ -118,9 +111,9 @@ func tailNode(
 		DiscoKey:   node.DiscoKey,
 		Addresses:  addrs,
 		AllowedIPs: allowedIPs,
-		Endpoints:  endpoints,
+		Endpoints:  node.Endpoints,
 		DERP:       derp,
-		Hostinfo:   hostInfo.View(),
+		Hostinfo:   node.Hostinfo.View(),
 		Created:    node.CreatedAt,
 
 		Tags: tags,
