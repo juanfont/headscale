@@ -24,7 +24,7 @@ RUN apt-get update \
 COPY --from=build /go/bin/headscale /bin/headscale
 ENV TZ UTC
 
-RUN mkdir -p /var/run/headscale
+RUN mkdir -p /var/run/headscale /var/run/tailscale
 
 EXPOSE 8080/tcp
 CMD ["headscale"]

@@ -204,6 +204,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			cfg.ServerURL,
 			key.NodePrivate(*privateKey),
 			&cfg.DERP,
+			database,
 		)
 		if err != nil {
 			return nil, err
@@ -492,6 +493,13 @@ func (h *Headscale) Serve() error {
 		// When embedded DERP is enabled we always need a STUN server
 		if h.cfg.DERP.STUNAddr == "" {
 			return errSTUNAddressNotSet
+		}
+
+		// Runs only when local socket api simulation is enabled
+		if h.cfg.DERP.ServerVerifyClients && h.cfg.DERP.ServerEnableSocketAPI {
+			if err = h.DERPServer.ServeFakeStatus(); err != nil {
+				return err
+			}
 		}
 
 		region, err := h.DERPServer.GenerateRegion()
