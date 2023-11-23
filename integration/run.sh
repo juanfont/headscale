@@ -26,7 +26,6 @@ run_tests() {
 			--volume "$PWD"/control_logs:/tmp/control \
 			golang:1 \
 			go test ./... \
-			-tags ts2019 \
 			-failfast \
 			-timeout 120m \
 			-parallel 1 \

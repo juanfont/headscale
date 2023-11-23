@@ -25,12 +25,10 @@ type UpdateNode func()
 func logPollFunc(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	isNoise bool,
 ) (func(string), func(error, string)) {
 	return func(msg string) {
 			log.Info().
 				Caller().
-				Bool("noise", isNoise).
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
@@ -41,7 +39,6 @@ func logPollFunc(
 		func(err error, msg string) {
 			log.Error().
 				Caller().
-				Bool("noise", isNoise).
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
@@ -52,8 +49,8 @@ func logPollFunc(
 		}
 }
 
-// handlePoll is the common code for the legacy and Noise protocols to
-// managed the poll loop.
+// handlePoll ensures the node gets the appropriate updates from either
+// polling or immediate responses.
 //
 //nolint:gocyclo
 func (h *Headscale) handlePoll(
@@ -61,10 +58,8 @@ func (h *Headscale) handlePoll(
 	ctx context.Context,
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
-	isNoise bool,
-	capVer tailcfg.CapabilityVersion,
 ) {
-	logInfo, logErr := logPollFunc(mapRequest, node, isNoise)
+	logInfo, logErr := logPollFunc(mapRequest, node)
 
 	// This is the mechanism where the node gives us inforamtion about its
 	// current configuration.
@@ -77,12 +72,12 @@ func (h *Headscale) handlePoll(
 	if mapRequest.OmitPeers && !mapRequest.Stream && !mapRequest.ReadOnly {
 		log.Info().
 			Caller().
-			Bool("noise", isNoise).
 			Bool("readOnly", mapRequest.ReadOnly).
 			Bool("omitPeers", mapRequest.OmitPeers).
 			Bool("stream", mapRequest.Stream).
 			Str("node_key", node.NodeKey.ShortString()).
 			Str("node", node.Hostname).
+			Int("cap_ver", int(mapRequest.Version)).
 			Msg("Received endpoint update")
 
 		now := time.Now().UTC()
@@ -129,7 +124,7 @@ func (h *Headscale) handlePoll(
 		// The intended use is for clients to discover the DERP map at
 		// start-up before their first real endpoint update.
 	} else if mapRequest.OmitPeers && !mapRequest.Stream && mapRequest.ReadOnly {
-		h.handleLiteRequest(writer, node, mapRequest, isNoise, capVer)
+		h.handleLiteRequest(writer, node, mapRequest)
 
 		return
 	} else if mapRequest.OmitPeers && mapRequest.Stream {
@@ -160,9 +155,6 @@ func (h *Headscale) handlePoll(
 	mapp := mapper.NewMapper(
 		node,
 		peers,
-		h.privateKey2019,
-		isNoise,
-		capVer,
 		h.DERPMap,
 		h.cfg.BaseDomain,
 		h.cfg.DNSConfig,
@@ -337,7 +329,6 @@ func (h *Headscale) handlePoll(
 
 			log.Info().
 				Caller().
-				Bool("noise", isNoise).
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
@@ -382,19 +373,14 @@ func (h *Headscale) handleLiteRequest(
 	writer http.ResponseWriter,
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
-	isNoise bool,
-	capVer tailcfg.CapabilityVersion,
 ) {
-	logInfo, logErr := logPollFunc(mapRequest, node, isNoise)
+	logInfo, logErr := logPollFunc(mapRequest, node)
 
 	mapp := mapper.NewMapper(
 		node,
 		// TODO(kradalby): It might not be acceptable to send
 		// an empty peer list here.
 		types.Nodes{},
-		h.privateKey2019,
-		isNoise,
-		capVer,
 		h.DERPMap,
 		h.cfg.BaseDomain,
 		h.cfg.DNSConfig,

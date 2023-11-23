@@ -25,7 +25,6 @@ import (
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
-	"tailscale.com/types/key"
 )
 
 const (
@@ -48,10 +47,6 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // - Create a "minifier" that removes info not needed for the node
 
 type Mapper struct {
-	privateKey2019 *key.MachinePrivate
-	isNoise        bool
-	capVer         tailcfg.CapabilityVersion
-
 	// Configuration
 	// TODO(kradalby): figure out if this is the format we want this in
 	derpMap          *tailcfg.DERPMap
@@ -73,9 +68,6 @@ type Mapper struct {
 func NewMapper(
 	node *types.Node,
 	peers types.Nodes,
-	privateKey *key.MachinePrivate,
-	isNoise bool,
-	capVer tailcfg.CapabilityVersion,
 	derpMap *tailcfg.DERPMap,
 	baseDomain string,
 	dnsCfg *tailcfg.DNSConfig,
@@ -84,17 +76,12 @@ func NewMapper(
 ) *Mapper {
 	log.Debug().
 		Caller().
-		Bool("noise", isNoise).
 		Str("node", node.Hostname).
 		Msg("creating new mapper")
 
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
-		privateKey2019: privateKey,
-		isNoise:        isNoise,
-		capVer:         capVer,
-
 		derpMap:          derpMap,
 		baseDomain:       baseDomain,
 		dnsCfg:           dnsCfg,
@@ -212,10 +199,11 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 func (m *Mapper) fullMapResponse(
 	node *types.Node,
 	pol *policy.ACLPolicy,
+	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	peers := nodeMapToList(m.peers)
 
-	resp, err := m.baseWithConfigMapResponse(node, pol)
+	resp, err := m.baseWithConfigMapResponse(node, pol, capVer)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +212,7 @@ func (m *Mapper) fullMapResponse(
 		resp,
 		pol,
 		node,
-		m.capVer,
+		capVer,
 		peers,
 		peers,
 		m.baseDomain,
@@ -247,13 +235,9 @@ func (m *Mapper) FullMapResponse(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	resp, err := m.fullMapResponse(node, pol)
+	resp, err := m.fullMapResponse(node, pol, mapRequest.Version)
 	if err != nil {
 		return nil, err
-	}
-
-	if m.isNoise {
-		return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 	}
 
 	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
@@ -267,13 +251,9 @@ func (m *Mapper) LiteMapResponse(
 	node *types.Node,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	resp, err := m.baseWithConfigMapResponse(node, pol)
+	resp, err := m.baseWithConfigMapResponse(node, pol, mapRequest.Version)
 	if err != nil {
 		return nil, err
-	}
-
-	if m.isNoise {
-		return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 	}
 
 	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
@@ -325,7 +305,7 @@ func (m *Mapper) PeerChangedResponse(
 		&resp,
 		pol,
 		node,
-		m.capVer,
+		mapRequest.Version,
 		nodeMapToList(m.peers),
 		changed,
 		m.baseDomain,
@@ -414,15 +394,8 @@ func (m *Mapper) marshalMapResponse(
 	var respBody []byte
 	if compression == util.ZstdCompression {
 		respBody = zstdEncode(jsonBody)
-		if !m.isNoise { // if legacy protocol
-			respBody = m.privateKey2019.SealTo(node.MachineKey, respBody)
-		}
 	} else {
-		if !m.isNoise { // if legacy protocol
-			respBody = m.privateKey2019.SealTo(node.MachineKey, jsonBody)
-		} else {
-			respBody = jsonBody
-		}
+		respBody = jsonBody
 	}
 
 	data := make([]byte, reservedResponseHeaderSize)
@@ -430,32 +403,6 @@ func (m *Mapper) marshalMapResponse(
 	data = append(data, respBody...)
 
 	return data, nil
-}
-
-// MarshalResponse takes an Tailscale Response, marhsal it to JSON.
-// If isNoise is set, then the JSON body will be returned
-// If !isNoise and privateKey2019 is set, the JSON body will be sealed in a Nacl box.
-func MarshalResponse(
-	resp interface{},
-	isNoise bool,
-	privateKey2019 *key.MachinePrivate,
-	machineKey key.MachinePublic,
-) ([]byte, error) {
-	jsonBody, err := json.Marshal(resp)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot marshal response")
-
-		return nil, err
-	}
-
-	if !isNoise && privateKey2019 != nil {
-		return privateKey2019.SealTo(machineKey, jsonBody), nil
-	}
-
-	return jsonBody, nil
 }
 
 func zstdEncode(in []byte) []byte {
@@ -503,10 +450,11 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 func (m *Mapper) baseWithConfigMapResponse(
 	node *types.Node,
 	pol *policy.ACLPolicy,
+	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, m.capVer, pol, m.dnsCfg, m.baseDomain, m.randomClientPort)
+	tailnode, err := tailNode(node, capVer, pol, m.dnsCfg, m.baseDomain, m.randomClientPort)
 	if err != nil {
 		return nil, err
 	}

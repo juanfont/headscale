@@ -22,6 +22,17 @@ const (
 	scenarioHashLength = 6
 )
 
+func enabledVersions(vs map[string]bool) []string {
+	var ret []string
+	for version, enabled := range vs {
+		if enabled {
+			ret = append(ret, version)
+		}
+	}
+
+	return ret
+}
+
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
 	errNoUserAvailable      = errors.New("no user available")
@@ -29,29 +40,30 @@ var (
 
 	// Tailscale started adding TS2021 support in CapabilityVersion>=28 (v1.24.0), but
 	// proper support in Headscale was only added for CapabilityVersion>=39 clients (v1.30.0).
-	tailscaleVersions2021 = []string{
-		"head",
-		"unstable",
-		"1.50",
-		"1.48",
-		"1.46",
-		"1.44",
-		"1.42",
-		"1.40",
-		"1.38",
-		"1.36",
-		"1.34",
-		"1.32",
-		"1.30",
+	tailscaleVersions2021 = map[string]bool{
+		"head":     true,
+		"unstable": true,
+		"1.52":     true, // CapVer:
+		"1.50":     true, // CapVer: 74
+		"1.48":     true, // CapVer: 68
+		"1.46":     true, // CapVer: 65
+		"1.44":     true, // CapVer: 63
+		"1.42":     true, // CapVer: 61
+		"1.40":     true, // CapVer: 61
+		"1.38":     true, // CapVer: 58
+		"1.36":     true, // CapVer: 56
+		"1.34":     true, // CapVer: 51
+		"1.32":     true, // Oldest supported version, CapVer: 46
+		"1.30":     false,
 	}
 
-	tailscaleVersions2019 = []string{
-		"1.28",
-		"1.26",
-		"1.24", // Tailscale SSH
-		"1.22",
-		"1.20",
-		"1.18",
+	tailscaleVersions2019 = map[string]bool{
+		"1.28": false,
+		"1.26": false,
+		"1.24": false, // Tailscale SSH
+		"1.22": false,
+		"1.20": false,
+		"1.18": false,
 	}
 
 	// tailscaleVersionsUnavailable = []string{
@@ -72,8 +84,8 @@ var (
 	// The rest of the version represents Tailscale versions that can be
 	// found in Tailscale's apt repository.
 	AllVersions = append(
-		tailscaleVersions2021,
-		tailscaleVersions2019...,
+		enabledVersions(tailscaleVersions2021),
+		enabledVersions(tailscaleVersions2019)...,
 	)
 
 	// MustTestVersions is the minimum set of versions we should test.
@@ -83,8 +95,8 @@ var (
 	// - Two latest versions
 	// - Two oldest versions.
 	MustTestVersions = append(
-		tailscaleVersions2021[0:4],
-		tailscaleVersions2019[len(tailscaleVersions2019)-2:]...,
+		AllVersions[0:4],
+		AllVersions[len(AllVersions)-2:]...,
 	)
 )
 

@@ -41,7 +41,6 @@ type Config struct {
 	EphemeralNodeInactivityTimeout time.Duration
 	NodeUpdateCheckInterval        time.Duration
 	IPPrefixes                     []netip.Prefix
-	PrivateKeyPath                 string
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
 	Log                            LogConfig
@@ -108,15 +107,16 @@ type OIDCConfig struct {
 }
 
 type DERPConfig struct {
-	ServerEnabled    bool
-	ServerRegionID   int
-	ServerRegionCode string
-	ServerRegionName string
-	STUNAddr         string
-	URLs             []url.URL
-	Paths            []string
-	AutoUpdate       bool
-	UpdateFrequency  time.Duration
+	ServerEnabled        bool
+	ServerRegionID       int
+	ServerRegionCode     string
+	ServerRegionName     string
+	ServerPrivateKeyPath string
+	STUNAddr             string
+	URLs                 []url.URL
+	Paths                []string
+	AutoUpdate           bool
+	UpdateFrequency      time.Duration
 }
 
 type LogTailConfig struct {
@@ -286,6 +286,7 @@ func GetDERPConfig() DERPConfig {
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
+	privateKeyPath := util.AbsolutePathFromConfigPath(viper.GetString("derp.server.private_key_path"))
 
 	if serverEnabled && stunAddr == "" {
 		log.Fatal().
@@ -313,15 +314,16 @@ func GetDERPConfig() DERPConfig {
 	updateFrequency := viper.GetDuration("derp.update_frequency")
 
 	return DERPConfig{
-		ServerEnabled:    serverEnabled,
-		ServerRegionID:   serverRegionID,
-		ServerRegionCode: serverRegionCode,
-		ServerRegionName: serverRegionName,
-		STUNAddr:         stunAddr,
-		URLs:             urls,
-		Paths:            paths,
-		AutoUpdate:       autoUpdate,
-		UpdateFrequency:  updateFrequency,
+		ServerEnabled:        serverEnabled,
+		ServerRegionID:       serverRegionID,
+		ServerRegionCode:     serverRegionCode,
+		ServerRegionName:     serverRegionName,
+		ServerPrivateKeyPath: privateKeyPath,
+		STUNAddr:             stunAddr,
+		URLs:                 urls,
+		Paths:                paths,
+		AutoUpdate:           autoUpdate,
+		UpdateFrequency:      updateFrequency,
 	}
 }
 
@@ -582,9 +584,6 @@ func GetHeadscaleConfig() (*Config, error) {
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 
 		IPPrefixes: prefixes,
-		PrivateKeyPath: util.AbsolutePathFromConfigPath(
-			viper.GetString("private_key_path"),
-		),
 		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),
 		),

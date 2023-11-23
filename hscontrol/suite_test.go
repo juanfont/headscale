@@ -40,7 +40,6 @@ func (s *Suite) ResetDB(c *check.C) {
 		c.Fatal(err)
 	}
 	cfg := types.Config{
-		PrivateKeyPath:      tmpDir + "/private.key",
 		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
 		DBtype:              "sqlite3",
 		DBpath:              tmpDir + "/headscale_test.db",

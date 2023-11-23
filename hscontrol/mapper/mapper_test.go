@@ -472,9 +472,6 @@ func Test_fullMapResponse(t *testing.T) {
 			mappy := NewMapper(
 				tt.node,
 				tt.peers,
-				nil,
-				false,
-				0,
 				tt.derpMap,
 				tt.baseDomain,
 				tt.dnsConfig,
@@ -485,6 +482,7 @@ func Test_fullMapResponse(t *testing.T) {
 			got, err := mappy.fullMapResponse(
 				tt.node,
 				tt.pol,
+				0,
 			)
 
 			if (err != nil) != tt.wantErr {

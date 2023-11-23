@@ -46,7 +46,6 @@ jobs:
               --volume $PWD/control_logs:/tmp/control \
               golang:1 \
                 go run gotest.tools/gotestsum@latest -- ./... \
-                  -tags ts2019 \
                   -failfast \
                   -timeout 120m \
                   -parallel 1 \

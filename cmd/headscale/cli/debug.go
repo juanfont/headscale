@@ -135,6 +135,6 @@ var createNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Node, "Node created", output)
+		SuccessOutput(response.GetNode(), "Node created", output)
 	},
 }

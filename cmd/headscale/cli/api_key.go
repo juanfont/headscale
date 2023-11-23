@@ -67,7 +67,7 @@ var listAPIKeys = &cobra.Command{
 		}
 
 		if output != "" {
-			SuccessOutput(response.ApiKeys, "", output)
+			SuccessOutput(response.GetApiKeys(), "", output)
 
 			return
 		}
@@ -75,11 +75,11 @@ var listAPIKeys = &cobra.Command{
 		tableData := pterm.TableData{
 			{"ID", "Prefix", "Expiration", "Created"},
 		}
-		for _, key := range response.ApiKeys {
+		for _, key := range response.GetApiKeys() {
 			expiration := "-"
 
 			if key.GetExpiration() != nil {
-				expiration = ColourTime(key.Expiration.AsTime())
+				expiration = ColourTime(key.GetExpiration().AsTime())
 			}
 
 			tableData = append(tableData, []string{
@@ -155,7 +155,7 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 			return
 		}
 
-		SuccessOutput(response.ApiKey, response.ApiKey, output)
+		SuccessOutput(response.GetApiKey(), response.GetApiKey(), output)
 	},
 }
 
