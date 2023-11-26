@@ -767,6 +767,15 @@ func (pol *ACLPolicy) expandIPsFromTag(
 		}
 	}
 
+	for _, alias := range pol.ForcedTags[alias] {
+		ips, err := pol.ExpandAlias(nodes, alias)
+		if err != nil {
+			return nil, err
+		}
+
+		build.AddSet(ips)
+	}
+
 	// find tag owners
 	owners, err := expandOwnersFromTag(pol, alias)
 	if err != nil {

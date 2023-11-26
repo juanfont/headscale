@@ -1383,6 +1383,40 @@ func Test_expandAlias(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "Declarative forced tag defined",
+			field: field{
+				pol: ACLPolicy{
+					Hosts: Hosts{
+						"user1": netip.MustParsePrefix("100.64.0.1/32"),
+						"user2": netip.MustParsePrefix("100.64.0.2/32"),
+					},
+					ForcedTags: ForcedTags{
+						"tag:a": []string{"tag:b", "user1"},
+						"tag:b": []string{"user2"},
+					},
+				},
+			},
+			args: args{
+				alias: "tag:a",
+				nodes: types.Nodes{
+					&types.Node{
+						IPAddresses: types.NodeAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+							netip.MustParseAddr("fd1d:ddfe:ae2::1"),
+						},
+					},
+					&types.Node{
+						IPAddresses: types.NodeAddresses{
+							netip.MustParseAddr("100.64.0.2"),
+							netip.MustParseAddr("fd1d:ddfe:ae2::2"),
+						},
+					},
+				},
+			},
+			want:    set([]string{"100.64.0.1", "100.64.0.2", "fd1d:ddfe:ae2::1", "fd1d:ddfe:ae2::2"}, []string{}),
+			wantErr: false,
+		},
+		{
 			name: "Forced tag with legitimate tagOwner",
 			field: field{
 				pol: ACLPolicy{
