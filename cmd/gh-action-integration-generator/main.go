@@ -56,8 +56,11 @@ jobs:
             config-example.yaml
 
       - name: Run {{.Name}}
+        uses: Wandalen/wretry.action@master
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: |
+        with:
+          attempt_limit: 5
+          command: |
             nix develop --command -- docker run \
               --tty --rm \
               --volume ~/.cache/hs-integration-go:/go \
