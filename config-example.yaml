@@ -40,6 +40,10 @@ grpc_listen_addr: 127.0.0.1:50443
 # are doing.
 grpc_allow_insecure: false
 
+# Private Key path for the service. 
+# See the container installation docs for alternate paths if you encounter an error.
+private_key_path: /var/lib/headscale/private.key
+
 # The Noise section includes specific configuration for the
 # TS2021 Noise protocol
 noise:
