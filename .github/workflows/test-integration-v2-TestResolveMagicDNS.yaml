@@ -37,11 +37,10 @@ jobs:
       - name: Run TestResolveMagicDNS
         uses: Wandalen/wretry.action@master
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: |
         with:
           attempt_limit: 5
           command: |
-              nix develop --command -- docker run \
+            nix develop --command -- docker run \
               --tty --rm \
               --volume ~/.cache/hs-integration-go:/go \
               --name headscale-test-suite \
