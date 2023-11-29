@@ -31,7 +31,7 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorHash = "sha256-p5PwNc7M5+kEMkAzpBgU3UEtb0wpXsSEMPPMnqsSh9I=";
+          vendorHash = "sha256-2ci6m1rKI3QdwbkqaGQlf0R+w4PhD0lkrLAu6wKj1LE=";
 
           ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
         };
