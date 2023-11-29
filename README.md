@@ -467,12 +467,21 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/vsychov>
+            <img src=https://avatars.githubusercontent.com/u/2186303?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=MichaelKo/>
+            <br />
+            <sub style="font-size:14px"><b>MichaelKo</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/kevin1sMe>
             <img src=https://avatars.githubusercontent.com/u/6886076?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=kevinlin/>
             <br />
             <sub style="font-size:14px"><b>kevinlin</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/QZAiXH>
             <img src=https://avatars.githubusercontent.com/u/23068780?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Snack/>
@@ -480,8 +489,6 @@ make build
             <sub style="font-size:14px"><b>Snack</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/artemklevtsov>
             <img src=https://avatars.githubusercontent.com/u/603798?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Artem Klevtsov/>
@@ -517,6 +524,8 @@ make build
             <sub style="font-size:14px"><b>LIU HANCHENG</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/motiejus>
             <img src=https://avatars.githubusercontent.com/u/107720?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Motiejus Jakštys/>
@@ -524,8 +533,6 @@ make build
             <sub style="font-size:14px"><b>Motiejus Jakštys</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/pvinis>
             <img src=https://avatars.githubusercontent.com/u/100233?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Pavlos Vinieratos/>
@@ -545,13 +552,6 @@ make build
             <img src=https://avatars.githubusercontent.com/u/2051768?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Steven Honson/>
             <br />
             <sub style="font-size:14px"><b>Steven Honson</b></sub>
-        </a>
-    </td>
-    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
-        <a href=https://github.com/vsychov>
-            <img src=https://avatars.githubusercontent.com/u/2186303?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=MichaelKo/>
-            <br />
-            <sub style="font-size:14px"><b>MichaelKo</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -724,6 +724,13 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/jessebot>
+            <img src=https://avatars.githubusercontent.com/u/2389292?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=JesseBot/>
+            <br />
+            <sub style="font-size:14px"><b>JesseBot</b></sub>
+        </a>
+    </td>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/jimt>
             <img src=https://avatars.githubusercontent.com/u/180326?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Jim Tittsler/>
             <br />
@@ -737,6 +744,8 @@ make build
             <sub style="font-size:14px"><b>Johan Siebens</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/johnae>
             <img src=https://avatars.githubusercontent.com/u/28332?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=John Axel Eriksson/>
@@ -744,8 +753,6 @@ make build
             <sub style="font-size:14px"><b>John Axel Eriksson</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/ShadowJonathan>
             <img src=https://avatars.githubusercontent.com/u/22740616?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Jonathan de Jong/>
@@ -781,6 +788,8 @@ make build
             <sub style="font-size:14px"><b>Marc</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/mhameed>
             <img src=https://avatars.githubusercontent.com/u/447017?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Mesar Hameed/>
@@ -788,8 +797,6 @@ make build
             <sub style="font-size:14px"><b>Mesar Hameed</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/mikejsavage>
             <img src=https://avatars.githubusercontent.com/u/579299?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Michael Savage/>
@@ -819,6 +826,15 @@ make build
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
+        <a href=https://github.com/donran>
+            <img src=https://avatars.githubusercontent.com/u/4838348?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Pontus N/>
+            <br />
+            <sub style="font-size:14px"><b>Pontus N</b></sub>
+        </a>
+    </td>
+</tr>
+<tr>
+    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/nnsee>
             <img src=https://avatars.githubusercontent.com/u/36747857?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Rasmus Moorats/>
             <br />
@@ -832,8 +848,6 @@ make build
             <sub style="font-size:14px"><b>rcursaru</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/renovate-bot>
             <img src=https://avatars.githubusercontent.com/u/25180681?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Mend Renovate/>
@@ -850,9 +864,9 @@ make build
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/muzy>
-            <img src=https://avatars.githubusercontent.com/u/321723?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Sebastian Muszytowski/>
+            <img src=https://avatars.githubusercontent.com/u/321723?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Sebastian/>
             <br />
-            <sub style="font-size:14px"><b>Sebastian Muszytowski</b></sub>
+            <sub style="font-size:14px"><b>Sebastian</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -862,6 +876,8 @@ make build
             <sub style="font-size:14px"><b>Shaanan Cohney</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/6ixfalls>
             <img src=https://avatars.githubusercontent.com/u/23470032?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Six/>
@@ -876,8 +892,6 @@ make build
             <sub style="font-size:14px"><b>Stefan VanBuren</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/sophware>
             <img src=https://avatars.githubusercontent.com/u/41669?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=sophware/>
@@ -906,6 +920,8 @@ make build
             <sub style="font-size:14px"><b>The Gitter Badger</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/tianon>
             <img src=https://avatars.githubusercontent.com/u/161631?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Tianon Gravi/>
@@ -920,8 +936,6 @@ make build
             <sub style="font-size:14px"><b>Till Hoffmann</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/woudsma>
             <img src=https://avatars.githubusercontent.com/u/6162978?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Tjerk Woudsma/>
@@ -950,6 +964,8 @@ make build
             <sub style="font-size:14px"><b>Zachary Newell</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/zekker6>
             <img src=https://avatars.githubusercontent.com/u/1367798?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Zakhar Bessarab/>
@@ -964,8 +980,6 @@ make build
             <sub style="font-size:14px"><b>Zhiyuan Zheng</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/Bpazy>
             <img src=https://avatars.githubusercontent.com/u/9838749?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Ziyuan Han/>
@@ -994,6 +1008,8 @@ make build
             <sub style="font-size:14px"><b>dnaq</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/nning>
             <img src=https://avatars.githubusercontent.com/u/557430?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=henning mueller/>
@@ -1008,8 +1024,6 @@ make build
             <sub style="font-size:14px"><b>ignoramous</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/jimyag>
             <img src=https://avatars.githubusercontent.com/u/69233189?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=jimyag/>
@@ -1022,13 +1036,6 @@ make build
             <img src=https://avatars.githubusercontent.com/u/10866198?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=suhelen/>
             <br />
             <sub style="font-size:14px"><b>suhelen</b></sub>
-        </a>
-    </td>
-    <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
-        <a href=https://github.com/lion24>
-            <img src=https://avatars.githubusercontent.com/u/1382102?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=sharkonet/>
-            <br />
-            <sub style="font-size:14px"><b>sharkonet</b></sub>
         </a>
     </td>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
@@ -1045,6 +1052,8 @@ make build
             <sub style="font-size:14px"><b>manju-rn</b></sub>
         </a>
     </td>
+</tr>
+<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/nicholas-yap>
             <img src=https://avatars.githubusercontent.com/u/38109533?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=nicholas-yap/>
@@ -1052,8 +1061,6 @@ make build
             <sub style="font-size:14px"><b>nicholas-yap</b></sub>
         </a>
     </td>
-</tr>
-<tr>
     <td align="center" style="word-wrap: break-word; width: 150.0; height: 150.0">
         <a href=https://github.com/pernila>
             <img src=https://avatars.githubusercontent.com/u/12460060?v=4 width="100;"  style="border-radius:50%;align-items:center;justify-content:center;overflow:hidden;padding-top:10px" alt=Tommi Pernila/>
