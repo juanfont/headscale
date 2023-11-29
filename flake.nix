@@ -31,7 +31,7 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorSha256 = "sha256-SYb2LCCZT/p1UHwB1b0IHPfk6Sxh3UYkR4r+KjkL4F8=";
+          vendorHash = "sha256-p5PwNc7M5+kEMkAzpBgU3UEtb0wpXsSEMPPMnqsSh9I=";
 
           ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
         };
@@ -47,7 +47,7 @@
             sha256 = "sha256-2K9KAg8iSubiTbujyFGN3yggrL+EDyeUCs9OOta/19A=";
           };
 
-          vendorSha256 = "sha256-rxYuzn4ezAxaeDhxd8qdOzt+CKYIh03A9zKNdzILq18=";
+          vendorHash = "sha256-rxYuzn4ezAxaeDhxd8qdOzt+CKYIh03A9zKNdzILq18=";
 
           nativeBuildInputs = [pkgs.installShellFiles];
         };
@@ -69,7 +69,7 @@
             sha256 = "sha256-lnNdsDCpeSHtl2lC1IhUw11t3cnGF+37qSM7HDvKLls=";
           };
 
-          vendorSha256 = "sha256-dGdnDuRbwg8fU7uB5GaHEWa/zI3w06onqjturvooJQA=";
+          vendorHash = "sha256-dGdnDuRbwg8fU7uB5GaHEWa/zI3w06onqjturvooJQA=";
 
           nativeBuildInputs = [pkgs.installShellFiles];
 
