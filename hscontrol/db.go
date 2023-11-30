@@ -251,10 +251,17 @@ func (h *Headscale) openDB() (*gorm.DB, error) {
 		sqlDB.SetConnMaxIdleTime(time.Hour)
 
 	case Postgres:
-		db, err = gorm.Open(postgres.Open(h.dbString), &gorm.Config{
+		db, err := gorm.Open(postgres.Open(h.dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   log,
 		})
+
+		sqlDB, _ := db.DB()
+		sqlDB.SetMaxOpenConns(10)
+		sqlDB.SetMaxIdleConns(10)
+		sqlDB.SetConnMaxIdleTime(time.Hour)
+
+		return db, err
 	}
 
 	if err != nil {
