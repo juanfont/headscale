@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/client/tailscale/apitype"
 )
 
 func TestPingAllByIP(t *testing.T) {
@@ -310,6 +311,42 @@ func TestTaildrop(t *testing.T) {
 	// This will essentially fetch and cache all the FQDNs
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	assertNoErrListFQDN(t, err)
+
+	for _, client := range allClients {
+		if !strings.Contains(client.Hostname(), "head") {
+			command := []string{"apk", "add", "curl"}
+			_, _, err := client.Execute(command)
+			if err != nil {
+				t.Fatalf("failed to install curl on %s, err: %s", client.Hostname(), err)
+			}
+
+		}
+		curlCommand := []string{"curl", "--unix-socket", "/var/run/tailscale/tailscaled.sock", "http://local-tailscaled.sock/localapi/v0/file-targets"}
+		err = retry(10, 1*time.Second, func() error {
+			result, _, err := client.Execute(curlCommand)
+			if err != nil {
+				return err
+			}
+			var fts []apitype.FileTarget
+			err = json.Unmarshal([]byte(result), &fts)
+			if err != nil {
+				return err
+			}
+
+			if len(fts) != len(allClients)-1 {
+				ftStr := fmt.Sprintf("FileTargets for %s:\n", client.Hostname())
+				for _, ft := range fts {
+					ftStr += fmt.Sprintf("\t%s\n", ft.Node.Name)
+				}
+				return fmt.Errorf("client %s does not have all its peers as FileTargets, got %d, want: %d\n%s", client.Hostname(), len(fts), len(allClients)-1, ftStr)
+			}
+
+			return err
+		})
+		if err != nil {
+			t.Errorf("failed to query localapi for filetarget on %s, err: %s", client.Hostname(), err)
+		}
+	}
 
 	for _, client := range allClients {
 		command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", client.Hostname())}

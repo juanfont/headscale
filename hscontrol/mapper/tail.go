@@ -99,6 +99,7 @@ func tailNode(
 			strconv.FormatUint(node.ID, util.Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name: hostname,
+		Cap:  capVer,
 
 		User: tailcfg.UserID(node.UserID),
 

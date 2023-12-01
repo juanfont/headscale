@@ -101,8 +101,17 @@ func (h *Headscale) handlePoll(
 			oldRoutes := node.Hostinfo.RoutableIPs
 			newRoutes := mapRequest.Hostinfo.RoutableIPs
 
+			oldServicesCount := len(node.Hostinfo.Services)
+			newServicesCount := len(mapRequest.Hostinfo.Services)
+
 			node.Hostinfo = mapRequest.Hostinfo
 
+			sendUpdate := false
+
+			// Route changes come as part of Hostinfo, which means that
+			// when an update comes, the Node Route logic need to run.
+			// This will require a "change" in comparison to a "patch",
+			// which is more costly.
 			if !xslices.Equal(oldRoutes, newRoutes) {
 				err := h.db.SaveNodeRoutes(node)
 				if err != nil {
@@ -119,6 +128,20 @@ func (h *Headscale) handlePoll(
 					return
 				}
 
+				sendUpdate = true
+			}
+
+			// Services is mostly useful for discovery and not critical,
+			// except for peerapi, which is how nodes talk to eachother.
+			// If peerapi was not part of the initial mapresponse, we
+			// need to make sure its sent out later as it is needed for
+			// Taildrop.
+			// TODO(kradalby): Length comparison is a bit naive, replace.
+			if oldServicesCount != newServicesCount {
+				sendUpdate = true
+			}
+
+			if sendUpdate {
 				stateUpdate := types.StateUpdate{
 					Type:        types.StatePeerChanged,
 					ChangeNodes: types.Nodes{node},

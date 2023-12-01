@@ -100,7 +100,7 @@ func (h *Headscale) handleRegister(
 			}
 		}
 
-		logInfo("Node not found in databas, creating new")
+		logInfo("Node not found in database, creating new")
 
 		givenName, err := h.db.GenerateGivenName(
 			machineKey,
