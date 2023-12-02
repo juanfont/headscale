@@ -379,8 +379,15 @@ func (h *Headscale) handlePoll(
 				logInfo(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
 
 				for _, node := range update.ChangeNodes {
-					isOnline := h.nodeNotifier.IsConnected(node.MachineKey)
-					node.IsOnline = &isOnline
+					// If a node is not reported to be online, it might be
+					// because the value is outdated, check with the notifier.
+					// However, if it is set to Online, and not in the notifier,
+					// this might be because it has announced itself, but not
+					// reached the stage to actually create the notifier channel.
+					if node.IsOnline != nil && !*node.IsOnline {
+						isOnline := h.nodeNotifier.IsConnected(node.MachineKey)
+						node.IsOnline = &isOnline
+					}
 				}
 
 				data, err = mapp.PeerChangedResponse(mapRequest, node, update.ChangeNodes, h.ACLPolicy, update.Message)
