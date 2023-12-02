@@ -61,11 +61,6 @@ func (hsdb *HSDatabase) listPeers(node *types.Node) (types.Nodes, error) {
 
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 
-	log.Trace().
-		Caller().
-		Str("node", node.Hostname).
-		Msgf("Found peers: %s", nodes.String())
-
 	return nodes, nil
 }
 

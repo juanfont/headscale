@@ -80,7 +80,7 @@ func (h *Headscale) handlePoll(
 			Str("node_key", node.NodeKey.ShortString()).
 			Str("node", node.Hostname).
 			Int("cap_ver", int(mapRequest.Version)).
-			Msg("Received endpoint update")
+			Msg("Received update")
 
 		change := node.PeerChangeFromMapRequest(mapRequest)
 
@@ -88,6 +88,10 @@ func (h *Headscale) handlePoll(
 		change.Online = &online
 
 		node.ApplyPeerChange(&change)
+
+		hostInfoChange := node.Hostinfo.Equal(mapRequest.Hostinfo)
+
+		logTracePeerChange(node.Hostname, hostInfoChange, &change)
 
 		// Check if the Hostinfo of the node has changed.
 		// If it has changed, check if there has been a change tod
@@ -97,7 +101,7 @@ func (h *Headscale) handlePoll(
 		// the route change.
 		// If the hostinfo has changed, but not the routes, just update
 		// hostinfo and let the function continue.
-		if !node.Hostinfo.Equal(mapRequest.Hostinfo) {
+		if !hostInfoChange {
 			oldRoutes := node.Hostinfo.RoutableIPs
 			newRoutes := mapRequest.Hostinfo.RoutableIPs
 
@@ -121,13 +125,6 @@ func (h *Headscale) handlePoll(
 					return
 				}
 
-				if err := h.db.NodeSave(node); err != nil {
-					logErr(err, "Failed to persist/update node in the database")
-					http.Error(writer, "", http.StatusInternalServerError)
-
-					return
-				}
-
 				sendUpdate = true
 			}
 
@@ -142,6 +139,13 @@ func (h *Headscale) handlePoll(
 			}
 
 			if sendUpdate {
+				if err := h.db.NodeSave(node); err != nil {
+					logErr(err, "Failed to persist/update node in the database")
+					http.Error(writer, "", http.StatusInternalServerError)
+
+					return
+				}
+
 				stateUpdate := types.StateUpdate{
 					Type:        types.StatePeerChanged,
 					ChangeNodes: types.Nodes{node},
@@ -269,7 +273,6 @@ func (h *Headscale) handlePoll(
 
 	logInfo("Sending initial map")
 
-	log.Trace().Msgf("NODE FULLMAP BEGIN %s", node.Hostname)
 	mapResp, err := mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
 	if err != nil {
 		logErr(err, "Failed to create MapResponse")
@@ -277,7 +280,6 @@ func (h *Headscale) handlePoll(
 
 		return
 	}
-	log.Trace().Msgf("NODE FULLMAP END %s", node.Hostname)
 
 	// Send the client an update to make sure we send an initial mapresponse
 	_, err = writer.Write(mapResp)
@@ -531,4 +533,35 @@ func (h *Headscale) handleLiteRequest(
 	if err != nil {
 		logErr(err, "Failed to write response")
 	}
+}
+
+func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.PeerChange) {
+	trace := log.Trace().Str("node_id", change.NodeID.String()).Str("hostname", hostname)
+
+	if change.Key != nil {
+		trace = trace.Str("node_key", change.Key.ShortString())
+	}
+
+	if change.DiscoKey != nil {
+		trace = trace.Str("disco_key", change.DiscoKey.ShortString())
+	}
+
+	if change.Online != nil {
+		trace = trace.Bool("online", *change.Online)
+	}
+
+	if change.Endpoints != nil {
+		eps := make([]string, len(change.Endpoints))
+		for idx, ep := range change.Endpoints {
+			eps[idx] = ep.String()
+		}
+
+		trace = trace.Strs("endpoints", eps)
+	}
+
+	if hostinfoChange {
+		trace = trace.Bool("hostinfo_changed", hostinfoChange)
+	}
+
+	trace.Time("last_seen", *change.LastSeen).Msg("PeerChange received")
 }
