@@ -117,15 +117,14 @@ func (h *Headscale) handlePoll(
 			// This will require a "change" in comparison to a "patch",
 			// which is more costly.
 			if !xslices.Equal(oldRoutes, newRoutes) {
-				err := h.db.SaveNodeRoutes(node)
+				var err error
+				sendUpdate, err = h.db.SaveNodeRoutes(node)
 				if err != nil {
 					logErr(err, "Error processing node routes")
 					http.Error(writer, "", http.StatusInternalServerError)
 
 					return
 				}
-
-				sendUpdate = true
 			}
 
 			// Services is mostly useful for discovery and not critical,
@@ -149,6 +148,7 @@ func (h *Headscale) handlePoll(
 				stateUpdate := types.StateUpdate{
 					Type:        types.StatePeerChanged,
 					ChangeNodes: types.Nodes{node},
+					Message:     "called from handlePoll -> update -> new hostinfo",
 				}
 				if stateUpdate.Valid() {
 					h.nodeNotifier.NotifyWithIgnore(
@@ -218,7 +218,7 @@ func (h *Headscale) handlePoll(
 		node.Hostinfo = mapRequest.Hostinfo
 
 		if !xslices.Equal(oldRoutes, newRoutes) {
-			err := h.db.SaveNodeRoutes(node)
+			_, err := h.db.SaveNodeRoutes(node)
 			if err != nil {
 				logErr(err, "Error processing node routes")
 				http.Error(writer, "", http.StatusInternalServerError)
@@ -298,6 +298,7 @@ func (h *Headscale) handlePoll(
 	stateUpdate := types.StateUpdate{
 		Type:        types.StatePeerChanged,
 		ChangeNodes: types.Nodes{node},
+		Message:     "called from handlePoll -> new node added",
 	}
 	if stateUpdate.Valid() {
 		h.nodeNotifier.NotifyWithIgnore(
@@ -375,23 +376,14 @@ func (h *Headscale) handlePoll(
 
 				data, err = mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
 			case types.StatePeerChanged:
-				logInfo("Sending Changed MapResponse")
+				logInfo(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
 
 				for _, node := range update.ChangeNodes {
 					isOnline := h.nodeNotifier.IsConnected(node.MachineKey)
 					node.IsOnline = &isOnline
 				}
 
-				data, err = mapp.PeerChangedResponse(mapRequest, node, update.ChangeNodes, h.ACLPolicy)
-			case types.StatePeerChangedNoPolicy:
-				logInfo("Sending PeerChangedWithoutACL MapResponse")
-
-				for _, node := range update.ChangeNodes {
-					isOnline := h.nodeNotifier.IsConnected(node.MachineKey)
-					node.IsOnline = &isOnline
-				}
-
-				data, err = mapp.PeerChangedWithoutACLResponse(mapRequest, node, update.ChangeNodes, h.ACLPolicy)
+				data, err = mapp.PeerChangedResponse(mapRequest, node, update.ChangeNodes, h.ACLPolicy, update.Message)
 			case types.StatePeerChangedPatch:
 				logInfo("Sending PeerChangedPatch MapResponse")
 				data, err = mapp.PeerChangedPatchResponse(mapRequest, node, update.ChangePatches, h.ACLPolicy)
@@ -561,6 +553,10 @@ func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.Pe
 
 	if hostinfoChange {
 		trace = trace.Bool("hostinfo_changed", hostinfoChange)
+	}
+
+	if change.DERPRegion != 0 {
+		trace = trace.Int("derp_region", change.DERPRegion)
 	}
 
 	trace.Time("last_seen", *change.LastSeen).Msg("PeerChange received")

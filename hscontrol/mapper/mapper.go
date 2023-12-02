@@ -310,6 +310,7 @@ func (m *Mapper) PeerChangedResponse(
 	node *types.Node,
 	changed types.Nodes,
 	pol *policy.ACLPolicy,
+	messages ...string,
 ) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -351,61 +352,7 @@ func (m *Mapper) PeerChangedResponse(
 		return nil, err
 	}
 
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
-}
-
-// PeerChangedResponse creates a MapResponse of nodes that have
-// changed, but requires less calculation. This contains updates
-// that can not be sent via a PeerChangedPatchResponse.
-// This update type omits fields that are related to ACL.
-func (m *Mapper) PeerChangedWithoutACLResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	changed types.Nodes,
-	pol *policy.ACLPolicy,
-) ([]byte, error) {
-	resp := m.baseMapResponse()
-
-	// Update our internal map.
-	for _, node := range changed {
-		if patches, ok := m.patches[node.ID]; ok {
-			// preserve online status in case the patch has an outdated one
-			online := node.IsOnline
-
-			for _, p := range patches {
-				// TODO(kradalby): Figure if this needs to be sorted by timestamp
-				node.ApplyPeerChange(p.change)
-			}
-
-			// Ensure the patches are not applied again later
-			delete(m.patches, node.ID)
-
-			node.IsOnline = online
-		}
-
-		m.peers[node.ID] = node
-	}
-
-	tailPeers, err := tailNodes(
-		changed,
-		mapRequest.Version,
-		pol,
-		m.dnsCfg,
-		m.baseDomain,
-		m.randomClientPort,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Peers is always returned sorted by Node.ID.
-	sort.SliceStable(tailPeers, func(x, y int) bool {
-		return tailPeers[x].ID < tailPeers[y].ID
-	})
-
-	resp.PeersChanged = tailPeers
-
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress, messages...)
 }
 
 // PeerChangedPatchResponse creates a patch MapResponse with
@@ -479,6 +426,7 @@ func (m *Mapper) marshalMapResponse(
 	resp *tailcfg.MapResponse,
 	node *types.Node,
 	compression string,
+	messages ...string,
 ) ([]byte, error) {
 	atomic.AddUint64(&m.seq, 1)
 
@@ -492,6 +440,7 @@ func (m *Mapper) marshalMapResponse(
 
 	if debugDumpMapResponsePath != "" {
 		data := map[string]interface{}{
+			"Messages":    messages,
 			"MapRequest":  mapRequest,
 			"MapResponse": resp,
 		}
@@ -509,7 +458,7 @@ func (m *Mapper) marshalMapResponse(
 			responseType = "removed"
 		}
 
-		body, err := json.Marshal(data)
+		body, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {
 			log.Error().
 				Caller().

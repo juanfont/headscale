@@ -253,6 +253,10 @@ func (hsdb *HSDatabase) SetTags(
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
 
+	if len(tags) == 0 {
+		return nil
+	}
+
 	newTags := []string{}
 	for _, tag := range tags {
 		if !util.StringOrPrefixListContains(newTags, tag) {
@@ -269,6 +273,7 @@ func (hsdb *HSDatabase) SetTags(
 	stateUpdate := types.StateUpdate{
 		Type:        types.StatePeerChanged,
 		ChangeNodes: types.Nodes{node},
+		Message:     "called from db.SetTags",
 	}
 	if stateUpdate.Valid() {
 		hsdb.notifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
@@ -308,6 +313,7 @@ func (hsdb *HSDatabase) RenameNode(node *types.Node, newName string) error {
 	stateUpdate := types.StateUpdate{
 		Type:        types.StatePeerChanged,
 		ChangeNodes: types.Nodes{node},
+		Message:     "called from db.RenameNode",
 	}
 	if stateUpdate.Valid() {
 		hsdb.notifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
@@ -716,6 +722,7 @@ func (hsdb *HSDatabase) enableRoutes(node *types.Node, routeStrs ...string) erro
 	stateUpdate := types.StateUpdate{
 		Type:        types.StatePeerChanged,
 		ChangeNodes: types.Nodes{node},
+		Message:     "called from db.enableRoutes",
 	}
 	if stateUpdate.Valid() {
 		hsdb.notifier.NotifyWithIgnore(

@@ -371,13 +371,16 @@ func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (stri
 	return hostname, nil
 }
 
-func (node *Node) String() string {
-	return node.Hostname
-}
+// func (node *Node) String() string {
+// 	return node.Hostname
+// }
 
 // PeerChangeFromMapRequest takes a MapRequest and compares it to the node
 // to produce a PeerChange struct that can be used to updated the node and
 // inform peers about smaller changes to the node.
+// When a field is added to this function, remember to also add it to:
+// - node.ApplyPeerChange
+// - logTracePeerChange in poll.go
 func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	ret := tailcfg.PeerChange{
 		NodeID: tailcfg.NodeID(node.ID),
@@ -389,6 +392,14 @@ func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 
 	if node.DiscoKey.String() != req.DiscoKey.String() {
 		ret.DiscoKey = &req.DiscoKey
+	}
+
+	if node.Hostinfo != nil &&
+		node.Hostinfo.NetInfo != nil &&
+		req.Hostinfo != nil &&
+		req.Hostinfo.NetInfo != nil &&
+		node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
+		ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
 	}
 
 	// TODO(kradalby): Find a good way to compare updates
@@ -416,6 +427,15 @@ func (node *Node) ApplyPeerChange(change *tailcfg.PeerChange) {
 
 	if change.Endpoints != nil {
 		node.Endpoints = change.Endpoints
+	}
+
+	// This might technically not be useful as we replace
+	// the whole hostinfo blob when it has changed.
+	if change.DERPRegion != 0 {
+		if node.Hostinfo != nil &&
+			node.Hostinfo.NetInfo != nil {
+			node.Hostinfo.NetInfo.PreferredDERP = change.DERPRegion
+		}
 	}
 
 	node.LastSeen = change.LastSeen

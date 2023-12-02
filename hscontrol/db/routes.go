@@ -208,6 +208,7 @@ func (hsdb *HSDatabase) DisableRoute(id uint64) error {
 	stateUpdate := types.StateUpdate{
 		Type:        types.StatePeerChanged,
 		ChangeNodes: types.Nodes{&node},
+		Message:     "called from db.DisableRoute",
 	}
 	if stateUpdate.Valid() {
 		hsdb.notifier.NotifyAll(stateUpdate)
@@ -270,6 +271,7 @@ func (hsdb *HSDatabase) DeleteRoute(id uint64) error {
 	stateUpdate := types.StateUpdate{
 		Type:        types.StatePeerChanged,
 		ChangeNodes: types.Nodes{&node},
+		Message:     "called from db.DeleteRoute",
 	}
 	if stateUpdate.Valid() {
 		hsdb.notifier.NotifyAll(stateUpdate)
@@ -347,18 +349,22 @@ func (hsdb *HSDatabase) GetNodePrimaryRoutes(node *types.Node) (types.Routes, er
 
 // SaveNodeRoutes takes a node and updates the database with
 // the new routes.
-func (hsdb *HSDatabase) SaveNodeRoutes(node *types.Node) error {
+// It returns a bool wheter an update should be sent as the
+// saved route impacts nodes.
+func (hsdb *HSDatabase) SaveNodeRoutes(node *types.Node) (bool, error) {
 	hsdb.mu.Lock()
 	defer hsdb.mu.Unlock()
 
 	return hsdb.saveNodeRoutes(node)
 }
 
-func (hsdb *HSDatabase) saveNodeRoutes(node *types.Node) error {
+func (hsdb *HSDatabase) saveNodeRoutes(node *types.Node) (bool, error) {
+	sendUpdate := false
+
 	currentRoutes := types.Routes{}
 	err := hsdb.db.Where("node_id = ?", node.ID).Find(&currentRoutes).Error
 	if err != nil {
-		return err
+		return sendUpdate, err
 	}
 
 	advertisedRoutes := map[netip.Prefix]bool{}
@@ -378,7 +384,14 @@ func (hsdb *HSDatabase) saveNodeRoutes(node *types.Node) error {
 				currentRoutes[pos].Advertised = true
 				err := hsdb.db.Save(&currentRoutes[pos]).Error
 				if err != nil {
-					return err
+					return sendUpdate, err
+				}
+
+				// If a route that is newly "saved" is already
+				// enabled, set sendUpdate to true as it is now
+				// available.
+				if route.Enabled {
+					sendUpdate = true
 				}
 			}
 			advertisedRoutes[netip.Prefix(route.Prefix)] = true
@@ -387,7 +400,7 @@ func (hsdb *HSDatabase) saveNodeRoutes(node *types.Node) error {
 			currentRoutes[pos].Enabled = false
 			err := hsdb.db.Save(&currentRoutes[pos]).Error
 			if err != nil {
-				return err
+				return sendUpdate, err
 			}
 		}
 	}
@@ -402,12 +415,12 @@ func (hsdb *HSDatabase) saveNodeRoutes(node *types.Node) error {
 			}
 			err := hsdb.db.Create(&route).Error
 			if err != nil {
-				return err
+				return sendUpdate, err
 			}
 		}
 	}
 
-	return nil
+	return sendUpdate, nil
 }
 
 // EnsureFailoverRouteIsAvailable takes a node and checks if the node's route
@@ -478,6 +491,7 @@ func (hsdb *HSDatabase) FailoverNodeRoutesWithNotify(node *types.Node) error {
 		stateUpdate := types.StateUpdate{
 			Type:        types.StatePeerChanged,
 			ChangeNodes: nodes,
+			Message:     "called from db.FailoverNodeRoutesWithNotify",
 		}
 		if stateUpdate.Valid() {
 			hsdb.notifier.NotifyAll(stateUpdate)
@@ -520,6 +534,7 @@ func (hsdb *HSDatabase) failoverRouteWithNotify(r *types.Route) error {
 		stateUpdate := types.StateUpdate{
 			Type:        types.StatePeerChanged,
 			ChangeNodes: nodes,
+			Message:     "called from db.failoverRouteWithNotify",
 		}
 		if stateUpdate.Valid() {
 			hsdb.notifier.NotifyAll(stateUpdate)

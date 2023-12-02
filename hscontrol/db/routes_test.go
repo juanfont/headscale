@@ -44,8 +44,9 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	}
 	db.db.Save(&node)
 
-	err = db.SaveNodeRoutes(&node)
+	su, err := db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
+	c.Assert(su, check.Equals, false)
 
 	advertisedRoutes, err := db.GetAdvertisedRoutes(&node)
 	c.Assert(err, check.IsNil)
@@ -92,8 +93,9 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	}
 	db.db.Save(&node)
 
-	err = db.SaveNodeRoutes(&node)
+	sendUpdate, err := db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
+	c.Assert(sendUpdate, check.Equals, false)
 
 	availableRoutes, err := db.GetAdvertisedRoutes(&node)
 	c.Assert(err, check.IsNil)
@@ -163,8 +165,9 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	}
 	db.db.Save(&node1)
 
-	err = db.SaveNodeRoutes(&node1)
+	sendUpdate, err := db.SaveNodeRoutes(&node1)
 	c.Assert(err, check.IsNil)
+	c.Assert(sendUpdate, check.Equals, false)
 
 	err = db.enableRoutes(&node1, route.String())
 	c.Assert(err, check.IsNil)
@@ -185,8 +188,9 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	}
 	db.db.Save(&node2)
 
-	err = db.SaveNodeRoutes(&node2)
+	sendUpdate, err = db.SaveNodeRoutes(&node2)
 	c.Assert(err, check.IsNil)
+	c.Assert(sendUpdate, check.Equals, false)
 
 	err = db.enableRoutes(&node2, route2.String())
 	c.Assert(err, check.IsNil)
@@ -244,8 +248,9 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	}
 	db.db.Save(&node1)
 
-	err = db.SaveNodeRoutes(&node1)
+	sendUpdate, err := db.SaveNodeRoutes(&node1)
 	c.Assert(err, check.IsNil)
+	c.Assert(sendUpdate, check.Equals, false)
 
 	err = db.enableRoutes(&node1, prefix.String())
 	c.Assert(err, check.IsNil)

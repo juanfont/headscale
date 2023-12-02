@@ -89,11 +89,6 @@ const (
 	// This would typically be things that include tags, routes
 	// and similar.
 	StatePeerChanged
-	// StatePeerChangedNoPolicy is used for updates that
-	// are not intended to be full node changes, but
-	// for smaller changes that cannot be part of
-	// StatePeerChangedPatch.
-	StatePeerChangedNoPolicy
 	StatePeerChangedPatch
 	StatePeerRemoved
 	StateDERPUpdated
@@ -123,6 +118,10 @@ type StateUpdate struct {
 	// DERPMap must be set when Type is StateDERPUpdated and
 	// contain the new DERP Map.
 	DERPMap *tailcfg.DERPMap
+
+	// Additional message for tracking origin or what being
+	// updated, useful for ambiguous updates like StatePeerChanged.
+	Message string
 }
 
 // Valid reports if a StateUpdate is correctly filled and
@@ -131,9 +130,9 @@ type StateUpdate struct {
 // Reports true if valid.
 func (su *StateUpdate) Valid() bool {
 	switch su.Type {
-	case StatePeerChanged, StatePeerChangedNoPolicy:
+	case StatePeerChanged:
 		if su.ChangeNodes == nil {
-			panic("Mandatory field ChangeNodes is not set on StatePeerChanged, StatePeerChangedNoPolicy update")
+			panic("Mandatory field ChangeNodes is not set on StatePeerChanged update")
 		}
 	case StatePeerChangedPatch:
 		if su.ChangePatches == nil {
