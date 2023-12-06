@@ -15,6 +15,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/types/key"
 )
 
 func TestPingAllByIP(t *testing.T) {
@@ -553,25 +554,39 @@ func TestExpireNode(t *testing.T) {
 	err = json.Unmarshal([]byte(result), &node)
 	assertNoErr(t, err)
 
+	var expiredNodeKey key.NodePublic
+	err = expiredNodeKey.UnmarshalText([]byte(node.GetNodeKey()))
+	assertNoErr(t, err)
+
+	t.Logf("Node %s with node_key %s has been expired", node.GetName(), expiredNodeKey.String())
+
 	time.Sleep(30 * time.Second)
 
-	// Verify that the expired not is no longer present in the Peer list
-	// of connected nodes.
+	now := time.Now()
+
+	// Verify that the expired node has been marked in all peers list.
 	for _, client := range allClients {
 		status, err := client.Status()
 		assertNoErr(t, err)
 
-		for _, peerKey := range status.Peers() {
-			peerStatus := status.Peer[peerKey]
-
-			peerPublicKey := strings.TrimPrefix(peerStatus.PublicKey.String(), "nodekey:")
-
-			assert.NotEqual(t, node.GetNodeKey(), peerPublicKey)
-		}
-
 		if client.Hostname() != node.GetName() {
-			// Assert that we have the original count - self - expired node
-			assert.Len(t, status.Peers(), len(MustTestVersions)-2)
+			t.Logf("available peers of %s: %v", client.Hostname(), status.Peers())
+
+			// In addition to marking nodes expired, we filter them out during the map response
+			// this check ensures that the node is either not present, or that it is expired
+			// if it is in the map response.
+			if peerStatus, ok := status.Peer[expiredNodeKey]; ok {
+				assertNotNil(t, peerStatus.Expired)
+				assert.Truef(t, peerStatus.KeyExpiry.Before(now), "node %s should have a key expire before %s, was %s", peerStatus.HostName, now.String(), peerStatus.KeyExpiry)
+				assert.Truef(t, peerStatus.Expired, "node %s should be expired, expired is %v", peerStatus.HostName, peerStatus.Expired)
+			}
+
+			// TODO(kradalby): We do not propogate expiry correctly, nodes should be aware
+			// of their status, and this should be sent directly to the node when its
+			// expired. This needs a notifier that goes directly to the node (currently we only do peers)
+			// so fix this in a follow up PR.
+			// } else {
+			// 	assert.True(t, status.Self.Expired)
 		}
 	}
 }

@@ -122,6 +122,7 @@ func tailNode(
 		PrimaryRoutes: primaryPrefixes,
 
 		MachineAuthorized: !node.IsExpired(),
+		Expired:           node.IsExpired(),
 	}
 
 	//   - 74: 2023-09-18: Client understands NodeCapMap

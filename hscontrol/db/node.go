@@ -350,7 +350,7 @@ func (hsdb *HSDatabase) nodeSetExpiry(node *types.Node, expiry time.Time) error 
 		},
 	}
 	if stateUpdate.Valid() {
-		hsdb.notifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+		hsdb.notifier.NotifyAll(stateUpdate)
 	}
 
 	return nil
