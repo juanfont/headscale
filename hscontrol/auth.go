@@ -500,6 +500,19 @@ func (h *Headscale) handleNodeLogOut(
 		return
 	}
 
+	stateUpdate := types.StateUpdate{
+		Type: types.StatePeerChangedPatch,
+		ChangePatches: []*tailcfg.PeerChange{
+			{
+				NodeID:    tailcfg.NodeID(node.ID),
+				KeyExpiry: &now,
+			},
+		},
+	}
+	if stateUpdate.Valid() {
+		h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+	}
+
 	resp.AuthURL = ""
 	resp.MachineAuthorized = false
 	resp.NodeKeyExpired = true

@@ -856,58 +856,54 @@ func (hsdb *HSDatabase) ExpireExpiredNodes(lastCheck time.Time) time.Time {
 	// checked everything.
 	started := time.Now()
 
-	users, err := hsdb.listUsers()
+	expired := make([]*tailcfg.PeerChange, 0)
+
+	nodes, err := hsdb.listNodes()
 	if err != nil {
-		log.Error().Err(err).Msg("Error listing users")
+		log.Error().
+			Err(err).
+			Msg("Error listing nodes to find expired nodes")
 
 		return time.Unix(0, 0)
 	}
+	for index, node := range nodes {
+		if node.IsExpired() &&
+			// TODO(kradalby): Replace this, it is very spammy
+			// It will notify about all nodes that has been expired.
+			// It should only notify about expired nodes since _last check_.
+			node.Expiry.After(lastCheck) {
+			expired = append(expired, &tailcfg.PeerChange{
+				NodeID:    tailcfg.NodeID(node.ID),
+				KeyExpiry: node.Expiry,
+			})
 
-	for _, user := range users {
-		nodes, err := hsdb.listNodesByUser(user.Name)
-		if err != nil {
-			log.Error().
-				Err(err).
-				Str("user", user.Name).
-				Msg("Error listing nodes in user")
-
-			return time.Unix(0, 0)
-		}
-
-		expired := make([]tailcfg.NodeID, 0)
-		for index, node := range nodes {
-			if node.IsExpired() &&
-				node.Expiry.After(lastCheck) {
-				expired = append(expired, tailcfg.NodeID(node.ID))
-
-				now := time.Now()
-				// Do not use setNodeExpiry as that has a notifier hook, which
-				// can cause a deadlock, we are updating all changed nodes later
-				// and there is no point in notifiying twice.
-				if err := hsdb.db.Model(nodes[index]).Updates(types.Node{
-					Expiry: &now,
-				}).Error; err != nil {
-					log.Error().
-						Err(err).
-						Str("node", node.Hostname).
-						Str("name", node.GivenName).
-						Msg("🤮 Cannot expire node")
-				} else {
-					log.Info().
-						Str("node", node.Hostname).
-						Str("name", node.GivenName).
-						Msg("Node successfully expired")
-				}
+			now := time.Now()
+			// Do not use setNodeExpiry as that has a notifier hook, which
+			// can cause a deadlock, we are updating all changed nodes later
+			// and there is no point in notifiying twice.
+			if err := hsdb.db.Model(nodes[index]).Updates(types.Node{
+				Expiry: &now,
+			}).Error; err != nil {
+				log.Error().
+					Err(err).
+					Str("node", node.Hostname).
+					Str("name", node.GivenName).
+					Msg("🤮 Cannot expire node")
+			} else {
+				log.Info().
+					Str("node", node.Hostname).
+					Str("name", node.GivenName).
+					Msg("Node successfully expired")
 			}
 		}
+	}
 
-		// TODO(kradalby): Should these be removed or changed(expired)?
-		if len(expired) > 0 {
-			hsdb.notifier.NotifyAll(types.StateUpdate{
-				Type:    types.StatePeerRemoved,
-				Removed: expired,
-			})
-		}
+	stateUpdate := types.StateUpdate{
+		Type:          types.StatePeerChangedPatch,
+		ChangePatches: expired,
+	}
+	if stateUpdate.Valid() {
+		hsdb.notifier.NotifyAll(stateUpdate)
 	}
 
 	return started

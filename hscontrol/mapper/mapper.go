@@ -409,14 +409,23 @@ func (m *Mapper) PeerRemovedResponse(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Some nodes might have been removed already
+	// so we dont want to ask downstream to remove
+	// twice, than can cause a panic in tailscaled.
+	notYetRemoved := []tailcfg.NodeID{}
+
 	// remove from our internal map
 	for _, id := range removed {
+		if _, ok := m.peers[uint64(id)]; ok {
+			notYetRemoved = append(notYetRemoved, id)
+		}
+
 		delete(m.peers, uint64(id))
 		delete(m.patches, uint64(id))
 	}
 
 	resp := m.baseMapResponse()
-	resp.PeersRemoved = removed
+	resp.PeersRemoved = notYetRemoved
 
 	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
