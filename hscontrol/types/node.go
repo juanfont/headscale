@@ -402,6 +402,21 @@ func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 		ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
 	}
 
+	if req.Hostinfo != nil && req.Hostinfo.NetInfo != nil {
+		// If there is no stored Hostinfo or NetInfo, use
+		// the new PreferredDERP.
+		if node.Hostinfo == nil {
+			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
+		} else if node.Hostinfo.NetInfo == nil {
+			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
+		} else {
+			// If there is a PreferredDERP check if it has changed.
+			if node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
+				ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
+			}
+		}
+	}
+
 	// TODO(kradalby): Find a good way to compare updates
 	ret.Endpoints = req.Endpoints
 
@@ -432,8 +447,17 @@ func (node *Node) ApplyPeerChange(change *tailcfg.PeerChange) {
 	// This might technically not be useful as we replace
 	// the whole hostinfo blob when it has changed.
 	if change.DERPRegion != 0 {
-		if node.Hostinfo != nil &&
-			node.Hostinfo.NetInfo != nil {
+		if node.Hostinfo == nil {
+			node.Hostinfo = &tailcfg.Hostinfo{
+				NetInfo: &tailcfg.NetInfo{
+					PreferredDERP: change.DERPRegion,
+				},
+			}
+		} else if node.Hostinfo.NetInfo == nil {
+			node.Hostinfo.NetInfo = &tailcfg.NetInfo{
+				PreferredDERP: change.DERPRegion,
+			}
+		} else {
 			node.Hostinfo.NetInfo.PreferredDERP = change.DERPRegion
 		}
 	}
