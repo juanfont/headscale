@@ -171,11 +171,13 @@ func NewHeadscaleDatabase(
 			dKey = "discokey:" + node.DiscoKey
 		}
 
-		err := db.db.Exec("UPDATE nodes SET machine_key = @mKey, node_key = @nKey, disco_key = @dKey WHERE ID = @id",
+		err := db.db.Exec(
+			"UPDATE nodes SET machine_key = @mKey, node_key = @nKey, disco_key = @dKey WHERE ID = @id",
 			sql.Named("mKey", mKey),
 			sql.Named("nKey", nKey),
 			sql.Named("dKey", dKey),
-			sql.Named("id", node.ID)).Error
+			sql.Named("id", node.ID),
+		).Error
 		if err != nil {
 			return nil, err
 		}

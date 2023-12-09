@@ -26,6 +26,13 @@ func assertNoErrf(t *testing.T, msg string, err error) {
 	}
 }
 
+func assertNotNil(t *testing.T, thing interface{}) {
+	t.Helper()
+	if thing == nil {
+		t.Fatal("got unexpected nil")
+	}
+}
+
 func assertNoErrHeadscaleEnv(t *testing.T, err error) {
 	t.Helper()
 	assertNoErrf(t, "failed to create headscale environment: %s", err)
@@ -68,13 +75,13 @@ func assertContains(t *testing.T, str, subStr string) {
 	}
 }
 
-func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
+func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) int {
 	t.Helper()
 	success := 0
 
 	for _, client := range clients {
 		for _, addr := range addrs {
-			err := client.Ping(addr)
+			err := client.Ping(addr, opts...)
 			if err != nil {
 				t.Fatalf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
 			} else {

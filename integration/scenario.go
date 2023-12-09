@@ -15,6 +15,7 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
 	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -93,7 +94,7 @@ var (
 	//
 	// - Two unstable (HEAD and unstable)
 	// - Two latest versions
-	// - Two oldest versions.
+	// - Two oldest supported version.
 	MustTestVersions = append(
 		AllVersions[0:4],
 		AllVersions[len(AllVersions)-2:]...,
@@ -296,11 +297,13 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 	opts ...tsic.Option,
 ) error {
 	if user, ok := s.users[userStr]; ok {
+		var versions []string
 		for i := 0; i < count; i++ {
 			version := requestedVersion
 			if requestedVersion == "all" {
 				version = MustTestVersions[i%len(MustTestVersions)]
 			}
+			versions = append(versions, version)
 
 			headscale, err := s.Headscale()
 			if err != nil {
@@ -349,6 +352,8 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 		if err := user.createWaitGroup.Wait(); err != nil {
 			return err
 		}
+
+		log.Printf("testing versions %v", lo.Uniq(versions))
 
 		return nil
 	}
@@ -403,7 +408,17 @@ func (s *Scenario) CountTailscale() int {
 func (s *Scenario) WaitForTailscaleSync() error {
 	tsCount := s.CountTailscale()
 
-	return s.WaitForTailscaleSyncWithPeerCount(tsCount - 1)
+	err := s.WaitForTailscaleSyncWithPeerCount(tsCount - 1)
+	if err != nil {
+		for _, user := range s.users {
+			for _, client := range user.Clients {
+				peers, _ := client.PrettyPeers()
+				log.Println(peers)
+			}
+		}
+	}
+
+	return err
 }
 
 // WaitForTailscaleSyncWithPeerCount blocks execution until all the TailscaleClient reports

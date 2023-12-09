@@ -285,6 +285,15 @@ func (t *TailscaleInContainer) hasTLS() bool {
 
 // Shutdown stops and cleans up the Tailscale container.
 func (t *TailscaleInContainer) Shutdown() error {
+	err := t.SaveLog("/tmp/control")
+	if err != nil {
+		log.Printf(
+			"Failed to save log from %s: %s",
+			t.hostname,
+			fmt.Errorf("failed to save log: %w", err),
+		)
+	}
+
 	return t.pool.Purge(t.container)
 }
 
@@ -417,6 +426,44 @@ func (t *TailscaleInContainer) Logout() error {
 	return nil
 }
 
+// Helper that runs `tailscale up` with no arguments.
+func (t *TailscaleInContainer) Up() error {
+	command := []string{
+		"tailscale",
+		"up",
+	}
+
+	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
+		return fmt.Errorf(
+			"%s failed to bring tailscale client up (%s): %w",
+			t.hostname,
+			strings.Join(command, " "),
+			err,
+		)
+	}
+
+	return nil
+}
+
+// Helper that runs `tailscale down` with no arguments.
+func (t *TailscaleInContainer) Down() error {
+	command := []string{
+		"tailscale",
+		"down",
+	}
+
+	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
+		return fmt.Errorf(
+			"%s failed to bring tailscale client down (%s): %w",
+			t.hostname,
+			strings.Join(command, " "),
+			err,
+		)
+	}
+
+	return nil
+}
+
 // IPs returns the netip.Addr of the Tailscale instance.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	if t.ips != nil && len(t.ips) != 0 {
@@ -486,6 +533,34 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 	return status.Self.DNSName, nil
 }
 
+// PrettyPeers returns a formatted-ish table of peers in the client.
+func (t *TailscaleInContainer) PrettyPeers() (string, error) {
+	status, err := t.Status()
+	if err != nil {
+		return "", fmt.Errorf("failed to get FQDN: %w", err)
+	}
+
+	str := fmt.Sprintf("Peers of %s\n", t.hostname)
+	str += "Hostname\tOnline\tLastSeen\n"
+
+	peerCount := len(status.Peers())
+	onlineCount := 0
+
+	for _, peerKey := range status.Peers() {
+		peer := status.Peer[peerKey]
+
+		if peer.Online {
+			onlineCount++
+		}
+
+		str += fmt.Sprintf("%s\t%t\t%s\n", peer.HostName, peer.Online, peer.LastSeen)
+	}
+
+	str += fmt.Sprintf("Peer Count: %d, Online Count: %d\n\n", peerCount, onlineCount)
+
+	return str, nil
+}
+
 // WaitForNeedsLogin blocks until the Tailscale (tailscaled) instance has
 // started and needs to be logged into.
 func (t *TailscaleInContainer) WaitForNeedsLogin() error {
@@ -531,7 +606,7 @@ func (t *TailscaleInContainer) WaitForRunning() error {
 }
 
 // WaitForPeers blocks until N number of peers is present in the
-// Peer list of the Tailscale instance.
+// Peer list of the Tailscale instance and is reporting Online.
 func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
@@ -547,6 +622,14 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 				expected,
 				len(peers),
 			)
+		} else {
+			for _, peerKey := range peers {
+				peer := status.Peer[peerKey]
+
+				if !peer.Online {
+					return fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName)
+				}
+			}
 		}
 
 		return nil
@@ -737,4 +820,10 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 // WriteFile save file inside the Tailscale container.
 func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
+}
+
+// SaveLog saves the current stdout log of the container to a path
+// on the host system.
+func (t *TailscaleInContainer) SaveLog(path string) error {
+	return dockertestutil.SaveLog(t.pool, t.container, path)
 }

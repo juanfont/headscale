@@ -21,7 +21,9 @@ import (
 
 var (
 	ErrNodeAddressesInvalid = errors.New("failed to parse node addresses")
-	ErrHostnameTooLong      = errors.New("hostname too long")
+	ErrHostnameTooLong      = errors.New("hostname too long, cannot except 255 ASCII chars")
+	ErrNodeHasNoGivenName   = errors.New("node has no given name")
+	ErrNodeUserHasNoName    = errors.New("node user has no name")
 )
 
 // Node is a Headscale client.
@@ -95,21 +97,13 @@ type Node struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time
+
+	IsOnline *bool `gorm:"-"`
 }
 
 type (
 	Nodes []*Node
 )
-
-func (nodes Nodes) OnlineNodeMap() map[tailcfg.NodeID]bool {
-	ret := make(map[tailcfg.NodeID]bool)
-
-	for _, node := range nodes {
-		ret[tailcfg.NodeID(node.ID)] = node.IsOnline()
-	}
-
-	return ret
-}
 
 type NodeAddresses []netip.Addr
 
@@ -204,21 +198,6 @@ func (node Node) IsExpired() bool {
 	}
 
 	return time.Now().UTC().After(*node.Expiry)
-}
-
-// IsOnline returns if the node is connected to Headscale.
-// This is really a naive implementation, as we don't really see
-// if there is a working connection between the client and the server.
-func (node *Node) IsOnline() bool {
-	if node.LastSeen == nil {
-		return false
-	}
-
-	if node.IsExpired() {
-		return false
-	}
-
-	return node.LastSeen.After(time.Now().Add(-KeepAliveInterval))
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.
@@ -339,7 +318,6 @@ func (node *Node) Proto() *v1.Node {
 		GivenName:   node.GivenName,
 		User:        node.User.Proto(),
 		ForcedTags:  node.ForcedTags,
-		Online:      node.IsOnline(),
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
@@ -365,6 +343,14 @@ func (node *Node) Proto() *v1.Node {
 func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (string, error) {
 	var hostname string
 	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
+		if node.GivenName == "" {
+			return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeHasNoGivenName)
+		}
+
+		if node.User.Name == "" {
+			return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeUserHasNoName)
+		}
+
 		hostname = fmt.Sprintf(
 			"%s.%s.%s",
 			node.GivenName,
@@ -373,7 +359,7 @@ func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (stri
 		)
 		if len(hostname) > MaxHostnameLength {
 			return "", fmt.Errorf(
-				"hostname %q is too long it cannot except 255 ASCII chars: %w",
+				"failed to create valid FQDN (%s): %w",
 				hostname,
 				ErrHostnameTooLong,
 			)
@@ -385,8 +371,98 @@ func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (stri
 	return hostname, nil
 }
 
-func (node Node) String() string {
-	return node.Hostname
+// func (node *Node) String() string {
+// 	return node.Hostname
+// }
+
+// PeerChangeFromMapRequest takes a MapRequest and compares it to the node
+// to produce a PeerChange struct that can be used to updated the node and
+// inform peers about smaller changes to the node.
+// When a field is added to this function, remember to also add it to:
+// - node.ApplyPeerChange
+// - logTracePeerChange in poll.go
+func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
+	ret := tailcfg.PeerChange{
+		NodeID: tailcfg.NodeID(node.ID),
+	}
+
+	if node.NodeKey.String() != req.NodeKey.String() {
+		ret.Key = &req.NodeKey
+	}
+
+	if node.DiscoKey.String() != req.DiscoKey.String() {
+		ret.DiscoKey = &req.DiscoKey
+	}
+
+	if node.Hostinfo != nil &&
+		node.Hostinfo.NetInfo != nil &&
+		req.Hostinfo != nil &&
+		req.Hostinfo.NetInfo != nil &&
+		node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
+		ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
+	}
+
+	if req.Hostinfo != nil && req.Hostinfo.NetInfo != nil {
+		// If there is no stored Hostinfo or NetInfo, use
+		// the new PreferredDERP.
+		if node.Hostinfo == nil {
+			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
+		} else if node.Hostinfo.NetInfo == nil {
+			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
+		} else {
+			// If there is a PreferredDERP check if it has changed.
+			if node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
+				ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
+			}
+		}
+	}
+
+	// TODO(kradalby): Find a good way to compare updates
+	ret.Endpoints = req.Endpoints
+
+	now := time.Now()
+	ret.LastSeen = &now
+
+	return ret
+}
+
+// ApplyPeerChange takes a PeerChange struct and updates the node.
+func (node *Node) ApplyPeerChange(change *tailcfg.PeerChange) {
+	if change.Key != nil {
+		node.NodeKey = *change.Key
+	}
+
+	if change.DiscoKey != nil {
+		node.DiscoKey = *change.DiscoKey
+	}
+
+	if change.Online != nil {
+		node.IsOnline = change.Online
+	}
+
+	if change.Endpoints != nil {
+		node.Endpoints = change.Endpoints
+	}
+
+	// This might technically not be useful as we replace
+	// the whole hostinfo blob when it has changed.
+	if change.DERPRegion != 0 {
+		if node.Hostinfo == nil {
+			node.Hostinfo = &tailcfg.Hostinfo{
+				NetInfo: &tailcfg.NetInfo{
+					PreferredDERP: change.DERPRegion,
+				},
+			}
+		} else if node.Hostinfo.NetInfo == nil {
+			node.Hostinfo.NetInfo = &tailcfg.NetInfo{
+				PreferredDERP: change.DERPRegion,
+			}
+		} else {
+			node.Hostinfo.NetInfo.PreferredDERP = change.DERPRegion
+		}
+	}
+
+	node.LastSeen = change.LastSeen
 }
 
 func (nodes Nodes) String() string {

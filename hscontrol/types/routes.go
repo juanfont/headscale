@@ -19,6 +19,8 @@ type Route struct {
 
 	NodeID uint64
 	Node   Node
+
+	// TODO(kradalby): change this custom type to netip.Prefix
 	Prefix IPPrefix
 
 	Advertised bool
@@ -29,11 +31,15 @@ type Route struct {
 type Routes []Route
 
 func (r *Route) String() string {
-	return fmt.Sprintf("%s:%s", r.Node, netip.Prefix(r.Prefix).String())
+	return fmt.Sprintf("%s:%s", r.Node.Hostname, netip.Prefix(r.Prefix).String())
 }
 
 func (r *Route) IsExitRoute() bool {
 	return netip.Prefix(r.Prefix) == ExitRouteV4 || netip.Prefix(r.Prefix) == ExitRouteV6
+}
+
+func (r *Route) IsAnnouncable() bool {
+	return r.Advertised && r.Enabled
 }
 
 func (rs Routes) Prefixes() []netip.Prefix {
@@ -43,6 +49,32 @@ func (rs Routes) Prefixes() []netip.Prefix {
 	}
 
 	return prefixes
+}
+
+// Primaries returns Primary routes from a list of routes.
+func (rs Routes) Primaries() Routes {
+	res := make(Routes, 0)
+	for _, route := range rs {
+		if route.IsPrimary {
+			res = append(res, route)
+		}
+	}
+
+	return res
+}
+
+func (rs Routes) PrefixMap() map[IPPrefix][]Route {
+	res := map[IPPrefix][]Route{}
+
+	for _, route := range rs {
+		if _, ok := res[route.Prefix]; ok {
+			res[route.Prefix] = append(res[route.Prefix], route)
+		} else {
+			res[route.Prefix] = []Route{route}
+		}
+	}
+
+	return res
 }
 
 func (rs Routes) Proto() []*v1.Route {

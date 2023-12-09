@@ -237,7 +237,6 @@ func Test_fullMapResponse(t *testing.T) {
 		Tags:              []string{},
 		PrimaryRoutes:     []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
 		LastSeen:          &lastSeen,
-		Online:            new(bool),
 		MachineAuthorized: true,
 		Capabilities: []tailcfg.NodeCapability{
 			tailcfg.CapabilityFileSharing,
@@ -293,7 +292,6 @@ func Test_fullMapResponse(t *testing.T) {
 		Tags:              []string{},
 		PrimaryRoutes:     []netip.Prefix{},
 		LastSeen:          &lastSeen,
-		Online:            new(bool),
 		MachineAuthorized: true,
 		Capabilities: []tailcfg.NodeCapability{
 			tailcfg.CapabilityFileSharing,
@@ -400,7 +398,6 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				OnlineChange:    map[tailcfg.NodeID]bool{tailPeer1.ID: false},
 				PacketFilter:    []tailcfg.FilterRule{},
 				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
 				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
@@ -442,10 +439,6 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				OnlineChange: map[tailcfg.NodeID]bool{
-					tailPeer1.ID:             false,
-					tailcfg.NodeID(peer2.ID): false,
-				},
 				PacketFilter: []tailcfg.FilterRule{
 					{
 						SrcIPs: []string{"100.64.0.2/32"},

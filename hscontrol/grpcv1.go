@@ -204,7 +204,13 @@ func (api headscaleV1APIServer) GetNode(
 		return nil, err
 	}
 
-	return &v1.GetNodeResponse{Node: node.Proto()}, nil
+	resp := node.Proto()
+
+	// Populate the online field based on
+	// currently connected nodes.
+	resp.Online = api.h.nodeNotifier.IsConnected(node.MachineKey)
+
+	return &v1.GetNodeResponse{Node: resp}, nil
 }
 
 func (api headscaleV1APIServer) SetTags(
@@ -333,7 +339,13 @@ func (api headscaleV1APIServer) ListNodes(
 
 		response := make([]*v1.Node, len(nodes))
 		for index, node := range nodes {
-			response[index] = node.Proto()
+			resp := node.Proto()
+
+			// Populate the online field based on
+			// currently connected nodes.
+			resp.Online = api.h.nodeNotifier.IsConnected(node.MachineKey)
+
+			response[index] = resp
 		}
 
 		return &v1.ListNodesResponse{Nodes: response}, nil
@@ -346,13 +358,18 @@ func (api headscaleV1APIServer) ListNodes(
 
 	response := make([]*v1.Node, len(nodes))
 	for index, node := range nodes {
-		m := node.Proto()
+		resp := node.Proto()
+
+		// Populate the online field based on
+		// currently connected nodes.
+		resp.Online = api.h.nodeNotifier.IsConnected(node.MachineKey)
+
 		validTags, invalidTags := api.h.ACLPolicy.TagsOfNode(
 			&node,
 		)
-		m.InvalidTags = invalidTags
-		m.ValidTags = validTags
-		response[index] = m
+		resp.InvalidTags = invalidTags
+		resp.ValidTags = validTags
+		response[index] = resp
 	}
 
 	return &v1.ListNodesResponse{Nodes: response}, nil

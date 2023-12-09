@@ -68,7 +68,6 @@ func TestTailNode(t *testing.T) {
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
 				Tags:              []string{},
 				PrimaryRoutes:     []netip.Prefix{},
-				Online:            new(bool),
 				MachineAuthorized: true,
 				Capabilities: []tailcfg.NodeCapability{
 					"https://tailscale.com/cap/file-sharing", "https://tailscale.com/cap/is-admin",
@@ -165,7 +164,6 @@ func TestTailNode(t *testing.T) {
 				},
 
 				LastSeen:          &lastSeen,
-				Online:            new(bool),
 				MachineAuthorized: true,
 
 				Capabilities: []tailcfg.NodeCapability{

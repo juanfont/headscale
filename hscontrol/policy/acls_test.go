@@ -14,28 +14,7 @@ import (
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/key"
 )
-
-var ipComparer = cmp.Comparer(func(x, y netip.Addr) bool {
-	return x.Compare(y) == 0
-})
-
-var mkeyComparer = cmp.Comparer(func(x, y key.MachinePublic) bool {
-	return x.String() == y.String()
-})
-
-var nkeyComparer = cmp.Comparer(func(x, y key.NodePublic) bool {
-	return x.String() == y.String()
-})
-
-var dkeyComparer = cmp.Comparer(func(x, y key.DiscoPublic) bool {
-	return x.String() == y.String()
-})
-
-var keyComparers []cmp.Option = []cmp.Option{
-	mkeyComparer, nkeyComparer, dkeyComparer,
-}
 
 func Test(t *testing.T) {
 	check.TestingT(t)
@@ -969,7 +948,7 @@ func Test_listNodesInUser(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got := filterNodesByUser(test.args.nodes, test.args.user)
 
-			if diff := cmp.Diff(test.want, got, keyComparers...); diff != "" {
+			if diff := cmp.Diff(test.want, got, util.Comparers...); diff != "" {
 				t.Errorf("listNodesInUser() = (-want +got):\n%s", diff)
 			}
 		})
@@ -1733,7 +1712,7 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 				test.args.nodes,
 				test.args.user,
 			)
-			if diff := cmp.Diff(test.want, got, ipComparer, mkeyComparer, nkeyComparer, dkeyComparer); diff != "" {
+			if diff := cmp.Diff(test.want, got, util.Comparers...); diff != "" {
 				t.Errorf("excludeCorrectlyTaggedNodes() (-want +got):\n%s", diff)
 			}
 		})
@@ -2085,10 +2064,6 @@ func Test_getTags(t *testing.T) {
 }
 
 func Test_getFilteredByACLPeers(t *testing.T) {
-	ipComparer := cmp.Comparer(func(x, y netip.Addr) bool {
-		return x.Compare(y) == 0
-	})
-
 	type args struct {
 		nodes types.Nodes
 		rules []tailcfg.FilterRule
@@ -2752,7 +2727,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				tt.args.nodes,
 				tt.args.rules,
 			)
-			if diff := cmp.Diff(tt.want, got, ipComparer, mkeyComparer, nkeyComparer, dkeyComparer); diff != "" {
+			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)
 			}
 		})

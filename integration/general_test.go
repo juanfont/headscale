@@ -14,6 +14,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/types/key"
 )
 
 func TestPingAllByIP(t *testing.T) {
@@ -248,9 +250,8 @@ func TestPingAllByHostname(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"user3": len(MustTestVersions) - 1,
-		"user4": len(MustTestVersions) - 1,
+		"user3": len(MustTestVersions),
+		"user4": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyname"))
@@ -296,8 +297,7 @@ func TestTaildrop(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		// Omit 1.16.2 (-1) because it does not have the FQDN field
-		"taildrop": len(MustTestVersions) - 1,
+		"taildrop": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("taildrop"))
@@ -312,6 +312,42 @@ func TestTaildrop(t *testing.T) {
 	// This will essentially fetch and cache all the FQDNs
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	assertNoErrListFQDN(t, err)
+
+	for _, client := range allClients {
+		if !strings.Contains(client.Hostname(), "head") {
+			command := []string{"apk", "add", "curl"}
+			_, _, err := client.Execute(command)
+			if err != nil {
+				t.Fatalf("failed to install curl on %s, err: %s", client.Hostname(), err)
+			}
+
+		}
+		curlCommand := []string{"curl", "--unix-socket", "/var/run/tailscale/tailscaled.sock", "http://local-tailscaled.sock/localapi/v0/file-targets"}
+		err = retry(10, 1*time.Second, func() error {
+			result, _, err := client.Execute(curlCommand)
+			if err != nil {
+				return err
+			}
+			var fts []apitype.FileTarget
+			err = json.Unmarshal([]byte(result), &fts)
+			if err != nil {
+				return err
+			}
+
+			if len(fts) != len(allClients)-1 {
+				ftStr := fmt.Sprintf("FileTargets for %s:\n", client.Hostname())
+				for _, ft := range fts {
+					ftStr += fmt.Sprintf("\t%s\n", ft.Node.Name)
+				}
+				return fmt.Errorf("client %s does not have all its peers as FileTargets, got %d, want: %d\n%s", client.Hostname(), len(fts), len(allClients)-1, ftStr)
+			}
+
+			return err
+		})
+		if err != nil {
+			t.Errorf("failed to query localapi for filetarget on %s, err: %s", client.Hostname(), err)
+		}
+	}
 
 	for _, client := range allClients {
 		command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", client.Hostname())}
@@ -347,8 +383,9 @@ func TestTaildrop(t *testing.T) {
 				})
 				if err != nil {
 					t.Fatalf(
-						"failed to send taildrop file on %s, err: %s",
+						"failed to send taildrop file on %s with command %q, err: %s",
 						client.Hostname(),
+						strings.Join(command, " "),
 						err,
 					)
 				}
@@ -517,25 +554,176 @@ func TestExpireNode(t *testing.T) {
 	err = json.Unmarshal([]byte(result), &node)
 	assertNoErr(t, err)
 
+	var expiredNodeKey key.NodePublic
+	err = expiredNodeKey.UnmarshalText([]byte(node.GetNodeKey()))
+	assertNoErr(t, err)
+
+	t.Logf("Node %s with node_key %s has been expired", node.GetName(), expiredNodeKey.String())
+
 	time.Sleep(30 * time.Second)
 
-	// Verify that the expired not is no longer present in the Peer list
-	// of connected nodes.
+	now := time.Now()
+
+	// Verify that the expired node has been marked in all peers list.
 	for _, client := range allClients {
 		status, err := client.Status()
 		assertNoErr(t, err)
 
-		for _, peerKey := range status.Peers() {
-			peerStatus := status.Peer[peerKey]
-
-			peerPublicKey := strings.TrimPrefix(peerStatus.PublicKey.String(), "nodekey:")
-
-			assert.NotEqual(t, node.GetNodeKey(), peerPublicKey)
-		}
-
 		if client.Hostname() != node.GetName() {
-			// Assert that we have the original count - self - expired node
-			assert.Len(t, status.Peers(), len(MustTestVersions)-2)
+			t.Logf("available peers of %s: %v", client.Hostname(), status.Peers())
+
+			// In addition to marking nodes expired, we filter them out during the map response
+			// this check ensures that the node is either not present, or that it is expired
+			// if it is in the map response.
+			if peerStatus, ok := status.Peer[expiredNodeKey]; ok {
+				assertNotNil(t, peerStatus.Expired)
+				assert.Truef(t, peerStatus.KeyExpiry.Before(now), "node %s should have a key expire before %s, was %s", peerStatus.HostName, now.String(), peerStatus.KeyExpiry)
+				assert.Truef(t, peerStatus.Expired, "node %s should be expired, expired is %v", peerStatus.HostName, peerStatus.Expired)
+			}
+
+			// TODO(kradalby): We do not propogate expiry correctly, nodes should be aware
+			// of their status, and this should be sent directly to the node when its
+			// expired. This needs a notifier that goes directly to the node (currently we only do peers)
+			// so fix this in a follow up PR.
+			// } else {
+			// 	assert.True(t, status.Self.Expired)
 		}
+	}
+}
+
+func TestNodeOnlineLastSeenStatus(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": len(MustTestVersions),
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("onlinelastseen"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("before expire: %d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		// Assert that we have the original count - self
+		assert.Len(t, status.Peers(), len(MustTestVersions)-1)
+	}
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	keepAliveInterval := 60 * time.Second
+
+	// Duration is chosen arbitrarily, 10m is reported in #1561
+	testDuration := 12 * time.Minute
+	start := time.Now()
+	end := start.Add(testDuration)
+
+	log.Printf("Starting online test from %v to %v", start, end)
+
+	for {
+		// Let the test run continuously for X minutes to verify
+		// all nodes stay connected and has the expected status over time.
+		if end.Before(time.Now()) {
+			return
+		}
+
+		result, err := headscale.Execute([]string{
+			"headscale", "nodes", "list", "--output", "json",
+		})
+		assertNoErr(t, err)
+
+		var nodes []*v1.Node
+		err = json.Unmarshal([]byte(result), &nodes)
+		assertNoErr(t, err)
+
+		now := time.Now()
+
+		// Threshold with some leeway
+		lastSeenThreshold := now.Add(-keepAliveInterval - (10 * time.Second))
+
+		// Verify that headscale reports the nodes as online
+		for _, node := range nodes {
+			// All nodes should be online
+			assert.Truef(
+				t,
+				node.GetOnline(),
+				"expected %s to have online status in Headscale, marked as offline %s after start",
+				node.GetName(),
+				time.Since(start),
+			)
+
+			lastSeen := node.GetLastSeen().AsTime()
+			// All nodes should have been last seen between now and the keepAliveInterval
+			assert.Truef(
+				t,
+				lastSeen.After(lastSeenThreshold),
+				"lastSeen (%v) was not %s after the threshold (%v)",
+				lastSeen,
+				keepAliveInterval,
+				lastSeenThreshold,
+			)
+		}
+
+		// Verify that all nodes report all nodes to be online
+		for _, client := range allClients {
+			status, err := client.Status()
+			assertNoErr(t, err)
+
+			for _, peerKey := range status.Peers() {
+				peerStatus := status.Peer[peerKey]
+
+				// .Online is only available from CapVer 16, which
+				// is not present in 1.18 which is the lowest we
+				// test.
+				if strings.Contains(client.Hostname(), "1-18") {
+					continue
+				}
+
+				// All peers of this nodess are reporting to be
+				// connected to the control server
+				assert.Truef(
+					t,
+					peerStatus.Online,
+					"expected node %s to be marked as online in %s peer list, marked as offline %s after start",
+					peerStatus.HostName,
+					client.Hostname(),
+					time.Since(start),
+				)
+
+				// from docs: last seen to tailcontrol; only present if offline
+				// assert.Nilf(
+				// 	t,
+				// 	peerStatus.LastSeen,
+				// 	"expected node %s to not have LastSeen set, got %s",
+				// 	peerStatus.HostName,
+				// 	peerStatus.LastSeen,
+				// )
+			}
+		}
+
+		// Check maximum once per second
+		time.Sleep(time.Second)
 	}
 }

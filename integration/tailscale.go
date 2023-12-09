@@ -21,6 +21,8 @@ type TailscaleClient interface {
 	Login(loginServer, authKey string) error
 	LoginWithURL(loginServer string) (*url.URL, error)
 	Logout() error
+	Up() error
+	Down() error
 	IPs() ([]netip.Addr, error)
 	FQDN() (string, error)
 	Status() (*ipnstate.Status, error)
@@ -30,4 +32,5 @@ type TailscaleClient interface {
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)
 	ID() string
+	PrettyPeers() (string, error)
 }

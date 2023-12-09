@@ -603,8 +603,9 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 
 	db.db.Save(&node)
 
-	err = db.SaveNodeRoutes(&node)
+	sendUpdate, err := db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
+	c.Assert(sendUpdate, check.Equals, false)
 
 	node0ByID, err := db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)

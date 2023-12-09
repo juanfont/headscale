@@ -16,6 +16,46 @@ import (
 	"tailscale.com/types/key"
 )
 
+func logAuthFunc(
+	registerRequest tailcfg.RegisterRequest,
+	machineKey key.MachinePublic,
+) (func(string), func(string), func(error, string)) {
+	return func(msg string) {
+			log.Info().
+				Caller().
+				Str("machine_key", machineKey.ShortString()).
+				Str("node_key", registerRequest.NodeKey.ShortString()).
+				Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
+				Str("node", registerRequest.Hostinfo.Hostname).
+				Str("followup", registerRequest.Followup).
+				Time("expiry", registerRequest.Expiry).
+				Msg(msg)
+		},
+		func(msg string) {
+			log.Trace().
+				Caller().
+				Str("machine_key", machineKey.ShortString()).
+				Str("node_key", registerRequest.NodeKey.ShortString()).
+				Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
+				Str("node", registerRequest.Hostinfo.Hostname).
+				Str("followup", registerRequest.Followup).
+				Time("expiry", registerRequest.Expiry).
+				Msg(msg)
+		},
+		func(err error, msg string) {
+			log.Error().
+				Caller().
+				Str("machine_key", machineKey.ShortString()).
+				Str("node_key", registerRequest.NodeKey.ShortString()).
+				Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
+				Str("node", registerRequest.Hostinfo.Hostname).
+				Str("followup", registerRequest.Followup).
+				Time("expiry", registerRequest.Expiry).
+				Err(err).
+				Msg(msg)
+		}
+}
+
 // handleRegister is the logic for registering a client.
 func (h *Headscale) handleRegister(
 	writer http.ResponseWriter,
@@ -23,8 +63,11 @@ func (h *Headscale) handleRegister(
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
+	logInfo, logTrace, logErr := logAuthFunc(registerRequest, machineKey)
 	now := time.Now().UTC()
+	logTrace("handleRegister called, looking up machine in DB")
 	node, err := h.db.GetNodeByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
+	logTrace("handleRegister database lookup has returned")
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the node has AuthKey set, handle registration via PreAuthKeys
 		if registerRequest.Auth.AuthKey != "" {
@@ -42,15 +85,9 @@ func (h *Headscale) handleRegister(
 		// is that the client will hammer headscale with requests until it gets a
 		// successful RegisterResponse.
 		if registerRequest.Followup != "" {
+			logTrace("register request is a followup")
 			if _, ok := h.registrationCache.Get(machineKey.String()); ok {
-				log.Debug().
-					Caller().
-					Str("node", registerRequest.Hostinfo.Hostname).
-					Str("machine_key", machineKey.ShortString()).
-					Str("node_key", registerRequest.NodeKey.ShortString()).
-					Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
-					Str("follow_up", registerRequest.Followup).
-					Msg("Node is waiting for interactive login")
+				logTrace("Node is waiting for interactive login")
 
 				select {
 				case <-req.Context().Done():
@@ -63,26 +100,14 @@ func (h *Headscale) handleRegister(
 			}
 		}
 
-		log.Info().
-			Caller().
-			Str("node", registerRequest.Hostinfo.Hostname).
-			Str("machine_key", machineKey.ShortString()).
-			Str("node_key", registerRequest.NodeKey.ShortString()).
-			Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
-			Str("follow_up", registerRequest.Followup).
-			Msg("New node not yet in the database")
+		logInfo("Node not found in database, creating new")
 
 		givenName, err := h.db.GenerateGivenName(
 			machineKey,
 			registerRequest.Hostinfo.Hostname,
 		)
 		if err != nil {
-			log.Error().
-				Caller().
-				Str("func", "RegistrationHandler").
-				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
-				Err(err).
-				Msg("Failed to generate given name for node")
+			logErr(err, "Failed to generate given name for node")
 
 			return
 		}
@@ -101,11 +126,7 @@ func (h *Headscale) handleRegister(
 		}
 
 		if !registerRequest.Expiry.IsZero() {
-			log.Trace().
-				Caller().
-				Str("node", registerRequest.Hostinfo.Hostname).
-				Time("expiry", registerRequest.Expiry).
-				Msg("Non-zero expiry time requested")
+			logTrace("Non-zero expiry time requested")
 			newNode.Expiry = &registerRequest.Expiry
 		}
 
@@ -419,13 +440,12 @@ func (h *Headscale) handleNewNode(
 	registerRequest tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
+	logInfo, logTrace, logErr := logAuthFunc(registerRequest, machineKey)
+
 	resp := tailcfg.RegisterResponse{}
 
 	// The node registration is new, redirect the client to the registration URL
-	log.Debug().
-		Caller().
-		Str("node", registerRequest.Hostinfo.Hostname).
-		Msg("The node seems to be new, sending auth url")
+	logTrace("The node seems to be new, sending auth url")
 
 	if h.oauth2Config != nil {
 		resp.AuthURL = fmt.Sprintf(
@@ -441,10 +461,7 @@ func (h *Headscale) handleNewNode(
 
 	respBody, err := json.Marshal(resp)
 	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot encode message")
+		logErr(err, "Cannot encode message")
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
@@ -454,17 +471,10 @@ func (h *Headscale) handleNewNode(
 	writer.WriteHeader(http.StatusOK)
 	_, err = writer.Write(respBody)
 	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
+		logErr(err, "Failed to write response")
 	}
 
-	log.Info().
-		Caller().
-		Str("AuthURL", resp.AuthURL).
-		Str("node", registerRequest.Hostinfo.Hostname).
-		Msg("Successfully sent auth url")
+	logInfo(fmt.Sprintf("Successfully sent auth url: %s", resp.AuthURL))
 }
 
 func (h *Headscale) handleNodeLogOut(
@@ -488,6 +498,19 @@ func (h *Headscale) handleNodeLogOut(
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
+	}
+
+	stateUpdate := types.StateUpdate{
+		Type: types.StatePeerChangedPatch,
+		ChangePatches: []*tailcfg.PeerChange{
+			{
+				NodeID:    tailcfg.NodeID(node.ID),
+				KeyExpiry: &now,
+			},
+		},
+	}
+	if stateUpdate.Valid() {
+		h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
 	}
 
 	resp.AuthURL = ""

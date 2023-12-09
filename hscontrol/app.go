@@ -59,6 +59,7 @@ var (
 	errUnsupportedLetsEncryptChallengeType = errors.New(
 		"unknown value for Lets Encrypt challenge type",
 	)
+	errEmptyInitialDERPMap = errors.New("initial DERPMap is empty, Headscale requries at least one entry")
 )
 
 const (
@@ -193,7 +194,10 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 
 		if derpServerKey.Equal(*noisePrivateKey) {
-			return nil, fmt.Errorf("DERP server private key and noise private key are the same: %w", err)
+			return nil, fmt.Errorf(
+				"DERP server private key and noise private key are the same: %w",
+				err,
+			)
 		}
 
 		embeddedDERPServer, err := derpServer.NewDERPServer(
@@ -259,20 +263,13 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 				h.DERPMap.Regions[region.RegionID] = &region
 			}
 
-			h.nodeNotifier.NotifyAll(types.StateUpdate{
+			stateUpdate := types.StateUpdate{
 				Type:    types.StateDERPUpdated,
-				DERPMap: *h.DERPMap,
-			})
-		}
-	}
-}
-
-func (h *Headscale) failoverSubnetRoutes(milliSeconds int64) {
-	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
-	for range ticker.C {
-		err := h.db.HandlePrimarySubnetFailover()
-		if err != nil {
-			log.Error().Err(err).Msg("failed to handle primary subnet failover")
+				DERPMap: h.DERPMap,
+			}
+			if stateUpdate.Valid() {
+				h.nodeNotifier.NotifyAll(stateUpdate)
+			}
 		}
 	}
 }
@@ -505,12 +502,14 @@ func (h *Headscale) Serve() error {
 		go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
 	}
 
+	if len(h.DERPMap.Regions) == 0 {
+		return errEmptyInitialDERPMap
+	}
+
 	// TODO(kradalby): These should have cancel channels and be cleaned
 	// up on shutdown.
 	go h.expireEphemeralNodes(updateInterval)
 	go h.expireExpiredMachines(updateInterval)
-
-	go h.failoverSubnetRoutes(updateInterval)
 
 	if zl.GlobalLevel() == zl.TraceLevel {
 		zerolog.RespLog = true

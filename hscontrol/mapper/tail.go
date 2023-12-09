@@ -87,10 +87,8 @@ func tailNode(
 
 	hostname, err := node.GetFQDN(dnsConfig, baseDomain)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tailNode, failed to create FQDN: %s", err)
 	}
-
-	online := node.IsOnline()
 
 	tags, _ := pol.TagsOfNode(node)
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
@@ -101,6 +99,7 @@ func tailNode(
 			strconv.FormatUint(node.ID, util.Base10),
 		), // in headscale, unlike tailcontrol server, IDs are permanent
 		Name: hostname,
+		Cap:  capVer,
 
 		User: tailcfg.UserID(node.UserID),
 
@@ -116,13 +115,14 @@ func tailNode(
 		Hostinfo:   node.Hostinfo.View(),
 		Created:    node.CreatedAt,
 
+		Online: node.IsOnline,
+
 		Tags: tags,
 
 		PrimaryRoutes: primaryPrefixes,
 
-		LastSeen:          node.LastSeen,
-		Online:            &online,
 		MachineAuthorized: !node.IsExpired(),
+		Expired:           node.IsExpired(),
 	}
 
 	//   - 74: 2023-09-18: Client understands NodeCapMap
@@ -151,6 +151,12 @@ func tailNode(
 	//   - 72: 2023-08-23: TS-2023-006 UPnP issue fixed; UPnP can now be used again
 	if capVer < 72 {
 		tNode.Capabilities = append(tNode.Capabilities, tailcfg.NodeAttrDisableUPnP)
+	}
+
+	if node.IsOnline == nil || !*node.IsOnline {
+		// LastSeen is only set when node is
+		// not connected to the control server.
+		tNode.LastSeen = node.LastSeen
 	}
 
 	return &tNode, nil
