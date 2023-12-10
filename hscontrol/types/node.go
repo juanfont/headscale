@@ -62,7 +62,7 @@ type Node struct {
 	// it is _only_ used for reading and writing the key to the
 	// database and should not be used.
 	// Use Endpoints instead.
-	HostinfoDatabaseField string            `gorm:"column:hostinfo"`
+	HostinfoDatabaseField string            `gorm:"column:host_info"`
 	Hostinfo              *tailcfg.Hostinfo `gorm:"-"`
 
 	IPAddresses NodeAddresses

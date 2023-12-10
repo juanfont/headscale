@@ -32,6 +32,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 
 ### Changes
 
+Use versioned migrations [#1644](https://github.com/juanfont/headscale/pull/1644)
 Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
 SSH support [#1487](https://github.com/juanfont/headscale/pull/1487)
 State management has been improved [#1492](https://github.com/juanfont/headscale/pull/1492)
