@@ -24,6 +24,11 @@ oidc:
   # It resolves environment variables, making integration to systemd's
   # `LoadCredential` straightforward:
   #client_secret_path: "${CREDENTIALS_DIRECTORY}/oidc_client_secret"
+  # If provided, the name of a custom OIDC claim for specifying user groups. 
+  # The claim value is expected to be a string or array of strings.
+  groups_claim: groups
+  # The OIDC claim to use as the email.
+  email_claim: email
 
   # Customize the scopes used in the OIDC flow, defaults to "openid", "profile" and "email" and add custom query
   # parameters to the Authorize Endpoint request. Scopes default to "openid", "profile" and "email".
