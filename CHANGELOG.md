@@ -29,6 +29,8 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - The latest supported client is 1.32
 - Headscale checks that _at least_ one DERP is defined at start [#1564](https://github.com/juanfont/headscale/pull/1564)
   - If no DERP is configured, the server will fail to start, this can be because it cannot load the DERPMap from file or url.
+- Embedded DERP server requires a private key [#1611](https://github.com/juanfont/headscale/pull/1611)
+  - Add a filepath entry to [`derp.server.private_key_path`](https://github.com/juanfont/headscale/blob/b35993981297e18393706b2c963d6db882bba6aa/config-example.yaml#L95)
 
 ### Changes
 
