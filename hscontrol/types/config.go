@@ -118,8 +118,8 @@ type DERPConfig struct {
 	Paths                []string
 	AutoUpdate           bool
 	UpdateFrequency      time.Duration
-	IPv4             string
-	IPv6             string
+	IPv4                 string
+	IPv6                 string
 }
 
 type LogTailConfig struct {
