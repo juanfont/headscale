@@ -258,7 +258,7 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 		case <-ticker.C:
 			log.Info().Msg("Fetching DERPMap updates")
 			h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-			if h.cfg.DERP.ServerEnabled {
+			if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
 				region, _ := h.DERPServer.GenerateRegion()
 				h.DERPMap.Regions[region.RegionID] = &region
 			}
@@ -491,7 +491,9 @@ func (h *Headscale) Serve() error {
 			return err
 		}
 
-		h.DERPMap.Regions[region.RegionID] = &region
+		if h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
+			h.DERPMap.Regions[region.RegionID] = &region
+		}
 
 		go h.DERPServer.ServeSTUN()
 	}

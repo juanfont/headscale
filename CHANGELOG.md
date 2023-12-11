@@ -1,5 +1,9 @@
 # CHANGELOG
 
+### Changes
+
+Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
+
 ## 0.23.0 (2023-XX-XX)
 
 This release is mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
