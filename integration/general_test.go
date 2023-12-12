@@ -320,7 +320,6 @@ func TestTaildrop(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to install curl on %s, err: %s", client.Hostname(), err)
 			}
-
 		}
 		curlCommand := []string{"curl", "--unix-socket", "/var/run/tailscale/tailscaled.sock", "http://local-tailscaled.sock/localapi/v0/file-targets"}
 		err = retry(10, 1*time.Second, func() error {
@@ -581,7 +580,7 @@ func TestExpireNode(t *testing.T) {
 				assert.Truef(t, peerStatus.Expired, "node %s should be expired, expired is %v", peerStatus.HostName, peerStatus.Expired)
 			}
 
-			// TODO(kradalby): We do not propogate expiry correctly, nodes should be aware
+			// TODO(kradalby): We do not propagate expiry correctly, nodes should be aware
 			// of their status, and this should be sent directly to the node when its
 			// expired. This needs a notifier that goes directly to the node (currently we only do peers)
 			// so fix this in a follow up PR.

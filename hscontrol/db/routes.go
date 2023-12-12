@@ -349,7 +349,7 @@ func (hsdb *HSDatabase) GetNodePrimaryRoutes(node *types.Node) (types.Routes, er
 
 // SaveNodeRoutes takes a node and updates the database with
 // the new routes.
-// It returns a bool wheter an update should be sent as the
+// It returns a bool whether an update should be sent as the
 // saved route impacts nodes.
 func (hsdb *HSDatabase) SaveNodeRoutes(node *types.Node) (bool, error) {
 	hsdb.mu.Lock()

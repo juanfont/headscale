@@ -59,7 +59,7 @@ var (
 	errUnsupportedLetsEncryptChallengeType = errors.New(
 		"unknown value for Lets Encrypt challenge type",
 	)
-	errEmptyInitialDERPMap = errors.New("initial DERPMap is empty, Headscale requries at least one entry")
+	errEmptyInitialDERPMap = errors.New("initial DERPMap is empty, Headscale requires at least one entry")
 )
 
 const (
