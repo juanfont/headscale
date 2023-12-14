@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/netip"
 	"os"
+	"sort"
 	"sync"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -30,6 +31,8 @@ func enabledVersions(vs map[string]bool) []string {
 			ret = append(ret, version)
 		}
 	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(ret)))
 
 	return ret
 }
@@ -355,7 +358,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 			return err
 		}
 
-		log.Printf("testing versions %v", lo.Uniq(versions))
+		log.Printf("testing versions %v, MustTestVersions %v", lo.Uniq(versions), MustTestVersions)
 
 		return nil
 	}
