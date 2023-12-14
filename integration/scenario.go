@@ -44,7 +44,9 @@ var (
 	tailscaleVersions2021 = map[string]bool{
 		"head":     true,
 		"unstable": true,
-		"1.52":     true, // CapVer:
+		"1.56":     true, // CapVer: 82
+		"1.54":     true, // CapVer: 79
+		"1.52":     true, // CapVer: 79
 		"1.50":     true, // CapVer: 74
 		"1.48":     true, // CapVer: 68
 		"1.46":     true, // CapVer: 65
