@@ -38,12 +38,6 @@ Using curl:
 curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
 ```
 
-**(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
-
-```shell
-touch ./config/config.yaml
-```
-
 Modify the config file to your preferences before launching Docker container.
 Here are some settings that you likely want:
 
@@ -63,6 +57,12 @@ derp:
 # The default /var/lib/headscale path is not writable  in the container
 db_type: sqlite3
 db_path: /etc/headscale/db.sqlite
+```
+
+**(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
+
+```shell
+touch ./config/config.yaml
 ```
 
 4. Start the headscale server while working in the host headscale directory:
