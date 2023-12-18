@@ -24,6 +24,8 @@ cd ./headscale
 
 2. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
+The following instructions are for running against `headscale/headscale:latest`, if you are using an older version, you will want to make sure you're getting the correct version of a default configuration file from the [tags](https://github.com/juanfont/headscale/tags) matching your version.
+
 Using wget:
 
 ```shell
