@@ -53,6 +53,7 @@ server_url: http://your-host-name:8080
 # Listen to 0.0.0.0 so it's accessible outside the container
 metrics_listen_addr: 0.0.0.0:9090
 # The default /var/lib/headscale path is not writable in the container
+# NOTE: This is not present in the default configuration file.
 private_key_path: /etc/headscale/private.key
 # The default /var/lib/headscale path is not writable in the container
 noise:
