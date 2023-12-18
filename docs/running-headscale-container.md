@@ -22,13 +22,7 @@ mkdir -p ./headscale/config
 cd ./headscale
 ```
 
-2. Create an empty SQlite datebase in the headscale directory:
-
-```shell
-touch ./config/db.sqlite
-```
-
-3. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
+2. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
 Using wget:
 
