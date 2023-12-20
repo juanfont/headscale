@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/derp"
 	"tailscale.com/net/stun"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/logger"
 )
 
 // fastStartHeader is the header (with value "1") that signals to the HTTP
@@ -34,19 +34,13 @@ type DERPServer struct {
 	tailscaleDERP *derp.Server
 }
 
-func derpLogf() logger.Logf {
-	return func(format string, args ...any) {
-		log.Debug().Caller().Msgf(format, args...)
-	}
-}
-
 func NewDERPServer(
 	serverURL string,
 	derpKey key.NodePrivate,
 	cfg *types.DERPConfig,
 ) (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
-	server := derp.NewServer(derpKey, derpLogf()) // nolint // zerolinter complains
+	server := derp.NewServer(derpKey, util.TSLogfWrapper()) // nolint // zerolinter complains
 
 	return &DERPServer{
 		serverURL:     serverURL,

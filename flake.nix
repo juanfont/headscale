@@ -31,7 +31,7 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorHash = "sha256-u9AmJguQ5dnJpfhOeLN43apvMHuraOrJhvlEIp9RoIc=";
+          vendorHash = "sha256-8x4RKaS8vnBYTPlvQTkDKWIAJOgPF99hvPiuRyTMrA8=";
 
           ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
         };
@@ -128,13 +128,6 @@
 
         shellHook = ''
           export PATH="$PWD/result/bin:$PATH"
-
-          mkdir -p ./ignored
-          export HEADSCALE_PRIVATE_KEY_PATH="./ignored/private.key"
-          export HEADSCALE_NOISE_PRIVATE_KEY_PATH="./ignored/noise_private.key"
-          export HEADSCALE_DB_PATH="./ignored/db.sqlite"
-          export HEADSCALE_TLS_LETSENCRYPT_CACHE_DIR="./ignored/cache"
-          export HEADSCALE_UNIX_SOCKET="./ignored/headscale.sock"
         '';
       };
 
