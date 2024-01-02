@@ -10,6 +10,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -777,4 +778,146 @@ func TestHASubnetRouterFailover(t *testing.T) {
 			netip.MustParsePrefix(expectedRoutes[string(srs1.Self.ID)]),
 		)
 	}
+}
+
+func TestEnableDisableAutoApprovedRoute(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	expectedRoutes := "172.0.0.0/24"
+
+	user := "enable-disable-routing"
+
+	scenario, err := NewScenario()
+	assertNoErrf(t, "failed to create scenario: %s", err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		user: 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+		&policy.ACLPolicy{
+			ACLs: []policy.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"*"},
+					Destinations: []string{"*:*"},
+				},
+			},
+			TagOwners: map[string][]string{
+				"tag:approve": {user},
+			},
+			AutoApprovers: policy.AutoApprovers{
+				Routes: map[string][]string{
+					expectedRoutes: {"tag:approve"},
+				},
+			},
+		},
+	))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	subRouter1 := allClients[0]
+
+	// Initially advertise route
+	command := []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=" + expectedRoutes,
+	}
+	_, _, err = subRouter1.Execute(command)
+	assertNoErrf(t, "failed to advertise route: %s", err)
+
+	time.Sleep(10 * time.Second)
+
+	var routes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&routes,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, routes, 1)
+
+	// All routes should be auto approved and enabled
+	assert.Equal(t, true, routes[0].GetAdvertised())
+	assert.Equal(t, true, routes[0].GetEnabled())
+	assert.Equal(t, true, routes[0].GetIsPrimary())
+
+	// Stop advertising route
+	command = []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=",
+	}
+	_, _, err = subRouter1.Execute(command)
+	assertNoErrf(t, "failed to remove advertised route: %s", err)
+
+	time.Sleep(10 * time.Second)
+
+	var notAdvertisedRoutes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&notAdvertisedRoutes,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, notAdvertisedRoutes, 1)
+
+	// Route is no longer advertised
+	assert.Equal(t, false, notAdvertisedRoutes[0].GetAdvertised())
+	assert.Equal(t, false, notAdvertisedRoutes[0].GetEnabled())
+	assert.Equal(t, true, notAdvertisedRoutes[0].GetIsPrimary())
+
+	// Advertise route again
+	command = []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=" + expectedRoutes,
+	}
+	_, _, err = subRouter1.Execute(command)
+	assertNoErrf(t, "failed to advertise route: %s", err)
+
+	time.Sleep(10 * time.Second)
+
+	var reAdvertisedRoutes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&reAdvertisedRoutes,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, reAdvertisedRoutes, 1)
+
+	// All routes should be auto approved and enabled
+	assert.Equal(t, true, reAdvertisedRoutes[0].GetAdvertised())
+	assert.Equal(t, true, reAdvertisedRoutes[0].GetEnabled())
+	assert.Equal(t, true, reAdvertisedRoutes[0].GetIsPrimary())
 }
