@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/netip"
 	"os"
+	"sort"
 	"sync"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -31,6 +32,8 @@ func enabledVersions(vs map[string]bool) []string {
 		}
 	}
 
+	sort.Sort(sort.Reverse(sort.StringSlice(ret)))
+
 	return ret
 }
 
@@ -44,7 +47,9 @@ var (
 	tailscaleVersions2021 = map[string]bool{
 		"head":     true,
 		"unstable": true,
-		"1.52":     true, // CapVer:
+		"1.56":     true, // CapVer: 82
+		"1.54":     true, // CapVer: 79
+		"1.52":     true, // CapVer: 79
 		"1.50":     true, // CapVer: 74
 		"1.48":     true, // CapVer: 68
 		"1.46":     true, // CapVer: 65
@@ -353,7 +358,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 			return err
 		}
 
-		log.Printf("testing versions %v", lo.Uniq(versions))
+		log.Printf("testing versions %v, MustTestVersions %v", lo.Uniq(versions), MustTestVersions)
 
 		return nil
 	}
