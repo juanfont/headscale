@@ -21,7 +21,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"golang.org/x/exp/maps"
 	"tailscale.com/envknob"
 	"tailscale.com/smallzstd"
@@ -595,15 +594,6 @@ func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {
 	return ret
 }
 
-func filterExpiredAndNotReady(peers types.Nodes) types.Nodes {
-	return lo.Filter(peers, func(item *types.Node, index int) bool {
-		// Filter out nodes that are expired OR
-		// nodes that has no endpoints, this typically means they have
-		// registered, but are not configured.
-		return !item.IsExpired() || len(item.Endpoints) > 0
-	})
-}
-
 // appendPeerChanges mutates a tailcfg.MapResponse with all the
 // necessary changes when peers have changed.
 func appendPeerChanges(
@@ -628,9 +618,6 @@ func appendPeerChanges(
 	if err != nil {
 		return err
 	}
-
-	// Filter out peers that have expired.
-	changed = filterExpiredAndNotReady(changed)
 
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access eachother at all and remove them from the peers.

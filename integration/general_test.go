@@ -560,7 +560,7 @@ func TestExpireNode(t *testing.T) {
 
 	t.Logf("Node %s with node_key %s has been expired", node.GetName(), expiredNodeKey.String())
 
-	time.Sleep(30 * time.Second)
+	time.Sleep(2 * time.Minute)
 
 	now := time.Now()
 
@@ -572,21 +572,33 @@ func TestExpireNode(t *testing.T) {
 		if client.Hostname() != node.GetName() {
 			t.Logf("available peers of %s: %v", client.Hostname(), status.Peers())
 
-			// In addition to marking nodes expired, we filter them out during the map response
-			// this check ensures that the node is either not present, or that it is expired
-			// if it is in the map response.
+			// Ensures that the node is present, and that it is expired.
 			if peerStatus, ok := status.Peer[expiredNodeKey]; ok {
 				assertNotNil(t, peerStatus.Expired)
-				assert.Truef(t, peerStatus.KeyExpiry.Before(now), "node %s should have a key expire before %s, was %s", peerStatus.HostName, now.String(), peerStatus.KeyExpiry)
-				assert.Truef(t, peerStatus.Expired, "node %s should be expired, expired is %v", peerStatus.HostName, peerStatus.Expired)
+				assert.NotNil(t, peerStatus.KeyExpiry)
+
+				t.Logf("node %q should have a key expire before %s, was %s", peerStatus.HostName, now.String(), peerStatus.KeyExpiry)
+				if peerStatus.KeyExpiry != nil {
+					assert.Truef(t, peerStatus.KeyExpiry.Before(now), "node %q should have a key expire before %s, was %s", peerStatus.HostName, now.String(), peerStatus.KeyExpiry)
+				}
+
+				assert.Truef(t, peerStatus.Expired, "node %q should be expired, expired is %v", peerStatus.HostName, peerStatus.Expired)
+
+				_, stderr, _ := client.Execute([]string{"tailscale", "ping", node.GetName()})
+				if !strings.Contains(stderr, "node key has expired") {
+					t.Errorf("expected to be unable to ping expired host %q from %q", node.GetName(), client.Hostname())
+				}
+			} else {
+				t.Errorf("failed to find node %q with nodekey (%s) in mapresponse, should be present even if it is expired", node.GetName(), expiredNodeKey)
+			}
+		} else {
+			if status.Self.KeyExpiry != nil {
+				assert.Truef(t, status.Self.KeyExpiry.Before(now), "node %q should have a key expire before %s, was %s", status.Self.HostName, now.String(), status.Self.KeyExpiry)
 			}
 
-			// TODO(kradalby): We do not propogate expiry correctly, nodes should be aware
-			// of their status, and this should be sent directly to the node when its
-			// expired. This needs a notifier that goes directly to the node (currently we only do peers)
-			// so fix this in a follow up PR.
-			// } else {
-			// 	assert.True(t, status.Self.Expired)
+			// NeedsLogin means that the node has understood that it is no longer
+			// valid.
+			assert.Equal(t, "NeedsLogin", status.BackendState)
 		}
 	}
 }
