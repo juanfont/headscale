@@ -50,3 +50,16 @@ instead of filing a bug report.
 ## To Reproduce
 
 <!-- Steps to reproduce the behavior. -->
+
+## Logs and attachments
+
+<!-- Please attach files with:
+- Client netmap dump (see below)
+- ACL configuration
+- Headscale configuration
+
+Dump the netmap of tailscale clients:
+`tailscale debug netmap > DESCRIPTIVE_NAME.json`
+
+Please provide information describing the netmap, which client, which headscale version etc.
+-->
