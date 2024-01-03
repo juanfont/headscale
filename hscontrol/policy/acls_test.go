@@ -1901,6 +1901,81 @@ func TestReduceFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{},
 		},
+		{
+			name: "1604-subnet-routers-are-preserved",
+			pol: ACLPolicy{
+				Groups: Groups{
+					"group:admins": {"user1"},
+				},
+				ACLs: []ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"group:admins"},
+						Destinations: []string{"group:admins:*"},
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"group:admins"},
+						Destinations: []string{"10.33.0.0/16:*"},
+					},
+				},
+			},
+			node: &types.Node{
+				IPAddresses: types.NodeAddresses{
+					netip.MustParseAddr("100.64.0.1"),
+					netip.MustParseAddr("fd7a:115c:a1e0::1"),
+				},
+				User: types.User{Name: "user1"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.33.0.0/16"),
+					},
+				},
+			},
+			peers: types.Nodes{
+				&types.Node{
+					IPAddresses: types.NodeAddresses{
+						netip.MustParseAddr("100.64.0.2"),
+						netip.MustParseAddr("fd7a:115c:a1e0::2"),
+					},
+					User: types.User{Name: "user1"},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP:    "100.64.0.1/32",
+							Ports: tailcfg.PortRangeAny,
+						},
+						{
+							IP:    "fd7a:115c:a1e0::1/128",
+							Ports: tailcfg.PortRangeAny,
+						},
+					},
+				},
+				{
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP:    "10.33.0.0/16",
+							Ports: tailcfg.PortRangeAny,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

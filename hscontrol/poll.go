@@ -153,6 +153,8 @@ func (h *Headscale) handlePoll(
 					return
 				}
 
+				// Send an update to all peers to propagate the new routes
+				// available.
 				stateUpdate := types.StateUpdate{
 					Type:        types.StatePeerChanged,
 					ChangeNodes: types.Nodes{node},
@@ -162,6 +164,19 @@ func (h *Headscale) handlePoll(
 					h.nodeNotifier.NotifyWithIgnore(
 						stateUpdate,
 						node.MachineKey.String())
+				}
+
+				// Send an update to the node itself with to ensure it
+				// has an updated packetfilter allowing the new route
+				// if it is defined in the ACL.
+				selfUpdate := types.StateUpdate{
+					Type:        types.StateSelfUpdate,
+					ChangeNodes: types.Nodes{node},
+				}
+				if selfUpdate.Valid() {
+					h.nodeNotifier.NotifyByMachineKey(
+						selfUpdate,
+						node.MachineKey)
 				}
 
 				return
@@ -377,6 +392,16 @@ func (h *Headscale) handlePoll(
 
 			var data []byte
 			var err error
+
+			// Ensure the node object is updated, for example, there
+			// might have been a hostinfo update in a sidechannel
+			// which contains data needed to generate a map response.
+			node, err = h.db.GetNodeByMachineKey(node.MachineKey)
+			if err != nil {
+				logErr(err, "Could not get machine from db")
+
+				return
+			}
 
 			switch update.Type {
 			case types.StateFullUpdate:

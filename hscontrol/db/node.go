@@ -739,6 +739,19 @@ func (hsdb *HSDatabase) enableRoutes(node *types.Node, routeStrs ...string) erro
 			stateUpdate, node.MachineKey.String())
 	}
 
+	// Send an update to the node itself with to ensure it
+	// has an updated packetfilter allowing the new route
+	// if it is defined in the ACL.
+	selfUpdate := types.StateUpdate{
+		Type:        types.StateSelfUpdate,
+		ChangeNodes: types.Nodes{node},
+	}
+	if selfUpdate.Valid() {
+		hsdb.notifier.NotifyByMachineKey(
+			selfUpdate,
+			node.MachineKey)
+	}
+
 	return nil
 }
 

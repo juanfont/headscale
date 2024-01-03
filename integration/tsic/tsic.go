@@ -17,6 +17,7 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/types/netmap"
 )
 
 const (
@@ -517,6 +518,30 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 	}
 
 	return &status, err
+}
+
+// Netmap returns the current Netmap (netmap.NetworkMap) of the Tailscale instance.
+// Only works with Tailscale 1.56.1 and newer.
+func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
+	command := []string{
+		"tailscale",
+		"debug",
+		"netmap",
+	}
+
+	result, stderr, err := t.Execute(command)
+	if err != nil {
+		fmt.Printf("stderr: %s\n", stderr)
+		return nil, fmt.Errorf("failed to execute tailscale debug netmap command: %w", err)
+	}
+
+	var nm netmap.NetworkMap
+	err = json.Unmarshal([]byte(result), &nm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tailscale netmap: %w", err)
+	}
+
+	return &nm, err
 }
 
 // FQDN returns the FQDN as a string of the Tailscale instance.
