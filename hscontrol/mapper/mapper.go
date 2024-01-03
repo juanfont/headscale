@@ -459,6 +459,8 @@ func (m *Mapper) marshalMapResponse(
 		switch {
 		case resp.Peers != nil && len(resp.Peers) > 0:
 			responseType = "full"
+		case resp.Peers == nil && resp.PeersChanged == nil && resp.PeersChangedPatch == nil:
+			responseType = "lite"
 		case resp.PeersChanged != nil && len(resp.PeersChanged) > 0:
 			responseType = "changed"
 		case resp.PeersChangedPatch != nil && len(resp.PeersChangedPatch) > 0:
