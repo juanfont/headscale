@@ -537,7 +537,7 @@ func TestExpireNode(t *testing.T) {
 		assertNoErr(t, err)
 
 		// Assert that we have the original count - self
-		assert.Len(t, status.Peers(), len(MustTestVersions)-1)
+		assert.Len(t, status.Peers(), spec["user1"]-1)
 	}
 
 	headscale, err := scenario.Headscale()
