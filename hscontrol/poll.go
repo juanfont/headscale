@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	xslices "golang.org/x/exp/slices"
+	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
@@ -128,9 +130,13 @@ func (h *Headscale) handlePoll(
 
 				if h.ACLPolicy != nil {
 					// update routes with peer information
-					err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, node)
+					update, err := h.db.EnableAutoApprovedRoutes(h.ACLPolicy, node)
 					if err != nil {
 						logErr(err, "Error running auto approved routes")
+					}
+
+					if update != nil {
+						sendUpdate = true
 					}
 				}
 			}
@@ -146,7 +152,7 @@ func (h *Headscale) handlePoll(
 			}
 
 			if sendUpdate {
-				if err := h.db.NodeSave(node); err != nil {
+				if err := h.db.DB.Save(node).Error; err != nil {
 					logErr(err, "Failed to persist/update node in the database")
 					http.Error(writer, "", http.StatusInternalServerError)
 
@@ -183,7 +189,7 @@ func (h *Headscale) handlePoll(
 			}
 		}
 
-		if err := h.db.NodeSave(node); err != nil {
+		if err := h.db.DB.Save(node).Error; err != nil {
 			logErr(err, "Failed to persist/update node in the database")
 			http.Error(writer, "", http.StatusInternalServerError)
 
@@ -251,7 +257,7 @@ func (h *Headscale) handlePoll(
 		}
 	}
 
-	if err := h.db.NodeSave(node); err != nil {
+	if err := h.db.DB.Save(node).Error; err != nil {
 		logErr(err, "Failed to persist/update node in the database")
 		http.Error(writer, "", http.StatusInternalServerError)
 
@@ -288,7 +294,10 @@ func (h *Headscale) handlePoll(
 	// update ACLRules with peer informations (to update server tags if necessary)
 	if h.ACLPolicy != nil {
 		// update routes with peer information
-		err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, node)
+		// This state update is ignored as it will be sent
+		// as part of the whole node
+		// TODO(kradalby): figure out if that is actually correct
+		_, err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, node)
 		if err != nil {
 			logErr(err, "Error running auto approved routes")
 		}
@@ -352,7 +361,21 @@ func (h *Headscale) handlePoll(
 	defer cancel()
 
 	if len(node.Routes) > 0 {
-		go h.db.EnsureFailoverRouteIsAvailable(node)
+		go func() {
+			err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+				update, err := db.EnsureFailoverRouteIsAvailable(tx, h.nodeNotifier.ConnectedMap(), node)
+				if err != nil {
+					return err
+				}
+
+				if update != nil && update.Valid() {
+					h.nodeNotifier.NotifyWithIgnore(*update, node.MachineKey.String())
+				}
+
+				return err
+			})
+			logErr(err, "failed to ensure failover routes")
+		}()
 	}
 
 	for {
@@ -434,7 +457,7 @@ func (h *Headscale) handlePoll(
 				if len(update.ChangeNodes) == 1 {
 					logInfo("Sending SelfUpdate MapResponse")
 					node = update.ChangeNodes[0]
-					data, err = mapp.LiteMapResponse(mapRequest, node, h.ACLPolicy)
+					data, err = mapp.LiteMapResponse(mapRequest, node, h.ACLPolicy, types.SelfUpdateIdentifier)
 				} else {
 					logInfo("SelfUpdate contained too many nodes, this is likely a bug in the code, please report.")
 				}
@@ -487,7 +510,21 @@ func (h *Headscale) handlePoll(
 			go h.updateNodeOnlineStatus(false, node)
 
 			// Failover the node's routes if any.
-			go h.db.FailoverNodeRoutesWithNotify(node)
+			go func() {
+				err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+					update, err := db.EnsureFailoverRouteIsAvailable(tx, h.nodeNotifier.ConnectedMap(), node)
+					if err != nil {
+						return err
+					}
+
+					if update != nil && !update.Empty() && update.Valid() {
+						h.nodeNotifier.NotifyWithIgnore(*update, node.MachineKey.String())
+					}
+
+					return err
+				})
+				logErr(err, "failed to ensure failover routes")
+			}()
 
 			// The connection has been closed, so we can stop polling.
 			return
@@ -522,7 +559,9 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 		h.nodeNotifier.NotifyWithIgnore(statusUpdate, node.MachineKey.String())
 	}
 
-	err := h.db.UpdateLastSeen(node)
+	err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+		return db.UpdateLastSeen(tx, node.ID, *node.LastSeen)
+	})
 	if err != nil {
 		log.Error().Err(err).Msg("Cannot update node LastSeen")
 

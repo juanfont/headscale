@@ -12,26 +12,30 @@ import (
 )
 
 type Notifier struct {
-	l     sync.RWMutex
-	nodes map[string]chan<- types.StateUpdate
+	l         sync.RWMutex
+	nodes     map[string]chan<- types.StateUpdate
+	connected map[key.MachinePublic]bool
 }
 
 func NewNotifier() *Notifier {
-	return &Notifier{}
+	return &Notifier{
+		nodes:     make(map[string]chan<- types.StateUpdate),
+		connected: make(map[key.MachinePublic]bool),
+	}
 }
 
 func (n *Notifier) AddNode(machineKey key.MachinePublic, c chan<- types.StateUpdate) {
 	log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("acquiring lock to add node")
-	defer log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("releasing lock to add node")
+	defer log.Trace().
+		Caller().
+		Str("key", machineKey.ShortString()).
+		Msg("releasing lock to add node")
 
 	n.l.Lock()
 	defer n.l.Unlock()
 
-	if n.nodes == nil {
-		n.nodes = make(map[string]chan<- types.StateUpdate)
-	}
-
 	n.nodes[machineKey.String()] = c
+	n.connected[machineKey] = true
 
 	log.Trace().
 		Str("machine_key", machineKey.ShortString()).
@@ -41,16 +45,20 @@ func (n *Notifier) AddNode(machineKey key.MachinePublic, c chan<- types.StateUpd
 
 func (n *Notifier) RemoveNode(machineKey key.MachinePublic) {
 	log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("acquiring lock to remove node")
-	defer log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("releasing lock to remove node")
+	defer log.Trace().
+		Caller().
+		Str("key", machineKey.ShortString()).
+		Msg("releasing lock to remove node")
 
 	n.l.Lock()
 	defer n.l.Unlock()
 
-	if n.nodes == nil {
+	if len(n.nodes) == 0 {
 		return
 	}
 
 	delete(n.nodes, machineKey.String())
+	n.connected[machineKey] = false
 
 	log.Trace().
 		Str("machine_key", machineKey.ShortString()).
@@ -64,11 +72,12 @@ func (n *Notifier) IsConnected(machineKey key.MachinePublic) bool {
 	n.l.RLock()
 	defer n.l.RUnlock()
 
-	if _, ok := n.nodes[machineKey.String()]; ok {
-		return true
-	}
+	return n.connected[machineKey]
+}
 
-	return false
+// TODO(kradalby): This returns a pointer and can be dangerous.
+func (n *Notifier) ConnectedMap() map[key.MachinePublic]bool {
+	return n.connected
 }
 
 func (n *Notifier) NotifyAll(update types.StateUpdate) {

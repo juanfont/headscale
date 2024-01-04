@@ -272,6 +272,7 @@ func (m *Mapper) LiteMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	pol *policy.ACLPolicy,
+	messages ...string,
 ) ([]byte, error) {
 	resp, err := m.baseWithConfigMapResponse(node, pol, mapRequest.Version)
 	if err != nil {
@@ -290,7 +291,7 @@ func (m *Mapper) LiteMapResponse(
 	resp.PacketFilter = policy.ReduceFilterRules(node, rules)
 	resp.SSHPolicy = sshPolicy
 
-	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
 }
 
 func (m *Mapper) KeepAliveResponse(
@@ -470,6 +471,8 @@ func (m *Mapper) marshalMapResponse(
 		switch {
 		case resp.Peers != nil && len(resp.Peers) > 0:
 			responseType = "full"
+		case isSelfUpdate(messages...):
+			responseType = "self"
 		case resp.Peers == nil && resp.PeersChanged == nil && resp.PeersChangedPatch == nil:
 			responseType = "lite"
 		case resp.PeersChanged != nil && len(resp.PeersChanged) > 0:
@@ -667,4 +670,14 @@ func appendPeerChanges(
 	resp.SSHPolicy = sshPolicy
 
 	return nil
+}
+
+func isSelfUpdate(messages ...string) bool {
+	for _, message := range messages {
+		if strings.Contains(message, types.SelfUpdateIdentifier) {
+			return true
+		}
+	}
+
+	return false
 }

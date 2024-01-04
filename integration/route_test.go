@@ -294,7 +294,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// advertise HA route on node 1 and 2
 	// ID 1 will be primary
 	// ID 2 will be secondary
-	for _, client := range allClients {
+	for _, client := range allClients[:2] {
 		status, err := client.Status()
 		assertNoErr(t, err)
 
@@ -306,6 +306,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 			}
 			_, _, err = client.Execute(command)
 			assertNoErrf(t, "failed to advertise route: %s", err)
+		} else {
+			t.Fatalf("failed to find route for Node %s (id: %s)", status.Self.HostName, status.Self.ID)
 		}
 	}
 
@@ -327,6 +329,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	assertNoErr(t, err)
 	assert.Len(t, routes, 2)
+
+	t.Logf("initial routes %#v", routes)
 
 	for _, route := range routes {
 		assert.Equal(t, true, route.GetAdvertised())
@@ -643,6 +647,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	)
 	assertNoErr(t, err)
 	assert.Len(t, routesAfterDisabling1, 2)
+
+	t.Logf("routes after disabling1 %#v", routesAfterDisabling1)
 
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfterDisabling1[0].GetAdvertised())

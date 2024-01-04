@@ -20,6 +20,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
+	"gorm.io/gorm"
 	"tailscale.com/types/key"
 )
 
@@ -492,7 +493,7 @@ func (h *Headscale) validateNodeForOIDCCallback(
 			Str("node", node.Hostname).
 			Msg("node already registered, reauthenticating")
 
-		err := h.db.NodeSetExpiry(node, expiry)
+		err := h.db.NodeSetExpiry(node.ID, expiry)
 		if err != nil {
 			util.LogErr(err, "Failed to refresh node")
 			http.Error(
@@ -534,6 +535,11 @@ func (h *Headscale) validateNodeForOIDCCallback(
 		_, err = writer.Write(content.Bytes())
 		if err != nil {
 			util.LogErr(err, "Failed to write response")
+		}
+
+		stateUpdate := types.StateUpdateExpire(node.ID, expiry)
+		if stateUpdate.Valid() {
+			h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
 		}
 
 		return nil, true, nil
@@ -613,14 +619,22 @@ func (h *Headscale) registerNodeForOIDCCallback(
 	machineKey *key.MachinePublic,
 	expiry time.Time,
 ) error {
-	if _, err := h.db.RegisterNodeFromAuthCallback(
-		// TODO(kradalby): find a better way to use the cache across modules
-		h.registrationCache,
-		*machineKey,
-		user.Name,
-		&expiry,
-		util.RegisterMethodOIDC,
-	); err != nil {
+	if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := db.RegisterNodeFromAuthCallback(
+			// TODO(kradalby): find a better way to use the cache across modules
+			tx,
+			h.registrationCache,
+			*machineKey,
+			user.Name,
+			&expiry,
+			util.RegisterMethodOIDC,
+			h.cfg.IPPrefixes,
+		); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		util.LogErr(err, "could not register node")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)

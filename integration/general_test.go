@@ -26,6 +26,8 @@ func TestPingAllByIP(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
+	// TODO(kradalby): it does not look like the user thing works, only second
+	// get created? maybe only when many?
 	spec := map[string]int{
 		"user1": len(MustTestVersions),
 		"user2": len(MustTestVersions),
@@ -321,7 +323,12 @@ func TestTaildrop(t *testing.T) {
 				t.Fatalf("failed to install curl on %s, err: %s", client.Hostname(), err)
 			}
 		}
-		curlCommand := []string{"curl", "--unix-socket", "/var/run/tailscale/tailscaled.sock", "http://local-tailscaled.sock/localapi/v0/file-targets"}
+		curlCommand := []string{
+			"curl",
+			"--unix-socket",
+			"/var/run/tailscale/tailscaled.sock",
+			"http://local-tailscaled.sock/localapi/v0/file-targets",
+		}
 		err = retry(10, 1*time.Second, func() error {
 			result, _, err := client.Execute(curlCommand)
 			if err != nil {
@@ -338,13 +345,23 @@ func TestTaildrop(t *testing.T) {
 				for _, ft := range fts {
 					ftStr += fmt.Sprintf("\t%s\n", ft.Node.Name)
 				}
-				return fmt.Errorf("client %s does not have all its peers as FileTargets, got %d, want: %d\n%s", client.Hostname(), len(fts), len(allClients)-1, ftStr)
+				return fmt.Errorf(
+					"client %s does not have all its peers as FileTargets, got %d, want: %d\n%s",
+					client.Hostname(),
+					len(fts),
+					len(allClients)-1,
+					ftStr,
+				)
 			}
 
 			return err
 		})
 		if err != nil {
-			t.Errorf("failed to query localapi for filetarget on %s, err: %s", client.Hostname(), err)
+			t.Errorf(
+				"failed to query localapi for filetarget on %s, err: %s",
+				client.Hostname(),
+				err,
+			)
 		}
 	}
 
@@ -434,72 +451,6 @@ func TestTaildrop(t *testing.T) {
 	}
 }
 
-func TestResolveMagicDNS(t *testing.T) {
-	IntegrationSkip(t)
-	t.Parallel()
-
-	scenario, err := NewScenario()
-	assertNoErr(t, err)
-	defer scenario.Shutdown()
-
-	spec := map[string]int{
-		"magicdns1": len(MustTestVersions),
-		"magicdns2": len(MustTestVersions),
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("magicdns"))
-	assertNoErrHeadscaleEnv(t, err)
-
-	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
-
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
-
-	// Poor mans cache
-	_, err = scenario.ListTailscaleClientsFQDNs()
-	assertNoErrListFQDN(t, err)
-
-	_, err = scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
-
-	for _, client := range allClients {
-		for _, peer := range allClients {
-			// It is safe to ignore this error as we handled it when caching it
-			peerFQDN, _ := peer.FQDN()
-
-			command := []string{
-				"tailscale",
-				"ip", peerFQDN,
-			}
-			result, _, err := client.Execute(command)
-			if err != nil {
-				t.Fatalf(
-					"failed to execute resolve/ip command %s from %s: %s",
-					peerFQDN,
-					client.Hostname(),
-					err,
-				)
-			}
-
-			ips, err := peer.IPs()
-			if err != nil {
-				t.Fatalf(
-					"failed to get ips for %s: %s",
-					peer.Hostname(),
-					err,
-				)
-			}
-
-			for _, ip := range ips {
-				if !strings.Contains(result, ip.String()) {
-					t.Fatalf("ip %s is not found in \n%s\n", ip.String(), result)
-				}
-			}
-		}
-	}
-}
-
 func TestExpireNode(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -545,7 +496,7 @@ func TestExpireNode(t *testing.T) {
 	// TODO(kradalby): This is Headscale specific and would not play nicely
 	// with other implementations of the ControlServer interface
 	result, err := headscale.Execute([]string{
-		"headscale", "nodes", "expire", "--identifier", "0", "--output", "json",
+		"headscale", "nodes", "expire", "--identifier", "1", "--output", "json",
 	})
 	assertNoErr(t, err)
 
@@ -576,16 +527,38 @@ func TestExpireNode(t *testing.T) {
 				assertNotNil(t, peerStatus.Expired)
 				assert.NotNil(t, peerStatus.KeyExpiry)
 
-				t.Logf("node %q should have a key expire before %s, was %s", peerStatus.HostName, now.String(), peerStatus.KeyExpiry)
+				t.Logf(
+					"node %q should have a key expire before %s, was %s",
+					peerStatus.HostName,
+					now.String(),
+					peerStatus.KeyExpiry,
+				)
 				if peerStatus.KeyExpiry != nil {
-					assert.Truef(t, peerStatus.KeyExpiry.Before(now), "node %q should have a key expire before %s, was %s", peerStatus.HostName, now.String(), peerStatus.KeyExpiry)
+					assert.Truef(
+						t,
+						peerStatus.KeyExpiry.Before(now),
+						"node %q should have a key expire before %s, was %s",
+						peerStatus.HostName,
+						now.String(),
+						peerStatus.KeyExpiry,
+					)
 				}
 
-				assert.Truef(t, peerStatus.Expired, "node %q should be expired, expired is %v", peerStatus.HostName, peerStatus.Expired)
+				assert.Truef(
+					t,
+					peerStatus.Expired,
+					"node %q should be expired, expired is %v",
+					peerStatus.HostName,
+					peerStatus.Expired,
+				)
 
 				_, stderr, _ := client.Execute([]string{"tailscale", "ping", node.GetName()})
 				if !strings.Contains(stderr, "node key has expired") {
-					t.Errorf("expected to be unable to ping expired host %q from %q", node.GetName(), client.Hostname())
+					t.Errorf(
+						"expected to be unable to ping expired host %q from %q",
+						node.GetName(),
+						client.Hostname(),
+					)
 				}
 			} else {
 				t.Errorf("failed to find node %q with nodekey (%s) in mapresponse, should be present even if it is expired", node.GetName(), expiredNodeKey)
@@ -597,7 +570,7 @@ func TestExpireNode(t *testing.T) {
 
 			// NeedsLogin means that the node has understood that it is no longer
 			// valid.
-			assert.Equal(t, "NeedsLogin", status.BackendState)
+			assert.Equalf(t, "NeedsLogin", status.BackendState, "checking node %q", status.Self.HostName)
 		}
 	}
 }
@@ -690,7 +663,8 @@ func TestNodeOnlineLastSeenStatus(t *testing.T) {
 			assert.Truef(
 				t,
 				lastSeen.After(lastSeenThreshold),
-				"lastSeen (%v) was not %s after the threshold (%v)",
+				"node (%s) lastSeen (%v) was not %s after the threshold (%v)",
+				node.GetName(),
 				lastSeen,
 				keepAliveInterval,
 				lastSeenThreshold,

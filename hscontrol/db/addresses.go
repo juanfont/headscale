@@ -13,16 +13,23 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
+	"gorm.io/gorm"
 )
 
 var ErrCouldNotAllocateIP = errors.New("could not find any suitable IP")
 
 func (hsdb *HSDatabase) getAvailableIPs() (types.NodeAddresses, error) {
+	return Read(hsdb.DB, func(rx *gorm.DB) (types.NodeAddresses, error) {
+		return getAvailableIPs(rx, hsdb.ipPrefixes)
+	})
+}
+
+func getAvailableIPs(rx *gorm.DB, ipPrefixes []netip.Prefix) (types.NodeAddresses, error) {
 	var ips types.NodeAddresses
 	var err error
-	for _, ipPrefix := range hsdb.ipPrefixes {
+	for _, ipPrefix := range ipPrefixes {
 		var ip *netip.Addr
-		ip, err = hsdb.getAvailableIP(ipPrefix)
+		ip, err = getAvailableIP(rx, ipPrefix)
 		if err != nil {
 			return ips, err
 		}
@@ -32,8 +39,8 @@ func (hsdb *HSDatabase) getAvailableIPs() (types.NodeAddresses, error) {
 	return ips, err
 }
 
-func (hsdb *HSDatabase) getAvailableIP(ipPrefix netip.Prefix) (*netip.Addr, error) {
-	usedIps, err := hsdb.getUsedIPs()
+func getAvailableIP(rx *gorm.DB, ipPrefix netip.Prefix) (*netip.Addr, error) {
+	usedIps, err := getUsedIPs(rx)
 	if err != nil {
 		return nil, err
 	}
@@ -64,12 +71,12 @@ func (hsdb *HSDatabase) getAvailableIP(ipPrefix netip.Prefix) (*netip.Addr, erro
 	}
 }
 
-func (hsdb *HSDatabase) getUsedIPs() (*netipx.IPSet, error) {
+func getUsedIPs(rx *gorm.DB) (*netipx.IPSet, error) {
 	// FIXME: This really deserves a better data model,
 	// but this was quick to get running and it should be enough
 	// to begin experimenting with a dual stack tailnet.
 	var addressesSlices []string
-	hsdb.db.Model(&types.Node{}).Pluck("ip_addresses", &addressesSlices)
+	rx.Model(&types.Node{}).Pluck("ip_addresses", &addressesSlices)
 
 	var ips netipx.IPSetBuilder
 	for _, slice := range addressesSlices {

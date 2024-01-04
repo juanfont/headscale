@@ -6,6 +6,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
 )
 
 func (*Suite) TestCreatePreAuthKey(c *check.C) {
@@ -41,7 +42,7 @@ func (*Suite) TestExpiredPreAuthKey(c *check.C) {
 	user, err := db.CreateUser("test2")
 	c.Assert(err, check.IsNil)
 
-	now := time.Now()
+	now := time.Now().Add(-5 * time.Second)
 	pak, err := db.CreatePreAuthKey(user.Name, true, false, &now, nil)
 	c.Assert(err, check.IsNil)
 
@@ -82,7 +83,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
@@ -103,7 +104,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.IsNil)
@@ -138,19 +139,22 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 		LastSeen:       &now,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
 	_, err = db.ValidatePreAuthKey(pak.Key)
 	// Ephemeral keys are by definition reusable
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test7", "testest")
+	_, err = db.getNode("test7", "testest")
 	c.Assert(err, check.IsNil)
 
-	db.ExpireEphemeralNodes(time.Second * 20)
+	db.DB.Transaction(func(tx *gorm.DB) error {
+		ExpireEphemeralNodes(tx, time.Second*20)
+		return nil
+	})
 
 	// The machine record should have been deleted
-	_, err = db.GetNode("test7", "testest")
+	_, err = db.getNode("test7", "testest")
 	c.Assert(err, check.NotNil)
 }
 
@@ -178,7 +182,7 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 	pak.Used = true
-	db.db.Save(&pak)
+	db.DB.Save(&pak)
 
 	_, err = db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
