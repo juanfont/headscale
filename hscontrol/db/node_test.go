@@ -23,7 +23,7 @@ func (s *Suite) TestGetNode(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test", "testnode")
+	_, err = db.getNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -38,9 +38,9 @@ func (s *Suite) TestGetNode(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(node)
+	db.DB.Save(node)
 
-	_, err = db.GetNode("test", "testnode")
+	_, err = db.getNode("test", "testnode")
 	c.Assert(err, check.IsNil)
 }
 
@@ -66,37 +66,9 @@ func (s *Suite) TestGetNodeByID(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
 	_, err = db.GetNodeByID(0)
-	c.Assert(err, check.IsNil)
-}
-
-func (s *Suite) TestGetNodeByNodeKey(c *check.C) {
-	user, err := db.CreateUser("test")
-	c.Assert(err, check.IsNil)
-
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.GetNodeByID(0)
-	c.Assert(err, check.NotNil)
-
-	nodeKey := key.NewNode()
-	machineKey := key.NewMachine()
-
-	node := types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "testnode",
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
-	}
-	db.db.Save(&node)
-
-	_, err = db.GetNodeByNodeKey(nodeKey.Public())
 	c.Assert(err, check.IsNil)
 }
 
@@ -124,7 +96,7 @@ func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
 	_, err = db.GetNodeByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
 	c.Assert(err, check.IsNil)
@@ -146,12 +118,12 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(1),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
-	err = db.DeleteNode(&node)
+	err = db.DeleteNode(&node, map[key.MachinePublic]bool{})
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode(user.Name, "testnode3")
+	_, err = db.getNode(user.Name, "testnode3")
 	c.Assert(err, check.NotNil)
 }
 
@@ -178,7 +150,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 			RegisterMethod: util.RegisterMethodAuthKey,
 			AuthKeyID:      uint(pak.ID),
 		}
-		db.db.Save(&node)
+		db.DB.Save(&node)
 	}
 
 	node0ByID, err := db.GetNodeByID(0)
@@ -228,7 +200,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 			RegisterMethod: util.RegisterMethodAuthKey,
 			AuthKeyID:      uint(stor[index%2].key.ID),
 		}
-		db.db.Save(&node)
+		db.DB.Save(&node)
 	}
 
 	aclPolicy := &policy.ACLPolicy{
@@ -295,7 +267,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test", "testnode")
+	_, err = db.getNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -311,16 +283,19 @@ func (s *Suite) TestExpireNode(c *check.C) {
 		AuthKeyID:      uint(pak.ID),
 		Expiry:         &time.Time{},
 	}
-	db.db.Save(node)
+	db.DB.Save(node)
 
-	nodeFromDB, err := db.GetNode("test", "testnode")
+	nodeFromDB, err := db.getNode("test", "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(nodeFromDB, check.NotNil)
 
 	c.Assert(nodeFromDB.IsExpired(), check.Equals, false)
 
 	now := time.Now()
-	err = db.NodeSetExpiry(nodeFromDB, now)
+	err = db.NodeSetExpiry(nodeFromDB.ID, now)
+	c.Assert(err, check.IsNil)
+
+	nodeFromDB, err = db.getNode("test", "testnode")
 	c.Assert(err, check.IsNil)
 
 	c.Assert(nodeFromDB.IsExpired(), check.Equals, true)
@@ -354,7 +329,7 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user1.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("user-1", "testnode")
+	_, err = db.getNode("user-1", "testnode")
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -372,7 +347,7 @@ func (s *Suite) TestGenerateGivenName(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(node)
+	db.DB.Save(node)
 
 	givenName, err := db.GenerateGivenName(machineKey2.Public(), "hostname-2")
 	comment := check.Commentf("Same user, unique nodes, unique hostnames, no conflict")
@@ -397,7 +372,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test", "testnode")
+	_, err = db.getNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -412,21 +387,21 @@ func (s *Suite) TestSetTags(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(node)
+	db.DB.Save(node)
 
 	// assign simple tags
 	sTags := []string{"tag:test", "tag:foo"}
-	err = db.SetTags(node, sTags)
+	err = db.SetTags(node.ID, sTags)
 	c.Assert(err, check.IsNil)
-	node, err = db.GetNode("test", "testnode")
+	node, err = db.getNode("test", "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(node.ForcedTags, check.DeepEquals, types.StringList(sTags))
 
 	// assign duplicat tags, expect no errors but no doubles in DB
 	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
-	err = db.SetTags(node, eTags)
+	err = db.SetTags(node.ID, eTags)
 	c.Assert(err, check.IsNil)
-	node, err = db.GetNode("test", "testnode")
+	node, err = db.getNode("test", "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(
 		node.ForcedTags,
@@ -601,7 +576,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 	}
 
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
 	sendUpdate, err := db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
@@ -610,7 +585,8 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	node0ByID, err := db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)
 
-	err = db.EnableAutoApprovedRoutes(pol, node0ByID)
+	// TODO(kradalby): Check state update
+	_, err = db.EnableAutoApprovedRoutes(pol, node0ByID)
 	c.Assert(err, check.IsNil)
 
 	enabledRoutes, err := db.GetEnabledRoutes(node0ByID)

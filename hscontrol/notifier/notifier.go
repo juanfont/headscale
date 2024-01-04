@@ -1,6 +1,7 @@
 package notifier
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,26 +13,30 @@ import (
 )
 
 type Notifier struct {
-	l     sync.RWMutex
-	nodes map[string]chan<- types.StateUpdate
+	l         sync.RWMutex
+	nodes     map[string]chan<- types.StateUpdate
+	connected map[key.MachinePublic]bool
 }
 
 func NewNotifier() *Notifier {
-	return &Notifier{}
+	return &Notifier{
+		nodes:     make(map[string]chan<- types.StateUpdate),
+		connected: make(map[key.MachinePublic]bool),
+	}
 }
 
 func (n *Notifier) AddNode(machineKey key.MachinePublic, c chan<- types.StateUpdate) {
 	log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("acquiring lock to add node")
-	defer log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("releasing lock to add node")
+	defer log.Trace().
+		Caller().
+		Str("key", machineKey.ShortString()).
+		Msg("releasing lock to add node")
 
 	n.l.Lock()
 	defer n.l.Unlock()
 
-	if n.nodes == nil {
-		n.nodes = make(map[string]chan<- types.StateUpdate)
-	}
-
 	n.nodes[machineKey.String()] = c
+	n.connected[machineKey] = true
 
 	log.Trace().
 		Str("machine_key", machineKey.ShortString()).
@@ -41,16 +46,20 @@ func (n *Notifier) AddNode(machineKey key.MachinePublic, c chan<- types.StateUpd
 
 func (n *Notifier) RemoveNode(machineKey key.MachinePublic) {
 	log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("acquiring lock to remove node")
-	defer log.Trace().Caller().Str("key", machineKey.ShortString()).Msg("releasing lock to remove node")
+	defer log.Trace().
+		Caller().
+		Str("key", machineKey.ShortString()).
+		Msg("releasing lock to remove node")
 
 	n.l.Lock()
 	defer n.l.Unlock()
 
-	if n.nodes == nil {
+	if len(n.nodes) == 0 {
 		return
 	}
 
 	delete(n.nodes, machineKey.String())
+	n.connected[machineKey] = false
 
 	log.Trace().
 		Str("machine_key", machineKey.ShortString()).
@@ -64,23 +73,28 @@ func (n *Notifier) IsConnected(machineKey key.MachinePublic) bool {
 	n.l.RLock()
 	defer n.l.RUnlock()
 
-	if _, ok := n.nodes[machineKey.String()]; ok {
-		return true
-	}
-
-	return false
+	return n.connected[machineKey]
 }
 
-func (n *Notifier) NotifyAll(update types.StateUpdate) {
-	n.NotifyWithIgnore(update)
+// TODO(kradalby): This returns a pointer and can be dangerous.
+func (n *Notifier) ConnectedMap() map[key.MachinePublic]bool {
+	return n.connected
 }
 
-func (n *Notifier) NotifyWithIgnore(update types.StateUpdate, ignore ...string) {
+func (n *Notifier) NotifyAll(ctx context.Context, update types.StateUpdate) {
+	n.NotifyWithIgnore(ctx, update)
+}
+
+func (n *Notifier) NotifyWithIgnore(
+	ctx context.Context,
+	update types.StateUpdate,
+	ignore ...string,
+) {
 	log.Trace().Caller().Interface("type", update.Type).Msg("acquiring lock to notify")
 	defer log.Trace().
 		Caller().
 		Interface("type", update.Type).
-		Msg("releasing lock, finished notifing")
+		Msg("releasing lock, finished notifying")
 
 	n.l.RLock()
 	defer n.l.RUnlock()
@@ -90,23 +104,58 @@ func (n *Notifier) NotifyWithIgnore(update types.StateUpdate, ignore ...string) 
 			continue
 		}
 
-		log.Trace().Caller().Str("machine", key).Strs("ignoring", ignore).Msg("sending update")
-		c <- update
+		select {
+		case <-ctx.Done():
+			log.Error().
+				Err(ctx.Err()).
+				Str("mkey", key).
+				Any("origin", ctx.Value("origin")).
+				Any("hostname", ctx.Value("hostname")).
+				Msgf("update not sent, context cancelled")
+
+			return
+		case c <- update:
+			log.Trace().
+				Str("mkey", key).
+				Any("origin", ctx.Value("origin")).
+				Any("hostname", ctx.Value("hostname")).
+				Msgf("update successfully sent on chan")
+		}
 	}
 }
 
-func (n *Notifier) NotifyByMachineKey(update types.StateUpdate, mKey key.MachinePublic) {
+func (n *Notifier) NotifyByMachineKey(
+	ctx context.Context,
+	update types.StateUpdate,
+	mKey key.MachinePublic,
+) {
 	log.Trace().Caller().Interface("type", update.Type).Msg("acquiring lock to notify")
 	defer log.Trace().
 		Caller().
 		Interface("type", update.Type).
-		Msg("releasing lock, finished notifing")
+		Msg("releasing lock, finished notifying")
 
 	n.l.RLock()
 	defer n.l.RUnlock()
 
 	if c, ok := n.nodes[mKey.String()]; ok {
-		c <- update
+		select {
+		case <-ctx.Done():
+			log.Error().
+				Err(ctx.Err()).
+				Str("mkey", mKey.String()).
+				Any("origin", ctx.Value("origin")).
+				Any("hostname", ctx.Value("hostname")).
+				Msgf("update not sent, context cancelled")
+
+			return
+		case c <- update:
+			log.Trace().
+				Str("mkey", mKey.String()).
+				Any("origin", ctx.Value("origin")).
+				Any("hostname", ctx.Value("hostname")).
+				Msgf("update successfully sent on chan")
+		}
 	}
 }
 

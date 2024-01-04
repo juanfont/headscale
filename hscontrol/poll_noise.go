@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	MinimumCapVersion tailcfg.CapabilityVersion = 56
+	MinimumCapVersion tailcfg.CapabilityVersion = 58
 )
 
 // NoisePollNetMapHandler takes care of /machine/:id/map using the Noise protocol

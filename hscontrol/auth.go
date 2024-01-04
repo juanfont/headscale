@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -243,8 +245,6 @@ func (h *Headscale) handleRegister(
 
 // handleAuthKey contains the logic to manage auth key client registration
 // When using Noise, the machineKey is Zero.
-//
-// TODO: check if any locks are needed around IP allocation.
 func (h *Headscale) handleAuthKey(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
@@ -311,6 +311,9 @@ func (h *Headscale) handleAuthKey(
 
 	nodeKey := registerRequest.NodeKey
 
+	var update types.StateUpdate
+	var mkey key.MachinePublic
+
 	// retrieve node information if it exist
 	// The error is not important, because if it does not
 	// exist, then this is a new node and we will move
@@ -324,7 +327,7 @@ func (h *Headscale) handleAuthKey(
 
 		node.NodeKey = nodeKey
 		node.AuthKeyID = uint(pak.ID)
-		err := h.db.NodeSetExpiry(node, registerRequest.Expiry)
+		err := h.db.NodeSetExpiry(node.ID, registerRequest.Expiry)
 		if err != nil {
 			log.Error().
 				Caller().
@@ -335,10 +338,13 @@ func (h *Headscale) handleAuthKey(
 			return
 		}
 
+		mkey = node.MachineKey
+		update = types.StateUpdateExpire(node.ID, registerRequest.Expiry)
+
 		aclTags := pak.Proto().GetAclTags()
 		if len(aclTags) > 0 {
 			// This conditional preserves the existing behaviour, although SaaS would reset the tags on auth-key login
-			err = h.db.SetTags(node, aclTags)
+			err = h.db.SetTags(node.ID, aclTags)
 
 			if err != nil {
 				log.Error().
@@ -370,6 +376,7 @@ func (h *Headscale) handleAuthKey(
 			Hostname:       registerRequest.Hostinfo.Hostname,
 			GivenName:      givenName,
 			UserID:         pak.User.ID,
+			User:           pak.User,
 			MachineKey:     machineKey,
 			RegisterMethod: util.RegisterMethodAuthKey,
 			Expiry:         &registerRequest.Expiry,
@@ -393,9 +400,18 @@ func (h *Headscale) handleAuthKey(
 
 			return
 		}
+
+		mkey = node.MachineKey
+		update = types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: types.Nodes{node},
+			Message:     "called from auth.handleAuthKey",
+		}
 	}
 
-	err = h.db.UsePreAuthKey(pak)
+	err = h.db.DB.Transaction(func(tx *gorm.DB) error {
+		return db.UsePreAuthKey(tx, pak)
+	})
 	if err != nil {
 		log.Error().
 			Caller().
@@ -437,6 +453,13 @@ func (h *Headscale) handleAuthKey(
 			Caller().
 			Err(err).
 			Msg("Failed to write response")
+		return
+	}
+
+	// TODO(kradalby): if notifying after register make sense.
+	if update.Valid() {
+		ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
+		h.nodeNotifier.NotifyWithIgnore(ctx, update, mkey.String())
 	}
 
 	log.Info().
@@ -502,7 +525,7 @@ func (h *Headscale) handleNodeLogOut(
 		Msg("Client requested logout")
 
 	now := time.Now()
-	err := h.db.NodeSetExpiry(&node, now)
+	err := h.db.NodeSetExpiry(node.ID, now)
 	if err != nil {
 		log.Error().
 			Caller().
@@ -513,17 +536,10 @@ func (h *Headscale) handleNodeLogOut(
 		return
 	}
 
-	stateUpdate := types.StateUpdate{
-		Type: types.StatePeerChangedPatch,
-		ChangePatches: []*tailcfg.PeerChange{
-			{
-				NodeID:    tailcfg.NodeID(node.ID),
-				KeyExpiry: &now,
-			},
-		},
-	}
+	stateUpdate := types.StateUpdateExpire(node.ID, now)
 	if stateUpdate.Valid() {
-		h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+		ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
+		h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
 	}
 
 	resp.AuthURL = ""
@@ -554,12 +570,21 @@ func (h *Headscale) handleNodeLogOut(
 	}
 
 	if node.IsEphemeral() {
-		err = h.db.DeleteNode(&node)
+		err = h.db.DeleteNode(&node, h.nodeNotifier.ConnectedMap())
 		if err != nil {
 			log.Error().
 				Err(err).
 				Str("node", node.Hostname).
 				Msg("Cannot delete ephemeral node from the database")
+		}
+
+		stateUpdate := types.StateUpdate{
+			Type:    types.StatePeerRemoved,
+			Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
+		}
+		if stateUpdate.Valid() {
+			ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
+			h.nodeNotifier.NotifyAll(ctx, stateUpdate)
 		}
 
 		return
@@ -633,7 +658,9 @@ func (h *Headscale) handleNodeKeyRefresh(
 		Str("node", node.Hostname).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
 
-	err := h.db.NodeSetNodeKey(&node, registerRequest.NodeKey)
+	err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+		return db.NodeSetNodeKey(tx, &node, registerRequest.NodeKey)
+	})
 	if err != nil {
 		log.Error().
 			Caller().

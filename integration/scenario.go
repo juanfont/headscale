@@ -56,8 +56,8 @@ var (
 		"1.44":     true,  // CapVer: 63
 		"1.42":     true,  // CapVer: 61
 		"1.40":     true,  // CapVer: 61
-		"1.38":     true,  // CapVer: 58
-		"1.36":     true,  // Oldest supported version, CapVer: 56
+		"1.38":     true,  // Oldest supported version, CapVer: 58
+		"1.36":     false, // CapVer: 56
 		"1.34":     false, // CapVer: 51
 		"1.32":     false, // CapVer: 46
 		"1.30":     false,

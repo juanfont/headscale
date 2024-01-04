@@ -905,32 +905,39 @@ func (pol *ACLPolicy) TagsOfNode(
 	validTags := make([]string, 0)
 	invalidTags := make([]string, 0)
 
+	// TODO(kradalby): Why is this sometimes nil? coming from tailNode?
+	if node == nil {
+		return validTags, invalidTags
+	}
+
 	validTagMap := make(map[string]bool)
 	invalidTagMap := make(map[string]bool)
-	for _, tag := range node.Hostinfo.RequestTags {
-		owners, err := expandOwnersFromTag(pol, tag)
-		if errors.Is(err, ErrInvalidTag) {
-			invalidTagMap[tag] = true
+	if node.Hostinfo != nil {
+		for _, tag := range node.Hostinfo.RequestTags {
+			owners, err := expandOwnersFromTag(pol, tag)
+			if errors.Is(err, ErrInvalidTag) {
+				invalidTagMap[tag] = true
 
-			continue
-		}
-		var found bool
-		for _, owner := range owners {
-			if node.User.Name == owner {
-				found = true
+				continue
+			}
+			var found bool
+			for _, owner := range owners {
+				if node.User.Name == owner {
+					found = true
+				}
+			}
+			if found {
+				validTagMap[tag] = true
+			} else {
+				invalidTagMap[tag] = true
 			}
 		}
-		if found {
-			validTagMap[tag] = true
-		} else {
-			invalidTagMap[tag] = true
+		for tag := range invalidTagMap {
+			invalidTags = append(invalidTags, tag)
 		}
-	}
-	for tag := range invalidTagMap {
-		invalidTags = append(invalidTags, tag)
-	}
-	for tag := range validTagMap {
-		validTags = append(validTags, tag)
+		for tag := range validTagMap {
+			validTags = append(validTags, tag)
+		}
 	}
 
 	return validTags, invalidTags

@@ -33,6 +33,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
+	"github.com/pkg/profile"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -48,6 +49,7 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+	"gorm.io/gorm"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -61,7 +63,7 @@ var (
 		"unknown value for Lets Encrypt challenge type",
 	)
 	errEmptyInitialDERPMap = errors.New(
-		"initial DERPMap is empty, Headscale requries at least one entry",
+		"initial DERPMap is empty, Headscale requires at least one entry",
 	)
 )
 
@@ -166,7 +168,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		cfg.DBtype,
 		dbString,
 		app.dbDebug,
-		app.nodeNotifier,
 		cfg.IPPrefixes,
 		cfg.BaseDomain)
 	if err != nil {
@@ -234,8 +235,23 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 // seen for longer than h.cfg.EphemeralNodeInactivityTimeout.
 func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
+
+	var update types.StateUpdate
+	var changed bool
 	for range ticker.C {
-		h.db.ExpireEphemeralNodes(h.cfg.EphemeralNodeInactivityTimeout)
+		if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+			update, changed = db.ExpireEphemeralNodes(tx, h.cfg.EphemeralNodeInactivityTimeout)
+
+			return nil
+		}); err != nil {
+			log.Error().Err(err).Msg("database error while expiring ephemeral nodes")
+			continue
+		}
+
+		if changed && update.Valid() {
+			ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
+			h.nodeNotifier.NotifyAll(ctx, update)
+		}
 	}
 }
 
@@ -246,9 +262,24 @@ func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 	ticker := time.NewTicker(interval)
 
 	lastCheck := time.Unix(0, 0)
+	var update types.StateUpdate
+	var changed bool
 
 	for range ticker.C {
-		lastCheck = h.db.ExpireExpiredNodes(lastCheck)
+		if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+			lastCheck, update, changed = db.ExpireExpiredNodes(tx, lastCheck)
+
+			return nil
+		}); err != nil {
+			log.Error().Err(err).Msg("database error while expiring nodes")
+			continue
+		}
+
+		log.Trace().Str("nodes", update.ChangeNodes.String()).Msgf("expiring nodes")
+		if changed && update.Valid() {
+			ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
+			h.nodeNotifier.NotifyAll(ctx, update)
+		}
 	}
 }
 
@@ -278,7 +309,8 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 				DERPMap: h.DERPMap,
 			}
 			if stateUpdate.Valid() {
-				h.nodeNotifier.NotifyAll(stateUpdate)
+				ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
+				h.nodeNotifier.NotifyAll(ctx, stateUpdate)
 			}
 		}
 	}
@@ -485,6 +517,19 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 // Serve launches a GIN server with the Headscale API.
 func (h *Headscale) Serve() error {
+	if _, enableProfile := os.LookupEnv("HEADSCALE_PROFILING_ENABLED"); enableProfile {
+		if profilePath, ok := os.LookupEnv("HEADSCALE_PROFILING_PATH"); ok {
+			err := os.MkdirAll(profilePath, os.ModePerm)
+			if err != nil {
+				log.Fatal().Err(err).Msg("failed to create profiling directory")
+			}
+
+			defer profile.Start(profile.ProfilePath(profilePath)).Stop()
+		} else {
+			defer profile.Start().Stop()
+		}
+	}
+
 	var err error
 
 	// Fetch an initial DERP Map before we start serving
@@ -753,7 +798,8 @@ func (h *Headscale) Serve() error {
 						Str("path", aclPath).
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
-					h.nodeNotifier.NotifyAll(types.StateUpdate{
+					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
+					h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 						Type: types.StateFullUpdate,
 					})
 				}

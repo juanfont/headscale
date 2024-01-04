@@ -6,7 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"gopkg.in/check.v1"
 )
 
@@ -48,7 +47,6 @@ func (s *Suite) ResetDB(c *check.C) {
 		"sqlite3",
 		tmpDir+"/headscale_test.db",
 		false,
-		notifier.NewNotifier(),
 		[]netip.Prefix{
 			netip.MustParsePrefix("10.27.0.0/23"),
 		},

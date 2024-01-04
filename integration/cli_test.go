@@ -1240,7 +1240,7 @@ func TestNodeRenameCommand(t *testing.T) {
 	assert.Contains(t, listAll[4].GetGivenName(), "node-5")
 
 	for idx := 0; idx < 3; idx++ {
-		_, err := headscale.Execute(
+		res, err := headscale.Execute(
 			[]string{
 				"headscale",
 				"nodes",
@@ -1251,6 +1251,8 @@ func TestNodeRenameCommand(t *testing.T) {
 			},
 		)
 		assert.Nil(t, err)
+
+		assert.Contains(t, res, "Node renamed")
 	}
 
 	var listAllAfterRename []v1.Node

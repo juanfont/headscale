@@ -36,7 +36,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	err = db.DestroyUser("test")
 	c.Assert(err, check.IsNil)
 
-	result := db.db.Preload("User").First(&pak, "key = ?", pak.Key)
+	result := db.DB.Preload("User").First(&pak, "key = ?", pak.Key)
 	// destroying a user also deletes all associated preauthkeys
 	c.Assert(result.Error, check.Equals, gorm.ErrRecordNotFound)
 
@@ -53,7 +53,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
 	err = db.DestroyUser("test")
 	c.Assert(err, check.Equals, ErrUserStillHasNodes)
@@ -105,7 +105,7 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 	c.Assert(node.UserID, check.Equals, oldUser.ID)
 
 	err = db.AssignNodeToUser(&node, newUser.Name)
