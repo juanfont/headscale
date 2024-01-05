@@ -340,6 +340,16 @@ func (hsdb *HSDatabase) nodeSetExpiry(node *types.Node, expiry time.Time) error 
 		)
 	}
 
+	node.Expiry = &expiry
+
+	stateSelfUpdate := types.StateUpdate{
+		Type:        types.StateSelfUpdate,
+		ChangeNodes: types.Nodes{node},
+	}
+	if stateSelfUpdate.Valid() {
+		hsdb.notifier.NotifyByMachineKey(stateSelfUpdate, node.MachineKey)
+	}
+
 	stateUpdate := types.StateUpdate{
 		Type: types.StatePeerChangedPatch,
 		ChangePatches: []*tailcfg.PeerChange{
@@ -350,7 +360,7 @@ func (hsdb *HSDatabase) nodeSetExpiry(node *types.Node, expiry time.Time) error 
 		},
 	}
 	if stateUpdate.Valid() {
-		hsdb.notifier.NotifyAll(stateUpdate)
+		hsdb.notifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
 	}
 
 	return nil
@@ -856,7 +866,7 @@ func (hsdb *HSDatabase) ExpireExpiredNodes(lastCheck time.Time) time.Time {
 	// checked everything.
 	started := time.Now()
 
-	expired := make([]*tailcfg.PeerChange, 0)
+	expiredNodes := make([]*types.Node, 0)
 
 	nodes, err := hsdb.listNodes()
 	if err != nil {
@@ -872,17 +882,13 @@ func (hsdb *HSDatabase) ExpireExpiredNodes(lastCheck time.Time) time.Time {
 			// It will notify about all nodes that has been expired.
 			// It should only notify about expired nodes since _last check_.
 			node.Expiry.After(lastCheck) {
-			expired = append(expired, &tailcfg.PeerChange{
-				NodeID:    tailcfg.NodeID(node.ID),
-				KeyExpiry: node.Expiry,
-			})
+			expiredNodes = append(expiredNodes, &nodes[index])
 
-			now := time.Now()
 			// Do not use setNodeExpiry as that has a notifier hook, which
 			// can cause a deadlock, we are updating all changed nodes later
 			// and there is no point in notifiying twice.
 			if err := hsdb.db.Model(nodes[index]).Updates(types.Node{
-				Expiry: &now,
+				Expiry: &started,
 			}).Error; err != nil {
 				log.Error().
 					Err(err).
@@ -898,12 +904,32 @@ func (hsdb *HSDatabase) ExpireExpiredNodes(lastCheck time.Time) time.Time {
 		}
 	}
 
+	expired := make([]*tailcfg.PeerChange, len(expiredNodes))
+	for idx, node := range expiredNodes {
+		expired[idx] = &tailcfg.PeerChange{
+			NodeID:    tailcfg.NodeID(node.ID),
+			KeyExpiry: &started,
+		}
+	}
+
+	// Inform the peers of a node with a lightweight update.
 	stateUpdate := types.StateUpdate{
 		Type:          types.StatePeerChangedPatch,
 		ChangePatches: expired,
 	}
 	if stateUpdate.Valid() {
 		hsdb.notifier.NotifyAll(stateUpdate)
+	}
+
+	// Inform the node itself that it has expired.
+	for _, node := range expiredNodes {
+		stateSelfUpdate := types.StateUpdate{
+			Type:        types.StateSelfUpdate,
+			ChangeNodes: types.Nodes{node},
+		}
+		if stateSelfUpdate.Valid() {
+			hsdb.notifier.NotifyByMachineKey(stateSelfUpdate, node.MachineKey)
+		}
 	}
 
 	return started

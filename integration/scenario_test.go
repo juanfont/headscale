@@ -142,7 +142,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	})
 
 	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInUser(user, "1.30.2", count)
+		err := scenario.CreateTailscaleNodesInUser(user, "unstable", count)
 		if err != nil {
 			t.Fatalf("failed to add tailscale nodes: %s", err)
 		}
