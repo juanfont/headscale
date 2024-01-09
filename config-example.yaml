@@ -40,6 +40,10 @@ grpc_listen_addr: 127.0.0.1:50443
 # are doing.
 grpc_allow_insecure: false
 
+# Need to specify a private key path to write either the 
+# Noise or regular private keys.
+private_key_path: /var/lib/headscale/private.key
+
 # The Noise section includes specific configuration for the
 # TS2021 Noise protocol
 noise:
