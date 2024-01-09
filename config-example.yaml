@@ -260,7 +260,6 @@ policy:
 # all the fields under `dns` should be set to empty values.
 dns:
   # Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
-  # Only works if there is at least a nameserver defined.
   magic_dns: true
 
   # Defines the base domain to create the hostnames for MagicDNS.
