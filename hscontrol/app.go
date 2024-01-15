@@ -48,6 +48,7 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
@@ -59,7 +60,9 @@ var (
 	errUnsupportedLetsEncryptChallengeType = errors.New(
 		"unknown value for Lets Encrypt challenge type",
 	)
-	errEmptyInitialDERPMap = errors.New("initial DERPMap is empty, Headscale requires at least one entry")
+	errEmptyInitialDERPMap = errors.New(
+		"initial DERPMap is empty, Headscale requries at least one entry",
+	)
 )
 
 const (
@@ -96,8 +99,15 @@ type Headscale struct {
 	pollNetMapStreamWG sync.WaitGroup
 }
 
+var (
+	profilingEnabled = envknob.Bool("HEADSCALE_PROFILING_ENABLED")
+	tailsqlEnabled   = envknob.Bool("HEADSCALE_DEBUG_TAILSQL_ENABLED")
+	tailsqlStateDir  = envknob.String("HEADSCALE_DEBUG_TAILSQL_STATE_DIR")
+	tailsqlTSKey     = envknob.String("TS_AUTHKEY")
+)
+
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
-	if _, enableProfile := os.LookupEnv("HEADSCALE_PROFILING_ENABLED"); enableProfile {
+	if profilingEnabled {
 		runtime.SetBlockProfileRate(1)
 	}
 
@@ -698,6 +708,18 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
 
+	var tailsqlContext context.Context
+	if tailsqlEnabled {
+		if h.cfg.DBtype != db.Sqlite {
+			log.Fatal().Str("type", h.cfg.DBtype).Msgf("tailsql only support %q", db.Sqlite)
+		}
+		if tailsqlTSKey == "" {
+			log.Fatal().Msg("tailsql requires TS_AUTHKEY to be set")
+		}
+		tailsqlContext = context.Background()
+		go runTailSQLService(ctx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.DBpath)
+	}
+
 	// Handle common process-killing signals so we can gracefully shut down:
 	h.shutdownChan = make(chan struct{})
 	sigc := make(chan os.Signal, 1)
@@ -761,6 +783,10 @@ func (h *Headscale) Serve() error {
 				if grpcServer != nil {
 					grpcServer.GracefulStop()
 					grpcListener.Close()
+				}
+
+				if tailsqlContext != nil {
+					tailsqlContext.Done()
 				}
 
 				// Close network listeners
@@ -900,7 +926,8 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 		err = os.WriteFile(path, machineKeyStr, privateKeyFileMode)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to save private key to disk: %w",
+				"failed to save private key to disk at path %q: %w",
+				path,
 				err,
 			)
 		}

@@ -290,11 +290,14 @@ func GetDERPConfig() DERPConfig {
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
-	privateKeyPath := util.AbsolutePathFromConfigPath(viper.GetString("derp.server.private_key_path"))
+	privateKeyPath := util.AbsolutePathFromConfigPath(
+		viper.GetString("derp.server.private_key_path"),
+	)
 	ipv4 := viper.GetString("derp.server.ipv4")
 	ipv6 := viper.GetString("derp.server.ipv6")
-	automatically_add_embedded_derp_region := viper.GetBool("derp.server.automatically_add_embedded_derp_region")
-
+	automaticallyAddEmbeddedDerpRegion := viper.GetBool(
+		"derp.server.automatically_add_embedded_derp_region",
+	)
 	if serverEnabled && stunAddr == "" {
 		log.Fatal().
 			Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
@@ -317,7 +320,7 @@ func GetDERPConfig() DERPConfig {
 
 	paths := viper.GetStringSlice("derp.paths")
 
-	if serverEnabled && !automatically_add_embedded_derp_region && len(paths) == 0 {
+	if serverEnabled && !automaticallyAddEmbeddedDerpRegion && len(paths) == 0 {
 		log.Fatal().
 			Msg("Disabling derp.server.automatically_add_embedded_derp_region requires to configure the derp server in derp.paths")
 	}
@@ -338,7 +341,7 @@ func GetDERPConfig() DERPConfig {
 		UpdateFrequency:                    updateFrequency,
 		IPv4:                               ipv4,
 		IPv6:                               ipv6,
-		AutomaticallyAddEmbeddedDerpRegion: automatically_add_embedded_derp_region,
+		AutomaticallyAddEmbeddedDerpRegion: automaticallyAddEmbeddedDerpRegion,
 	}
 }
 
