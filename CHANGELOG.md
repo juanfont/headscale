@@ -1,9 +1,5 @@
 # CHANGELOG
 
-### Changes
-
-Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
-
 ## 0.23.0 (2023-XX-XX)
 
 This release is mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
@@ -47,6 +43,7 @@ Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) tak
 Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
 Fix [TS-2023-006](https://tailscale.com/security-bulletins/#ts-2023-006) security UPnP issue [#1563](https://github.com/juanfont/headscale/pull/1563)
 Turn off gRPC logging [#1640](https://github.com/juanfont/headscale/pull/1640) fixes [#1259](https://github.com/juanfont/headscale/issues/1259)
+Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
 
 ## 0.22.3 (2023-05-12)
 
