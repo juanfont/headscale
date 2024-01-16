@@ -397,6 +397,14 @@ func (h *Headscale) handlePoll(
 			case types.StatePeerRemoved:
 				logInfo("Sending PeerRemoved MapResponse")
 				data, err = mapp.PeerRemovedResponse(mapRequest, node, update.Removed)
+			case types.StateSelfUpdate:
+				if len(update.ChangeNodes) == 1 {
+					logInfo("Sending SelfUpdate MapResponse")
+					node = update.ChangeNodes[0]
+					data, err = mapp.LiteMapResponse(mapRequest, node, h.ACLPolicy)
+				} else {
+					logInfo("SelfUpdate contained too many nodes, this is likely a bug in the code, please report.")
+				}
 			case types.StateDERPUpdated:
 				logInfo("Sending DERPUpdate MapResponse")
 				data, err = mapp.DERPMapResponse(mapRequest, node, update.DERPMap)

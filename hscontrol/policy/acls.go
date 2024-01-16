@@ -674,14 +674,18 @@ func expandOwnersFromTag(
 	pol *ACLPolicy,
 	tag string,
 ) ([]string, error) {
+	noTagErr := fmt.Errorf(
+		"%w. %v isn't owned by a TagOwner. Please add one first. https://tailscale.com/kb/1018/acls/#tag-owners",
+		ErrInvalidTag,
+		tag,
+	)
+	if pol == nil {
+		return []string{}, noTagErr
+	}
 	var owners []string
 	ows, ok := pol.TagOwners[tag]
 	if !ok {
-		return []string{}, fmt.Errorf(
-			"%w. %v isn't owned by a TagOwner. Please add one first. https://tailscale.com/kb/1018/acls/#tag-owners",
-			ErrInvalidTag,
-			tag,
-		)
+		return []string{}, noTagErr
 	}
 	for _, owner := range ows {
 		if isGroup(owner) {

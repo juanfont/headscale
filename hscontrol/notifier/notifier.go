@@ -95,6 +95,21 @@ func (n *Notifier) NotifyWithIgnore(update types.StateUpdate, ignore ...string) 
 	}
 }
 
+func (n *Notifier) NotifyByMachineKey(update types.StateUpdate, mKey key.MachinePublic) {
+	log.Trace().Caller().Interface("type", update.Type).Msg("acquiring lock to notify")
+	defer log.Trace().
+		Caller().
+		Interface("type", update.Type).
+		Msg("releasing lock, finished notifing")
+
+	n.l.RLock()
+	defer n.l.RUnlock()
+
+	if c, ok := n.nodes[mKey.String()]; ok {
+		c <- update
+	}
+}
+
 func (n *Notifier) String() string {
 	n.l.RLock()
 	defer n.l.RUnlock()

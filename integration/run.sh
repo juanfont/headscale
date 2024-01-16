@@ -13,8 +13,10 @@ run_tests() {
 
 	for ((i = 1; i <= num_tests; i++)); do
 		docker network prune -f >/dev/null 2>&1
-		docker rm headscale-test-suite || true
-		docker kill "$(docker ps -q)" || true
+		docker rm headscale-test-suite >/dev/null 2>&1 || true
+		docker kill "$(docker ps -q)" >/dev/null 2>&1 || true
+
+		echo "Run $i"
 
 		start=$(date +%s)
 		docker run \

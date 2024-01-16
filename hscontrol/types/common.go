@@ -91,6 +91,12 @@ const (
 	StatePeerChanged
 	StatePeerChangedPatch
 	StatePeerRemoved
+	// StateSelfUpdate is used to indicate that the node
+	// has changed in control, and the client needs to be
+	// informed.
+	// The updated node is inside the ChangeNodes field
+	// which should have a length of one.
+	StateSelfUpdate
 	StateDERPUpdated
 )
 
@@ -141,6 +147,10 @@ func (su *StateUpdate) Valid() bool {
 	case StatePeerRemoved:
 		if su.Removed == nil {
 			panic("Mandatory field Removed is not set on StatePeerRemove update")
+		}
+	case StateSelfUpdate:
+		if su.ChangeNodes == nil || len(su.ChangeNodes) != 1 {
+			panic("Mandatory field ChangeNodes is not set for StateSelfUpdate or has more than one node")
 		}
 	case StateDERPUpdated:
 		if su.DERPMap == nil {

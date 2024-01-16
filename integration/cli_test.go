@@ -8,6 +8,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -662,6 +663,119 @@ func TestNodeTagCommand(t *testing.T) {
 		true,
 		found,
 		"should find a node with the tag 'tag:test' in the list of nodes",
+	)
+}
+
+func TestNodeAdvertiseTagNoACLCommand(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:test"})}, hsic.WithTestName("cliadvtags"))
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	// Test list all nodes after added seconds
+	resultMachines := make([]*v1.Node, spec["user1"])
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--tags",
+			"--output", "json",
+		},
+		&resultMachines,
+	)
+	assert.Nil(t, err)
+	found := false
+	for _, node := range resultMachines {
+		if node.GetInvalidTags() != nil {
+			for _, tag := range node.GetInvalidTags() {
+				if tag == "tag:test" {
+					found = true
+				}
+			}
+		}
+	}
+	assert.Equal(
+		t,
+		true,
+		found,
+		"should not find a node with the tag 'tag:test' in the list of nodes",
+	)
+}
+
+func TestNodeAdvertiseTagWithACLCommand(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:exists"})}, hsic.WithTestName("cliadvtags"), hsic.WithACLPolicy(
+		&policy.ACLPolicy{
+			ACLs: []policy.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"*"},
+					Destinations: []string{"*:*"},
+				},
+			},
+			TagOwners: map[string][]string{
+				"tag:exists": {"user1"},
+			},
+		},
+	))
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	// Test list all nodes after added seconds
+	resultMachines := make([]*v1.Node, spec["user1"])
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--tags",
+			"--output", "json",
+		},
+		&resultMachines,
+	)
+	assert.Nil(t, err)
+	found := false
+	for _, node := range resultMachines {
+		if node.GetValidTags() != nil {
+			for _, tag := range node.GetValidTags() {
+				if tag == "tag:exists" {
+					found = true
+				}
+			}
+		}
+	}
+	assert.Equal(
+		t,
+		true,
+		found,
+		"should not find a node with the tag 'tag:exists' in the list of nodes",
 	)
 }
 
