@@ -107,16 +107,19 @@ type OIDCConfig struct {
 }
 
 type DERPConfig struct {
-	ServerEnabled        bool
-	ServerRegionID       int
-	ServerRegionCode     string
-	ServerRegionName     string
-	ServerPrivateKeyPath string
-	STUNAddr             string
-	URLs                 []url.URL
-	Paths                []string
-	AutoUpdate           bool
-	UpdateFrequency      time.Duration
+	ServerEnabled                      bool
+	AutomaticallyAddEmbeddedDerpRegion bool
+	ServerRegionID                     int
+	ServerRegionCode                   string
+	ServerRegionName                   string
+	ServerPrivateKeyPath               string
+	STUNAddr                           string
+	URLs                               []url.URL
+	Paths                              []string
+	AutoUpdate                         bool
+	UpdateFrequency                    time.Duration
+	IPv4                               string
+	IPv6                               string
 }
 
 type LogTailConfig struct {
@@ -169,6 +172,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
+	viper.SetDefault("derp.server.automatically_add_embedded_derp_region", true)
 
 	viper.SetDefault("unix_socket", "/var/run/headscale/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
@@ -286,8 +290,14 @@ func GetDERPConfig() DERPConfig {
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
-	privateKeyPath := util.AbsolutePathFromConfigPath(viper.GetString("derp.server.private_key_path"))
-
+	privateKeyPath := util.AbsolutePathFromConfigPath(
+		viper.GetString("derp.server.private_key_path"),
+	)
+	ipv4 := viper.GetString("derp.server.ipv4")
+	ipv6 := viper.GetString("derp.server.ipv6")
+	automaticallyAddEmbeddedDerpRegion := viper.GetBool(
+		"derp.server.automatically_add_embedded_derp_region",
+	)
 	if serverEnabled && stunAddr == "" {
 		log.Fatal().
 			Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
@@ -310,20 +320,28 @@ func GetDERPConfig() DERPConfig {
 
 	paths := viper.GetStringSlice("derp.paths")
 
+	if serverEnabled && !automaticallyAddEmbeddedDerpRegion && len(paths) == 0 {
+		log.Fatal().
+			Msg("Disabling derp.server.automatically_add_embedded_derp_region requires to configure the derp server in derp.paths")
+	}
+
 	autoUpdate := viper.GetBool("derp.auto_update_enabled")
 	updateFrequency := viper.GetDuration("derp.update_frequency")
 
 	return DERPConfig{
-		ServerEnabled:        serverEnabled,
-		ServerRegionID:       serverRegionID,
-		ServerRegionCode:     serverRegionCode,
-		ServerRegionName:     serverRegionName,
-		ServerPrivateKeyPath: privateKeyPath,
-		STUNAddr:             stunAddr,
-		URLs:                 urls,
-		Paths:                paths,
-		AutoUpdate:           autoUpdate,
-		UpdateFrequency:      updateFrequency,
+		ServerEnabled:                      serverEnabled,
+		ServerRegionID:                     serverRegionID,
+		ServerRegionCode:                   serverRegionCode,
+		ServerRegionName:                   serverRegionName,
+		ServerPrivateKeyPath:               privateKeyPath,
+		STUNAddr:                           stunAddr,
+		URLs:                               urls,
+		Paths:                              paths,
+		AutoUpdate:                         autoUpdate,
+		UpdateFrequency:                    updateFrequency,
+		IPv4:                               ipv4,
+		IPv6:                               ipv6,
+		AutomaticallyAddEmbeddedDerpRegion: automaticallyAddEmbeddedDerpRegion,
 	}
 }
 

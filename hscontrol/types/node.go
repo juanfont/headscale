@@ -383,7 +383,7 @@ func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (stri
 // inform peers about smaller changes to the node.
 // When a field is added to this function, remember to also add it to:
 // - node.ApplyPeerChange
-// - logTracePeerChange in poll.go
+// - logTracePeerChange in poll.go.
 func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	ret := tailcfg.PeerChange{
 		NodeID: tailcfg.NodeID(node.ID),

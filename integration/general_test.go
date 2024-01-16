@@ -320,7 +320,6 @@ func TestTaildrop(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to install curl on %s, err: %s", client.Hostname(), err)
 			}
-
 		}
 		curlCommand := []string{"curl", "--unix-socket", "/var/run/tailscale/tailscaled.sock", "http://local-tailscaled.sock/localapi/v0/file-targets"}
 		err = retry(10, 1*time.Second, func() error {
