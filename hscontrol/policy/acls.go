@@ -250,6 +250,21 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 			if node.IPAddresses.InIPSet(expanded) {
 				dests = append(dests, dest)
 			}
+
+			// If the node exposes routes, ensure they are note removed
+			// when the filters are reduced.
+			if node.Hostinfo != nil {
+				// TODO(kradalby): Evaluate if we should only keep
+				// the routes if the route is enabled. This will
+				// require database access in this part of the code.
+				if len(node.Hostinfo.RoutableIPs) > 0 {
+					for _, routableIP := range node.Hostinfo.RoutableIPs {
+						if expanded.ContainsPrefix(routableIP) {
+							dests = append(dests, dest)
+						}
+					}
+				}
+			}
 		}
 
 		if len(dests) > 0 {

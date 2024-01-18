@@ -9,11 +9,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/types/ipproto"
+	"tailscale.com/wgengine/filter"
 )
 
 // This test is both testing the routes command and the propagation of
@@ -920,4 +924,272 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 	assert.Equal(t, true, reAdvertisedRoutes[0].GetAdvertised())
 	assert.Equal(t, true, reAdvertisedRoutes[0].GetEnabled())
 	assert.Equal(t, true, reAdvertisedRoutes[0].GetIsPrimary())
+}
+
+// TestSubnetRouteACL verifies that Subnet routes are distributed
+// as expected when ACLs are activated.
+// It implements the issue from
+// https://github.com/juanfont/headscale/issues/1604
+func TestSubnetRouteACL(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	user := "subnet-route-acl"
+
+	scenario, err := NewScenario()
+	assertNoErrf(t, "failed to create scenario: %s", err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		user: 2,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+		&policy.ACLPolicy{
+			Groups: policy.Groups{
+				"group:admins": {user},
+			},
+			ACLs: []policy.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"group:admins"},
+					Destinations: []string{"group:admins:*"},
+				},
+				{
+					Action:       "accept",
+					Sources:      []string{"group:admins"},
+					Destinations: []string{"10.33.0.0/16:*"},
+				},
+				// {
+				// 	Action:       "accept",
+				// 	Sources:      []string{"group:admins"},
+				// 	Destinations: []string{"0.0.0.0/0:*"},
+				// },
+			},
+		},
+	))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	expectedRoutes := map[string]string{
+		"1": "10.33.0.0/16",
+	}
+
+	// Sort nodes by ID
+	sort.SliceStable(allClients, func(i, j int) bool {
+		statusI, err := allClients[i].Status()
+		if err != nil {
+			return false
+		}
+
+		statusJ, err := allClients[j].Status()
+		if err != nil {
+			return false
+		}
+
+		return statusI.Self.ID < statusJ.Self.ID
+	})
+
+	subRouter1 := allClients[0]
+
+	client := allClients[1]
+
+	// advertise HA route on node 1 and 2
+	// ID 1 will be primary
+	// ID 2 will be secondary
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		if route, ok := expectedRoutes[string(status.Self.ID)]; ok {
+			command := []string{
+				"tailscale",
+				"set",
+				"--advertise-routes=" + route,
+			}
+			_, _, err = client.Execute(command)
+			assertNoErrf(t, "failed to advertise route: %s", err)
+		}
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	var routes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&routes,
+	)
+
+	assertNoErr(t, err)
+	assert.Len(t, routes, 1)
+
+	for _, route := range routes {
+		assert.Equal(t, true, route.GetAdvertised())
+		assert.Equal(t, false, route.GetEnabled())
+		assert.Equal(t, false, route.GetIsPrimary())
+	}
+
+	// Verify that no routes has been sent to the client,
+	// they are not yet enabled.
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		for _, peerKey := range status.Peers() {
+			peerStatus := status.Peer[peerKey]
+
+			assert.Nil(t, peerStatus.PrimaryRoutes)
+		}
+	}
+
+	// Enable all routes
+	for _, route := range routes {
+		_, err = headscale.Execute(
+			[]string{
+				"headscale",
+				"routes",
+				"enable",
+				"--route",
+				strconv.Itoa(int(route.GetId())),
+			})
+		assertNoErr(t, err)
+	}
+
+	time.Sleep(5 * time.Second)
+
+	var enablingRoutes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&enablingRoutes,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, enablingRoutes, 1)
+
+	// Node 1 has active route
+	assert.Equal(t, true, enablingRoutes[0].GetAdvertised())
+	assert.Equal(t, true, enablingRoutes[0].GetEnabled())
+	assert.Equal(t, true, enablingRoutes[0].GetIsPrimary())
+
+	// Verify that the client has routes from the primary machine
+	srs1, _ := subRouter1.Status()
+
+	clientStatus, err := client.Status()
+	assertNoErr(t, err)
+
+	srs1PeerStatus := clientStatus.Peer[srs1.Self.PublicKey]
+
+	assertNotNil(t, srs1PeerStatus.PrimaryRoutes)
+
+	t.Logf("subnet1 has following routes: %v", srs1PeerStatus.PrimaryRoutes.AsSlice())
+	assert.Len(t, srs1PeerStatus.PrimaryRoutes.AsSlice(), 1)
+	assert.Contains(
+		t,
+		srs1PeerStatus.PrimaryRoutes.AsSlice(),
+		netip.MustParsePrefix(expectedRoutes[string(srs1.Self.ID)]),
+	)
+
+	clientNm, err := client.Netmap()
+	assertNoErr(t, err)
+
+	wantClientFilter := []filter.Match{
+		{
+			IPProto: []ipproto.Proto{
+				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+			},
+			Srcs: []netip.Prefix{
+				netip.MustParsePrefix("100.64.0.1/32"),
+				netip.MustParsePrefix("100.64.0.2/32"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+			},
+			Dsts: []filter.NetPortRange{
+				{
+					Net:   netip.MustParsePrefix("100.64.0.2/32"),
+					Ports: filter.PortRange{0, 0xffff},
+				},
+				{
+					Net:   netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+					Ports: filter.PortRange{0, 0xffff},
+				},
+			},
+			Caps: []filter.CapMatch{},
+		},
+	}
+
+	if diff := cmp.Diff(wantClientFilter, clientNm.PacketFilter, util.PrefixComparer); diff != "" {
+		t.Errorf("Client (%s) filter, unexpected result (-want +got):\n%s", client.Hostname(), diff)
+	}
+
+	subnetNm, err := subRouter1.Netmap()
+	assertNoErr(t, err)
+
+	wantSubnetFilter := []filter.Match{
+		{
+			IPProto: []ipproto.Proto{
+				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+			},
+			Srcs: []netip.Prefix{
+				netip.MustParsePrefix("100.64.0.1/32"),
+				netip.MustParsePrefix("100.64.0.2/32"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+			},
+			Dsts: []filter.NetPortRange{
+				{
+					Net:   netip.MustParsePrefix("100.64.0.1/32"),
+					Ports: filter.PortRange{0, 0xffff},
+				},
+				{
+					Net:   netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+					Ports: filter.PortRange{0, 0xffff},
+				},
+			},
+			Caps: []filter.CapMatch{},
+		},
+		{
+			IPProto: []ipproto.Proto{
+				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+			},
+			Srcs: []netip.Prefix{
+				netip.MustParsePrefix("100.64.0.1/32"),
+				netip.MustParsePrefix("100.64.0.2/32"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+			},
+			Dsts: []filter.NetPortRange{
+				{
+					Net:   netip.MustParsePrefix("10.33.0.0/16"),
+					Ports: filter.PortRange{0, 0xffff},
+				},
+			},
+			Caps: []filter.CapMatch{},
+		},
+	}
+
+	if diff := cmp.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.PrefixComparer); diff != "" {
+		t.Errorf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff)
+	}
 }

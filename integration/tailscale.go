@@ -7,6 +7,7 @@ import (
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/types/netmap"
 )
 
 // nolint
@@ -26,6 +27,7 @@ type TailscaleClient interface {
 	IPs() ([]netip.Addr, error)
 	FQDN() (string, error)
 	Status() (*ipnstate.Status, error)
+	Netmap() (*netmap.NetworkMap, error)
 	WaitForNeedsLogin() error
 	WaitForRunning() error
 	WaitForPeers(expected int) error

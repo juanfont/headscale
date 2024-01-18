@@ -278,6 +278,18 @@ func (m *Mapper) LiteMapResponse(
 		return nil, err
 	}
 
+	rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
+		pol,
+		node,
+		nodeMapToList(m.peers),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp.PacketFilter = policy.ReduceFilterRules(node, rules)
+	resp.SSHPolicy = sshPolicy
+
 	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 }
 
