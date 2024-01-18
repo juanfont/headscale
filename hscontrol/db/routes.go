@@ -639,12 +639,18 @@ func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 	aclPolicy *policy.ACLPolicy,
 	node *types.Node,
 ) error {
-	hsdb.mu.Lock()
-	defer hsdb.mu.Unlock()
+	if len(aclPolicy.AutoApprovers.ExitNode) == 0 && len(aclPolicy.AutoApprovers.Routes) == 0 {
+		// No autoapprovers configured
+		return nil
+	}
 
 	if len(node.IPAddresses) == 0 {
-		return nil // This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
+		// This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
+		return nil
 	}
+
+	hsdb.mu.Lock()
+	defer hsdb.mu.Unlock()
 
 	routes, err := hsdb.getNodeAdvertisedRoutes(node)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -656,6 +662,8 @@ func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 
 		return err
 	}
+
+	log.Trace().Interface("routes", routes).Msg("routes for autoapproving")
 
 	approvedRoutes := types.Routes{}
 
@@ -675,6 +683,13 @@ func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 
 			return err
 		}
+
+		log.Trace().
+			Str("node", node.Hostname).
+			Str("user", node.User.Name).
+			Strs("routeApprovers", routeApprovers).
+			Str("prefix", netip.Prefix(advertisedRoute.Prefix).String()).
+			Msg("looking up route for autoapproving")
 
 		for _, approvedAlias := range routeApprovers {
 			if approvedAlias == node.User.Name {

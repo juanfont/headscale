@@ -125,6 +125,14 @@ func (h *Headscale) handlePoll(
 
 					return
 				}
+
+				if h.ACLPolicy != nil {
+					// update routes with peer information
+					err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, node)
+					if err != nil {
+						logErr(err, "Error running auto approved routes")
+					}
+				}
 			}
 
 			// Services is mostly useful for discovery and not critical,
