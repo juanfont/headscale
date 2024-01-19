@@ -900,7 +900,7 @@ func (hsdb *HSDatabase) ExpireExpiredNodes(lastCheck time.Time) time.Time {
 			// Do not use setNodeExpiry as that has a notifier hook, which
 			// can cause a deadlock, we are updating all changed nodes later
 			// and there is no point in notifiying twice.
-			if err := hsdb.db.Model(nodes[index]).Updates(types.Node{
+			if err := hsdb.db.Model(&nodes[index]).Updates(types.Node{
 				Expiry: &started,
 			}).Error; err != nil {
 				log.Error().
