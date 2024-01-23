@@ -82,6 +82,15 @@ func (hsdb *HSDatabase) GetAPIKey(prefix string) (*types.APIKey, error) {
 	return &key, nil
 }
 
+func (hsdb *HSDatabase) getAPIKey(prefix string) (*types.APIKey, error) {
+	key := types.APIKey{}
+	if result := hsdb.db.First(&key, "prefix = ?", prefix); result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &key, nil
+}
+
 // GetAPIKeyByID returns a ApiKey for a given id.
 func (hsdb *HSDatabase) GetAPIKeyByID(id uint64) (*types.APIKey, error) {
 	hsdb.mu.RLock()
@@ -129,7 +138,7 @@ func (hsdb *HSDatabase) ValidateAPIKey(keyStr string) (bool, error) {
 		return false, ErrAPIKeyFailedToParse
 	}
 
-	key, err := hsdb.GetAPIKey(prefix)
+	key, err := hsdb.getAPIKey(prefix)
 	if err != nil {
 		return false, fmt.Errorf("failed to validate api key: %w", err)
 	}
