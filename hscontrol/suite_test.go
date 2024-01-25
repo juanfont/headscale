@@ -41,8 +41,12 @@ func (s *Suite) ResetDB(c *check.C) {
 	}
 	cfg := types.Config{
 		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
-		DBtype:              "sqlite3",
-		DBpath:              tmpDir + "/headscale_test.db",
+		Database: types.DatabaseConfig{
+			Type: "sqlite3",
+			Sqlite: types.SqliteConfig{
+				Path: tmpDir + "/headscale_test.db",
+			},
+		},
 		IPPrefixes: []netip.Prefix{
 			netip.MustParsePrefix("10.27.0.0/23"),
 		},

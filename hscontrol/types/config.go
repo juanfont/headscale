@@ -46,16 +46,9 @@ type Config struct {
 	Log                            LogConfig
 	DisableUpdateCheck             bool
 
-	DERP DERPConfig
+	Database DatabaseConfig
 
-	DBtype string
-	DBpath string
-	DBhost string
-	DBport int
-	DBname string
-	DBuser string
-	DBpass string
-	DBssl  string
+	DERP DERPConfig
 
 	TLS TLSConfig
 
@@ -75,6 +68,27 @@ type Config struct {
 	CLI CLIConfig
 
 	ACL ACLConfig
+}
+
+type SqliteConfig struct {
+	Path string
+}
+
+type PostgresConfig struct {
+	Host string
+	Port int
+	Name string
+	User string
+	Pass string
+	Ssl  string
+}
+
+type DatabaseConfig struct {
+	// Type sets the database type, either "sqlite3" or "postgres"
+	Type string
+
+	Sqlite   SqliteConfig
+	Postgres PostgresConfig
 }
 
 type TLSConfig struct {
@@ -184,6 +198,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("cli.insecure", false)
 
 	viper.SetDefault("db_ssl", false)
+	viper.SetDefault("database.postgres.ssl", false)
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
@@ -617,14 +632,20 @@ func GetHeadscaleConfig() (*Config, error) {
 			"node_update_check_interval",
 		),
 
-		DBtype: viper.GetString("db_type"),
-		DBpath: util.AbsolutePathFromConfigPath(viper.GetString("db_path")),
-		DBhost: viper.GetString("db_host"),
-		DBport: viper.GetInt("db_port"),
-		DBname: viper.GetString("db_name"),
-		DBuser: viper.GetString("db_user"),
-		DBpass: viper.GetString("db_pass"),
-		DBssl:  viper.GetString("db_ssl"),
+		Database: DatabaseConfig{
+			Type: viper.GetString("db_type"),
+			Sqlite: SqliteConfig{
+				Path: util.AbsolutePathFromConfigPath(viper.GetString("db_path")),
+			},
+			Postgres: PostgresConfig{
+				Host: viper.GetString("db_host"),
+				Port: viper.GetInt("db_port"),
+				Name: viper.GetString("db_name"),
+				User: viper.GetString("db_user"),
+				Pass: viper.GetString("db_pass"),
+				Ssl:  viper.GetString("db_ssl"),
+			},
+		},
 
 		TLS: GetTLSConfig(),
 

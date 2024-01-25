@@ -119,32 +119,32 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	var dbString string
-	switch cfg.DBtype {
+	switch cfg.Database.Type {
 	case db.Postgres:
 		dbString = fmt.Sprintf(
 			"host=%s dbname=%s user=%s",
-			cfg.DBhost,
-			cfg.DBname,
-			cfg.DBuser,
+			cfg.Database.Postgres.Host,
+			cfg.Database.Postgres.Name,
+			cfg.Database.Postgres.User,
 		)
 
-		if sslEnabled, err := strconv.ParseBool(cfg.DBssl); err == nil {
+		if sslEnabled, err := strconv.ParseBool(cfg.Database.Postgres.Ssl); err == nil {
 			if !sslEnabled {
 				dbString += " sslmode=disable"
 			}
 		} else {
-			dbString += fmt.Sprintf(" sslmode=%s", cfg.DBssl)
+			dbString += fmt.Sprintf(" sslmode=%s", cfg.Database.Postgres.Ssl)
 		}
 
-		if cfg.DBport != 0 {
-			dbString += fmt.Sprintf(" port=%d", cfg.DBport)
+		if cfg.Database.Postgres.Port != 0 {
+			dbString += fmt.Sprintf(" port=%d", cfg.Database.Postgres.Port)
 		}
 
-		if cfg.DBpass != "" {
-			dbString += fmt.Sprintf(" password=%s", cfg.DBpass)
+		if cfg.Database.Postgres.Pass != "" {
+			dbString += fmt.Sprintf(" password=%s", cfg.Database.Postgres.Pass)
 		}
 	case db.Sqlite:
-		dbString = cfg.DBpath
+		dbString = cfg.Database.Sqlite.Path
 	default:
 		return nil, errUnsupportedDatabase
 	}
@@ -156,7 +156,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	app := Headscale{
 		cfg:                cfg,
-		dbType:             cfg.DBtype,
+		dbType:             cfg.Database.Type,
 		dbString:           dbString,
 		noisePrivateKey:    noisePrivateKey,
 		registrationCache:  registrationCache,
@@ -165,7 +165,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	database, err := db.NewHeadscaleDatabase(
-		cfg.DBtype,
+		cfg.Database.Type,
 		dbString,
 		app.dbDebug,
 		cfg.IPPrefixes,
@@ -755,14 +755,14 @@ func (h *Headscale) Serve() error {
 
 	var tailsqlContext context.Context
 	if tailsqlEnabled {
-		if h.cfg.DBtype != db.Sqlite {
-			log.Fatal().Str("type", h.cfg.DBtype).Msgf("tailsql only support %q", db.Sqlite)
+		if h.cfg.Database.Type != db.Sqlite {
+			log.Fatal().Str("type", h.cfg.Database.Type).Msgf("tailsql only support %q", db.Sqlite)
 		}
 		if tailsqlTSKey == "" {
 			log.Fatal().Msg("tailsql requires TS_AUTHKEY to be set")
 		}
 		tailsqlContext = context.Background()
-		go runTailSQLService(ctx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.DBpath)
+		go runTailSQLService(ctx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.Database.Sqlite.Path)
 	}
 
 	// Handle common process-killing signals so we can gracefully shut down:
