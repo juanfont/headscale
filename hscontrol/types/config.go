@@ -590,7 +590,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		oidcClientSecret = string(secretBytes)
+		oidcClientSecret = strings.TrimSpace(string(secretBytes))
 	}
 
 	return &Config{
