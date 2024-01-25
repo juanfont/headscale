@@ -175,6 +175,19 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
+	viper.RegisterAlias("db_type", "database.type")
+
+	// SQLite aliases
+	viper.RegisterAlias("db_path", "database.sqlite.path")
+
+	// Postgres aliases
+	viper.RegisterAlias("db_host", "database.postgres.host")
+	viper.RegisterAlias("db_port", "database.postgres.port")
+	viper.RegisterAlias("db_name", "database.postgres.name")
+	viper.RegisterAlias("db_user", "database.postgres.user")
+	viper.RegisterAlias("db_pass", "database.postgres.pass")
+	viper.RegisterAlias("db_ssl", "database.postgres.ssl")
+
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
 
@@ -405,19 +418,6 @@ func GetLogConfig() LogConfig {
 }
 
 func GetDatabaseConfig() DatabaseConfig {
-	viper.RegisterAlias("db_type", "database.type")
-
-	// SQLite aliases
-	viper.RegisterAlias("db_path", "database.sqlite.path")
-
-	// Postgres aliases
-	viper.RegisterAlias("db_host", "database.postgres.host")
-	viper.RegisterAlias("db_port", "database.postgres.port")
-	viper.RegisterAlias("db_name", "database.postgres.name")
-	viper.RegisterAlias("db_user", "database.postgres.user")
-	viper.RegisterAlias("db_pass", "database.postgres.pass")
-	viper.RegisterAlias("db_ssl", "database.postgres.ssl")
-
 	type_ := viper.GetString("database.type")
 	switch type_ {
 	case "sqlite3", "postgres":
