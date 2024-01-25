@@ -34,16 +34,18 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 
 ### Changes
 
-Use versioned migrations [#1644](https://github.com/juanfont/headscale/pull/1644)
-Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
-SSH support [#1487](https://github.com/juanfont/headscale/pull/1487)
-State management has been improved [#1492](https://github.com/juanfont/headscale/pull/1492)
-Use error group handling to ensure tests actually pass [#1535](https://github.com/juanfont/headscale/pull/1535) based on [#1460](https://github.com/juanfont/headscale/pull/1460)
-Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) taken from [#1480](https://github.com/juanfont/headscale/pull/1480)
-Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
-Fix [TS-2023-006](https://tailscale.com/security-bulletins/#ts-2023-006) security UPnP issue [#1563](https://github.com/juanfont/headscale/pull/1563)
-Turn off gRPC logging [#1640](https://github.com/juanfont/headscale/pull/1640) fixes [#1259](https://github.com/juanfont/headscale/issues/1259)
-Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
+- Use versioned migrations [#1644](https://github.com/juanfont/headscale/pull/1644)
+- Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
+- SSH support [#1487](https://github.com/juanfont/headscale/pull/1487)
+- State management has been improved [#1492](https://github.com/juanfont/headscale/pull/1492)
+- Use error group handling to ensure tests actually pass [#1535](https://github.com/juanfont/headscale/pull/1535) based on [#1460](https://github.com/juanfont/headscale/pull/1460)
+- Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) taken from [#1480](https://github.com/juanfont/headscale/pull/1480)
+- Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
+- Fix [TS-2023-006](https://tailscale.com/security-bulletins/#ts-2023-006) security UPnP issue [#1563](https://github.com/juanfont/headscale/pull/1563)
+- Turn off gRPC logging [#1640](https://github.com/juanfont/headscale/pull/1640) fixes [#1259](https://github.com/juanfont/headscale/issues/1259)
+- Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
+- Change the structure of database configuration, see [config-example.yaml](./config-example.yaml) for the new structure. [#1700](https://github.com/juanfont/headscale/pull/1700)
+  - Old structure is now considered deprecated and will be removed in the future.
 
 ## 0.22.3 (2023-05-12)
 
