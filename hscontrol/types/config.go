@@ -404,6 +404,46 @@ func GetLogConfig() LogConfig {
 	}
 }
 
+func GetDatabaseConfig() DatabaseConfig {
+	viper.RegisterAlias("db_type", "database.type")
+
+	// SQLite aliases
+	viper.RegisterAlias("db_path", "database.sqlite.path")
+
+	// Postgres aliases
+	viper.RegisterAlias("db_host", "database.postgres.host")
+	viper.RegisterAlias("db_port", "database.postgres.port")
+	viper.RegisterAlias("db_name", "database.postgres.name")
+	viper.RegisterAlias("db_user", "database.postgres.user")
+	viper.RegisterAlias("db_pass", "database.postgres.pass")
+	viper.RegisterAlias("db_ssl", "database.postgres.ssl")
+
+	type_ := viper.GetString("database.type")
+	switch type_ {
+	case "sqlite3", "postgres":
+		break
+	case "sqlite":
+		type_ = "sqlite3"
+	default:
+		log.Fatal().Msgf("invalid database type %q, must be sqlite, sqlite3 or postgres", type_)
+	}
+
+	return DatabaseConfig{
+		Type: type_,
+		Sqlite: SqliteConfig{
+			Path: util.AbsolutePathFromConfigPath(viper.GetString("database.sqlite.path")),
+		},
+		Postgres: PostgresConfig{
+			Host: viper.GetString("database.postgres.host"),
+			Port: viper.GetInt("database.postgres.port"),
+			Name: viper.GetString("database.postgres.name"),
+			User: viper.GetString("database.postgres.user"),
+			Pass: viper.GetString("database.postgres.pass"),
+			Ssl:  viper.GetString("database.postgres.ssl"),
+		},
+	}
+}
+
 func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	if viper.IsSet("dns_config") {
 		dnsConfig := &tailcfg.DNSConfig{}
@@ -632,20 +672,7 @@ func GetHeadscaleConfig() (*Config, error) {
 			"node_update_check_interval",
 		),
 
-		Database: DatabaseConfig{
-			Type: viper.GetString("db_type"),
-			Sqlite: SqliteConfig{
-				Path: util.AbsolutePathFromConfigPath(viper.GetString("db_path")),
-			},
-			Postgres: PostgresConfig{
-				Host: viper.GetString("db_host"),
-				Port: viper.GetInt("db_port"),
-				Name: viper.GetString("db_name"),
-				User: viper.GetString("db_user"),
-				Pass: viper.GetString("db_pass"),
-				Ssl:  viper.GetString("db_ssl"),
-			},
-		},
+		Database: GetDatabaseConfig(),
 
 		TLS: GetTLSConfig(),
 
