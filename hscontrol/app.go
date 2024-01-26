@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -118,37 +117,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
-	var dbString string
-	switch cfg.Database.Type {
-	case db.Postgres:
-		dbString = fmt.Sprintf(
-			"host=%s dbname=%s user=%s",
-			cfg.Database.Postgres.Host,
-			cfg.Database.Postgres.Name,
-			cfg.Database.Postgres.User,
-		)
-
-		if sslEnabled, err := strconv.ParseBool(cfg.Database.Postgres.Ssl); err == nil {
-			if !sslEnabled {
-				dbString += " sslmode=disable"
-			}
-		} else {
-			dbString += fmt.Sprintf(" sslmode=%s", cfg.Database.Postgres.Ssl)
-		}
-
-		if cfg.Database.Postgres.Port != 0 {
-			dbString += fmt.Sprintf(" port=%d", cfg.Database.Postgres.Port)
-		}
-
-		if cfg.Database.Postgres.Pass != "" {
-			dbString += fmt.Sprintf(" password=%s", cfg.Database.Postgres.Pass)
-		}
-	case db.Sqlite:
-		dbString = cfg.Database.Sqlite.Path
-	default:
-		return nil, errUnsupportedDatabase
-	}
-
 	registrationCache := cache.New(
 		registerCacheExpiration,
 		registerCacheCleanup,
@@ -156,8 +124,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	app := Headscale{
 		cfg:                cfg,
-		dbType:             cfg.Database.Type,
-		dbString:           dbString,
 		noisePrivateKey:    noisePrivateKey,
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
@@ -165,9 +131,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	database, err := db.NewHeadscaleDatabase(
-		cfg.Database.Type,
-		dbString,
-		app.dbDebug,
+		cfg.Database,
+		app.nodeNotifier,
 		cfg.IPPrefixes,
 		cfg.BaseDomain)
 	if err != nil {
@@ -755,8 +720,10 @@ func (h *Headscale) Serve() error {
 
 	var tailsqlContext context.Context
 	if tailsqlEnabled {
-		if h.cfg.Database.Type != db.Sqlite {
-			log.Fatal().Str("type", h.cfg.Database.Type).Msgf("tailsql only support %q", db.Sqlite)
+		if h.cfg.Database.Type != types.DatabaseSqlite {
+			log.Fatal().
+				Str("type", h.cfg.Database.Type).
+				Msgf("tailsql only support %q", types.DatabaseSqlite)
 		}
 		if tailsqlTSKey == "" {
 			log.Fatal().Msg("tailsql requires TS_AUTHKEY to be set")

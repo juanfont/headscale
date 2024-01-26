@@ -85,7 +85,8 @@ type PostgresConfig struct {
 
 type DatabaseConfig struct {
 	// Type sets the database type, either "sqlite3" or "postgres"
-	Type string
+	Type  string
+	Debug bool
 
 	Sqlite   SqliteConfig
 	Postgres PostgresConfig
@@ -418,9 +419,12 @@ func GetLogConfig() LogConfig {
 }
 
 func GetDatabaseConfig() DatabaseConfig {
+	debug := viper.GetBool("database.debug")
+
 	type_ := viper.GetString("database.type")
+
 	switch type_ {
-	case "sqlite3", "postgres":
+	case DatabaseSqlite, DatabasePostgres:
 		break
 	case "sqlite":
 		type_ = "sqlite3"
@@ -429,7 +433,8 @@ func GetDatabaseConfig() DatabaseConfig {
 	}
 
 	return DatabaseConfig{
-		Type: type_,
+		Type:  type_,
+		Debug: debug,
 		Sqlite: SqliteConfig{
 			Path: util.AbsolutePathFromConfigPath(viper.GetString("database.sqlite.path")),
 		},

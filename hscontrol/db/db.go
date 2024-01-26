@@ -6,22 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
+	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-)
-
-const (
-	Postgres = "postgres"
-	Sqlite   = "sqlite3"
 )
 
 var errDatabaseNotSupported = errors.New("database type not supported")
@@ -43,12 +40,12 @@ type HSDatabase struct {
 // TODO(kradalby): assemble this struct from toptions or something typed
 // rather than arguments.
 func NewHeadscaleDatabase(
-	dbType, connectionAddr string,
-	debug bool,
+	cfg types.DatabaseConfig,
+	notifier *notifier.Notifier,
 	ipPrefixes []netip.Prefix,
 	baseDomain string,
 ) (*HSDatabase, error) {
-	dbConn, err := openDB(dbType, connectionAddr, debug)
+	dbConn, err := openDB(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +59,7 @@ func NewHeadscaleDatabase(
 		{
 			ID: "202312101416",
 			Migrate: func(tx *gorm.DB) error {
-				if dbType == Postgres {
+				if cfg.Type == types.DatabasePostgres {
 					tx.Exec(`create extension if not exists "uuid-ossp";`)
 				}
 
@@ -321,20 +318,20 @@ func NewHeadscaleDatabase(
 	return &db, err
 }
 
-func openDB(dbType, connectionAddr string, debug bool) (*gorm.DB, error) {
-	log.Debug().Str("type", dbType).Str("connection", connectionAddr).Msg("opening database")
+func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 
+	// TODO(kradalby): Integrate this with zerolog
 	var dbLogger logger.Interface
-	if debug {
+	if cfg.Debug {
 		dbLogger = logger.Default
 	} else {
 		dbLogger = logger.Default.LogMode(logger.Silent)
 	}
 
-	switch dbType {
-	case Sqlite:
+	switch cfg.Type {
+	case types.DatabaseSqlite:
 		db, err := gorm.Open(
-			sqlite.Open(connectionAddr+"?_synchronous=1&_journal_mode=WAL"),
+			sqlite.Open(cfg.Sqlite.Path+"?_synchronous=1&_journal_mode=WAL"),
 			&gorm.Config{
 				DisableForeignKeyConstraintWhenMigrating: true,
 				Logger:                                   dbLogger,
@@ -353,8 +350,31 @@ func openDB(dbType, connectionAddr string, debug bool) (*gorm.DB, error) {
 
 		return db, err
 
-	case Postgres:
-		return gorm.Open(postgres.Open(connectionAddr), &gorm.Config{
+	case types.DatabasePostgres:
+		dbString := fmt.Sprintf(
+			"host=%s dbname=%s user=%s",
+			cfg.Postgres.Host,
+			cfg.Postgres.Name,
+			cfg.Postgres.User,
+		)
+
+		if sslEnabled, err := strconv.ParseBool(cfg.Postgres.Ssl); err == nil {
+			if !sslEnabled {
+				dbString += " sslmode=disable"
+			}
+		} else {
+			dbString += fmt.Sprintf(" sslmode=%s", cfg.Postgres.Ssl)
+		}
+
+		if cfg.Postgres.Port != 0 {
+			dbString += fmt.Sprintf(" port=%d", cfg.Postgres.Port)
+		}
+
+		if cfg.Postgres.Pass != "" {
+			dbString += fmt.Sprintf(" password=%s", cfg.Postgres.Pass)
+		}
+
+		return gorm.Open(postgres.Open(dbString), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   dbLogger,
 		})
@@ -362,7 +382,7 @@ func openDB(dbType, connectionAddr string, debug bool) (*gorm.DB, error) {
 
 	return nil, fmt.Errorf(
 		"database of type %s is not supported: %w",
-		dbType,
+		cfg.Type,
 		errDatabaseNotSupported,
 	)
 }
