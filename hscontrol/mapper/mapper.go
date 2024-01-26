@@ -393,9 +393,7 @@ func (m *Mapper) PeerChangedPatchResponse(
 			}
 
 			if patches, ok := m.patches[uint64(change.NodeID)]; ok {
-				patches := append(patches, p)
-
-				m.patches[uint64(change.NodeID)] = patches
+				m.patches[uint64(change.NodeID)] = append(patches, p)
 			} else {
 				m.patches[uint64(change.NodeID)] = []patch{p}
 			}

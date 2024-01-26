@@ -333,6 +333,7 @@ func RegisterNodeFromAuthCallback(
 			}
 
 			registrationNode.UserID = user.ID
+			registrationNode.User = *user
 			registrationNode.RegisterMethod = registrationMethod
 
 			if nodeExpiry != nil {

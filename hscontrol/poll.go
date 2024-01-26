@@ -167,7 +167,9 @@ func (h *Headscale) handlePoll(
 					Message:     "called from handlePoll -> update -> new hostinfo",
 				}
 				if stateUpdate.Valid() {
+					ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-hostinfochange", node.Hostname)
 					h.nodeNotifier.NotifyWithIgnore(
+						ctx,
 						stateUpdate,
 						node.MachineKey.String())
 				}
@@ -180,7 +182,9 @@ func (h *Headscale) handlePoll(
 					ChangeNodes: types.Nodes{node},
 				}
 				if selfUpdate.Valid() {
+					ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-self-hostinfochange", node.Hostname)
 					h.nodeNotifier.NotifyByMachineKey(
+						ctx,
 						selfUpdate,
 						node.MachineKey)
 				}
@@ -201,7 +205,9 @@ func (h *Headscale) handlePoll(
 			ChangePatches: []*tailcfg.PeerChange{&change},
 		}
 		if stateUpdate.Valid() {
+			ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", node.Hostname)
 			h.nodeNotifier.NotifyWithIgnore(
+				ctx,
 				stateUpdate,
 				node.MachineKey.String())
 		}
@@ -333,9 +339,30 @@ func (h *Headscale) handlePoll(
 		Message:     "called from handlePoll -> new node added",
 	}
 	if stateUpdate.Valid() {
+		ctx := types.NotifyCtx(context.Background(), "poll-newnode-peers", node.Hostname)
 		h.nodeNotifier.NotifyWithIgnore(
+			ctx,
 			stateUpdate,
 			node.MachineKey.String())
+	}
+
+	if len(node.Routes) > 0 {
+		go func() {
+			err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+				update, err := db.EnsureFailoverRouteIsAvailable(tx, h.nodeNotifier.ConnectedMap(), node)
+				if err != nil {
+					return err
+				}
+
+				if update != nil && update.Valid() {
+					ctx := types.NotifyCtx(context.Background(), "poll-routes-ensurefailover", node.Hostname)
+					h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.MachineKey.String())
+				}
+
+				return err
+			})
+			logErr(err, "failed to ensure failover routes")
+		}()
 	}
 
 	// Set up the client stream
@@ -355,28 +382,8 @@ func (h *Headscale) handlePoll(
 
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
 
-	ctx = context.WithValue(ctx, nodeNameContextKey, node.Hostname)
-
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.WithValue(ctx, nodeNameContextKey, node.Hostname))
 	defer cancel()
-
-	if len(node.Routes) > 0 {
-		go func() {
-			err := h.db.DB.Transaction(func(tx *gorm.DB) error {
-				update, err := db.EnsureFailoverRouteIsAvailable(tx, h.nodeNotifier.ConnectedMap(), node)
-				if err != nil {
-					return err
-				}
-
-				if update != nil && update.Valid() {
-					h.nodeNotifier.NotifyWithIgnore(*update, node.MachineKey.String())
-				}
-
-				return err
-			})
-			logErr(err, "failed to ensure failover routes")
-		}()
-	}
 
 	for {
 		logInfo("Waiting for update on stream channel")
@@ -426,6 +433,7 @@ func (h *Headscale) handlePoll(
 				return
 			}
 
+			startMapResp := time.Now()
 			switch update.Type {
 			case types.StateFullUpdate:
 				logInfo("Sending Full MapResponse")
@@ -434,6 +442,7 @@ func (h *Headscale) handlePoll(
 			case types.StatePeerChanged:
 				logInfo(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
 
+				isConnectedMap := h.nodeNotifier.ConnectedMap()
 				for _, node := range update.ChangeNodes {
 					// If a node is not reported to be online, it might be
 					// because the value is outdated, check with the notifier.
@@ -441,7 +450,7 @@ func (h *Headscale) handlePoll(
 					// this might be because it has announced itself, but not
 					// reached the stage to actually create the notifier channel.
 					if node.IsOnline != nil && !*node.IsOnline {
-						isOnline := h.nodeNotifier.IsConnected(node.MachineKey)
+						isOnline := isConnectedMap[node.MachineKey]
 						node.IsOnline = &isOnline
 					}
 				}
@@ -472,8 +481,11 @@ func (h *Headscale) handlePoll(
 				return
 			}
 
+			log.Trace().Str("node", node.Hostname).TimeDiff("timeSpent", time.Now(), startMapResp).Str("mkey", node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished making map response")
+
 			// Only send update if there is change
 			if data != nil {
+				startWrite := time.Now()
 				_, err = writer.Write(data)
 				if err != nil {
 					logErr(err, "Could not write the map response")
@@ -491,6 +503,7 @@ func (h *Headscale) handlePoll(
 
 					return
 				}
+				log.Trace().Str("node", node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished writing mapresp to node")
 
 				log.Info().
 					Caller().
@@ -518,7 +531,8 @@ func (h *Headscale) handlePoll(
 					}
 
 					if update != nil && !update.Empty() && update.Valid() {
-						h.nodeNotifier.NotifyWithIgnore(*update, node.MachineKey.String())
+						ctx := types.NotifyCtx(context.Background(), "poll-nodeclose-routes-ensurefailover", node.Hostname)
+						h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.MachineKey.String())
 					}
 
 					return err
@@ -556,7 +570,8 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 		},
 	}
 	if statusUpdate.Valid() {
-		h.nodeNotifier.NotifyWithIgnore(statusUpdate, node.MachineKey.String())
+		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
+		h.nodeNotifier.NotifyWithIgnore(ctx, statusUpdate, node.MachineKey.String())
 	}
 
 	err := h.db.DB.Transaction(func(tx *gorm.DB) error {

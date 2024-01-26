@@ -249,7 +249,8 @@ func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 		}
 
 		if changed && update.Valid() {
-			h.nodeNotifier.NotifyAll(update)
+			ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
+			h.nodeNotifier.NotifyAll(ctx, update)
 		}
 	}
 }
@@ -276,7 +277,8 @@ func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 
 		log.Trace().Str("nodes", update.ChangeNodes.String()).Msgf("expiring nodes")
 		if changed && update.Valid() {
-			h.nodeNotifier.NotifyAll(update)
+			ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
+			h.nodeNotifier.NotifyAll(ctx, update)
 		}
 	}
 }
@@ -307,7 +309,8 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 				DERPMap: h.DERPMap,
 			}
 			if stateUpdate.Valid() {
-				h.nodeNotifier.NotifyAll(stateUpdate)
+				ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
+				h.nodeNotifier.NotifyAll(ctx, stateUpdate)
 			}
 		}
 	}
@@ -795,7 +798,8 @@ func (h *Headscale) Serve() error {
 						Str("path", aclPath).
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
-					h.nodeNotifier.NotifyAll(types.StateUpdate{
+					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
+					h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 						Type: types.StateFullUpdate,
 					})
 				}

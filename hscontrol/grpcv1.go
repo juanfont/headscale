@@ -206,7 +206,8 @@ func (api headscaleV1APIServer) RegisterNode(
 		Message:     "called from api.RegisterNode",
 	}
 	if stateUpdate.Valid() {
-		api.h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+		ctx := types.NotifyCtx(ctx, "cli-registernode", node.Hostname)
+		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
 	}
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
@@ -261,7 +262,8 @@ func (api headscaleV1APIServer) SetTags(
 		Message:     "called from api.SetTags",
 	}
 	if stateUpdate.Valid() {
-		api.h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+		ctx := types.NotifyCtx(ctx, "cli-settags", node.Hostname)
+		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
 	}
 
 	log.Trace().
@@ -307,7 +309,8 @@ func (api headscaleV1APIServer) DeleteNode(
 		Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
 	}
 	if stateUpdate.Valid() {
-		api.h.nodeNotifier.NotifyAll(stateUpdate)
+		ctx := types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, stateUpdate)
 	}
 
 	return &v1.DeleteNodeResponse{}, nil
@@ -337,14 +340,17 @@ func (api headscaleV1APIServer) ExpireNode(
 		ChangeNodes: types.Nodes{node},
 	}
 	if selfUpdate.Valid() {
+		ctx := types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
 		api.h.nodeNotifier.NotifyByMachineKey(
+			ctx,
 			selfUpdate,
 			node.MachineKey)
 	}
 
 	stateUpdate := types.StateUpdateExpire(node.ID, now)
 	if stateUpdate.Valid() {
-		api.h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+		ctx := types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
+		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
 	}
 
 	log.Trace().
@@ -381,7 +387,8 @@ func (api headscaleV1APIServer) RenameNode(
 		Message:     "called from api.RenameNode",
 	}
 	if stateUpdate.Valid() {
-		api.h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+		ctx := types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
+		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
 	}
 
 	log.Trace().
@@ -488,11 +495,9 @@ func (api headscaleV1APIServer) EnableRoute(
 	}
 
 	if update != nil && update.Valid() {
-		if len(update.ChangeNodes) == 1 {
-			api.h.nodeNotifier.NotifyWithIgnore(
-				*update,
-				update.ChangeNodes[0].MachineKey.String())
-		}
+		ctx := types.NotifyCtx(ctx, "cli-enableroute", "unknown")
+		api.h.nodeNotifier.NotifyAll(
+			ctx, *update)
 	}
 
 	return &v1.EnableRouteResponse{}, nil
@@ -511,7 +516,8 @@ func (api headscaleV1APIServer) DisableRoute(
 	}
 
 	if update != nil && update.Valid() {
-		api.h.nodeNotifier.NotifyAll(*update)
+		ctx := types.NotifyCtx(ctx, "cli-disableroute", "unknown")
+		api.h.nodeNotifier.NotifyAll(ctx, *update)
 	}
 
 	return &v1.DisableRouteResponse{}, nil
@@ -549,7 +555,8 @@ func (api headscaleV1APIServer) DeleteRoute(
 	}
 
 	if update != nil && update.Valid() {
-		api.h.nodeNotifier.NotifyWithIgnore(*update)
+		ctx := types.NotifyCtx(ctx, "cli-deleteroute", "unknown")
+		api.h.nodeNotifier.NotifyWithIgnore(ctx, *update)
 	}
 
 	return &v1.DeleteRouteResponse{}, nil

@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -442,7 +443,8 @@ func (h *Headscale) handleAuthKey(
 
 	// TODO(kradalby): if notifying after register make sense.
 	if update.Valid() {
-		h.nodeNotifier.NotifyWithIgnore(update, mkey.String())
+		ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
+		h.nodeNotifier.NotifyWithIgnore(ctx, update, mkey.String())
 	}
 
 	log.Info().
@@ -521,7 +523,8 @@ func (h *Headscale) handleNodeLogOut(
 
 	stateUpdate := types.StateUpdateExpire(node.ID, now)
 	if stateUpdate.Valid() {
-		h.nodeNotifier.NotifyWithIgnore(stateUpdate, node.MachineKey.String())
+		ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
+		h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
 	}
 
 	resp.AuthURL = ""
@@ -565,7 +568,8 @@ func (h *Headscale) handleNodeLogOut(
 			Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
 		}
 		if stateUpdate.Valid() {
-			h.nodeNotifier.NotifyAll(stateUpdate)
+			ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
+			h.nodeNotifier.NotifyAll(ctx, stateUpdate)
 		}
 
 		return

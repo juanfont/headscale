@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -188,4 +189,12 @@ func StateUpdateExpire(nodeID uint64, expiry time.Time) StateUpdate {
 			},
 		},
 	}
+}
+
+func NotifyCtx(ctx context.Context, origin, hostname string) context.Context {
+	ctx2, _ := context.WithTimeout(
+		context.WithValue(context.WithValue(ctx, "hostname", hostname), "origin", origin),
+		3*time.Second,
+	)
+	return ctx2
 }

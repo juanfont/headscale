@@ -80,16 +80,16 @@ func (n *Notifier) ConnectedMap() map[key.MachinePublic]bool {
 	return n.connected
 }
 
-func (n *Notifier) NotifyAll(update types.StateUpdate) {
-	n.NotifyWithIgnore(update)
+func (n *Notifier) NotifyAll(ctx context.Context, update types.StateUpdate) {
+	n.NotifyWithIgnore(ctx, update)
 }
 
-func (n *Notifier) NotifyWithIgnore(update types.StateUpdate, ignore ...string) {
+func (n *Notifier) NotifyWithIgnore(ctx context.Context, update types.StateUpdate, ignore ...string) {
 	log.Trace().Caller().Interface("type", update.Type).Msg("acquiring lock to notify")
 	defer log.Trace().
 		Caller().
 		Interface("type", update.Type).
-		Msg("releasing lock, finished notifing")
+		Msg("releasing lock, finished notifying")
 
 	n.l.RLock()
 	defer n.l.RUnlock()
@@ -99,23 +99,36 @@ func (n *Notifier) NotifyWithIgnore(update types.StateUpdate, ignore ...string) 
 			continue
 		}
 
-		log.Trace().Caller().Str("machine", key).Strs("ignoring", ignore).Msg("sending update")
-		c <- update
+		select {
+		case <-ctx.Done():
+			log.Error().Err(ctx.Err()).Str("mkey", key).Any("origin", ctx.Value("origin")).Any("hostname", ctx.Value("hostname")).Msgf("update not sent, context cancelled")
+
+			return
+		case c <- update:
+			log.Trace().Str("mkey", key).Any("origin", ctx.Value("origin")).Any("hostname", ctx.Value("hostname")).Msgf("update successfully sent on chan")
+		}
 	}
 }
 
-func (n *Notifier) NotifyByMachineKey(update types.StateUpdate, mKey key.MachinePublic) {
+func (n *Notifier) NotifyByMachineKey(ctx context.Context, update types.StateUpdate, mKey key.MachinePublic) {
 	log.Trace().Caller().Interface("type", update.Type).Msg("acquiring lock to notify")
 	defer log.Trace().
 		Caller().
 		Interface("type", update.Type).
-		Msg("releasing lock, finished notifing")
+		Msg("releasing lock, finished notifying")
 
 	n.l.RLock()
 	defer n.l.RUnlock()
 
 	if c, ok := n.nodes[mKey.String()]; ok {
-		c <- update
+		select {
+		case <-ctx.Done():
+			log.Error().Err(ctx.Err()).Str("mkey", mKey.String()).Any("origin", ctx.Value("origin")).Any("hostname", ctx.Value("hostname")).Msgf("update not sent, context cancelled")
+
+			return
+		case c <- update:
+			log.Trace().Str("mkey", mKey.String()).Any("origin", ctx.Value("origin")).Any("hostname", ctx.Value("hostname")).Msgf("update successfully sent on chan")
+		}
 	}
 }
 
