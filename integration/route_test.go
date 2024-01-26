@@ -191,6 +191,8 @@ func TestEnablingRoutes(t *testing.T) {
 		})
 	assertNoErr(t, err)
 
+	time.Sleep(5 * time.Second)
+
 	var disablingRoutes []*v1.Route
 	err = executeAndUnmarshal(
 		headscale,
@@ -216,8 +218,6 @@ func TestEnablingRoutes(t *testing.T) {
 			assert.Equal(t, route.GetIsPrimary(), true)
 		}
 	}
-
-	time.Sleep(5 * time.Second)
 
 	// Verify that the clients can see the new routes
 	for _, client := range allClients {
