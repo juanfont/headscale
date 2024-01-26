@@ -363,6 +363,7 @@ func (h *Headscale) handleAuthKey(
 			Hostname:       registerRequest.Hostinfo.Hostname,
 			GivenName:      givenName,
 			UserID:         pak.User.ID,
+			User:           pak.User,
 			MachineKey:     machineKey,
 			RegisterMethod: util.RegisterMethodAuthKey,
 			Expiry:         &registerRequest.Expiry,
@@ -439,6 +440,7 @@ func (h *Headscale) handleAuthKey(
 			Caller().
 			Err(err).
 			Msg("Failed to write response")
+		return
 	}
 
 	// TODO(kradalby): if notifying after register make sense.

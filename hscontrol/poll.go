@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
@@ -347,22 +348,7 @@ func (h *Headscale) handlePoll(
 	}
 
 	if len(node.Routes) > 0 {
-		go func() {
-			err := h.db.DB.Transaction(func(tx *gorm.DB) error {
-				update, err := db.EnsureFailoverRouteIsAvailable(tx, h.nodeNotifier.ConnectedMap(), node)
-				if err != nil {
-					return err
-				}
-
-				if update != nil && update.Valid() {
-					ctx := types.NotifyCtx(context.Background(), "poll-routes-ensurefailover", node.Hostname)
-					h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.MachineKey.String())
-				}
-
-				return err
-			})
-			logErr(err, "failed to ensure failover routes")
-		}()
+		go h.pollFailoverRoutes(logErr, "new node", node)
 	}
 
 	// Set up the client stream
@@ -373,7 +359,7 @@ func (h *Headscale) handlePoll(
 	// to receive a message to make sure we dont block the entire
 	// notifier.
 	// 12 is arbitrarily chosen.
-	updateChan := make(chan types.StateUpdate, 12)
+	updateChan := make(chan types.StateUpdate, 120)
 	defer closeChanWithLog(updateChan, node.Hostname, "updateChan")
 
 	// Register the node's update channel
@@ -523,22 +509,7 @@ func (h *Headscale) handlePoll(
 			go h.updateNodeOnlineStatus(false, node)
 
 			// Failover the node's routes if any.
-			go func() {
-				err := h.db.DB.Transaction(func(tx *gorm.DB) error {
-					update, err := db.EnsureFailoverRouteIsAvailable(tx, h.nodeNotifier.ConnectedMap(), node)
-					if err != nil {
-						return err
-					}
-
-					if update != nil && !update.Empty() && update.Valid() {
-						ctx := types.NotifyCtx(context.Background(), "poll-nodeclose-routes-ensurefailover", node.Hostname)
-						h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.MachineKey.String())
-					}
-
-					return err
-				})
-				logErr(err, "failed to ensure failover routes")
-			}()
+			go h.pollFailoverRoutes(logErr, "node closing connection", node)
 
 			// The connection has been closed, so we can stop polling.
 			return
@@ -548,6 +519,22 @@ func (h *Headscale) handlePoll(
 
 			return
 		}
+	}
+}
+
+func (h *Headscale) pollFailoverRoutes(logErr func(error, string), where string, node *types.Node) {
+	update, err := db.Write(h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
+		return db.EnsureFailoverRouteIsAvailable(tx, h.nodeNotifier.ConnectedMap(), node)
+	})
+	if err != nil {
+		logErr(err, fmt.Sprintf("failed to ensure failover routes, %s", where))
+
+		return
+	}
+
+	if update != nil && !update.Empty() && update.Valid() {
+		ctx := types.NotifyCtx(context.Background(), fmt.Sprintf("poll-%s-routes-ensurefailover", strings.ReplaceAll(where, " ", "-")), node.Hostname)
+		h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.MachineKey.String())
 	}
 }
 
