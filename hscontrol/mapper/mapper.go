@@ -21,6 +21,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
+	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/exp/maps"
 	"tailscale.com/envknob"
 	"tailscale.com/smallzstd"
@@ -63,7 +64,7 @@ type Mapper struct {
 
 	// Map isnt concurrency safe, so we need to ensure
 	// only one func is accessing it over time.
-	mu      sync.Mutex
+	mu      deadlock.Mutex
 	peers   map[uint64]*types.Node
 	patches map[uint64][]patch
 }

@@ -1,18 +1,25 @@
 package notifier
 
 import (
+	"context"
 	"fmt"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/sasha-s/go-deadlock"
 	"tailscale.com/types/key"
 )
 
+func init() {
+	deadlock.Opts.DeadlockTimeout = 3 * time.Second
+	deadlock.Opts.Disable = true
+}
+
 type Notifier struct {
-	l         sync.RWMutex
+	l         deadlock.RWMutex
 	nodes     map[string]chan<- types.StateUpdate
 	connected map[key.MachinePublic]bool
 }
