@@ -88,9 +88,9 @@ func TestEnablingRoutes(t *testing.T) {
 	assert.Len(t, routes, 3)
 
 	for _, route := range routes {
-		assert.Equal(t, route.GetAdvertised(), true)
-		assert.Equal(t, route.GetEnabled(), false)
-		assert.Equal(t, route.GetIsPrimary(), false)
+		assert.Equal(t, true, route.GetAdvertised())
+		assert.Equal(t, false, route.GetEnabled())
+		assert.Equal(t, false, route.GetIsPrimary())
 	}
 
 	// Verify that no routes has been sent to the client,
@@ -135,9 +135,9 @@ func TestEnablingRoutes(t *testing.T) {
 	assert.Len(t, enablingRoutes, 3)
 
 	for _, route := range enablingRoutes {
-		assert.Equal(t, route.GetAdvertised(), true)
-		assert.Equal(t, route.GetEnabled(), true)
-		assert.Equal(t, route.GetIsPrimary(), true)
+		assert.Equal(t, true, route.GetAdvertised())
+		assert.Equal(t, true, route.GetEnabled())
+		assert.Equal(t, true, route.GetIsPrimary())
 	}
 
 	time.Sleep(5 * time.Second)
@@ -211,11 +211,11 @@ func TestEnablingRoutes(t *testing.T) {
 		assert.Equal(t, true, route.GetAdvertised())
 
 		if route.GetId() == routeToBeDisabled.GetId() {
-			assert.Equal(t, route.GetEnabled(), false)
-			assert.Equal(t, route.GetIsPrimary(), false)
+			assert.Equal(t, false, route.GetEnabled())
+			assert.Equal(t, false, route.GetIsPrimary())
 		} else {
-			assert.Equal(t, route.GetEnabled(), true)
-			assert.Equal(t, route.GetIsPrimary(), true)
+			assert.Equal(t, true, route.GetEnabled())
+			assert.Equal(t, true, route.GetIsPrimary())
 		}
 	}
 

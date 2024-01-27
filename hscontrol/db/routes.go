@@ -145,6 +145,7 @@ func DisableRoute(tx *gorm.DB,
 		}
 
 		route.Enabled = false
+		route.IsPrimary = false
 		err = tx.Save(route).Error
 		if err != nil {
 			return nil, err
