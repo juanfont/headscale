@@ -33,3 +33,10 @@ message ListApiKeysRequest {
 message ListApiKeysResponse {
     repeated ApiKey api_keys = 1;
 }
+
+message DeleteApiKeyRequest {
+    string prefix = 1;
+}
+
+message DeleteApiKeyResponse {
+}

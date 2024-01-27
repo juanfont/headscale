@@ -7,16 +7,17 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 type headscaleV1APIServer struct { // v1.HeadscaleServiceServer
@@ -616,6 +617,27 @@ func (api headscaleV1APIServer) ListApiKeys(
 	}
 
 	return &v1.ListApiKeysResponse{ApiKeys: response}, nil
+}
+
+func (api headscaleV1APIServer) DeleteApiKey(
+	ctx context.Context,
+	request *v1.DeleteApiKeyRequest,
+) (*v1.DeleteApiKeyResponse, error) {
+	var (
+		apiKey *types.APIKey
+		err    error
+	)
+
+	apiKey, err = api.h.db.GetAPIKey(request.Prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := api.h.db.DestroyAPIKey(*apiKey); err != nil {
+		return nil, err
+	}
+
+	return &v1.DeleteApiKeyResponse{}, nil
 }
 
 // The following service calls are for testing and debugging

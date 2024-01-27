@@ -47,6 +47,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Change the structure of database configuration, see [config-example.yaml](./config-example.yaml) for the new structure. [#1700](https://github.com/juanfont/headscale/pull/1700)
   - Old structure is now considered deprecated and will be removed in the future.
   - Adds additional configuration for PostgreSQL for setting max open, idle conection and idle connection lifetime.
+- Add support for deleting api keys [#1702](https://github.com/juanfont/headscale/pull/1702)
 
 ## 0.22.3 (2023-05-12)
 
