@@ -371,6 +371,7 @@ func TestFailoverRoute(t *testing.T) {
 					MachineKey: machineKeys[0],
 				},
 				IsPrimary: true,
+				Enabled:   true,
 			},
 			routes: types.Routes{
 				types.Route{
@@ -382,6 +383,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[0],
 					},
 					IsPrimary: true,
+					Enabled:   true,
 				},
 				types.Route{
 					Model: gorm.Model{
@@ -392,6 +394,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[1],
 					},
 					IsPrimary: false,
+					Enabled:   true,
 				},
 			},
 			want: []key.MachinePublic{
@@ -411,6 +414,7 @@ func TestFailoverRoute(t *testing.T) {
 					MachineKey: machineKeys[0],
 				},
 				IsPrimary: false,
+				Enabled:   true,
 			},
 			routes: types.Routes{
 				types.Route{
@@ -422,6 +426,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[0],
 					},
 					IsPrimary: true,
+					Enabled:   true,
 				},
 				types.Route{
 					Model: gorm.Model{
@@ -432,6 +437,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[1],
 					},
 					IsPrimary: false,
+					Enabled:   true,
 				},
 			},
 			want:    nil,
@@ -448,6 +454,7 @@ func TestFailoverRoute(t *testing.T) {
 					MachineKey: machineKeys[1],
 				},
 				IsPrimary: true,
+				Enabled:   true,
 			},
 			routes: types.Routes{
 				types.Route{
@@ -459,6 +466,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[0],
 					},
 					IsPrimary: false,
+					Enabled:   true,
 				},
 				types.Route{
 					Model: gorm.Model{
@@ -469,6 +477,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[1],
 					},
 					IsPrimary: true,
+					Enabled:   true,
 				},
 				types.Route{
 					Model: gorm.Model{
@@ -479,6 +488,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[2],
 					},
 					IsPrimary: false,
+					Enabled:   true,
 				},
 			},
 			want: []key.MachinePublic{
@@ -498,6 +508,7 @@ func TestFailoverRoute(t *testing.T) {
 					MachineKey: machineKeys[0],
 				},
 				IsPrimary: true,
+				Enabled:   true,
 			},
 			routes: types.Routes{
 				types.Route{
@@ -509,6 +520,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[0],
 					},
 					IsPrimary: true,
+					Enabled:   true,
 				},
 				// Offline
 				types.Route{
@@ -520,6 +532,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[3],
 					},
 					IsPrimary: false,
+					Enabled:   true,
 				},
 			},
 			want:    nil,
@@ -536,6 +549,7 @@ func TestFailoverRoute(t *testing.T) {
 					MachineKey: machineKeys[0],
 				},
 				IsPrimary: true,
+				Enabled:   true,
 			},
 			routes: types.Routes{
 				types.Route{
@@ -547,6 +561,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[0],
 					},
 					IsPrimary: true,
+					Enabled:   true,
 				},
 				// Offline
 				types.Route{
@@ -558,6 +573,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[3],
 					},
 					IsPrimary: false,
+					Enabled:   true,
 				},
 				types.Route{
 					Model: gorm.Model{
@@ -568,6 +584,7 @@ func TestFailoverRoute(t *testing.T) {
 						MachineKey: machineKeys[1],
 					},
 					IsPrimary: true,
+					Enabled:   true,
 				},
 			},
 			want: []key.MachinePublic{
