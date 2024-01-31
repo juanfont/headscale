@@ -585,6 +585,10 @@ func (hsdb *HSDatabase) failoverRoute(r *types.Route) ([]key.MachinePublic, erro
 			continue
 		}
 
+		if !route.Enabled {
+			continue
+		}
+
 		if hsdb.notifier.IsConnected(route.Node.MachineKey) {
 			newPrimary = &routes[idx]
 			break
