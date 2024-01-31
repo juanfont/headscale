@@ -593,6 +593,47 @@ func TestFailoverRoute(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "failover-primary-none-enabled",
+			failingRoute: types.Route{
+				Model: gorm.Model{
+					ID: 1,
+				},
+				Prefix: ipp("10.0.0.0/24"),
+				Node: types.Node{
+					MachineKey: machineKeys[0],
+				},
+				IsPrimary: true,
+				Enabled:   true,
+			},
+			routes: types.Routes{
+				types.Route{
+					Model: gorm.Model{
+						ID: 1,
+					},
+					Prefix: ipp("10.0.0.0/24"),
+					Node: types.Node{
+						MachineKey: machineKeys[0],
+					},
+					IsPrimary: true,
+					Enabled:   true,
+				},
+				// not enabled
+				types.Route{
+					Model: gorm.Model{
+						ID: 2,
+					},
+					Prefix: ipp("10.0.0.0/24"),
+					Node: types.Node{
+						MachineKey: machineKeys[1],
+					},
+					IsPrimary: false,
+					Enabled:   false,
+				},
+			},
+			want:    nil,
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
