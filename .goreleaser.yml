@@ -9,7 +9,7 @@ release:
 
 builds:
   - id: headscale
-    main: ./cmd/headscale/headscale.go
+    main: ./cmd/headscale
     mod_timestamp: "{{ .CommitTimestamp }}"
     env:
       - CGO_ENABLED=0
@@ -82,8 +82,11 @@ nfpms:
 kos:
   - id: ghcr
     build: headscale
+    main: ./cmd/headscale
     base_image: gcr.io/distroless/base-debian11
     repository: ghcr.io/juanfont/headscale
+    env:
+      - CGO_ENABLED=0
     platforms:
       - linux/amd64
       # - linux/386
@@ -96,6 +99,8 @@ kos:
       - '{{.Tag}}'
       - '{{ .Major }}.{{ .Minor }}'
       - '{{ .Major }}'
+      - '{{ if not .Prerelease }}stable{{ end }}'
+
   # - id: dockerhub
   #   build: headscale
   #   base_image: gcr.io/distroless/base-debian11
