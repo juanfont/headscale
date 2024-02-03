@@ -14,15 +14,15 @@ builds:
     env:
       - CGO_ENABLED=0
     targets:
-      - darwin_amd64
-      - darwin_arm64
-      - freebsd_amd64
-      - linux_386
+      # - darwin_amd64
+      # - darwin_arm64
+      # - freebsd_amd64
+      # - linux_386
       - linux_amd64
-      - linux_arm64
-      - linux_arm_5
-      - linux_arm_6
-      - linux_arm_7
+      # - linux_arm64
+      # - linux_arm_5
+      # - linux_arm_6
+      # - linux_arm_7
     flags:
       - -mod=readonly
     ldflags:
@@ -86,11 +86,11 @@ kos:
     repository: ghcr.io/juanfont/headscale
     platforms:
       - linux/amd64
-      - linux/386
-      - linux/arm64
-      - linux/arm/v7
-      - linux/arm/v6
-      - linux/arm/v5
+      # - linux/386
+      # - linux/arm64
+      # - linux/arm/v7
+      # - linux/arm/v6
+      # - linux/arm/v5
     tags:
       - latest
       - '{{.Tag}}'
