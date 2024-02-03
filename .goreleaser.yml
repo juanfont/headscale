@@ -36,7 +36,6 @@ archives:
     format: binary
 
 source:
-  rlcp: true
   enabled: true
   name_template: "{{ .ProjectName }}_{{ .Version }}"
   format: tar.gz
@@ -95,20 +94,22 @@ kos:
     tags:
       - latest
       - '{{.Tag}}'
-  - id: dockerhub
-    build: headscale
-    base_image: gcr.io/distroless/base-debian11
-    repository: headscale/headscale
-    platforms:
-      - linux/amd64
-      - linux/386
-      - linux/arm64
-      - linux/arm/v7
-      - linux/arm/v6
-      - linux/arm/v5
-    tags:
-      - latest
-      - '{{.Tag}}'
+      - '{{ .Major }}.{{ .Minor }}'
+      - '{{ .Major }}'
+  # - id: dockerhub
+  #   build: headscale
+  #   base_image: gcr.io/distroless/base-debian11
+  #   repository: headscale/headscale
+  #   platforms:
+  #     - linux/amd64
+  #     - linux/386
+  #     - linux/arm64
+  #     - linux/arm/v7
+  #     - linux/arm/v6
+  #     - linux/arm/v5
+  #   tags:
+  #     - latest
+  #    - '{{.Tag}}'
 
 checksum:
   name_template: "checksums.txt"
