@@ -96,11 +96,11 @@ kos:
       - linux/arm/v5
     tags:
       - latest
-      - '{{ .Tag }}'
-      - '{{ .Major }}.{{ .Minor }}.{{ .Patch }}'
-      - '{{ .Major }}.{{ .Minor }}'
-      - '{{ .Major }}'
-      - '{{ if not .Prerelease }}stable{{ end }}'
+      - "{{ .Tag }}"
+      - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - "{{ .Major }}"
+      - "{{ if not .Prerelease }}stable{{ end }}"
 
   - id: dockerhub
     build: headscale
@@ -115,11 +115,11 @@ kos:
       - linux/arm/v5
     tags:
       - latest
-      - '{{ .Tag }}'
-      - '{{ .Major }}.{{ .Minor }}.{{ .Patch }}'
-      - '{{ .Major }}.{{ .Minor }}'
-      - '{{ .Major }}'
-      - '{{ if not .Prerelease }}stable{{ end }}'
+      - "{{ .Tag }}"
+      - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - "{{ .Major }}"
+      - "{{ if not .Prerelease }}stable{{ end }}"
 
 checksum:
   name_template: "checksums.txt"
