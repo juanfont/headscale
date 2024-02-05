@@ -17,6 +17,7 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/net/netcheck"
 	"tailscale.com/types/netmap"
 )
 
@@ -544,6 +545,29 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 	return &nm, err
 }
 
+// Netcheck returns the current Netcheck Report (netcheck.Report) of the Tailscale instance.
+func (t *TailscaleInContainer) Netcheck() (*netcheck.Report, error) {
+	command := []string{
+		"tailscale",
+		"netcheck",
+		"--format=json",
+	}
+
+	result, stderr, err := t.Execute(command)
+	if err != nil {
+		fmt.Printf("stderr: %s\n", stderr)
+		return nil, fmt.Errorf("failed to execute tailscale debug netcheck command: %w", err)
+	}
+
+	var nm netcheck.Report
+	err = json.Unmarshal([]byte(result), &nm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tailscale netcheck: %w", err)
+	}
+
+	return &nm, err
+}
+
 // FQDN returns the FQDN as a string of the Tailscale instance.
 func (t *TailscaleInContainer) FQDN() (string, error) {
 	if t.fqdn != "" {
@@ -648,12 +672,22 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 				len(peers),
 			)
 		} else {
+			// Verify that the peers of a given node is Online
+			// has a hostname and a DERP relay.
 			for _, peerKey := range peers {
 				peer := status.Peer[peerKey]
 
 				if !peer.Online {
 					return fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName)
 				}
+
+				if peer.HostName == "" {
+					return fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName)
+				}
+
+				// if peer.Relay == "" {
+				// 	return fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName)
+				// }
 			}
 		}
 

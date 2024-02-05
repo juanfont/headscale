@@ -33,7 +33,27 @@ func TestPingAllByIP(t *testing.T) {
 		"user2": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
+	headscaleConfig := map[string]string{
+		"HEADSCALE_DERP_URLS":                    "",
+		"HEADSCALE_DERP_SERVER_ENABLED":          "true",
+		"HEADSCALE_DERP_SERVER_REGION_ID":        "999",
+		"HEADSCALE_DERP_SERVER_REGION_CODE":      "headscale",
+		"HEADSCALE_DERP_SERVER_REGION_NAME":      "Headscale Embedded DERP",
+		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
+		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",
+
+		// Envknob for enabling DERP debug logs
+		"DERP_DEBUG_LOGS":        "true",
+		"DERP_PROBER_DEBUG_LOGS": "true",
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec,
+		[]tsic.Option{},
+		hsic.WithTestName("pingallbyip"),
+		hsic.WithConfigEnv(headscaleConfig),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -44,6 +64,10 @@ func TestPingAllByIP(t *testing.T) {
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
+
+	// time.Sleep(2 * time.Minute)
+
+	assertClientsState(t, allClients)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()

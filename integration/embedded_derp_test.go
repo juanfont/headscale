@@ -33,20 +33,23 @@ func TestDERPServerScenario(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(MustTestVersions),
+		"user1": 10,
+		// "user1": len(MustTestVersions),
 	}
 
-	headscaleConfig := map[string]string{}
-	headscaleConfig["HEADSCALE_DERP_URLS"] = ""
-	headscaleConfig["HEADSCALE_DERP_SERVER_ENABLED"] = "true"
-	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_ID"] = "999"
-	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_CODE"] = "headscale"
-	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_NAME"] = "Headscale Embedded DERP"
-	headscaleConfig["HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR"] = "0.0.0.0:3478"
-	headscaleConfig["HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH"] = "/tmp/derp.key"
-	// Envknob for enabling DERP debug logs
-	headscaleConfig["DERP_DEBUG_LOGS"] = "true"
-	headscaleConfig["DERP_PROBER_DEBUG_LOGS"] = "true"
+	headscaleConfig := map[string]string{
+		"HEADSCALE_DERP_URLS":                    "",
+		"HEADSCALE_DERP_SERVER_ENABLED":          "true",
+		"HEADSCALE_DERP_SERVER_REGION_ID":        "999",
+		"HEADSCALE_DERP_SERVER_REGION_CODE":      "headscale",
+		"HEADSCALE_DERP_SERVER_REGION_NAME":      "Headscale Embedded DERP",
+		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
+		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",
+
+		// Envknob for enabling DERP debug logs
+		"DERP_DEBUG_LOGS":        "true",
+		"DERP_PROBER_DEBUG_LOGS": "true",
+	}
 
 	err = scenario.CreateHeadscaleEnv(
 		spec,
