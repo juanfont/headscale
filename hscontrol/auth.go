@@ -199,6 +199,19 @@ func (h *Headscale) handleRegister(
 			return
 		}
 
+		// When logged out and reauthenticating with OIDC, the OldNodeKey is not passed, but the NodeKey has changed
+		if node.NodeKey.String() != registerRequest.NodeKey.String() &&
+			registerRequest.OldNodeKey.IsZero() && !node.IsExpired() {
+			h.handleNodeKeyRefresh(
+				writer,
+				registerRequest,
+				*node,
+				machineKey,
+			)
+
+			return
+		}
+
 		if registerRequest.Followup != "" {
 			select {
 			case <-req.Context().Done():
