@@ -135,6 +135,8 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
+	assertClientsState(t, allClients)
+
 	clientIPs := make(map[TailscaleClient][]netip.Addr)
 	for _, client := range allClients {
 		ips, err := client.IPs()
@@ -173,6 +175,8 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
+
+	assertClientsState(t, allClients)
 
 	allClients, err = scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
@@ -324,6 +328,8 @@ func TestPingAllByHostname(t *testing.T) {
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
+
+	assertClientsState(t, allClients)
 
 	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
 	assertNoErrListFQDN(t, err)
@@ -511,6 +517,74 @@ func TestTaildrop(t *testing.T) {
 	}
 }
 
+func TestResolveMagicDNS(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"magicdns1": len(MustTestVersions),
+		"magicdns2": len(MustTestVersions),
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("magicdns"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	assertClientsState(t, allClients)
+
+	// Poor mans cache
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	assertNoErrListFQDN(t, err)
+
+	_, err = scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	for _, client := range allClients {
+		for _, peer := range allClients {
+			// It is safe to ignore this error as we handled it when caching it
+			peerFQDN, _ := peer.FQDN()
+
+			command := []string{
+				"tailscale",
+				"ip", peerFQDN,
+			}
+			result, _, err := client.Execute(command)
+			if err != nil {
+				t.Fatalf(
+					"failed to execute resolve/ip command %s from %s: %s",
+					peerFQDN,
+					client.Hostname(),
+					err,
+				)
+			}
+
+			ips, err := peer.IPs()
+			if err != nil {
+				t.Fatalf(
+					"failed to get ips for %s: %s",
+					peer.Hostname(),
+					err,
+				)
+			}
+
+			for _, ip := range ips {
+				if !strings.Contains(result, ip.String()) {
+					t.Fatalf("ip %s is not found in \n%s\n", ip.String(), result)
+				}
+			}
+		}
+	}
+}
+
 func TestExpireNode(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -534,6 +608,8 @@ func TestExpireNode(t *testing.T) {
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
+
+	assertClientsState(t, allClients)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -658,6 +734,8 @@ func TestNodeOnlineLastSeenStatus(t *testing.T) {
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
+
+	assertClientsState(t, allClients)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
