@@ -685,9 +685,9 @@ func (t *TailscaleInContainer) WaitForPeers(expected int) error {
 					return fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName)
 				}
 
-				// if peer.Relay == "" {
-				// 	return fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName)
-				// }
+				if peer.Relay == "" {
+					return fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName)
+				}
 			}
 		}
 

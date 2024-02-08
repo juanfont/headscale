@@ -65,7 +65,43 @@ func TestPingAllByIP(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	// time.Sleep(2 * time.Minute)
+	assertClientsState(t, allClients)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+}
+
+func TestPingAllByIPPublicDERP(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario()
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": len(MustTestVersions),
+		"user2": len(MustTestVersions),
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec,
+		[]tsic.Option{},
+		hsic.WithTestName("pingallbyippubderp"),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
 
 	assertClientsState(t, allClients)
 

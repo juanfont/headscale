@@ -8,6 +8,7 @@ import (
 
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/util/cmpver"
 )
 
 const (
@@ -143,8 +144,9 @@ func assertClientsState(t *testing.T, clients []TailscaleClient) {
 func assertValidNetmap(t *testing.T, client TailscaleClient) {
 	t.Helper()
 
-	// TODO(kradalby): Add check for over 1.56.1
-	if !strings.Contains(client.Hostname(), "head") && !strings.Contains(client.Hostname(), "unstable") {
+	if cmpver.Compare("1.56.1", client.Version()) <= 0 ||
+		!strings.Contains(client.Hostname(), "unstable") ||
+		!strings.Contains(client.Hostname(), "head") {
 		return
 	}
 
@@ -175,7 +177,7 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 			assert.LessOrEqualf(t, 3, peer.Hostinfo().Services().Len(), "peer (%s) of %q does not have enough services, got: %v", peer.ComputedName(), client.Hostname(), peer.Hostinfo().Services())
 
 			// Netinfo is not always set
-			// assert.Truef(t, hi.NetInfo().Valid(), "peer (%s) of %q does not have NetInfo", peer.ComputedName(), client.Hostname())
+			assert.Truef(t, hi.NetInfo().Valid(), "peer (%s) of %q does not have NetInfo", peer.ComputedName(), client.Hostname())
 			if ni := hi.NetInfo(); ni.Valid() {
 				assert.NotEqualf(t, 0, ni.PreferredDERP(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.Hostinfo().NetInfo().PreferredDERP())
 			}
@@ -210,7 +212,12 @@ func assertValidStatus(t *testing.T, client TailscaleClient) {
 	assert.NotEmptyf(t, status.Self.Relay, "%q does not have a relay, likely missing Hostinfo/Netinfo", client.Hostname())
 
 	assert.NotEmptyf(t, status.Self.TailscaleIPs, "%q does not have Tailscale IPs", client.Hostname())
-	assert.NotEmptyf(t, status.Self.AllowedIPs, "%q does not have any allowed IPs", client.Hostname())
+
+	// This seem to not appear until version 1.56
+	if status.Self.AllowedIPs != nil {
+		assert.NotEmptyf(t, status.Self.AllowedIPs, "%q does not have any allowed IPs", client.Hostname())
+	}
+
 	assert.NotEmptyf(t, status.Self.Addrs, "%q does not have any endpoints", client.Hostname())
 
 	assert.Truef(t, status.Self.Online, "%q is not online", client.Hostname())
@@ -227,7 +234,11 @@ func assertValidStatus(t *testing.T, client TailscaleClient) {
 		assert.NotEmptyf(t, peer.Relay, "peer (%s) of %q does not have a relay, likely missing Hostinfo/Netinfo", peer.DNSName, client.Hostname())
 
 		assert.NotEmptyf(t, peer.TailscaleIPs, "peer (%s) of %q does not have Tailscale IPs", peer.DNSName, client.Hostname())
-		assert.NotEmptyf(t, peer.AllowedIPs, "peer (%s) of %q does not have any allowed IPs", peer.DNSName, client.Hostname())
+
+		// This seem to not appear until version 1.56
+		if peer.AllowedIPs != nil {
+			assert.NotEmptyf(t, peer.AllowedIPs, "peer (%s) of %q does not have any allowed IPs", peer.DNSName, client.Hostname())
+		}
 
 		// Addrs does not seem to appear in the status from peers.
 		// assert.NotEmptyf(t, peer.Addrs, "peer (%s) of %q does not have any endpoints", peer.DNSName, client.Hostname())
