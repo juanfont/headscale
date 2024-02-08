@@ -879,12 +879,6 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 				node.IPAddresses.AppendToIPSet(&build)
 			}
 		}
-		// Add IP addresses of node in case it is advertising this route
-		for _, route := range node.Routes {
-			if prefix == netip.Prefix(route.Prefix) {
-				node.IPAddresses.AppendToIPSet(&build)
-			}
-		} 
 	}
 
 	return build.IPSet()

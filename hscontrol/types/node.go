@@ -219,6 +219,15 @@ func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
 		if matcher.DestsContainsIP([]netip.Addr(node2.IPAddresses)) {
 			return true
 		}
+
+		var routes []netip.Addr
+		for _, route := range node2.Routes {
+			routes = append(routes, netip.Prefix(route.Prefix).Addr())
+		} 
+
+		if matcher.DestsContainsIP(routes) {
+			return true
+		}
 	}
 
 	return false
