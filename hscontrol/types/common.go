@@ -1,14 +1,18 @@
 package types
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
+	"time"
 
 	"tailscale.com/tailcfg"
 )
+
+const SelfUpdateIdentifier = "self-update"
 
 var ErrCannotParsePrefix = errors.New("cannot parse prefix")
 
@@ -159,4 +163,38 @@ func (su *StateUpdate) Valid() bool {
 	}
 
 	return true
+}
+
+// Empty reports if there are any updates in the StateUpdate.
+func (su *StateUpdate) Empty() bool {
+	switch su.Type {
+	case StatePeerChanged:
+		return len(su.ChangeNodes) == 0
+	case StatePeerChangedPatch:
+		return len(su.ChangePatches) == 0
+	case StatePeerRemoved:
+		return len(su.Removed) == 0
+	}
+
+	return false
+}
+
+func StateUpdateExpire(nodeID uint64, expiry time.Time) StateUpdate {
+	return StateUpdate{
+		Type: StatePeerChangedPatch,
+		ChangePatches: []*tailcfg.PeerChange{
+			{
+				NodeID:    tailcfg.NodeID(nodeID),
+				KeyExpiry: &expiry,
+			},
+		},
+	}
+}
+
+func NotifyCtx(ctx context.Context, origin, hostname string) context.Context {
+	ctx2, _ := context.WithTimeout(
+		context.WithValue(context.WithValue(ctx, "hostname", hostname), "origin", origin),
+		3*time.Second,
+	)
+	return ctx2
 }

@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -36,12 +34,7 @@ type KV struct {
 }
 
 type HSDatabase struct {
-	db       *gorm.DB
-	notifier *notifier.Notifier
-
-	mu sync.RWMutex
-
-	ipAllocationMutex sync.Mutex
+	DB *gorm.DB
 
 	ipPrefixes []netip.Prefix
 	baseDomain string
@@ -52,7 +45,6 @@ type HSDatabase struct {
 func NewHeadscaleDatabase(
 	dbType, connectionAddr string,
 	debug bool,
-	notifier *notifier.Notifier,
 	ipPrefixes []netip.Prefix,
 	baseDomain string,
 ) (*HSDatabase, error) {
@@ -147,7 +139,9 @@ func NewHeadscaleDatabase(
 					DiscoKey   string
 				}
 				var results []result
-				err = tx.Raw("SELECT id, node_key, machine_key, disco_key FROM nodes").Find(&results).Error
+				err = tx.Raw("SELECT id, node_key, machine_key, disco_key FROM nodes").
+					Find(&results).
+					Error
 				if err != nil {
 					return err
 				}
@@ -180,7 +174,8 @@ func NewHeadscaleDatabase(
 				}
 
 				if tx.Migrator().HasColumn(&types.Node{}, "enabled_routes") {
-					log.Info().Msgf("Database has legacy enabled_routes column in node, migrating...")
+					log.Info().
+						Msgf("Database has legacy enabled_routes column in node, migrating...")
 
 					type NodeAux struct {
 						ID            uint64
@@ -317,8 +312,7 @@ func NewHeadscaleDatabase(
 	}
 
 	db := HSDatabase{
-		db:       dbConn,
-		notifier: notifier,
+		DB: dbConn,
 
 		ipPrefixes: ipPrefixes,
 		baseDomain: baseDomain,
@@ -376,7 +370,7 @@ func openDB(dbType, connectionAddr string, debug bool) (*gorm.DB, error) {
 func (hsdb *HSDatabase) PingDB(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	sqlDB, err := hsdb.db.DB()
+	sqlDB, err := hsdb.DB.DB()
 	if err != nil {
 		return err
 	}
@@ -385,10 +379,48 @@ func (hsdb *HSDatabase) PingDB(ctx context.Context) error {
 }
 
 func (hsdb *HSDatabase) Close() error {
-	db, err := hsdb.db.DB()
+	db, err := hsdb.DB.DB()
 	if err != nil {
 		return err
 	}
 
 	return db.Close()
+}
+
+func (hsdb *HSDatabase) Read(fn func(rx *gorm.DB) error) error {
+	rx := hsdb.DB.Begin()
+	defer rx.Rollback()
+	return fn(rx)
+}
+
+func Read[T any](db *gorm.DB, fn func(rx *gorm.DB) (T, error)) (T, error) {
+	rx := db.Begin()
+	defer rx.Rollback()
+	ret, err := fn(rx)
+	if err != nil {
+		var no T
+		return no, err
+	}
+	return ret, nil
+}
+
+func (hsdb *HSDatabase) Write(fn func(tx *gorm.DB) error) error {
+	tx := hsdb.DB.Begin()
+	defer tx.Rollback()
+	if err := fn(tx); err != nil {
+		return err
+	}
+
+	return tx.Commit().Error
+}
+
+func Write[T any](db *gorm.DB, fn func(tx *gorm.DB) (T, error)) (T, error) {
+	tx := db.Begin()
+	defer tx.Rollback()
+	ret, err := fn(tx)
+	if err != nil {
+		var no T
+		return no, err
+	}
+	return ret, tx.Commit().Error
 }

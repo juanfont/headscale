@@ -88,9 +88,9 @@ func TestEnablingRoutes(t *testing.T) {
 	assert.Len(t, routes, 3)
 
 	for _, route := range routes {
-		assert.Equal(t, route.GetAdvertised(), true)
-		assert.Equal(t, route.GetEnabled(), false)
-		assert.Equal(t, route.GetIsPrimary(), false)
+		assert.Equal(t, true, route.GetAdvertised())
+		assert.Equal(t, false, route.GetEnabled())
+		assert.Equal(t, false, route.GetIsPrimary())
 	}
 
 	// Verify that no routes has been sent to the client,
@@ -135,9 +135,9 @@ func TestEnablingRoutes(t *testing.T) {
 	assert.Len(t, enablingRoutes, 3)
 
 	for _, route := range enablingRoutes {
-		assert.Equal(t, route.GetAdvertised(), true)
-		assert.Equal(t, route.GetEnabled(), true)
-		assert.Equal(t, route.GetIsPrimary(), true)
+		assert.Equal(t, true, route.GetAdvertised())
+		assert.Equal(t, true, route.GetEnabled())
+		assert.Equal(t, true, route.GetIsPrimary())
 	}
 
 	time.Sleep(5 * time.Second)
@@ -191,6 +191,8 @@ func TestEnablingRoutes(t *testing.T) {
 		})
 	assertNoErr(t, err)
 
+	time.Sleep(5 * time.Second)
+
 	var disablingRoutes []*v1.Route
 	err = executeAndUnmarshal(
 		headscale,
@@ -209,15 +211,13 @@ func TestEnablingRoutes(t *testing.T) {
 		assert.Equal(t, true, route.GetAdvertised())
 
 		if route.GetId() == routeToBeDisabled.GetId() {
-			assert.Equal(t, route.GetEnabled(), false)
-			assert.Equal(t, route.GetIsPrimary(), false)
+			assert.Equal(t, false, route.GetEnabled())
+			assert.Equal(t, false, route.GetIsPrimary())
 		} else {
-			assert.Equal(t, route.GetEnabled(), true)
-			assert.Equal(t, route.GetIsPrimary(), true)
+			assert.Equal(t, true, route.GetEnabled())
+			assert.Equal(t, true, route.GetIsPrimary())
 		}
 	}
-
-	time.Sleep(5 * time.Second)
 
 	// Verify that the clients can see the new routes
 	for _, client := range allClients {
@@ -294,7 +294,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// advertise HA route on node 1 and 2
 	// ID 1 will be primary
 	// ID 2 will be secondary
-	for _, client := range allClients {
+	for _, client := range allClients[:2] {
 		status, err := client.Status()
 		assertNoErr(t, err)
 
@@ -306,6 +306,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 			}
 			_, _, err = client.Execute(command)
 			assertNoErrf(t, "failed to advertise route: %s", err)
+		} else {
+			t.Fatalf("failed to find route for Node %s (id: %s)", status.Self.HostName, status.Self.ID)
 		}
 	}
 
@@ -327,6 +329,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	assertNoErr(t, err)
 	assert.Len(t, routes, 2)
+
+	t.Logf("initial routes %#v", routes)
 
 	for _, route := range routes {
 		assert.Equal(t, true, route.GetAdvertised())
@@ -643,6 +647,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	)
 	assertNoErr(t, err)
 	assert.Len(t, routesAfterDisabling1, 2)
+
+	t.Logf("routes after disabling1 %#v", routesAfterDisabling1)
 
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfterDisabling1[0].GetAdvertised())

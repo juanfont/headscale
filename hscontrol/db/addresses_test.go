@@ -7,10 +7,16 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
 )
 
 func (s *Suite) TestGetAvailableIp(c *check.C) {
-	ips, err := db.getAvailableIPs()
+	tx := db.DB.Begin()
+	defer tx.Rollback()
+
+	ips, err := getAvailableIPs(tx, []netip.Prefix{
+		netip.MustParsePrefix("10.27.0.0/23"),
+	})
 
 	c.Assert(err, check.IsNil)
 
@@ -30,7 +36,7 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test", "testnode")
+	_, err = db.getNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
 	node := types.Node{
@@ -41,10 +47,13 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 		AuthKeyID:      uint(pak.ID),
 		IPAddresses:    ips,
 	}
-	db.db.Save(&node)
+	db.Write(func(tx *gorm.DB) error {
+		return tx.Save(&node).Error
+	})
 
-	usedIps, err := db.getUsedIPs()
-
+	usedIps, err := Read(db.DB, func(rx *gorm.DB) (*netipx.IPSet, error) {
+		return getUsedIPs(rx)
+	})
 	c.Assert(err, check.IsNil)
 
 	expected := netip.MustParseAddr("10.27.0.1")
@@ -63,19 +72,23 @@ func (s *Suite) TestGetUsedIps(c *check.C) {
 }
 
 func (s *Suite) TestGetMultiIp(c *check.C) {
-	user, err := db.CreateUser("test-ip-multi")
+	user, err := db.CreateUser("test-ip")
 	c.Assert(err, check.IsNil)
 
+	ipPrefixes := []netip.Prefix{
+		netip.MustParsePrefix("10.27.0.0/23"),
+	}
+
 	for index := 1; index <= 350; index++ {
-		db.ipAllocationMutex.Lock()
+		tx := db.DB.Begin()
 
-		ips, err := db.getAvailableIPs()
+		ips, err := getAvailableIPs(tx, ipPrefixes)
 		c.Assert(err, check.IsNil)
 
-		pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+		pak, err := CreatePreAuthKey(tx, user.Name, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 
-		_, err = db.GetNode("test", "testnode")
+		_, err = getNode(tx, "test", "testnode")
 		c.Assert(err, check.NotNil)
 
 		node := types.Node{
@@ -86,12 +99,13 @@ func (s *Suite) TestGetMultiIp(c *check.C) {
 			AuthKeyID:      uint(pak.ID),
 			IPAddresses:    ips,
 		}
-		db.db.Save(&node)
-
-		db.ipAllocationMutex.Unlock()
+		tx.Save(&node)
+		c.Assert(tx.Commit().Error, check.IsNil)
 	}
 
-	usedIps, err := db.getUsedIPs()
+	usedIps, err := Read(db.DB, func(rx *gorm.DB) (*netipx.IPSet, error) {
+		return getUsedIPs(rx)
+	})
 	c.Assert(err, check.IsNil)
 
 	expected0 := netip.MustParseAddr("10.27.0.1")
@@ -162,7 +176,7 @@ func (s *Suite) TestGetAvailableIpNodeWithoutIP(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test", "testnode")
+	_, err = db.getNode("test", "testnode")
 	c.Assert(err, check.NotNil)
 
 	node := types.Node{
@@ -172,7 +186,7 @@ func (s *Suite) TestGetAvailableIpNodeWithoutIP(c *check.C) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      uint(pak.ID),
 	}
-	db.db.Save(&node)
+	db.DB.Save(&node)
 
 	ips2, err := db.getAvailableIPs()
 	c.Assert(err, check.IsNil)
