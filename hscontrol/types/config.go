@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -20,6 +19,8 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 const (
@@ -75,12 +76,15 @@ type SqliteConfig struct {
 }
 
 type PostgresConfig struct {
-	Host string
-	Port int
-	Name string
-	User string
-	Pass string
-	Ssl  string
+	Host                string
+	Port                int
+	Name                string
+	User                string
+	Pass                string
+	Ssl                 string
+	MaxOpenConnections  int
+	MaxIdleConnections  int
+	ConnMaxIdleTimeSecs int
 }
 
 type DatabaseConfig struct {
@@ -213,6 +217,9 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("db_ssl", false)
 	viper.SetDefault("database.postgres.ssl", false)
+	viper.SetDefault("database.postgres.max_open_conns", 10)
+	viper.SetDefault("database.postgres.max_idle_conns", 10)
+	viper.SetDefault("database.postgres.conn_max_idle_time_secs", 3600)
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
@@ -287,7 +294,7 @@ func LoadConfig(path string, isFile bool) error {
 	}
 
 	if errorText != "" {
-		//nolint
+		// nolint
 		return errors.New(strings.TrimSuffix(errorText, "\n"))
 	} else {
 		return nil
@@ -429,22 +436,30 @@ func GetDatabaseConfig() DatabaseConfig {
 	case "sqlite":
 		type_ = "sqlite3"
 	default:
-		log.Fatal().Msgf("invalid database type %q, must be sqlite, sqlite3 or postgres", type_)
+		log.Fatal().
+			Msgf("invalid database type %q, must be sqlite, sqlite3 or postgres", type_)
 	}
 
 	return DatabaseConfig{
 		Type:  type_,
 		Debug: debug,
 		Sqlite: SqliteConfig{
-			Path: util.AbsolutePathFromConfigPath(viper.GetString("database.sqlite.path")),
+			Path: util.AbsolutePathFromConfigPath(
+				viper.GetString("database.sqlite.path"),
+			),
 		},
 		Postgres: PostgresConfig{
-			Host: viper.GetString("database.postgres.host"),
-			Port: viper.GetInt("database.postgres.port"),
-			Name: viper.GetString("database.postgres.name"),
-			User: viper.GetString("database.postgres.user"),
-			Pass: viper.GetString("database.postgres.pass"),
-			Ssl:  viper.GetString("database.postgres.ssl"),
+			Host:               viper.GetString("database.postgres.host"),
+			Port:               viper.GetInt("database.postgres.port"),
+			Name:               viper.GetString("database.postgres.name"),
+			User:               viper.GetString("database.postgres.user"),
+			Pass:               viper.GetString("database.postgres.pass"),
+			Ssl:                viper.GetString("database.postgres.ssl"),
+			MaxOpenConnections: viper.GetInt("database.postgres.max_open_conns"),
+			MaxIdleConnections: viper.GetInt("database.postgres.max_idle_conns"),
+			ConnMaxIdleTimeSecs: viper.GetInt(
+				"database.postgres.conn_max_idle_time_secs",
+			),
 		},
 	}
 }
