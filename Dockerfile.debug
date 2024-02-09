@@ -1,5 +1,5 @@
 # Builder image
-FROM docker.io/golang:1.21-bookworm AS build
+FROM docker.io/golang:1.22-bookworm AS build
 ARG VERSION=dev
 ENV GOPATH /go
 WORKDIR /go/src/headscale
@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux go install -ldflags="-s -w -X github.com/juanfont/h
 RUN test -e /go/bin/headscale
 
 # Debug image
-FROM docker.io/golang:1.21-bookworm
+FROM docker.io/golang:1.22-bookworm
 
 COPY --from=build /go/bin/headscale /bin/headscale
 ENV TZ UTC

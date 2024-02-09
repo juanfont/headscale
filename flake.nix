@@ -21,7 +21,7 @@
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
       in rec {
-        headscale = pkgs.buildGo121Module rec {
+        headscale = pkgs.buildGo122Module rec {
           pname = "headscale";
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
@@ -83,7 +83,7 @@
         overlays = [self.overlay];
         inherit system;
       };
-      buildDeps = with pkgs; [git go_1_21 gnumake];
+      buildDeps = with pkgs; [git go_1_22 gnumake];
       devDeps = with pkgs;
         buildDeps
         ++ [
