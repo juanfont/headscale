@@ -124,7 +124,22 @@
     in rec {
       # `nix develop`
       devShell = pkgs.mkShell {
-        buildInputs = devDeps;
+        buildInputs =
+          devDeps
+          ++ [
+            (pkgs.writeShellScriptBin
+              "nix-vendor-sri"
+              ''
+                set -eu
+
+                OUT=$(mktemp -d -t nar-hash-XXXXXX)
+                rm -rf "$OUT"
+
+                go mod vendor -o "$OUT"
+                go run tailscale.com/cmd/nardump --sri "$OUT"
+                rm -rf "$OUT"
+              '')
+          ];
 
         shellHook = ''
           export PATH="$PWD/result/bin:$PATH"
