@@ -46,6 +46,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
 - Change the structure of database configuration, see [config-example.yaml](./config-example.yaml) for the new structure. [#1700](https://github.com/juanfont/headscale/pull/1700)
   - Old structure is now considered deprecated and will be removed in the future.
+  - Adds additional configuration for PostgreSQL for setting max open, idle conection and idle connection lifetime.
 
 ## 0.22.3 (2023-05-12)
 

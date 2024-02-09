@@ -153,6 +153,9 @@ database:
   #   name: headscale
   #   user: foo
   #   pass: bar
+  #   max_open_conns: 10
+  #   max_idle_conns: 10
+  #   conn_max_idle_time_secs: 3600
 
   #   # If other 'sslmode' is required instead of 'require(true)' and 'disabled(false)', set the 'sslmode' you need
   #   # in the 'db_ssl' field. Refers to https://www.postgresql.org/docs/current/libpq-ssl.html Table 34.1.
