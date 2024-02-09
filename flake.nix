@@ -141,6 +141,13 @@
                 go run tailscale.com/cmd/nardump --sri "$OUT"
                 rm -rf "$OUT"
               '')
+
+            (pkgs.writeShellScriptBin
+              "go-mod-update-all"
+              ''
+                cat go.mod | ${pkgs.silver-searcher}/bin/ag "\t" | ${pkgs.silver-searcher}/bin/ag -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
+                go mod tidy
+              '')
           ];
 
         shellHook = ''
