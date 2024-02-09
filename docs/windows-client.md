@@ -18,6 +18,7 @@ You can set these using the Windows Registry Editor:
 Or via the following Powershell commands (right click Powershell icon and select "Run as administrator"):
 
 ```
+New-Item -Path "HKLM:\SOFTWARE\Tailscale IPN"
 New-ItemProperty -Path 'HKLM:\Software\Tailscale IPN' -Name UnattendedMode -PropertyType String -Value always
 New-ItemProperty -Path 'HKLM:\Software\Tailscale IPN' -Name LoginURL -PropertyType String -Value https://YOUR-HEADSCALE-URL
 ```
