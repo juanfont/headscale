@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
@@ -654,9 +655,13 @@ func TestFailoverRoute(t *testing.T) {
 			assert.NoError(t, err)
 
 			db, err = NewHeadscaleDatabase(
-				"sqlite3",
-				tmpDir+"/headscale_test.db",
-				false,
+				types.DatabaseConfig{
+					Type: "sqlite3",
+					Sqlite: types.SqliteConfig{
+						Path: tmpDir + "/headscale_test.db",
+					},
+				},
+				notifier.NewNotifier(),
 				[]netip.Prefix{
 					netip.MustParsePrefix("10.27.0.0/23"),
 				},

@@ -12,7 +12,11 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-const SelfUpdateIdentifier = "self-update"
+const (
+	SelfUpdateIdentifier = "self-update"
+	DatabasePostgres     = "postgres"
+	DatabaseSqlite       = "sqlite3"
+)
 
 var ErrCannotParsePrefix = errors.New("cannot parse prefix")
 
@@ -154,7 +158,9 @@ func (su *StateUpdate) Valid() bool {
 		}
 	case StateSelfUpdate:
 		if su.ChangeNodes == nil || len(su.ChangeNodes) != 1 {
-			panic("Mandatory field ChangeNodes is not set for StateSelfUpdate or has more than one node")
+			panic(
+				"Mandatory field ChangeNodes is not set for StateSelfUpdate or has more than one node",
+			)
 		}
 	case StateDERPUpdated:
 		if su.DERPMap == nil {

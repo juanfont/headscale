@@ -46,16 +46,9 @@ type Config struct {
 	Log                            LogConfig
 	DisableUpdateCheck             bool
 
-	DERP DERPConfig
+	Database DatabaseConfig
 
-	DBtype string
-	DBpath string
-	DBhost string
-	DBport int
-	DBname string
-	DBuser string
-	DBpass string
-	DBssl  string
+	DERP DERPConfig
 
 	TLS TLSConfig
 
@@ -75,6 +68,28 @@ type Config struct {
 	CLI CLIConfig
 
 	ACL ACLConfig
+}
+
+type SqliteConfig struct {
+	Path string
+}
+
+type PostgresConfig struct {
+	Host string
+	Port int
+	Name string
+	User string
+	Pass string
+	Ssl  string
+}
+
+type DatabaseConfig struct {
+	// Type sets the database type, either "sqlite3" or "postgres"
+	Type  string
+	Debug bool
+
+	Sqlite   SqliteConfig
+	Postgres PostgresConfig
 }
 
 type TLSConfig struct {
@@ -161,6 +176,19 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
+	viper.RegisterAlias("db_type", "database.type")
+
+	// SQLite aliases
+	viper.RegisterAlias("db_path", "database.sqlite.path")
+
+	// Postgres aliases
+	viper.RegisterAlias("db_host", "database.postgres.host")
+	viper.RegisterAlias("db_port", "database.postgres.port")
+	viper.RegisterAlias("db_name", "database.postgres.name")
+	viper.RegisterAlias("db_user", "database.postgres.user")
+	viper.RegisterAlias("db_pass", "database.postgres.pass")
+	viper.RegisterAlias("db_ssl", "database.postgres.ssl")
+
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
 
@@ -184,6 +212,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("cli.insecure", false)
 
 	viper.SetDefault("db_ssl", false)
+	viper.SetDefault("database.postgres.ssl", false)
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
@@ -386,6 +415,37 @@ func GetLogConfig() LogConfig {
 	return LogConfig{
 		Format: logFormat,
 		Level:  logLevel,
+	}
+}
+
+func GetDatabaseConfig() DatabaseConfig {
+	debug := viper.GetBool("database.debug")
+
+	type_ := viper.GetString("database.type")
+
+	switch type_ {
+	case DatabaseSqlite, DatabasePostgres:
+		break
+	case "sqlite":
+		type_ = "sqlite3"
+	default:
+		log.Fatal().Msgf("invalid database type %q, must be sqlite, sqlite3 or postgres", type_)
+	}
+
+	return DatabaseConfig{
+		Type:  type_,
+		Debug: debug,
+		Sqlite: SqliteConfig{
+			Path: util.AbsolutePathFromConfigPath(viper.GetString("database.sqlite.path")),
+		},
+		Postgres: PostgresConfig{
+			Host: viper.GetString("database.postgres.host"),
+			Port: viper.GetInt("database.postgres.port"),
+			Name: viper.GetString("database.postgres.name"),
+			User: viper.GetString("database.postgres.user"),
+			Pass: viper.GetString("database.postgres.pass"),
+			Ssl:  viper.GetString("database.postgres.ssl"),
+		},
 	}
 }
 
@@ -617,14 +677,7 @@ func GetHeadscaleConfig() (*Config, error) {
 			"node_update_check_interval",
 		),
 
-		DBtype: viper.GetString("db_type"),
-		DBpath: util.AbsolutePathFromConfigPath(viper.GetString("db_path")),
-		DBhost: viper.GetString("db_host"),
-		DBport: viper.GetInt("db_port"),
-		DBname: viper.GetString("db_name"),
-		DBuser: viper.GetString("db_user"),
-		DBpass: viper.GetString("db_pass"),
-		DBssl:  viper.GetString("db_ssl"),
+		Database: GetDatabaseConfig(),
 
 		TLS: GetTLSConfig(),
 

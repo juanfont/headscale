@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -118,37 +117,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
-	var dbString string
-	switch cfg.DBtype {
-	case db.Postgres:
-		dbString = fmt.Sprintf(
-			"host=%s dbname=%s user=%s",
-			cfg.DBhost,
-			cfg.DBname,
-			cfg.DBuser,
-		)
-
-		if sslEnabled, err := strconv.ParseBool(cfg.DBssl); err == nil {
-			if !sslEnabled {
-				dbString += " sslmode=disable"
-			}
-		} else {
-			dbString += fmt.Sprintf(" sslmode=%s", cfg.DBssl)
-		}
-
-		if cfg.DBport != 0 {
-			dbString += fmt.Sprintf(" port=%d", cfg.DBport)
-		}
-
-		if cfg.DBpass != "" {
-			dbString += fmt.Sprintf(" password=%s", cfg.DBpass)
-		}
-	case db.Sqlite:
-		dbString = cfg.DBpath
-	default:
-		return nil, errUnsupportedDatabase
-	}
-
 	registrationCache := cache.New(
 		registerCacheExpiration,
 		registerCacheCleanup,
@@ -156,8 +124,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	app := Headscale{
 		cfg:                cfg,
-		dbType:             cfg.DBtype,
-		dbString:           dbString,
 		noisePrivateKey:    noisePrivateKey,
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
@@ -165,9 +131,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	database, err := db.NewHeadscaleDatabase(
-		cfg.DBtype,
-		dbString,
-		app.dbDebug,
+		cfg.Database,
+		app.nodeNotifier,
 		cfg.IPPrefixes,
 		cfg.BaseDomain)
 	if err != nil {
@@ -755,14 +720,16 @@ func (h *Headscale) Serve() error {
 
 	var tailsqlContext context.Context
 	if tailsqlEnabled {
-		if h.cfg.DBtype != db.Sqlite {
-			log.Fatal().Str("type", h.cfg.DBtype).Msgf("tailsql only support %q", db.Sqlite)
+		if h.cfg.Database.Type != types.DatabaseSqlite {
+			log.Fatal().
+				Str("type", h.cfg.Database.Type).
+				Msgf("tailsql only support %q", types.DatabaseSqlite)
 		}
 		if tailsqlTSKey == "" {
 			log.Fatal().Msg("tailsql requires TS_AUTHKEY to be set")
 		}
 		tailsqlContext = context.Background()
-		go runTailSQLService(ctx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.DBpath)
+		go runTailSQLService(ctx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.Database.Sqlite.Path)
 	}
 
 	// Handle common process-killing signals so we can gracefully shut down:
