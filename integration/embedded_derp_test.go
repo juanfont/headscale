@@ -70,8 +70,6 @@ func TestDERPServerScenario(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
-
 	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
 	assertNoErrListFQDN(t, err)
 

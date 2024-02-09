@@ -6,7 +6,6 @@ func TailscaleVersionNewerOrEqual(minimum, toCheck string) bool {
 	if cmpver.Compare(minimum, toCheck) <= 0 ||
 		toCheck == "unstable" ||
 		toCheck == "head" {
-
 		return true
 	}
 
