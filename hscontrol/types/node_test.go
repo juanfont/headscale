@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -361,6 +362,113 @@ func TestPeerChangeFromMapRequest(t *testing.T) {
 			got := tc.node.PeerChangeFromMapRequest(tc.mapReq)
 
 			if diff := cmp.Diff(tc.want, got, cmpopts.IgnoreFields(tailcfg.PeerChange{}, "LastSeen")); diff != "" {
+				t.Errorf("Patch unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestApplyPeerChange(t *testing.T) {
+	tests := []struct {
+		name       string
+		nodeBefore Node
+		change     *tailcfg.PeerChange
+		want       Node
+	}{
+		{
+			name:       "hostinfo-and-netinfo-not-exists",
+			nodeBefore: Node{},
+			change: &tailcfg.PeerChange{
+				DERPRegion: 1,
+			},
+			want: Node{
+				Hostinfo: &tailcfg.Hostinfo{
+					NetInfo: &tailcfg.NetInfo{
+						PreferredDERP: 1,
+					},
+				},
+			},
+		},
+		{
+			name: "hostinfo-netinfo-not-exists",
+			nodeBefore: Node{
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: "test",
+				},
+			},
+			change: &tailcfg.PeerChange{
+				DERPRegion: 3,
+			},
+			want: Node{
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: "test",
+					NetInfo: &tailcfg.NetInfo{
+						PreferredDERP: 3,
+					},
+				},
+			},
+		},
+		{
+			name: "hostinfo-netinfo-exists-derp-set",
+			nodeBefore: Node{
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: "test",
+					NetInfo: &tailcfg.NetInfo{
+						PreferredDERP: 999,
+					},
+				},
+			},
+			change: &tailcfg.PeerChange{
+				DERPRegion: 2,
+			},
+			want: Node{
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: "test",
+					NetInfo: &tailcfg.NetInfo{
+						PreferredDERP: 2,
+					},
+				},
+			},
+		},
+		{
+			name:       "endpoints-not-set",
+			nodeBefore: Node{},
+			change: &tailcfg.PeerChange{
+				Endpoints: []netip.AddrPort{
+					netip.MustParseAddrPort("8.8.8.8:88"),
+				},
+			},
+			want: Node{
+				Endpoints: []netip.AddrPort{
+					netip.MustParseAddrPort("8.8.8.8:88"),
+				},
+			},
+		},
+		{
+			name: "endpoints-set",
+			nodeBefore: Node{
+				Endpoints: []netip.AddrPort{
+					netip.MustParseAddrPort("6.6.6.6:66"),
+				},
+			},
+			change: &tailcfg.PeerChange{
+				Endpoints: []netip.AddrPort{
+					netip.MustParseAddrPort("8.8.8.8:88"),
+				},
+			},
+			want: Node{
+				Endpoints: []netip.AddrPort{
+					netip.MustParseAddrPort("8.8.8.8:88"),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.nodeBefore.ApplyPeerChange(tt.change)
+
+			if diff := cmp.Diff(tt.want, tt.nodeBefore, util.Comparers...); diff != "" {
 				t.Errorf("Patch unexpected result (-want +got):\n%s", diff)
 			}
 		})

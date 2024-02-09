@@ -7,6 +7,7 @@ import (
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/net/netcheck"
 	"tailscale.com/types/netmap"
 )
 
@@ -28,6 +29,7 @@ type TailscaleClient interface {
 	FQDN() (string, error)
 	Status() (*ipnstate.Status, error)
 	Netmap() (*netmap.NetworkMap, error)
+	Netcheck() (*netcheck.Report, error)
 	WaitForNeedsLogin() error
 	WaitForRunning() error
 	WaitForPeers(expected int) error

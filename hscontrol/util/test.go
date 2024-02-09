@@ -15,6 +15,10 @@ var IPComparer = cmp.Comparer(func(x, y netip.Addr) bool {
 	return x.Compare(y) == 0
 })
 
+var AddrPortComparer = cmp.Comparer(func(x, y netip.AddrPort) bool {
+	return x == y
+})
+
 var MkeyComparer = cmp.Comparer(func(x, y key.MachinePublic) bool {
 	return x.String() == y.String()
 })
@@ -28,5 +32,5 @@ var DkeyComparer = cmp.Comparer(func(x, y key.DiscoPublic) bool {
 })
 
 var Comparers []cmp.Option = []cmp.Option{
-	IPComparer, PrefixComparer, MkeyComparer, NkeyComparer, DkeyComparer,
+	IPComparer, PrefixComparer, AddrPortComparer, MkeyComparer, NkeyComparer, DkeyComparer,
 }
