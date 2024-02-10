@@ -38,28 +38,6 @@
           ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
         };
 
-        golines = pkgs.buildGoModule rec {
-          pname = "golines";
-          version = "0.11.0";
-
-          src = pkgs.fetchFromGitHub {
-            owner = "segmentio";
-            repo = "golines";
-            rev = "v${version}";
-            sha256 = "sha256-2K9KAg8iSubiTbujyFGN3yggrL+EDyeUCs9OOta/19A=";
-          };
-
-          vendorHash = "sha256-rxYuzn4ezAxaeDhxd8qdOzt+CKYIh03A9zKNdzILq18=";
-
-          nativeBuildInputs = [pkgs.installShellFiles];
-        };
-
-        golangci-lint = prev.golangci-lint.override {
-          # Override https://github.com/NixOS/nixpkgs/pull/166801 which changed this
-          # to buildGo118Module because it does not build on Darwin.
-          inherit (prev) buildGoModule;
-        };
-
         protoc-gen-grpc-gateway = pkgs.buildGoModule rec {
           pname = "grpc-gateway";
           version = "2.14.0";
