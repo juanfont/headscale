@@ -119,6 +119,45 @@ kos:
       - "sha-{{ .ShortCommit }}"
       - "{{ if not .Prerelease }}stable{{ end }}"
 
+  - id: ghcr-debug
+    repository: ghcr.io/juanfont/headscale
+    base_image: "debian:12"
+    build: headscale
+    main: ./cmd/headscale
+    env:
+      - CGO_ENABLED=0
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+    tags:
+      - latest
+      - "{{ .Tag }}-debug"
+      - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
+      - "{{ .Major }}.{{ .Minor }}-debug"
+      - "{{ .Major }}-debug"
+      - "sha-{{ .ShortCommit }}-debug"
+      - "{{ if not .Prerelease }}stable{{ end }}-debug"
+
+  - id: dockerhub-debug
+    build: headscale
+    base_image: "debian:12"
+    repository: headscale/headscale
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+    tags:
+      - latest
+      - "{{ .Tag }}-debug"
+      - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
+      - "{{ .Major }}.{{ .Minor }}-debug"
+      - "{{ .Major }}-debug"
+      - "sha-{{ .ShortCommit }}-debug"
+      - "{{ if not .Prerelease }}stable{{ end }}-debug"
+
 checksum:
   name_template: "checksums.txt"
 snapshot:
