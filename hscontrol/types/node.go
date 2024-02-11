@@ -209,11 +209,7 @@ func (node *Node) IsEphemeral() bool {
 
 func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
 
-	addrs := node2.IPAddresses
-
-	allowedIPs := append(
-		[]netip.Addr{},
-		addrs...) // we append the node own IP, as it is required by the clients
+	allowedIPs := append([]netip.Addr{}, node2.IPAddresses...)
 
 	for _, route := range node2.Routes {
 		if route.Enabled {
