@@ -2855,6 +2855,14 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 			},
 		},
 	}
+
+	// TODO(kradalby): Remove when we have gotten rid of IPPrefix type
+	prefixComparer := cmp.Comparer(func(x, y types.IPPrefix) bool {
+		return x == y
+	})
+	comparers := append([]cmp.Option{}, util.Comparers...)
+	comparers = append(comparers, prefixComparer)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := FilterNodesByACL(
@@ -2862,7 +2870,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				tt.args.nodes,
 				tt.args.rules,
 			)
-			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
+			if diff := cmp.Diff(tt.want, got, comparers...); diff != "" {
 				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)
 			}
 		})
