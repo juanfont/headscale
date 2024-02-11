@@ -2811,7 +2811,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						Hostname:    "router",
 						User:        types.User{Name: "router"},
 						Routes: types.Routes{
-							{
+							types.Route{
 								NodeID:    2,
 								Prefix:    types.IPPrefix(netip.MustParsePrefix("10.33.0.0/16")),
 								IsPrimary: true,
@@ -2844,7 +2844,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					Hostname:    "router",
 					User:        types.User{Name: "router"},
 					Routes: types.Routes{
-						{
+						types.Route{
 							NodeID:    2,
 							Prefix:    types.IPPrefix(netip.MustParsePrefix("10.33.0.0/16")),
 							IsPrimary: true,
