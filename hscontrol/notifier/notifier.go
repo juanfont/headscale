@@ -104,11 +104,6 @@ func (n *Notifier) NotifyWithIgnore(
 			continue
 		}
 
-		log.Trace().
-			Caller().
-			Interface("update", update).
-			Msg("Updating node")
-
 		select {
 		case <-ctx.Done():
 			log.Error().
@@ -144,10 +139,6 @@ func (n *Notifier) NotifyByMachineKey(
 	defer n.l.RUnlock()
 
 	if c, ok := n.nodes[mKey.String()]; ok {
-		log.Trace().
-		Caller().
-		Interface("update", update).
-		Msg("Updating node")
 		select {
 		case <-ctx.Done():
 			log.Error().
