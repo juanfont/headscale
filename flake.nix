@@ -75,6 +75,7 @@
           gotestsum
           gotests
           ksh
+          ko
 
           # 'dot' is needed for pprof graphs
           # go tool pprof -http=: <source>
