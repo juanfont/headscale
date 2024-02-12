@@ -208,6 +208,15 @@ func (node *Node) IsEphemeral() bool {
 }
 
 func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
+
+	allowedIPs := append([]netip.Addr{}, node2.IPAddresses...)
+
+	for _, route := range node2.Routes {
+		if route.Enabled {
+			allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix).Addr())
+		}
+	}
+
 	for _, rule := range filter {
 		// TODO(kradalby): Cache or pregen this
 		matcher := matcher.MatchFromFilterRule(rule)
@@ -216,7 +225,7 @@ func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
 			continue
 		}
 
-		if matcher.DestsContainsIP([]netip.Addr(node2.IPAddresses)) {
+		if matcher.DestsContainsIP(allowedIPs) {
 			return true
 		}
 	}

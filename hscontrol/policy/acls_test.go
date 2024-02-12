@@ -2794,7 +2794,75 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				},
 			},
 		},
+
+		{
+			name: "subnet-router-with-only-route",
+			args: args{
+				nodes: []*types.Node{
+					{
+						ID:          1,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+						Hostname:    "user1",
+						User:        types.User{Name: "user1"},
+					},
+					{
+						ID:          2,
+						IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+						Hostname:    "router",
+						User:        types.User{Name: "router"},
+						Routes: types.Routes{
+							types.Route{
+								NodeID:    2,
+								Prefix:    types.IPPrefix(netip.MustParsePrefix("10.33.0.0/16")),
+								IsPrimary: true,
+								Enabled:   true,
+							},
+						},
+					},
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{
+							"100.64.0.1/32",
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.33.0.0/16", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+				node: &types.Node{
+					ID:          1,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+					Hostname:    "user1",
+					User:        types.User{Name: "user1"},
+				},
+			},
+			want: []*types.Node{
+				{
+					ID:          2,
+					IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+					Hostname:    "router",
+					User:        types.User{Name: "router"},
+					Routes: types.Routes{
+						types.Route{
+							NodeID:    2,
+							Prefix:    types.IPPrefix(netip.MustParsePrefix("10.33.0.0/16")),
+							IsPrimary: true,
+							Enabled:   true,
+						},
+					},
+				},
+			},
+		},
 	}
+
+	// TODO(kradalby): Remove when we have gotten rid of IPPrefix type
+	prefixComparer := cmp.Comparer(func(x, y types.IPPrefix) bool {
+		return x == y
+	})
+	comparers := append([]cmp.Option{}, util.Comparers...)
+	comparers = append(comparers, prefixComparer)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := FilterNodesByACL(
@@ -2802,7 +2870,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				tt.args.nodes,
 				tt.args.rules,
 			)
-			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
+			if diff := cmp.Diff(tt.want, got, comparers...); diff != "" {
 				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)
 			}
 		})
