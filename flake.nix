@@ -21,7 +21,7 @@
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
       in rec {
-        headscale = pkgs.buildGo121Module rec {
+        headscale = pkgs.buildGo122Module rec {
           pname = "headscale";
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
@@ -31,31 +31,11 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorHash = "sha256-8x4RKaS8vnBYTPlvQTkDKWIAJOgPF99hvPiuRyTMrA8=";
+          vendorHash = "sha256-tK42AnCPOBngixyo71WAWB9p76E4ugVpmeSPhtmuwuI=";
+
+          subPackages = ["cmd/headscale"];
 
           ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
-        };
-
-        golines = pkgs.buildGoModule rec {
-          pname = "golines";
-          version = "0.11.0";
-
-          src = pkgs.fetchFromGitHub {
-            owner = "segmentio";
-            repo = "golines";
-            rev = "v${version}";
-            sha256 = "sha256-2K9KAg8iSubiTbujyFGN3yggrL+EDyeUCs9OOta/19A=";
-          };
-
-          vendorHash = "sha256-rxYuzn4ezAxaeDhxd8qdOzt+CKYIh03A9zKNdzILq18=";
-
-          nativeBuildInputs = [pkgs.installShellFiles];
-        };
-
-        golangci-lint = prev.golangci-lint.override {
-          # Override https://github.com/NixOS/nixpkgs/pull/166801 which changed this
-          # to buildGo118Module because it does not build on Darwin.
-          inherit (prev) buildGoModule;
         };
 
         protoc-gen-grpc-gateway = pkgs.buildGoModule rec {
@@ -83,7 +63,7 @@
         overlays = [self.overlay];
         inherit system;
       };
-      buildDeps = with pkgs; [git go_1_21 gnumake];
+      buildDeps = with pkgs; [git go_1_22 gnumake];
       devDeps = with pkgs;
         buildDeps
         ++ [
@@ -124,7 +104,29 @@
     in rec {
       # `nix develop`
       devShell = pkgs.mkShell {
-        buildInputs = devDeps;
+        buildInputs =
+          devDeps
+          ++ [
+            (pkgs.writeShellScriptBin
+              "nix-vendor-sri"
+              ''
+                set -eu
+
+                OUT=$(mktemp -d -t nar-hash-XXXXXX)
+                rm -rf "$OUT"
+
+                go mod vendor -o "$OUT"
+                go run tailscale.com/cmd/nardump --sri "$OUT"
+                rm -rf "$OUT"
+              '')
+
+            (pkgs.writeShellScriptBin
+              "go-mod-update-all"
+              ''
+                cat go.mod | ${pkgs.silver-searcher}/bin/ag "\t" | ${pkgs.silver-searcher}/bin/ag -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
+                go mod tidy
+              '')
+          ];
 
         shellHook = ''
           export PATH="$PWD/result/bin:$PATH"
