@@ -24,6 +24,8 @@ oidc:
   # It resolves environment variables, making integration to systemd's
   # `LoadCredential` straightforward:
   #client_secret_path: "${CREDENTIALS_DIRECTORY}/oidc_client_secret"
+  # as third option, it's also possible to load the oidc secret from environment variables
+  # set HEADSCALE_OIDC_CLIENT_SECRET to the required value
 
   # Customize the scopes used in the OIDC flow, defaults to "openid", "profile" and "email" and add custom query
   # parameters to the Authorize Endpoint request. Scopes default to "openid", "profile" and "email".
