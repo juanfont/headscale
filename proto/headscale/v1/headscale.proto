@@ -178,6 +178,12 @@ service HeadscaleService {
             get : "/api/v1/apikey"
         };
     }
+
+    rpc DeleteApiKey(DeleteApiKeyRequest) returns(DeleteApiKeyResponse) {
+        option(google.api.http) = {
+            delete : "/api/v1/apikey/{prefix}"
+        };
+    }
     // --- ApiKeys end ---
 
     // Implement Tailscale API

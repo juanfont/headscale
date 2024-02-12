@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
-	"github.com/stretchr/testify/assert"
 )
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
@@ -531,6 +532,31 @@ func TestApiKeyCommand(t *testing.T) {
 			)
 		}
 	}
+
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"apikeys",
+			"delete",
+			"--prefix",
+			listedAPIKeys[0].GetPrefix(),
+		})
+	assert.Nil(t, err)
+
+	var listedAPIKeysAfterDelete []v1.ApiKey
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"apikeys",
+			"list",
+			"--output",
+			"json",
+		},
+		&listedAPIKeysAfterDelete,
+	)
+	assert.Nil(t, err)
+
+	assert.Len(t, listedAPIKeysAfterDelete, 4)
 }
 
 func TestNodeTagCommand(t *testing.T) {

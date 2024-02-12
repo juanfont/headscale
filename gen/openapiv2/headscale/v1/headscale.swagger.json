@@ -101,6 +101,36 @@
         ]
       }
     },
+    "/api/v1/apikey/{prefix}": {
+      "delete": {
+        "operationId": "HeadscaleService_DeleteApiKey",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeleteApiKeyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "prefix",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/debug/node": {
       "post": {
         "summary": "--- Node start ---",
@@ -944,6 +974,9 @@
           "$ref": "#/definitions/v1Node"
         }
       }
+    },
+    "v1DeleteApiKeyResponse": {
+      "type": "object"
     },
     "v1DeleteNodeResponse": {
       "type": "object"
