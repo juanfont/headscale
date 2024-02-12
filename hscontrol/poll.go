@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	xslices "golang.org/x/exp/slices"
 	"gorm.io/gorm"
+	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 )
 
@@ -277,6 +278,25 @@ func (h *Headscale) handlePoll(
 		return
 	}
 
+	// Set up the client stream
+	h.pollNetMapStreamWG.Add(1)
+	defer h.pollNetMapStreamWG.Done()
+
+	// Use a buffered channel in case a node is not fully ready
+	// to receive a message to make sure we dont block the entire
+	// notifier.
+	// 12 is arbitrarily chosen.
+	chanSize := 3
+	if size, ok := envknob.LookupInt("HEADSCALE_TUNING_POLL_QUEUE_SIZE"); ok {
+		chanSize = size
+	}
+	updateChan := make(chan types.StateUpdate, chanSize)
+	defer closeChanWithLog(updateChan, node.Hostname, "updateChan")
+
+	// Register the node's update channel
+	h.nodeNotifier.AddNode(node.MachineKey, updateChan)
+	defer h.nodeNotifier.RemoveNode(node.MachineKey)
+
 	// When a node connects to control, list the peers it has at
 	// that given point, further updates are kept in memory in
 	// the Mapper, which lives for the duration of the polling
@@ -289,8 +309,9 @@ func (h *Headscale) handlePoll(
 		return
 	}
 
+	isConnected := h.nodeNotifier.ConnectedMap()
 	for _, peer := range peers {
-		online := h.nodeNotifier.IsConnected(peer.MachineKey)
+		online := isConnected[peer.MachineKey]
 		peer.IsOnline = &online
 	}
 
@@ -356,21 +377,6 @@ func (h *Headscale) handlePoll(
 	if len(node.Routes) > 0 {
 		go h.pollFailoverRoutes(logErr, "new node", node)
 	}
-
-	// Set up the client stream
-	h.pollNetMapStreamWG.Add(1)
-	defer h.pollNetMapStreamWG.Done()
-
-	// Use a buffered channel in case a node is not fully ready
-	// to receive a message to make sure we dont block the entire
-	// notifier.
-	// 12 is arbitrarily chosen.
-	updateChan := make(chan types.StateUpdate, 12)
-	defer closeChanWithLog(updateChan, node.Hostname, "updateChan")
-
-	// Register the node's update channel
-	h.nodeNotifier.AddNode(node.MachineKey, updateChan)
-	defer h.nodeNotifier.RemoveNode(node.MachineKey)
 
 	keepAliveTicker := time.NewTicker(keepAliveInterval)
 

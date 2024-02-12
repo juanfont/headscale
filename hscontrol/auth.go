@@ -311,9 +311,6 @@ func (h *Headscale) handleAuthKey(
 
 	nodeKey := registerRequest.NodeKey
 
-	var update types.StateUpdate
-	var mkey key.MachinePublic
-
 	// retrieve node information if it exist
 	// The error is not important, because if it does not
 	// exist, then this is a new node and we will move
@@ -338,9 +335,6 @@ func (h *Headscale) handleAuthKey(
 			return
 		}
 
-		mkey = node.MachineKey
-		update = types.StateUpdateExpire(node.ID, registerRequest.Expiry)
-
 		aclTags := pak.Proto().GetAclTags()
 		if len(aclTags) > 0 {
 			// This conditional preserves the existing behaviour, although SaaS would reset the tags on auth-key login
@@ -356,6 +350,14 @@ func (h *Headscale) handleAuthKey(
 
 				return
 			}
+		}
+
+		mkey := node.MachineKey
+		update := types.StateUpdateExpire(node.ID, registerRequest.Expiry)
+
+		if update.Valid() {
+			ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
+			h.nodeNotifier.NotifyWithIgnore(ctx, update, mkey.String())
 		}
 	} else {
 		now := time.Now().UTC()
@@ -399,13 +401,6 @@ func (h *Headscale) handleAuthKey(
 			http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 			return
-		}
-
-		mkey = node.MachineKey
-		update = types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: types.Nodes{node},
-			Message:     "called from auth.handleAuthKey",
 		}
 	}
 
@@ -454,12 +449,6 @@ func (h *Headscale) handleAuthKey(
 			Err(err).
 			Msg("Failed to write response")
 		return
-	}
-
-	// TODO(kradalby): if notifying after register make sense.
-	if update.Valid() {
-		ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
-		h.nodeNotifier.NotifyWithIgnore(ctx, update, mkey.String())
 	}
 
 	log.Info().

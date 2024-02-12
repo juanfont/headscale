@@ -200,16 +200,6 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, err
 	}
 
-	stateUpdate := types.StateUpdate{
-		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{node},
-		Message:     "called from api.RegisterNode",
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-registernode", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
-
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
 }
 
