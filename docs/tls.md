@@ -38,10 +38,10 @@ For `TLS-ALPN-01`, headscale listens on the ip:port combination defined in `list
 
 Headscale uses [autocert](https://pkg.go.dev/golang.org/x/crypto/acme/autocert), a Golang library providing [ACME protocol](https://en.wikipedia.org/wiki/Automatic_Certificate_Management_Environment) verification, to facilitate certificate renewals via [Let's Encrypt](https://letsencrypt.org/about/). Certificates will be renewed automatically, and the following can be expected:
 
-* Certificates provided from Let's Encrypt have a validity of 3 months from date issued.
-* Renewals are only attempted by headscale when 30 days or less remains until certificate expiry.
-* Renewal attempts by autocert are triggered at a random interval of 30-60 minutes.
-* No log output is generated when renewals are skipped, or successful.
+- Certificates provided from Let's Encrypt have a validity of 3 months from date issued.
+- Renewals are only attempted by headscale when 30 days or less remains until certificate expiry.
+- Renewal attempts by autocert are triggered at a random interval of 30-60 minutes.
+- No log output is generated when renewals are skipped, or successful.
 
 #### Checking certificate expiry
 
