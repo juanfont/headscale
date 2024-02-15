@@ -68,12 +68,13 @@ jobs:
               --volume $PWD:$PWD -w $PWD/integration \
               --volume /var/run/docker.sock:/var/run/docker.sock \
               --volume $PWD/control_logs:/tmp/control \
+              --env HEADSCALE_INTEGRATION_POSTGRES={{ if .Postgres }}1{{ else }}0{{ end }} \
               golang:1 \
                 go run gotest.tools/gotestsum@latest -- ./... \
                   -failfast \
                   -timeout 120m \
                   -parallel 1 \
-                  -run "^{{.Name}}$"
+                  -run "^{{.Test}}$"
 
       - uses: actions/upload-artifact@v3
         if: always() && steps.changed-files.outputs.any_changed == 'true'
@@ -145,7 +146,9 @@ func findTests() []string {
 
 func main() {
 	type testConfig struct {
-		Name string
+		Name     string
+		Test     string
+		Postgres bool
 	}
 
 	tests := findTests()
@@ -153,21 +156,30 @@ func main() {
 	removeTests()
 
 	for _, test := range tests {
-		log.Printf("generating workflow for %s", test)
+		for _, postgres := range []bool{false, true} {
+			log.Printf("generating workflow for %s", test)
 
-		var content bytes.Buffer
+			name := test
+			if postgres {
+				name = test + "-postgres"
+			}
 
-		if err := jobTemplate.Execute(&content, testConfig{
-			Name: test,
-		}); err != nil {
-			log.Fatalf("failed to render template: %s", err)
-		}
+			var content bytes.Buffer
 
-		testPath := path.Join(githubWorkflowPath, fmt.Sprintf(jobFileNameTemplate, test))
+			if err := jobTemplate.Execute(&content, testConfig{
+				Name:     name,
+				Test:     test,
+				Postgres: postgres,
+			}); err != nil {
+				log.Fatalf("failed to render template: %s", err)
+			}
 
-		err := os.WriteFile(testPath, content.Bytes(), workflowFilePerm)
-		if err != nil {
-			log.Fatalf("failed to write github job: %s", err)
+			testPath := path.Join(githubWorkflowPath, fmt.Sprintf(jobFileNameTemplate, name))
+
+			err := os.WriteFile(testPath, content.Bytes(), workflowFilePerm)
+			if err != nil {
+				log.Fatalf("failed to write github job: %s", err)
+			}
 		}
 	}
 }
