@@ -82,6 +82,10 @@ nfpms:
 kos:
   - id: ghcr
     repository: ghcr.io/juanfont/headscale
+
+    # bare tells KO to only use the repository
+    # for tagging and naming the container.
+    bare: true
     base_image: gcr.io/distroless/base-debian12
     build: headscale
     main: ./cmd/headscale
@@ -99,12 +103,13 @@ kos:
       - "{{ .Major }}.{{ .Minor }}"
       - "{{ .Major }}"
       - "sha-{{ .ShortCommit }}"
-      - "{{ if not .Prerelease }}stable{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
 
   - id: dockerhub
     build: headscale
     base_image: gcr.io/distroless/base-debian12
     repository: headscale/headscale
+    bare: true
     platforms:
       - linux/amd64
       - linux/386
@@ -118,9 +123,11 @@ kos:
       - "{{ .Major }}"
       - "sha-{{ .ShortCommit }}"
       - "{{ if not .Prerelease }}stable{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
 
   - id: ghcr-debug
     repository: ghcr.io/juanfont/headscale
+    bare: true
     base_image: "debian:12"
     build: headscale
     main: ./cmd/headscale
@@ -138,12 +145,13 @@ kos:
       - "{{ .Major }}.{{ .Minor }}-debug"
       - "{{ .Major }}-debug"
       - "sha-{{ .ShortCommit }}-debug"
-      - "{{ if not .Prerelease }}stable{{ end }}-debug"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
 
   - id: dockerhub-debug
     build: headscale
     base_image: "debian:12"
     repository: headscale/headscale
+    bare: true
     platforms:
       - linux/amd64
       - linux/386
@@ -156,7 +164,7 @@ kos:
       - "{{ .Major }}.{{ .Minor }}-debug"
       - "{{ .Major }}-debug"
       - "sha-{{ .ShortCommit }}-debug"
-      - "{{ if not .Prerelease }}stable{{ end }}-debug"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
 
 checksum:
   name_template: "checksums.txt"
