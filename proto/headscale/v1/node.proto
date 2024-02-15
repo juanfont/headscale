@@ -14,6 +14,8 @@ enum RegisterMethod {
 }
 
 message Node {
+    reserved 9;
+
     uint64          id           = 1;
     string          machine_key  = 2;
     string          node_key     = 3;
@@ -22,9 +24,8 @@ message Node {
     string          name         = 6;
     User user          = 7;
 
-    google.protobuf.Timestamp last_seen              = 8;
-    google.protobuf.Timestamp last_successful_update = 9;
-    google.protobuf.Timestamp expiry                 = 10;
+    google.protobuf.Timestamp last_seen = 8;
+    google.protobuf.Timestamp expiry    = 10;
 
     PreAuthKey pre_auth_key = 11;
 
