@@ -112,6 +112,8 @@ func WithConfigEnv(configEnv map[string]string) Option {
 // WithPort sets the port on where to run Headscale.
 func WithPort(port int) Option {
 	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_LISTEN_ADDR"] = fmt.Sprintf("0.0.0.0:%d", port)
+		hsic.env["HEADSCALE_SERVER_URL"] = fmt.Sprintf("http://headscale:%d", port)
 		hsic.port = port
 	}
 }

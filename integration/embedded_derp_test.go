@@ -1,9 +1,11 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -11,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
+	"tailscale.com/ipn/ipnstate"
 )
 
 type EmbeddedDERPServerScenario struct {
@@ -78,6 +81,77 @@ func TestDERPServerScenario(t *testing.T) {
 	success := pingDerpAllHelper(t, allClients, allHostnames)
 
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+}
+
+func TestDERPValidateEmbedded(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario, err := NewScenario()
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": 1,
+	}
+
+	headscaleConfig := map[string]string{
+		"HEADSCALE_DERP_URLS":                    "",
+		"HEADSCALE_DERP_SERVER_ENABLED":          "true",
+		"HEADSCALE_DERP_SERVER_REGION_ID":        "999",
+		"HEADSCALE_DERP_SERVER_REGION_CODE":      "headscale",
+		"HEADSCALE_DERP_SERVER_REGION_NAME":      "Headscale Embedded DERP",
+		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
+		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",
+
+		// Envknob for enabling DERP debug logs
+		"DERP_DEBUG_LOGS":        "true",
+		"DERP_PROBER_DEBUG_LOGS": "true",
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		[]tsic.Option{},
+		hsic.WithConfigEnv(headscaleConfig),
+		hsic.WithTestName("derpvalidate"),
+		hsic.WithExtraPorts([]string{"3478/udp"}),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+		hsic.WithPort(80),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	assertClientsState(t, allClients)
+
+	if len(allClients) != 1 {
+		t.Fatalf("expected 1 client, got: %d", len(allClients))
+	}
+
+	client := allClients[0]
+
+	var derpReport ipnstate.DebugDERPRegionReport
+	stdout, stderr, err := client.Execute([]string{"tailscale", "debug", "derp", "999"})
+	if err != nil {
+		t.Fatalf("executing debug derp report, stderr: %s, err: %s", stderr, err)
+	}
+
+	t.Logf("DERP report: \n%s", stdout)
+
+	err = json.Unmarshal([]byte(stdout), &derpReport)
+	if err != nil {
+		t.Fatalf("unmarshalling debug derp report, content: %s, err: %s", stdout, err)
+	}
+
+	for _, warn := range derpReport.Warnings {
+		if strings.Contains(warn, "captive portal check") {
+			t.Errorf("derp report contains warning about portal check, generate_204 endpoint not working")
+		}
+	}
 }
 
 func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
