@@ -47,6 +47,7 @@ jobs:
               --volume $PWD:$PWD -w $PWD/integration \
               --volume /var/run/docker.sock:/var/run/docker.sock \
               --volume $PWD/control_logs:/tmp/control \
+              --env HEADSCALE_INTEGRATION_POSTGRES=0 \
               golang:1 \
                 go run gotest.tools/gotestsum@latest -- ./... \
                   -failfast \
