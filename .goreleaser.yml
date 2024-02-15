@@ -103,7 +103,7 @@ kos:
       - "{{ .Major }}.{{ .Minor }}"
       - "{{ .Major }}"
       - "sha-{{ .ShortCommit }}"
-      - "{{ if not .Prerelease }}stable{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
 
   - id: dockerhub
     build: headscale
@@ -123,6 +123,7 @@ kos:
       - "{{ .Major }}"
       - "sha-{{ .ShortCommit }}"
       - "{{ if not .Prerelease }}stable{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
 
   - id: ghcr-debug
     repository: ghcr.io/kradalby/headscale
@@ -144,6 +145,7 @@ kos:
       - "{{ .Major }}.{{ .Minor }}-debug"
       - "{{ .Major }}-debug"
       - "sha-{{ .ShortCommit }}-debug"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
 
   - id: dockerhub-debug
     build: kradalby/headscale
@@ -162,6 +164,7 @@ kos:
       - "{{ .Major }}.{{ .Minor }}-debug"
       - "{{ .Major }}-debug"
       - "sha-{{ .ShortCommit }}-debug"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
 
 checksum:
   name_template: "checksums.txt"
