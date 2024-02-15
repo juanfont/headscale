@@ -70,7 +70,7 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 		// When serving TLS, add a redirect from HTTP on port 80 to HTTPS on 443.
 		certDomains := tsNode.CertDomains()
 		if len(certDomains) == 0 {
-			fmt.Errorf("no cert domains available for HTTPS")
+			return fmt.Errorf("no cert domains available for HTTPS")
 		}
 		base := "https://" + certDomains[0]
 		go http.Serve(lst, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
