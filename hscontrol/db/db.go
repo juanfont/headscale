@@ -316,6 +316,17 @@ func NewHeadscaleDatabase(
 					return nil
 				},
 			},
+			{
+				// remove last_successful_update from node table,
+				// no longer used.
+				ID: "202402151347",
+				Migrate: func(tx *gorm.DB) error {
+					return tx.Migrator().DropColumn(&types.Node{}, "last_successful_update")
+				},
+				Rollback: func(tx *gorm.DB) error {
+					return nil
+				},
+			},
 		},
 	)
 
