@@ -18,11 +18,14 @@ import (
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
+	"tailscale.com/envknob"
 )
 
 const (
 	scenarioHashLength = 6
 )
+
+var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
 
 func enabledVersions(vs map[string]bool) []string {
 	var ret []string
@@ -452,6 +455,10 @@ func (s *Scenario) CreateHeadscaleEnv(
 	tsOpts []tsic.Option,
 	opts ...hsic.Option,
 ) error {
+	if usePostgresForTest {
+		opts = append(opts, hsic.WithPostgres())
+	}
+
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
