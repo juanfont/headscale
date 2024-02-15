@@ -82,6 +82,10 @@ nfpms:
 kos:
   - id: ghcr
     repository: ghcr.io/kradalby/headscale
+
+    # bare tells KO to only use the repository
+    # for tagging and naming the container.
+    bare: true
     base_image: gcr.io/distroless/base-debian12
     build: headscale
     main: ./cmd/headscale
@@ -105,6 +109,7 @@ kos:
     build: headscale
     base_image: gcr.io/distroless/base-debian12
     repository: kradalby
+    bare: true
     platforms:
       - linux/amd64
       - linux/386
@@ -121,8 +126,9 @@ kos:
 
   - id: ghcr-debug
     repository: ghcr.io/kradalby/headscale
+    bare: true
     base_image: "debian:12"
-    build: headscale
+    build: kradalby/headscale
     main: ./cmd/headscale
     env:
       - CGO_ENABLED=0
@@ -140,9 +146,10 @@ kos:
       - "sha-{{ .ShortCommit }}-debug"
 
   - id: dockerhub-debug
-    build: headscale
+    build: kradalby/headscale
     base_image: "debian:12"
     repository: kradalby
+    bare: true
     platforms:
       - linux/amd64
       - linux/386
