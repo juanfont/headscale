@@ -81,7 +81,7 @@ nfpms:
 
 kos:
   - id: ghcr
-    repository: ghcr.io/juanfont/headscale
+    repository: ghcr.io/kradalby/headscale
     base_image: gcr.io/distroless/base-debian12
     build: headscale
     main: ./cmd/headscale
@@ -104,7 +104,7 @@ kos:
   - id: dockerhub
     build: headscale
     base_image: gcr.io/distroless/base-debian12
-    repository: headscale/headscale
+    repository: kradalby/headscale
     platforms:
       - linux/amd64
       - linux/386
@@ -120,7 +120,7 @@ kos:
       - "{{ if not .Prerelease }}stable{{ end }}"
 
   - id: ghcr-debug
-    repository: ghcr.io/juanfont/headscale
+    repository: ghcr.io/kradalby/headscale
     base_image: "debian:12"
     build: headscale
     main: ./cmd/headscale
@@ -138,12 +138,11 @@ kos:
       - "{{ .Major }}.{{ .Minor }}-debug"
       - "{{ .Major }}-debug"
       - "sha-{{ .ShortCommit }}-debug"
-      - "{{ if not .Prerelease }}stable{{ end }}-debug"
 
   - id: dockerhub-debug
     build: headscale
     base_image: "debian:12"
-    repository: headscale/headscale
+    repository: kradalby/headscale
     platforms:
       - linux/amd64
       - linux/386
@@ -156,7 +155,6 @@ kos:
       - "{{ .Major }}.{{ .Minor }}-debug"
       - "{{ .Major }}-debug"
       - "sha-{{ .ShortCommit }}-debug"
-      - "{{ if not .Prerelease }}stable{{ end }}-debug"
 
 checksum:
   name_template: "checksums.txt"
