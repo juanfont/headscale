@@ -97,7 +97,7 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - latest
+      - "{{ if not .Prerelease }}latest{{ end }}"
       - "{{ .Tag }}"
       - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
       - "{{ .Major }}.{{ .Minor }}"
@@ -116,7 +116,7 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - latest
+      - "{{ if not .Prerelease }}latest{{ end }}"
       - "{{ .Tag }}"
       - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
       - "{{ .Major }}.{{ .Minor }}"
@@ -139,7 +139,7 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - latest
+      - "{{ if not .Prerelease }}latest-debug{{ end }}"
       - "{{ .Tag }}-debug"
       - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
       - "{{ .Major }}.{{ .Minor }}-debug"
@@ -158,7 +158,7 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - latest
+      - "{{ if not .Prerelease }}latest-debug{{ end }}"
       - "{{ .Tag }}-debug"
       - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
       - "{{ .Major }}.{{ .Minor }}-debug"
