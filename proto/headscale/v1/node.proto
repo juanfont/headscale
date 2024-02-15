@@ -1,10 +1,11 @@
 syntax = "proto3";
 package headscale.v1;
-option  go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 import "google/protobuf/timestamp.proto";
-import "headscale/v1/user.proto";
 import "headscale/v1/preauthkey.proto";
+import "headscale/v1/user.proto";
+
+option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 enum RegisterMethod {
     REGISTER_METHOD_UNSPECIFIED = 0;
@@ -22,7 +23,7 @@ message Node {
     string          disco_key    = 4;
     repeated string ip_addresses = 5;
     string          name         = 6;
-    User user          = 7;
+    User            user         = 7;
 
     google.protobuf.Timestamp last_seen = 8;
     google.protobuf.Timestamp expiry    = 10;
@@ -50,7 +51,7 @@ message Node {
 
 message RegisterNodeRequest {
     string user = 1;
-    string key       = 2;
+    string key  = 2;
 }
 
 message RegisterNodeResponse {
@@ -67,7 +68,7 @@ message GetNodeResponse {
 
 message SetTagsRequest {
     uint64          node_id = 1;
-    repeated string tags       = 2;
+    repeated string tags    = 2;
 }
 
 message SetTagsResponse {
@@ -78,8 +79,7 @@ message DeleteNodeRequest {
     uint64 node_id = 1;
 }
 
-message DeleteNodeResponse {
-}
+message DeleteNodeResponse {}
 
 message ExpireNodeRequest {
     uint64 node_id = 1;
@@ -90,8 +90,8 @@ message ExpireNodeResponse {
 }
 
 message RenameNodeRequest {
-    uint64 node_id = 1;
-    string new_name   = 2;
+    uint64 node_id  = 1;
+    string new_name = 2;
 }
 
 message RenameNodeResponse {
@@ -108,7 +108,7 @@ message ListNodesResponse {
 
 message MoveNodeRequest {
     uint64 node_id = 1;
-    string user  = 2;
+    string user    = 2;
 }
 
 message MoveNodeResponse {
@@ -116,7 +116,7 @@ message MoveNodeResponse {
 }
 
 message DebugCreateNodeRequest {
-    string user       = 1;
+    string          user   = 1;
     string          key    = 2;
     string          name   = 3;
     repeated string routes = 4;

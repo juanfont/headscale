@@ -6,12 +6,12 @@ import "google/protobuf/timestamp.proto";
 import "headscale/v1/node.proto";
 
 message Route {
-    uint64  id          = 1;
-    Node    node     = 2;
-    string  prefix      = 3;
-    bool    advertised   = 4;
-    bool    enabled     = 5;
-    bool    is_primary  = 6;
+    uint64 id         = 1;
+    Node   node       = 2;
+    string prefix     = 3;
+    bool   advertised = 4;
+    bool   enabled    = 5;
+    bool   is_primary = 6;
 
     google.protobuf.Timestamp created_at = 7;
     google.protobuf.Timestamp updated_at = 8;

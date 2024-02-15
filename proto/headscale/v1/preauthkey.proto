@@ -5,7 +5,7 @@ option  go_package = "github.com/juanfont/headscale/gen/go/v1";
 import "google/protobuf/timestamp.proto";
 
 message PreAuthKey {
-    string user                     = 1;
+    string                    user       = 1;
     string                    id         = 2;
     string                    key        = 3;
     bool                      reusable   = 4;
@@ -17,7 +17,7 @@ message PreAuthKey {
 }
 
 message CreatePreAuthKeyRequest {
-    string user                     = 1;
+    string                    user       = 1;
     bool                      reusable   = 2;
     bool                      ephemeral  = 3;
     google.protobuf.Timestamp expiration = 4;
@@ -30,7 +30,7 @@ message CreatePreAuthKeyResponse {
 
 message ExpirePreAuthKeyRequest {
     string user = 1;
-    string key       = 2;
+    string key  = 2;
 }
 
 message ExpirePreAuthKeyResponse {
