@@ -104,7 +104,7 @@ kos:
   - id: dockerhub
     build: headscale
     base_image: gcr.io/distroless/base-debian12
-    repository: kradalby/headscale
+    repository: kradalby
     platforms:
       - linux/amd64
       - linux/386
@@ -142,7 +142,7 @@ kos:
   - id: dockerhub-debug
     build: headscale
     base_image: "debian:12"
-    repository: kradalby/headscale
+    repository: kradalby
     platforms:
       - linux/amd64
       - linux/386
