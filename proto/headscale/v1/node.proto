@@ -15,6 +15,7 @@ enum RegisterMethod {
 }
 
 message Node {
+    // 9: removal of last_successful_update
     reserved 9;
 
     uint64          id           = 1;
