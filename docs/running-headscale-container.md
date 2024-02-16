@@ -22,13 +22,9 @@ mkdir -p ./headscale/config
 cd ./headscale
 ```
 
-2. Create an empty SQlite datebase in the headscale directory:
+2. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
-```shell
-touch ./config/db.sqlite
-```
-
-3. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
+The following instructions are for running against `headscale/headscale:latest`, if you are using an older version, you will want to make sure you're getting the correct version of a default configuration file from the [tags](https://github.com/juanfont/headscale/tags) matching your version.
 
 Using wget:
 
@@ -42,12 +38,6 @@ Using curl:
 curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
 ```
 
-**(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
-
-```shell
-touch ./config/config.yaml
-```
-
 Modify the config file to your preferences before launching Docker container.
 Here are some settings that you likely want:
 
@@ -57,13 +47,22 @@ server_url: http://your-host-name:8080
 # Listen to 0.0.0.0 so it's accessible outside the container
 metrics_listen_addr: 0.0.0.0:9090
 # The default /var/lib/headscale path is not writable in the container
+# NOTE: This is not present in the default configuration file.
 private_key_path: /etc/headscale/private.key
 # The default /var/lib/headscale path is not writable in the container
 noise:
   private_key_path: /etc/headscale/noise_private.key
+derp:
+  private_key_path: /etc/headscale/derp_server_private.key
 # The default /var/lib/headscale path is not writable  in the container
 db_type: sqlite3
 db_path: /etc/headscale/db.sqlite
+```
+
+**(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
+
+```shell
+touch ./config/config.yaml
 ```
 
 4. Start the headscale server while working in the host headscale directory:
