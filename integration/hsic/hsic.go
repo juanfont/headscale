@@ -119,7 +119,7 @@ func WithPort(port int) Option {
 }
 
 // WithExtraPorts exposes additional ports on the container (e.g. 3478/udp for STUN).
-func WithExtraPorts(ports []string) Option {
+func WithExtraPorts(ports ...string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.extraPorts = ports
 	}

@@ -58,7 +58,7 @@ func TestDERPServerScenario(t *testing.T) {
 		spec,
 		hsic.WithConfigEnv(headscaleConfig),
 		hsic.WithTestName("derpserver"),
-		hsic.WithExtraPorts([]string{"3478/udp"}),
+		hsic.WithExtraPorts("3478/udp"),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
 	)
@@ -88,7 +88,7 @@ func TestDERPValidateEmbedded(t *testing.T) {
 
 	scenario, err := NewScenario()
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	// defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"user1": 1,
@@ -103,6 +103,10 @@ func TestDERPValidateEmbedded(t *testing.T) {
 		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
 		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",
 
+		// Magic DNS breaks the docker DNS system which means
+		// DERP cannot look up the DERP server for some things.
+		"HEADSCALE_DNS_CONFIG_MAGIC_DNS": "0",
+
 		// Envknob for enabling DERP debug logs
 		"DERP_DEBUG_LOGS":        "true",
 		"DERP_PROBER_DEBUG_LOGS": "true",
@@ -113,10 +117,9 @@ func TestDERPValidateEmbedded(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithConfigEnv(headscaleConfig),
 		hsic.WithTestName("derpvalidate"),
-		hsic.WithExtraPorts([]string{"3478/udp"}),
+		hsic.WithExtraPorts("3478/udp", "80/tcp"),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
-		hsic.WithPort(80),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -149,7 +152,9 @@ func TestDERPValidateEmbedded(t *testing.T) {
 
 	for _, warn := range derpReport.Warnings {
 		if strings.Contains(warn, "captive portal check") {
-			t.Errorf("derp report contains warning about portal check, generate_204 endpoint not working")
+			t.Errorf(
+				"derp report contains warning about portal check, generate_204 endpoint not working",
+			)
 		}
 	}
 }

@@ -469,7 +469,11 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
 		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.DERPMap))
-		router.HandleFunc("/generate_204", derpServer.DERPNoContextHandler)
+
+		// Only add to main muxer if running on port 80
+		if strings.HasSuffix(h.cfg.Addr, ":80") {
+			router.HandleFunc("/generate_204", derpServer.DERPNoContextHandler)
+		}
 	}
 
 	apiRouter := router.PathPrefix("/api").Subrouter()
@@ -696,6 +700,31 @@ func (h *Headscale) Serve() error {
 
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
+
+	// If headscale is not listening on port 80 and embedded DERP server
+	// is enabled, run a small http endpoint for generate204.
+	// This is not configurable as captive portal busting requires http/80.
+	if h.cfg.DERP.ServerEnabled || !strings.HasSuffix(h.cfg.Addr, ":80") {
+		httpDerpMux := http.NewServeMux()
+		httpDerpMux.HandleFunc("/generate_204", derpServer.DERPNoContextHandler)
+
+		addr := "0.0.0.0:80"
+		httpDerpServer := &http.Server{
+			Addr:        addr,
+			Handler:     httpDerpMux,
+			ReadTimeout: types.HTTPReadTimeout,
+		}
+
+		httpDerpListener, err := net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("binding port 80 for DERP HTTP endpoint: %w", err)
+		}
+
+		errorGroup.Go(func() error { return httpDerpServer.Serve(httpDerpListener) })
+
+		log.Info().
+			Msgf("listening and serving HTTP DERP generate_204 on: %s", addr)
+	}
 
 	promMux := http.NewServeMux()
 	promMux.Handle("/metrics", promhttp.Handler())
