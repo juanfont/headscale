@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -344,6 +345,12 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 
 	switch cfg.Type {
 	case types.DatabaseSqlite:
+		dir := filepath.Dir(cfg.Sqlite.Path)
+		err := util.EnsureDir(dir)
+		if err != nil {
+			return nil, fmt.Errorf("creating directory for sqlite: %w", err)
+		}
+
 		db, err := gorm.Open(
 			sqlite.Open(cfg.Sqlite.Path+"?_synchronous=1&_journal_mode=WAL"),
 			&gorm.Config{
