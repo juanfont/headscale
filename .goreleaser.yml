@@ -97,13 +97,17 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - latest
-      - "{{ .Tag }}"
-      - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
-      - "{{ .Major }}.{{ .Minor }}"
-      - "{{ .Major }}"
-      - "sha-{{ .ShortCommit }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}"
+      - "{{ if not .Prerelease }}{{ .Major }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}"
       - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
+      - "{{ .Tag }}"
+      - '{{ trimprefix .Tag "v" }}'
+      - "sha-{{ .ShortCommit }}"
 
   - id: dockerhub
     build: headscale
@@ -116,14 +120,17 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - latest
-      - "{{ .Tag }}"
-      - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
-      - "{{ .Major }}.{{ .Minor }}"
-      - "{{ .Major }}"
-      - "sha-{{ .ShortCommit }}"
-      - "{{ if not .Prerelease }}stable{{ end }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}"
+      - "{{ if not .Prerelease }}{{ .Major }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}"
       - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
+      - "{{ .Tag }}"
+      - '{{ trimprefix .Tag "v" }}'
+      - "sha-{{ .ShortCommit }}"
 
   - id: ghcr-debug
     repository: ghcr.io/juanfont/headscale
@@ -139,13 +146,17 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - latest
-      - "{{ .Tag }}-debug"
-      - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
-      - "{{ .Major }}.{{ .Minor }}-debug"
-      - "{{ .Major }}-debug"
-      - "sha-{{ .ShortCommit }}-debug"
+      - "{{ if not .Prerelease }}latest{{ end }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}-debug"
       - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
+      - "{{ .Tag }}-debug"
+      - '{{ trimprefix .Tag "v" }}-debug'
+      - "sha-{{ .ShortCommit }}-debug"
 
   - id: dockerhub-debug
     build: headscale
@@ -158,13 +169,17 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - latest
-      - "{{ .Tag }}-debug"
-      - "{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
-      - "{{ .Major }}.{{ .Minor }}-debug"
-      - "{{ .Major }}-debug"
-      - "sha-{{ .ShortCommit }}-debug"
+      - "{{ if not .Prerelease }}latest{{ end }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}-debug"
       - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
+      - "{{ .Tag }}-debug"
+      - '{{ trimprefix .Tag "v" }}-debug'
+      - "sha-{{ .ShortCommit }}-debug"
 
 checksum:
   name_template: "checksums.txt"
