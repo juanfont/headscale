@@ -67,8 +67,9 @@ func DefaultConfigYAML() string {
 log:
   level: trace
 acl_policy_path: ""
-db_type: sqlite3
-db_path: /tmp/integration_test_db.sqlite3
+database:
+  type: sqlite3
+  sqlite.path: /tmp/integration_test_db.sqlite3
 ephemeral_node_inactivity_timeout: 30m
 node_update_check_interval: 10s
 ip_prefixes:

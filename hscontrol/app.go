@@ -57,7 +57,6 @@ import (
 
 var (
 	errSTUNAddressNotSet                   = errors.New("STUN address not set")
-	errUnsupportedDatabase                 = errors.New("unsupported DB")
 	errUnsupportedLetsEncryptChallengeType = errors.New(
 		"unknown value for Lets Encrypt challenge type",
 	)
@@ -79,9 +78,6 @@ const (
 type Headscale struct {
 	cfg             *types.Config
 	db              *db.HSDatabase
-	dbString        string
-	dbType          string
-	dbDebug         bool
 	noisePrivateKey *key.MachinePrivate
 
 	DERPMap    *tailcfg.DERPMap
