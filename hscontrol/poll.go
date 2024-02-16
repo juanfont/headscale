@@ -30,9 +30,19 @@ type UpdateNode func()
 func logPollFunc(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-) (func(string), func(error, string)) {
+) (func(string), func(string), func(error, string)) {
 	return func(msg string) {
-			log.Info().
+			log.Trace().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Str("node_key", node.NodeKey.ShortString()).
+				Str("node", node.Hostname).
+				Msg(msg)
+		},
+		func(msg string) {
+			log.Warn().
 				Caller().
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
@@ -64,7 +74,7 @@ func (h *Headscale) handlePoll(
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 ) {
-	logInfo, logErr := logPollFunc(mapRequest, node)
+	logTrace, logWarn, logErr := logPollFunc(mapRequest, node)
 
 	// This is the mechanism where the node gives us information about its
 	// current configuration.
@@ -337,7 +347,7 @@ func (h *Headscale) handlePoll(
 		}
 	}
 
-	logInfo("Sending initial map")
+	logTrace("Sending initial map")
 
 	mapResp, err := mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
 	if err != nil {
@@ -384,7 +394,7 @@ func (h *Headscale) handlePoll(
 	defer cancel()
 
 	for {
-		logInfo("Waiting for update on stream channel")
+		logTrace("Waiting for update on stream channel")
 		select {
 		case <-keepAliveTicker.C:
 			data, err := mapp.KeepAliveResponse(mapRequest, node)
@@ -415,7 +425,7 @@ func (h *Headscale) handlePoll(
 			go h.updateNodeOnlineStatus(true, node)
 
 		case update := <-updateChan:
-			logInfo("Received update")
+			logTrace("Received update")
 			now := time.Now()
 
 			var data []byte
@@ -434,11 +444,11 @@ func (h *Headscale) handlePoll(
 			startMapResp := time.Now()
 			switch update.Type {
 			case types.StateFullUpdate:
-				logInfo("Sending Full MapResponse")
+				logTrace("Sending Full MapResponse")
 
 				data, err = mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
 			case types.StatePeerChanged:
-				logInfo(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
+				logTrace(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
 
 				isConnectedMap := h.nodeNotifier.ConnectedMap()
 				for _, node := range update.ChangeNodes {
@@ -455,21 +465,21 @@ func (h *Headscale) handlePoll(
 
 				data, err = mapp.PeerChangedResponse(mapRequest, node, update.ChangeNodes, h.ACLPolicy, update.Message)
 			case types.StatePeerChangedPatch:
-				logInfo("Sending PeerChangedPatch MapResponse")
+				logTrace("Sending PeerChangedPatch MapResponse")
 				data, err = mapp.PeerChangedPatchResponse(mapRequest, node, update.ChangePatches, h.ACLPolicy)
 			case types.StatePeerRemoved:
-				logInfo("Sending PeerRemoved MapResponse")
+				logTrace("Sending PeerRemoved MapResponse")
 				data, err = mapp.PeerRemovedResponse(mapRequest, node, update.Removed)
 			case types.StateSelfUpdate:
 				if len(update.ChangeNodes) == 1 {
-					logInfo("Sending SelfUpdate MapResponse")
+					logTrace("Sending SelfUpdate MapResponse")
 					node = update.ChangeNodes[0]
 					data, err = mapp.LiteMapResponse(mapRequest, node, h.ACLPolicy, types.SelfUpdateIdentifier)
 				} else {
-					logInfo("SelfUpdate contained too many nodes, this is likely a bug in the code, please report.")
+					logWarn("SelfUpdate contained too many nodes, this is likely a bug in the code, please report.")
 				}
 			case types.StateDERPUpdated:
-				logInfo("Sending DERPUpdate MapResponse")
+				logTrace("Sending DERPUpdate MapResponse")
 				data, err = mapp.DERPMapResponse(mapRequest, node, update.DERPMap)
 			}
 
@@ -516,7 +526,7 @@ func (h *Headscale) handlePoll(
 			}
 
 		case <-ctx.Done():
-			logInfo("The client has closed the connection")
+			logTrace("The client has closed the connection")
 
 			go h.updateNodeOnlineStatus(false, node)
 
@@ -527,7 +537,7 @@ func (h *Headscale) handlePoll(
 			return
 
 		case <-h.shutdownChan:
-			logInfo("The long-poll handler is shutting down")
+			logTrace("The long-poll handler is shutting down")
 
 			return
 		}
@@ -598,7 +608,7 @@ func (h *Headscale) handleLiteRequest(
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 ) {
-	logInfo, logErr := logPollFunc(mapRequest, node)
+	logTrace, _, logErr := logPollFunc(mapRequest, node)
 
 	mapp := mapper.NewMapper(
 		node,
@@ -610,7 +620,7 @@ func (h *Headscale) handleLiteRequest(
 		h.cfg.RandomizeClientPort,
 	)
 
-	logInfo("Client asked for a lite update, responding without peers")
+	logTrace("Client asked for a lite update, responding without peers")
 
 	mapResp, err := mapp.LiteMapResponse(mapRequest, node, h.ACLPolicy)
 	if err != nil {
