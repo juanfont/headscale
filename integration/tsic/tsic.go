@@ -202,13 +202,6 @@ func New(
 		ExtraHosts: tsic.withExtraHosts,
 	}
 
-	if tsic.headscaleHostname != "" {
-		tailscaleOptions.ExtraHosts = []string{
-			"host.docker.internal:host-gateway",
-			fmt.Sprintf("%s:host-gateway", tsic.headscaleHostname),
-		}
-	}
-
 	if tsic.workdir != "" {
 		tailscaleOptions.WorkingDir = tsic.workdir
 	}
