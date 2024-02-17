@@ -181,7 +181,6 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 			if ni := hi.NetInfo(); ni.Valid() {
 				assert.NotEqualf(t, 0, ni.PreferredDERP(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.Hostinfo().NetInfo().PreferredDERP())
 			}
-
 		}
 
 		assert.NotEmptyf(t, peer.Endpoints(), "peer (%s) of %q does not have any endpoints", peer.ComputedName(), client.Hostname())
