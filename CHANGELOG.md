@@ -24,6 +24,9 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 ### BREAKING
 
 - Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1473](https://github.com/juanfont/headscale/pull/1473)
+- Change the structure of database configuration, see [config-example.yaml](./config-example.yaml) for the new structure. [#1700](https://github.com/juanfont/headscale/pull/1700)
+  - Old structure has been remove and the configuration _must_ be converted.
+  - Adds additional configuration for PostgreSQL for setting max open, idle conection and idle connection lifetime.
 - API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
 - Remove support for older Tailscale clients [#1611](https://github.com/juanfont/headscale/pull/1611)
   - The latest supported client is 1.38
@@ -46,9 +49,6 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Fix [TS-2023-006](https://tailscale.com/security-bulletins/#ts-2023-006) security UPnP issue [#1563](https://github.com/juanfont/headscale/pull/1563)
 - Turn off gRPC logging [#1640](https://github.com/juanfont/headscale/pull/1640) fixes [#1259](https://github.com/juanfont/headscale/issues/1259)
 - Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
-- Change the structure of database configuration, see [config-example.yaml](./config-example.yaml) for the new structure. [#1700](https://github.com/juanfont/headscale/pull/1700)
-  - Old structure is now considered deprecated and will be removed in the future.
-  - Adds additional configuration for PostgreSQL for setting max open, idle conection and idle connection lifetime.
 - Add support for deleting api keys [#1702](https://github.com/juanfont/headscale/pull/1702)
 
 ## 0.22.3 (2023-05-12)

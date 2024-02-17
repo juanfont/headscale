@@ -62,8 +62,8 @@ private_key_path: /etc/headscale/private.key
 noise:
   private_key_path: /etc/headscale/noise_private.key
 # The default /var/lib/headscale path is not writable  in the container
-db_type: sqlite3
-db_path: /etc/headscale/db.sqlite
+database.type: sqlite3
+database.sqlite.path: /etc/headscale/db.sqlite
 ```
 
 4. Start the headscale server while working in the host headscale directory:
