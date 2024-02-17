@@ -2,11 +2,9 @@ package db
 
 import (
 	"log"
-	"net/netip"
 	"os"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
 )
@@ -51,10 +49,6 @@ func (s *Suite) ResetDB(c *check.C) {
 			Sqlite: types.SqliteConfig{
 				Path: tmpDir + "/headscale_test.db",
 			},
-		},
-		notifier.NewNotifier(),
-		[]netip.Prefix{
-			netip.MustParsePrefix("10.27.0.0/23"),
 		},
 		"",
 	)

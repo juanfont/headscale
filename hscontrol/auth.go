@@ -388,8 +388,21 @@ func (h *Headscale) handleAuthKey(
 			ForcedTags:     pak.Proto().GetAclTags(),
 		}
 
+		addrs, err := h.ipAlloc.Next()
+		if err != nil {
+			log.Error().
+				Caller().
+				Str("func", "RegistrationHandler").
+				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
+				Err(err).
+				Msg("failed to allocate IP	")
+
+			return
+		}
+
 		node, err = h.db.RegisterNode(
 			nodeToRegister,
+			addrs,
 		)
 		if err != nil {
 			log.Error().

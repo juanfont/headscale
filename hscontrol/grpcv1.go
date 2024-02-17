@@ -186,6 +186,11 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, err
 	}
 
+	addrs, err := api.h.ipAlloc.Next()
+	if err != nil {
+		return nil, err
+	}
+
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		return db.RegisterNodeFromAuthCallback(
 			tx,
@@ -194,7 +199,7 @@ func (api headscaleV1APIServer) RegisterNode(
 			request.GetUser(),
 			nil,
 			util.RegisterMethodCLI,
-			api.h.cfg.IPPrefixes,
+			addrs,
 		)
 	})
 	if err != nil {

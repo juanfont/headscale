@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/netip"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,7 +17,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -35,7 +33,6 @@ type KV struct {
 type HSDatabase struct {
 	DB *gorm.DB
 
-	ipPrefixes []netip.Prefix
 	baseDomain string
 }
 
@@ -43,8 +40,6 @@ type HSDatabase struct {
 // rather than arguments.
 func NewHeadscaleDatabase(
 	cfg types.DatabaseConfig,
-	notifier *notifier.Notifier,
-	ipPrefixes []netip.Prefix,
 	baseDomain string,
 ) (*HSDatabase, error) {
 	dbConn, err := openDB(cfg)
@@ -327,7 +322,6 @@ func NewHeadscaleDatabase(
 	db := HSDatabase{
 		DB: dbConn,
 
-		ipPrefixes: ipPrefixes,
 		baseDomain: baseDomain,
 	}
 

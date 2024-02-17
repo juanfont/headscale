@@ -81,6 +81,7 @@ const (
 type Headscale struct {
 	cfg             *types.Config
 	db              *db.HSDatabase
+	ipAlloc         *db.IPAllocator
 	noisePrivateKey *key.MachinePrivate
 
 	DERPMap    *tailcfg.DERPMap
@@ -132,14 +133,15 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	app.db, err = db.NewHeadscaleDatabase(
 		cfg.Database,
-		// TODO(kradalby): Is this needed when we dont allocate IPs in db?
-		[]netip.Prefix{*cfg.PrefixV4, *cfg.PrefixV6},
 		cfg.BaseDomain)
 	if err != nil {
 		return nil, err
 	}
 
-	app.db = database
+	app.ipAlloc, err = db.NewIPAllocator(app.db, *cfg.PrefixV4, *cfg.PrefixV6)
+	if err != nil {
+		return nil, err
+	}
 
 	if cfg.OIDC.Issuer != "" {
 		err = app.initOIDC()

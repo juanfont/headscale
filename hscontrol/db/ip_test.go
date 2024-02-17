@@ -18,7 +18,7 @@ func TestIPAllocator(t *testing.T) {
 	na := func(pref string) netip.Addr {
 		return netip.MustParseAddr(pref)
 	}
-	newDb := func(p4, p6 netip.Prefix) *HSDatabase {
+	newDb := func() *HSDatabase {
 		tmpDir, err := os.MkdirTemp("", "headscale-db-test-*")
 		if err != nil {
 			t.Fatalf("creating temp dir: %s", err)
@@ -30,7 +30,6 @@ func TestIPAllocator(t *testing.T) {
 					Path: tmpDir + "/headscale_test.db",
 				},
 			},
-			[]netip.Prefix{p4, p6},
 			"",
 		)
 
@@ -67,7 +66,7 @@ func TestIPAllocator(t *testing.T) {
 		{
 			name: "simple-with-db",
 			dbFunc: func() *HSDatabase {
-				db := newDb(mpp("100.64.0.0/10"), mpp("fd7a:115c:a1e0::/48"))
+				db := newDb()
 
 				db.DB.Save(&types.Node{
 					IPAddresses: types.NodeAddresses{
@@ -94,7 +93,7 @@ func TestIPAllocator(t *testing.T) {
 		{
 			name: "before-after-free-middle-in-db",
 			dbFunc: func() *HSDatabase {
-				db := newDb(mpp("100.64.0.0/10"), mpp("fd7a:115c:a1e0::/48"))
+				db := newDb()
 
 				db.DB.Save(&types.Node{
 					IPAddresses: types.NodeAddresses{

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"sync"
@@ -115,6 +116,8 @@ func (i *IPAllocator) Next() (types.NodeAddresses, error) {
 
 	return types.NodeAddresses{*v4, *v6}, nil
 }
+
+var ErrCouldNotAllocateIP = errors.New("failed to allocate IP")
 
 func (i *IPAllocator) next(prev netip.Addr, prefix netip.Prefix) (*netip.Addr, error) {
 	// Get the first IP in our prefix
