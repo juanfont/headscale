@@ -72,9 +72,9 @@ database:
   sqlite.path: /tmp/integration_test_db.sqlite3
 ephemeral_node_inactivity_timeout: 30m
 node_update_check_interval: 10s
-ip_prefixes:
-  - fd7a:115c:a1e0::/48
-  - 100.64.0.0/10
+prefixes:
+  v6: fd7a:115c:a1e0::/48
+  v4: 100.64.0.0/10
 dns_config:
   base_domain: headscale.net
   magic_dns: true
@@ -115,7 +115,8 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_DATABASE_SQLITE_PATH":              "/tmp/integration_test_db.sqlite3",
 		"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": "30m",
 		"HEADSCALE_NODE_UPDATE_CHECK_INTERVAL":        "10s",
-		"HEADSCALE_IP_PREFIXES":                       "fd7a:115c:a1e0::/48 100.64.0.0/10",
+		"HEADSCALE_PREFIXES_V4":                       "100.64.0.0/10",
+		"HEADSCALE_PREFIXES_V6":                       "fd7a:115c:a1e0::/48",
 		"HEADSCALE_DNS_CONFIG_BASE_DOMAIN":            "headscale.net",
 		"HEADSCALE_DNS_CONFIG_MAGIC_DNS":              "true",
 		"HEADSCALE_DNS_CONFIG_DOMAINS":                "",

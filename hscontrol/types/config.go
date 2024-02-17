@@ -41,7 +41,8 @@ type Config struct {
 	GRPCAllowInsecure              bool
 	EphemeralNodeInactivityTimeout time.Duration
 	NodeUpdateCheckInterval        time.Duration
-	IPPrefixes                     []netip.Prefix
+	PrefixV4                       *netip.Prefix
+	PrefixV6                       *netip.Prefix
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
 	Log                            LogConfig
@@ -569,6 +570,39 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	return nil, ""
 }
 
+func Prefixes() (*netip.Prefix, *netip.Prefix, error) {
+	prefixV4Str := viper.GetString("prefixes.v4")
+	prefixV6Str := viper.GetString("prefixes.v6")
+
+	prefixV4, err := netip.ParsePrefix(prefixV4Str)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	prefixV6, err := netip.ParsePrefix(prefixV6Str)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	builder := netipx.IPSetBuilder{}
+	builder.AddPrefix(tsaddr.CGNATRange())
+	builder.AddPrefix(tsaddr.TailscaleULARange())
+	ipSet, _ := builder.IPSet()
+	if !ipSet.ContainsPrefix(prefixV4) {
+		log.Warn().
+			Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
+				prefixV4Str, tsaddr.CGNATRange())
+	}
+
+	if !ipSet.ContainsPrefix(prefixV6) {
+		log.Warn().
+			Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
+				prefixV6Str, tsaddr.TailscaleULARange())
+	}
+
+	return &prefixV4, &prefixV6, nil
+}
+
 func GetHeadscaleConfig() (*Config, error) {
 	if IsCLIConfigured() {
 		return &Config{
@@ -581,65 +615,15 @@ func GetHeadscaleConfig() (*Config, error) {
 		}, nil
 	}
 
+	prefix4, prefix6, err := Prefixes()
+	if err != nil {
+		return nil, err
+	}
+
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
 	randomizeClientPort := viper.GetBool("randomize_client_port")
-
-	configuredPrefixes := viper.GetStringSlice("ip_prefixes")
-	parsedPrefixes := make([]netip.Prefix, 0, len(configuredPrefixes)+1)
-
-	for i, prefixInConfig := range configuredPrefixes {
-		prefix, err := netip.ParsePrefix(prefixInConfig)
-		if err != nil {
-			panic(fmt.Errorf("failed to parse ip_prefixes[%d]: %w", i, err))
-		}
-
-		if prefix.Addr().Is4() {
-			builder := netipx.IPSetBuilder{}
-			builder.AddPrefix(tsaddr.CGNATRange())
-			ipSet, _ := builder.IPSet()
-			if !ipSet.ContainsPrefix(prefix) {
-				log.Warn().
-					Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
-						prefixInConfig, tsaddr.CGNATRange())
-			}
-		}
-
-		if prefix.Addr().Is6() {
-			builder := netipx.IPSetBuilder{}
-			builder.AddPrefix(tsaddr.TailscaleULARange())
-			ipSet, _ := builder.IPSet()
-			if !ipSet.ContainsPrefix(prefix) {
-				log.Warn().
-					Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
-						prefixInConfig, tsaddr.TailscaleULARange())
-			}
-		}
-
-		parsedPrefixes = append(parsedPrefixes, prefix)
-	}
-
-	prefixes := make([]netip.Prefix, 0, len(parsedPrefixes))
-	{
-		// dedup
-		normalizedPrefixes := make(map[string]int, len(parsedPrefixes))
-		for i, p := range parsedPrefixes {
-			normalized, _ := netipx.RangeOfPrefix(p).Prefix()
-			normalizedPrefixes[normalized.String()] = i
-		}
-
-		// convert back to list
-		for _, i := range normalizedPrefixes {
-			prefixes = append(prefixes, parsedPrefixes[i])
-		}
-	}
-
-	if len(prefixes) < 1 {
-		prefixes = append(prefixes, netip.MustParsePrefix("100.64.0.0/10"))
-		log.Warn().
-			Msgf("'ip_prefixes' not configured, falling back to default: %v", prefixes)
-	}
 
 	oidcClientSecret := viper.GetString("oidc.client_secret")
 	oidcClientSecretPath := viper.GetString("oidc.client_secret_path")
@@ -662,7 +646,9 @@ func GetHeadscaleConfig() (*Config, error) {
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 
-		IPPrefixes: prefixes,
+		PrefixV4: prefix4,
+		PrefixV6: prefix6,
+
 		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),
 		),

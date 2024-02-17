@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" //nolint
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -106,6 +107,7 @@ var (
 )
 
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
+	var err error
 	if profilingEnabled {
 		runtime.SetBlockProfileRate(1)
 	}
@@ -128,10 +130,10 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		nodeNotifier:       notifier.NewNotifier(),
 	}
 
-	database, err := db.NewHeadscaleDatabase(
+	app.db, err = db.NewHeadscaleDatabase(
 		cfg.Database,
-		app.nodeNotifier,
-		cfg.IPPrefixes,
+		// TODO(kradalby): Is this needed when we dont allocate IPs in db?
+		[]netip.Prefix{*cfg.PrefixV4, *cfg.PrefixV6},
 		cfg.BaseDomain)
 	if err != nil {
 		return nil, err
@@ -151,7 +153,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	if app.cfg.DNSConfig != nil && app.cfg.DNSConfig.Proxied { // if MagicDNS
-		magicDNSDomains := util.GenerateMagicDNSRootDomains(app.cfg.IPPrefixes)
+		// TODO(kradalby): revisit why this takes a list.
+		magicDNSDomains := util.GenerateMagicDNSRootDomains([]netip.Prefix{*cfg.PrefixV4, *cfg.PrefixV6})
 		// we might have routes already from Split DNS
 		if app.cfg.DNSConfig.Routes == nil {
 			app.cfg.DNSConfig.Routes = make(map[string][]*dnstype.Resolver)
