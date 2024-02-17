@@ -1,6 +1,8 @@
 package util
 
 import (
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -41,4 +43,22 @@ func GetFileMode(key string) fs.FileMode {
 	}
 
 	return fs.FileMode(mode)
+}
+
+func EnsureDir(dir string) error {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.MkdirAll(dir, PermissionFallback)
+		if err != nil {
+			if errors.Is(err, os.ErrPermission) {
+				return fmt.Errorf(
+					"creating directory %s, failed with permission error, is it located somewhere Headscale can write?",
+					dir,
+				)
+			}
+
+			return fmt.Errorf("creating directory %s: %w", dir, err)
+		}
+	}
+
+	return nil
 }

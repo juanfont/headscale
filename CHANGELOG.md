@@ -36,6 +36,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - Add a filepath entry to [`derp.server.private_key_path`](https://github.com/juanfont/headscale/blob/b35993981297e18393706b2c963d6db882bba6aa/config-example.yaml#L95)
 - Docker images are now built with goreleaser (ko) [#1716](https://github.com/juanfont/headscale/pull/1716) [#1763](https://github.com/juanfont/headscale/pull/1763)
   - Entrypoint of container image has changed from shell to headscale, require change from `headscale serve` to `serve`
+  - `/var/lib/headscale` and `/var/run/headscale` is no longer created automatically, see [container docs](./docs/running-headscale-container.md)
 
 ### Changes
 

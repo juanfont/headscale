@@ -11,6 +11,7 @@ import (
 	_ "net/http/pprof" //nolint
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -69,6 +70,7 @@ const (
 	AuthPrefix         = "Bearer "
 	updateInterval     = 5000
 	privateKeyFileMode = 0o600
+	headscaleDirPerm   = 0o700
 
 	registerCacheExpiration = time.Minute * 15
 	registerCacheCleanup    = time.Minute * 20
@@ -552,6 +554,12 @@ func (h *Headscale) Serve() error {
 		return fmt.Errorf("unable to remove old socket file: %w", err)
 	}
 
+	socketDir := filepath.Dir(h.cfg.UnixSocket)
+	err = util.EnsureDir(socketDir)
+	if err != nil {
+		return fmt.Errorf("setting up unix socket: %w", err)
+	}
+
 	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
 	if err != nil {
 		return fmt.Errorf("failed to set up gRPC socket: %w", err)
@@ -919,6 +927,12 @@ func notFoundHandler(
 }
 
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
+	dir := filepath.Dir(path)
+	err := util.EnsureDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("ensuring private key directory: %w", err)
+	}
+
 	privateKey, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		log.Info().Str("path", path).Msg("No private key file at path, creating...")
