@@ -40,16 +40,16 @@
 
         protoc-gen-grpc-gateway = pkgs.buildGoModule rec {
           pname = "grpc-gateway";
-          version = "2.14.0";
+          version = "2.19.1";
 
           src = pkgs.fetchFromGitHub {
             owner = "grpc-ecosystem";
             repo = "grpc-gateway";
             rev = "v${version}";
-            sha256 = "sha256-lnNdsDCpeSHtl2lC1IhUw11t3cnGF+37qSM7HDvKLls=";
+            sha256 = "sha256-CdGQpQfOSimeio8v1lZ7xzE/oAS2qFyu+uN+H9i7vpo=";
           };
 
-          vendorHash = "sha256-dGdnDuRbwg8fU7uB5GaHEWa/zI3w06onqjturvooJQA=";
+          vendorHash = "sha256-no7kZGpf/VOuceC3J+izGFQp5aMS3b+Rn+x4BFZ2zgs=";
 
           nativeBuildInputs = [pkgs.installShellFiles];
 
