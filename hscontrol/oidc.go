@@ -620,6 +620,11 @@ func (h *Headscale) registerNodeForOIDCCallback(
 	machineKey *key.MachinePublic,
 	expiry time.Time,
 ) error {
+	addrs, err := h.ipAlloc.Next()
+	if err != nil {
+		return err
+	}
+
 	if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
 		if _, err := db.RegisterNodeFromAuthCallback(
 			// TODO(kradalby): find a better way to use the cache across modules
@@ -629,7 +634,7 @@ func (h *Headscale) registerNodeForOIDCCallback(
 			user.Name,
 			&expiry,
 			util.RegisterMethodOIDC,
-			h.cfg.IPPrefixes,
+			addrs,
 		); err != nil {
 			return err
 		}

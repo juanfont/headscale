@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" //nolint
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -80,6 +81,7 @@ const (
 type Headscale struct {
 	cfg             *types.Config
 	db              *db.HSDatabase
+	ipAlloc         *db.IPAllocator
 	noisePrivateKey *key.MachinePrivate
 
 	DERPMap    *tailcfg.DERPMap
@@ -106,6 +108,7 @@ var (
 )
 
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
+	var err error
 	if profilingEnabled {
 		runtime.SetBlockProfileRate(1)
 	}
@@ -128,16 +131,17 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		nodeNotifier:       notifier.NewNotifier(),
 	}
 
-	database, err := db.NewHeadscaleDatabase(
+	app.db, err = db.NewHeadscaleDatabase(
 		cfg.Database,
-		app.nodeNotifier,
-		cfg.IPPrefixes,
 		cfg.BaseDomain)
 	if err != nil {
 		return nil, err
 	}
 
-	app.db = database
+	app.ipAlloc, err = db.NewIPAllocator(app.db, *cfg.PrefixV4, *cfg.PrefixV6)
+	if err != nil {
+		return nil, err
+	}
 
 	if cfg.OIDC.Issuer != "" {
 		err = app.initOIDC()
@@ -151,7 +155,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	if app.cfg.DNSConfig != nil && app.cfg.DNSConfig.Proxied { // if MagicDNS
-		magicDNSDomains := util.GenerateMagicDNSRootDomains(app.cfg.IPPrefixes)
+		// TODO(kradalby): revisit why this takes a list.
+		magicDNSDomains := util.GenerateMagicDNSRootDomains([]netip.Prefix{*cfg.PrefixV4, *cfg.PrefixV6})
 		// we might have routes already from Split DNS
 		if app.cfg.DNSConfig.Routes == nil {
 			app.cfg.DNSConfig.Routes = make(map[string][]*dnstype.Resolver)

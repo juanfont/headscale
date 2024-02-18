@@ -4,6 +4,7 @@ package hscontrol
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -98,6 +99,10 @@ func (api headscaleV1APIServer) ListUsers(
 		response[index] = user.Proto()
 	}
 
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].Id < response[j].Id
+	})
+
 	log.Trace().Caller().Interface("users", response).Msg("")
 
 	return &v1.ListUsersResponse{Users: response}, nil
@@ -168,6 +173,10 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 		response[index] = key.Proto()
 	}
 
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].Id < response[j].Id
+	})
+
 	return &v1.ListPreAuthKeysResponse{PreAuthKeys: response}, nil
 }
 
@@ -186,6 +195,11 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, err
 	}
 
+	addrs, err := api.h.ipAlloc.Next()
+	if err != nil {
+		return nil, err
+	}
+
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		return db.RegisterNodeFromAuthCallback(
 			tx,
@@ -194,7 +208,7 @@ func (api headscaleV1APIServer) RegisterNode(
 			request.GetUser(),
 			nil,
 			util.RegisterMethodCLI,
-			api.h.cfg.IPPrefixes,
+			addrs,
 		)
 	})
 	if err != nil {
@@ -422,6 +436,10 @@ func (api headscaleV1APIServer) ListNodes(
 		return nil, err
 	}
 
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].ID < nodes[j].ID
+	})
+
 	response := make([]*v1.Node, len(nodes))
 	for index, node := range nodes {
 		resp := node.Proto()
@@ -605,6 +623,10 @@ func (api headscaleV1APIServer) ListApiKeys(
 	for index, key := range apiKeys {
 		response[index] = key.Proto()
 	}
+
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].Id < response[j].Id
+	})
 
 	return &v1.ListApiKeysResponse{ApiKeys: response}, nil
 }

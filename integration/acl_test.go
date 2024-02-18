@@ -415,7 +415,7 @@ func TestACLAllowUserDst(t *testing.T) {
 		},
 		2,
 	)
-	defer scenario.Shutdown()
+	// defer scenario.Shutdown()
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	assertNoErr(t, err)

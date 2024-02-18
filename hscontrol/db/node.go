@@ -307,7 +307,7 @@ func RegisterNodeFromAuthCallback(
 	userName string,
 	nodeExpiry *time.Time,
 	registrationMethod string,
-	ipPrefixes []netip.Prefix,
+	addrs types.NodeAddresses,
 ) (*types.Node, error) {
 	log.Debug().
 		Str("machine_key", mkey.ShortString()).
@@ -343,7 +343,7 @@ func RegisterNodeFromAuthCallback(
 			node, err := RegisterNode(
 				tx,
 				registrationNode,
-				ipPrefixes,
+				addrs,
 			)
 
 			if err == nil {
@@ -359,14 +359,14 @@ func RegisterNodeFromAuthCallback(
 	return nil, ErrNodeNotFoundRegistrationCache
 }
 
-func (hsdb *HSDatabase) RegisterNode(node types.Node) (*types.Node, error) {
+func (hsdb *HSDatabase) RegisterNode(node types.Node, addrs types.NodeAddresses) (*types.Node, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
-		return RegisterNode(tx, node, hsdb.ipPrefixes)
+		return RegisterNode(tx, node, addrs)
 	})
 }
 
 // RegisterNode is executed from the CLI to register a new Node using its MachineKey.
-func RegisterNode(tx *gorm.DB, node types.Node, ipPrefixes []netip.Prefix) (*types.Node, error) {
+func RegisterNode(tx *gorm.DB, node types.Node, addrs types.NodeAddresses) (*types.Node, error) {
 	log.Debug().
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
@@ -393,18 +393,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipPrefixes []netip.Prefix) (*typ
 		return &node, nil
 	}
 
-	ips, err := getAvailableIPs(tx, ipPrefixes)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Str("node", node.Hostname).
-			Msg("Could not find IP for the new node")
-
-		return nil, err
-	}
-
-	node.IPAddresses = ips
+	node.IPAddresses = addrs
 
 	if err := tx.Save(&node).Error; err != nil {
 		return nil, fmt.Errorf("failed register(save) node in the database: %w", err)
@@ -413,7 +402,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipPrefixes []netip.Prefix) (*typ
 	log.Trace().
 		Caller().
 		Str("node", node.Hostname).
-		Str("ip", strings.Join(ips.StringSlice(), ",")).
+		Str("ip", strings.Join(addrs.StringSlice(), ",")).
 		Msg("Node registered with the database")
 
 	return &node, nil

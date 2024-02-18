@@ -56,6 +56,8 @@ type HeadscaleInContainer struct {
 	container *dockertest.Resource
 	network   *dockertest.Network
 
+	pgContainer *dockertest.Resource
+
 	// optional config
 	port             int
 	extraPorts       []string
@@ -65,6 +67,7 @@ type HeadscaleInContainer struct {
 	tlsCert          []byte
 	tlsKey           []byte
 	filesInContainer []fileInContainer
+	postgres         bool
 }
 
 // Option represent optional settings that can be given to a
@@ -162,6 +165,14 @@ func WithFileInContainer(path string, contents []byte) Option {
 	}
 }
 
+// WithPostgres spins up a Postgres container and
+// sets it as the main database.
+func WithPostgres() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.postgres = true
+	}
+}
+
 // New returns a new HeadscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
@@ -207,6 +218,33 @@ func New(
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile.debug",
 		ContextDir: dockerContextPath,
+	}
+
+	if hsic.postgres {
+		hsic.env["HEADSCALE_DATABASE_TYPE"] = "postgres"
+		hsic.env["HEADSCALE_DATABASE_POSTGRES_HOST"] = fmt.Sprintf("postgres-%s", hash)
+		hsic.env["HEADSCALE_DATABASE_POSTGRES_USER"] = "headscale"
+		hsic.env["HEADSCALE_DATABASE_POSTGRES_PASS"] = "headscale"
+		hsic.env["HEADSCALE_DATABASE_POSTGRES_NAME"] = "headscale"
+		delete(hsic.env, "HEADSCALE_DATABASE_SQLITE_PATH")
+
+		pg, err := pool.RunWithOptions(
+			&dockertest.RunOptions{
+				Name:       fmt.Sprintf("postgres-%s", hash),
+				Repository: "postgres",
+				Tag:        "latest",
+				Networks:   []*dockertest.Network{network},
+				Env: []string{
+					"POSTGRES_USER=headscale",
+					"POSTGRES_PASSWORD=headscale",
+					"POSTGRES_DB=headscale",
+				},
+			})
+		if err != nil {
+			return nil, fmt.Errorf("starting postgres container: %w", err)
+		}
+
+		hsic.pgContainer = pg
 	}
 
 	env := []string{
@@ -348,12 +386,20 @@ func (t *HeadscaleInContainer) Shutdown() error {
 		)
 	}
 
-	err = t.SaveDatabase("/tmp/control")
-	if err != nil {
-		log.Printf(
-			"Failed to save database from control: %s",
-			fmt.Errorf("failed to save database from control: %w", err),
-		)
+	// We dont have a database to save if we use postgres
+	if !t.postgres {
+		err = t.SaveDatabase("/tmp/control")
+		if err != nil {
+			log.Printf(
+				"Failed to save database from control: %s",
+				fmt.Errorf("failed to save database from control: %w", err),
+			)
+		}
+	}
+
+	// Cleanup postgres container if enabled.
+	if t.postgres {
+		t.pool.Purge(t.pgContainer)
 	}
 
 	return t.pool.Purge(t.container)

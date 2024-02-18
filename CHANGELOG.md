@@ -37,6 +37,8 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Docker images are now built with goreleaser (ko) [#1716](https://github.com/juanfont/headscale/pull/1716) [#1763](https://github.com/juanfont/headscale/pull/1763)
   - Entrypoint of container image has changed from shell to headscale, require change from `headscale serve` to `serve`
   - `/var/lib/headscale` and `/var/run/headscale` is no longer created automatically, see [container docs](./docs/running-headscale-container.md)
+- Prefixes are now defined per v4 and v6 range. [#1756](https://github.com/juanfont/headscale/pull/1756)
+  - `ip_prefixes` option is now `prefixes.v4` and `prefixes.v6`
 
 ### Changes
 
