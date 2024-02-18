@@ -212,15 +212,9 @@ func (h *Headscale) handlePoll(
 			return
 		}
 
-		// TODO(kradalby): Figure out why patch changes does
-		// not show up in output from `tailscale debug netmap`.
-		// stateUpdate := types.StateUpdate{
-		// 	Type:          types.StatePeerChangedPatch,
-		// 	ChangePatches: []*tailcfg.PeerChange{&change},
-		// }
 		stateUpdate := types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: types.Nodes{node},
+			Type:          types.StatePeerChangedPatch,
+			ChangePatches: []*tailcfg.PeerChange{&change},
 		}
 		if stateUpdate.Valid() {
 			ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", node.Hostname)

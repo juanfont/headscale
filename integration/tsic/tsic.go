@@ -1,9 +1,11 @@
 package tsic
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/netip"
 	"net/url"
@@ -16,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/netcheck"
 	"tailscale.com/types/netmap"
@@ -522,27 +525,122 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 }
 
 // Netmap returns the current Netmap (netmap.NetworkMap) of the Tailscale instance.
-// Only works with Tailscale 1.56.1 and newer.
+// Only works with Tailscale 1.56 and newer.
+// Panics if version is lower then minimum.
+// func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
+// 	if !util.TailscaleVersionNewerOrEqual("1.56", t.version) {
+// 		panic(fmt.Sprintf("tsic.Netmap() called with unsupported version: %s", t.version))
+// 	}
+
+// 	command := []string{
+// 		"tailscale",
+// 		"debug",
+// 		"netmap",
+// 	}
+
+// 	result, stderr, err := t.Execute(command)
+// 	if err != nil {
+// 		fmt.Printf("stderr: %s\n", stderr)
+// 		return nil, fmt.Errorf("failed to execute tailscale debug netmap command: %w", err)
+// 	}
+
+// 	var nm netmap.NetworkMap
+// 	err = json.Unmarshal([]byte(result), &nm)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to unmarshal tailscale netmap: %w", err)
+// 	}
+
+// 	return &nm, err
+// }
+
+// Netmap returns the current Netmap (netmap.NetworkMap) of the Tailscale instance.
+// This implementation is based on getting the netmap from `tailscale debug watch-ipn`
+// as there seem to be some weirdness omitting endpoint and DERP info if we use
+// Patch updates.
+// This implementation works on all supported versions.
 func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
-	command := []string{
-		"tailscale",
-		"debug",
-		"netmap",
-	}
+	// watch-ipn will only give an update if something is happening,
+	// since we send keep alives, the worst case for this should be
+	// 1 minute, but set a slightly more conservative time.
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
 
-	result, stderr, err := t.Execute(command)
+	notify, err := t.watchIPN(ctx)
 	if err != nil {
-		fmt.Printf("stderr: %s\n", stderr)
-		return nil, fmt.Errorf("failed to execute tailscale debug netmap command: %w", err)
+		return nil, err
 	}
 
-	var nm netmap.NetworkMap
-	err = json.Unmarshal([]byte(result), &nm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal tailscale netmap: %w", err)
+	if notify.NetMap == nil {
+		return nil, fmt.Errorf("no netmap present in ipn.Notify")
 	}
 
-	return &nm, err
+	return notify.NetMap, nil
+}
+
+// watchIPN watches `tailscale debug watch-ipn` for a ipn.Notify object until
+// it gets one that has a netmap.NetworkMap.
+func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error) {
+	pr, pw := io.Pipe()
+
+	type result struct {
+		notify *ipn.Notify
+		err    error
+	}
+	resultChan := make(chan result, 1)
+
+	// There is no good way to kill the goroutine with watch-ipn,
+	// so make a nice func to send a kill command to issue when
+	// we are done.
+	killWatcher := func() {
+		stdout, stderr, err := t.Execute([]string{
+			"/bin/sh", "-c", `kill $(ps aux | grep "tailscale debug watch-ipn" | grep -v grep | awk '{print $1}') || true`,
+		})
+		if err != nil {
+			log.Printf("failed to kill tailscale watcher, \nstdout: %s\nstderr: %s\nerr: %s", stdout, stderr, err)
+		}
+	}
+
+	go func() {
+		_, _ = t.container.Exec(
+			// Prior to 1.56, the initial "Connected." message was printed to stdout,
+			// filter out with grep.
+			[]string{"/bin/sh", "-c", `tailscale debug watch-ipn | grep -v "Connected."`},
+			dockertest.ExecOptions{
+				// The interesting output is sent to stdout, so ignore stderr.
+				StdOut: pw,
+				// StdErr: pw,
+			},
+		)
+	}()
+
+	go func() {
+		decoder := json.NewDecoder(pr)
+		for decoder.More() {
+			var notify ipn.Notify
+			if err := decoder.Decode(&notify); err != nil {
+				resultChan <- result{nil, fmt.Errorf("parse notify: %w", err)}
+			}
+
+			if notify.NetMap != nil {
+				resultChan <- result{&notify, nil}
+			}
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		killWatcher()
+
+		return nil, ctx.Err()
+
+	case result := <-resultChan:
+		killWatcher()
+
+		if result.err != nil {
+			return nil, result.err
+		}
+
+		return result.notify, nil
+	}
 }
 
 // Netcheck returns the current Netcheck Report (netcheck.Report) of the Tailscale instance.

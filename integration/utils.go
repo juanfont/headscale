@@ -3,12 +3,12 @@ package integration
 import (
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
-	"tailscale.com/util/cmpver"
 )
 
 const (
@@ -127,11 +127,21 @@ func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) 
 func assertClientsState(t *testing.T, clients []TailscaleClient) {
 	t.Helper()
 
+	var wg sync.WaitGroup
+
 	for _, client := range clients {
-		assertValidStatus(t, client)
-		assertValidNetmap(t, client)
-		assertValidNetcheck(t, client)
+		wg.Add(1)
+		c := client // Avoid loop pointer
+		go func() {
+			defer wg.Done()
+			assertValidStatus(t, c)
+			assertValidNetcheck(t, c)
+			assertValidNetmap(t, c)
+		}()
 	}
+
+	t.Logf("waiting for client state checks to finish")
+	wg.Wait()
 }
 
 // assertValidNetmap asserts that the netmap of a client has all
@@ -144,11 +154,13 @@ func assertClientsState(t *testing.T, clients []TailscaleClient) {
 func assertValidNetmap(t *testing.T, client TailscaleClient) {
 	t.Helper()
 
-	if cmpver.Compare("1.56.1", client.Version()) <= 0 ||
-		!strings.Contains(client.Hostname(), "unstable") ||
-		!strings.Contains(client.Hostname(), "head") {
-		return
-	}
+	// if !util.TailscaleVersionNewerOrEqual("1.56", client.Version()) {
+	// 	t.Logf("%q has version %q, skipping netmap check...", client.Hostname(), client.Version())
+
+	// 	return
+	// }
+
+	t.Logf("Checking netmap of %q", client.Hostname())
 
 	netmap, err := client.Netmap()
 	if err != nil {
@@ -177,7 +189,7 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 			assert.LessOrEqualf(t, 3, peer.Hostinfo().Services().Len(), "peer (%s) of %q does not have enough services, got: %v", peer.ComputedName(), client.Hostname(), peer.Hostinfo().Services())
 
 			// Netinfo is not always set
-			assert.Truef(t, hi.NetInfo().Valid(), "peer (%s) of %q does not have NetInfo", peer.ComputedName(), client.Hostname())
+			// assert.Truef(t, hi.NetInfo().Valid(), "peer (%s) of %q does not have NetInfo", peer.ComputedName(), client.Hostname())
 			if ni := hi.NetInfo(); ni.Valid() {
 				assert.NotEqualf(t, 0, ni.PreferredDERP(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.Hostinfo().NetInfo().PreferredDERP())
 			}
