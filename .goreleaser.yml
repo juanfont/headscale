@@ -146,14 +146,14 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - "{{ if not .Prerelease }}latest{{ end }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
+      - "{{ if not .Prerelease }}latest-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable-debug{{ end }}"
       - "{{ .Tag }}-debug"
       - '{{ trimprefix .Tag "v" }}-debug'
       - "sha-{{ .ShortCommit }}-debug"
@@ -169,14 +169,14 @@ kos:
       - linux/arm64
       - linux/arm/v7
     tags:
-      - "{{ if not .Prerelease }}latest{{ end }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}-debug"
-      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
+      - "{{ if not .Prerelease }}latest-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable-debug{{ end }}"
       - "{{ .Tag }}-debug"
       - '{{ trimprefix .Tag "v" }}-debug'
       - "sha-{{ .ShortCommit }}-debug"
