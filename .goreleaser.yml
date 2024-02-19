@@ -98,12 +98,12 @@ kos:
       - linux/arm/v7
     tags:
       - "{{ if not .Prerelease }}latest{{ end }}"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}"
-      - "{{ if not .Prerelease }}{{ .Major }}"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}"
-      - "{{ if not .Prerelease }}v{{ .Major }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
       - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
       - "{{ .Tag }}"
       - '{{ trimprefix .Tag "v" }}'
@@ -121,12 +121,12 @@ kos:
       - linux/arm/v7
     tags:
       - "{{ if not .Prerelease }}latest{{ end }}"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}"
-      - "{{ if not .Prerelease }}{{ .Major }}"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}"
-      - "{{ if not .Prerelease }}v{{ .Major }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
       - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
       - "{{ .Tag }}"
       - '{{ trimprefix .Tag "v" }}'
@@ -147,12 +147,12 @@ kos:
       - linux/arm/v7
     tags:
       - "{{ if not .Prerelease }}latest{{ end }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}-debug"
       - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
       - "{{ .Tag }}-debug"
       - '{{ trimprefix .Tag "v" }}-debug'
@@ -170,12 +170,12 @@ kos:
       - linux/arm/v7
     tags:
       - "{{ if not .Prerelease }}latest{{ end }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}-debug"
-      - "{{ if not .Prerelease }}{{ .Major }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug"
-      - "{{ if not .Prerelease }}v{{ .Major }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}-debug"
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}-debug"
       - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}-debug"
       - "{{ .Tag }}-debug"
       - '{{ trimprefix .Tag "v" }}-debug'
