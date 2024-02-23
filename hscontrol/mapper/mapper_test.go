@@ -464,7 +464,6 @@ func Test_fullMapResponse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mappy := NewMapper(
 				tt.node,
-				tt.peers,
 				tt.derpMap,
 				tt.baseDomain,
 				tt.dnsConfig,
@@ -474,6 +473,7 @@ func Test_fullMapResponse(t *testing.T) {
 
 			got, err := mappy.fullMapResponse(
 				tt.node,
+				tt.peers,
 				tt.pol,
 				0,
 			)

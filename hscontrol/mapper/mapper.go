@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -21,7 +20,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/exp/maps"
 	"tailscale.com/envknob"
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
@@ -60,12 +58,6 @@ type Mapper struct {
 	uid     string
 	created time.Time
 	seq     uint64
-
-	// Map isnt concurrency safe, so we need to ensure
-	// only one func is accessing it over time.
-	mu      sync.Mutex
-	peers   map[uint64]*types.Node
-	patches map[uint64][]patch
 }
 
 type patch struct {
@@ -75,7 +67,6 @@ type patch struct {
 
 func NewMapper(
 	node *types.Node,
-	peers types.Nodes,
 	derpMap *tailcfg.DERPMap,
 	baseDomain string,
 	dnsCfg *tailcfg.DNSConfig,
@@ -99,10 +90,6 @@ func NewMapper(
 		uid:     uid,
 		created: time.Now(),
 		seq:     0,
-
-		// TODO: populate
-		peers:   peers.IDMap(),
-		patches: make(map[uint64][]patch),
 	}
 }
 
@@ -207,11 +194,10 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 // It is a separate function to make testing easier.
 func (m *Mapper) fullMapResponse(
 	node *types.Node,
+	peers types.Nodes,
 	pol *policy.ACLPolicy,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
-	peers := nodeMapToList(m.peers)
-
 	resp, err := m.baseWithConfigMapResponse(node, pol, capVer)
 	if err != nil {
 		return nil, err
@@ -239,25 +225,10 @@ func (m *Mapper) fullMapResponse(
 func (m *Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
+	peers types.Nodes,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	peers := maps.Keys(m.peers)
-	peersWithPatches := maps.Keys(m.patches)
-	slices.Sort(peers)
-	slices.Sort(peersWithPatches)
-
-	if len(peersWithPatches) > 0 {
-		log.Debug().
-			Str("node", node.Hostname).
-			Uints64("peers", peers).
-			Uints64("pending_patches", peersWithPatches).
-			Msgf("node requested full map response, but has pending patches")
-	}
-
-	resp, err := m.fullMapResponse(node, pol, mapRequest.Version)
+	resp, err := m.fullMapResponse(node, peers, pol, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -265,10 +236,10 @@ func (m *Mapper) FullMapResponse(
 	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
 }
 
-// LiteMapResponse returns a MapResponse for the given node.
+// ReadOnlyResponse returns a MapResponse for the given node.
 // Lite means that the peers has been omitted, this is intended
 // to be used to answer MapRequests with OmitPeers set to true.
-func (m *Mapper) LiteMapResponse(
+func (m *Mapper) ReadOnlyMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	pol *policy.ACLPolicy,
@@ -278,18 +249,6 @@ func (m *Mapper) LiteMapResponse(
 	if err != nil {
 		return nil, err
 	}
-
-	rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
-		pol,
-		node,
-		nodeMapToList(m.peers),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	resp.PacketFilter = policy.ReduceFilterRules(node, rules)
-	resp.SSHPolicy = sshPolicy
 
 	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
 }
@@ -320,33 +279,11 @@ func (m *Mapper) DERPMapResponse(
 func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
+	peers types.Nodes,
 	changed types.Nodes,
 	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Update our internal map.
-	for _, node := range changed {
-		if patches, ok := m.patches[node.ID]; ok {
-			// preserve online status in case the patch has an outdated one
-			online := node.IsOnline
-
-			for _, p := range patches {
-				// TODO(kradalby): Figure if this needs to be sorted by timestamp
-				node.ApplyPeerChange(p.change)
-			}
-
-			// Ensure the patches are not applied again later
-			delete(m.patches, node.ID)
-
-			node.IsOnline = online
-		}
-
-		m.peers[node.ID] = node
-	}
-
 	resp := m.baseMapResponse()
 
 	err := appendPeerChanges(
@@ -354,7 +291,7 @@ func (m *Mapper) PeerChangedResponse(
 		pol,
 		node,
 		mapRequest.Version,
-		nodeMapToList(m.peers),
+		peers,
 		changed,
 		m.baseDomain,
 		m.dnsCfg,
@@ -375,35 +312,6 @@ func (m *Mapper) PeerChangedPatchResponse(
 	changed []*tailcfg.PeerChange,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	sendUpdate := false
-	// patch the internal map
-	for _, change := range changed {
-		if peer, ok := m.peers[uint64(change.NodeID)]; ok {
-			peer.ApplyPeerChange(change)
-			sendUpdate = true
-		} else {
-			log.Trace().Str("node", node.Hostname).Msgf("Node with ID %s is missing from mapper for Node %s, saving patch for when node is available", change.NodeID, node.Hostname)
-
-			p := patch{
-				timestamp: time.Now(),
-				change:    change,
-			}
-
-			if patches, ok := m.patches[uint64(change.NodeID)]; ok {
-				m.patches[uint64(change.NodeID)] = append(patches, p)
-			} else {
-				m.patches[uint64(change.NodeID)] = []patch{p}
-			}
-		}
-	}
-
-	if !sendUpdate {
-		return nil, nil
-	}
-
 	resp := m.baseMapResponse()
 	resp.PeersChangedPatch = changed
 
@@ -416,26 +324,10 @@ func (m *Mapper) PeerRemovedResponse(
 	node *types.Node,
 	removed []tailcfg.NodeID,
 ) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Some nodes might have been removed already
-	// so we dont want to ask downstream to remove
-	// twice, than can cause a panic in tailscaled.
-	notYetRemoved := []tailcfg.NodeID{}
-
-	// remove from our internal map
-	for _, id := range removed {
-		if _, ok := m.peers[uint64(id)]; ok {
-			notYetRemoved = append(notYetRemoved, id)
-		}
-
-		delete(m.peers, uint64(id))
-		delete(m.patches, uint64(id))
-	}
-
 	resp := m.baseMapResponse()
-	resp.PeersRemoved = notYetRemoved
+
+	// TODO(kradalby): This might panic the client, lets see how it goes
+	resp.PeersRemoved = removed
 
 	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
