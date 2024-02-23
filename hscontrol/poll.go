@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	keepAliveInterval = 60 * time.Second
+	keepAliveInterval = 50 * time.Second
 )
 
 type contextKey string
@@ -90,7 +91,6 @@ func (m *mapSession) flush200() {
 func (m *mapSession) serve() {
 	// TODO(kradalby): A set todos to harden:
 	// - func to tell the stream to die, readonly -> false, !stream && omitpeers -> false, true
-	// - introduce jitter to keepalive
 
 	// This is the mechanism where the node gives us information about its
 	// current configuration.
@@ -230,7 +230,7 @@ func (m *mapSession) serve() {
 		go m.pollFailoverRoutes("new node", m.node)
 	}
 
-	keepAliveTicker := time.NewTicker(keepAliveInterval)
+	keepAliveTicker := time.NewTicker(keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond))
 
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
 	defer cancel()
