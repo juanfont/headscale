@@ -222,7 +222,7 @@ func (api headscaleV1APIServer) GetNode(
 	ctx context.Context,
 	request *v1.GetNodeRequest,
 ) (*v1.GetNodeResponse, error) {
-	node, err := api.h.db.GetNodeByID(request.GetNodeId())
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func (api headscaleV1APIServer) GetNode(
 
 	// Populate the online field based on
 	// currently connected nodes.
-	resp.Online = api.h.nodeNotifier.IsConnected(node.MachineKey)
+	resp.Online = api.h.nodeNotifier.IsConnected(node.ID)
 
 	return &v1.GetNodeResponse{Node: resp}, nil
 }
@@ -248,12 +248,12 @@ func (api headscaleV1APIServer) SetTags(
 	}
 
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := db.SetTags(tx, request.GetNodeId(), request.GetTags())
+		err := db.SetTags(tx, types.NodeID(request.GetNodeId()), request.GetTags())
 		if err != nil {
 			return nil, err
 		}
 
-		return db.GetNodeByID(tx, request.GetNodeId())
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
 	})
 	if err != nil {
 		return &v1.SetTagsResponse{
@@ -261,15 +261,12 @@ func (api headscaleV1APIServer) SetTags(
 		}, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	stateUpdate := types.StateUpdate{
+	ctx = types.NotifyCtx(ctx, "cli-settags", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
 		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{node},
+		ChangeNodes: []types.NodeID{node.ID},
 		Message:     "called from api.SetTags",
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-settags", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
+	}, node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -296,12 +293,12 @@ func (api headscaleV1APIServer) DeleteNode(
 	ctx context.Context,
 	request *v1.DeleteNodeRequest,
 ) (*v1.DeleteNodeResponse, error) {
-	node, err := api.h.db.GetNodeByID(request.GetNodeId())
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.db.DeleteNode(
+	changedNodes, err := api.h.db.DeleteNode(
 		node,
 		api.h.nodeNotifier.ConnectedMap(),
 	)
@@ -309,13 +306,17 @@ func (api headscaleV1APIServer) DeleteNode(
 		return nil, err
 	}
 
-	stateUpdate := types.StateUpdate{
+	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
+	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 		Type:    types.StatePeerRemoved,
-		Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, stateUpdate)
+		Removed: []types.NodeID{node.ID},
+	})
+
+	if changedNodes != nil {
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: changedNodes,
+		})
 	}
 
 	return &v1.DeleteNodeResponse{}, nil
@@ -330,33 +331,27 @@ func (api headscaleV1APIServer) ExpireNode(
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		db.NodeSetExpiry(
 			tx,
-			request.GetNodeId(),
+			types.NodeID(request.GetNodeId()),
 			now,
 		)
 
-		return db.GetNodeByID(tx, request.GetNodeId())
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	selfUpdate := types.StateUpdate{
-		Type:        types.StateSelfUpdate,
-		ChangeNodes: types.Nodes{node},
-	}
-	if selfUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
-		api.h.nodeNotifier.NotifyByMachineKey(
-			ctx,
-			selfUpdate,
-			node.MachineKey)
-	}
+	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
+	api.h.nodeNotifier.NotifyByMachineKey(
+		ctx,
+		types.StateUpdate{
+			Type:        types.StateSelfUpdate,
+			ChangeNodes: []types.NodeID{node.ID},
+		},
+		node.ID)
 
-	stateUpdate := types.StateUpdateExpire(node.ID, now)
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
+	ctx = types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -380,21 +375,18 @@ func (api headscaleV1APIServer) RenameNode(
 			return nil, err
 		}
 
-		return db.GetNodeByID(tx, request.GetNodeId())
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	stateUpdate := types.StateUpdate{
+	ctx = types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
 		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{node},
+		ChangeNodes: []types.NodeID{node.ID},
 		Message:     "called from api.RenameNode",
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
+	}, node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -423,7 +415,7 @@ func (api headscaleV1APIServer) ListNodes(
 
 			// Populate the online field based on
 			// currently connected nodes.
-			resp.Online = isConnected[node.MachineKey]
+			resp.Online = isConnected[node.ID]
 
 			response[index] = resp
 		}
@@ -446,7 +438,7 @@ func (api headscaleV1APIServer) ListNodes(
 
 		// Populate the online field based on
 		// currently connected nodes.
-		resp.Online = isConnected[node.MachineKey]
+		resp.Online = isConnected[node.ID]
 
 		validTags, invalidTags := api.h.ACLPolicy.TagsOfNode(
 			node,
@@ -463,7 +455,7 @@ func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
 	request *v1.MoveNodeRequest,
 ) (*v1.MoveNodeResponse, error) {
-	node, err := api.h.db.GetNodeByID(request.GetNodeId())
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +495,7 @@ func (api headscaleV1APIServer) EnableRoute(
 		return nil, err
 	}
 
-	if update != nil && update.Valid() {
+	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-enableroute", "unknown")
 		api.h.nodeNotifier.NotifyAll(
 			ctx, *update)
@@ -516,17 +508,19 @@ func (api headscaleV1APIServer) DisableRoute(
 	ctx context.Context,
 	request *v1.DisableRouteRequest,
 ) (*v1.DisableRouteResponse, error) {
-	isConnected := api.h.nodeNotifier.ConnectedMap()
-	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return db.DisableRoute(tx, request.GetRouteId(), isConnected)
+	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
+		return db.DisableRoute(tx, request.GetRouteId(), api.h.nodeNotifier.ConnectedMap())
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if update != nil && update.Valid() {
+	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-disableroute", "unknown")
-		api.h.nodeNotifier.NotifyAll(ctx, *update)
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: update,
+		})
 	}
 
 	return &v1.DisableRouteResponse{}, nil
@@ -536,7 +530,7 @@ func (api headscaleV1APIServer) GetNodeRoutes(
 	ctx context.Context,
 	request *v1.GetNodeRoutesRequest,
 ) (*v1.GetNodeRoutesResponse, error) {
-	node, err := api.h.db.GetNodeByID(request.GetNodeId())
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
@@ -556,16 +550,19 @@ func (api headscaleV1APIServer) DeleteRoute(
 	request *v1.DeleteRouteRequest,
 ) (*v1.DeleteRouteResponse, error) {
 	isConnected := api.h.nodeNotifier.ConnectedMap()
-	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
+	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
 		return db.DeleteRoute(tx, request.GetRouteId(), isConnected)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if update != nil && update.Valid() {
+	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-deleteroute", "unknown")
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, *update)
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: update,
+		})
 	}
 
 	return &v1.DeleteRouteResponse{}, nil

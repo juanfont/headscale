@@ -385,11 +385,12 @@ acls:
 				return
 			}
 
-			rules, err := pol.generateFilterRules(&types.Node{
-				IPAddresses: types.NodeAddresses{
-					netip.MustParseAddr("100.100.100.100"),
+			rules, err := pol.CompileFilterRules(types.Nodes{
+				&types.Node{
+					IPAddresses: types.NodeAddresses{
+						netip.MustParseAddr("100.100.100.100"),
+					},
 				},
-			}, types.Nodes{
 				&types.Node{
 					IPAddresses: types.NodeAddresses{
 						netip.MustParseAddr("200.200.200.200"),
@@ -546,7 +547,7 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 	c.Assert(pol.ACLs, check.HasLen, 6)
 	c.Assert(err, check.IsNil)
 
-	rules, err := pol.generateFilterRules(&types.Node{}, types.Nodes{})
+	rules, err := pol.CompileFilterRules(types.Nodes{})
 	c.Assert(err, check.NotNil)
 	c.Assert(rules, check.IsNil)
 }
@@ -562,7 +563,7 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 			},
 		},
 	}
-	_, _, err := GenerateFilterAndSSHRules(pol, &types.Node{}, types.Nodes{})
+	_, _, err := GenerateFilterAndSSHRulesForTests(pol, &types.Node{}, types.Nodes{})
 	c.Assert(errors.Is(err, ErrInvalidAction), check.Equals, true)
 }
 
@@ -581,7 +582,7 @@ func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
 			},
 		},
 	}
-	_, _, err := GenerateFilterAndSSHRules(pol, &types.Node{}, types.Nodes{})
+	_, _, err := GenerateFilterAndSSHRulesForTests(pol, &types.Node{}, types.Nodes{})
 	c.Assert(errors.Is(err, ErrInvalidGroup), check.Equals, true)
 }
 
@@ -597,7 +598,7 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 		},
 	}
 
-	_, _, err := GenerateFilterAndSSHRules(pol, &types.Node{}, types.Nodes{})
+	_, _, err := GenerateFilterAndSSHRulesForTests(pol, &types.Node{}, types.Nodes{})
 	c.Assert(errors.Is(err, ErrInvalidTag), check.Equals, true)
 }
 
@@ -1724,8 +1725,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 		pol ACLPolicy
 	}
 	type args struct {
-		node  *types.Node
-		peers types.Nodes
+		nodes types.Nodes
 	}
 	tests := []struct {
 		name    string
@@ -1755,13 +1755,14 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				node: &types.Node{
-					IPAddresses: types.NodeAddresses{
-						netip.MustParseAddr("100.64.0.1"),
-						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+				nodes: types.Nodes{
+					&types.Node{
+						IPAddresses: types.NodeAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+						},
 					},
 				},
-				peers: types.Nodes{},
 			},
 			want: []tailcfg.FilterRule{
 				{
@@ -1800,14 +1801,14 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			args: args{
-				node: &types.Node{
-					IPAddresses: types.NodeAddresses{
-						netip.MustParseAddr("100.64.0.1"),
-						netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+				nodes: types.Nodes{
+					&types.Node{
+						IPAddresses: types.NodeAddresses{
+							netip.MustParseAddr("100.64.0.1"),
+							netip.MustParseAddr("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+						},
+						User: types.User{Name: "mickael"},
 					},
-					User: types.User{Name: "mickael"},
-				},
-				peers: types.Nodes{
 					&types.Node{
 						IPAddresses: types.NodeAddresses{
 							netip.MustParseAddr("100.64.0.2"),
@@ -1846,9 +1847,8 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.field.pol.generateFilterRules(
-				tt.args.node,
-				tt.args.peers,
+			got, err := tt.field.pol.CompileFilterRules(
+				tt.args.nodes,
 			)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ACLgenerateFilterRules() error = %v, wantErr %v", err, tt.wantErr)
@@ -1980,9 +1980,8 @@ func TestReduceFilterRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rules, _ := tt.pol.generateFilterRules(
-				tt.node,
-				tt.peers,
+			rules, _ := tt.pol.CompileFilterRules(
+				append(tt.peers, tt.node),
 			)
 
 			got := ReduceFilterRules(tt.node, rules)
@@ -2883,7 +2882,7 @@ func TestSSHRules(t *testing.T) {
 		node  types.Node
 		peers types.Nodes
 		pol   ACLPolicy
-		want  []*tailcfg.SSHRule
+		want  *tailcfg.SSHPolicy
 	}{
 		{
 			name: "peers-can-connect",
@@ -2946,7 +2945,7 @@ func TestSSHRules(t *testing.T) {
 					},
 				},
 			},
-			want: []*tailcfg.SSHRule{
+			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{
 						{
@@ -2991,7 +2990,7 @@ func TestSSHRules(t *testing.T) {
 					},
 					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
 				},
-			},
+			}},
 		},
 		{
 			name: "peers-cannot-connect",
@@ -3042,13 +3041,13 @@ func TestSSHRules(t *testing.T) {
 					},
 				},
 			},
-			want: []*tailcfg.SSHRule{},
+			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.pol.generateSSHRules(&tt.node, tt.peers)
+			got, err := tt.pol.CompileSSHPolicy(&tt.node, tt.peers)
 			assert.NoError(t, err)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -3155,7 +3154,7 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, node, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3206,7 +3205,7 @@ func TestInvalidTagValidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, node, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3265,7 +3264,7 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 	// c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	// c.Assert(rules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 
-	got, _, err := GenerateFilterAndSSHRules(pol, node, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3335,7 +3334,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRules(pol, node, types.Nodes{nodes2})
+	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{nodes2})
 	assert.NoError(t, err)
 
 	want := []tailcfg.FilterRule{

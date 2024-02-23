@@ -331,13 +331,10 @@ func Test_fullMapResponse(t *testing.T) {
 		node  *types.Node
 		peers types.Nodes
 
-		baseDomain       string
-		dnsConfig        *tailcfg.DNSConfig
-		derpMap          *tailcfg.DERPMap
-		logtail          bool
-		randomClientPort bool
-		want             *tailcfg.MapResponse
-		wantErr          bool
+		derpMap *tailcfg.DERPMap
+		cfg     *types.Config
+		want    *tailcfg.MapResponse
+		wantErr bool
 	}{
 		// {
 		// 	name:             "empty-node",
@@ -349,15 +346,17 @@ func Test_fullMapResponse(t *testing.T) {
 		// 	wantErr:          true,
 		// },
 		{
-			name:             "no-pol-no-peers-map-response",
-			pol:              &policy.ACLPolicy{},
-			node:             mini,
-			peers:            types.Nodes{},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			name:    "no-pol-no-peers-map-response",
+			pol:     &policy.ACLPolicy{},
+			node:    mini,
+			peers:   types.Nodes{},
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				Node:            tailMini,
 				KeepAlive:       false,
@@ -383,11 +382,13 @@ func Test_fullMapResponse(t *testing.T) {
 			peers: types.Nodes{
 				peer1,
 			},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				KeepAlive: false,
 				Node:      tailMini,
@@ -424,11 +425,13 @@ func Test_fullMapResponse(t *testing.T) {
 				peer1,
 				peer2,
 			},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				KeepAlive: false,
 				Node:      tailMini,
@@ -463,17 +466,15 @@ func Test_fullMapResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mappy := NewMapper(
-				tt.node,
-				tt.peers,
+				nil,
+				tt.cfg,
 				tt.derpMap,
-				tt.baseDomain,
-				tt.dnsConfig,
-				tt.logtail,
-				tt.randomClientPort,
+				nil,
 			)
 
 			got, err := mappy.fullMapResponse(
 				tt.node,
+				tt.peers,
 				tt.pol,
 				0,
 			)

@@ -352,13 +352,8 @@ func (h *Headscale) handleAuthKey(
 			}
 		}
 
-		mkey := node.MachineKey
-		update := types.StateUpdateExpire(node.ID, registerRequest.Expiry)
-
-		if update.Valid() {
-			ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
-			h.nodeNotifier.NotifyWithIgnore(ctx, update, mkey.String())
-		}
+		ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
+		h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, registerRequest.Expiry), node.ID)
 	} else {
 		now := time.Now().UTC()
 
@@ -538,11 +533,8 @@ func (h *Headscale) handleNodeLogOut(
 		return
 	}
 
-	stateUpdate := types.StateUpdateExpire(node.ID, now)
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
-		h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
+	ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
+	h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.ID)
 
 	resp.AuthURL = ""
 	resp.MachineAuthorized = false
@@ -572,7 +564,7 @@ func (h *Headscale) handleNodeLogOut(
 	}
 
 	if node.IsEphemeral() {
-		err = h.db.DeleteNode(&node, h.nodeNotifier.ConnectedMap())
+		changedNodes, err := h.db.DeleteNode(&node, h.nodeNotifier.ConnectedMap())
 		if err != nil {
 			log.Error().
 				Err(err).
@@ -580,13 +572,16 @@ func (h *Headscale) handleNodeLogOut(
 				Msg("Cannot delete ephemeral node from the database")
 		}
 
-		stateUpdate := types.StateUpdate{
+		ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
+		h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 			Type:    types.StatePeerRemoved,
-			Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
-		}
-		if stateUpdate.Valid() {
-			ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
-			h.nodeNotifier.NotifyAll(ctx, stateUpdate)
+			Removed: []types.NodeID{node.ID},
+		})
+		if changedNodes != nil {
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				Type:        types.StatePeerChanged,
+				ChangeNodes: changedNodes,
+			})
 		}
 
 		return

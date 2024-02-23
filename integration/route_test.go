@@ -212,7 +212,11 @@ func TestEnablingRoutes(t *testing.T) {
 
 		if route.GetId() == routeToBeDisabled.GetId() {
 			assert.Equal(t, false, route.GetEnabled())
-			assert.Equal(t, false, route.GetIsPrimary())
+
+			// since this is the only route of this cidr,
+			// it will not failover, and remain Primary
+			// until something can replace it.
+			assert.Equal(t, true, route.GetIsPrimary())
 		} else {
 			assert.Equal(t, true, route.GetEnabled())
 			assert.Equal(t, true, route.GetIsPrimary())
@@ -291,6 +295,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	client := allClients[2]
 
+	t.Logf("Advertise route from r1 (%s) and r2 (%s), making it HA, n1 is primary", subRouter1.Hostname(), subRouter2.Hostname())
 	// advertise HA route on node 1 and 2
 	// ID 1 will be primary
 	// ID 2 will be secondary
@@ -384,12 +389,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is primary
 	assert.Equal(t, true, enablingRoutes[0].GetAdvertised())
 	assert.Equal(t, true, enablingRoutes[0].GetEnabled())
-	assert.Equal(t, true, enablingRoutes[0].GetIsPrimary())
+	assert.Equal(t, true, enablingRoutes[0].GetIsPrimary(), "both subnet routers are up, expected r1 to be primary")
 
 	// Node 2 is not primary
 	assert.Equal(t, true, enablingRoutes[1].GetAdvertised())
 	assert.Equal(t, true, enablingRoutes[1].GetEnabled())
-	assert.Equal(t, false, enablingRoutes[1].GetIsPrimary())
+	assert.Equal(t, false, enablingRoutes[1].GetIsPrimary(), "both subnet routers are up, expected r2 to be non-primary")
 
 	// Verify that the client has routes from the primary machine
 	srs1, err := subRouter1.Status()
@@ -401,6 +406,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	srs1PeerStatus := clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus := clientStatus.Peer[srs2.Self.PublicKey]
 
+	assert.True(t, srs1PeerStatus.Online, "r1 up, r2 up")
+	assert.True(t, srs2PeerStatus.Online, "r1 up, r2 up")
+
 	assertNotNil(t, srs1PeerStatus.PrimaryRoutes)
 	assert.Nil(t, srs2PeerStatus.PrimaryRoutes)
 
@@ -411,7 +419,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	)
 
 	// Take down the current primary
-	t.Logf("taking down subnet router 1 (%s)", subRouter1.Hostname())
+	t.Logf("taking down subnet router r1 (%s)", subRouter1.Hostname())
+	t.Logf("expecting r2 (%s) to take over as primary", subRouter2.Hostname())
 	err = subRouter1.Down()
 	assertNoErr(t, err)
 
@@ -435,15 +444,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfterMove[0].GetAdvertised())
 	assert.Equal(t, true, routesAfterMove[0].GetEnabled())
-	assert.Equal(t, false, routesAfterMove[0].GetIsPrimary())
+	assert.Equal(t, false, routesAfterMove[0].GetIsPrimary(), "r1 is down, expected r2 to be primary")
 
 	// Node 2 is primary
 	assert.Equal(t, true, routesAfterMove[1].GetAdvertised())
 	assert.Equal(t, true, routesAfterMove[1].GetEnabled())
-	assert.Equal(t, true, routesAfterMove[1].GetIsPrimary())
-
-	// TODO(kradalby): Check client status
-	// Route is expected to be on SR2
+	assert.Equal(t, true, routesAfterMove[1].GetIsPrimary(), "r1 is down, expected r2 to be primary")
 
 	srs2, err = subRouter2.Status()
 
@@ -452,6 +458,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus = clientStatus.Peer[srs2.Self.PublicKey]
+
+	assert.False(t, srs1PeerStatus.Online, "r1 down, r2 down")
+	assert.True(t, srs2PeerStatus.Online, "r1 down, r2 up")
 
 	assert.Nil(t, srs1PeerStatus.PrimaryRoutes)
 	assertNotNil(t, srs2PeerStatus.PrimaryRoutes)
@@ -465,7 +474,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}
 
 	// Take down subnet router 2, leaving none available
-	t.Logf("taking down subnet router 2 (%s)", subRouter2.Hostname())
+	t.Logf("taking down subnet router r2 (%s)", subRouter2.Hostname())
+	t.Logf("expecting r2 (%s) to remain primary, no other available", subRouter2.Hostname())
 	err = subRouter2.Down()
 	assertNoErr(t, err)
 
@@ -489,14 +499,14 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfterBothDown[0].GetAdvertised())
 	assert.Equal(t, true, routesAfterBothDown[0].GetEnabled())
-	assert.Equal(t, false, routesAfterBothDown[0].GetIsPrimary())
+	assert.Equal(t, false, routesAfterBothDown[0].GetIsPrimary(), "r1 and r2 is down, expected r2 to _still_ be primary")
 
 	// Node 2 is primary
 	// if the node goes down, but no other suitable route is
 	// available, keep the last known good route.
 	assert.Equal(t, true, routesAfterBothDown[1].GetAdvertised())
 	assert.Equal(t, true, routesAfterBothDown[1].GetEnabled())
-	assert.Equal(t, true, routesAfterBothDown[1].GetIsPrimary())
+	assert.Equal(t, true, routesAfterBothDown[1].GetIsPrimary(), "r1 and r2 is down, expected r2 to _still_ be primary")
 
 	// TODO(kradalby): Check client status
 	// Both are expected to be down
@@ -507,6 +517,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus = clientStatus.Peer[srs2.Self.PublicKey]
+
+	assert.False(t, srs1PeerStatus.Online, "r1 down, r2 down")
+	assert.False(t, srs2PeerStatus.Online, "r1 down, r2 down")
 
 	assert.Nil(t, srs1PeerStatus.PrimaryRoutes)
 	assertNotNil(t, srs2PeerStatus.PrimaryRoutes)
@@ -520,7 +533,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}
 
 	// Bring up subnet router 1, making the route available from there.
-	t.Logf("bringing up subnet router 1 (%s)", subRouter1.Hostname())
+	t.Logf("bringing up subnet router r1 (%s)", subRouter1.Hostname())
+	t.Logf("expecting r1 (%s) to take over as primary (only one online)", subRouter1.Hostname())
 	err = subRouter1.Up()
 	assertNoErr(t, err)
 
@@ -544,12 +558,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is primary
 	assert.Equal(t, true, routesAfter1Up[0].GetAdvertised())
 	assert.Equal(t, true, routesAfter1Up[0].GetEnabled())
-	assert.Equal(t, true, routesAfter1Up[0].GetIsPrimary())
+	assert.Equal(t, true, routesAfter1Up[0].GetIsPrimary(), "r1 is back up, expected r1 to become be primary")
 
 	// Node 2 is not primary
 	assert.Equal(t, true, routesAfter1Up[1].GetAdvertised())
 	assert.Equal(t, true, routesAfter1Up[1].GetEnabled())
-	assert.Equal(t, false, routesAfter1Up[1].GetIsPrimary())
+	assert.Equal(t, false, routesAfter1Up[1].GetIsPrimary(), "r1 is back up, expected r1 to become be primary")
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -557,6 +571,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus = clientStatus.Peer[srs2.Self.PublicKey]
+
+	assert.True(t, srs1PeerStatus.Online, "r1 is back up, r2 down")
+	assert.False(t, srs2PeerStatus.Online, "r1 is back up, r2 down")
 
 	assert.NotNil(t, srs1PeerStatus.PrimaryRoutes)
 	assert.Nil(t, srs2PeerStatus.PrimaryRoutes)
@@ -570,7 +587,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}
 
 	// Bring up subnet router 2, should result in no change.
-	t.Logf("bringing up subnet router 2 (%s)", subRouter2.Hostname())
+	t.Logf("bringing up subnet router r2 (%s)", subRouter2.Hostname())
+	t.Logf("both online, expecting r1 (%s) to still be primary (no flapping)", subRouter1.Hostname())
 	err = subRouter2.Up()
 	assertNoErr(t, err)
 
@@ -594,12 +612,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfter2Up[0].GetAdvertised())
 	assert.Equal(t, true, routesAfter2Up[0].GetEnabled())
-	assert.Equal(t, true, routesAfter2Up[0].GetIsPrimary())
+	assert.Equal(t, true, routesAfter2Up[0].GetIsPrimary(), "r1 and r2 is back up, expected r1 to _still_ be primary")
 
 	// Node 2 is primary
 	assert.Equal(t, true, routesAfter2Up[1].GetAdvertised())
 	assert.Equal(t, true, routesAfter2Up[1].GetEnabled())
-	assert.Equal(t, false, routesAfter2Up[1].GetIsPrimary())
+	assert.Equal(t, false, routesAfter2Up[1].GetIsPrimary(), "r1 and r2 is back up, expected r1 to _still_ be primary")
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -607,6 +625,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus = clientStatus.Peer[srs2.Self.PublicKey]
+
+	assert.True(t, srs1PeerStatus.Online, "r1 up, r2 up")
+	assert.True(t, srs2PeerStatus.Online, "r1 up, r2 up")
 
 	assert.NotNil(t, srs1PeerStatus.PrimaryRoutes)
 	assert.Nil(t, srs2PeerStatus.PrimaryRoutes)
@@ -620,7 +641,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}
 
 	// Disable the route of subnet router 1, making it failover to 2
-	t.Logf("disabling route in subnet router 1 (%s)", subRouter1.Hostname())
+	t.Logf("disabling route in subnet router r1 (%s)", subRouter1.Hostname())
+	t.Logf("expecting route to failover to r2 (%s), which is still available", subRouter2.Hostname())
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
@@ -648,7 +670,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assertNoErr(t, err)
 	assert.Len(t, routesAfterDisabling1, 2)
 
-	t.Logf("routes after disabling1 %#v", routesAfterDisabling1)
+	t.Logf("routes after disabling r1 %#v", routesAfterDisabling1)
 
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfterDisabling1[0].GetAdvertised())
@@ -680,6 +702,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// enable the route of subnet router 1, no change expected
 	t.Logf("enabling route in subnet router 1 (%s)", subRouter1.Hostname())
+	t.Logf("both online, expecting r2 (%s) to still be primary (no flapping)", subRouter2.Hostname())
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
@@ -736,7 +759,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}
 
 	// delete the route of subnet router 2, failover to one expected
-	t.Logf("deleting route in subnet router 2 (%s)", subRouter2.Hostname())
+	t.Logf("deleting route in subnet router r2 (%s)", subRouter2.Hostname())
+	t.Logf("expecting route to failover to r1 (%s)", subRouter1.Hostname())
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
@@ -764,7 +788,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assertNoErr(t, err)
 	assert.Len(t, routesAfterDeleting2, 1)
 
-	t.Logf("routes after deleting2 %#v", routesAfterDeleting2)
+	t.Logf("routes after deleting r2 %#v", routesAfterDeleting2)
 
 	// Node 1 is primary
 	assert.Equal(t, true, routesAfterDeleting2[0].GetAdvertised())
