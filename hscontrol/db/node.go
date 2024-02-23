@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/patrickmn/go-cache"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 const (
@@ -713,7 +714,7 @@ func ExpireEphemeralNodes(tx *gorm.DB,
 					Str("node", node.Hostname).
 					Msg("Ephemeral client removed from database")
 
-					// empty isConnected map as ephemeral nodes are not routes
+				// empty isConnected map as ephemeral nodes are not routes
 				err = DeleteNode(tx, nodes[idx], map[key.MachinePublic]bool{})
 				if err != nil {
 					log.Error().

@@ -200,10 +200,20 @@ log:
   format: text
   level: info
 
-# Path to a file containg ACL policies.
-# ACLs can be defined as YAML or HUJSON.
-# https://tailscale.com/kb/1018/acls/
-acl_policy_path: ""
+## ACL
+acl:
+  # The supported policy modes are "db" and "file".
+  # If "db" is selected, the policies will be stored in the database.
+  # You will be able to get and set the ACL via the ACL APIs.
+  #
+  # If "file" is selected, the policies will be loaded from a file
+  # located at `policy_path`. It will not be stored in the databse
+  # and you will not be able to get or set the ACL via the ACL APIs.
+  policy_mode: "db"
+  # Path to a file containg ACL policies.
+  # ACLs can be defined as YAML or HUJSON.
+  # https://tailscale.com/kb/1018/acls/
+  policy_path: ""
 
 ## DNS
 #

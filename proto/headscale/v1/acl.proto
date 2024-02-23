@@ -1,0 +1,25 @@
+syntax = "proto3";
+package headscale.v1;
+option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+message ACL {
+  google.protobuf.Struct policy = 1;
+}
+
+message GetACLRequest {}
+
+message GetACLResponse {
+  google.protobuf.Struct policy = 1;
+}
+
+message SetACLRequest {
+  google.protobuf.Struct policy = 1;
+}
+
+message SetACLResponse {
+  google.protobuf.Struct policy = 1;
+}
+

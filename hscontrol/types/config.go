@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -20,6 +19,8 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 const (
@@ -152,8 +153,16 @@ type CLIConfig struct {
 	Insecure bool
 }
 
+type ACLPolicyMode string
+
+const (
+	ACLPolicyModeDB   ACLPolicyMode = "db"
+	ACLPolicyModeFile ACLPolicyMode = "file"
+)
+
 type ACLConfig struct {
 	PolicyPath string
+	PolicyMode ACLPolicyMode
 }
 
 type LogConfig struct {
@@ -179,6 +188,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetEnvPrefix("headscale")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+
+	viper.SetDefault("acl.policy_mode", ACLPolicyModeDB)
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
@@ -376,10 +387,12 @@ func GetLogTailConfig() LogTailConfig {
 }
 
 func GetACLConfig() ACLConfig {
-	policyPath := viper.GetString("acl_policy_path")
+	policyPath := viper.GetString("acl.policy_path")
+	policyMode := viper.GetString("acl.policy_mode")
 
 	return ACLConfig{
 		PolicyPath: policyPath,
+		PolicyMode: ACLPolicyMode(policyMode),
 	}
 }
 

@@ -16,6 +16,59 @@
     "application/json"
   ],
   "paths": {
+    "/api/v1/acl": {
+      "get": {
+        "summary": "--- ACL start ---",
+        "operationId": "HeadscaleService_GetACL",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetACLResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "HeadscaleService"
+        ]
+      },
+      "put": {
+        "operationId": "HeadscaleService_SetACL",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SetACLResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SetACLRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/apikey": {
       "get": {
         "operationId": "HeadscaleService_ListApiKeys",
@@ -419,7 +472,15 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/HeadscaleServiceSetTagsBody"
+              "type": "object",
+              "properties": {
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
             }
           }
         ],
@@ -823,17 +884,6 @@
     }
   },
   "definitions": {
-    "HeadscaleServiceSetTagsBody": {
-      "type": "object",
-      "properties": {
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -842,6 +892,14 @@
         }
       },
       "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
     },
     "rpcStatus": {
       "type": "object",
@@ -856,7 +914,6 @@
         "details": {
           "type": "array",
           "items": {
-            "type": "object",
             "$ref": "#/definitions/protobufAny"
           }
         }
@@ -1030,6 +1087,14 @@
     "v1ExpirePreAuthKeyResponse": {
       "type": "object"
     },
+    "v1GetACLResponse": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "type": "object"
+        }
+      }
+    },
     "v1GetNodeResponse": {
       "type": "object",
       "properties": {
@@ -1044,7 +1109,6 @@
         "routes": {
           "type": "array",
           "items": {
-            "type": "object",
             "$ref": "#/definitions/v1Route"
           }
         }
@@ -1056,7 +1120,6 @@
         "routes": {
           "type": "array",
           "items": {
-            "type": "object",
             "$ref": "#/definitions/v1Route"
           }
         }
@@ -1076,7 +1139,6 @@
         "apiKeys": {
           "type": "array",
           "items": {
-            "type": "object",
             "$ref": "#/definitions/v1ApiKey"
           }
         }
@@ -1088,7 +1150,6 @@
         "nodes": {
           "type": "array",
           "items": {
-            "type": "object",
             "$ref": "#/definitions/v1Node"
           }
         }
@@ -1100,7 +1161,6 @@
         "preAuthKeys": {
           "type": "array",
           "items": {
-            "type": "object",
             "$ref": "#/definitions/v1PreAuthKey"
           }
         }
@@ -1112,7 +1172,6 @@
         "users": {
           "type": "array",
           "items": {
-            "type": "object",
             "$ref": "#/definitions/v1User"
           }
         }
@@ -1302,6 +1361,22 @@
         "deletedAt": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "v1SetACLRequest": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "type": "object"
+        }
+      }
+    },
+    "v1SetACLResponse": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "type": "object"
         }
       }
     },

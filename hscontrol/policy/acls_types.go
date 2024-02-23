@@ -111,12 +111,16 @@ func (hosts *Hosts) UnmarshalYAML(data []byte) error {
 }
 
 // IsZero is perhaps a bit naive here.
-func (pol ACLPolicy) IsZero() bool {
+func (pol *ACLPolicy) IsZero() bool {
 	if len(pol.Groups) == 0 && len(pol.Hosts) == 0 && len(pol.ACLs) == 0 {
 		return true
 	}
 
 	return false
+}
+
+func (pol *ACLPolicy) Bytes() ([]byte, error) {
+	return json.Marshal(pol)
 }
 
 // Returns the list of autoApproving users, groups or tags for a given IPPrefix.

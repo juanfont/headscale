@@ -8,7 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
-	_ "net/http/pprof" //nolint
+	_ "net/http/pprof" // nolint
 	"net/netip"
 	"os"
 	"os/signal"
@@ -19,19 +19,12 @@ import (
 	"syscall"
 	"time"
 
+	pkgerrors "github.com/pkg/errors"
+
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/juanfont/headscale"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/derp"
-	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
-	"github.com/juanfont/headscale/hscontrol/notifier"
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/pkg/profile"
@@ -55,6 +48,16 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
+
+	"github.com/juanfont/headscale"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/derp"
+	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
+	"github.com/juanfont/headscale/hscontrol/notifier"
+	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 var (
@@ -500,6 +503,10 @@ func (h *Headscale) Serve() error {
 
 	var err error
 
+	if err = h.loadACLPolicy(); err != nil {
+		return fmt.Errorf("failed to load ACL policy: %w", err)
+	}
+
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
 
@@ -761,25 +768,9 @@ func (h *Headscale) Serve() error {
 					Msg("Received SIGHUP, reloading ACL and Config")
 
 				// TODO(kradalby): Reload config on SIGHUP
-
-				if h.cfg.ACL.PolicyPath != "" {
-					aclPath := util.AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
-					pol, err := policy.LoadACLPolicyFromPath(aclPath)
-					if err != nil {
-						log.Error().Err(err).Msg("Failed to reload ACL policy")
-					}
-
-					h.ACLPolicy = pol
-					log.Info().
-						Str("path", aclPath).
-						Msg("ACL policy successfully reloaded, notifying nodes of change")
-
-					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-						Type: types.StateFullUpdate,
-					})
+				if err := h.loadACLPolicy(); err != nil {
+					log.Error().Err(err).Msg("failed to reload ACL policy")
 				}
-
 			default:
 				log.Info().
 					Str("signal", sig.String()).
@@ -929,6 +920,58 @@ func notFoundHandler(
 		Bytes("body", body).
 		Msg("Request did not match")
 	writer.WriteHeader(http.StatusNotFound)
+}
+
+func (h *Headscale) loadACLPolicy() error {
+	switch h.cfg.ACL.PolicyMode {
+	case types.ACLPolicyModeFile:
+		if h.cfg.ACL.PolicyPath != "" {
+			aclPath := util.AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
+			pol, err := policy.LoadACLPolicyFromPath(aclPath)
+			if err != nil {
+				return pkgerrors.Wrap(err, "failed to load ACL policy from file")
+			}
+
+			h.ACLPolicy = pol
+
+			log.Info().
+				Str("path", aclPath).
+				Msg("ACL policy successfully loaded, notifying nodes of change")
+		}
+	case types.ACLPolicyModeDB:
+		acl, err := h.db.GetACL()
+		if err != nil {
+			if db.IsNotFoundError(err) {
+				log.Info().Msg("No ACL policy found in database")
+				return nil
+			}
+
+			return pkgerrors.Wrap(err, "failed to fetch ACL policy from database")
+		}
+
+		pol, err := policy.LoadACLPolicyFromBytes(acl.Policy, "json")
+		if err != nil {
+			return pkgerrors.Wrap(err, "failed to parse policy")
+		}
+
+		h.ACLPolicy = pol
+
+		log.Info().
+			Msg("ACL policy successfully reloaded, notifying nodes of change")
+	default:
+		log.Warn().
+			Str("mode", string(h.cfg.ACL.PolicyMode)).
+			Msg("Unknown ACL policy mode")
+	}
+
+	if h.ACLPolicy != nil {
+		ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
+		h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
+
+	return nil
 }
 
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
