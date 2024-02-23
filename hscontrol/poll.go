@@ -27,43 +27,6 @@ const nodeNameContextKey = contextKey("nodeName")
 
 type UpdateNode func()
 
-func logPollFunc(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-) (func(string), func(string), func(error, string)) {
-	return func(msg string) {
-			log.Trace().
-				Caller().
-				Bool("readOnly", mapRequest.ReadOnly).
-				Bool("omitPeers", mapRequest.OmitPeers).
-				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey.ShortString()).
-				Str("node", node.Hostname).
-				Msg(msg)
-		},
-		func(msg string) {
-			log.Warn().
-				Caller().
-				Bool("readOnly", mapRequest.ReadOnly).
-				Bool("omitPeers", mapRequest.OmitPeers).
-				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey.ShortString()).
-				Str("node", node.Hostname).
-				Msg(msg)
-		},
-		func(err error, msg string) {
-			log.Error().
-				Caller().
-				Bool("readOnly", mapRequest.ReadOnly).
-				Bool("omitPeers", mapRequest.OmitPeers).
-				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey.ShortString()).
-				Str("node", node.Hostname).
-				Err(err).
-				Msg(msg)
-		}
-}
-
 // handlePoll ensures the node gets the appropriate updates from either
 // polling or immediate responses.
 //
@@ -74,7 +37,7 @@ func (h *Headscale) handlePoll(
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 ) {
-	logTrace, logWarn, logErr := logPollFunc(mapRequest, node)
+	logWarn, logTrace, logInfo, logErr := logPollFunc(mapRequest, node)
 
 	// This is the mechanism where the node gives us information about its
 	// current configuration.
@@ -86,15 +49,7 @@ func (h *Headscale) handlePoll(
 	// only checks the HTTP response status code.
 	// TODO(kradalby): remove ReadOnly when we only support capVer 68+
 	if mapRequest.OmitPeers && !mapRequest.Stream && !mapRequest.ReadOnly {
-		log.Info().
-			Caller().
-			Bool("readOnly", mapRequest.ReadOnly).
-			Bool("omitPeers", mapRequest.OmitPeers).
-			Bool("stream", mapRequest.Stream).
-			Str("node_key", node.NodeKey.ShortString()).
-			Str("node", node.Hostname).
-			Int("cap_ver", int(mapRequest.Version)).
-			Msg("Received update")
+		logInfo("Received update")
 
 		change := node.PeerChangeFromMapRequest(mapRequest)
 
@@ -507,16 +462,7 @@ func (h *Headscale) handlePoll(
 				}
 				log.Trace().Str("node", node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished writing mapresp to node")
 
-				log.Info().
-					Caller().
-					Bool("readOnly", mapRequest.ReadOnly).
-					Bool("omitPeers", mapRequest.OmitPeers).
-					Bool("stream", mapRequest.Stream).
-					Str("node_key", node.NodeKey.ShortString()).
-					Str("machine_key", node.MachineKey.ShortString()).
-					Str("node", node.Hostname).
-					TimeDiff("timeSpent", time.Now(), now).
-					Msg("update sent")
+				logInfo("update sent")
 			}
 
 		case <-ctx.Done():
@@ -602,7 +548,7 @@ func (h *Headscale) handleLiteRequest(
 	node *types.Node,
 	mapRequest tailcfg.MapRequest,
 ) {
-	logTrace, _, logErr := logPollFunc(mapRequest, node)
+	_, _, logTrace, logErr := logPollFunc(mapRequest, node)
 
 	mapp := mapper.NewMapper(
 		node,
@@ -665,4 +611,51 @@ func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.Pe
 	}
 
 	trace.Time("last_seen", *change.LastSeen).Msg("PeerChange received")
+}
+
+func logPollFunc(
+	mapRequest tailcfg.MapRequest,
+	node *types.Node,
+) (func(string), func(string), func(string), func(error, string)) {
+	return func(msg string) {
+			log.Warn().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Str("node_key", node.NodeKey.ShortString()).
+				Str("node", node.Hostname).
+				Msg(msg)
+		},
+		func(msg string) {
+			log.Info().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Str("node_key", node.NodeKey.ShortString()).
+				Str("node", node.Hostname).
+				Msg(msg)
+		},
+		func(msg string) {
+			log.Trace().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Str("node_key", node.NodeKey.ShortString()).
+				Str("node", node.Hostname).
+				Msg(msg)
+		},
+		func(err error, msg string) {
+			log.Error().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Str("node_key", node.NodeKey.ShortString()).
+				Str("node", node.Hostname).
+				Err(err).
+				Msg(msg)
+		}
 }
