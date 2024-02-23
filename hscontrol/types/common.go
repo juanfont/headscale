@@ -90,6 +90,25 @@ func (i StringList) Value() (driver.Value, error) {
 
 type StateUpdateType int
 
+func (su StateUpdateType) String() string {
+	switch su {
+	case StateFullUpdate:
+		return "StateFullUpdate"
+	case StatePeerChanged:
+		return "StatePeerChanged"
+	case StatePeerChangedPatch:
+		return "StatePeerChangedPatch"
+	case StatePeerRemoved:
+		return "StatePeerRemoved"
+	case StateSelfUpdate:
+		return "StateSelfUpdate"
+	case StateDERPUpdated:
+		return "StateDERPUpdated"
+	}
+
+	return "unknown state update type"
+}
+
 const (
 	StateFullUpdate StateUpdateType = iota
 	// StatePeerChanged is used for updates that needs
@@ -118,7 +137,7 @@ type StateUpdate struct {
 	// ChangeNodes must be set when Type is StatePeerAdded
 	// and StatePeerChanged and contains the full node
 	// object for added nodes.
-	ChangeNodes Nodes
+	ChangeNodes []NodeID
 
 	// ChangePatches must be set when Type is StatePeerChangedPatch
 	// and contains a populated PeerChange object.
@@ -127,7 +146,7 @@ type StateUpdate struct {
 	// Removed must be set when Type is StatePeerRemoved and
 	// contain a list of the nodes that has been removed from
 	// the network.
-	Removed []tailcfg.NodeID
+	Removed []NodeID
 
 	// DERPMap must be set when Type is StateDERPUpdated and
 	// contain the new DERP Map.
@@ -136,39 +155,6 @@ type StateUpdate struct {
 	// Additional message for tracking origin or what being
 	// updated, useful for ambiguous updates like StatePeerChanged.
 	Message string
-}
-
-// Valid reports if a StateUpdate is correctly filled and
-// panics if the mandatory fields for a type is not
-// filled.
-// Reports true if valid.
-func (su *StateUpdate) Valid() bool {
-	switch su.Type {
-	case StatePeerChanged:
-		if su.ChangeNodes == nil {
-			panic("Mandatory field ChangeNodes is not set on StatePeerChanged update")
-		}
-	case StatePeerChangedPatch:
-		if su.ChangePatches == nil {
-			panic("Mandatory field ChangePatches is not set on StatePeerChangedPatch update")
-		}
-	case StatePeerRemoved:
-		if su.Removed == nil {
-			panic("Mandatory field Removed is not set on StatePeerRemove update")
-		}
-	case StateSelfUpdate:
-		if su.ChangeNodes == nil || len(su.ChangeNodes) != 1 {
-			panic(
-				"Mandatory field ChangeNodes is not set for StateSelfUpdate or has more than one node",
-			)
-		}
-	case StateDERPUpdated:
-		if su.DERPMap == nil {
-			panic("Mandatory field DERPMap is not set on StateDERPUpdated update")
-		}
-	}
-
-	return true
 }
 
 // Empty reports if there are any updates in the StateUpdate.
@@ -185,12 +171,12 @@ func (su *StateUpdate) Empty() bool {
 	return false
 }
 
-func StateUpdateExpire(nodeID uint64, expiry time.Time) StateUpdate {
+func StateUpdateExpire(nodeID NodeID, expiry time.Time) StateUpdate {
 	return StateUpdate{
 		Type: StatePeerChangedPatch,
 		ChangePatches: []*tailcfg.PeerChange{
 			{
-				NodeID:    tailcfg.NodeID(nodeID),
+				NodeID:    nodeID.NodeID(),
 				KeyExpiry: &expiry,
 			},
 		},

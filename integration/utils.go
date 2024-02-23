@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 )
@@ -154,11 +155,11 @@ func assertClientsState(t *testing.T, clients []TailscaleClient) {
 func assertValidNetmap(t *testing.T, client TailscaleClient) {
 	t.Helper()
 
-	// if !util.TailscaleVersionNewerOrEqual("1.56", client.Version()) {
-	// 	t.Logf("%q has version %q, skipping netmap check...", client.Hostname(), client.Version())
+	if !util.TailscaleVersionNewerOrEqual("1.56", client.Version()) {
+		t.Logf("%q has version %q, skipping netmap check...", client.Hostname(), client.Version())
 
-	// 	return
-	// }
+		return
+	}
 
 	t.Logf("Checking netmap of %q", client.Hostname())
 
@@ -175,7 +176,11 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 	assert.NotEmptyf(t, netmap.SelfNode.AllowedIPs(), "%q does not have any allowed IPs", client.Hostname())
 	assert.NotEmptyf(t, netmap.SelfNode.Addresses(), "%q does not have any addresses", client.Hostname())
 
-	assert.Truef(t, *netmap.SelfNode.Online(), "%q is not online", client.Hostname())
+	if netmap.SelfNode.Online() != nil {
+		assert.Truef(t, *netmap.SelfNode.Online(), "%q is not online", client.Hostname())
+	} else {
+		t.Errorf("Online should not be nil for %s", client.Hostname())
+	}
 
 	assert.Falsef(t, netmap.SelfNode.Key().IsZero(), "%q does not have a valid NodeKey", client.Hostname())
 	assert.Falsef(t, netmap.SelfNode.Machine().IsZero(), "%q does not have a valid MachineKey", client.Hostname())
@@ -213,7 +218,7 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 // This test is not suitable for ACL/partial connection tests.
 func assertValidStatus(t *testing.T, client TailscaleClient) {
 	t.Helper()
-	status, err := client.Status()
+	status, err := client.Status(true)
 	if err != nil {
 		t.Fatalf("getting status for %q: %s", client.Hostname(), err)
 	}

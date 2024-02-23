@@ -92,10 +92,6 @@ func CreatePreAuthKey(
 		}
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
 	return &key, nil
 }
 

@@ -8,7 +8,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
-	"tailscale.com/types/key"
 )
 
 var ErrRouteIsNotAvailable = errors.New("route is not available")
@@ -124,8 +123,8 @@ func EnableRoute(tx *gorm.DB, id uint64) (*types.StateUpdate, error) {
 
 func DisableRoute(tx *gorm.DB,
 	id uint64,
-	isConnected map[key.MachinePublic]bool,
-) (*types.StateUpdate, error) {
+	isConnected types.NodeConnectedMap,
+) ([]types.NodeID, error) {
 	route, err := GetRoute(tx, id)
 	if err != nil {
 		return nil, err
@@ -137,16 +136,15 @@ func DisableRoute(tx *gorm.DB,
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
-	var update *types.StateUpdate
+	var update []types.NodeID
 	if !route.IsExitRoute() {
-		update, err = failoverRouteReturnUpdate(tx, isConnected, route)
+		route.Enabled = false
+		err = tx.Save(route).Error
 		if err != nil {
 			return nil, err
 		}
 
-		route.Enabled = false
-		route.IsPrimary = false
-		err = tx.Save(route).Error
+		update, err = failoverRouteTx(tx, isConnected, route)
 		if err != nil {
 			return nil, err
 		}
@@ -160,6 +158,7 @@ func DisableRoute(tx *gorm.DB,
 			if routes[i].IsExitRoute() {
 				routes[i].Enabled = false
 				routes[i].IsPrimary = false
+
 				err = tx.Save(&routes[i]).Error
 				if err != nil {
 					return nil, err
@@ -168,26 +167,11 @@ func DisableRoute(tx *gorm.DB,
 		}
 	}
 
-	if routes == nil {
-		routes, err = GetNodeRoutes(tx, &node)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	node.Routes = routes
-
 	// If update is empty, it means that one was not created
 	// by failover (as a failover was not necessary), create
 	// one and return to the caller.
 	if update == nil {
-		update = &types.StateUpdate{
-			Type: types.StatePeerChanged,
-			ChangeNodes: types.Nodes{
-				&node,
-			},
-			Message: "called from db.DisableRoute",
-		}
+		update = []types.NodeID{node.ID}
 	}
 
 	return update, nil
@@ -195,9 +179,9 @@ func DisableRoute(tx *gorm.DB,
 
 func (hsdb *HSDatabase) DeleteRoute(
 	id uint64,
-	isConnected map[key.MachinePublic]bool,
-) (*types.StateUpdate, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
+	isConnected types.NodeConnectedMap,
+) ([]types.NodeID, error) {
+	return Write(hsdb.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
 		return DeleteRoute(tx, id, isConnected)
 	})
 }
@@ -205,8 +189,8 @@ func (hsdb *HSDatabase) DeleteRoute(
 func DeleteRoute(
 	tx *gorm.DB,
 	id uint64,
-	isConnected map[key.MachinePublic]bool,
-) (*types.StateUpdate, error) {
+	isConnected types.NodeConnectedMap,
+) ([]types.NodeID, error) {
 	route, err := GetRoute(tx, id)
 	if err != nil {
 		return nil, err
@@ -218,9 +202,9 @@ func DeleteRoute(
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
-	var update *types.StateUpdate
+	var update []types.NodeID
 	if !route.IsExitRoute() {
-		update, err = failoverRouteReturnUpdate(tx, isConnected, route)
+		update, err = failoverRouteTx(tx, isConnected, route)
 		if err != nil {
 			return nil, nil
 		}
@@ -229,7 +213,7 @@ func DeleteRoute(
 			return nil, err
 		}
 	} else {
-		routes, err := GetNodeRoutes(tx, &node)
+		routes, err = GetNodeRoutes(tx, &node)
 		if err != nil {
 			return nil, err
 		}
@@ -259,35 +243,37 @@ func DeleteRoute(
 	node.Routes = routes
 
 	if update == nil {
-		update = &types.StateUpdate{
-			Type: types.StatePeerChanged,
-			ChangeNodes: types.Nodes{
-				&node,
-			},
-			Message: "called from db.DeleteRoute",
-		}
+		update = []types.NodeID{node.ID}
 	}
 
 	return update, nil
 }
 
-func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isConnected map[key.MachinePublic]bool) error {
+func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isConnected types.NodeConnectedMap) ([]types.NodeID, error) {
 	routes, err := GetNodeRoutes(tx, node)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	var changed []types.NodeID
 	for i := range routes {
 		if err := tx.Unscoped().Delete(&routes[i]).Error; err != nil {
-			return err
+			return nil, err
 		}
 
 		// TODO(kradalby): This is a bit too aggressive, we could probably
 		// figure out which routes needs to be failed over rather than all.
-		failoverRouteReturnUpdate(tx, isConnected, &routes[i])
+		chn, err := failoverRouteTx(tx, isConnected, &routes[i])
+		if err != nil {
+			return changed, err
+		}
+
+		if chn != nil {
+			changed = append(changed, chn...)
+		}
 	}
 
-	return nil
+	return changed, nil
 }
 
 // isUniquePrefix returns if there is another node providing the same route already.
@@ -400,7 +386,7 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 	for prefix, exists := range advertisedRoutes {
 		if !exists {
 			route := types.Route{
-				NodeID:     node.ID,
+				NodeID:     node.ID.Uint64(),
 				Prefix:     types.IPPrefix(prefix),
 				Advertised: true,
 				Enabled:    false,
@@ -415,19 +401,23 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 	return sendUpdate, nil
 }
 
-// EnsureFailoverRouteIsAvailable takes a node and checks if the node's route
+// FailoverRouteIfAvailable takes a node and checks if the node's route
 // currently have a functioning host that exposes the network.
-func EnsureFailoverRouteIsAvailable(
+// If it does not, it is failed over to another suitable route if there
+// is one.
+func FailoverRouteIfAvailable(
 	tx *gorm.DB,
-	isConnected map[key.MachinePublic]bool,
+	isConnected types.NodeConnectedMap,
 	node *types.Node,
 ) (*types.StateUpdate, error) {
+	log.Debug().Caller().Uint64("node.id", node.ID.Uint64()).Msgf("ROUTE DEBUG ENTERED FAILOVER")
 	nodeRoutes, err := GetNodeRoutes(tx, node)
 	if err != nil {
+		log.Debug().Caller().Uint64("node.id", node.ID.Uint64()).Interface("nodeRoutes", nodeRoutes).Msgf("ROUTE DEBUG NO ROUTES")
 		return nil, nil
 	}
 
-	var changedNodes types.Nodes
+	var changedNodes []types.NodeID
 	for _, nodeRoute := range nodeRoutes {
 		routes, err := getRoutesByPrefix(tx, netip.Prefix(nodeRoute.Prefix))
 		if err != nil {
@@ -438,71 +428,39 @@ func EnsureFailoverRouteIsAvailable(
 			if route.IsPrimary {
 				// if we have a primary route, and the node is connected
 				// nothing needs to be done.
-				if isConnected[route.Node.MachineKey] {
-					continue
+				log.Debug().Caller().Uint64("node.id", node.ID.Uint64()).Uint64("route.node.id", route.Node.ID.Uint64()).Msgf("ROUTE DEBUG CHECKING IF ONLINE")
+				if isConnected[route.Node.ID] {
+					log.Debug().Caller().Uint64("node.id", node.ID.Uint64()).Uint64("route.node.id", route.Node.ID.Uint64()).Msgf("ROUTE DEBUG IS ONLINE")
+					return nil, nil
 				}
 
+				log.Debug().Caller().Uint64("node.id", node.ID.Uint64()).Uint64("route.node.id", route.Node.ID.Uint64()).Msgf("ROUTE DEBUG NOT ONLINE, FAILING OVER")
 				// if not, we need to failover the route
-				update, err := failoverRouteReturnUpdate(tx, isConnected, &route)
+				changedIDs, err := failoverRouteTx(tx, isConnected, &route)
 				if err != nil {
 					return nil, err
 				}
 
-				if update != nil {
-					changedNodes = append(changedNodes, update.ChangeNodes...)
+				if changedIDs != nil {
+					changedNodes = append(changedNodes, changedIDs...)
 				}
 			}
 		}
 	}
 
+	log.Debug().Caller().Uint64("node.id", node.ID.Uint64()).Interface("changedNodes", changedNodes).Msgf("ROUTE DEBUG")
 	if len(changedNodes) != 0 {
 		return &types.StateUpdate{
 			Type:        types.StatePeerChanged,
 			ChangeNodes: changedNodes,
-			Message:     "called from db.EnsureFailoverRouteIsAvailable",
+			Message:     "called from db.FailoverRouteIfAvailable",
 		}, nil
 	}
 
 	return nil, nil
 }
 
-func failoverRouteReturnUpdate(
-	tx *gorm.DB,
-	isConnected map[key.MachinePublic]bool,
-	r *types.Route,
-) (*types.StateUpdate, error) {
-	changedKeys, err := failoverRoute(tx, isConnected, r)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Trace().
-		Interface("isConnected", isConnected).
-		Interface("changedKeys", changedKeys).
-		Msg("building route failover")
-
-	if len(changedKeys) == 0 {
-		return nil, nil
-	}
-
-	var nodes types.Nodes
-	for _, key := range changedKeys {
-		node, err := GetNodeByMachineKey(tx, key)
-		if err != nil {
-			return nil, err
-		}
-
-		nodes = append(nodes, node)
-	}
-
-	return &types.StateUpdate{
-		Type:        types.StatePeerChanged,
-		ChangeNodes: nodes,
-		Message:     "called from db.failoverRouteReturnUpdate",
-	}, nil
-}
-
-// failoverRoute takes a route that is no longer available,
+// failoverRouteTx takes a route that is no longer available,
 // this can be either from:
 // - being disabled
 // - being deleted
@@ -510,11 +468,11 @@ func failoverRouteReturnUpdate(
 //
 // and tries to find a new route to take over its place.
 // If the given route was not primary, it returns early.
-func failoverRoute(
+func failoverRouteTx(
 	tx *gorm.DB,
-	isConnected map[key.MachinePublic]bool,
+	isConnected types.NodeConnectedMap,
 	r *types.Route,
-) ([]key.MachinePublic, error) {
+) ([]types.NodeID, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -535,11 +493,64 @@ func failoverRoute(
 		return nil, err
 	}
 
+	fo := failoverRoute(isConnected, r, routes)
+	if fo == nil {
+		return nil, nil
+	}
+
+	err = tx.Save(fo.old).Error
+	if err != nil {
+		log.Error().Err(err).Msg("disabling old primary route")
+
+		return nil, err
+	}
+
+	err = tx.Save(fo.new).Error
+	if err != nil {
+		log.Error().Err(err).Msg("saving new primary route")
+
+		return nil, err
+	}
+
+	log.Trace().
+		Str("hostname", fo.new.Node.Hostname).
+		Msgf("set primary to new route, was: id(%d), host(%s), now: id(%d), host(%s)", fo.old.ID, fo.old.Node.Hostname, fo.new.ID, fo.new.Node.Hostname)
+
+	// Return a list of the machinekeys of the changed nodes.
+	return []types.NodeID{fo.old.Node.ID, fo.new.Node.ID}, nil
+}
+
+type failover struct {
+	old *types.Route
+	new *types.Route
+}
+
+func failoverRoute(
+	isConnected types.NodeConnectedMap,
+	routeToReplace *types.Route,
+	altRoutes types.Routes,
+
+) *failover {
+	if routeToReplace == nil {
+		return nil
+	}
+
+	// This route is not a primary route, and it is not
+	// being served to nodes.
+	if !routeToReplace.IsPrimary {
+		return nil
+	}
+
+	// We do not have to failover exit nodes
+	if routeToReplace.IsExitRoute() {
+		return nil
+	}
+
 	var newPrimary *types.Route
 
 	// Find a new suitable route
-	for idx, route := range routes {
-		if r.ID == route.ID {
+	for idx, route := range altRoutes {
+		if routeToReplace.ID == route.ID {
 			continue
 		}
 
@@ -547,8 +558,8 @@ func failoverRoute(
 			continue
 		}
 
-		if isConnected[route.Node.MachineKey] {
-			newPrimary = &routes[idx]
+		if isConnected != nil && isConnected[route.Node.ID] {
+			newPrimary = &altRoutes[idx]
 			break
 		}
 	}
@@ -559,48 +570,23 @@ func failoverRoute(
 	// the one currently marked as primary is the
 	// best we got.
 	if newPrimary == nil {
-		return nil, nil
+		return nil
 	}
 
-	log.Trace().
-		Str("hostname", newPrimary.Node.Hostname).
-		Msg("found new primary, updating db")
-
-	// Remove primary from the old route
-	r.IsPrimary = false
-	err = tx.Save(&r).Error
-	if err != nil {
-		log.Error().Err(err).Msg("error disabling new primary route")
-
-		return nil, err
-	}
-
-	log.Trace().
-		Str("hostname", newPrimary.Node.Hostname).
-		Msg("removed primary from old route")
-
-	// Set primary for the new primary
+	routeToReplace.IsPrimary = false
 	newPrimary.IsPrimary = true
-	err = tx.Save(&newPrimary).Error
-	if err != nil {
-		log.Error().Err(err).Msg("error enabling new primary route")
 
-		return nil, err
+	return &failover{
+		old: routeToReplace,
+		new: newPrimary,
 	}
-
-	log.Trace().
-		Str("hostname", newPrimary.Node.Hostname).
-		Msg("set primary to new route")
-
-	// Return a list of the machinekeys of the changed nodes.
-	return []key.MachinePublic{r.Node.MachineKey, newPrimary.Node.MachineKey}, nil
 }
 
 func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 	aclPolicy *policy.ACLPolicy,
 	node *types.Node,
-) (*types.StateUpdate, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
+) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
 		return EnableAutoApprovedRoutes(tx, aclPolicy, node)
 	})
 }
@@ -610,9 +596,9 @@ func EnableAutoApprovedRoutes(
 	tx *gorm.DB,
 	aclPolicy *policy.ACLPolicy,
 	node *types.Node,
-) (*types.StateUpdate, error) {
+) error {
 	if len(node.IPAddresses) == 0 {
-		return nil, nil // This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
+		return nil // This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
 	routes, err := GetNodeAdvertisedRoutes(tx, node)
@@ -623,7 +609,7 @@ func EnableAutoApprovedRoutes(
 			Str("node", node.Hostname).
 			Msg("Could not get advertised routes for node")
 
-		return nil, err
+		return err
 	}
 
 	log.Trace().Interface("routes", routes).Msg("routes for autoapproving")
@@ -641,10 +627,10 @@ func EnableAutoApprovedRoutes(
 		if err != nil {
 			log.Err(err).
 				Str("advertisedRoute", advertisedRoute.String()).
-				Uint64("nodeId", node.ID).
+				Uint64("nodeId", node.ID.Uint64()).
 				Msg("Failed to resolve autoApprovers for advertised route")
 
-			return nil, err
+			return err
 		}
 
 		log.Trace().
@@ -665,7 +651,7 @@ func EnableAutoApprovedRoutes(
 						Str("alias", approvedAlias).
 						Msg("Failed to expand alias when processing autoApprovers policy")
 
-					return nil, err
+					return err
 				}
 
 				// approvedIPs should contain all of node's IPs if it matches the rule, so check for first
@@ -676,25 +662,17 @@ func EnableAutoApprovedRoutes(
 		}
 	}
 
-	update := &types.StateUpdate{
-		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{},
-		Message:     "created in db.EnableAutoApprovedRoutes",
-	}
-
 	for _, approvedRoute := range approvedRoutes {
-		perHostUpdate, err := EnableRoute(tx, uint64(approvedRoute.ID))
+		_, err := EnableRoute(tx, uint64(approvedRoute.ID))
 		if err != nil {
 			log.Err(err).
 				Str("approvedRoute", approvedRoute.String()).
-				Uint64("nodeId", node.ID).
+				Uint64("nodeId", node.ID.Uint64()).
 				Msg("Failed to enable approved route")
 
-			return nil, err
+			return err
 		}
-
-		update.ChangeNodes = append(update.ChangeNodes, perHostUpdate.ChangeNodes...)
 	}
 
-	return update, nil
+	return nil
 }

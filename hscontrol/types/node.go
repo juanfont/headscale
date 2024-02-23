@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,9 +29,24 @@ var (
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
 )
 
+type NodeID uint64
+type NodeConnectedMap map[NodeID]bool
+
+func (id NodeID) StableID() tailcfg.StableNodeID {
+	return tailcfg.StableNodeID(strconv.FormatUint(uint64(id), util.Base10))
+}
+
+func (id NodeID) NodeID() tailcfg.NodeID {
+	return tailcfg.NodeID(id)
+}
+
+func (id NodeID) Uint64() uint64 {
+	return uint64(id)
+}
+
 // Node is a Headscale client.
 type Node struct {
-	ID uint64 `gorm:"primary_key"`
+	ID NodeID `gorm:"primary_key"`
 
 	// MachineKeyDatabaseField is the string representation of MachineKey
 	// it is _only_ used for reading and writing the key to the
@@ -198,7 +215,7 @@ func (node Node) IsExpired() bool {
 		return false
 	}
 
-	return time.Now().UTC().After(*node.Expiry)
+	return time.Since(*node.Expiry) > 0
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.
@@ -319,7 +336,7 @@ func (node *Node) AfterFind(tx *gorm.DB) error {
 
 func (node *Node) Proto() *v1.Node {
 	nodeProto := &v1.Node{
-		Id:         node.ID,
+		Id:         uint64(node.ID),
 		MachineKey: node.MachineKey.String(),
 
 		NodeKey:     node.NodeKey.String(),
@@ -486,8 +503,8 @@ func (nodes Nodes) String() string {
 	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
 }
 
-func (nodes Nodes) IDMap() map[uint64]*Node {
-	ret := map[uint64]*Node{}
+func (nodes Nodes) IDMap() map[NodeID]*Node {
+	ret := map[NodeID]*Node{}
 
 	for _, node := range nodes {
 		ret[node.ID] = node

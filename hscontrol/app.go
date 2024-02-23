@@ -28,6 +28,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
 	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
+	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -38,6 +39,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/oauth2"
@@ -77,6 +79,11 @@ const (
 	registerCacheCleanup    = time.Minute * 20
 )
 
+func init() {
+	deadlock.Opts.DeadlockTimeout = 15 * time.Second
+	deadlock.Opts.PrintAllCurrentGoroutines = true
+}
+
 // Headscale represents the base app of the service.
 type Headscale struct {
 	cfg             *types.Config
@@ -89,6 +96,7 @@ type Headscale struct {
 
 	ACLPolicy *policy.ACLPolicy
 
+	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
 
 	oidcProvider *oidc.Provider
@@ -96,8 +104,10 @@ type Headscale struct {
 
 	registrationCache *cache.Cache
 
-	shutdownChan       chan struct{}
 	pollNetMapStreamWG sync.WaitGroup
+
+	mapSessions  map[types.NodeID]*mapSession
+	mapSessionMu deadlock.Mutex
 }
 
 var (
@@ -129,6 +139,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
 		nodeNotifier:       notifier.NewNotifier(),
+		mapSessions:        make(map[types.NodeID]*mapSession),
 	}
 
 	app.db, err = db.NewHeadscaleDatabase(
@@ -199,16 +210,16 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
-// expireEphemeralNodes deletes ephemeral node records that have not been
+// deleteExpireEphemeralNodes deletes ephemeral node records that have not been
 // seen for longer than h.cfg.EphemeralNodeInactivityTimeout.
-func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
+func (h *Headscale) deleteExpireEphemeralNodes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 
-	var update types.StateUpdate
-	var changed bool
 	for range ticker.C {
+		var removed []types.NodeID
+		var changed []types.NodeID
 		if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
-			update, changed = db.ExpireEphemeralNodes(tx, h.cfg.EphemeralNodeInactivityTimeout)
+			removed, changed = db.DeleteExpiredEphemeralNodes(tx, h.cfg.EphemeralNodeInactivityTimeout)
 
 			return nil
 		}); err != nil {
@@ -216,9 +227,20 @@ func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 			continue
 		}
 
-		if changed && update.Valid() {
+		if removed != nil {
 			ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
-			h.nodeNotifier.NotifyAll(ctx, update)
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				Type:    types.StatePeerRemoved,
+				Removed: removed,
+			})
+		}
+
+		if changed != nil {
+			ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				Type:        types.StatePeerChanged,
+				ChangeNodes: changed,
+			})
 		}
 	}
 }
@@ -243,8 +265,9 @@ func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 			continue
 		}
 
-		log.Trace().Str("nodes", update.ChangeNodes.String()).Msgf("expiring nodes")
-		if changed && update.Valid() {
+		if changed {
+			log.Trace().Interface("nodes", update.ChangePatches).Msgf("expiring nodes")
+
 			ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
 			h.nodeNotifier.NotifyAll(ctx, update)
 		}
@@ -272,14 +295,11 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 				h.DERPMap.Regions[region.RegionID] = &region
 			}
 
-			stateUpdate := types.StateUpdate{
+			ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 				Type:    types.StateDERPUpdated,
 				DERPMap: h.DERPMap,
-			}
-			if stateUpdate.Valid() {
-				ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
-				h.nodeNotifier.NotifyAll(ctx, stateUpdate)
-			}
+			})
 		}
 	}
 }
@@ -502,6 +522,7 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
+	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier.ConnectedMap())
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
@@ -533,7 +554,7 @@ func (h *Headscale) Serve() error {
 
 	// TODO(kradalby): These should have cancel channels and be cleaned
 	// up on shutdown.
-	go h.expireEphemeralNodes(updateInterval)
+	go h.deleteExpireEphemeralNodes(updateInterval)
 	go h.expireExpiredMachines(updateInterval)
 
 	if zl.GlobalLevel() == zl.TraceLevel {
@@ -686,6 +707,9 @@ func (h *Headscale) Serve() error {
 		// no good way to handle streaming timeouts, therefore we need to
 		// keep this at unlimited and be careful to clean up connections
 		// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#aboutstreaming
+		// TODO(kradalby): this timeout can now be set per handler with http.ResponseController:
+		// https://www.alexedwards.net/blog/how-to-use-the-http-responsecontroller-type
+		// replace this so only the longpoller has no timeout.
 		WriteTimeout: 0,
 	}
 
@@ -742,7 +766,6 @@ func (h *Headscale) Serve() error {
 	}
 
 	// Handle common process-killing signals so we can gracefully shut down:
-	h.shutdownChan = make(chan struct{})
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGHUP,
@@ -784,8 +807,6 @@ func (h *Headscale) Serve() error {
 				log.Info().
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
-
-				close(h.shutdownChan)
 
 				h.pollNetMapStreamWG.Wait()
 
