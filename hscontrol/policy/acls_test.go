@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -3010,6 +3011,95 @@ func TestSSHRules(t *testing.T) {
 			},
 		},
 		{
+			name: "ssh-session-recording",
+			node: types.Node{
+				Hostname:    "testnodes",
+				IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.99.42")},
+				UserID:      0,
+				User: types.User{
+					Name: "user1",
+				},
+			},
+			peers: types.Nodes{
+				&types.Node{
+					Hostname:    "testnodes2",
+					IPAddresses: types.NodeAddresses{netip.MustParseAddr("100.64.0.1")},
+					UserID:      0,
+					User: types.User{
+						Name: "user1",
+					},
+				},
+			},
+			pol: ACLPolicy{
+				Groups: Groups{
+					"group:test": []string{"user1"},
+				},
+				Hosts: Hosts{
+					"client": netip.PrefixFrom(netip.MustParseAddr("100.64.99.42"), 32),
+				},
+				ACLs: []ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      []string{"group:test"},
+						Destinations: []string{"client"},
+						Users:        []string{"autogroup:nonroot"},
+						Recorder:     []string{"group:test"},
+					},
+					{
+						Action:          "accept",
+						Sources:         []string{"*"},
+						Destinations:    []string{"client"},
+						Users:           []string{"autogroup:nonroot"},
+						Recorder:        []string{"client"},
+						EnforceRecorder: true,
+					},
+				},
+			},
+			want: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{
+							UserLogin: "user1",
+						},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowLocalPortForwarding: true,
+						Recorders:                []netip.AddrPort{netip.MustParseAddrPort("100.64.0.1:80"), netip.MustParseAddrPort("100.64.99.42:80")},
+					},
+				},
+				{
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Principals: []*tailcfg.SSHPrincipal{
+						{
+							Any: true,
+						},
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowLocalPortForwarding: true,
+						Recorders:                []netip.AddrPort{netip.MustParseAddrPort("100.64.99.42:80")},
+						OnRecordingFailure: &tailcfg.SSHRecorderFailureAction{
+							RejectSessionWithMessage:    "# Failed to start session recording.",
+							TerminateSessionWithMessage: "# Failed to start session recording.",
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "peers-cannot-connect",
 			node: types.Node{
 				Hostname:    "testnodes",
@@ -3067,7 +3157,7 @@ func TestSSHRules(t *testing.T) {
 			got, err := tt.pol.generateSSHRules(&tt.node, tt.peers)
 			assert.NoError(t, err)
 
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmpopts.EquateComparable(netip.AddrPort{})); diff != "" {
 				t.Errorf("TestSSHRules() unexpected result (-want +got):\n%s", diff)
 			}
 		})
