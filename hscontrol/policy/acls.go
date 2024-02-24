@@ -343,6 +343,28 @@ func (pol *ACLPolicy) generateSSHRules(
 			continue
 		}
 
+		recs := make([]netip.AddrPort, 0)
+		for innerIndex, rec := range sshACL.Recorder {
+			recSet, err := pol.ExpandAlias(append(peers, node), rec)
+			if err != nil {
+				log.Error().
+					Msgf("Error parsing SSH %d, Recorder %d", index, innerIndex)
+				return nil, err
+			}
+			// ExpandAlias has expanded possible subnets; all prefixes are single IPs
+			for _, rec := range recSet.Prefixes() {
+				recs = append(recs, netip.AddrPortFrom(rec.Addr(), 80))
+			}
+		}
+		action.Recorders = recs
+
+		if sshACL.EnforceRecorder {
+			action.OnRecordingFailure = &tailcfg.SSHRecorderFailureAction{
+				RejectSessionWithMessage:    "# Failed to start session recording.",
+				TerminateSessionWithMessage: "# Failed to start session recording.",
+			}
+		}
+
 		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
 		for innerIndex, rawSrc := range sshACL.Sources {
 			if isWildcard(rawSrc) {
