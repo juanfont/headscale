@@ -138,12 +138,8 @@ ephemeral_node_inactivity_timeout: 30m
 # In case of doubts, do not touch the default 10s.
 node_update_check_interval: 10s
 
-database:
-  type: sqlite
-
-  # SQLite config
-  sqlite:
-    path: /var/lib/headscale/db.sqlite
+db_type: sqlite
+db_path: /var/lib/headscale/db.sqlite
 
   # # Postgres config
   # postgres:
