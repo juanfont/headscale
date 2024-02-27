@@ -33,6 +33,7 @@ type mapSession struct {
 	req    tailcfg.MapRequest
 	ctx    context.Context
 	capVer tailcfg.CapabilityVersion
+	mapper *mapper.Mapper
 
 	node *types.Node
 	w    http.ResponseWriter
@@ -57,7 +58,9 @@ func (h *Headscale) newMapSession(
 		w:      w,
 		node:   node,
 		capVer: req.Version,
+		mapper: h.mapper,
 
+		// Loggers
 		warnf:  warnf,
 		infof:  infof,
 		tracef: tracef,
@@ -125,7 +128,7 @@ func (m *mapSession) serve() {
 		return
 	}
 
-	// After version, all streaming requests can be treated as read only.
+	// From version 68, all streaming requests can be treated as read only.
 	if m.capVer < 68 {
 		// Error has been handled/written to client in the func
 		// return
@@ -153,15 +156,6 @@ func (m *mapSession) serve() {
 	// Register the node's update channel
 	m.h.nodeNotifier.AddNode(m.node.MachineKey, updateChan)
 	defer m.h.nodeNotifier.RemoveNode(m.node.MachineKey)
-
-	mapp := mapper.NewMapper(
-		m.node,
-		m.h.DERPMap,
-		m.h.cfg.BaseDomain,
-		m.h.cfg.DNSConfig,
-		m.h.cfg.LogTail.Enabled,
-		m.h.cfg.RandomizeClientPort,
-	)
 
 	// update ACLRules with peer informations (to update server tags if necessary)
 	if m.h.ACLPolicy != nil {
@@ -191,7 +185,7 @@ func (m *mapSession) serve() {
 		peer.IsOnline = &online
 	}
 
-	mapResp, err := mapp.FullMapResponse(m.req, m.node, peers, m.h.ACLPolicy)
+	mapResp, err := m.mapper.FullMapResponse(m.req, m.node, peers, m.h.ACLPolicy)
 	if err != nil {
 		m.errf(err, "Failed to create MapResponse")
 		http.Error(m.w, "", http.StatusInternalServerError)
@@ -239,7 +233,7 @@ func (m *mapSession) serve() {
 		m.tracef("Waiting for update on stream channel")
 		select {
 		case <-keepAliveTicker.C:
-			data, err := mapp.KeepAliveResponse(m.req, m.node)
+			data, err := m.mapper.KeepAliveResponse(m.req, m.node)
 			if err != nil {
 				m.errf(err, "Error generating the keep alive msg")
 
@@ -300,7 +294,7 @@ func (m *mapSession) serve() {
 			case types.StateFullUpdate:
 				m.tracef("Sending Full MapResponse")
 
-				data, err = mapp.FullMapResponse(m.req, m.node, peers, m.h.ACLPolicy)
+				data, err = m.mapper.FullMapResponse(m.req, m.node, peers, m.h.ACLPolicy)
 			case types.StatePeerChanged:
 				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
 
@@ -317,24 +311,24 @@ func (m *mapSession) serve() {
 					}
 				}
 
-				data, err = mapp.PeerChangedResponse(m.req, m.node, peers, update.ChangeNodes, m.h.ACLPolicy, update.Message)
+				data, err = m.mapper.PeerChangedResponse(m.req, m.node, peers, update.ChangeNodes, m.h.ACLPolicy, update.Message)
 			case types.StatePeerChangedPatch:
 				m.tracef("Sending PeerChangedPatch MapResponse")
-				data, err = mapp.PeerChangedPatchResponse(m.req, m.node, update.ChangePatches, m.h.ACLPolicy)
+				data, err = m.mapper.PeerChangedPatchResponse(m.req, m.node, update.ChangePatches, m.h.ACLPolicy)
 			case types.StatePeerRemoved:
 				m.tracef("Sending PeerRemoved MapResponse")
-				data, err = mapp.PeerRemovedResponse(m.req, m.node, update.Removed)
+				data, err = m.mapper.PeerRemovedResponse(m.req, m.node, update.Removed)
 			case types.StateSelfUpdate:
 				if len(update.ChangeNodes) == 1 {
 					m.tracef("Sending SelfUpdate MapResponse")
 					m.node = update.ChangeNodes[0]
-					data, err = mapp.ReadOnlyMapResponse(m.req, m.node, m.h.ACLPolicy, types.SelfUpdateIdentifier)
+					data, err = m.mapper.ReadOnlyMapResponse(m.req, m.node, m.h.ACLPolicy, types.SelfUpdateIdentifier)
 				} else {
 					m.warnf("SelfUpdate contained too many nodes, this is likely a bug in the code, please report.")
 				}
 			case types.StateDERPUpdated:
 				m.tracef("Sending DERPUpdate MapResponse")
-				data, err = mapp.DERPMapResponse(m.req, m.node, update.DERPMap)
+				data, err = m.mapper.DERPMapResponse(m.req, m.node, update.DERPMap)
 			}
 
 			if err != nil {
@@ -623,18 +617,9 @@ func (m *mapSession) handleSaveNode() error {
 }
 
 func (m *mapSession) handleReadOnlyRequest() {
-	mapp := mapper.NewMapper(
-		m.node,
-		m.h.DERPMap,
-		m.h.cfg.BaseDomain,
-		m.h.cfg.DNSConfig,
-		m.h.cfg.LogTail.Enabled,
-		m.h.cfg.RandomizeClientPort,
-	)
-
 	m.tracef("Client asked for a lite update, responding without peers")
 
-	mapResp, err := mapp.ReadOnlyMapResponse(m.req, m.node, m.h.ACLPolicy)
+	mapResp, err := m.mapper.ReadOnlyMapResponse(m.req, m.node, m.h.ACLPolicy)
 	if err != nil {
 		m.errf(err, "Failed to create MapResponse")
 		http.Error(m.w, "", http.StatusInternalServerError)

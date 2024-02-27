@@ -66,26 +66,17 @@ type patch struct {
 }
 
 func NewMapper(
-	node *types.Node,
 	derpMap *tailcfg.DERPMap,
-	baseDomain string,
-	dnsCfg *tailcfg.DNSConfig,
-	logtail bool,
-	randomClientPort bool,
+	cfg *types.Config,
 ) *Mapper {
-	log.Debug().
-		Caller().
-		Str("node", node.Hostname).
-		Msg("creating new mapper")
-
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
 		derpMap:          derpMap,
-		baseDomain:       baseDomain,
-		dnsCfg:           dnsCfg,
-		logtail:          logtail,
-		randomClientPort: randomClientPort,
+		baseDomain:       cfg.BaseDomain,
+		dnsCfg:           cfg.DNSConfig,
+		logtail:          cfg.LogTail.Enabled,
+		randomClientPort: cfg.RandomizeClientPort,
 
 		uid:     uid,
 		created: time.Now(),

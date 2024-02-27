@@ -28,6 +28,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
 	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
+	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -89,6 +90,7 @@ type Headscale struct {
 
 	ACLPolicy *policy.ACLPolicy
 
+	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
 
 	oidcProvider *oidc.Provider
@@ -502,6 +504,7 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
+	h.mapper = mapper.NewMapper(h.DERPMap, h.cfg)
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
