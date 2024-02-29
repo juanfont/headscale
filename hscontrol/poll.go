@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
@@ -26,7 +27,10 @@ type contextKey string
 
 const nodeNameContextKey = contextKey("nodeName")
 
-type UpdateNode func()
+type sessionManager struct {
+	mu   sync.RWMutex
+	sess map[types.NodeID]*mapSession
+}
 
 type mapSession struct {
 	h      *Headscale
@@ -34,6 +38,9 @@ type mapSession struct {
 	ctx    context.Context
 	capVer tailcfg.CapabilityVersion
 	mapper *mapper.Mapper
+
+	ch       chan types.StateUpdate
+	cancelCh chan struct{}
 
 	node *types.Node
 	w    http.ResponseWriter
@@ -51,6 +58,17 @@ func (h *Headscale) newMapSession(
 	node *types.Node,
 ) *mapSession {
 	warnf, tracef, infof, errf := logPollFunc(req, node)
+
+	// Use a buffered channel in case a node is not fully ready
+	// to receive a message to make sure we dont block the entire
+	// notifier.
+	// 12 is arbitrarily chosen.
+	chanSize := 3
+	if size, ok := envknob.LookupInt("HEADSCALE_TUNING_POLL_QUEUE_SIZE"); ok {
+		chanSize = size
+	}
+	updateChan := make(chan types.StateUpdate, chanSize)
+
 	return &mapSession{
 		h:      h,
 		ctx:    ctx,
@@ -60,12 +78,19 @@ func (h *Headscale) newMapSession(
 		capVer: req.Version,
 		mapper: h.mapper,
 
+		ch:       updateChan,
+		cancelCh: make(chan struct{}),
+
 		// Loggers
 		warnf:  warnf,
 		infof:  infof,
 		tracef: tracef,
 		errf:   errf,
 	}
+}
+
+func (m *mapSession) close() {
+	m.cancelCh <- struct{}{}
 }
 
 func (m *mapSession) isStreaming() bool {
@@ -142,21 +167,6 @@ func (m *mapSession) serve() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	// Use a buffered channel in case a node is not fully ready
-	// to receive a message to make sure we dont block the entire
-	// notifier.
-	// 12 is arbitrarily chosen.
-	chanSize := 3
-	if size, ok := envknob.LookupInt("HEADSCALE_TUNING_POLL_QUEUE_SIZE"); ok {
-		chanSize = size
-	}
-	updateChan := make(chan types.StateUpdate, chanSize)
-	defer closeChanWithLog(updateChan, m.node.Hostname, "updateChan")
-
-	// Register the node's update channel
-	m.h.nodeNotifier.AddNode(m.node.MachineKey, updateChan)
-	defer m.h.nodeNotifier.RemoveNode(m.node.MachineKey)
-
 	// update ACLRules with peer informations (to update server tags if necessary)
 	if m.h.ACLPolicy != nil {
 		// update routes with peer information
@@ -171,21 +181,7 @@ func (m *mapSession) serve() {
 
 	m.tracef("Sending initial map")
 
-	peers, err := m.h.db.ListPeers(m.node)
-	if err != nil {
-		m.errf(err, "Failed to list peers when opening poller")
-		http.Error(m.w, "", http.StatusInternalServerError)
-
-		return
-	}
-
-	isConnected := m.h.nodeNotifier.ConnectedMap()
-	for _, peer := range peers {
-		online := isConnected[peer.MachineKey]
-		peer.IsOnline = &online
-	}
-
-	mapResp, err := m.mapper.FullMapResponse(m.req, m.node, peers, m.h.ACLPolicy)
+	mapResp, err := m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy)
 	if err != nil {
 		m.errf(err, "Failed to create MapResponse")
 		http.Error(m.w, "", http.StatusInternalServerError)
@@ -232,35 +228,7 @@ func (m *mapSession) serve() {
 	for {
 		m.tracef("Waiting for update on stream channel")
 		select {
-		case <-keepAliveTicker.C:
-			data, err := m.mapper.KeepAliveResponse(m.req, m.node)
-			if err != nil {
-				m.errf(err, "Error generating the keep alive msg")
-
-				return
-			}
-			_, err = m.w.Write(data)
-			if err != nil {
-				m.errf(err, "Cannot write keep alive message")
-
-				return
-			}
-			if flusher, ok := m.w.(http.Flusher); ok {
-				flusher.Flush()
-			} else {
-				log.Error().Msg("Failed to create http flusher")
-
-				return
-			}
-
-			// This goroutine is not ideal, but we have a potential issue here
-			// where it blocks too long and that holds up updates.
-			// One alternative is to split these different channels into
-			// goroutines, but then you might have a problem without a lock
-			// if a keepalive is written at the same time as an update.
-			go m.h.updateNodeOnlineStatus(true, m.node)
-
-		case update := <-updateChan:
+		case update := <-m.ch:
 			m.tracef("Received update")
 			var data []byte
 			var err error
@@ -275,43 +243,16 @@ func (m *mapSession) serve() {
 				return
 			}
 
-			peers, err := m.h.db.ListPeers(m.node)
-			if err != nil {
-				m.errf(err, "Failed to list peers when opening poller")
-				http.Error(m.w, "", http.StatusInternalServerError)
-
-				return
-			}
-
-			isConnected := m.h.nodeNotifier.ConnectedMap()
-			for _, peer := range peers {
-				online := isConnected[peer.MachineKey]
-				peer.IsOnline = &online
-			}
-
 			startMapResp := time.Now()
 			switch update.Type {
 			case types.StateFullUpdate:
 				m.tracef("Sending Full MapResponse")
 
-				data, err = m.mapper.FullMapResponse(m.req, m.node, peers, m.h.ACLPolicy)
+				data, err = m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy)
 			case types.StatePeerChanged:
 				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
 
-				isConnectedMap := m.h.nodeNotifier.ConnectedMap()
-				for _, node := range update.ChangeNodes {
-					// If a node is not reported to be online, it might be
-					// because the value is outdated, check with the notifier.
-					// However, if it is set to Online, and not in the notifier,
-					// this might be because it has announced itself, but not
-					// reached the stage to actually create the notifier channel.
-					if node.IsOnline != nil && !*node.IsOnline {
-						isOnline := isConnectedMap[node.MachineKey]
-						node.IsOnline = &isOnline
-					}
-				}
-
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, peers, update.ChangeNodes, m.h.ACLPolicy, update.Message)
+				data, err = m.mapper.PeerChangedResponse(m.req, m.node, update.ChangeNodes, m.h.ACLPolicy, update.Message)
 			case types.StatePeerChangedPatch:
 				m.tracef("Sending PeerChangedPatch MapResponse")
 				data, err = m.mapper.PeerChangedPatchResponse(m.req, m.node, update.ChangePatches, m.h.ACLPolicy)
@@ -364,6 +305,34 @@ func (m *mapSession) serve() {
 				m.infof("update sent")
 			}
 
+		case <-keepAliveTicker.C:
+			data, err := m.mapper.KeepAliveResponse(m.req, m.node)
+			if err != nil {
+				m.errf(err, "Error generating the keep alive msg")
+
+				return
+			}
+			_, err = m.w.Write(data)
+			if err != nil {
+				m.errf(err, "Cannot write keep alive message")
+
+				return
+			}
+			if flusher, ok := m.w.(http.Flusher); ok {
+				flusher.Flush()
+			} else {
+				log.Error().Msg("Failed to create http flusher")
+
+				return
+			}
+
+			// This goroutine is not ideal, but we have a potential issue here
+			// where it blocks too long and that holds up updates.
+			// One alternative is to split these different channels into
+			// goroutines, but then you might have a problem without a lock
+			// if a keepalive is written at the same time as an update.
+			// go m.h.updateNodeOnlineStatus(true, m.node)
+
 		case <-ctx.Done():
 			m.tracef("The client has closed the connection")
 
@@ -375,11 +344,10 @@ func (m *mapSession) serve() {
 			// The connection has been closed, so we can stop polling.
 			return
 
-		case <-m.h.shutdownChan:
-			m.tracef("The long-poll handler is shutting down")
-
+		case <-m.cancelCh:
 			return
 		}
+
 	}
 }
 

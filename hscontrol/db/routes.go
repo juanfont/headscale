@@ -400,7 +400,7 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 	for prefix, exists := range advertisedRoutes {
 		if !exists {
 			route := types.Route{
-				NodeID:     node.ID,
+				NodeID:     node.ID.Uint64(),
 				Prefix:     types.IPPrefix(prefix),
 				Advertised: true,
 				Enabled:    false,
@@ -641,7 +641,7 @@ func EnableAutoApprovedRoutes(
 		if err != nil {
 			log.Err(err).
 				Str("advertisedRoute", advertisedRoute.String()).
-				Uint64("nodeId", node.ID).
+				Uint64("nodeId", node.ID.Uint64()).
 				Msg("Failed to resolve autoApprovers for advertised route")
 
 			return nil, err
@@ -687,7 +687,7 @@ func EnableAutoApprovedRoutes(
 		if err != nil {
 			log.Err(err).
 				Str("approvedRoute", approvedRoute.String()).
-				Uint64("nodeId", node.ID).
+				Uint64("nodeId", node.ID.Uint64()).
 				Msg("Failed to enable approved route")
 
 			return nil, err

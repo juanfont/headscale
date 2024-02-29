@@ -34,27 +34,22 @@ var (
 	)
 )
 
-func (hsdb *HSDatabase) ListPeers(node *types.Node) (types.Nodes, error) {
+func (hsdb *HSDatabase) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListPeers(rx, node)
+		return ListPeers(rx, nodeID)
 	})
 }
 
 // ListPeers returns all peers of node, regardless of any Policy or if the node is expired.
-func ListPeers(tx *gorm.DB, node *types.Node) (types.Nodes, error) {
-	log.Trace().
-		Caller().
-		Str("node", node.Hostname).
-		Msg("Finding direct peers")
-
+func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
 		Preload("Routes").
-		Where("node_key <> ?",
-			node.NodeKey.String()).Find(&nodes).Error; err != nil {
+		Where("id <> ?",
+			nodeID).Find(&nodes).Error; err != nil {
 		return types.Nodes{}, err
 	}
 
@@ -119,14 +114,14 @@ func getNode(tx *gorm.DB, user string, name string) (*types.Node, error) {
 	return nil, ErrNodeNotFound
 }
 
-func (hsdb *HSDatabase) GetNodeByID(id uint64) (*types.Node, error) {
+func (hsdb *HSDatabase) GetNodeByID(id types.NodeID) (*types.Node, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
 		return GetNodeByID(rx, id)
 	})
 }
 
 // GetNodeByID finds a Node by ID and returns the Node struct.
-func GetNodeByID(tx *gorm.DB, id uint64) (*types.Node, error) {
+func GetNodeByID(tx *gorm.DB, id types.NodeID) (*types.Node, error) {
 	mach := types.Node{}
 	if result := tx.
 		Preload("AuthKey").
@@ -197,7 +192,7 @@ func GetNodeByAnyKey(
 }
 
 func (hsdb *HSDatabase) SetTags(
-	nodeID uint64,
+	nodeID types.NodeID,
 	tags []string,
 ) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
@@ -208,7 +203,7 @@ func (hsdb *HSDatabase) SetTags(
 // SetTags takes a Node struct pointer and update the forced tags.
 func SetTags(
 	tx *gorm.DB,
-	nodeID uint64,
+	nodeID types.NodeID,
 	tags []string,
 ) error {
 	if len(tags) == 0 {
@@ -256,7 +251,7 @@ func RenameNode(tx *gorm.DB,
 	return nil
 }
 
-func (hsdb *HSDatabase) NodeSetExpiry(nodeID uint64, expiry time.Time) error {
+func (hsdb *HSDatabase) NodeSetExpiry(nodeID types.NodeID, expiry time.Time) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		return NodeSetExpiry(tx, nodeID, expiry)
 	})
@@ -264,7 +259,7 @@ func (hsdb *HSDatabase) NodeSetExpiry(nodeID uint64, expiry time.Time) error {
 
 // NodeSetExpiry takes a Node struct and  a new expiry time.
 func NodeSetExpiry(tx *gorm.DB,
-	nodeID uint64, expiry time.Time,
+	nodeID types.NodeID, expiry time.Time,
 ) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry).Error
 }
@@ -296,7 +291,7 @@ func DeleteNode(tx *gorm.DB,
 
 // UpdateLastSeen sets a node's last seen field indicating that we
 // have recently communicating with this node.
-func UpdateLastSeen(tx *gorm.DB, nodeID uint64, lastSeen time.Time) error {
+func UpdateLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
 }
 

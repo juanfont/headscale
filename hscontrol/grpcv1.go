@@ -222,7 +222,7 @@ func (api headscaleV1APIServer) GetNode(
 	ctx context.Context,
 	request *v1.GetNodeRequest,
 ) (*v1.GetNodeResponse, error) {
-	node, err := api.h.db.GetNodeByID(request.GetNodeId())
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
@@ -248,12 +248,12 @@ func (api headscaleV1APIServer) SetTags(
 	}
 
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := db.SetTags(tx, request.GetNodeId(), request.GetTags())
+		err := db.SetTags(tx, types.NodeID(request.GetNodeId()), request.GetTags())
 		if err != nil {
 			return nil, err
 		}
 
-		return db.GetNodeByID(tx, request.GetNodeId())
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
 	})
 	if err != nil {
 		return &v1.SetTagsResponse{
@@ -296,7 +296,7 @@ func (api headscaleV1APIServer) DeleteNode(
 	ctx context.Context,
 	request *v1.DeleteNodeRequest,
 ) (*v1.DeleteNodeResponse, error) {
-	node, err := api.h.db.GetNodeByID(request.GetNodeId())
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
@@ -330,11 +330,11 @@ func (api headscaleV1APIServer) ExpireNode(
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		db.NodeSetExpiry(
 			tx,
-			request.GetNodeId(),
+			types.NodeID(request.GetNodeId()),
 			now,
 		)
 
-		return db.GetNodeByID(tx, request.GetNodeId())
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
 	})
 	if err != nil {
 		return nil, err
@@ -380,7 +380,7 @@ func (api headscaleV1APIServer) RenameNode(
 			return nil, err
 		}
 
-		return db.GetNodeByID(tx, request.GetNodeId())
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
 	})
 	if err != nil {
 		return nil, err
@@ -463,7 +463,7 @@ func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
 	request *v1.MoveNodeRequest,
 ) (*v1.MoveNodeResponse, error) {
-	node, err := api.h.db.GetNodeByID(request.GetNodeId())
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +536,7 @@ func (api headscaleV1APIServer) GetNodeRoutes(
 	ctx context.Context,
 	request *v1.GetNodeRoutesRequest,
 ) (*v1.GetNodeRoutesResponse, error) {
-	node, err := api.h.db.GetNodeByID(request.GetNodeId())
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -24,6 +25,7 @@ import (
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/types/key"
 )
 
 const (
@@ -46,14 +48,18 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // - Create a "minifier" that removes info not needed for the node
 // - some sort of batching, wait for 5 or 60 seconds before sending
 
+type nodeReq struct {
+	nodeID types.NodeID
+	done   chan<- struct{}
+}
+
 type Mapper struct {
 	// Configuration
 	// TODO(kradalby): figure out if this is the format we want this in
-	derpMap          *tailcfg.DERPMap
-	baseDomain       string
-	dnsCfg           *tailcfg.DNSConfig
-	logtail          bool
-	randomClientPort bool
+	db                *db.HSDatabase
+	cfg               *types.Config
+	derpMap           *tailcfg.DERPMap
+	isMostlyConnected map[key.MachinePublic]bool
 
 	uid     string
 	created time.Time
@@ -66,17 +72,18 @@ type patch struct {
 }
 
 func NewMapper(
-	derpMap *tailcfg.DERPMap,
+	db *db.HSDatabase,
 	cfg *types.Config,
+	derpMap *tailcfg.DERPMap,
+	isMostlyConnected map[key.MachinePublic]bool,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
-		derpMap:          derpMap,
-		baseDomain:       cfg.BaseDomain,
-		dnsCfg:           cfg.DNSConfig,
-		logtail:          cfg.LogTail.Enabled,
-		randomClientPort: cfg.RandomizeClientPort,
+		db:                db,
+		cfg:               cfg,
+		derpMap:           derpMap,
+		isMostlyConnected: isMostlyConnected,
 
 		uid:     uid,
 		created: time.Now(),
@@ -201,9 +208,7 @@ func (m *Mapper) fullMapResponse(
 		capVer,
 		peers,
 		peers,
-		m.baseDomain,
-		m.dnsCfg,
-		m.randomClientPort,
+		m.cfg,
 	)
 	if err != nil {
 		return nil, err
@@ -216,9 +221,13 @@ func (m *Mapper) fullMapResponse(
 func (m *Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	peers types.Nodes,
 	pol *policy.ACLPolicy,
 ) ([]byte, error) {
+	peers, err := m.ListPeers(node.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	resp, err := m.fullMapResponse(node, peers, pol, mapRequest.Version)
 	if err != nil {
 		return nil, err
@@ -270,23 +279,25 @@ func (m *Mapper) DERPMapResponse(
 func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	peers types.Nodes,
 	changed types.Nodes,
 	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 
-	err := appendPeerChanges(
+	peers, err := m.ListPeers(node.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	err = appendPeerChanges(
 		&resp,
 		pol,
 		node,
 		mapRequest.Version,
 		peers,
 		changed,
-		m.baseDomain,
-		m.dnsCfg,
-		m.randomClientPort,
+		m.cfg,
 	)
 	if err != nil {
 		return nil, err
@@ -457,7 +468,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, capVer, pol, m.dnsCfg, m.baseDomain, m.randomClientPort)
+	tailnode, err := tailNode(node, capVer, pol, m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +476,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 
 	resp.DERPMap = m.derpMap
 
-	resp.Domain = m.baseDomain
+	resp.Domain = m.cfg.BaseDomain
 
 	// Do not instruct clients to collect services we do not
 	// support or do anything with them
@@ -474,10 +485,24 @@ func (m *Mapper) baseWithConfigMapResponse(
 	resp.KeepAlive = false
 
 	resp.Debug = &tailcfg.Debug{
-		DisableLogTail: !m.logtail,
+		DisableLogTail: !m.cfg.LogTail.Enabled,
 	}
 
 	return &resp, nil
+}
+
+func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
+	peers, err := m.db.ListPeers(nodeID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, peer := range peers {
+		online := m.isMostlyConnected[peer.MachineKey]
+		peer.IsOnline = &online
+	}
+
+	return peers, nil
 }
 
 func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {
@@ -500,37 +525,36 @@ func appendPeerChanges(
 	capVer tailcfg.CapabilityVersion,
 	peers types.Nodes,
 	changed types.Nodes,
-	baseDomain string,
-	dnsCfg *tailcfg.DNSConfig,
-	randomClientPort bool,
+	cfg *types.Config,
 ) error {
 	fullChange := len(peers) == len(changed)
 
-	rules, sshPolicy, err := policy.GenerateFilterAndSSHRules(
-		pol,
-		node,
-		peers,
-	)
+	packetFilter, err := pol.CompileFilterRules(append(peers, node))
+	if err != nil {
+		return err
+	}
+
+	sshPolicy, err := pol.CompileSSHPolicy(node, peers)
 	if err != nil {
 		return err
 	}
 
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access eachother at all and remove them from the peers.
-	if len(rules) > 0 {
-		changed = policy.FilterNodesByACL(node, changed, rules)
+	if len(packetFilter) > 0 {
+		changed = policy.FilterNodesByACL(node, changed, packetFilter)
 	}
 
-	profiles := generateUserProfiles(node, changed, baseDomain)
+	profiles := generateUserProfiles(node, changed, cfg.BaseDomain)
 
 	dnsConfig := generateDNSConfig(
-		dnsCfg,
-		baseDomain,
+		cfg.DNSConfig,
+		cfg.BaseDomain,
 		node,
 		peers,
 	)
 
-	tailPeers, err := tailNodes(changed, capVer, pol, dnsCfg, baseDomain, randomClientPort)
+	tailPeers, err := tailNodes(changed, capVer, pol, cfg)
 	if err != nil {
 		return err
 	}
@@ -546,7 +570,7 @@ func appendPeerChanges(
 		resp.PeersChanged = tailPeers
 	}
 	resp.DNSConfig = dnsConfig
-	resp.PacketFilter = policy.ReduceFilterRules(node, rules)
+	resp.PacketFilter = policy.ReduceFilterRules(node, packetFilter)
 	resp.UserProfiles = profiles
 	resp.SSHPolicy = sshPolicy
 

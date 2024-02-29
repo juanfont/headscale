@@ -185,12 +185,12 @@ func (su *StateUpdate) Empty() bool {
 	return false
 }
 
-func StateUpdateExpire(nodeID uint64, expiry time.Time) StateUpdate {
+func StateUpdateExpire(nodeID NodeID, expiry time.Time) StateUpdate {
 	return StateUpdate{
 		Type: StatePeerChangedPatch,
 		ChangePatches: []*tailcfg.PeerChange{
 			{
-				NodeID:    tailcfg.NodeID(nodeID),
+				NodeID:    nodeID.NodeID(),
 				KeyExpiry: &expiry,
 			},
 		},

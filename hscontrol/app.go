@@ -98,7 +98,6 @@ type Headscale struct {
 
 	registrationCache *cache.Cache
 
-	shutdownChan       chan struct{}
 	pollNetMapStreamWG sync.WaitGroup
 }
 
@@ -504,7 +503,7 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.DERPMap, h.cfg)
+	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier.ConnectedMap())
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
@@ -745,7 +744,6 @@ func (h *Headscale) Serve() error {
 	}
 
 	// Handle common process-killing signals so we can gracefully shut down:
-	h.shutdownChan = make(chan struct{})
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGHUP,
@@ -787,8 +785,6 @@ func (h *Headscale) Serve() error {
 				log.Info().
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
-
-				close(h.shutdownChan)
 
 				h.pollNetMapStreamWG.Wait()
 

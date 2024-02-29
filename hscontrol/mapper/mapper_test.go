@@ -466,8 +466,10 @@ func Test_fullMapResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mappy := NewMapper(
-				tt.derpMap,
+				nil,
 				tt.cfg,
+				tt.derpMap,
+				nil,
 			)
 
 			got, err := mappy.fullMapResponse(
