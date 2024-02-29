@@ -68,12 +68,6 @@ func (h *Headscale) KeyHandler(
 			Msg("could not get capability version")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
 
 		return
 	}
@@ -82,19 +76,6 @@ func (h *Headscale) KeyHandler(
 		Str("handler", "/key").
 		Int("cap_ver", int(capVer)).
 		Msg("New noise client")
-	if err != nil {
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusBadRequest)
-		_, err := writer.Write([]byte("Wrong params"))
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
-
-		return
-	}
 
 	// TS2021 (Tailscale v2 protocol) requires to have a different key
 	if capVer >= NoiseCapabilityVersion {

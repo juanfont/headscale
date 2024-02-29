@@ -586,7 +586,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	// TODO(kradalby): Check state update
-	_, err = db.EnableAutoApprovedRoutes(pol, node0ByID)
+	err = db.EnableAutoApprovedRoutes(pol, node0ByID)
 	c.Assert(err, check.IsNil)
 
 	enabledRoutes, err := db.GetEnabledRoutes(node0ByID)

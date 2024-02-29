@@ -183,8 +183,8 @@ func DisableRoute(tx *gorm.DB,
 	if update == nil {
 		update = &types.StateUpdate{
 			Type: types.StatePeerChanged,
-			ChangeNodes: types.Nodes{
-				&node,
+			ChangeNodes: []types.NodeID{
+				node.ID,
 			},
 			Message: "called from db.DisableRoute",
 		}
@@ -229,7 +229,7 @@ func DeleteRoute(
 			return nil, err
 		}
 	} else {
-		routes, err := GetNodeRoutes(tx, &node)
+		routes, err = GetNodeRoutes(tx, &node)
 		if err != nil {
 			return nil, err
 		}
@@ -261,8 +261,8 @@ func DeleteRoute(
 	if update == nil {
 		update = &types.StateUpdate{
 			Type: types.StatePeerChanged,
-			ChangeNodes: types.Nodes{
-				&node,
+			ChangeNodes: []types.NodeID{
+				node.ID,
 			},
 			Message: "called from db.DeleteRoute",
 		}
@@ -427,7 +427,7 @@ func EnsureFailoverRouteIsAvailable(
 		return nil, nil
 	}
 
-	var changedNodes types.Nodes
+	var changedNodes []types.NodeID
 	for _, nodeRoute := range nodeRoutes {
 		routes, err := getRoutesByPrefix(tx, netip.Prefix(nodeRoute.Prefix))
 		if err != nil {
@@ -485,14 +485,14 @@ func failoverRouteReturnUpdate(
 		return nil, nil
 	}
 
-	var nodes types.Nodes
+	var nodes []types.NodeID
 	for _, key := range changedKeys {
 		node, err := GetNodeByMachineKey(tx, key)
 		if err != nil {
 			return nil, err
 		}
 
-		nodes = append(nodes, node)
+		nodes = append(nodes, node.ID)
 	}
 
 	return &types.StateUpdate{
@@ -599,8 +599,8 @@ func failoverRoute(
 func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
 	aclPolicy *policy.ACLPolicy,
 	node *types.Node,
-) (*types.StateUpdate, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
+) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
 		return EnableAutoApprovedRoutes(tx, aclPolicy, node)
 	})
 }
@@ -610,9 +610,9 @@ func EnableAutoApprovedRoutes(
 	tx *gorm.DB,
 	aclPolicy *policy.ACLPolicy,
 	node *types.Node,
-) (*types.StateUpdate, error) {
+) error {
 	if len(node.IPAddresses) == 0 {
-		return nil, nil // This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
+		return nil // This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
 	routes, err := GetNodeAdvertisedRoutes(tx, node)
@@ -623,7 +623,7 @@ func EnableAutoApprovedRoutes(
 			Str("node", node.Hostname).
 			Msg("Could not get advertised routes for node")
 
-		return nil, err
+		return err
 	}
 
 	log.Trace().Interface("routes", routes).Msg("routes for autoapproving")
@@ -644,7 +644,7 @@ func EnableAutoApprovedRoutes(
 				Uint64("nodeId", node.ID.Uint64()).
 				Msg("Failed to resolve autoApprovers for advertised route")
 
-			return nil, err
+			return err
 		}
 
 		log.Trace().
@@ -665,7 +665,7 @@ func EnableAutoApprovedRoutes(
 						Str("alias", approvedAlias).
 						Msg("Failed to expand alias when processing autoApprovers policy")
 
-					return nil, err
+					return err
 				}
 
 				// approvedIPs should contain all of node's IPs if it matches the rule, so check for first
@@ -676,25 +676,17 @@ func EnableAutoApprovedRoutes(
 		}
 	}
 
-	update := &types.StateUpdate{
-		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{},
-		Message:     "created in db.EnableAutoApprovedRoutes",
-	}
-
 	for _, approvedRoute := range approvedRoutes {
-		perHostUpdate, err := EnableRoute(tx, uint64(approvedRoute.ID))
+		_, err := EnableRoute(tx, uint64(approvedRoute.ID))
 		if err != nil {
 			log.Err(err).
 				Str("approvedRoute", approvedRoute.String()).
 				Uint64("nodeId", node.ID.Uint64()).
 				Msg("Failed to enable approved route")
 
-			return nil, err
+			return err
 		}
-
-		update.ChangeNodes = append(update.ChangeNodes, perHostUpdate.ChangeNodes...)
 	}
 
-	return update, nil
+	return nil
 }

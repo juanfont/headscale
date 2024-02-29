@@ -601,7 +601,7 @@ func enableRoutes(tx *gorm.DB,
 
 	return &types.StateUpdate{
 		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{node},
+		ChangeNodes: []types.NodeID{node.ID},
 		Message:     "created in db.enableRoutes",
 	}, nil
 }

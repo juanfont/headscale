@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -279,7 +280,7 @@ func (m *Mapper) DERPMapResponse(
 func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	changed types.Nodes,
+	changed []types.NodeID,
 	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
@@ -290,13 +291,20 @@ func (m *Mapper) PeerChangedResponse(
 		return nil, err
 	}
 
+	changedNodes := make(types.Nodes, 0, len(changed))
+	for _, peer := range peers {
+		if slices.Contains(changed, peer.ID) {
+			changedNodes = append(changedNodes, peer)
+		}
+	}
+
 	err = appendPeerChanges(
 		&resp,
 		pol,
 		node,
 		mapRequest.Version,
 		peers,
-		changed,
+		changedNodes,
 		m.cfg,
 	)
 	if err != nil {
@@ -365,8 +373,6 @@ func (m *Mapper) marshalMapResponse(
 			responseType = "full"
 		case isSelfUpdate(messages...):
 			responseType = "self"
-		case resp.Peers == nil && resp.PeersChanged == nil && resp.PeersChangedPatch == nil:
-			responseType = "lite"
 		case resp.PeersChanged != nil && len(resp.PeersChanged) > 0:
 			responseType = "changed"
 		case resp.PeersChangedPatch != nil && len(resp.PeersChangedPatch) > 0:

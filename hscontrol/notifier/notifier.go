@@ -3,11 +3,11 @@ package notifier
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/types/key"
 )
@@ -76,6 +76,12 @@ func (n *Notifier) IsConnected(machineKey key.MachinePublic) bool {
 	return n.connected[machineKey]
 }
 
+// IsLikelyConnected reports if a node is connected to headscale and has a
+// poll session open, but doesnt lock, so might be wrong.
+func (n *Notifier) IsLikelyConnected(machineKey key.MachinePublic) bool {
+	return n.connected[machineKey]
+}
+
 // TODO(kradalby): This returns a pointer and can be dangerous.
 func (n *Notifier) ConnectedMap() map[key.MachinePublic]bool {
 	return n.connected
@@ -90,17 +96,17 @@ func (n *Notifier) NotifyWithIgnore(
 	update types.StateUpdate,
 	ignore ...string,
 ) {
-	log.Trace().Caller().Interface("type", update.Type).Msg("acquiring lock to notify")
+	log.Trace().Caller().Str("type", update.Type.String()).Msg("acquiring lock to notify")
 	defer log.Trace().
 		Caller().
-		Interface("type", update.Type).
+		Str("type", update.Type.String()).
 		Msg("releasing lock, finished notifying")
 
 	n.l.RLock()
 	defer n.l.RUnlock()
 
 	for key, c := range n.nodes {
-		if util.IsStringInSlice(ignore, key) {
+		if slices.Contains(ignore, key) {
 			continue
 		}
 
@@ -129,10 +135,10 @@ func (n *Notifier) NotifyByMachineKey(
 	update types.StateUpdate,
 	mKey key.MachinePublic,
 ) {
-	log.Trace().Caller().Interface("type", update.Type).Msg("acquiring lock to notify")
+	log.Trace().Caller().Str("type", update.Type.String()).Msg("acquiring lock to notify")
 	defer log.Trace().
 		Caller().
-		Interface("type", update.Type).
+		Str("type", update.Type.String()).
 		Msg("releasing lock, finished notifying")
 
 	n.l.RLock()

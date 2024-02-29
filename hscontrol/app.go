@@ -217,7 +217,7 @@ func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 			continue
 		}
 
-		if changed && update.Valid() {
+		if changed {
 			ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
 			h.nodeNotifier.NotifyAll(ctx, update)
 		}
@@ -244,8 +244,8 @@ func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 			continue
 		}
 
-		log.Trace().Str("nodes", update.ChangeNodes.String()).Msgf("expiring nodes")
-		if changed && update.Valid() {
+		log.Trace().Interface("nodes", update.ChangeNodes).Msgf("expiring nodes")
+		if changed {
 			ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
 			h.nodeNotifier.NotifyAll(ctx, update)
 		}
@@ -273,14 +273,11 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 				h.DERPMap.Regions[region.RegionID] = &region
 			}
 
-			stateUpdate := types.StateUpdate{
+			ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 				Type:    types.StateDERPUpdated,
 				DERPMap: h.DERPMap,
-			}
-			if stateUpdate.Valid() {
-				ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
-				h.nodeNotifier.NotifyAll(ctx, stateUpdate)
-			}
+			})
 		}
 	}
 }

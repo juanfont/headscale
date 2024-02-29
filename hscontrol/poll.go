@@ -1,10 +1,13 @@
 package hscontrol
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"net/netip"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -117,6 +120,14 @@ func (m *mapSession) flush200() {
 //
 //nolint:gocyclo
 func (m *mapSession) serve() {
+	// Register with the notifier if this is a streaming
+	// session
+	if m.isStreaming() {
+		defer m.h.nodeNotifier.RemoveNode(m.node.MachineKey)
+
+		m.h.nodeNotifier.AddNode(m.node.MachineKey, m.ch)
+	}
+
 	// TODO(kradalby): A set todos to harden:
 	// - func to tell the stream to die, readonly -> false, !stream && omitpeers -> false, true
 
@@ -167,18 +178,6 @@ func (m *mapSession) serve() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	// update ACLRules with peer informations (to update server tags if necessary)
-	if m.h.ACLPolicy != nil {
-		// update routes with peer information
-		// This state update is ignored as it will be sent
-		// as part of the whole node
-		// TODO(kradalby): figure out if that is actually correct
-		_, err := m.h.db.EnableAutoApprovedRoutes(m.h.ACLPolicy, m.node)
-		if err != nil {
-			m.errf(err, "Error running auto approved routes")
-		}
-	}
-
 	m.tracef("Sending initial map")
 
 	mapResp, err := m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy)
@@ -203,18 +202,17 @@ func (m *mapSession) serve() {
 		return
 	}
 
-	stateUpdate := types.StateUpdate{
-		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{m.node},
-		Message:     "called from handlePoll -> new node added",
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(context.Background(), "poll-newnode-peers", m.node.Hostname)
-		m.h.nodeNotifier.NotifyWithIgnore(
-			ctx,
-			stateUpdate,
-			m.node.MachineKey.String())
-	}
+	// TODO(kradalby): I think it would make more sense to tell people when the node
+	// registers than connects, thats more of a "is online" update.
+	// ctx := types.NotifyCtx(context.Background(), "poll-connected-node-peers", m.node.Hostname)
+	// m.h.nodeNotifier.NotifyWithIgnore(
+	// 	ctx,
+	// 	types.StateUpdate{
+	// 		Type:        types.StatePeerChanged,
+	// 		ChangeNodes: []types.NodeID{m.node.ID},
+	// 		Message:     "called from handlePoll -> node (re)connected",
+	// 	},
+	// 	m.node.MachineKey.String())
 
 	if len(m.node.Routes) > 0 {
 		go m.pollFailoverRoutes("new node", m.node)
@@ -226,17 +224,17 @@ func (m *mapSession) serve() {
 	defer cancel()
 
 	for {
-		m.tracef("Waiting for update on stream channel")
+		m.tracef("waiting for update on stream channel")
 		select {
 		case update := <-m.ch:
-			m.tracef("Received update")
+			m.tracef("received stream update: %d %s", update.Type, update.Message)
 			var data []byte
 			var err error
 
 			// Ensure the node object is updated, for example, there
 			// might have been a hostinfo update in a sidechannel
 			// which contains data needed to generate a map response.
-			m.node, err = m.h.db.GetNodeByMachineKey(m.node.MachineKey)
+			m.node, err = m.h.db.GetNodeByID(m.node.ID)
 			if err != nil {
 				m.errf(err, "Could not get machine from db")
 
@@ -247,11 +245,9 @@ func (m *mapSession) serve() {
 			switch update.Type {
 			case types.StateFullUpdate:
 				m.tracef("Sending Full MapResponse")
-
 				data, err = m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy)
 			case types.StatePeerChanged:
 				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
-
 				data, err = m.mapper.PeerChangedResponse(m.req, m.node, update.ChangeNodes, m.h.ACLPolicy, update.Message)
 			case types.StatePeerChangedPatch:
 				m.tracef("Sending PeerChangedPatch MapResponse")
@@ -262,7 +258,12 @@ func (m *mapSession) serve() {
 			case types.StateSelfUpdate:
 				if len(update.ChangeNodes) == 1 {
 					m.tracef("Sending SelfUpdate MapResponse")
-					m.node = update.ChangeNodes[0]
+					m.node, err = m.h.db.GetNodeByID(m.node.ID)
+					if err != nil {
+						m.errf(err, "could not update node from db for selfupdate")
+
+						return
+					}
 					data, err = m.mapper.ReadOnlyMapResponse(m.req, m.node, m.h.ACLPolicy, types.SelfUpdateIdentifier)
 				} else {
 					m.warnf("SelfUpdate contained too many nodes, this is likely a bug in the code, please report.")
@@ -361,7 +362,7 @@ func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
 		return
 	}
 
-	if update != nil && !update.Empty() && update.Valid() {
+	if update != nil && !update.Empty() {
 		ctx := types.NotifyCtx(context.Background(), fmt.Sprintf("poll-%s-routes-ensurefailover", strings.ReplaceAll(where, " ", "-")), node.Hostname)
 		m.h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.MachineKey.String())
 	}
@@ -375,7 +376,8 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 
 	node.LastSeen = &now
 
-	statusUpdate := types.StateUpdate{
+	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
+	h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
 		Type: types.StatePeerChangedPatch,
 		ChangePatches: []*tailcfg.PeerChange{
 			{
@@ -384,11 +386,7 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 				LastSeen: &now,
 			},
 		},
-	}
-	if statusUpdate.Valid() {
-		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
-		h.nodeNotifier.NotifyWithIgnore(ctx, statusUpdate, node.MachineKey.String())
-	}
+	}, node.MachineKey.String())
 
 	err := h.db.DB.Transaction(func(tx *gorm.DB) error {
 		return db.UpdateLastSeen(tx, node.ID, *node.LastSeen)
@@ -411,115 +409,64 @@ func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](ch
 }
 
 func (m *mapSession) handleEndpointUpdate() {
-	m.infof("Received update")
+	m.tracef("received endpoint update")
 
 	change := m.node.PeerChangeFromMapRequest(m.req)
 
-	online := m.h.nodeNotifier.IsConnected(m.node.MachineKey)
+	online := m.h.nodeNotifier.IsLikelyConnected(m.node.MachineKey)
 	change.Online = &online
 
 	m.node.ApplyPeerChange(&change)
 
-	hostInfoChange := m.node.Hostinfo.Equal(m.req.Hostinfo)
+	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
+	m.node.Hostinfo = m.req.Hostinfo
 
-	logTracePeerChange(m.node.Hostname, hostInfoChange, &change)
+	logTracePeerChange(m.node.Hostname, sendUpdate, &change)
+
+	// If there is no changes and nothing to save,
+	// return early.
+	if peerChangeEmpty(change) && !sendUpdate {
+		return
+	}
 
 	// Check if the Hostinfo of the node has changed.
-	// If it has changed, check if there has been a change tod
+	// If it has changed, check if there has been a change to
 	// the routable IPs of the host and update update them in
 	// the database. Then send a Changed update
 	// (containing the whole node object) to peers to inform about
 	// the route change.
 	// If the hostinfo has changed, but not the routes, just update
 	// hostinfo and let the function continue.
-	if !hostInfoChange {
-		oldRoutes := m.node.Hostinfo.RoutableIPs
-		newRoutes := m.req.Hostinfo.RoutableIPs
-
-		oldServicesCount := len(m.node.Hostinfo.Services)
-		newServicesCount := len(m.req.Hostinfo.Services)
-
-		m.node.Hostinfo = m.req.Hostinfo
-
-		sendUpdate := false
-
-		// Route changes come as part of Hostinfo, which means that
-		// when an update comes, the Node Route logic need to run.
-		// This will require a "change" in comparison to a "patch",
-		// which is more costly.
-		if !xslices.Equal(oldRoutes, newRoutes) {
-			var err error
-			sendUpdate, err = m.h.db.SaveNodeRoutes(m.node)
-			if err != nil {
-				m.errf(err, "Error processing node routes")
-				http.Error(m.w, "", http.StatusInternalServerError)
-
-				return
-			}
-
-			if m.h.ACLPolicy != nil {
-				// update routes with peer information
-				update, err := m.h.db.EnableAutoApprovedRoutes(m.h.ACLPolicy, m.node)
-				if err != nil {
-					m.errf(err, "Error running auto approved routes")
-				}
-
-				if update != nil {
-					sendUpdate = true
-				}
-			}
-		}
-
-		// Services is mostly useful for discovery and not critical,
-		// except for peerapi, which is how nodes talk to eachother.
-		// If peerapi was not part of the initial mapresponse, we
-		// need to make sure its sent out later as it is needed for
-		// Taildrop.
-		// TODO(kradalby): Length comparison is a bit naive, replace.
-		if oldServicesCount != newServicesCount {
-			sendUpdate = true
-		}
-
-		if sendUpdate {
-			if err := m.h.db.DB.Save(m.node).Error; err != nil {
-				m.errf(err, "Failed to persist/update node in the database")
-				http.Error(m.w, "", http.StatusInternalServerError)
-
-				return
-			}
-
-			// Send an update to all peers to propagate the new routes
-			// available.
-			stateUpdate := types.StateUpdate{
-				Type:        types.StatePeerChanged,
-				ChangeNodes: types.Nodes{m.node},
-				Message:     "called from handlePoll -> update -> new hostinfo",
-			}
-			if stateUpdate.Valid() {
-				ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-hostinfochange", m.node.Hostname)
-				m.h.nodeNotifier.NotifyWithIgnore(
-					ctx,
-					stateUpdate,
-					m.node.MachineKey.String())
-			}
-
-			// Send an update to the node itself with to ensure it
-			// has an updated packetfilter allowing the new route
-			// if it is defined in the ACL.
-			selfUpdate := types.StateUpdate{
-				Type:        types.StateSelfUpdate,
-				ChangeNodes: types.Nodes{m.node},
-			}
-			if selfUpdate.Valid() {
-				ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
-				m.h.nodeNotifier.NotifyByMachineKey(
-					ctx,
-					selfUpdate,
-					m.node.MachineKey)
-			}
+	if routesChanged {
+		var err error
+		_, err = m.h.db.SaveNodeRoutes(m.node)
+		if err != nil {
+			m.errf(err, "Error processing node routes")
+			http.Error(m.w, "", http.StatusInternalServerError)
 
 			return
 		}
+
+		if m.h.ACLPolicy != nil {
+			// update routes with peer information
+			err := m.h.db.EnableAutoApprovedRoutes(m.h.ACLPolicy, m.node)
+			if err != nil {
+				m.errf(err, "Error running auto approved routes")
+			}
+		}
+
+		// Send an update to the node itself with to ensure it
+		// has an updated packetfilter allowing the new route
+		// if it is defined in the ACL.
+		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
+		m.h.nodeNotifier.NotifyByMachineKey(
+			ctx,
+			types.StateUpdate{
+				Type:        types.StateSelfUpdate,
+				ChangeNodes: []types.NodeID{m.node.ID},
+			},
+			m.node.MachineKey)
+
 	}
 
 	if err := m.h.db.DB.Save(m.node).Error; err != nil {
@@ -529,24 +476,29 @@ func (m *mapSession) handleEndpointUpdate() {
 		return
 	}
 
-	stateUpdate := types.StateUpdate{
-		Type:          types.StatePeerChangedPatch,
-		ChangePatches: []*tailcfg.PeerChange{&change},
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", m.node.Hostname)
-		m.h.nodeNotifier.NotifyWithIgnore(
-			ctx,
-			stateUpdate,
-			m.node.MachineKey.String())
-	}
+	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", m.node.Hostname)
+	m.h.nodeNotifier.NotifyWithIgnore(
+		ctx,
+		types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: []types.NodeID{m.node.ID},
+			Message:     "called from handlePoll -> update",
+		},
+		m.node.MachineKey.String())
 
 	m.flush200()
 
 	return
 }
 
+// handleSaveNode saves node updates in the maprequest _streaming_
+// path and is mostly the same code as in handleEndpointUpdate.
+// It is not attempted to be deduplicated since it will go away
+// when we stop supporting older than 68 which removes updates
+// when the node is streaming.
 func (m *mapSession) handleSaveNode() error {
+	m.tracef("saving node update from stream session")
+
 	change := m.node.PeerChangeFromMapRequest(m.req)
 
 	// A stream is being set up, the node is Online
@@ -555,29 +507,40 @@ func (m *mapSession) handleSaveNode() error {
 
 	m.node.ApplyPeerChange(&change)
 
-	// Only save HostInfo if changed, update routes if changed
-	// TODO(kradalby): Remove when capver is over 68
-	if !m.node.Hostinfo.Equal(m.req.Hostinfo) {
-		oldRoutes := m.node.Hostinfo.RoutableIPs
-		newRoutes := m.req.Hostinfo.RoutableIPs
+	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
+	m.node.Hostinfo = m.req.Hostinfo
 
-		m.node.Hostinfo = m.req.Hostinfo
+	// If there is no changes and nothing to save,
+	// return early.
+	if peerChangeEmpty(change) || !sendUpdate {
+		return nil
+	}
 
-		if !xslices.Equal(oldRoutes, newRoutes) {
-			_, err := m.h.db.SaveNodeRoutes(m.node)
+	// Check if the Hostinfo of the node has changed.
+	// If it has changed, check if there has been a change to
+	// the routable IPs of the host and update update them in
+	// the database. Then send a Changed update
+	// (containing the whole node object) to peers to inform about
+	// the route change.
+	// If the hostinfo has changed, but not the routes, just update
+	// hostinfo and let the function continue.
+	if routesChanged {
+		var err error
+		_, err = m.h.db.SaveNodeRoutes(m.node)
+		if err != nil {
+			return err
+		}
+
+		if m.h.ACLPolicy != nil {
+			// update routes with peer information
+			err := m.h.db.EnableAutoApprovedRoutes(m.h.ACLPolicy, m.node)
 			if err != nil {
-				m.errf(err, "Error processing node routes")
-				http.Error(m.w, "", http.StatusInternalServerError)
-
 				return err
 			}
 		}
 	}
 
 	if err := m.h.db.DB.Save(m.node).Error; err != nil {
-		m.errf(err, "Failed to persist/update node in the database")
-		http.Error(m.w, "", http.StatusInternalServerError)
-
 		return err
 	}
 
@@ -640,6 +603,16 @@ func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.Pe
 	trace.Time("last_seen", *change.LastSeen).Msg("PeerChange received")
 }
 
+func peerChangeEmpty(chng tailcfg.PeerChange) bool {
+	return chng.Key == nil &&
+		chng.DiscoKey == nil &&
+		chng.Online == nil &&
+		chng.Endpoints == nil &&
+		chng.DERPRegion == 0 &&
+		chng.LastSeen == nil &&
+		chng.KeyExpiry == nil
+}
+
 func logPollFunc(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
@@ -652,7 +625,7 @@ func logPollFunc(
 				Bool("stream", mapRequest.Stream).
 				Str("node_key", node.NodeKey.ShortString()).
 				Str("node", node.Hostname).
-				Msgf(msg, a)
+				Msgf(msg, a...)
 		},
 		func(msg string, a ...any) {
 			log.Info().
@@ -662,7 +635,7 @@ func logPollFunc(
 				Bool("stream", mapRequest.Stream).
 				Str("node_key", node.NodeKey.ShortString()).
 				Str("node", node.Hostname).
-				Msgf(msg, a)
+				Msgf(msg, a...)
 		},
 		func(msg string, a ...any) {
 			log.Trace().
@@ -672,7 +645,7 @@ func logPollFunc(
 				Bool("stream", mapRequest.Stream).
 				Str("node_key", node.NodeKey.ShortString()).
 				Str("node", node.Hostname).
-				Msgf(msg, a)
+				Msgf(msg, a...)
 		},
 		func(err error, msg string, a ...any) {
 			log.Error().
@@ -683,6 +656,60 @@ func logPollFunc(
 				Str("node_key", node.NodeKey.ShortString()).
 				Str("node", node.Hostname).
 				Err(err).
-				Msgf(msg, a)
+				Msgf(msg, a...)
 		}
+}
+
+// hostInfoChanged reports if hostInfo has changed in two ways,
+// - first bool reports if an update needs to be sent to nodes
+// - second reports if there has been changes to routes
+// the caller can then use this info to save and update nodes
+// and routes as needed.
+func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
+	if old.Equal(new) {
+		return false, false
+	}
+
+	// Routes
+	oldRoutes := old.RoutableIPs
+	newRoutes := new.RoutableIPs
+
+	sort.Slice(oldRoutes, func(i, j int) bool {
+		return comparePrefix(oldRoutes[i], oldRoutes[j]) > 0
+	})
+	sort.Slice(newRoutes, func(i, j int) bool {
+		return comparePrefix(newRoutes[i], newRoutes[j]) > 0
+	})
+
+	if !xslices.Equal(oldRoutes, newRoutes) {
+		return true, true
+	}
+
+	// Services is mostly useful for discovery and not critical,
+	// except for peerapi, which is how nodes talk to eachother.
+	// If peerapi was not part of the initial mapresponse, we
+	// need to make sure its sent out later as it is needed for
+	// Taildrop.
+	// TODO(kradalby): Length comparison is a bit naive, replace.
+	if len(old.Services) != len(new.Services) {
+		return true, false
+	}
+
+	return false, false
+}
+
+// TODO(kradalby): Remove after go 1.23, will be in stdlib.
+// Compare returns an integer comparing two prefixes.
+// The result will be 0 if p == p2, -1 if p < p2, and +1 if p > p2.
+// Prefixes sort first by validity (invalid before valid), then
+// address family (IPv4 before IPv6), then prefix length, then
+// address.
+func comparePrefix(p, p2 netip.Prefix) int {
+	if c := cmp.Compare(p.Addr().BitLen(), p2.Addr().BitLen()); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(p.Bits(), p2.Bits()); c != 0 {
+		return c
+	}
+	return p.Addr().Compare(p2.Addr())
 }

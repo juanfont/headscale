@@ -261,15 +261,12 @@ func (api headscaleV1APIServer) SetTags(
 		}, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	stateUpdate := types.StateUpdate{
+	ctx = types.NotifyCtx(ctx, "cli-settags", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
 		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{node},
+		ChangeNodes: []types.NodeID{node.ID},
 		Message:     "called from api.SetTags",
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-settags", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
+	}, node.MachineKey.String())
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -309,14 +306,11 @@ func (api headscaleV1APIServer) DeleteNode(
 		return nil, err
 	}
 
-	stateUpdate := types.StateUpdate{
+	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
+	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 		Type:    types.StatePeerRemoved,
 		Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, stateUpdate)
-	}
+	})
 
 	return &v1.DeleteNodeResponse{}, nil
 }
@@ -340,23 +334,17 @@ func (api headscaleV1APIServer) ExpireNode(
 		return nil, err
 	}
 
-	selfUpdate := types.StateUpdate{
-		Type:        types.StateSelfUpdate,
-		ChangeNodes: types.Nodes{node},
-	}
-	if selfUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
-		api.h.nodeNotifier.NotifyByMachineKey(
-			ctx,
-			selfUpdate,
-			node.MachineKey)
-	}
+	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
+	api.h.nodeNotifier.NotifyByMachineKey(
+		ctx,
+		types.StateUpdate{
+			Type:        types.StateSelfUpdate,
+			ChangeNodes: []types.NodeID{node.ID},
+		},
+		node.MachineKey)
 
-	stateUpdate := types.StateUpdateExpire(node.ID, now)
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
+	ctx = types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.MachineKey.String())
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -386,15 +374,12 @@ func (api headscaleV1APIServer) RenameNode(
 		return nil, err
 	}
 
-	stateUpdate := types.StateUpdate{
+	ctx = types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
 		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{node},
+		ChangeNodes: []types.NodeID{node.ID},
 		Message:     "called from api.RenameNode",
-	}
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
+	}, node.MachineKey.String())
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -503,7 +488,7 @@ func (api headscaleV1APIServer) EnableRoute(
 		return nil, err
 	}
 
-	if update != nil && update.Valid() {
+	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-enableroute", "unknown")
 		api.h.nodeNotifier.NotifyAll(
 			ctx, *update)
@@ -524,7 +509,7 @@ func (api headscaleV1APIServer) DisableRoute(
 		return nil, err
 	}
 
-	if update != nil && update.Valid() {
+	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-disableroute", "unknown")
 		api.h.nodeNotifier.NotifyAll(ctx, *update)
 	}
@@ -563,7 +548,7 @@ func (api headscaleV1APIServer) DeleteRoute(
 		return nil, err
 	}
 
-	if update != nil && update.Valid() {
+	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-deleteroute", "unknown")
 		api.h.nodeNotifier.NotifyWithIgnore(ctx, *update)
 	}
