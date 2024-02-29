@@ -356,6 +356,9 @@ func (pol *ACLPolicy) generateSSHRules(
 				recs = append(recs, netip.AddrPortFrom(rec.Addr(), 80))
 			}
 		}
+		if len(recs) > 0 {
+			action.Message = "# This session is being recorded.\n"
+		}
 		action.Recorders = recs
 
 		if sshACL.EnforceRecorder {
