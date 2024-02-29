@@ -174,6 +174,9 @@ func (m *mapSession) serve() {
 		}
 	}
 
+	// TODO(kradalby): I think it would make more sense to tell people when the node
+	// registers than connects, thats more of a "is online" update.
+
 	// Set up the client stream
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
@@ -201,18 +204,6 @@ func (m *mapSession) serve() {
 	} else {
 		return
 	}
-
-	// TODO(kradalby): I think it would make more sense to tell people when the node
-	// registers than connects, thats more of a "is online" update.
-	// ctx := types.NotifyCtx(context.Background(), "poll-connected-node-peers", m.node.Hostname)
-	// m.h.nodeNotifier.NotifyWithIgnore(
-	// 	ctx,
-	// 	types.StateUpdate{
-	// 		Type:        types.StatePeerChanged,
-	// 		ChangeNodes: []types.NodeID{m.node.ID},
-	// 		Message:     "called from handlePoll -> node (re)connected",
-	// 	},
-	// 	m.node.MachineKey.String())
 
 	if len(m.node.Routes) > 0 {
 		go m.pollFailoverRoutes("new node", m.node)
@@ -543,6 +534,16 @@ func (m *mapSession) handleSaveNode() error {
 	if err := m.h.db.DB.Save(m.node).Error; err != nil {
 		return err
 	}
+
+	ctx := types.NotifyCtx(context.Background(), "pre-68-update-while-stream", m.node.Hostname)
+	m.h.nodeNotifier.NotifyWithIgnore(
+		ctx,
+		types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: []types.NodeID{m.node.ID},
+			Message:     "called from handlePoll -> pre-68-update-while-stream",
+		},
+		m.node.MachineKey.String())
 
 	return nil
 }
