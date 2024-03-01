@@ -317,7 +317,14 @@ func NewHeadscaleDatabase(
 				// no longer used.
 				ID: "202402151347",
 				Migrate: func(tx *gorm.DB) error {
-					return tx.Migrator().DropColumn(&types.Node{}, "last_successful_update")
+					err := tx.Migrator().DropColumn(&types.Node{}, "last_successful_update")
+					if err != nil && strings.Contains(err.Error(), `of relation "nodes" does not exist`) {
+						return nil
+					} else {
+						return err
+					}
+
+					return err
 				},
 				Rollback: func(tx *gorm.DB) error {
 					return nil
