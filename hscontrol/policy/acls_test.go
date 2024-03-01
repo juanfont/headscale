@@ -2882,7 +2882,7 @@ func TestSSHRules(t *testing.T) {
 		node  types.Node
 		peers types.Nodes
 		pol   ACLPolicy
-		want  []*tailcfg.SSHRule
+		want  *tailcfg.SSHPolicy
 	}{
 		{
 			name: "peers-can-connect",
@@ -2945,7 +2945,7 @@ func TestSSHRules(t *testing.T) {
 					},
 				},
 			},
-			want: []*tailcfg.SSHRule{
+			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{
 						{
@@ -2990,7 +2990,7 @@ func TestSSHRules(t *testing.T) {
 					},
 					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
 				},
-			},
+			}},
 		},
 		{
 			name: "peers-cannot-connect",
@@ -3041,7 +3041,7 @@ func TestSSHRules(t *testing.T) {
 					},
 				},
 			},
-			want: []*tailcfg.SSHRule{},
+			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 		},
 	}
 
