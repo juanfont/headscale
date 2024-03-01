@@ -276,7 +276,7 @@ func TestFailoverRoute(t *testing.T) {
 		name         string
 		failingRoute types.Route
 		routes       types.Routes
-		isConnected  map[types.NodeID]bool
+		isConnected  types.NodeConnectedMap
 		want         []types.NodeID
 		wantErr      bool
 	}{
@@ -379,7 +379,7 @@ func TestFailoverRoute(t *testing.T) {
 					Enabled:   true,
 				},
 			},
-			isConnected: map[types.NodeID]bool{
+			isConnected: types.NodeConnectedMap{
 				1: false,
 				2: true,
 			},
@@ -477,7 +477,7 @@ func TestFailoverRoute(t *testing.T) {
 					Enabled:   true,
 				},
 			},
-			isConnected: map[types.NodeID]bool{
+			isConnected: types.NodeConnectedMap{
 				1: true,
 				2: true,
 				3: true,
@@ -525,7 +525,7 @@ func TestFailoverRoute(t *testing.T) {
 					Enabled:   true,
 				},
 			},
-			isConnected: map[types.NodeID]bool{
+			isConnected: types.NodeConnectedMap{
 				1: true,
 				4: false,
 			},
@@ -581,7 +581,7 @@ func TestFailoverRoute(t *testing.T) {
 					Enabled:   true,
 				},
 			},
-			isConnected: map[types.NodeID]bool{
+			isConnected: types.NodeConnectedMap{
 				1: false,
 				2: true,
 				4: false,

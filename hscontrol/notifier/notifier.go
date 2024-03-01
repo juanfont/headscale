@@ -14,13 +14,13 @@ import (
 type Notifier struct {
 	l         sync.RWMutex
 	nodes     map[types.NodeID]chan<- types.StateUpdate
-	connected map[types.NodeID]bool
+	connected types.NodeConnectedMap
 }
 
 func NewNotifier() *Notifier {
 	return &Notifier{
 		nodes:     make(map[types.NodeID]chan<- types.StateUpdate),
-		connected: make(map[types.NodeID]bool),
+		connected: make(types.NodeConnectedMap),
 	}
 }
 
@@ -82,7 +82,7 @@ func (n *Notifier) IsLikelyConnected(nodeID types.NodeID) bool {
 }
 
 // TODO(kradalby): This returns a pointer and can be dangerous.
-func (n *Notifier) ConnectedMap() map[types.NodeID]bool {
+func (n *Notifier) ConnectedMap() types.NodeConnectedMap {
 	return n.connected
 }
 

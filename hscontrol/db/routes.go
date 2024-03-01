@@ -123,7 +123,7 @@ func EnableRoute(tx *gorm.DB, id uint64) (*types.StateUpdate, error) {
 
 func DisableRoute(tx *gorm.DB,
 	id uint64,
-	isConnected map[types.NodeID]bool,
+	isConnected types.NodeConnectedMap,
 ) (*types.StateUpdate, error) {
 	route, err := GetRoute(tx, id)
 	if err != nil {
@@ -194,7 +194,7 @@ func DisableRoute(tx *gorm.DB,
 
 func (hsdb *HSDatabase) DeleteRoute(
 	id uint64,
-	isConnected map[types.NodeID]bool,
+	isConnected types.NodeConnectedMap,
 ) (*types.StateUpdate, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
 		return DeleteRoute(tx, id, isConnected)
@@ -204,7 +204,7 @@ func (hsdb *HSDatabase) DeleteRoute(
 func DeleteRoute(
 	tx *gorm.DB,
 	id uint64,
-	isConnected map[types.NodeID]bool,
+	isConnected types.NodeConnectedMap,
 ) (*types.StateUpdate, error) {
 	route, err := GetRoute(tx, id)
 	if err != nil {
@@ -270,7 +270,7 @@ func DeleteRoute(
 	return update, nil
 }
 
-func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isConnected map[types.NodeID]bool) error {
+func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isConnected types.NodeConnectedMap) error {
 	routes, err := GetNodeRoutes(tx, node)
 	if err != nil {
 		return err
@@ -418,7 +418,7 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 // currently have a functioning host that exposes the network.
 func EnsureFailoverRouteIsAvailable(
 	tx *gorm.DB,
-	isConnected map[types.NodeID]bool,
+	isConnected types.NodeConnectedMap,
 	node *types.Node,
 ) (*types.StateUpdate, error) {
 	nodeRoutes, err := GetNodeRoutes(tx, node)
@@ -467,7 +467,7 @@ func EnsureFailoverRouteIsAvailable(
 
 func failoverRouteReturnUpdate(
 	tx *gorm.DB,
-	isConnected map[types.NodeID]bool,
+	isConnected types.NodeConnectedMap,
 	r *types.Route,
 ) (*types.StateUpdate, error) {
 	changedIDs, err := failoverRoute(tx, isConnected, r)
@@ -511,7 +511,7 @@ func failoverRouteReturnUpdate(
 // If the given route was not primary, it returns early.
 func failoverRoute(
 	tx *gorm.DB,
-	isConnected map[types.NodeID]bool,
+	isConnected types.NodeConnectedMap,
 	r *types.Route,
 ) ([]types.NodeID, error) {
 	if r == nil {

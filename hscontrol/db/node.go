@@ -264,7 +264,7 @@ func NodeSetExpiry(tx *gorm.DB,
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry).Error
 }
 
-func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected map[types.NodeID]bool) error {
+func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected types.NodeConnectedMap) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		return DeleteNode(tx, node, isConnected)
 	})
@@ -274,7 +274,7 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected map[types.NodeI
 // Caller is responsible for notifying all of change.
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
-	isConnected map[types.NodeID]bool,
+	isConnected types.NodeConnectedMap,
 ) error {
 	err := deleteNodeRoutes(tx, node, isConnected)
 	if err != nil {

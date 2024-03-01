@@ -59,7 +59,7 @@ type Mapper struct {
 	db                *db.HSDatabase
 	cfg               *types.Config
 	derpMap           *tailcfg.DERPMap
-	isMostlyConnected map[types.NodeID]bool
+	isMostlyConnected types.NodeConnectedMap
 
 	uid     string
 	created time.Time
@@ -75,7 +75,7 @@ func NewMapper(
 	db *db.HSDatabase,
 	cfg *types.Config,
 	derpMap *tailcfg.DERPMap,
-	isMostlyConnected map[types.NodeID]bool,
+	isMostlyConnected types.NodeConnectedMap,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
