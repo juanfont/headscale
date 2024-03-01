@@ -27,7 +27,7 @@ type TailscaleClient interface {
 	Down() error
 	IPs() ([]netip.Addr, error)
 	FQDN() (string, error)
-	Status() (*ipnstate.Status, error)
+	Status(...bool) (*ipnstate.Status, error)
 	Netmap() (*netmap.NetworkMap, error)
 	Netcheck() (*netcheck.Report, error)
 	WaitForNeedsLogin() error

@@ -218,7 +218,7 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 // This test is not suitable for ACL/partial connection tests.
 func assertValidStatus(t *testing.T, client TailscaleClient) {
 	t.Helper()
-	status, err := client.Status()
+	status, err := client.Status(true)
 	if err != nil {
 		t.Fatalf("getting status for %q: %s", client.Hostname(), err)
 	}

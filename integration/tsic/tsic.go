@@ -504,7 +504,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 }
 
 // Status returns the ipnstate.Status of the Tailscale instance.
-func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
+func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 	command := []string{
 		"tailscale",
 		"status",
@@ -520,6 +520,11 @@ func (t *TailscaleInContainer) Status() (*ipnstate.Status, error) {
 	err = json.Unmarshal([]byte(result), &status)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tailscale status: %w", err)
+	}
+
+	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_status.json", t.hostname), []byte(result), 0o755)
+	if err != nil {
+		return nil, fmt.Errorf("status netmap to /tmp/control: %w", err)
 	}
 
 	return &status, err
