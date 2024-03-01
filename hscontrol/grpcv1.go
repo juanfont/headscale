@@ -231,7 +231,7 @@ func (api headscaleV1APIServer) GetNode(
 
 	// Populate the online field based on
 	// currently connected nodes.
-	resp.Online = api.h.nodeNotifier.IsConnected(node.MachineKey)
+	resp.Online = api.h.nodeNotifier.IsConnected(node.ID)
 
 	return &v1.GetNodeResponse{Node: resp}, nil
 }
@@ -266,7 +266,7 @@ func (api headscaleV1APIServer) SetTags(
 		Type:        types.StatePeerChanged,
 		ChangeNodes: []types.NodeID{node.ID},
 		Message:     "called from api.SetTags",
-	}, node.MachineKey.String())
+	}, node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -341,10 +341,10 @@ func (api headscaleV1APIServer) ExpireNode(
 			Type:        types.StateSelfUpdate,
 			ChangeNodes: []types.NodeID{node.ID},
 		},
-		node.MachineKey)
+		node.ID)
 
 	ctx = types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.MachineKey.String())
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -379,7 +379,7 @@ func (api headscaleV1APIServer) RenameNode(
 		Type:        types.StatePeerChanged,
 		ChangeNodes: []types.NodeID{node.ID},
 		Message:     "called from api.RenameNode",
-	}, node.MachineKey.String())
+	}, node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -408,7 +408,7 @@ func (api headscaleV1APIServer) ListNodes(
 
 			// Populate the online field based on
 			// currently connected nodes.
-			resp.Online = isConnected[node.MachineKey]
+			resp.Online = isConnected[node.ID]
 
 			response[index] = resp
 		}
@@ -431,7 +431,7 @@ func (api headscaleV1APIServer) ListNodes(
 
 		// Populate the online field based on
 		// currently connected nodes.
-		resp.Online = isConnected[node.MachineKey]
+		resp.Online = isConnected[node.ID]
 
 		validTags, invalidTags := api.h.ACLPolicy.TagsOfNode(
 			node,

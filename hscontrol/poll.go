@@ -123,9 +123,9 @@ func (m *mapSession) serve() {
 	// Register with the notifier if this is a streaming
 	// session
 	if m.isStreaming() {
-		defer m.h.nodeNotifier.RemoveNode(m.node.MachineKey)
+		defer m.h.nodeNotifier.RemoveNode(m.node.ID)
 
-		m.h.nodeNotifier.AddNode(m.node.MachineKey, m.ch)
+		m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
 	}
 
 	// TODO(kradalby): A set todos to harden:
@@ -355,7 +355,7 @@ func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
 
 	if update != nil && !update.Empty() {
 		ctx := types.NotifyCtx(context.Background(), fmt.Sprintf("poll-%s-routes-ensurefailover", strings.ReplaceAll(where, " ", "-")), node.Hostname)
-		m.h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.MachineKey.String())
+		m.h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.ID)
 	}
 }
 
@@ -377,7 +377,7 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 				LastSeen: &now,
 			},
 		},
-	}, node.MachineKey.String())
+	}, node.ID)
 
 	err := h.db.DB.Transaction(func(tx *gorm.DB) error {
 		return db.UpdateLastSeen(tx, node.ID, *node.LastSeen)
@@ -404,7 +404,7 @@ func (m *mapSession) handleEndpointUpdate() {
 
 	change := m.node.PeerChangeFromMapRequest(m.req)
 
-	online := m.h.nodeNotifier.IsLikelyConnected(m.node.MachineKey)
+	online := m.h.nodeNotifier.IsLikelyConnected(m.node.ID)
 	change.Online = &online
 
 	m.node.ApplyPeerChange(&change)
@@ -456,7 +456,7 @@ func (m *mapSession) handleEndpointUpdate() {
 				Type:        types.StateSelfUpdate,
 				ChangeNodes: []types.NodeID{m.node.ID},
 			},
-			m.node.MachineKey)
+			m.node.ID)
 
 	}
 
@@ -475,7 +475,7 @@ func (m *mapSession) handleEndpointUpdate() {
 			ChangeNodes: []types.NodeID{m.node.ID},
 			Message:     "called from handlePoll -> update",
 		},
-		m.node.MachineKey.String())
+		m.node.ID)
 
 	m.flush200()
 
@@ -543,7 +543,7 @@ func (m *mapSession) handleSaveNode() error {
 			ChangeNodes: []types.NodeID{m.node.ID},
 			Message:     "called from handlePoll -> pre-68-update-while-stream",
 		},
-		m.node.MachineKey.String())
+		m.node.ID)
 
 	return nil
 }

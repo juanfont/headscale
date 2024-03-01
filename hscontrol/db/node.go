@@ -264,7 +264,7 @@ func NodeSetExpiry(tx *gorm.DB,
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry).Error
 }
 
-func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected map[key.MachinePublic]bool) error {
+func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected map[types.NodeID]bool) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		return DeleteNode(tx, node, isConnected)
 	})
@@ -274,9 +274,9 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected map[key.Machine
 // Caller is responsible for notifying all of change.
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
-	isConnected map[key.MachinePublic]bool,
+	isConnected map[types.NodeID]bool,
 ) error {
-	err := deleteNodeRoutes(tx, node, map[key.MachinePublic]bool{})
+	err := deleteNodeRoutes(tx, node, isConnected)
 	if err != nil {
 		return err
 	}
@@ -709,7 +709,7 @@ func ExpireEphemeralNodes(tx *gorm.DB,
 					Msg("Ephemeral client removed from database")
 
 					// empty isConnected map as ephemeral nodes are not routes
-				err = DeleteNode(tx, nodes[idx], map[key.MachinePublic]bool{})
+				err = DeleteNode(tx, nodes[idx], nil)
 				if err != nil {
 					log.Error().
 						Err(err).

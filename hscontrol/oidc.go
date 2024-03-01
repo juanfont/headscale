@@ -538,7 +538,7 @@ func (h *Headscale) validateNodeForOIDCCallback(
 		}
 
 		ctx := types.NotifyCtx(context.Background(), "oidc-expiry", "na")
-		h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, expiry), node.MachineKey.String())
+		h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, expiry), node.ID)
 
 		return nil, true, nil
 	}

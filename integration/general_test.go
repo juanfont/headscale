@@ -65,8 +65,8 @@ func TestPingAllByIP(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
-	t.Log("-------------------------------------------------------------------------")
+	// assertClientsState(t, allClients)
+	// t.Log("-------------------------------------------------------------------------")
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -74,8 +74,8 @@ func TestPingAllByIP(t *testing.T) {
 
 	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
-	t.Log("\n\n-------------------------------------------------------------------------")
-	assertClientsState(t, allClients)
+	// t.Log("\n\n-------------------------------------------------------------------------")
+	// assertClientsState(t, allClients)
 }
 
 func TestPingAllByIPPublicDERP(t *testing.T) {

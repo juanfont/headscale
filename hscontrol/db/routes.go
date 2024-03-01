@@ -8,7 +8,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
-	"tailscale.com/types/key"
 )
 
 var ErrRouteIsNotAvailable = errors.New("route is not available")
@@ -124,7 +123,7 @@ func EnableRoute(tx *gorm.DB, id uint64) (*types.StateUpdate, error) {
 
 func DisableRoute(tx *gorm.DB,
 	id uint64,
-	isConnected map[key.MachinePublic]bool,
+	isConnected map[types.NodeID]bool,
 ) (*types.StateUpdate, error) {
 	route, err := GetRoute(tx, id)
 	if err != nil {
@@ -195,7 +194,7 @@ func DisableRoute(tx *gorm.DB,
 
 func (hsdb *HSDatabase) DeleteRoute(
 	id uint64,
-	isConnected map[key.MachinePublic]bool,
+	isConnected map[types.NodeID]bool,
 ) (*types.StateUpdate, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
 		return DeleteRoute(tx, id, isConnected)
@@ -205,7 +204,7 @@ func (hsdb *HSDatabase) DeleteRoute(
 func DeleteRoute(
 	tx *gorm.DB,
 	id uint64,
-	isConnected map[key.MachinePublic]bool,
+	isConnected map[types.NodeID]bool,
 ) (*types.StateUpdate, error) {
 	route, err := GetRoute(tx, id)
 	if err != nil {
@@ -271,7 +270,7 @@ func DeleteRoute(
 	return update, nil
 }
 
-func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isConnected map[key.MachinePublic]bool) error {
+func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isConnected map[types.NodeID]bool) error {
 	routes, err := GetNodeRoutes(tx, node)
 	if err != nil {
 		return err
@@ -419,7 +418,7 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 // currently have a functioning host that exposes the network.
 func EnsureFailoverRouteIsAvailable(
 	tx *gorm.DB,
-	isConnected map[key.MachinePublic]bool,
+	isConnected map[types.NodeID]bool,
 	node *types.Node,
 ) (*types.StateUpdate, error) {
 	nodeRoutes, err := GetNodeRoutes(tx, node)
@@ -438,7 +437,7 @@ func EnsureFailoverRouteIsAvailable(
 			if route.IsPrimary {
 				// if we have a primary route, and the node is connected
 				// nothing needs to be done.
-				if isConnected[route.Node.MachineKey] {
+				if isConnected[route.Node.ID] {
 					continue
 				}
 
@@ -468,26 +467,26 @@ func EnsureFailoverRouteIsAvailable(
 
 func failoverRouteReturnUpdate(
 	tx *gorm.DB,
-	isConnected map[key.MachinePublic]bool,
+	isConnected map[types.NodeID]bool,
 	r *types.Route,
 ) (*types.StateUpdate, error) {
-	changedKeys, err := failoverRoute(tx, isConnected, r)
+	changedIDs, err := failoverRoute(tx, isConnected, r)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Trace().
 		Interface("isConnected", isConnected).
-		Interface("changedKeys", changedKeys).
+		Interface("changedKeys", changedIDs).
 		Msg("building route failover")
 
-	if len(changedKeys) == 0 {
+	if len(changedIDs) == 0 {
 		return nil, nil
 	}
 
 	var nodes []types.NodeID
-	for _, key := range changedKeys {
-		node, err := GetNodeByMachineKey(tx, key)
+	for _, id := range changedIDs {
+		node, err := GetNodeByID(tx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -512,9 +511,9 @@ func failoverRouteReturnUpdate(
 // If the given route was not primary, it returns early.
 func failoverRoute(
 	tx *gorm.DB,
-	isConnected map[key.MachinePublic]bool,
+	isConnected map[types.NodeID]bool,
 	r *types.Route,
-) ([]key.MachinePublic, error) {
+) ([]types.NodeID, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -547,7 +546,7 @@ func failoverRoute(
 			continue
 		}
 
-		if isConnected[route.Node.MachineKey] {
+		if isConnected != nil && isConnected[route.Node.ID] {
 			newPrimary = &routes[idx]
 			break
 		}
@@ -593,7 +592,7 @@ func failoverRoute(
 		Msg("set primary to new route")
 
 	// Return a list of the machinekeys of the changed nodes.
-	return []key.MachinePublic{r.Node.MachineKey, newPrimary.Node.MachineKey}, nil
+	return []types.NodeID{r.Node.ID, newPrimary.Node.ID}, nil
 }
 
 func (hsdb *HSDatabase) EnableAutoApprovedRoutes(

@@ -30,6 +30,7 @@ var (
 )
 
 type NodeID uint64
+type NodeConnectedMap map[NodeID]bool
 
 func (id NodeID) StableID() tailcfg.StableNodeID {
 	return tailcfg.StableNodeID(strconv.FormatUint(uint64(id), util.Base10))

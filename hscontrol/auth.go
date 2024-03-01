@@ -353,7 +353,7 @@ func (h *Headscale) handleAuthKey(
 		}
 
 		ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
-		h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, registerRequest.Expiry), node.MachineKey.String())
+		h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, registerRequest.Expiry), node.ID)
 	} else {
 		now := time.Now().UTC()
 
@@ -534,7 +534,7 @@ func (h *Headscale) handleNodeLogOut(
 	}
 
 	ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
-	h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.MachineKey.String())
+	h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.ID)
 
 	resp.AuthURL = ""
 	resp.MachineAuthorized = false

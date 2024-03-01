@@ -26,7 +26,6 @@ import (
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
-	"tailscale.com/types/key"
 )
 
 const (
@@ -60,7 +59,7 @@ type Mapper struct {
 	db                *db.HSDatabase
 	cfg               *types.Config
 	derpMap           *tailcfg.DERPMap
-	isMostlyConnected map[key.MachinePublic]bool
+	isMostlyConnected map[types.NodeID]bool
 
 	uid     string
 	created time.Time
@@ -76,7 +75,7 @@ func NewMapper(
 	db *db.HSDatabase,
 	cfg *types.Config,
 	derpMap *tailcfg.DERPMap,
-	isMostlyConnected map[key.MachinePublic]bool,
+	isMostlyConnected map[types.NodeID]bool,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
@@ -504,7 +503,7 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	}
 
 	for _, peer := range peers {
-		online := m.isMostlyConnected[peer.MachineKey]
+		online := m.isMostlyConnected[peer.ID]
 		peer.IsOnline = &online
 	}
 
