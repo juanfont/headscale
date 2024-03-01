@@ -203,6 +203,7 @@ func (m *Mapper) fullMapResponse(
 
 	err = appendPeerChanges(
 		resp,
+		true, // full change
 		pol,
 		node,
 		capVer,
@@ -279,7 +280,7 @@ func (m *Mapper) DERPMapResponse(
 func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	changed []types.NodeID,
+	changed map[types.NodeID]bool,
 	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
@@ -290,15 +291,26 @@ func (m *Mapper) PeerChangedResponse(
 		return nil, err
 	}
 
-	changedNodes := make(types.Nodes, 0, len(changed))
+	var removedIDs []tailcfg.NodeID
+	var changedIDs []types.NodeID
+	for nodeID, nodeChanged := range changed {
+		if nodeChanged {
+			changedIDs = append(changedIDs, nodeID)
+		} else {
+			removedIDs = append(removedIDs, nodeID.NodeID())
+		}
+	}
+
+	changedNodes := make(types.Nodes, 0, len(changedIDs))
 	for _, peer := range peers {
-		if slices.Contains(changed, peer.ID) {
+		if slices.Contains(changedIDs, peer.ID) {
 			changedNodes = append(changedNodes, peer)
 		}
 	}
 
 	err = appendPeerChanges(
 		&resp,
+		false, // partial change
 		pol,
 		node,
 		mapRequest.Version,
@@ -309,6 +321,8 @@ func (m *Mapper) PeerChangedResponse(
 	if err != nil {
 		return nil, err
 	}
+
+	resp.PeersRemoved = removedIDs
 
 	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress, messages...)
 }
@@ -323,20 +337,6 @@ func (m *Mapper) PeerChangedPatchResponse(
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 	resp.PeersChangedPatch = changed
-
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
-}
-
-// TODO(kradalby): We need some integration tests for this.
-func (m *Mapper) PeerRemovedResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	removed []tailcfg.NodeID,
-) ([]byte, error) {
-	resp := m.baseMapResponse()
-
-	// TODO(kradalby): This might panic the client, lets see how it goes
-	resp.PeersRemoved = removed
 
 	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
@@ -525,6 +525,7 @@ func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {
 func appendPeerChanges(
 	resp *tailcfg.MapResponse,
 
+	fullChange bool,
 	pol *policy.ACLPolicy,
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
@@ -532,7 +533,6 @@ func appendPeerChanges(
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
-	fullChange := len(peers) == len(changed)
 
 	packetFilter, err := pol.CompileFilterRules(append(peers, node))
 	if err != nil {
