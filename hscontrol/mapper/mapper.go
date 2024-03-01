@@ -395,11 +395,11 @@ func (m *Mapper) marshalMapResponse(
 			panic(err)
 		}
 
-		now := time.Now().UnixNano()
+		now := time.Now().Format("2006-01-02T15-04-05.999999999")
 
 		mapResponsePath := path.Join(
 			mPath,
-			fmt.Sprintf("%d-%s-%d-%s.json", now, m.uid, atomic.LoadUint64(&m.seq), responseType),
+			fmt.Sprintf("%s-%s-%d-%s.json", now, m.uid, atomic.LoadUint64(&m.seq), responseType),
 		)
 
 		log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
