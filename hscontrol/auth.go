@@ -575,7 +575,7 @@ func (h *Headscale) handleNodeLogOut(
 		ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
 		h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 			Type:    types.StatePeerRemoved,
-			Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
+			Removed: []types.NodeID{node.ID},
 		})
 
 		return

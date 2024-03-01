@@ -66,7 +66,7 @@ func (h *Headscale) newMapSession(
 	// to receive a message to make sure we dont block the entire
 	// notifier.
 	// 12 is arbitrarily chosen.
-	chanSize := 3
+	chanSize := 3000
 	if size, ok := envknob.LookupInt("HEADSCALE_TUNING_POLL_QUEUE_SIZE"); ok {
 		chanSize = size
 	}
@@ -181,30 +181,6 @@ func (m *mapSession) serve() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	m.tracef("Sending initial map")
-
-	mapResp, err := m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy)
-	if err != nil {
-		m.errf(err, "Failed to create MapResponse")
-		http.Error(m.w, "", http.StatusInternalServerError)
-
-		return
-	}
-
-	// Send the client an update to make sure we send an initial mapresponse
-	_, err = m.w.Write(mapResp)
-	if err != nil {
-		m.errf(err, "Could not write the map response")
-
-		return
-	}
-
-	if flusher, ok := m.w.(http.Flusher); ok {
-		flusher.Flush()
-	} else {
-		return
-	}
-
 	if len(m.node.Routes) > 0 {
 		go m.pollFailoverRoutes("new node", m.node)
 	}
@@ -214,14 +190,33 @@ func (m *mapSession) serve() {
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
 	defer cancel()
 
-	for {
-		m.tracef("waiting for update on stream channel")
-		select {
-		case update := <-m.ch:
-			m.tracef("received stream update: %d %s", update.Type, update.Message)
-			var data []byte
-			var err error
+	// TODO(kradalby): Make this available through a tuning envvar
+	wait := time.Second
 
+	// Add a circuit breaker, if the loop is not interrupted
+	// inbetween listening for the channels, some updates
+	// might get stale and stucked in the "changed" map
+	// defined below.
+	blockBreaker := time.NewTicker(wait)
+
+	// true means changed, false means removed
+	var changed map[types.NodeID]bool
+	var derp bool
+
+	// Set full to true to immediatly send a full mapresponse
+	full := true
+	prev := time.Now()
+	lastMessage := ""
+
+	// Loop through updates and continuously send them to the
+	// client.
+	for {
+		var data []byte
+		var err error
+
+		// If a full update has been requested, then send it immediately
+		// otherwise wait for the "batching"
+		if full || (changed != nil && time.Since(prev) > wait) {
 			// Ensure the node object is updated, for example, there
 			// might have been a hostinfo update in a sidechannel
 			// which contains data needed to generate a map response.
@@ -232,69 +227,101 @@ func (m *mapSession) serve() {
 				return
 			}
 
-			startMapResp := time.Now()
-			switch update.Type {
-			case types.StateFullUpdate:
+			if full {
 				m.tracef("Sending Full MapResponse")
 				data, err = m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy)
-			case types.StatePeerChanged:
-				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %s", update.Message))
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, update.ChangeNodes, m.h.ACLPolicy, update.Message)
-			case types.StatePeerChangedPatch:
-				m.tracef("Sending PeerChangedPatch MapResponse")
-				data, err = m.mapper.PeerChangedPatchResponse(m.req, m.node, update.ChangePatches, m.h.ACLPolicy)
-			case types.StatePeerRemoved:
-				m.tracef("Sending PeerRemoved MapResponse")
-				data, err = m.mapper.PeerRemovedResponse(m.req, m.node, update.Removed)
-			case types.StateSelfUpdate:
-				if len(update.ChangeNodes) == 1 {
-					m.tracef("Sending SelfUpdate MapResponse")
-					m.node, err = m.h.db.GetNodeByID(m.node.ID)
-					if err != nil {
-						m.errf(err, "could not update node from db for selfupdate")
-
-						return
-					}
-					data, err = m.mapper.ReadOnlyMapResponse(m.req, m.node, m.h.ACLPolicy, types.SelfUpdateIdentifier)
-				} else {
-					m.warnf("SelfUpdate contained too many nodes, this is likely a bug in the code, please report.")
-				}
-			case types.StateDERPUpdated:
+			} else if derp {
 				m.tracef("Sending DERPUpdate MapResponse")
-				data, err = m.mapper.DERPMapResponse(m.req, m.node, update.DERPMap)
+				data, err = m.mapper.DERPMapResponse(m.req, m.node, m.h.DERPMap)
+			} else {
+				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
+				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, m.h.ACLPolicy, lastMessage)
 			}
 
+			// reset
+			changed = nil
+			lastMessage = ""
+			full = false
+			derp = false
+			prev = time.Now()
+		}
+
+		if err != nil {
+			m.errf(err, "Could not get the create map update")
+
+			return
+		}
+
+		// log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startMapResp).Str("mkey", m.node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished making map response")
+
+		// Only send update if there is change
+		if data != nil {
+			startWrite := time.Now()
+			_, err = m.w.Write(data)
 			if err != nil {
-				m.errf(err, "Could not get the create map update")
+				m.errf(err, "Could not write the map response")
+
+				updateRequestsSentToNode.WithLabelValues(m.node.User.Name, m.node.Hostname, "failed").
+					Inc()
 
 				return
 			}
 
-			log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startMapResp).Str("mkey", m.node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished making map response")
+			if flusher, ok := m.w.(http.Flusher); ok {
+				flusher.Flush()
+			} else {
+				log.Error().Msg("Failed to create http flusher")
 
-			// Only send update if there is change
-			if data != nil {
-				startWrite := time.Now()
-				_, err = m.w.Write(data)
-				if err != nil {
-					m.errf(err, "Could not write the map response")
+				return
+			}
+			log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
 
-					updateRequestsSentToNode.WithLabelValues(m.node.User.Name, m.node.Hostname, "failed").
-						Inc()
+			m.infof("update sent")
+		}
 
-					return
+		// consume channels with update, keep alives or "batch" blocking signals
+		select {
+		// Avoid infinite block that would potentially leave
+		// some updates in the changed map.
+		case <-blockBreaker.C:
+			continue
+
+		// Consume all updates sent to node
+		case update := <-m.ch:
+			m.tracef("received stream update: %d %s", update.Type, update.Message)
+
+			switch update.Type {
+			case types.StateFullUpdate:
+				full = true
+			case types.StatePeerChanged:
+				if changed == nil {
+					changed = make(map[types.NodeID]bool)
 				}
 
-				if flusher, ok := m.w.(http.Flusher); ok {
-					flusher.Flush()
-				} else {
-					log.Error().Msg("Failed to create http flusher")
-
-					return
+				for _, nodeID := range update.ChangeNodes {
+					changed[nodeID] = true
 				}
-				log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished writing mapresp to node")
 
-				m.infof("update sent")
+				lastMessage = update.Message
+			case types.StatePeerChangedPatch:
+				// TODO(kradalby):
+			case types.StatePeerRemoved:
+				if changed == nil {
+					changed = make(map[types.NodeID]bool)
+				}
+
+				for _, nodeID := range update.Removed {
+					changed[nodeID] = false
+				}
+			case types.StateSelfUpdate:
+				// create the map so an empty (self) update is sent
+				if changed == nil {
+					changed = make(map[types.NodeID]bool)
+				}
+
+				lastMessage = update.Message
+			case types.StateDERPUpdated:
+				derp = true
 			}
 
 		case <-keepAliveTicker.C:

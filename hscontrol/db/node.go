@@ -686,7 +686,7 @@ func ExpireEphemeralNodes(tx *gorm.DB,
 		return types.StateUpdate{}, false
 	}
 
-	expired := make([]tailcfg.NodeID, 0)
+	expired := make([]types.NodeID, 0)
 	for _, user := range users {
 		nodes, err := ListNodesByUser(tx, user.Name)
 		if err != nil {
@@ -702,7 +702,7 @@ func ExpireEphemeralNodes(tx *gorm.DB,
 			if node.IsEphemeral() && node.LastSeen != nil &&
 				time.Now().
 					After(node.LastSeen.Add(inactivityThreshhold)) {
-				expired = append(expired, tailcfg.NodeID(node.ID))
+				expired = append(expired, node.ID)
 
 				log.Info().
 					Str("node", node.Hostname).

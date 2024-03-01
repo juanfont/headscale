@@ -146,7 +146,7 @@ type StateUpdate struct {
 	// Removed must be set when Type is StatePeerRemoved and
 	// contain a list of the nodes that has been removed from
 	// the network.
-	Removed []tailcfg.NodeID
+	Removed []NodeID
 
 	// DERPMap must be set when Type is StateDERPUpdated and
 	// contain the new DERP Map.

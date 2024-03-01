@@ -309,7 +309,7 @@ func (api headscaleV1APIServer) DeleteNode(
 	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
 	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 		Type:    types.StatePeerRemoved,
-		Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
+		Removed: []types.NodeID{node.ID},
 	})
 
 	return &v1.DeleteNodeResponse{}, nil
