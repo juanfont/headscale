@@ -69,6 +69,8 @@ type Config struct {
 	CLI CLIConfig
 
 	ACL ACLConfig
+
+	Tuning Tuning
 }
 
 type SqliteConfig struct {
@@ -161,6 +163,11 @@ type LogConfig struct {
 	Level  zerolog.Level
 }
 
+type Tuning struct {
+	BatchChangeDelay               time.Duration
+	NodeMapSessionBufferedChanSize int
+}
+
 func LoadConfig(path string, isFile bool) error {
 	if isFile {
 		viper.SetConfigFile(path)
@@ -219,6 +226,9 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
 	viper.SetDefault("node_update_check_interval", "10s")
+
+	viper.SetDefault("tuning.batch_change_delay", "800ms")
+	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
 
 	if IsCLIConfigured() {
 		return nil
@@ -719,6 +729,12 @@ func GetHeadscaleConfig() (*Config, error) {
 		},
 
 		Log: GetLogConfig(),
+
+		// TODO(kradalby): Document these settings when more stable
+		Tuning: Tuning{
+			BatchChangeDelay:               viper.GetDuration("tuning.batch_change_delay"),
+			NodeMapSessionBufferedChanSize: viper.GetInt("tuning.node_mapsession_buffered_chan_size"),
+		},
 	}, nil
 }
 

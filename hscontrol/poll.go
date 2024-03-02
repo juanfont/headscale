@@ -18,7 +18,6 @@ import (
 	"github.com/rs/zerolog/log"
 	xslices "golang.org/x/exp/slices"
 	"gorm.io/gorm"
-	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 )
 
@@ -65,12 +64,7 @@ func (h *Headscale) newMapSession(
 	// Use a buffered channel in case a node is not fully ready
 	// to receive a message to make sure we dont block the entire
 	// notifier.
-	// 12 is arbitrarily chosen.
-	chanSize := 3000
-	if size, ok := envknob.LookupInt("HEADSCALE_TUNING_POLL_QUEUE_SIZE"); ok {
-		chanSize = size
-	}
-	updateChan := make(chan types.StateUpdate, chanSize)
+	updateChan := make(chan types.StateUpdate, h.cfg.Tuning.NodeMapSessionBufferedChanSize)
 
 	return &mapSession{
 		h:      h,
