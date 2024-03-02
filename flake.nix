@@ -76,6 +76,8 @@
           gotests
           ksh
           ko
+          yq-go
+          ripgrep
 
           # 'dot' is needed for pprof graphs
           # go tool pprof -http=: <source>
