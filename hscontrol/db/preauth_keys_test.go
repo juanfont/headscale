@@ -123,7 +123,41 @@ func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
 	c.Assert(key.ID, check.Equals, pak.ID)
 }
 
-func (*Suite) TestEphemeralKey(c *check.C) {
+func (*Suite) TestEphemeralKeyReusable(c *check.C) {
+	user, err := db.CreateUser("test7")
+	c.Assert(err, check.IsNil)
+
+	pak, err := db.CreatePreAuthKey(user.Name, true, true, nil, nil)
+	c.Assert(err, check.IsNil)
+
+	now := time.Now().Add(-time.Second * 30)
+	node := types.Node{
+		ID:             0,
+		Hostname:       "testest",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		LastSeen:       &now,
+		AuthKeyID:      uint(pak.ID),
+	}
+	db.DB.Save(&node)
+
+	_, err = db.ValidatePreAuthKey(pak.Key)
+	c.Assert(err, check.IsNil)
+
+	_, err = db.getNode("test7", "testest")
+	c.Assert(err, check.IsNil)
+
+	db.DB.Transaction(func(tx *gorm.DB) error {
+		ExpireEphemeralNodes(tx, time.Second*20)
+		return nil
+	})
+
+	// The machine record should have been deleted
+	_, err = db.getNode("test7", "testest")
+	c.Assert(err, check.NotNil)
+}
+
+func (*Suite) TestEphemeralKeyNotReusable(c *check.C) {
 	user, err := db.CreateUser("test7")
 	c.Assert(err, check.IsNil)
 
@@ -142,8 +176,7 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	db.DB.Save(&node)
 
 	_, err = db.ValidatePreAuthKey(pak.Key)
-	// Ephemeral keys are by definition reusable
-	c.Assert(err, check.IsNil)
+	c.Assert(err, check.NotNil)
 
 	_, err = db.getNode("test7", "testest")
 	c.Assert(err, check.IsNil)

@@ -107,13 +107,6 @@ var listPreAuthKeys = &cobra.Command{
 				expiration = ColourTime(key.GetExpiration().AsTime())
 			}
 
-			var reusable string
-			if key.GetEphemeral() {
-				reusable = "N/A"
-			} else {
-				reusable = fmt.Sprintf("%v", key.GetReusable())
-			}
-
 			aclTags := ""
 
 			for _, tag := range key.GetAclTags() {
@@ -125,7 +118,7 @@ var listPreAuthKeys = &cobra.Command{
 			tableData = append(tableData, []string{
 				key.GetId(),
 				key.GetKey(),
-				reusable,
+				strconv.FormatBool(key.GetReusable()),
 				strconv.FormatBool(key.GetEphemeral()),
 				strconv.FormatBool(key.GetUsed()),
 				expiration,
