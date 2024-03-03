@@ -5,11 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+
 jobs:
   add-contributors:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Delete upstream contributor branch
         # Allow continue on failure to account for when the
         # upstream branch is deleted or does not exist.
