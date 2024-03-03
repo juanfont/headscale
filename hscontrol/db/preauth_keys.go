@@ -196,7 +196,7 @@ func ValidatePreAuthKey(tx *gorm.DB, k string) (*types.PreAuthKey, error) {
 		return nil, ErrPreAuthKeyExpired
 	}
 
-	if pak.Reusable || pak.Ephemeral { // we don't need to check if has been used before
+	if pak.Reusable { // we don't need to check if has been used before
 		return &pak, nil
 	}
 
