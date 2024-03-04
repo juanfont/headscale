@@ -48,18 +48,13 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // - Create a "minifier" that removes info not needed for the node
 // - some sort of batching, wait for 5 or 60 seconds before sending
 
-type nodeReq struct {
-	nodeID types.NodeID
-	done   chan<- struct{}
-}
-
 type Mapper struct {
 	// Configuration
 	// TODO(kradalby): figure out if this is the format we want this in
 	db                *db.HSDatabase
 	cfg               *types.Config
 	derpMap           *tailcfg.DERPMap
-	isMostlyConnected types.NodeConnectedMap
+	isLikelyConnected types.NodeConnectedMap
 
 	uid     string
 	created time.Time
@@ -75,7 +70,7 @@ func NewMapper(
 	db *db.HSDatabase,
 	cfg *types.Config,
 	derpMap *tailcfg.DERPMap,
-	isMostlyConnected types.NodeConnectedMap,
+	isLikelyConnected types.NodeConnectedMap,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
@@ -83,7 +78,7 @@ func NewMapper(
 		db:                db,
 		cfg:               cfg,
 		derpMap:           derpMap,
-		isMostlyConnected: isMostlyConnected,
+		isLikelyConnected: isLikelyConnected,
 
 		uid:     uid,
 		created: time.Now(),
@@ -503,7 +498,7 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	}
 
 	for _, peer := range peers {
-		online := m.isMostlyConnected[peer.ID]
+		online := m.isLikelyConnected[peer.ID]
 		peer.IsOnline = &online
 	}
 
