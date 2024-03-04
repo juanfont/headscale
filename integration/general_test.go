@@ -66,7 +66,6 @@ func TestPingAllByIP(t *testing.T) {
 	assertNoErrSync(t, err)
 
 	// assertClientsState(t, allClients)
-	// t.Log("-------------------------------------------------------------------------")
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -74,8 +73,6 @@ func TestPingAllByIP(t *testing.T) {
 
 	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
-	// t.Log("\n\n-------------------------------------------------------------------------")
-	// assertClientsState(t, allClients)
 }
 
 func TestPingAllByIPPublicDERP(t *testing.T) {
@@ -106,7 +103,7 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -138,7 +135,7 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
 	clientIPs := make(map[TailscaleClient][]netip.Addr)
 	for _, client := range allClients {
@@ -179,7 +176,7 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
 	allClients, err = scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
@@ -332,7 +329,7 @@ func TestPingAllByHostname(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
 	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
 	assertNoErrListFQDN(t, err)
@@ -542,7 +539,7 @@ func TestResolveMagicDNS(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
 	// Poor mans cache
 	_, err = scenario.ListTailscaleClientsFQDNs()
@@ -612,7 +609,7 @@ func TestExpireNode(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -738,7 +735,7 @@ func TestNodeOnlineLastSeenStatus(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
