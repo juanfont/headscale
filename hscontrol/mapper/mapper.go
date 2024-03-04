@@ -276,6 +276,7 @@ func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	changed map[types.NodeID]bool,
+	patches []*tailcfg.PeerChange,
 	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
@@ -318,6 +319,21 @@ func (m *Mapper) PeerChangedResponse(
 	}
 
 	resp.PeersRemoved = removedIDs
+
+	// Sending patches as a part of a PeersChanged response
+	// is technically not suppose to be done, but they are
+	// applied after the PeersChanged. The patch list
+	// should _only_ contain Nodes that are not in the
+	// PeersChanged or PeersRemoved list and the caller
+	// should filter them out.
+	//
+	// From tailcfg docs:
+	// These are applied after Peers* above, but in practice the
+	// control server should only send these on their own, without
+	// the Peers* fields also set.
+	if patches != nil {
+		resp.PeersChangedPatch = patches
+	}
 
 	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress, messages...)
 }

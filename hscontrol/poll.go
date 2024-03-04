@@ -195,6 +195,7 @@ func (m *mapSession) serve() {
 
 	// true means changed, false means removed
 	var changed map[types.NodeID]bool
+	var patches []*tailcfg.PeerChange
 	var derp bool
 
 	// Set full to true to immediatly send a full mapresponse
@@ -209,8 +210,8 @@ func (m *mapSession) serve() {
 		var err error
 
 		// If a full update has been requested, then send it immediately
-		// otherwise wait for the "batching"
-		if full || (changed != nil && time.Since(prev) > wait) {
+		// otherwise wait for the "batching" of changes or patches
+		if full || ((changed != nil || patches != nil) && time.Since(prev) > wait) {
 			// Ensure the node object is updated, for example, there
 			// might have been a hostinfo update in a sidechannel
 			// which contains data needed to generate a map response.
@@ -221,19 +222,66 @@ func (m *mapSession) serve() {
 				return
 			}
 
+			// If there are patches _and_ fully changed nodes, filter the
+			// patches and remove all patches that are present for the full
+			// changes updates. This allows us to send them as part of the
+			// PeerChange update, but only for nodes that are not fully changed.
+			// The fully changed nodes will be updated from the database and
+			// have all the updates needed.
+			// This means that the patches left are for nodes that has no
+			// updates that requires a full update.
+			// Patches are not suppose to be mixed in, but can be.
+			//
+			// From tailcfg docs:
+			// These are applied after Peers* above, but in practice the
+			// control server should only send these on their own, without
+			//
+			// Currently, there is no effort to merge patch updates, they
+			// are all sent, and the client will apply them in order.
+			// TODO(kradalby): Merge Patches for the same IDs to send less
+			// data and give the client less work.
+			if patches != nil && changed != nil {
+				var filteredPatches []*tailcfg.PeerChange
+
+				for _, patch := range patches {
+					if _, ok := changed[types.NodeID(patch.NodeID)]; !ok {
+						filteredPatches = append(filteredPatches, patch)
+					}
+				}
+
+				patches = filteredPatches
+			}
+
+			// When deciding what update to send, the following is considered,
+			// Full is a superset of all updates, when a full update is requested,
+			// send only that and move on, all other updates will be present in
+			// a full map response.
+			//
+			// If a map of changed nodes exists, prefer sending that as it will
+			// contain all the updates for the node, including patches, as it
+			// is fetched freshly from the database when building the response.
+			//
+			// If there is full changes registered, but we have patches for individual
+			// nodes, send them.
+			//
+			// Finally, if a DERP map is the only request, send that alone.
 			if full {
 				m.tracef("Sending Full MapResponse")
 				data, err = m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy)
+			} else if changed != nil {
+				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
+				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, patches, m.h.ACLPolicy, lastMessage)
+			} else if patches != nil {
+				m.tracef(fmt.Sprintf("Sending Changed Patch MapResponse: %v", lastMessage))
+				data, err = m.mapper.PeerChangedPatchResponse(m.req, m.node, patches, m.h.ACLPolicy)
 			} else if derp {
 				m.tracef("Sending DERPUpdate MapResponse")
 				data, err = m.mapper.DERPMapResponse(m.req, m.node, m.h.DERPMap)
-			} else {
-				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, m.h.ACLPolicy, lastMessage)
 			}
 
 			// reset
 			changed = nil
+			patches = nil
 			lastMessage = ""
 			full = false
 			derp = false
@@ -298,7 +346,7 @@ func (m *mapSession) serve() {
 
 				lastMessage = update.Message
 			case types.StatePeerChangedPatch:
-				// TODO(kradalby):
+				patches = append(patches, update.ChangePatches...)
 			case types.StatePeerRemoved:
 				if changed == nil {
 					changed = make(map[types.NodeID]bool)
