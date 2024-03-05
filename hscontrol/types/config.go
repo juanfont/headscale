@@ -168,6 +168,7 @@ type OIDCConfig struct {
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
 	MapLegacyUsers             bool
+	EnablePKCE                bool
 }
 
 type DERPConfig struct {
@@ -282,6 +283,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
 	viper.SetDefault("oidc.map_legacy_users", true)
+	viper.SetDefault("oidc.enable_pkce", false)
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -912,6 +914,7 @@ func LoadServerConfig() (*Config, error) {
 			// after #2170 is cleaned up
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 			MapLegacyUsers:   viper.GetBool("oidc.map_legacy_users"),
+			EnablePKCE:       viper.GetBool("oidc.enable_pkce"),
 		},
 
 		LogTail:             logTailConfig,

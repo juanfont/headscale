@@ -34,6 +34,7 @@ const (
 var (
 	errEmptyOIDCCallbackParams = errors.New("empty OIDC callback params")
 	errNoOIDCIDToken           = errors.New("could not extract ID Token for OIDC callback")
+	errNoOIDCRegistrationInfo  = errors.New("could not get registration info from cache")
 	errOIDCAllowedDomains      = errors.New(
 		"authenticated principal does not match any allowed domain",
 	)
@@ -47,11 +48,17 @@ var (
 	errOIDCNodeKeyMissing = errors.New("could not get node key from cache")
 )
 
+// RegistrationInfo contains both machine key and verifier information for OIDC validation.
+type RegistrationInfo struct {
+	MachineKey key.MachinePublic
+	Verifier   *string
+}
+
 type AuthProviderOIDC struct {
 	serverURL         string
 	cfg               *types.OIDCConfig
 	db                *db.HSDatabase
-	registrationCache *zcache.Cache[string, key.MachinePublic]
+	registrationCache *zcache.Cache[string, RegistrationInfo]
 	notifier          *notifier.Notifier
 	ipAlloc           *db.IPAllocator
 	polMan            policy.PolicyManager
@@ -87,7 +94,7 @@ func NewAuthProviderOIDC(
 		Scopes: cfg.Scope,
 	}
 
-	registrationCache := zcache.New[string, key.MachinePublic](
+	registrationCache := zcache.New[string, RegistrationInfo](
 		registerCacheExpiration,
 		registerCacheCleanup,
 	)
@@ -157,15 +164,32 @@ func (a *AuthProviderOIDC) RegisterHandler(
 
 	stateStr := hex.EncodeToString(randomBlob)[:32]
 
-	// place the node key into the state cache, so it can be retrieved later
-	a.registrationCache.Set(
-		stateStr,
-		machineKey,
-	)
+	// Initialize registration info with machine key
+	registrationInfo := RegistrationInfo{
+		MachineKey: machineKey,
+	}
 
-	// Add any extra parameter provided in the configuration to the Authorize Endpoint request
-	extras := make([]oauth2.AuthCodeOption, 0, len(a.cfg.ExtraParams))
+	// Pre-allocate extras slice with known capacity
+	extrasCapacity := len(a.cfg.ExtraParams)
+	if a.cfg.EnablePKCE {
+		extrasCapacity += 2 // For AccessTypeOffline and S256ChallengeOption
+	}
+	extras := make([]oauth2.AuthCodeOption, 0, extrasCapacity)
 
+	// Add PKCE verification if enabled
+	if a.cfg.EnablePKCE {
+		verifier := oauth2.GenerateVerifier()
+		registrationInfo.Verifier = &verifier
+		extras = append(extras,
+			oauth2.AccessTypeOffline,
+			oauth2.S256ChallengeOption(verifier),
+		)
+	}
+
+	// Cache the registration info
+	a.registrationCache.Set(stateStr, registrationInfo)
+
+	// Add any extra parameters from configuration
 	for k, v := range a.cfg.ExtraParams {
 		extras = append(extras, oauth2.SetAuthURLParam(k, v))
 	}
@@ -319,7 +343,19 @@ func (a *AuthProviderOIDC) extractIDToken(
 	ctx context.Context,
 	code string,
 ) (*oidc.IDToken, error) {
-	oauth2Token, err := a.oauth2Config.Exchange(ctx, code)
+	var exchangeOpts []oauth2.AuthCodeOption
+
+	if a.cfg.EnablePKCE {
+		regInfo, ok := a.registrationCache.Get(code)
+		if !ok {
+			return nil, errNoOIDCRegistrationInfo
+		}
+		if regInfo.Verifier != nil {
+			exchangeOpts = []oauth2.AuthCodeOption{oauth2.VerifierOption(*regInfo.Verifier)}
+		}
+	}
+
+	oauth2Token, err := a.oauth2Config.Exchange(ctx, code, exchangeOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("could not exchange code for token: %w", err)
 	}
@@ -394,7 +430,7 @@ func validateOIDCAllowedUsers(
 // cache. If the machine key is found, it will try retrieve the
 // node information from the database.
 func (a *AuthProviderOIDC) getMachineKeyFromState(state string) (*types.Node, *key.MachinePublic) {
-	machineKey, ok := a.registrationCache.Get(state)
+	regInfo, ok := a.registrationCache.Get(state)
 	if !ok {
 		return nil, nil
 	}
@@ -403,9 +439,9 @@ func (a *AuthProviderOIDC) getMachineKeyFromState(state string) (*types.Node, *k
 	// The error is not important, because if it does not
 	// exist, then this is a new node and we will move
 	// on to registration.
-	node, _ := a.db.GetNodeByMachineKey(machineKey)
+	node, _ := a.db.GetNodeByMachineKey(regInfo.MachineKey)
 
-	return node, &machineKey
+	return node, &regInfo.MachineKey
 }
 
 // reauthenticateNode updates the node expiry in the database
@@ -449,8 +485,8 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	// look it up by username. This should only be needed once.
 	// This branch will presist for a number of versions after the OIDC migration and
 	// then be removed following a deprecation.
-	// TODO(kradalby): Remove when strip_email_domain and migration is removed
-	// after #2170 is cleaned up.
+	// TODO(kradalby): Remove when strip_email_domain is removed
+	// after #2170 is cleaned up
 	if a.cfg.MapLegacyUsers && user == nil {
 		log.Trace().Str("username", claims.Username).Str("sub", claims.Sub).Msg("user not found by OIDC identifier, looking up by username")
 		if oldUsername, err := getUserName(claims, a.cfg.StripEmaildomain); err == nil {
