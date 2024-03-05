@@ -15,115 +15,116 @@ describing how to make `headscale` run properly in a server environment.
 
 ## Install `headscale`
 
-1. Install from ports (Not Recommend)
+1. Install from ports (not recommended)
 
-   As of OpenBSD 7.2, there's a headscale in ports collection, however, it's severely outdated(v0.12.4).
-   You can install it via `pkg_add headscale`.
+    !!! info
 
-2. Install from source on OpenBSD 7.2
+        As of OpenBSD 7.2, there's a headscale in ports collection, however, it's severely outdated(v0.12.4). You can install it via `pkg_add headscale`.
 
-```shell
-# Install prerequistes
-pkg_add go
+1. Install from source on OpenBSD 7.2
 
-git clone https://github.com/juanfont/headscale.git
+    ```shell
+    # Install prerequistes
+    pkg_add go
 
-cd headscale
+    git clone https://github.com/juanfont/headscale.git
 
-# optionally checkout a release
-# option a. you can find offical relase at https://github.com/juanfont/headscale/releases/latest
-# option b. get latest tag, this may be a beta release
-latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+    cd headscale
 
-git checkout $latestTag
+    # optionally checkout a release
+    # option a. you can find offical relase at https://github.com/juanfont/headscale/releases/latest
+    # option b. get latest tag, this may be a beta release
+    latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
 
-go build -ldflags="-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$latestTag" github.com/juanfont/headscale
+    git checkout $latestTag
 
-# make it executable
-chmod a+x headscale
+    go build -ldflags="-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$latestTag" github.com/juanfont/headscale
 
-# copy it to /usr/local/sbin
-cp headscale /usr/local/sbin
-```
+    # make it executable
+    chmod a+x headscale
 
-3. Install from source via cross compile
+    # copy it to /usr/local/sbin
+    cp headscale /usr/local/sbin
+    ```
 
-```shell
-# Install prerequistes
-# 1. go v1.20+: headscale newer than 0.21 needs go 1.20+ to compile
-# 2. gmake: Makefile in the headscale repo is written in GNU make syntax
+1. Install from source via cross compile
 
-git clone https://github.com/juanfont/headscale.git
+    ```shell
+    # Install prerequistes
+    # 1. go v1.20+: headscale newer than 0.21 needs go 1.20+ to compile
+    # 2. gmake: Makefile in the headscale repo is written in GNU make syntax
 
-cd headscale
+    git clone https://github.com/juanfont/headscale.git
 
-# optionally checkout a release
-# option a. you can find offical relase at https://github.com/juanfont/headscale/releases/latest
-# option b. get latest tag, this may be a beta release
-latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+    cd headscale
 
-git checkout $latestTag
+    # optionally checkout a release
+    # option a. you can find offical relase at https://github.com/juanfont/headscale/releases/latest
+    # option b. get latest tag, this may be a beta release
+    latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
 
-make build GOOS=openbsd
+    git checkout $latestTag
 
-# copy headscale to openbsd machine and put it in /usr/local/sbin
-```
+    make build GOOS=openbsd
+
+    # copy headscale to openbsd machine and put it in /usr/local/sbin
+    ```
 
 ## Configure and run `headscale`
 
 1. Prepare a directory to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
-```shell
-# Directory for configuration
+    ```shell
+    # Directory for configuration
 
-mkdir -p /etc/headscale
+    mkdir -p /etc/headscale
 
-# Directory for Database, and other variable data (like certificates)
-mkdir -p /var/lib/headscale
-```
+    # Directory for Database, and other variable data (like certificates)
+    mkdir -p /var/lib/headscale
+    ```
 
-2. Create an empty SQLite database:
+1. Create an empty SQLite database:
 
-```shell
-touch /var/lib/headscale/db.sqlite
-```
+    ```shell
+    touch /var/lib/headscale/db.sqlite
+    ```
 
-3. Create a `headscale` configuration:
+1. Create a `headscale` configuration:
 
-```shell
-touch /etc/headscale/config.yaml
-```
+    ```shell
+    touch /etc/headscale/config.yaml
+    ```
 
 **(Strongly Recommended)** Download a copy of the [example configuration][config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
-4. Start the headscale server:
+1. Start the headscale server:
 
-```shell
-headscale serve
-```
+    ```shell
+    headscale serve
+    ```
 
-This command will start `headscale` in the current terminal session.
+    This command will start `headscale` in the current terminal session.
 
----
+    ***
 
-To continue the tutorial, open a new terminal and let it run in the background.
-Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux).
+    To continue the tutorial, open a new terminal and let it run in the background.
+    Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux).
 
-To run `headscale` in the background, please follow the steps in the [rc.d section](#running-headscale-in-the-background-with-rcd) before continuing.
+    To run `headscale` in the background, please follow the steps in the [rc.d section](#running-headscale-in-the-background-with-rcd) before continuing.
 
-5. Verify `headscale` is running:
+1. Verify `headscale` is running:
 
-Verify `headscale` is available:
+    Verify `headscale` is available:
 
-```shell
-curl http://127.0.0.1:9090/metrics
-```
+    ```shell
+    curl http://127.0.0.1:9090/metrics
+    ```
 
-6. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+1. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
-```shell
-headscale users create myfirstuser
-```
+    ```shell
+    headscale users create myfirstuser
+    ```
 
 ### Register a machine (normal login)
 
@@ -159,51 +160,51 @@ This section demonstrates how to run `headscale` as a service in the background 
 
 1. Create a rc.d service at `/etc/rc.d/headscale` containing:
 
-```shell
-#!/bin/ksh
+    ```shell
+    #!/bin/ksh
 
-daemon="/usr/local/sbin/headscale"
-daemon_logger="daemon.info"
-daemon_user="root"
-daemon_flags="serve"
-daemon_timeout=60
+    daemon="/usr/local/sbin/headscale"
+    daemon_logger="daemon.info"
+    daemon_user="root"
+    daemon_flags="serve"
+    daemon_timeout=60
 
-. /etc/rc.d/rc.subr
+    . /etc/rc.d/rc.subr
 
-rc_bg=YES
-rc_reload=NO
+    rc_bg=YES
+    rc_reload=NO
 
-rc_cmd $1
-```
+    rc_cmd $1
+    ```
 
-2. `/etc/rc.d/headscale` needs execute permission:
+1. `/etc/rc.d/headscale` needs execute permission:
 
-```shell
-chmod a+x /etc/rc.d/headscale
-```
+    ```shell
+    chmod a+x /etc/rc.d/headscale
+    ```
 
-3. Start `headscale` service:
+1. Start `headscale` service:
 
-```shell
-rcctl start headscale
-```
+    ```shell
+    rcctl start headscale
+    ```
 
-4. Make `headscale` service start at boot:
+1. Make `headscale` service start at boot:
 
-```shell
-rcctl enable headscale
-```
+    ```shell
+    rcctl enable headscale
+    ```
 
-5. Verify the headscale service:
+1. Verify the headscale service:
 
-```shell
-rcctl check headscale
-```
+    ```shell
+    rcctl check headscale
+    ```
 
-Verify `headscale` is available:
+    Verify `headscale` is available:
 
-```shell
-curl http://127.0.0.1:9090/metrics
-```
+    ```shell
+    curl http://127.0.0.1:9090/metrics
+    ```
 
-`headscale` will now run in the background and start at boot.
+    `headscale` will now run in the background and start at boot.
