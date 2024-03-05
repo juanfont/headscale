@@ -534,6 +534,86 @@ func TestOIDC024UserCreation(t *testing.T) {
 	}
 }
 
+func TestOIDCAuthenticationWithPKCE(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	baseScenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+
+	scenario := AuthOIDCScenario{
+		Scenario: baseScenario,
+	}
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Single user with one node for testing PKCE flow
+	spec := map[string]int{
+		"user1": 1,
+	}
+
+	mockusers := []mockoidc.MockUser{
+		oidcMockUser("user1", true),
+	}
+
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
+	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
+	defer scenario.mockOIDC.Close()
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
+		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_PKCE_ENABLED":       "1", // Enable PKCE
+		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		hsic.WithTestName("oidcauthpkce"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	// Get all clients and verify they can connect
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Verify PKCE was used in authentication
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	var listUsers []v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listUsers,
+	)
+	assertNoErr(t, err)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+}
+
 func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 	users map[string]int,
 	opts ...hsic.Option,
