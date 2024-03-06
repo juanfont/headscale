@@ -335,6 +335,14 @@ func (m *Mapper) PeerChangedResponse(
 		resp.PeersChangedPatch = patches
 	}
 
+	// Add the node itself, it might have changed, and particularly
+	// if there are no patches or changes, this is a self update.
+	tailnode, err := tailNode(node, mapRequest.Version, pol, m.cfg)
+	if err != nil {
+		return nil, err
+	}
+	resp.Node = tailnode
+
 	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress, messages...)
 }
 
@@ -381,7 +389,7 @@ func (m *Mapper) marshalMapResponse(
 		switch {
 		case resp.Peers != nil && len(resp.Peers) > 0:
 			responseType = "full"
-		case isSelfUpdate(messages...):
+		case resp.Peers == nil && resp.PeersChanged == nil && resp.PeersChangedPatch == nil && resp.DERPMap == nil && !resp.KeepAlive:
 			responseType = "self"
 		case resp.PeersChanged != nil && len(resp.PeersChanged) > 0:
 			responseType = "changed"
@@ -591,14 +599,4 @@ func appendPeerChanges(
 	resp.SSHPolicy = sshPolicy
 
 	return nil
-}
-
-func isSelfUpdate(messages ...string) bool {
-	for _, message := range messages {
-		if strings.Contains(message, types.SelfUpdateIdentifier) {
-			return true
-		}
-	}
-
-	return false
 }
