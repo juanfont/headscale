@@ -30,6 +30,13 @@ var (
 	ErrWildcardIsNeeded  = errors.New("wildcard as port is required for the protocol")
 )
 
+var FilterDenyAll = []tailcfg.FilterRule{
+	{
+		SrcIPs:  []string{},
+		SrcBits: nil,
+	},
+}
+
 const (
 	portRangeBegin     = 0
 	portRangeEnd       = 65535
@@ -119,9 +126,10 @@ func GenerateFilterAndSSHRules(
 	node *types.Node,
 	peers types.Nodes,
 ) ([]tailcfg.FilterRule, *tailcfg.SSHPolicy, error) {
-	// If there is no policy defined, we default to allow all
+	// If there is no policy defined, we default to deny all
 	if policy == nil {
-		return tailcfg.FilterAllowAll, &tailcfg.SSHPolicy{}, nil
+		log.Warn().Msg("Default deny all ACL rules being applied")
+		return FilterDenyAll, &tailcfg.SSHPolicy{}, nil
 	}
 
 	rules, err := policy.generateFilterRules(node, peers)
