@@ -659,12 +659,31 @@ func (api headscaleV1APIServer) GetACL(
 	_ context.Context,
 	_ *v1.GetACLRequest,
 ) (*v1.GetACLResponse, error) {
-	acl, err := api.h.db.GetACL()
-	if err != nil {
-		if db.IsNotFoundError(err) {
-			return nil, types.ErrACLPolicyNotFound
+	var (
+		acl *types.ACL
+		err error
+	)
+
+	// Get the ACL from the database or the file, depending on the
+	// configuration. If the ACL is not found, return an error.
+	switch api.h.cfg.ACL.PolicyMode {
+	case types.ACLPolicyModeDB:
+		acl, err = api.h.db.GetACL()
+		if err != nil {
+			if db.IsNotFoundError(err) {
+				return nil, types.ErrACLPolicyNotFound
+			}
+			return nil, err
 		}
-		return nil, err
+	case types.ACLPolicyModeFile:
+		aclBytes, err := api.h.ACLPolicy.Bytes()
+		if err != nil {
+			return nil, err
+		}
+
+		acl = &types.ACL{
+			Policy: aclBytes,
+		}
 	}
 
 	return &v1.GetACLResponse{
