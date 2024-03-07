@@ -248,8 +248,9 @@ func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 			continue
 		}
 
-		log.Trace().Interface("nodes", update.ChangeNodes).Msgf("expiring nodes")
 		if changed {
+			log.Trace().Interface("nodes", update.ChangePatches).Msgf("expiring nodes")
+
 			ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
 			h.nodeNotifier.NotifyAll(ctx, update)
 		}

@@ -749,35 +749,12 @@ func ExpireExpiredNodes(tx *gorm.DB,
 
 		return time.Unix(0, 0), types.StateUpdate{}, false
 	}
-	for index, node := range nodes {
-		if node.IsExpired() &&
-			// TODO(kradalby): Replace this, it is very spammy
-			// It will notify about all nodes that has been expired.
-			// It should only notify about expired nodes since _last check_.
-			node.Expiry.After(lastCheck) {
+	for _, node := range nodes {
+		if node.IsExpired() && node.Expiry.After(lastCheck) {
 			expired = append(expired, &tailcfg.PeerChange{
 				NodeID:    tailcfg.NodeID(node.ID),
 				KeyExpiry: node.Expiry,
 			})
-
-			now := time.Now()
-			// Do not use setNodeExpiry as that has a notifier hook, which
-			// can cause a deadlock, we are updating all changed nodes later
-			// and there is no point in notifiying twice.
-			if err := tx.Model(&nodes[index]).Updates(types.Node{
-				Expiry: &now,
-			}).Error; err != nil {
-				log.Error().
-					Err(err).
-					Str("node", node.Hostname).
-					Str("name", node.GivenName).
-					Msg("🤮 Cannot expire node")
-			} else {
-				log.Info().
-					Str("node", node.Hostname).
-					Str("name", node.GivenName).
-					Msg("Node successfully expired")
-			}
 		}
 	}
 

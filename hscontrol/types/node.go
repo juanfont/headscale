@@ -215,7 +215,7 @@ func (node Node) IsExpired() bool {
 		return false
 	}
 
-	return time.Now().UTC().After(*node.Expiry)
+	return time.Since(*node.Expiry) > 0
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.
