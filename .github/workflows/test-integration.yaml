@@ -43,7 +43,7 @@ jobs:
           - TestTaildrop
           - TestResolveMagicDNS
           - TestExpireNode
-          - TestNodeOnlineLastSeenStatus
+          - TestNodeOnlineStatus
           - TestEnablingRoutes
           - TestHASubnetRouterFailover
           - TestEnableDisableAutoApprovedRoute

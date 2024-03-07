@@ -118,8 +118,10 @@ func (m *mapSession) serve() {
 	// session
 	if m.isStreaming() {
 		defer m.h.nodeNotifier.RemoveNode(m.node.ID)
-
 		m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
+
+		defer m.h.updateNodeOnlineStatus(false, m.node)
+		m.h.updateNodeOnlineStatus(true, m.node)
 	}
 
 	// TODO(kradalby): A set todos to harden:
@@ -387,20 +389,11 @@ func (m *mapSession) serve() {
 				return
 			}
 
-			// This goroutine is not ideal, but we have a potential issue here
-			// where it blocks too long and that holds up updates.
-			// One alternative is to split these different channels into
-			// goroutines, but then you might have a problem without a lock
-			// if a keepalive is written at the same time as an update.
-			// go m.h.updateNodeOnlineStatus(true, m.node)
-
 		case <-ctx.Done():
 			m.tracef("The client has closed the connection")
 
-			go m.h.updateNodeOnlineStatus(false, m.node)
-
 			// Failover the node's routes if any.
-			go m.pollFailoverRoutes("node closing connection", m.node)
+			m.pollFailoverRoutes("node closing connection", m.node)
 
 			// The connection has been closed, so we can stop polling.
 			return

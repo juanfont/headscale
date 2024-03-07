@@ -711,7 +711,7 @@ func TestExpireNode(t *testing.T) {
 	}
 }
 
-func TestNodeOnlineLastSeenStatus(t *testing.T) {
+func TestNodeOnlineStatus(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -723,7 +723,7 @@ func TestNodeOnlineLastSeenStatus(t *testing.T) {
 		"user1": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("onlinelastseen"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("online"))
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -755,8 +755,6 @@ func TestNodeOnlineLastSeenStatus(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	keepAliveInterval := 60 * time.Second
-
 	// Duration is chosen arbitrarily, 10m is reported in #1561
 	testDuration := 12 * time.Minute
 	start := time.Now()
@@ -780,11 +778,6 @@ func TestNodeOnlineLastSeenStatus(t *testing.T) {
 		err = json.Unmarshal([]byte(result), &nodes)
 		assertNoErr(t, err)
 
-		now := time.Now()
-
-		// Threshold with some leeway
-		lastSeenThreshold := now.Add(-keepAliveInterval - (10 * time.Second))
-
 		// Verify that headscale reports the nodes as online
 		for _, node := range nodes {
 			// All nodes should be online
@@ -794,18 +787,6 @@ func TestNodeOnlineLastSeenStatus(t *testing.T) {
 				"expected %s to have online status in Headscale, marked as offline %s after start",
 				node.GetName(),
 				time.Since(start),
-			)
-
-			lastSeen := node.GetLastSeen().AsTime()
-			// All nodes should have been last seen between now and the keepAliveInterval
-			assert.Truef(
-				t,
-				lastSeen.After(lastSeenThreshold),
-				"node (%s) lastSeen (%v) was not %s after the threshold (%v)",
-				node.GetName(),
-				lastSeen,
-				keepAliveInterval,
-				lastSeenThreshold,
 			)
 		}
 
@@ -834,15 +815,6 @@ func TestNodeOnlineLastSeenStatus(t *testing.T) {
 					client.Hostname(),
 					time.Since(start),
 				)
-
-				// from docs: last seen to tailcontrol; only present if offline
-				// assert.Nilf(
-				// 	t,
-				// 	peerStatus.LastSeen,
-				// 	"expected node %s to not have LastSeen set, got %s",
-				// 	peerStatus.HostName,
-				// 	peerStatus.LastSeen,
-				// )
 			}
 		}
 
