@@ -99,6 +99,9 @@ type Headscale struct {
 	registrationCache *cache.Cache
 
 	pollNetMapStreamWG sync.WaitGroup
+
+	mapSessions  map[types.NodeID]*mapSession
+	mapSessionMu sync.Mutex
 }
 
 var (
@@ -130,6 +133,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
 		nodeNotifier:       notifier.NewNotifier(),
+		mapSessions:        make(map[types.NodeID]*mapSession),
 	}
 
 	app.db, err = db.NewHeadscaleDatabase(

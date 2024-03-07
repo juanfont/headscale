@@ -325,7 +325,10 @@ func (m *mapSession) serve() {
 
 		// consume channels with update, keep alives or "batch" blocking signals
 		select {
-		// Avoid infinite block that would potentially leave
+		case <-m.cancelCh:
+			return
+
+			// Avoid infinite block that would potentially leave
 		// some updates in the changed map.
 		case <-blockBreaker.C:
 			continue
@@ -398,10 +401,7 @@ func (m *mapSession) serve() {
 			// The connection has been closed, so we can stop polling.
 			return
 
-		case <-m.cancelCh:
-			return
 		}
-
 	}
 }
 

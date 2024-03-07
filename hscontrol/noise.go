@@ -247,5 +247,22 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		Msg("A node sending a MapRequest with Noise protocol")
 
 	session := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
+
+	// If a streaming mapSession exists for this node, close it
+	// and start a new one.
+	if session.isStreaming() {
+		ns.headscale.mapSessionMu.Lock()
+		if oldSession, ok := ns.headscale.mapSessions[node.ID]; ok {
+			log.Info().
+				Caller().
+				Int("node.id", int(node.ID)).
+				Msg("Node has an open streaming session, replacing")
+			oldSession.close()
+		}
+
+		ns.headscale.mapSessions[node.ID] = session
+		ns.headscale.mapSessionMu.Unlock()
+	}
+
 	session.serve()
 }
