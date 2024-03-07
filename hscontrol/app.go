@@ -771,6 +771,16 @@ func (h *Headscale) Serve() error {
 				if err := h.loadACLPolicy(); err != nil {
 					log.Error().Err(err).Msg("failed to reload ACL policy")
 				}
+
+				if h.ACLPolicy != nil {
+					log.Info().
+						Msg("ACL policy successfully reloaded, notifying nodes of change")
+
+					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
+					h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+						Type: types.StateFullUpdate,
+					})
+				}
 			default:
 				log.Info().
 					Str("signal", sig.String()).
@@ -933,10 +943,6 @@ func (h *Headscale) loadACLPolicy() error {
 			}
 
 			h.ACLPolicy = pol
-
-			log.Info().
-				Str("path", aclPath).
-				Msg("ACL policy successfully loaded, notifying nodes of change")
 		}
 	case types.ACLPolicyModeDB:
 		acl, err := h.db.GetACL()
@@ -955,20 +961,10 @@ func (h *Headscale) loadACLPolicy() error {
 		}
 
 		h.ACLPolicy = pol
-
-		log.Info().
-			Msg("ACL policy successfully reloaded, notifying nodes of change")
 	default:
 		log.Warn().
 			Str("mode", string(h.cfg.ACL.PolicyMode)).
 			Msg("Unknown ACL policy mode")
-	}
-
-	if h.ACLPolicy != nil {
-		ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
-		h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-			Type: types.StateFullUpdate,
-		})
 	}
 
 	return nil

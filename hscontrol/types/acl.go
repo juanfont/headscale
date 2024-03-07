@@ -22,9 +22,9 @@ type ACL struct {
 	ID     uint64 `gorm:"primary_key"`
 	Policy datatypes.JSON
 
-	CreatedAt  *time.Time
-	Expiration *time.Time
-	LastSeen   *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
 }
 
 func (a *ACL) Proto() *v1.ACL {

@@ -691,14 +691,15 @@ func (api headscaleV1APIServer) SetACL(
 		return nil, errors.Wrap(err, types.ErrInvalidACLPolicyFormat.Error())
 	}
 
-	api.h.ACLPolicy = a
-
 	resp, err := api.h.db.SetACL(&types.ACL{
 		Policy: polBytes,
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	// Set the new policy in the ACLPolicy and notify all nodes.
+	api.h.ACLPolicy = a
 
 	ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
 	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
