@@ -92,7 +92,7 @@ version: "3.7"
 
 services:
   headscale:
-    image: headscale/headscale
+    image: headscale/headscale:0.22.3
     restart: unless-stopped
     container_name: headscale
     ports:
