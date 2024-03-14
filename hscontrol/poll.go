@@ -87,7 +87,9 @@ func (h *Headscale) newMapSession(
 }
 
 func (m *mapSession) close() {
+	m.tracef("ROUTE DEBUG: CLOSING SESSION VIA CHANNEL")
 	m.cancelCh <- struct{}{}
+	m.tracef("ROUTE DEBUG: CLOSING SESSION VIA CHANNEL SENT")
 }
 
 func (m *mapSession) isStreaming() bool {
@@ -333,6 +335,7 @@ func (m *mapSession) serve() {
 		// consume channels with update, keep alives or "batch" blocking signals
 		select {
 		case <-m.cancelCh:
+			m.tracef("ROUTE DEBUG: CLOSE RECEIVED RETURNING")
 			return
 		case <-ctx.Done():
 			return

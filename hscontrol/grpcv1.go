@@ -508,9 +508,8 @@ func (api headscaleV1APIServer) DisableRoute(
 	ctx context.Context,
 	request *v1.DisableRouteRequest,
 ) (*v1.DisableRouteResponse, error) {
-	isConnected := api.h.nodeNotifier.ConnectedMap()
 	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
-		return db.DisableRoute(tx, request.GetRouteId(), isConnected)
+		return db.DisableRoute(tx, request.GetRouteId(), api.h.nodeNotifier.ConnectedMap())
 	})
 	if err != nil {
 		return nil, err

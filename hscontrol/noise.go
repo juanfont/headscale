@@ -250,19 +250,33 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 	// If a streaming mapSession exists for this node, close it
 	// and start a new one.
-	// if session.isStreaming() {
-	// 	ns.headscale.mapSessionMu.Lock()
-	// 	if oldSession, ok := ns.headscale.mapSessions[node.ID]; ok {
-	// 		log.Info().
-	// 			Caller().
-	// 			Int("node.id", int(node.ID)).
-	// 			Msg("Node has an open streaming session, replacing")
-	// 		oldSession.close()
-	// 	}
+	if session.isStreaming() {
+		defer func() {
+			delete(ns.headscale.mapSessions, node.ID)
+		}()
 
-	// 	ns.headscale.mapSessions[node.ID] = session
-	// 	ns.headscale.mapSessionMu.Unlock()
-	// }
+		log.Debug().
+			Caller().
+			Uint64("node.id", node.ID.Uint64()).
+			Int("cap_ver", int(mapRequest.Version)).
+			Msg("Aquiring lock to check stream")
+		ns.headscale.mapSessionMu.Lock()
+		if oldSession, ok := ns.headscale.mapSessions[node.ID]; ok {
+			log.Info().
+				Caller().
+				Int("node.id", int(node.ID)).
+				Msg("Node has an open streaming session, replacing")
+			oldSession.close()
+		}
+
+		ns.headscale.mapSessions[node.ID] = session
+		ns.headscale.mapSessionMu.Unlock()
+		log.Debug().
+			Caller().
+			Uint64("node.id", node.ID.Uint64()).
+			Int("cap_ver", int(mapRequest.Version)).
+			Msg("Releasing lock to check stream")
+	}
 
 	session.serve()
 }

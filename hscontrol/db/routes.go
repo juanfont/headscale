@@ -138,14 +138,13 @@ func DisableRoute(tx *gorm.DB,
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
 	var update []types.NodeID
 	if !route.IsExitRoute() {
-		update, err = failoverRoute(tx, isConnected, route)
+		route.Enabled = false
+		err = tx.Save(route).Error
 		if err != nil {
 			return nil, err
 		}
 
-		route.Enabled = false
-		route.IsPrimary = false
-		err = tx.Save(route).Error
+		update, err = failoverRoute(tx, isConnected, route)
 		if err != nil {
 			return nil, err
 		}
@@ -159,6 +158,7 @@ func DisableRoute(tx *gorm.DB,
 			if routes[i].IsExitRoute() {
 				routes[i].Enabled = false
 				routes[i].IsPrimary = false
+
 				err = tx.Save(&routes[i]).Error
 				if err != nil {
 					return nil, err
@@ -166,15 +166,6 @@ func DisableRoute(tx *gorm.DB,
 			}
 		}
 	}
-
-	if routes == nil {
-		routes, err = GetNodeRoutes(tx, &node)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	node.Routes = routes
 
 	// If update is empty, it means that one was not created
 	// by failover (as a failover was not necessary), create
@@ -506,6 +497,7 @@ func failoverRoute(
 
 	// Find a new suitable route
 	for idx, route := range routes {
+		log.Trace().Uint64("node.id", route.NodeID).Interface("route", route).Msgf("ROUTE DEBUG CHECKING ROUTE")
 		if r.ID == route.ID {
 			continue
 		}
@@ -514,7 +506,9 @@ func failoverRoute(
 			continue
 		}
 
+		log.Trace().Uint64("node.id", route.NodeID).Interface("conmap", isConnected).Msgf("ROUTE DEBUG CHECKING IF ROUTE IS ONLINE")
 		if isConnected != nil && isConnected[route.Node.ID] {
+			log.Trace().Uint64("node.id", route.NodeID).Msgf("ROUTE DEBUG CHECKING ROUTE IS ONLINE")
 			newPrimary = &routes[idx]
 			break
 		}
@@ -526,6 +520,7 @@ func failoverRoute(
 	// the one currently marked as primary is the
 	// best we got.
 	if newPrimary == nil {
+		log.Trace().Uint64("node.id", r.NodeID).Msgf("ROUTE DEBUG DIDNT FIND NEW PRIMARY")
 		return nil, nil
 	}
 
