@@ -564,7 +564,7 @@ func (h *Headscale) handleNodeLogOut(
 	}
 
 	if node.IsEphemeral() {
-		err = h.db.DeleteNode(&node, h.nodeNotifier.ConnectedMap())
+		changedNodes, err := h.db.DeleteNode(&node, h.nodeNotifier.ConnectedMap())
 		if err != nil {
 			log.Error().
 				Err(err).
@@ -577,6 +577,12 @@ func (h *Headscale) handleNodeLogOut(
 			Type:    types.StatePeerRemoved,
 			Removed: []types.NodeID{node.ID},
 		})
+		if changedNodes != nil {
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				Type:        types.StatePeerChanged,
+				ChangeNodes: changedNodes,
+			})
+		}
 
 		return
 	}

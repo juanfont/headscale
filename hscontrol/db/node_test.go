@@ -120,7 +120,7 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 	}
 	db.DB.Save(&node)
 
-	err = db.DeleteNode(&node, types.NodeConnectedMap{})
+	_, err = db.DeleteNode(&node, types.NodeConnectedMap{})
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(user.Name, "testnode3")

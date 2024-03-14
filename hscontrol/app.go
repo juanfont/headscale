@@ -204,16 +204,16 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
-// expireEphemeralNodes deletes ephemeral node records that have not been
+// deleteExpireEphemeralNodes deletes ephemeral node records that have not been
 // seen for longer than h.cfg.EphemeralNodeInactivityTimeout.
-func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
+func (h *Headscale) deleteExpireEphemeralNodes(milliSeconds int64) {
 	ticker := time.NewTicker(time.Duration(milliSeconds) * time.Millisecond)
 
-	var update types.StateUpdate
-	var changed bool
 	for range ticker.C {
+		var removed []types.NodeID
+		var changed []types.NodeID
 		if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
-			update, changed = db.ExpireEphemeralNodes(tx, h.cfg.EphemeralNodeInactivityTimeout)
+			removed, changed = db.DeleteExpiredEphemeralNodes(tx, h.cfg.EphemeralNodeInactivityTimeout)
 
 			return nil
 		}); err != nil {
@@ -221,9 +221,20 @@ func (h *Headscale) expireEphemeralNodes(milliSeconds int64) {
 			continue
 		}
 
-		if changed {
+		if removed != nil {
 			ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
-			h.nodeNotifier.NotifyAll(ctx, update)
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				Type:    types.StatePeerRemoved,
+				Removed: removed,
+			})
+		}
+
+		if changed != nil {
+			ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				Type:        types.StatePeerChanged,
+				ChangeNodes: changed,
+			})
 		}
 	}
 }
@@ -537,7 +548,7 @@ func (h *Headscale) Serve() error {
 
 	// TODO(kradalby): These should have cancel channels and be cleaned
 	// up on shutdown.
-	go h.expireEphemeralNodes(updateInterval)
+	go h.deleteExpireEphemeralNodes(updateInterval)
 	go h.expireExpiredMachines(updateInterval)
 
 	if zl.GlobalLevel() == zl.TraceLevel {

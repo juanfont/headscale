@@ -117,11 +117,22 @@ func (m *mapSession) serve() {
 	// Register with the notifier if this is a streaming
 	// session
 	if m.isStreaming() {
-		defer m.h.nodeNotifier.RemoveNode(m.node.ID)
-		m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
+		// defers are called in reverse order,
+		// so top one is executed last.
+
+		// Failover the node's routes if any.
+		defer m.infof("node has disconnected, mapSession: %p", m)
+		defer m.pollFailoverRoutes("node closing connection", m.node)
 
 		defer m.h.updateNodeOnlineStatus(false, m.node)
+		defer m.h.nodeNotifier.RemoveNode(m.node.ID)
+
+		log.Debug().Caller().Uint64("node.id", m.node.ID.Uint64()).Msgf("ROUTE DEBUG ADD NODE")
+		m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
+		log.Debug().Caller().Uint64("node.id", m.node.ID.Uint64()).Msgf("ROUTE DEBUG UPDATE ONLINE")
 		m.h.updateNodeOnlineStatus(true, m.node)
+
+		m.infof("node has connected, mapSession: %p", m)
 	}
 
 	// TODO(kradalby): A set todos to harden:
@@ -170,16 +181,12 @@ func (m *mapSession) serve() {
 		}
 	}
 
-	// TODO(kradalby): I think it would make more sense to tell people when the node
-	// registers than connects, thats more of a "is online" update.
-
 	// Set up the client stream
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	if len(m.node.Routes) > 0 {
-		go m.pollFailoverRoutes("new node", m.node)
-	}
+	log.Debug().Caller().Uint64("node.id", m.node.ID.Uint64()).Msgf("ROUTE DEBUG FAILOVER ROUTE FROM POLL")
+	m.pollFailoverRoutes("node connected", m.node)
 
 	keepAliveTicker := time.NewTicker(keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond))
 
@@ -327,6 +334,8 @@ func (m *mapSession) serve() {
 		select {
 		case <-m.cancelCh:
 			return
+		case <-ctx.Done():
+			return
 
 			// Avoid infinite block that would potentially leave
 		// some updates in the changed map.
@@ -391,23 +400,13 @@ func (m *mapSession) serve() {
 
 				return
 			}
-
-		case <-ctx.Done():
-			m.tracef("The client has closed the connection")
-
-			// Failover the node's routes if any.
-			m.pollFailoverRoutes("node closing connection", m.node)
-
-			// The connection has been closed, so we can stop polling.
-			return
-
 		}
 	}
 }
 
 func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
 	update, err := db.Write(m.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return db.EnsureFailoverRouteIsAvailable(tx, m.h.nodeNotifier.ConnectedMap(), node)
+		return db.FailoverRouteIfAvailable(tx, m.h.nodeNotifier.ConnectedMap(), node)
 	})
 	if err != nil {
 		m.errf(err, fmt.Sprintf("failed to ensure failover routes, %s", where))
@@ -686,7 +685,7 @@ func logPollFunc(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey.ShortString()).
+				Uint64("node.id", node.ID.Uint64()).
 				Str("node", node.Hostname).
 				Msgf(msg, a...)
 		},
@@ -696,7 +695,7 @@ func logPollFunc(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey.ShortString()).
+				Uint64("node.id", node.ID.Uint64()).
 				Str("node", node.Hostname).
 				Msgf(msg, a...)
 		},
@@ -706,7 +705,7 @@ func logPollFunc(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey.ShortString()).
+				Uint64("node.id", node.ID.Uint64()).
 				Str("node", node.Hostname).
 				Msgf(msg, a...)
 		},
@@ -716,7 +715,7 @@ func logPollFunc(
 				Bool("readOnly", mapRequest.ReadOnly).
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
-				Str("node_key", node.NodeKey.ShortString()).
+				Uint64("node.id", node.ID.Uint64()).
 				Str("node", node.Hostname).
 				Err(err).
 				Msgf(msg, a...)

@@ -298,7 +298,7 @@ func (api headscaleV1APIServer) DeleteNode(
 		return nil, err
 	}
 
-	err = api.h.db.DeleteNode(
+	changedNodes, err := api.h.db.DeleteNode(
 		node,
 		api.h.nodeNotifier.ConnectedMap(),
 	)
@@ -311,6 +311,13 @@ func (api headscaleV1APIServer) DeleteNode(
 		Type:    types.StatePeerRemoved,
 		Removed: []types.NodeID{node.ID},
 	})
+
+	if changedNodes != nil {
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: changedNodes,
+		})
+	}
 
 	return &v1.DeleteNodeResponse{}, nil
 }
@@ -502,7 +509,7 @@ func (api headscaleV1APIServer) DisableRoute(
 	request *v1.DisableRouteRequest,
 ) (*v1.DisableRouteResponse, error) {
 	isConnected := api.h.nodeNotifier.ConnectedMap()
-	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
+	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
 		return db.DisableRoute(tx, request.GetRouteId(), isConnected)
 	})
 	if err != nil {
@@ -511,7 +518,10 @@ func (api headscaleV1APIServer) DisableRoute(
 
 	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-disableroute", "unknown")
-		api.h.nodeNotifier.NotifyAll(ctx, *update)
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: update,
+		})
 	}
 
 	return &v1.DisableRouteResponse{}, nil
@@ -541,7 +551,7 @@ func (api headscaleV1APIServer) DeleteRoute(
 	request *v1.DeleteRouteRequest,
 ) (*v1.DeleteRouteResponse, error) {
 	isConnected := api.h.nodeNotifier.ConnectedMap()
-	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
+	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
 		return db.DeleteRoute(tx, request.GetRouteId(), isConnected)
 	})
 	if err != nil {
@@ -550,7 +560,10 @@ func (api headscaleV1APIServer) DeleteRoute(
 
 	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-deleteroute", "unknown")
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, *update)
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: update,
+		})
 	}
 
 	return &v1.DeleteRouteResponse{}, nil

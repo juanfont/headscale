@@ -264,8 +264,8 @@ func NodeSetExpiry(tx *gorm.DB,
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry).Error
 }
 
-func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected types.NodeConnectedMap) error {
-	return hsdb.Write(func(tx *gorm.DB) error {
+func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected types.NodeConnectedMap) ([]types.NodeID, error) {
+	return Write(hsdb.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
 		return DeleteNode(tx, node, isConnected)
 	})
 }
@@ -275,18 +275,18 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected types.NodeConne
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
 	isConnected types.NodeConnectedMap,
-) error {
-	err := deleteNodeRoutes(tx, node, isConnected)
+) ([]types.NodeID, error) {
+	changed, err := deleteNodeRoutes(tx, node, isConnected)
 	if err != nil {
-		return err
+		return changed, err
 	}
 
 	// Unscoped causes the node to be fully removed from the database.
 	if err := tx.Unscoped().Delete(&node).Error; err != nil {
-		return err
+		return changed, err
 	}
 
-	return nil
+	return changed, nil
 }
 
 // UpdateLastSeen sets a node's last seen field indicating that we
@@ -676,17 +676,18 @@ func GenerateGivenName(
 	return givenName, nil
 }
 
-func ExpireEphemeralNodes(tx *gorm.DB,
+func DeleteExpiredEphemeralNodes(tx *gorm.DB,
 	inactivityThreshhold time.Duration,
-) (types.StateUpdate, bool) {
+) ([]types.NodeID, []types.NodeID) {
 	users, err := ListUsers(tx)
 	if err != nil {
 		log.Error().Err(err).Msg("Error listing users")
 
-		return types.StateUpdate{}, false
+		return nil, nil
 	}
 
-	expired := make([]types.NodeID, 0)
+	var expired []types.NodeID
+	var changedNodes []types.NodeID
 	for _, user := range users {
 		nodes, err := ListNodesByUser(tx, user.Name)
 		if err != nil {
@@ -695,7 +696,7 @@ func ExpireEphemeralNodes(tx *gorm.DB,
 				Str("user", user.Name).
 				Msg("Error listing nodes in user")
 
-			return types.StateUpdate{}, false
+			return nil, nil
 		}
 
 		for idx, node := range nodes {
@@ -709,26 +710,22 @@ func ExpireEphemeralNodes(tx *gorm.DB,
 					Msg("Ephemeral client removed from database")
 
 					// empty isConnected map as ephemeral nodes are not routes
-				err = DeleteNode(tx, nodes[idx], nil)
+				changed, err := DeleteNode(tx, nodes[idx], nil)
 				if err != nil {
 					log.Error().
 						Err(err).
 						Str("node", node.Hostname).
 						Msg("🤮 Cannot delete ephemeral node from the database")
 				}
+
+				changedNodes = append(changedNodes, changed...)
 			}
 		}
 
 		// TODO(kradalby): needs to be moved out of transaction
 	}
-	if len(expired) > 0 {
-		return types.StateUpdate{
-			Type:    types.StatePeerRemoved,
-			Removed: expired,
-		}, true
-	}
 
-	return types.StateUpdate{}, false
+	return expired, changedNodes
 }
 
 func ExpireExpiredNodes(tx *gorm.DB,
