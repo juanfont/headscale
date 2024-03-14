@@ -384,12 +384,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is primary
 	assert.Equal(t, true, enablingRoutes[0].GetAdvertised())
 	assert.Equal(t, true, enablingRoutes[0].GetEnabled())
-	assert.Equal(t, true, enablingRoutes[0].GetIsPrimary())
+	assert.Equal(t, true, enablingRoutes[0].GetIsPrimary(), "both subnet routers are up, expected r1 to be primary")
 
 	// Node 2 is not primary
 	assert.Equal(t, true, enablingRoutes[1].GetAdvertised())
 	assert.Equal(t, true, enablingRoutes[1].GetEnabled())
-	assert.Equal(t, false, enablingRoutes[1].GetIsPrimary())
+	assert.Equal(t, false, enablingRoutes[1].GetIsPrimary(), "both subnet routers are up, expected r2 to be non-primary")
 
 	// Verify that the client has routes from the primary machine
 	srs1, err := subRouter1.Status()
@@ -435,15 +435,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfterMove[0].GetAdvertised())
 	assert.Equal(t, true, routesAfterMove[0].GetEnabled())
-	assert.Equal(t, false, routesAfterMove[0].GetIsPrimary())
+	assert.Equal(t, false, routesAfterMove[0].GetIsPrimary(), "r1 is down, expected r2 to be primary")
 
 	// Node 2 is primary
 	assert.Equal(t, true, routesAfterMove[1].GetAdvertised())
 	assert.Equal(t, true, routesAfterMove[1].GetEnabled())
-	assert.Equal(t, true, routesAfterMove[1].GetIsPrimary())
-
-	// TODO(kradalby): Check client status
-	// Route is expected to be on SR2
+	assert.Equal(t, true, routesAfterMove[1].GetIsPrimary(), "r1 is down, expected r2 to be primary")
 
 	srs2, err = subRouter2.Status()
 
@@ -489,14 +486,14 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfterBothDown[0].GetAdvertised())
 	assert.Equal(t, true, routesAfterBothDown[0].GetEnabled())
-	assert.Equal(t, false, routesAfterBothDown[0].GetIsPrimary())
+	assert.Equal(t, false, routesAfterBothDown[0].GetIsPrimary(), "r1 and r2 is down, expected r2 to _still_ be primary")
 
 	// Node 2 is primary
 	// if the node goes down, but no other suitable route is
 	// available, keep the last known good route.
 	assert.Equal(t, true, routesAfterBothDown[1].GetAdvertised())
 	assert.Equal(t, true, routesAfterBothDown[1].GetEnabled())
-	assert.Equal(t, true, routesAfterBothDown[1].GetIsPrimary())
+	assert.Equal(t, true, routesAfterBothDown[1].GetIsPrimary(), "r1 and r2 is down, expected r2 to _still_ be primary")
 
 	// TODO(kradalby): Check client status
 	// Both are expected to be down
@@ -544,12 +541,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is primary
 	assert.Equal(t, true, routesAfter1Up[0].GetAdvertised())
 	assert.Equal(t, true, routesAfter1Up[0].GetEnabled())
-	assert.Equal(t, true, routesAfter1Up[0].GetIsPrimary())
+	assert.Equal(t, true, routesAfter1Up[0].GetIsPrimary(), "r1 is back up, expected r1 to become be primary")
 
 	// Node 2 is not primary
 	assert.Equal(t, true, routesAfter1Up[1].GetAdvertised())
 	assert.Equal(t, true, routesAfter1Up[1].GetEnabled())
-	assert.Equal(t, false, routesAfter1Up[1].GetIsPrimary())
+	assert.Equal(t, false, routesAfter1Up[1].GetIsPrimary(), "r1 is back up, expected r1 to become be primary")
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -594,12 +591,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Node 1 is not primary
 	assert.Equal(t, true, routesAfter2Up[0].GetAdvertised())
 	assert.Equal(t, true, routesAfter2Up[0].GetEnabled())
-	assert.Equal(t, true, routesAfter2Up[0].GetIsPrimary())
+	assert.Equal(t, true, routesAfter2Up[0].GetIsPrimary(), "r1 and r2 is back up, expected r1 to _still_ be primary")
 
 	// Node 2 is primary
 	assert.Equal(t, true, routesAfter2Up[1].GetAdvertised())
 	assert.Equal(t, true, routesAfter2Up[1].GetEnabled())
-	assert.Equal(t, false, routesAfter2Up[1].GetIsPrimary())
+	assert.Equal(t, false, routesAfter2Up[1].GetIsPrimary(), "r1 and r2 is back up, expected r1 to _still_ be primary")
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
