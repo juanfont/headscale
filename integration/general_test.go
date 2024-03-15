@@ -882,16 +882,22 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
-	for range 3 {
+	for run := range 3 {
+		t.Logf("Starting DownUpPing run %d", run+1)
+
 		for _, client := range allClients {
+			t.Logf("taking down %q", client.Hostname())
 			client.Down()
 		}
 
 		time.Sleep(5 * time.Second)
 
 		for _, client := range allClients {
+			t.Logf("bringing up %q", client.Hostname())
 			client.Up()
 		}
+
+		time.Sleep(5 * time.Second)
 
 		err = scenario.WaitForTailscaleSync()
 		assertNoErrSync(t, err)

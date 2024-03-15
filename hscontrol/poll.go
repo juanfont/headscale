@@ -76,7 +76,7 @@ func (h *Headscale) newMapSession(
 		mapper: h.mapper,
 
 		ch:       updateChan,
-		cancelCh: make(chan struct{}),
+		cancelCh: make(chan struct{}, 1),
 
 		// Loggers
 		warnf:  warnf,
@@ -278,7 +278,7 @@ func (m *mapSession) serve() {
 			// Finally, if a DERP map is the only request, send that alone.
 			if full {
 				m.tracef("Sending Full MapResponse")
-				data, err = m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy)
+				data, err = m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy, fmt.Sprintf("from mapSession: %p, stream: %t", m, m.isStreaming()))
 			} else if changed != nil {
 				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
 				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, patches, m.h.ACLPolicy, lastMessage)
@@ -336,8 +336,10 @@ func (m *mapSession) serve() {
 		select {
 		case <-m.cancelCh:
 			m.tracef("ROUTE DEBUG: CLOSE RECEIVED RETURNING")
+			m.tracef("poll cancelled received")
 			return
 		case <-ctx.Done():
+			m.tracef("poll context done")
 			return
 
 			// Avoid infinite block that would potentially leave
@@ -427,30 +429,36 @@ func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
 // about change in their online/offline status.
 // It takes a StateUpdateType of either StatePeerOnlineChanged or StatePeerOfflineChanged.
 func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
-	now := time.Now()
 
-	node.LastSeen = &now
+	change := &tailcfg.PeerChange{
+		NodeID: tailcfg.NodeID(node.ID),
+		Online: &online,
+	}
+
+	if !online {
+		now := time.Now()
+
+		// lastSeen is only relevant if the node is disconnected.
+		node.LastSeen = &now
+		change.LastSeen = &now
+
+		err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+			return db.SetLastSeen(tx, node.ID, *node.LastSeen)
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("Cannot update node LastSeen")
+
+			return
+		}
+	}
 
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
 	h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
 		Type: types.StatePeerChangedPatch,
 		ChangePatches: []*tailcfg.PeerChange{
-			{
-				NodeID:   tailcfg.NodeID(node.ID),
-				Online:   &online,
-				LastSeen: &now,
-			},
+			change,
 		},
 	}, node.ID)
-
-	err := h.db.DB.Transaction(func(tx *gorm.DB) error {
-		return db.UpdateLastSeen(tx, node.ID, *node.LastSeen)
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Cannot update node LastSeen")
-
-		return
-	}
 }
 
 func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](channel C, node, name string) {
@@ -634,7 +642,7 @@ func (m *mapSession) handleReadOnlyRequest() {
 }
 
 func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.PeerChange) {
-	trace := log.Trace().Str("node_id", change.NodeID.String()).Str("hostname", hostname)
+	trace := log.Trace().Uint64("node.id", uint64(change.NodeID)).Str("hostname", hostname)
 
 	if change.Key != nil {
 		trace = trace.Str("node_key", change.Key.ShortString())

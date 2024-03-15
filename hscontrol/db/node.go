@@ -289,9 +289,9 @@ func DeleteNode(tx *gorm.DB,
 	return changed, nil
 }
 
-// UpdateLastSeen sets a node's last seen field indicating that we
+// SetLastSeen sets a node's last seen field indicating that we
 // have recently communicating with this node.
-func UpdateLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
+func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
 }
 

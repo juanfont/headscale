@@ -218,6 +218,7 @@ func (m *Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	pol *policy.ACLPolicy,
+	messages ...string,
 ) ([]byte, error) {
 	peers, err := m.ListPeers(node.ID)
 	if err != nil {
@@ -229,7 +230,7 @@ func (m *Mapper) FullMapResponse(
 		return nil, err
 	}
 
-	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress)
+	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
 }
 
 // ReadOnlyResponse returns a MapResponse for the given node.

@@ -228,6 +228,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Warn().
 				Str("handler", "NoisePollNetMap").
+				Uint64("node.id", node.ID.Uint64()).
 				Msgf("Ignoring request, cannot find node with key %s", mapRequest.NodeKey.String())
 			http.Error(writer, "Internal error", http.StatusNotFound)
 
@@ -235,6 +236,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		}
 		log.Error().
 			Str("handler", "NoisePollNetMap").
+			Uint64("node.id", node.ID.Uint64()).
 			Msgf("Failed to fetch node from the database with node key: %s", mapRequest.NodeKey.String())
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 
@@ -244,6 +246,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		Str("handler", "NoisePollNetMap").
 		Str("node", node.Hostname).
 		Int("cap_ver", int(mapRequest.Version)).
+		Uint64("node.id", node.ID.Uint64()).
 		Msg("A node sending a MapRequest with Noise protocol")
 
 	session := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
@@ -251,10 +254,6 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	// If a streaming mapSession exists for this node, close it
 	// and start a new one.
 	if session.isStreaming() {
-		defer func() {
-			delete(ns.headscale.mapSessions, node.ID)
-		}()
-
 		log.Debug().
 			Caller().
 			Uint64("node.id", node.ID.Uint64()).
@@ -264,7 +263,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		if oldSession, ok := ns.headscale.mapSessions[node.ID]; ok {
 			log.Info().
 				Caller().
-				Int("node.id", int(node.ID)).
+				Uint64("node.id", node.ID.Uint64()).
 				Msg("Node has an open streaming session, replacing")
 			oldSession.close()
 		}
@@ -279,4 +278,22 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	}
 
 	session.serve()
+
+	if session.isStreaming() {
+		log.Debug().
+			Caller().
+			Uint64("node.id", node.ID.Uint64()).
+			Int("cap_ver", int(mapRequest.Version)).
+			Msg("Aquiring lock to remove stream")
+		ns.headscale.mapSessionMu.Lock()
+
+		delete(ns.headscale.mapSessions, node.ID)
+
+		ns.headscale.mapSessionMu.Unlock()
+		log.Debug().
+			Caller().
+			Uint64("node.id", node.ID.Uint64()).
+			Int("cap_ver", int(mapRequest.Version)).
+			Msg("Releasing lock to remove stream")
+	}
 }

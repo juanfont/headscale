@@ -113,17 +113,17 @@ func (n *Notifier) NotifyWithIgnore(
 		case <-ctx.Done():
 			log.Error().
 				Err(ctx.Err()).
-				Uint64("node.ID", nodeID.Uint64()).
+				Uint64("node.id", nodeID.Uint64()).
 				Any("origin", ctx.Value("origin")).
-				Any("hostname", ctx.Value("hostname")).
+				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update not sent, context cancelled")
 
 			return
 		case c <- update:
 			log.Trace().
-				Uint64("node.ID", nodeID.Uint64()).
+				Uint64("node.id", nodeID.Uint64()).
 				Any("origin", ctx.Value("origin")).
-				Any("hostname", ctx.Value("hostname")).
+				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update successfully sent on chan")
 		}
 	}
@@ -148,17 +148,17 @@ func (n *Notifier) NotifyByMachineKey(
 		case <-ctx.Done():
 			log.Error().
 				Err(ctx.Err()).
-				Uint64("node.ID", nodeID.Uint64()).
+				Uint64("node.id", nodeID.Uint64()).
 				Any("origin", ctx.Value("origin")).
-				Any("hostname", ctx.Value("hostname")).
+				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update not sent, context cancelled")
 
 			return
 		case c <- update:
 			log.Trace().
-				Uint64("node.ID", nodeID.Uint64()).
+				Uint64("node.id", nodeID.Uint64()).
 				Any("origin", ctx.Value("origin")).
-				Any("hostname", ctx.Value("hostname")).
+				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update successfully sent on chan")
 		}
 	}
