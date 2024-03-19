@@ -39,6 +39,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/oauth2"
@@ -78,6 +79,11 @@ const (
 	registerCacheCleanup    = time.Minute * 20
 )
 
+func init() {
+	deadlock.Opts.DeadlockTimeout = 3 * time.Second
+	deadlock.Opts.PrintAllCurrentGoroutines = true
+}
+
 // Headscale represents the base app of the service.
 type Headscale struct {
 	cfg             *types.Config
@@ -101,7 +107,7 @@ type Headscale struct {
 	pollNetMapStreamWG sync.WaitGroup
 
 	mapSessions  map[types.NodeID]*mapSession
-	mapSessionMu sync.Mutex
+	mapSessionMu deadlock.Mutex
 }
 
 var (

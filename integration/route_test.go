@@ -401,6 +401,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	srs1PeerStatus := clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus := clientStatus.Peer[srs2.Self.PublicKey]
 
+	assert.True(t, srs1PeerStatus.Online, "r1 up, r2 up")
+	assert.True(t, srs2PeerStatus.Online, "r1 up, r2 up")
+
 	assertNotNil(t, srs1PeerStatus.PrimaryRoutes)
 	assert.Nil(t, srs2PeerStatus.PrimaryRoutes)
 
@@ -449,6 +452,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus = clientStatus.Peer[srs2.Self.PublicKey]
+
+	assert.False(t, srs1PeerStatus.Online, "r1 down, r2 down")
+	assert.True(t, srs2PeerStatus.Online, "r1 down, r2 up")
 
 	assert.Nil(t, srs1PeerStatus.PrimaryRoutes)
 	assertNotNil(t, srs2PeerStatus.PrimaryRoutes)
@@ -505,6 +511,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus = clientStatus.Peer[srs2.Self.PublicKey]
 
+	assert.False(t, srs1PeerStatus.Online, "r1 down, r2 down")
+	assert.False(t, srs2PeerStatus.Online, "r1 down, r2 down")
+
 	assert.Nil(t, srs1PeerStatus.PrimaryRoutes)
 	assertNotNil(t, srs2PeerStatus.PrimaryRoutes)
 
@@ -555,6 +564,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus = clientStatus.Peer[srs2.Self.PublicKey]
 
+	assert.True(t, srs1PeerStatus.Online, "r1 is back up, r2 down")
+	assert.False(t, srs2PeerStatus.Online, "r1 is back up, r2 down")
+
 	assert.NotNil(t, srs1PeerStatus.PrimaryRoutes)
 	assert.Nil(t, srs2PeerStatus.PrimaryRoutes)
 
@@ -604,6 +616,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
 	srs2PeerStatus = clientStatus.Peer[srs2.Self.PublicKey]
+
+	assert.True(t, srs1PeerStatus.Online, "r1 up, r2 up")
+	assert.True(t, srs2PeerStatus.Online, "r1 up, r2 up")
 
 	assert.NotNil(t, srs1PeerStatus.PrimaryRoutes)
 	assert.Nil(t, srs2PeerStatus.PrimaryRoutes)
