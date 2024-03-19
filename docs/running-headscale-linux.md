@@ -15,7 +15,7 @@ This includes running Headscale with SystemD.
 If you are migrating from the old manual install, the best thing would be to remove
 the files installed by following [the guide in reverse](./running-headscale-linux-manual.md).
 
-You should _not_ delete the database (`/var/headscale/db.sqlite`) and the
+You should _not_ delete the database (`/var/lib/headscale/db.sqlite`) and the
 configuration (`/etc/headscale/config.yaml`).
 
 ## Installation
