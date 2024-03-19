@@ -220,9 +220,9 @@ func (m *mapSession) serve() {
 		var data []byte
 		var err error
 
-		// If a full update has been requested, then send it immediately
+		// If a full update has been requested or there are patches, then send it immediately
 		// otherwise wait for the "batching" of changes or patches
-		if full || ((changed != nil || patches != nil) && time.Since(prev) > wait) {
+		if full || patches != nil || (changed != nil && time.Since(prev) > wait) {
 			// Ensure the node object is updated, for example, there
 			// might have been a hostinfo update in a sidechannel
 			// which contains data needed to generate a map response.
@@ -312,10 +312,7 @@ func (m *mapSession) serve() {
 			startWrite := time.Now()
 			_, err = m.w.Write(data)
 			if err != nil {
-				m.errf(err, "Could not write the map response")
-
-				updateRequestsSentToNode.WithLabelValues(m.node.User.Name, m.node.Hostname, "failed").
-					Inc()
+				m.errf(err, "Could not write the map response, for mapSession: %p, stream: %t", m, m.isStreaming())
 
 				return
 			}
@@ -429,7 +426,6 @@ func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
 // about change in their online/offline status.
 // It takes a StateUpdateType of either StatePeerOnlineChanged or StatePeerOfflineChanged.
 func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
-
 	change := &tailcfg.PeerChange{
 		NodeID: tailcfg.NodeID(node.ID),
 		Online: &online,
