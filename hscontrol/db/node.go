@@ -34,27 +34,22 @@ var (
 	)
 )
 
-func (hsdb *HSDatabase) ListPeers(node *types.Node) (types.Nodes, error) {
+func (hsdb *HSDatabase) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListPeers(rx, node)
+		return ListPeers(rx, nodeID)
 	})
 }
 
 // ListPeers returns all peers of node, regardless of any Policy or if the node is expired.
-func ListPeers(tx *gorm.DB, node *types.Node) (types.Nodes, error) {
-	log.Trace().
-		Caller().
-		Str("node", node.Hostname).
-		Msg("Finding direct peers")
-
+func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
 		Preload("Routes").
-		Where("node_key <> ?",
-			node.NodeKey.String()).Find(&nodes).Error; err != nil {
+		Where("id <> ?",
+			nodeID).Find(&nodes).Error; err != nil {
 		return types.Nodes{}, err
 	}
 
@@ -119,14 +114,14 @@ func getNode(tx *gorm.DB, user string, name string) (*types.Node, error) {
 	return nil, ErrNodeNotFound
 }
 
-func (hsdb *HSDatabase) GetNodeByID(id uint64) (*types.Node, error) {
+func (hsdb *HSDatabase) GetNodeByID(id types.NodeID) (*types.Node, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
 		return GetNodeByID(rx, id)
 	})
 }
 
 // GetNodeByID finds a Node by ID and returns the Node struct.
-func GetNodeByID(tx *gorm.DB, id uint64) (*types.Node, error) {
+func GetNodeByID(tx *gorm.DB, id types.NodeID) (*types.Node, error) {
 	mach := types.Node{}
 	if result := tx.
 		Preload("AuthKey").
@@ -197,7 +192,7 @@ func GetNodeByAnyKey(
 }
 
 func (hsdb *HSDatabase) SetTags(
-	nodeID uint64,
+	nodeID types.NodeID,
 	tags []string,
 ) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
@@ -208,7 +203,7 @@ func (hsdb *HSDatabase) SetTags(
 // SetTags takes a Node struct pointer and update the forced tags.
 func SetTags(
 	tx *gorm.DB,
-	nodeID uint64,
+	nodeID types.NodeID,
 	tags []string,
 ) error {
 	if len(tags) == 0 {
@@ -256,7 +251,7 @@ func RenameNode(tx *gorm.DB,
 	return nil
 }
 
-func (hsdb *HSDatabase) NodeSetExpiry(nodeID uint64, expiry time.Time) error {
+func (hsdb *HSDatabase) NodeSetExpiry(nodeID types.NodeID, expiry time.Time) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		return NodeSetExpiry(tx, nodeID, expiry)
 	})
@@ -264,13 +259,13 @@ func (hsdb *HSDatabase) NodeSetExpiry(nodeID uint64, expiry time.Time) error {
 
 // NodeSetExpiry takes a Node struct and  a new expiry time.
 func NodeSetExpiry(tx *gorm.DB,
-	nodeID uint64, expiry time.Time,
+	nodeID types.NodeID, expiry time.Time,
 ) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry).Error
 }
 
-func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected map[key.MachinePublic]bool) error {
-	return hsdb.Write(func(tx *gorm.DB) error {
+func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected types.NodeConnectedMap) ([]types.NodeID, error) {
+	return Write(hsdb.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
 		return DeleteNode(tx, node, isConnected)
 	})
 }
@@ -279,24 +274,24 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected map[key.Machine
 // Caller is responsible for notifying all of change.
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
-	isConnected map[key.MachinePublic]bool,
-) error {
-	err := deleteNodeRoutes(tx, node, map[key.MachinePublic]bool{})
+	isConnected types.NodeConnectedMap,
+) ([]types.NodeID, error) {
+	changed, err := deleteNodeRoutes(tx, node, isConnected)
 	if err != nil {
-		return err
+		return changed, err
 	}
 
 	// Unscoped causes the node to be fully removed from the database.
 	if err := tx.Unscoped().Delete(&node).Error; err != nil {
-		return err
+		return changed, err
 	}
 
-	return nil
+	return changed, nil
 }
 
-// UpdateLastSeen sets a node's last seen field indicating that we
+// SetLastSeen sets a node's last seen field indicating that we
 // have recently communicating with this node.
-func UpdateLastSeen(tx *gorm.DB, nodeID uint64, lastSeen time.Time) error {
+func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
 }
 
@@ -606,7 +601,7 @@ func enableRoutes(tx *gorm.DB,
 
 	return &types.StateUpdate{
 		Type:        types.StatePeerChanged,
-		ChangeNodes: types.Nodes{node},
+		ChangeNodes: []types.NodeID{node.ID},
 		Message:     "created in db.enableRoutes",
 	}, nil
 }
@@ -681,17 +676,18 @@ func GenerateGivenName(
 	return givenName, nil
 }
 
-func ExpireEphemeralNodes(tx *gorm.DB,
+func DeleteExpiredEphemeralNodes(tx *gorm.DB,
 	inactivityThreshhold time.Duration,
-) (types.StateUpdate, bool) {
+) ([]types.NodeID, []types.NodeID) {
 	users, err := ListUsers(tx)
 	if err != nil {
 		log.Error().Err(err).Msg("Error listing users")
 
-		return types.StateUpdate{}, false
+		return nil, nil
 	}
 
-	expired := make([]tailcfg.NodeID, 0)
+	var expired []types.NodeID
+	var changedNodes []types.NodeID
 	for _, user := range users {
 		nodes, err := ListNodesByUser(tx, user.Name)
 		if err != nil {
@@ -700,40 +696,36 @@ func ExpireEphemeralNodes(tx *gorm.DB,
 				Str("user", user.Name).
 				Msg("Error listing nodes in user")
 
-			return types.StateUpdate{}, false
+			return nil, nil
 		}
 
 		for idx, node := range nodes {
 			if node.IsEphemeral() && node.LastSeen != nil &&
 				time.Now().
 					After(node.LastSeen.Add(inactivityThreshhold)) {
-				expired = append(expired, tailcfg.NodeID(node.ID))
+				expired = append(expired, node.ID)
 
 				log.Info().
 					Str("node", node.Hostname).
 					Msg("Ephemeral client removed from database")
 
 					// empty isConnected map as ephemeral nodes are not routes
-				err = DeleteNode(tx, nodes[idx], map[key.MachinePublic]bool{})
+				changed, err := DeleteNode(tx, nodes[idx], nil)
 				if err != nil {
 					log.Error().
 						Err(err).
 						Str("node", node.Hostname).
 						Msg("🤮 Cannot delete ephemeral node from the database")
 				}
+
+				changedNodes = append(changedNodes, changed...)
 			}
 		}
 
 		// TODO(kradalby): needs to be moved out of transaction
 	}
-	if len(expired) > 0 {
-		return types.StateUpdate{
-			Type:    types.StatePeerRemoved,
-			Removed: expired,
-		}, true
-	}
 
-	return types.StateUpdate{}, false
+	return expired, changedNodes
 }
 
 func ExpireExpiredNodes(tx *gorm.DB,
@@ -754,35 +746,12 @@ func ExpireExpiredNodes(tx *gorm.DB,
 
 		return time.Unix(0, 0), types.StateUpdate{}, false
 	}
-	for index, node := range nodes {
-		if node.IsExpired() &&
-			// TODO(kradalby): Replace this, it is very spammy
-			// It will notify about all nodes that has been expired.
-			// It should only notify about expired nodes since _last check_.
-			node.Expiry.After(lastCheck) {
+	for _, node := range nodes {
+		if node.IsExpired() && node.Expiry.After(lastCheck) {
 			expired = append(expired, &tailcfg.PeerChange{
 				NodeID:    tailcfg.NodeID(node.ID),
 				KeyExpiry: node.Expiry,
 			})
-
-			now := time.Now()
-			// Do not use setNodeExpiry as that has a notifier hook, which
-			// can cause a deadlock, we are updating all changed nodes later
-			// and there is no point in notifiying twice.
-			if err := tx.Model(&nodes[index]).Updates(types.Node{
-				Expiry: &now,
-			}).Error; err != nil {
-				log.Error().
-					Err(err).
-					Str("node", node.Hostname).
-					Str("name", node.GivenName).
-					Msg("🤮 Cannot expire node")
-			} else {
-				log.Info().
-					Str("node", node.Hostname).
-					Str("name", node.GivenName).
-					Msg("Node successfully expired")
-			}
 		}
 	}
 

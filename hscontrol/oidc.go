@@ -537,11 +537,8 @@ func (h *Headscale) validateNodeForOIDCCallback(
 			util.LogErr(err, "Failed to write response")
 		}
 
-		stateUpdate := types.StateUpdateExpire(node.ID, expiry)
-		if stateUpdate.Valid() {
-			ctx := types.NotifyCtx(context.Background(), "oidc-expiry", "na")
-			h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-		}
+		ctx := types.NotifyCtx(context.Background(), "oidc-expiry", "na")
+		h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, expiry), node.ID)
 
 		return nil, true, nil
 	}

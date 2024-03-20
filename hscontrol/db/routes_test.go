@@ -13,7 +13,6 @@ import (
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/key"
 )
 
 func (s *Suite) TestGetRoutes(c *check.C) {
@@ -262,7 +261,7 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	// TODO(kradalby): check stateupdate
-	_, err = db.DeleteRoute(uint64(routes[0].ID), map[key.MachinePublic]bool{})
+	_, err = db.DeleteRoute(uint64(routes[0].ID), nil)
 	c.Assert(err, check.IsNil)
 
 	enabledRoutes1, err := db.GetEnabledRoutes(&node1)
@@ -273,19 +272,12 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 var ipp = func(s string) types.IPPrefix { return types.IPPrefix(netip.MustParsePrefix(s)) }
 
 func TestFailoverRoute(t *testing.T) {
-	machineKeys := []key.MachinePublic{
-		key.NewMachine().Public(),
-		key.NewMachine().Public(),
-		key.NewMachine().Public(),
-		key.NewMachine().Public(),
-	}
-
 	tests := []struct {
 		name         string
 		failingRoute types.Route
 		routes       types.Routes
-		isConnected  map[key.MachinePublic]bool
-		want         []key.MachinePublic
+		isConnected  types.NodeConnectedMap
+		want         []types.NodeID
 		wantErr      bool
 	}{
 		{
@@ -301,10 +293,8 @@ func TestFailoverRoute(t *testing.T) {
 				Model: gorm.Model{
 					ID: 1,
 				},
-				Prefix: ipp("10.0.0.0/24"),
-				Node: types.Node{
-					MachineKey: machineKeys[0],
-				},
+				Prefix:    ipp("10.0.0.0/24"),
+				Node:      types.Node{},
 				IsPrimary: false,
 			},
 			routes:  types.Routes{},
@@ -317,10 +307,8 @@ func TestFailoverRoute(t *testing.T) {
 				Model: gorm.Model{
 					ID: 1,
 				},
-				Prefix: ipp("0.0.0.0/0"),
-				Node: types.Node{
-					MachineKey: machineKeys[0],
-				},
+				Prefix:    ipp("0.0.0.0/0"),
+				Node:      types.Node{},
 				IsPrimary: true,
 			},
 			routes:  types.Routes{},
@@ -335,7 +323,7 @@ func TestFailoverRoute(t *testing.T) {
 				},
 				Prefix: ipp("10.0.0.0/24"),
 				Node: types.Node{
-					MachineKey: machineKeys[0],
+					ID: 1,
 				},
 				IsPrimary: true,
 			},
@@ -346,7 +334,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[0],
+						ID: 1,
 					},
 					IsPrimary: true,
 				},
@@ -362,7 +350,7 @@ func TestFailoverRoute(t *testing.T) {
 				},
 				Prefix: ipp("10.0.0.0/24"),
 				Node: types.Node{
-					MachineKey: machineKeys[0],
+					ID: 1,
 				},
 				IsPrimary: true,
 				Enabled:   true,
@@ -374,7 +362,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[0],
+						ID: 1,
 					},
 					IsPrimary: true,
 					Enabled:   true,
@@ -385,19 +373,19 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[1],
+						ID: 2,
 					},
 					IsPrimary: false,
 					Enabled:   true,
 				},
 			},
-			isConnected: map[key.MachinePublic]bool{
-				machineKeys[0]: false,
-				machineKeys[1]: true,
+			isConnected: types.NodeConnectedMap{
+				1: false,
+				2: true,
 			},
-			want: []key.MachinePublic{
-				machineKeys[0],
-				machineKeys[1],
+			want: []types.NodeID{
+				1,
+				2,
 			},
 			wantErr: false,
 		},
@@ -409,7 +397,7 @@ func TestFailoverRoute(t *testing.T) {
 				},
 				Prefix: ipp("10.0.0.0/24"),
 				Node: types.Node{
-					MachineKey: machineKeys[0],
+					ID: 1,
 				},
 				IsPrimary: false,
 				Enabled:   true,
@@ -421,7 +409,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[0],
+						ID: 1,
 					},
 					IsPrimary: true,
 					Enabled:   true,
@@ -432,7 +420,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[1],
+						ID: 2,
 					},
 					IsPrimary: false,
 					Enabled:   true,
@@ -449,7 +437,7 @@ func TestFailoverRoute(t *testing.T) {
 				},
 				Prefix: ipp("10.0.0.0/24"),
 				Node: types.Node{
-					MachineKey: machineKeys[1],
+					ID: 2,
 				},
 				IsPrimary: true,
 				Enabled:   true,
@@ -461,7 +449,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[0],
+						ID: 1,
 					},
 					IsPrimary: false,
 					Enabled:   true,
@@ -472,7 +460,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[1],
+						ID: 2,
 					},
 					IsPrimary: true,
 					Enabled:   true,
@@ -483,20 +471,19 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[2],
+						ID: 3,
 					},
 					IsPrimary: false,
 					Enabled:   true,
 				},
 			},
-			isConnected: map[key.MachinePublic]bool{
-				machineKeys[0]: true,
-				machineKeys[1]: true,
-				machineKeys[2]: true,
+			isConnected: types.NodeConnectedMap{
+				1: true,
+				2: true,
+				3: true,
 			},
-			want: []key.MachinePublic{
-				machineKeys[1],
-				machineKeys[0],
+			want: []types.NodeID{
+				2, 1,
 			},
 			wantErr: false,
 		},
@@ -508,7 +495,7 @@ func TestFailoverRoute(t *testing.T) {
 				},
 				Prefix: ipp("10.0.0.0/24"),
 				Node: types.Node{
-					MachineKey: machineKeys[0],
+					ID: 1,
 				},
 				IsPrimary: true,
 				Enabled:   true,
@@ -520,7 +507,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[0],
+						ID: 1,
 					},
 					IsPrimary: true,
 					Enabled:   true,
@@ -532,15 +519,15 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[3],
+						ID: 4,
 					},
 					IsPrimary: false,
 					Enabled:   true,
 				},
 			},
-			isConnected: map[key.MachinePublic]bool{
-				machineKeys[0]: true,
-				machineKeys[3]: false,
+			isConnected: types.NodeConnectedMap{
+				1: true,
+				4: false,
 			},
 			want:    nil,
 			wantErr: false,
@@ -553,7 +540,7 @@ func TestFailoverRoute(t *testing.T) {
 				},
 				Prefix: ipp("10.0.0.0/24"),
 				Node: types.Node{
-					MachineKey: machineKeys[0],
+					ID: 1,
 				},
 				IsPrimary: true,
 				Enabled:   true,
@@ -565,7 +552,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[0],
+						ID: 1,
 					},
 					IsPrimary: true,
 					Enabled:   true,
@@ -577,7 +564,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[3],
+						ID: 4,
 					},
 					IsPrimary: false,
 					Enabled:   true,
@@ -588,20 +575,20 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[1],
+						ID: 2,
 					},
 					IsPrimary: true,
 					Enabled:   true,
 				},
 			},
-			isConnected: map[key.MachinePublic]bool{
-				machineKeys[0]: false,
-				machineKeys[1]: true,
-				machineKeys[3]: false,
+			isConnected: types.NodeConnectedMap{
+				1: false,
+				2: true,
+				4: false,
 			},
-			want: []key.MachinePublic{
-				machineKeys[0],
-				machineKeys[1],
+			want: []types.NodeID{
+				1,
+				2,
 			},
 			wantErr: false,
 		},
@@ -613,7 +600,7 @@ func TestFailoverRoute(t *testing.T) {
 				},
 				Prefix: ipp("10.0.0.0/24"),
 				Node: types.Node{
-					MachineKey: machineKeys[0],
+					ID: 1,
 				},
 				IsPrimary: true,
 				Enabled:   true,
@@ -625,7 +612,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[0],
+						ID: 1,
 					},
 					IsPrimary: true,
 					Enabled:   true,
@@ -637,7 +624,7 @@ func TestFailoverRoute(t *testing.T) {
 					},
 					Prefix: ipp("10.0.0.0/24"),
 					Node: types.Node{
-						MachineKey: machineKeys[1],
+						ID: 2,
 					},
 					IsPrimary: false,
 					Enabled:   false,
@@ -670,7 +657,7 @@ func TestFailoverRoute(t *testing.T) {
 				}
 			}
 
-			got, err := Write(db.DB, func(tx *gorm.DB) ([]key.MachinePublic, error) {
+			got, err := Write(db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
 				return failoverRoute(tx, tt.isConnected, &tt.failingRoute)
 			})
 

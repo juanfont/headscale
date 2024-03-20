@@ -114,7 +114,7 @@ func LoadACLPolicyFromBytes(acl []byte, format string) (*ACLPolicy, error) {
 	return &policy, nil
 }
 
-func GenerateFilterAndSSHRules(
+func GenerateFilterAndSSHRulesForTests(
 	policy *ACLPolicy,
 	node *types.Node,
 	peers types.Nodes,
@@ -124,40 +124,31 @@ func GenerateFilterAndSSHRules(
 		return tailcfg.FilterAllowAll, &tailcfg.SSHPolicy{}, nil
 	}
 
-	rules, err := policy.generateFilterRules(node, peers)
+	rules, err := policy.CompileFilterRules(append(peers, node))
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
 
 	log.Trace().Interface("ACL", rules).Str("node", node.GivenName).Msg("ACL rules")
 
-	var sshPolicy *tailcfg.SSHPolicy
-	sshRules, err := policy.generateSSHRules(node, peers)
+	sshPolicy, err := policy.CompileSSHPolicy(node, peers)
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
 
-	log.Trace().
-		Interface("SSH", sshRules).
-		Str("node", node.GivenName).
-		Msg("SSH rules")
-
-	if sshPolicy == nil {
-		sshPolicy = &tailcfg.SSHPolicy{}
-	}
-	sshPolicy.Rules = sshRules
-
 	return rules, sshPolicy, nil
 }
 
-// generateFilterRules takes a set of nodes and an ACLPolicy and generates a
+// CompileFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
-func (pol *ACLPolicy) generateFilterRules(
-	node *types.Node,
-	peers types.Nodes,
+func (pol *ACLPolicy) CompileFilterRules(
+	nodes types.Nodes,
 ) ([]tailcfg.FilterRule, error) {
+	if pol == nil {
+		return tailcfg.FilterAllowAll, nil
+	}
+
 	rules := []tailcfg.FilterRule{}
-	nodes := append(peers, node)
 
 	for index, acl := range pol.ACLs {
 		if acl.Action != "accept" {
@@ -279,10 +270,14 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 	return ret
 }
 
-func (pol *ACLPolicy) generateSSHRules(
+func (pol *ACLPolicy) CompileSSHPolicy(
 	node *types.Node,
 	peers types.Nodes,
-) ([]*tailcfg.SSHRule, error) {
+) (*tailcfg.SSHPolicy, error) {
+	if pol == nil {
+		return nil, nil
+	}
+
 	rules := []*tailcfg.SSHRule{}
 
 	acceptAction := tailcfg.SSHAction{
@@ -393,7 +388,9 @@ func (pol *ACLPolicy) generateSSHRules(
 		})
 	}
 
-	return rules, nil
+	return &tailcfg.SSHPolicy{
+		Rules: rules,
+	}, nil
 }
 
 func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {

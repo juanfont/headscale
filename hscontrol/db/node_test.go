@@ -120,7 +120,7 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 	}
 	db.DB.Save(&node)
 
-	err = db.DeleteNode(&node, map[key.MachinePublic]bool{})
+	_, err = db.DeleteNode(&node, types.NodeConnectedMap{})
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(user.Name, "testnode3")
@@ -142,7 +142,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 		machineKey := key.NewMachine()
 
 		node := types.Node{
-			ID:             uint64(index),
+			ID:             types.NodeID(index),
 			MachineKey:     machineKey.Public(),
 			NodeKey:        nodeKey.Public(),
 			Hostname:       "testnode" + strconv.Itoa(index),
@@ -156,7 +156,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 	node0ByID, err := db.GetNodeByID(0)
 	c.Assert(err, check.IsNil)
 
-	peersOfNode0, err := db.ListPeers(node0ByID)
+	peersOfNode0, err := db.ListPeers(node0ByID.ID)
 	c.Assert(err, check.IsNil)
 
 	c.Assert(len(peersOfNode0), check.Equals, 9)
@@ -189,7 +189,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		machineKey := key.NewMachine()
 
 		node := types.Node{
-			ID:         uint64(index),
+			ID:         types.NodeID(index),
 			MachineKey: machineKey.Public(),
 			NodeKey:    nodeKey.Public(),
 			IPAddresses: types.NodeAddresses{
@@ -232,16 +232,16 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Logf("Node(%v), user: %v", testNode.Hostname, testNode.User)
 	c.Assert(err, check.IsNil)
 
-	adminPeers, err := db.ListPeers(adminNode)
+	adminPeers, err := db.ListPeers(adminNode.ID)
 	c.Assert(err, check.IsNil)
 
-	testPeers, err := db.ListPeers(testNode)
+	testPeers, err := db.ListPeers(testNode.ID)
 	c.Assert(err, check.IsNil)
 
-	adminRules, _, err := policy.GenerateFilterAndSSHRules(aclPolicy, adminNode, adminPeers)
+	adminRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers)
 	c.Assert(err, check.IsNil)
 
-	testRules, _, err := policy.GenerateFilterAndSSHRules(aclPolicy, testNode, testPeers)
+	testRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers)
 	c.Assert(err, check.IsNil)
 
 	peersOfAdminNode := policy.FilterNodesByACL(adminNode, adminPeers, adminRules)
@@ -586,7 +586,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	// TODO(kradalby): Check state update
-	_, err = db.EnableAutoApprovedRoutes(pol, node0ByID)
+	err = db.EnableAutoApprovedRoutes(pol, node0ByID)
 	c.Assert(err, check.IsNil)
 
 	enabledRoutes, err := db.GetEnabledRoutes(node0ByID)

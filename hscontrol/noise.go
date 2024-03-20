@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	"gorm.io/gorm"
 	"tailscale.com/control/controlbase"
 	"tailscale.com/control/controlhttp"
 	"tailscale.com/tailcfg"
@@ -162,4 +164,136 @@ func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
 	}
 
 	return nil
+}
+
+const (
+	MinimumCapVersion tailcfg.CapabilityVersion = 58
+)
+
+// NoisePollNetMapHandler takes care of /machine/:id/map using the Noise protocol
+//
+// This is the busiest endpoint, as it keeps the HTTP long poll that updates
+// the clients when something in the network changes.
+//
+// The clients POST stuff like HostInfo and their Endpoints here, but
+// only after their first request (marked with the ReadOnly field).
+//
+// At this moment the updates are sent in a quite horrendous way, but they kinda work.
+func (ns *noiseServer) NoisePollNetMapHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	log.Trace().
+		Str("handler", "NoisePollNetMap").
+		Msg("PollNetMapHandler called")
+
+	log.Trace().
+		Any("headers", req.Header).
+		Caller().
+		Msg("Headers")
+
+	body, _ := io.ReadAll(req.Body)
+
+	mapRequest := tailcfg.MapRequest{}
+	if err := json.Unmarshal(body, &mapRequest); err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot parse MapRequest")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+		return
+	}
+
+	// Reject unsupported versions
+	if mapRequest.Version < MinimumCapVersion {
+		log.Info().
+			Caller().
+			Int("min_version", int(MinimumCapVersion)).
+			Int("client_version", int(mapRequest.Version)).
+			Msg("unsupported client connected")
+		http.Error(writer, "Internal error", http.StatusBadRequest)
+
+		return
+	}
+
+	ns.nodeKey = mapRequest.NodeKey
+
+	node, err := ns.headscale.db.GetNodeByAnyKey(
+		ns.conn.Peer(),
+		mapRequest.NodeKey,
+		key.NodePublic{},
+	)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().
+				Str("handler", "NoisePollNetMap").
+				Uint64("node.id", node.ID.Uint64()).
+				Msgf("Ignoring request, cannot find node with key %s", mapRequest.NodeKey.String())
+			http.Error(writer, "Internal error", http.StatusNotFound)
+
+			return
+		}
+		log.Error().
+			Str("handler", "NoisePollNetMap").
+			Uint64("node.id", node.ID.Uint64()).
+			Msgf("Failed to fetch node from the database with node key: %s", mapRequest.NodeKey.String())
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+		return
+	}
+	log.Debug().
+		Str("handler", "NoisePollNetMap").
+		Str("node", node.Hostname).
+		Int("cap_ver", int(mapRequest.Version)).
+		Uint64("node.id", node.ID.Uint64()).
+		Msg("A node sending a MapRequest with Noise protocol")
+
+	session := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
+
+	// If a streaming mapSession exists for this node, close it
+	// and start a new one.
+	if session.isStreaming() {
+		log.Debug().
+			Caller().
+			Uint64("node.id", node.ID.Uint64()).
+			Int("cap_ver", int(mapRequest.Version)).
+			Msg("Aquiring lock to check stream")
+		ns.headscale.mapSessionMu.Lock()
+		if oldSession, ok := ns.headscale.mapSessions[node.ID]; ok {
+			log.Info().
+				Caller().
+				Uint64("node.id", node.ID.Uint64()).
+				Msg("Node has an open streaming session, replacing")
+			oldSession.close()
+		}
+
+		ns.headscale.mapSessions[node.ID] = session
+		ns.headscale.mapSessionMu.Unlock()
+		log.Debug().
+			Caller().
+			Uint64("node.id", node.ID.Uint64()).
+			Int("cap_ver", int(mapRequest.Version)).
+			Msg("Releasing lock to check stream")
+	}
+
+	session.serve()
+
+	if session.isStreaming() {
+		log.Debug().
+			Caller().
+			Uint64("node.id", node.ID.Uint64()).
+			Int("cap_ver", int(mapRequest.Version)).
+			Msg("Aquiring lock to remove stream")
+		ns.headscale.mapSessionMu.Lock()
+
+		delete(ns.headscale.mapSessions, node.ID)
+
+		ns.headscale.mapSessionMu.Unlock()
+		log.Debug().
+			Caller().
+			Uint64("node.id", node.ID.Uint64()).
+			Int("cap_ver", int(mapRequest.Version)).
+			Msg("Releasing lock to remove stream")
+	}
 }
