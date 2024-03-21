@@ -507,7 +507,7 @@ func (h *Headscale) handlePoll(
 				}
 				log.Trace().Str("node", node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished writing mapresp to node")
 
-				log.Info().
+				log.Debug().
 					Caller().
 					Bool("readOnly", mapRequest.ReadOnly).
 					Bool("omitPeers", mapRequest.OmitPeers).
