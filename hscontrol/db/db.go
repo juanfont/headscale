@@ -320,8 +320,6 @@ func NewHeadscaleDatabase(
 					err := tx.Migrator().DropColumn(&types.Node{}, "last_successful_update")
 					if err != nil && strings.Contains(err.Error(), `of relation "nodes" does not exist`) {
 						return nil
-					} else {
-						return err
 					}
 
 					return err
@@ -329,6 +327,18 @@ func NewHeadscaleDatabase(
 				Rollback: func(tx *gorm.DB) error {
 					return nil
 				},
+			},
+			{
+				ID: "202402241235",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.ACL{})
+					if err != nil {
+						return err
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
 			},
 		},
 	)
@@ -498,4 +508,8 @@ func Write[T any](db *gorm.DB, fn func(tx *gorm.DB) (T, error)) (T, error) {
 		return no, err
 	}
 	return ret, tx.Commit().Error
+}
+
+func IsNotFoundError(err error) bool {
+	return errors.Is(err, gorm.ErrRecordNotFound)
 }

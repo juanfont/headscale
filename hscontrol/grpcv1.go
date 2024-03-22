@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,6 +18,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -650,6 +652,84 @@ func (api headscaleV1APIServer) DeleteApiKey(
 	}
 
 	return &v1.DeleteApiKeyResponse{}, nil
+}
+
+// GetACL returns the current ACL.
+func (api headscaleV1APIServer) GetACL(
+	_ context.Context,
+	_ *v1.GetACLRequest,
+) (*v1.GetACLResponse, error) {
+	var (
+		acl *types.ACL
+		err error
+	)
+
+	// Get the ACL from the database or the file, depending on the
+	// configuration. If the ACL is not found, return an error.
+	switch api.h.cfg.ACL.PolicyMode {
+	case types.ACLPolicyModeDB:
+		acl, err = api.h.db.GetACL()
+		if err != nil {
+			if db.IsNotFoundError(err) {
+				return nil, types.ErrACLPolicyNotFound
+			}
+			return nil, err
+		}
+	case types.ACLPolicyModeFile:
+		aclBytes, err := api.h.ACLPolicy.Bytes()
+		if err != nil {
+			return nil, err
+		}
+
+		acl = &types.ACL{
+			Policy: aclBytes,
+		}
+	}
+
+	return &v1.GetACLResponse{
+		Policy: acl.Proto().GetPolicy(),
+	}, nil
+}
+
+// SetACL inserts or updates the ACL.
+func (api headscaleV1APIServer) SetACL(
+	_ context.Context,
+	request *v1.SetACLRequest,
+) (*v1.SetACLResponse, error) {
+	if api.h.cfg.ACL.PolicyMode != types.ACLPolicyModeDB {
+		return nil, types.ErrACLPolicyUpdateIsDisabled
+	}
+
+	polBytes, err := request.GetPolicy().MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+
+	a, err := policy.LoadACLPolicyFromBytes(polBytes, "json")
+	if err != nil {
+		return nil, errors.Wrap(err, types.ErrInvalidACLPolicyFormat.Error())
+	}
+
+	resp, err := api.h.db.SetACL(&types.ACL{
+		Policy: polBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the new policy in the ACLPolicy and notify all nodes.
+	api.h.ACLPolicy = a
+
+	ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
+	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+		Type: types.StateFullUpdate,
+	})
+
+	proto := resp.Proto()
+
+	return &v1.SetACLResponse{
+		Policy: proto.GetPolicy(),
+	}, nil
 }
 
 // The following service calls are for testing and debugging
