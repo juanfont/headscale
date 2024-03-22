@@ -16,12 +16,14 @@ type Notifier struct {
 	l         sync.RWMutex
 	nodes     map[string]chan<- types.StateUpdate
 	connected map[key.MachinePublic]bool
+	hits      map[key.MachinePublic]int
 }
 
 func NewNotifier() *Notifier {
 	return &Notifier{
 		nodes:     make(map[string]chan<- types.StateUpdate),
 		connected: make(map[key.MachinePublic]bool),
+		hits:      make(map[key.MachinePublic]int),
 	}
 }
 
@@ -37,10 +39,12 @@ func (n *Notifier) AddNode(machineKey key.MachinePublic, c chan<- types.StateUpd
 
 	n.nodes[machineKey.String()] = c
 	n.connected[machineKey] = true
+	n.hits[machineKey]++
 
 	log.Trace().
 		Str("machine_key", machineKey.ShortString()).
 		Int("open_chans", len(n.nodes)).
+		Int("chan_hits", n.hits[machineKey]).
 		Msg("Added new channel")
 }
 
@@ -58,8 +62,21 @@ func (n *Notifier) RemoveNode(machineKey key.MachinePublic) {
 		return
 	}
 
+	if n.hits[machineKey] > 1 {
+		n.hits[machineKey]--
+
+		log.Trace().
+			Str("machine_key", machineKey.ShortString()).
+			Int("open_chans", len(n.nodes)).
+			Int("chan_hits", n.hits[machineKey]).
+			Msg("Held channel")
+
+		return;
+	}
+
 	delete(n.nodes, machineKey.String())
 	n.connected[machineKey] = false
+	n.hits[machineKey] = 0;
 
 	log.Trace().
 		Str("machine_key", machineKey.ShortString()).
