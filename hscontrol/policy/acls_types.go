@@ -53,11 +53,13 @@ type AutoApprovers struct {
 
 // SSH controls who can ssh into which machines.
 type SSH struct {
-	Action       string   `json:"action"                yaml:"action"`
-	Sources      []string `json:"src"                   yaml:"src"`
-	Destinations []string `json:"dst"                   yaml:"dst"`
-	Users        []string `json:"users"                 yaml:"users"`
-	CheckPeriod  string   `json:"checkPeriod,omitempty" yaml:"checkPeriod,omitempty"`
+	Action          string   `json:"action"                    yaml:"action"`
+	Sources         []string `json:"src"                       yaml:"src"`
+	Destinations    []string `json:"dst"                       yaml:"dst"`
+	Users           []string `json:"users"                     yaml:"users"`
+	CheckPeriod     string   `json:"checkPeriod,omitempty"     yaml:"checkPeriod,omitempty"`
+	Recorder        []string `json:"recorder,omitempty"        yaml:"recorder,omitempty"`
+	EnforceRecorder bool     `json:"enforceRecorder,omitempty" yaml:"enforceRecorder,omitempty"`
 }
 
 // UnmarshalJSON allows to parse the Hosts directly into netip objects.
