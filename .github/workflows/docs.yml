@@ -31,7 +31,7 @@ jobs:
       - name: Build docs
         run: mkdocs build --strict
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./site
 
@@ -39,9 +39,14 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v4
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
