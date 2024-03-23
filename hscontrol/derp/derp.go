@@ -82,6 +82,9 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 
 func GetDERPMap(cfg types.DERPConfig) *tailcfg.DERPMap {
 	derpMaps := make([]*tailcfg.DERPMap, 0)
+	if cfg.DERPMap != nil {
+		derpMaps = append(derpMaps, cfg.DERPMap)
+	}
 
 	for _, path := range cfg.Paths {
 		log.Debug().
