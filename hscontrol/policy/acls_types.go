@@ -14,6 +14,7 @@ type ACLPolicy struct {
 	Groups        Groups        `json:"groups"        yaml:"groups"`
 	Hosts         Hosts         `json:"hosts"         yaml:"hosts"`
 	TagOwners     TagOwners     `json:"tagOwners"     yaml:"tagOwners"`
+	ForcedTags    ForcedTags    `json:"forcedTags"    yaml:"forcedTags"`
 	ACLs          []ACL         `json:"acls"          yaml:"acls"`
 	Tests         []ACLTest     `json:"tests"         yaml:"tests"`
 	AutoApprovers AutoApprovers `json:"autoApprovers" yaml:"autoApprovers"`
@@ -27,6 +28,9 @@ type ACL struct {
 	Sources      []string `json:"src"    yaml:"src"`
 	Destinations []string `json:"dst"    yaml:"dst"`
 }
+
+// ForcedTags specifies which tags are applied to which hosts by the server
+type ForcedTags map[string][]string
 
 // Groups references a series of alias in the ACL rules.
 type Groups map[string][]string
