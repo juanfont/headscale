@@ -204,7 +204,7 @@ func DERPProbeHandler(
 	}
 }
 
-// DERPBootstrapDNSHandler implements the /bootsrap-dns endpoint
+// DERPBootstrapDNSHandler implements the /bootstrap-dns endpoint
 // Described in https://github.com/tailscale/tailscale/issues/1405,
 // this endpoint provides a way to help a client when it fails to start up
 // because its DNS are broken.

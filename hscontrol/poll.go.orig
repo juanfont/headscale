@@ -192,7 +192,6 @@ func (m *mapSession) serve() {
 	// start-up before their first real endpoint update.
 	if m.isReadOnlyUpdate() {
 		m.handleReadOnlyRequest()
-	// update ACLRules with peer information (to update server tags if necessary)
 
 		return
 	}
@@ -222,7 +221,85 @@ func (m *mapSession) serve() {
 	// so it needs to be disabled.
 	rc.SetWriteDeadline(time.Time{})
 
+<<<<<<< HEAD
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
+=======
+		return
+	}
+
+	isConnected := h.nodeNotifier.ConnectedMap()
+	for _, peer := range peers {
+		online := isConnected[peer.MachineKey]
+		peer.IsOnline = &online
+	}
+
+	mapp := mapper.NewMapper(
+		node,
+		peers,
+		h.DERPMap,
+		h.cfg.BaseDomain,
+		h.cfg.DNSConfig,
+		h.cfg.LogTail.Enabled,
+		h.cfg.RandomizeClientPort,
+	)
+
+	// update ACLRules with peer information (to update server tags if necessary)
+	if h.ACLPolicy != nil {
+		// update routes with peer information
+		// This state update is ignored as it will be sent
+		// as part of the whole node
+		// TODO(kradalby): figure out if that is actually correct
+		_, err = h.db.EnableAutoApprovedRoutes(h.ACLPolicy, node)
+		if err != nil {
+			logErr(err, "Error running auto approved routes")
+		}
+	}
+
+	logTrace("Sending initial map")
+
+	mapResp, err := mapp.FullMapResponse(mapRequest, node, h.ACLPolicy)
+	if err != nil {
+		logErr(err, "Failed to create MapResponse")
+		http.Error(writer, "", http.StatusInternalServerError)
+
+		return
+	}
+
+	// Send the client an update to make sure we send an initial mapresponse
+	_, err = writer.Write(mapResp)
+	if err != nil {
+		logErr(err, "Could not write the map response")
+
+		return
+	}
+
+	if flusher, ok := writer.(http.Flusher); ok {
+		flusher.Flush()
+	} else {
+		return
+	}
+
+	stateUpdate := types.StateUpdate{
+		Type:        types.StatePeerChanged,
+		ChangeNodes: types.Nodes{node},
+		Message:     "called from handlePoll -> new node added",
+	}
+	if stateUpdate.Valid() {
+		ctx := types.NotifyCtx(context.Background(), "poll-newnode-peers", node.Hostname)
+		h.nodeNotifier.NotifyWithIgnore(
+			ctx,
+			stateUpdate,
+			node.MachineKey.String())
+	}
+
+	if len(node.Routes) > 0 {
+		go h.pollFailoverRoutes(logErr, "new node", node)
+	}
+
+	keepAliveTicker := time.NewTicker(keepAliveInterval)
+
+	ctx, cancel := context.WithCancel(context.WithValue(ctx, nodeNameContextKey, node.Hostname))
+>>>>>>> cde0b83 (Fix typos)
 	defer cancel()
 
 	// Loop through updates and continuously send them to the

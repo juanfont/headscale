@@ -312,7 +312,30 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	c.Assert(nodeFromDB.IsExpired(), check.Equals, true)
 }
 
+<<<<<<< HEAD
+=======
 func (s *Suite) TestSerdeAddressStringSlice(c *check.C) {
+	input := types.NodeAddresses([]netip.Addr{
+		netip.MustParseAddr("192.0.2.1"),
+		netip.MustParseAddr("2001:db8::1"),
+	})
+	serialized, err := input.Value()
+	c.Assert(err, check.IsNil)
+	if serial, ok := serialized.(string); ok {
+		c.Assert(serial, check.Equals, "192.0.2.1,2001:db8::1")
+	}
+
+	var deserialized types.NodeAddresses
+	err = deserialized.Scan(serialized)
+	c.Assert(err, check.IsNil)
+
+	c.Assert(len(deserialized), check.Equals, len(input))
+	for i := range deserialized {
+		c.Assert(deserialized[i], check.Equals, input[i])
+	}
+}
+
+>>>>>>> cde0b83 (Fix typos)
 func (s *Suite) TestGenerateGivenName(c *check.C) {
 	user1, err := db.CreateUser("user-1")
 	c.Assert(err, check.IsNil)

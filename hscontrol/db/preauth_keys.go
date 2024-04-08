@@ -83,7 +83,7 @@ func CreatePreAuthKey(
 			if !seenTags[tag] {
 				if err := tx.Save(&types.PreAuthKeyACLTag{PreAuthKeyID: key.ID, Tag: tag}).Error; err != nil {
 					return nil, fmt.Errorf(
-						"failed to ceate key tag in the database: %w",
+						"failed to create key tag in the database: %w",
 						err,
 					)
 				}

@@ -335,14 +335,14 @@ func TestTaildrop(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	retry := func(times int, sleepInverval time.Duration, doWork func() error) error {
+	retry := func(times int, sleepInterval time.Duration, doWork func() error) error {
 		var err error
 		for attempts := 0; attempts < times; attempts++ {
 			err = doWork()
 			if err == nil {
 				return nil
 			}
-			time.Sleep(sleepInverval)
+			time.Sleep(sleepInterval)
 		}
 
 		return err
@@ -793,7 +793,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 					continue
 				}
 
-				// All peers of this nodess are reporting to be
+				// All peers of this nodes are reporting to be
 				// connected to the control server
 				assert.Truef(
 					t,

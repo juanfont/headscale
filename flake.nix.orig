@@ -30,8 +30,13 @@
           checkFlags = ["-short"];
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
-          # update this if you have a mismatch after doing a change to those files.
+<<<<<<< HEAD
+          # update this if you have a mismatch after doing a change to thos files.
           vendorHash = "sha256-wXfKeiJaGe6ahOsONrQhvbuMN8flQ13b0ZjxdbFs1e8=";
+=======
+          # update this if you have a mismatch after doing a change to those files.
+          vendorHash = "sha256-Yb5WaN0abPLZ4mPnuJGZoj6EMfoZjaZZ0f344KWva3o=";
+>>>>>>> cde0b83 (Fix typos)
 
           subPackages = ["cmd/headscale"];
 

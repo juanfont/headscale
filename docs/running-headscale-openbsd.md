@@ -30,7 +30,7 @@ describing how to make `headscale` run properly in a server environment.
     cd headscale
 
     # optionally checkout a release
-    # option a. you can find offical relase at https://github.com/juanfont/headscale/releases/latest
+    # option a. you can find official release at https://github.com/juanfont/headscale/releases/latest
     # option b. get latest tag, this may be a beta release
     latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
 
@@ -57,7 +57,7 @@ describing how to make `headscale` run properly in a server environment.
     cd headscale
 
     # optionally checkout a release
-    # option a. you can find offical relase at https://github.com/juanfont/headscale/releases/latest
+    # option a. you can find official release at https://github.com/juanfont/headscale/releases/latest
     # option b. get latest tag, this may be a beta release
     latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
 

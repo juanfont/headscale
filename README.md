@@ -99,7 +99,7 @@ Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) file.
 
 ### Requirements
 
-To contribute to headscale you would need the lastest version of [Go](https://golang.org)
+To contribute to headscale you would need the latest version of [Go](https://golang.org)
 and [Buf](https://buf.build)(Protobuf generator).
 
 We recommend using [Nix](https://nixos.org/) to setup a development environment. This can
