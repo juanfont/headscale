@@ -172,11 +172,19 @@ func (n *Notifier) String() string {
 	n.l.RLock()
 	defer n.l.RUnlock()
 
-	str := []string{"Notifier, in map:\n"}
+	var b strings.Builder
+	b.WriteString("chans:\n")
 
 	for k, v := range n.nodes {
-		str = append(str, fmt.Sprintf("\t%d: %v\n", k, v))
+		fmt.Fprintf(&b, "\t%d: %p\n", k, v)
 	}
 
-	return strings.Join(str, "")
+	b.WriteString("\n")
+	b.WriteString("connected:\n")
+
+	for k, v := range n.connected {
+		fmt.Fprintf(&b, "\t%d: %t\n", k, v)
+	}
+
+	return b.String()
 }
