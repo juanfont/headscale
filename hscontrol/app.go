@@ -503,7 +503,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	return router
 }
 
-// Serve launches a GIN server with the Headscale API.
+// Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
 	if _, enableProfile := os.LookupEnv("HEADSCALE_PROFILING_ENABLED"); enableProfile {
 		if profilePath, ok := os.LookupEnv("HEADSCALE_PROFILING_PATH"); ok {
@@ -532,7 +532,7 @@ func (h *Headscale) Serve() error {
 
 		region, err := h.DERPServer.GenerateRegion()
 		if err != nil {
-			return err
+			return fmt.Errorf("generating DERP region for embedded server: %w", err)
 		}
 
 		if h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
@@ -607,14 +607,14 @@ func (h *Headscale) Serve() error {
 		}...,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("setting up gRPC gateway via socket: %w", err)
 	}
 
 	// Connect to the gRPC server over localhost to skip
 	// the authentication.
 	err = v1.RegisterHeadscaleServiceHandler(ctx, grpcGatewayMux, grpcGatewayConn)
 	if err != nil {
-		return err
+		return fmt.Errorf("registering Headscale API service to gRPC: %w", err)
 	}
 
 	// Start the local gRPC server without TLS and without authentication
@@ -635,9 +635,7 @@ func (h *Headscale) Serve() error {
 
 	tlsConfig, err := h.getTLSSettings()
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to set up TLS configuration")
-
-		return err
+		return fmt.Errorf("configuring TLS settings: %w", err)
 	}
 
 	//
@@ -702,15 +700,11 @@ func (h *Headscale) Serve() error {
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
 		Handler:     router,
-		ReadTimeout: types.HTTPReadTimeout,
-		// Go does not handle timeouts in HTTP very well, and there is
-		// no good way to handle streaming timeouts, therefore we need to
-		// keep this at unlimited and be careful to clean up connections
-		// https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#aboutstreaming
-		// TODO(kradalby): this timeout can now be set per handler with http.ResponseController:
-		// https://www.alexedwards.net/blog/how-to-use-the-http-responsecontroller-type
-		// replace this so only the longpoller has no timeout.
-		WriteTimeout: 0,
+		ReadTimeout: types.HTTPTimeout,
+
+		// Long polling should not have any timeout, this is overriden
+		// further down the chain
+		WriteTimeout: types.HTTPTimeout,
 	}
 
 	var httpListener net.Listener
@@ -729,27 +723,46 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
-	promMux := http.NewServeMux()
-	promMux.Handle("/metrics", promhttp.Handler())
+	debugMux := http.NewServeMux()
+	debugMux.HandleFunc("/debug/notifier", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(h.nodeNotifier.String()))
 
-	promHTTPServer := &http.Server{
+		return
+	})
+	debugMux.HandleFunc("/debug/mapresp", func(w http.ResponseWriter, r *http.Request) {
+		h.mapSessionMu.Lock()
+		defer h.mapSessionMu.Unlock()
+
+		var b strings.Builder
+		b.WriteString("mapresponders:\n")
+		for k, v := range h.mapSessions {
+			fmt.Fprintf(&b, "\t%d: %p\n", k, v)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(b.String()))
+
+		return
+	})
+	debugMux.Handle("/metrics", promhttp.Handler())
+
+	debugHTTPServer := &http.Server{
 		Addr:         h.cfg.MetricsAddr,
-		Handler:      promMux,
-		ReadTimeout:  types.HTTPReadTimeout,
+		Handler:      debugMux,
+		ReadTimeout:  types.HTTPTimeout,
 		WriteTimeout: 0,
 	}
 
-	var promHTTPListener net.Listener
-	promHTTPListener, err = net.Listen("tcp", h.cfg.MetricsAddr)
-
+	debugHTTPListener, err := net.Listen("tcp", h.cfg.MetricsAddr)
 	if err != nil {
 		return fmt.Errorf("failed to bind to TCP address: %w", err)
 	}
 
-	errorGroup.Go(func() error { return promHTTPServer.Serve(promHTTPListener) })
+	errorGroup.Go(func() error { return debugHTTPServer.Serve(debugHTTPListener) })
 
 	log.Info().
-		Msgf("listening and serving metrics on: %s", h.cfg.MetricsAddr)
+		Msgf("listening and serving debug and metrics on: %s", h.cfg.MetricsAddr)
 
 	var tailsqlContext context.Context
 	if tailsqlEnabled {
@@ -815,7 +828,7 @@ func (h *Headscale) Serve() error {
 					context.Background(),
 					types.HTTPShutdownTimeout,
 				)
-				if err := promHTTPServer.Shutdown(ctx); err != nil {
+				if err := debugHTTPServer.Shutdown(ctx); err != nil {
 					log.Error().Err(err).Msg("Failed to shutdown prometheus http")
 				}
 				if err := httpServer.Shutdown(ctx); err != nil {
@@ -833,7 +846,7 @@ func (h *Headscale) Serve() error {
 				}
 
 				// Close network listeners
-				promHTTPListener.Close()
+				debugHTTPListener.Close()
 				httpListener.Close()
 				grpcGatewayConn.Close()
 
@@ -898,7 +911,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			server := &http.Server{
 				Addr:        h.cfg.TLS.LetsEncrypt.Listen,
 				Handler:     certManager.HTTPHandler(http.HandlerFunc(h.redirect)),
-				ReadTimeout: types.HTTPReadTimeout,
+				ReadTimeout: types.HTTPTimeout,
 			}
 
 			go func() {

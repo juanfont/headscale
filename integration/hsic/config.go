@@ -124,7 +124,7 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_PRIVATE_KEY_PATH":                  "/tmp/private.key",
 		"HEADSCALE_NOISE_PRIVATE_KEY_PATH":            "/tmp/noise_private.key",
 		"HEADSCALE_LISTEN_ADDR":                       "0.0.0.0:8080",
-		"HEADSCALE_METRICS_LISTEN_ADDR":               "127.0.0.1:9090",
+		"HEADSCALE_METRICS_LISTEN_ADDR":               "0.0.0.0:9090",
 		"HEADSCALE_SERVER_URL":                        "http://headscale:8080",
 		"HEADSCALE_DERP_URLS":                         "https://controlplane.tailscale.com/derpmap/default",
 		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":          "false",

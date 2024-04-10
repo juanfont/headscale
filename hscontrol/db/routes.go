@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"sort"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"tailscale.com/util/set"
 )
 
 var ErrRouteIsNotAvailable = errors.New("route is not available")
@@ -402,11 +404,10 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 	return sendUpdate, nil
 }
 
-// FailoverRouteIfAvailable takes a node and checks if the node's route
-// currently have a functioning host that exposes the network.
-// If it does not, it is failed over to another suitable route if there
-// is one.
-func FailoverRouteIfAvailable(
+// FailoverNodeRoutesIfNeccessary takes a node and checks if the node's route
+// need to be failed over to another host.
+// If needed, the failover will be attempted.
+func FailoverNodeRoutesIfNeccessary(
 	tx *gorm.DB,
 	isConnected types.NodeConnectedMap,
 	node *types.Node,
@@ -416,8 +417,12 @@ func FailoverRouteIfAvailable(
 		return nil, nil
 	}
 
-	var changedNodes []types.NodeID
+	log.Trace().Msgf("NODE ROUTES: %d", len(nodeRoutes))
+	changedNodes := make(set.Set[types.NodeID])
+
+nodeRouteLoop:
 	for _, nodeRoute := range nodeRoutes {
+		log.Trace().Msgf("NODE ROUTE: %d", nodeRoute.ID)
 		routes, err := getRoutesByPrefix(tx, netip.Prefix(nodeRoute.Prefix))
 		if err != nil {
 			return nil, fmt.Errorf("getting routes by prefix: %w", err)
@@ -427,29 +432,37 @@ func FailoverRouteIfAvailable(
 			if route.IsPrimary {
 				// if we have a primary route, and the node is connected
 				// nothing needs to be done.
-				if isConnected[route.Node.ID] {
-					return nil, nil
+				if conn, ok := isConnected[route.Node.ID]; conn && ok {
+					continue nodeRouteLoop
 				}
 
 				// if not, we need to failover the route
 				failover := failoverRoute(isConnected, &route, routes)
 				if failover != nil {
-					failover.save(tx)
+					err := failover.save(tx)
 					if err != nil {
 						return nil, fmt.Errorf("saving failover routes: %w", err)
 					}
 
-					changedNodes = append(changedNodes, failover.old.Node.ID, failover.new.Node.ID)
+					changedNodes.Add(failover.old.Node.ID)
+					changedNodes.Add(failover.new.Node.ID)
+
+					continue nodeRouteLoop
 				}
 			}
 		}
 	}
 
+	chng := changedNodes.Slice()
+	sort.SliceStable(chng, func(i, j int) bool {
+		return chng[i] < chng[j]
+	})
+
 	if len(changedNodes) != 0 {
 		return &types.StateUpdate{
 			Type:        types.StatePeerChanged,
-			ChangeNodes: changedNodes,
-			Message:     "called from db.FailoverRouteIfAvailable",
+			ChangeNodes: chng,
+			Message:     "called from db.FailoverNodeRoutesIfNeccessary",
 		}, nil
 	}
 

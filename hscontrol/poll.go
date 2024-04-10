@@ -48,6 +48,8 @@ type mapSession struct {
 	ch       chan types.StateUpdate
 	cancelCh chan struct{}
 
+	keepAliveTicker *time.Ticker
+
 	node *types.Node
 	w    http.ResponseWriter
 
@@ -85,6 +87,8 @@ func (h *Headscale) newMapSession(
 		ch:       updateChan,
 		cancelCh: make(chan struct{}),
 
+		keepAliveTicker: time.NewTicker(keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)),
+
 		// Loggers
 		warnf:  warnf,
 		infof:  infof,
@@ -100,10 +104,9 @@ func (m *mapSession) close() {
 		return
 	}
 
-	select {
-	case m.cancelCh <- struct{}{}:
-	default:
-	}
+	m.tracef("mapSession (%p) sending message on cancel chan")
+	m.cancelCh <- struct{}{}
+	m.tracef("mapSession (%p) sent message on cancel chan")
 }
 
 func (m *mapSession) isStreaming() bool {
@@ -116,13 +119,6 @@ func (m *mapSession) isEndpointUpdate() bool {
 
 func (m *mapSession) isReadOnlyUpdate() bool {
 	return !m.req.Stream && m.req.OmitPeers && m.req.ReadOnly
-}
-
-func (m *mapSession) flush200() {
-	m.w.WriteHeader(http.StatusOK)
-	if f, ok := m.w.(http.Flusher); ok {
-		f.Flush()
-	}
 }
 
 // handlePoll ensures the node gets the appropriate updates from either
@@ -211,7 +207,12 @@ func (m *mapSession) serve() {
 
 	m.pollFailoverRoutes("node connected", m.node)
 
-	keepAliveTicker := time.NewTicker(keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond))
+	// Upgrade the writer to a ResponseController
+	rc := http.NewResponseController(m.w)
+
+	// Longpolling will break if there is a write timeout,
+	// so it needs to be disabled.
+	rc.SetWriteDeadline(time.Time{})
 
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
 	defer cancel()
@@ -324,18 +325,16 @@ func (m *mapSession) serve() {
 				startWrite := time.Now()
 				_, err = m.w.Write(data)
 				if err != nil {
-					m.errf(err, "Could not write the map response, for mapSession: %p, stream: %t", m, m.isStreaming())
-
+					m.errf(err, "Could not write the map response, for mapSession: %p", m)
 					return
 				}
 
-				if flusher, ok := m.w.(http.Flusher); ok {
-					flusher.Flush()
-				} else {
-					log.Error().Msg("Failed to create http flusher")
-
+				err = rc.Flush()
+				if err != nil {
+					m.errf(err, "flushing the map response to client, for mapSession: %p", m)
 					return
 				}
+
 				log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
 
 				m.infof("update sent")
@@ -402,7 +401,7 @@ func (m *mapSession) serve() {
 				derp = true
 			}
 
-		case <-keepAliveTicker.C:
+		case <-m.keepAliveTicker.C:
 			data, err := m.mapper.KeepAliveResponse(m.req, m.node)
 			if err != nil {
 				m.errf(err, "Error generating the keep alive msg")
@@ -415,11 +414,9 @@ func (m *mapSession) serve() {
 
 				return
 			}
-			if flusher, ok := m.w.(http.Flusher); ok {
-				flusher.Flush()
-			} else {
-				log.Error().Msg("Failed to create http flusher")
-
+			err = rc.Flush()
+			if err != nil {
+				m.errf(err, "flushing keep alive to client, for mapSession: %p", m)
 				return
 			}
 		}
@@ -428,7 +425,7 @@ func (m *mapSession) serve() {
 
 func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
 	update, err := db.Write(m.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return db.FailoverRouteIfAvailable(tx, m.h.nodeNotifier.ConnectedMap(), node)
+		return db.FailoverNodeRoutesIfNeccessary(tx, m.h.nodeNotifier.ConnectedMap(), node)
 	})
 	if err != nil {
 		m.errf(err, fmt.Sprintf("failed to ensure failover routes, %s", where))
@@ -565,7 +562,7 @@ func (m *mapSession) handleEndpointUpdate() {
 		},
 		m.node.ID)
 
-	m.flush200()
+	m.w.WriteHeader(http.StatusOK)
 
 	return
 }
@@ -654,7 +651,9 @@ func (m *mapSession) handleReadOnlyRequest() {
 		m.errf(err, "Failed to write response")
 	}
 
-	m.flush200()
+	m.w.WriteHeader(http.StatusOK)
+
+	return
 }
 
 func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.PeerChange) {
