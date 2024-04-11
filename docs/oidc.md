@@ -168,7 +168,8 @@ oidc:
   issuer: "https://accounts.google.com"
   client_id: ""
   client_secret: ""
-  scope: ["openid", "profile", "email"]
+  scope: ["openid", "profile", "email"] # don't add "groups" here, Google doesn't support it
 ```
 
 You can also use `allowed_domains` and `allowed_users` to restrict the users who can authenticate.
+If you want to use `allowed_groups`, add "https://www.googleapis.com/auth/cloud-identity.groups.readonly" to the authorized data list in your OAuth screen. (And of course, enable Cloud Identity first on your project)

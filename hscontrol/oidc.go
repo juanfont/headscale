@@ -56,7 +56,6 @@ func (h *Headscale) initOIDC() error {
 	// grab oidc config if it hasn't been already
 	if h.oauth2Config == nil {
 		h.oidcProvider, err = oidc.NewProvider(context.Background(), h.cfg.OIDC.Issuer)
-
 		if err != nil {
 			log.Error().
 				Err(err).
@@ -64,6 +63,15 @@ func (h *Headscale) initOIDC() error {
 				Msgf("Could not retrieve OIDC Config: %s", err.Error())
 
 			return err
+		}
+
+		scopes := h.cfg.OIDC.Scope
+		// Only if we require group membership :
+		if h.cfg.OIDC.AllowedGroups != nil && len(h.cfg.OIDC.AllowedGroups) > 0 {
+			// and are using Google Workspace as the OIDC provider
+			if h.cfg.OIDC.Issuer == googleOIDCIssuer {
+				scopes = append(scopes, googleIAMScope)
+			}
 		}
 
 		h.oauth2Config = &oauth2.Config{
@@ -74,7 +82,7 @@ func (h *Headscale) initOIDC() error {
 				"%s/oidc/callback",
 				strings.TrimSuffix(h.cfg.ServerURL, "/"),
 			),
-			Scopes: h.cfg.OIDC.Scope,
+			Scopes: scopes,
 		}
 	}
 
@@ -159,8 +167,9 @@ func (h *Headscale) RegisterOIDC(
 }
 
 type oidcCallbackTemplateConfig struct {
-	User string
-	Verb string
+	Groups string
+	User   string
+	Verb   string
 }
 
 //go:embed assets/oidc_callback_template.html
@@ -184,7 +193,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	rawIDToken, err := h.getIDTokenForOIDCCallback(req.Context(), writer, code, state)
+	oauth2Token, rawIDToken, err := h.getIDTokenForOIDCCallback(req.Context(), writer, code, state)
 	if err != nil {
 		return
 	}
@@ -211,8 +220,21 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	if err := validateOIDCAllowedGroups(writer, h.cfg.OIDC.AllowedGroups, claims); err != nil {
-		return
+	if h.cfg.OIDC.AllowedGroups != nil && len(h.cfg.OIDC.AllowedGroups) > 0 {
+		if h.cfg.OIDC.Issuer == googleOIDCIssuer {
+			claims.Groups, err = oidcGWorkspaceGetUserGroups(oauth2Token.AccessToken, claims.Email)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Msgf("Failed to retrieve user groups : %s", err)
+
+				return
+			}
+		}
+
+		if err := validateOIDCAllowedGroups(writer, h.cfg.OIDC.AllowedGroups, claims); err != nil {
+			return
+		}
 	}
 
 	if err := validateOIDCAllowedUsers(writer, h.cfg.OIDC.AllowedUsers, claims); err != nil {
@@ -283,7 +305,7 @@ func (h *Headscale) getIDTokenForOIDCCallback(
 	ctx context.Context,
 	writer http.ResponseWriter,
 	code, state string,
-) (string, error) {
+) (*oauth2.Token, string, error) {
 	oauth2Token, err := h.oauth2Config.Exchange(ctx, code)
 	if err != nil {
 		util.LogErr(err, "Could not exchange code for token")
@@ -294,7 +316,7 @@ func (h *Headscale) getIDTokenForOIDCCallback(
 			util.LogErr(err, "Failed to write response")
 		}
 
-		return "", err
+		return nil, "", err
 	}
 
 	log.Trace().
@@ -312,10 +334,10 @@ func (h *Headscale) getIDTokenForOIDCCallback(
 			util.LogErr(err, "Failed to write response")
 		}
 
-		return "", errNoOIDCIDToken
+		return nil, "", errNoOIDCIDToken
 	}
 
-	return rawIDToken, nil
+	return oauth2Token, rawIDToken, nil
 }
 
 func (h *Headscale) verifyIDTokenForOIDCCallback(
@@ -396,25 +418,21 @@ func validateOIDCAllowedGroups(
 	allowedGroups []string,
 	claims *IDTokenClaims,
 ) error {
-	if len(allowedGroups) > 0 {
-		for _, group := range allowedGroups {
-			if util.IsStringInSlice(claims.Groups, group) {
-				return nil
-			}
+	for _, group := range allowedGroups {
+		if util.IsStringInSlice(claims.Groups, group) {
+			return nil
 		}
-
-		log.Trace().Msg("authenticated principal not in any allowed groups")
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusBadRequest)
-		_, err := writer.Write([]byte("unauthorized principal (allowed groups)"))
-		if err != nil {
-			util.LogErr(err, "Failed to write response")
-		}
-
-		return errOIDCAllowedGroups
 	}
 
-	return nil
+	log.Trace().Msg("authenticated principal not in any allowed groups")
+	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	writer.WriteHeader(http.StatusBadRequest)
+	_, err := writer.Write([]byte("unauthorized principal (allowed groups)"))
+	if err != nil {
+		util.LogErr(err, "Failed to write response")
+	}
+
+	return errOIDCAllowedGroups
 }
 
 // validateOIDCAllowedUsers checks that if AllowedUsers is provided,
@@ -511,8 +529,9 @@ func (h *Headscale) validateNodeForOIDCCallback(
 
 		var content bytes.Buffer
 		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-			User: claims.Email,
-			Verb: "Reauthenticated",
+			Groups: strings.Join(claims.Groups, ", "),
+			User:   claims.Email,
+			Verb:   "Reauthenticated",
 		}); err != nil {
 			log.Error().
 				Str("func", "OIDCCallback").
@@ -661,8 +680,9 @@ func renderOIDCCallbackTemplate(
 ) (*bytes.Buffer, error) {
 	var content bytes.Buffer
 	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-		User: claims.Email,
-		Verb: "Authenticated",
+		Groups: strings.Join(claims.Groups, ", "),
+		User:   claims.Email,
+		Verb:   "Authenticated",
 	}); err != nil {
 		log.Error().
 			Str("func", "OIDCCallback").
