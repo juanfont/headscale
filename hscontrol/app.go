@@ -148,7 +148,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, err
 	}
 
-	app.ipAlloc, err = db.NewIPAllocator(app.db, *cfg.PrefixV4, *cfg.PrefixV6)
+	app.ipAlloc, err = db.NewIPAllocator(app.db, cfg.PrefixV4, cfg.PrefixV6)
 	if err != nil {
 		return nil, err
 	}

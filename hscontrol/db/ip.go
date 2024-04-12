@@ -20,12 +20,12 @@ import (
 type IPAllocator struct {
 	mu sync.Mutex
 
-	prefix4 netip.Prefix
-	prefix6 netip.Prefix
+	prefix4 *netip.Prefix
+	prefix6 *netip.Prefix
 
 	// Previous IPs handed out
-	prev4 netip.Addr
-	prev6 netip.Addr
+	prev4 *netip.Addr
+	prev6 *netip.Addr
 
 	// Set of all IPs handed out.
 	// This might not be in sync with the database,
@@ -40,7 +40,12 @@ type IPAllocator struct {
 // provided IPv4 and IPv6 prefix. It needs to be created
 // when headscale starts and needs to finish its read
 // transaction before any writes to the database occur.
-func NewIPAllocator(db *HSDatabase, prefix4, prefix6 netip.Prefix) (*IPAllocator, error) {
+func NewIPAllocator(db *HSDatabase, prefix4, prefix6 *netip.Prefix) (*IPAllocator, error) {
+	ret := IPAllocator{
+		prefix4: prefix4,
+		prefix6: prefix6,
+	}
+
 	var addressesSlices []string
 
 	if db != nil {
@@ -53,12 +58,24 @@ func NewIPAllocator(db *HSDatabase, prefix4, prefix6 netip.Prefix) (*IPAllocator
 
 	// Add network and broadcast addrs to used pool so they
 	// are not handed out to nodes.
-	network4, broadcast4 := util.GetIPPrefixEndpoints(prefix4)
-	network6, broadcast6 := util.GetIPPrefixEndpoints(prefix6)
-	ips.Add(network4)
-	ips.Add(broadcast4)
-	ips.Add(network6)
-	ips.Add(broadcast6)
+	if prefix4 != nil {
+		network4, broadcast4 := util.GetIPPrefixEndpoints(*prefix4)
+		ips.Add(network4)
+		ips.Add(broadcast4)
+
+		// Use network as starting point, it will be used to call .Next()
+		// TODO(kradalby): Could potentially take all the IPs loaded from
+		// the database into account to start at a more "educated" location.
+		ret.prev4 = &network4
+	}
+
+	if prefix6 != nil {
+		network6, broadcast6 := util.GetIPPrefixEndpoints(*prefix6)
+		ips.Add(network6)
+		ips.Add(broadcast6)
+
+		ret.prev6 = &network6
+	}
 
 	// Fetch all the IP Addresses currently handed out from the Database
 	// and add them to the used IP set.
@@ -86,40 +103,41 @@ func NewIPAllocator(db *HSDatabase, prefix4, prefix6 netip.Prefix) (*IPAllocator
 		)
 	}
 
-	return &IPAllocator{
-		usedIPs: ips,
+	ret.usedIPs = ips
 
-		prefix4: prefix4,
-		prefix6: prefix6,
-
-		// Use network as starting point, it will be used to call .Next()
-		// TODO(kradalby): Could potentially take all the IPs loaded from
-		// the database into account to start at a more "educated" location.
-		prev4: network4,
-		prev6: network6,
-	}, nil
+	return &ret, nil
 }
 
 func (i *IPAllocator) Next() (types.NodeAddresses, error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	v4, err := i.next(i.prev4, i.prefix4)
-	if err != nil {
-		return nil, fmt.Errorf("allocating IPv4 address: %w", err)
+	var ret types.NodeAddresses
+
+	if i.prefix4 != nil {
+		v4, err := i.next(i.prev4, i.prefix4)
+		if err != nil {
+			return nil, fmt.Errorf("allocating IPv4 address: %w", err)
+		}
+
+		ret = append(ret, *v4)
 	}
 
-	v6, err := i.next(i.prev6, i.prefix6)
-	if err != nil {
-		return nil, fmt.Errorf("allocating IPv6 address: %w", err)
+	if i.prefix6 != nil {
+		v6, err := i.next(i.prev6, i.prefix6)
+		if err != nil {
+			return nil, fmt.Errorf("allocating IPv6 address: %w", err)
+		}
+
+		ret = append(ret, *v6)
 	}
 
-	return types.NodeAddresses{*v4, *v6}, nil
+	return ret, nil
 }
 
 var ErrCouldNotAllocateIP = errors.New("failed to allocate IP")
 
-func (i *IPAllocator) next(prev netip.Addr, prefix netip.Prefix) (*netip.Addr, error) {
+func (i *IPAllocator) next(prev *netip.Addr, prefix *netip.Prefix) (*netip.Addr, error) {
 	// Get the first IP in our prefix
 	ip := prev.Next()
 

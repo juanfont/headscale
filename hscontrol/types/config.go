@@ -579,18 +579,16 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 	return nil, ""
 }
 
-func Prefixes() (*netip.Prefix, *netip.Prefix, error) {
+func PrefixV4() (*netip.Prefix, error) {
 	prefixV4Str := viper.GetString("prefixes.v4")
-	prefixV6Str := viper.GetString("prefixes.v6")
+
+	if prefixV4Str == "" {
+		return nil, nil
+	}
 
 	prefixV4, err := netip.ParsePrefix(prefixV4Str)
 	if err != nil {
-		return nil, nil, err
-	}
-
-	prefixV6, err := netip.ParsePrefix(prefixV6Str)
-	if err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("parsing IPv4 prefix from config: %w", err)
 	}
 
 	builder := netipx.IPSetBuilder{}
@@ -603,13 +601,33 @@ func Prefixes() (*netip.Prefix, *netip.Prefix, error) {
 				prefixV4Str, tsaddr.CGNATRange())
 	}
 
+	return &prefixV4, nil
+}
+
+func PrefixV6() (*netip.Prefix, error) {
+	prefixV6Str := viper.GetString("prefixes.v6")
+
+	if prefixV6Str == "" {
+		return nil, nil
+	}
+
+	prefixV6, err := netip.ParsePrefix(prefixV6Str)
+	if err != nil {
+		return nil, fmt.Errorf("parsing IPv6 prefix from config: %w", err)
+	}
+
+	builder := netipx.IPSetBuilder{}
+	builder.AddPrefix(tsaddr.CGNATRange())
+	builder.AddPrefix(tsaddr.TailscaleULARange())
+	ipSet, _ := builder.IPSet()
+
 	if !ipSet.ContainsPrefix(prefixV6) {
 		log.Warn().
 			Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
 				prefixV6Str, tsaddr.TailscaleULARange())
 	}
 
-	return &prefixV4, &prefixV6, nil
+	return &prefixV6, nil
 }
 
 func GetHeadscaleConfig() (*Config, error) {
@@ -624,7 +642,12 @@ func GetHeadscaleConfig() (*Config, error) {
 		}, nil
 	}
 
-	prefix4, prefix6, err := Prefixes()
+	prefix4, err := PrefixV4()
+	if err != nil {
+		return nil, err
+	}
+
+	prefix6, err := PrefixV6()
 	if err != nil {
 		return nil, err
 	}

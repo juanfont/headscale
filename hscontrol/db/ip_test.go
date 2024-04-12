@@ -12,8 +12,9 @@ import (
 )
 
 func TestIPAllocator(t *testing.T) {
-	mpp := func(pref string) netip.Prefix {
-		return netip.MustParsePrefix(pref)
+	mpp := func(pref string) *netip.Prefix {
+		p := netip.MustParsePrefix(pref)
+		return &p
 	}
 	na := func(pref string) netip.Addr {
 		return netip.MustParseAddr(pref)
@@ -40,8 +41,8 @@ func TestIPAllocator(t *testing.T) {
 		name   string
 		dbFunc func() *HSDatabase
 
-		prefix4  netip.Prefix
-		prefix6  netip.Prefix
+		prefix4  *netip.Prefix
+		prefix6  *netip.Prefix
 		getCount int
 		want     []types.NodeAddresses
 	}{
@@ -59,6 +60,38 @@ func TestIPAllocator(t *testing.T) {
 			want: []types.NodeAddresses{
 				{
 					na("100.64.0.1"),
+					na("fd7a:115c:a1e0::1"),
+				},
+			},
+		},
+		{
+			name: "simple-v4",
+			dbFunc: func() *HSDatabase {
+				return nil
+			},
+
+			prefix4: mpp("100.64.0.0/10"),
+
+			getCount: 1,
+
+			want: []types.NodeAddresses{
+				{
+					na("100.64.0.1"),
+				},
+			},
+		},
+		{
+			name: "simple-v6",
+			dbFunc: func() *HSDatabase {
+				return nil
+			},
+
+			prefix6: mpp("fd7a:115c:a1e0::/48"),
+
+			getCount: 1,
+
+			want: []types.NodeAddresses{
+				{
 					na("fd7a:115c:a1e0::1"),
 				},
 			},
@@ -130,8 +163,6 @@ func TestIPAllocator(t *testing.T) {
 			alloc, _ := NewIPAllocator(db, tt.prefix4, tt.prefix6)
 
 			spew.Dump(alloc)
-
-			t.Logf("prefixes: %q, %q", tt.prefix4.String(), tt.prefix6.String())
 
 			var got []types.NodeAddresses
 
