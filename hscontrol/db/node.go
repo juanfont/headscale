@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -294,7 +293,8 @@ func RegisterNodeFromAuthCallback(
 	userName string,
 	nodeExpiry *time.Time,
 	registrationMethod string,
-	addrs types.NodeAddresses,
+	ipv4 *netip.Addr,
+	ipv6 *netip.Addr,
 ) (*types.Node, error) {
 	log.Debug().
 		Str("machine_key", mkey.ShortString()).
@@ -330,7 +330,7 @@ func RegisterNodeFromAuthCallback(
 			node, err := RegisterNode(
 				tx,
 				registrationNode,
-				addrs,
+				ipv4, ipv6,
 			)
 
 			if err == nil {
@@ -346,14 +346,14 @@ func RegisterNodeFromAuthCallback(
 	return nil, ErrNodeNotFoundRegistrationCache
 }
 
-func (hsdb *HSDatabase) RegisterNode(node types.Node, addrs types.NodeAddresses) (*types.Node, error) {
+func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
-		return RegisterNode(tx, node, addrs)
+		return RegisterNode(tx, node, ipv4, ipv6)
 	})
 }
 
 // RegisterNode is executed from the CLI to register a new Node using its MachineKey.
-func RegisterNode(tx *gorm.DB, node types.Node, addrs types.NodeAddresses) (*types.Node, error) {
+func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
 	log.Debug().
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
@@ -361,10 +361,10 @@ func RegisterNode(tx *gorm.DB, node types.Node, addrs types.NodeAddresses) (*typ
 		Str("user", node.User.Name).
 		Msg("Registering node")
 
-	// If the node exists and we had already IPs for it, we just save it
+	// If the node exists and it already has IP(s), we just save it
 	// so we store the node.Expire and node.Nodekey that has been set when
 	// adding it to the registrationCache
-	if len(node.IPAddresses) > 0 {
+	if node.IPv4 != nil || node.IPv6 != nil {
 		if err := tx.Save(&node).Error; err != nil {
 			return nil, fmt.Errorf("failed register existing node in the database: %w", err)
 		}
@@ -380,7 +380,8 @@ func RegisterNode(tx *gorm.DB, node types.Node, addrs types.NodeAddresses) (*typ
 		return &node, nil
 	}
 
-	node.IPAddresses = addrs
+	node.IPv4 = ipv4
+	node.IPv6 = ipv6
 
 	if err := tx.Save(&node).Error; err != nil {
 		return nil, fmt.Errorf("failed register(save) node in the database: %w", err)
@@ -389,7 +390,6 @@ func RegisterNode(tx *gorm.DB, node types.Node, addrs types.NodeAddresses) (*typ
 	log.Trace().
 		Caller().
 		Str("node", node.Hostname).
-		Str("ip", strings.Join(addrs.StringSlice(), ",")).
 		Msg("Node registered with the database")
 
 	return &node, nil
