@@ -233,15 +233,7 @@ func RenameNode(tx *gorm.DB,
 		newName,
 	)
 	if err != nil {
-		log.Error().
-			Caller().
-			Str("func", "RenameNode").
-			Uint64("nodeID", nodeID).
-			Str("newName", newName).
-			Err(err).
-			Msg("failed to rename node")
-
-		return err
+		return fmt.Errorf("renaming node: %w", err)
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
@@ -451,13 +443,7 @@ func GetAdvertisedRoutes(tx *gorm.DB, node *types.Node) ([]netip.Prefix, error) 
 		Preload("Node").
 		Where("node_id = ? AND advertised = ?", node.ID, true).Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Error().
-			Caller().
-			Err(err).
-			Str("node", node.Hostname).
-			Msg("Could not get advertised routes for node")
-
-		return nil, err
+		return nil, fmt.Errorf("getting advertised routes for node(%d): %w", node.ID, err)
 	}
 
 	prefixes := []netip.Prefix{}
@@ -483,13 +469,7 @@ func GetEnabledRoutes(tx *gorm.DB, node *types.Node) ([]netip.Prefix, error) {
 		Where("node_id = ? AND advertised = ? AND enabled = ?", node.ID, true, true).
 		Find(&routes).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Error().
-			Caller().
-			Err(err).
-			Str("node", node.Hostname).
-			Msg("Could not get enabled routes for node")
-
-		return nil, err
+		return nil, fmt.Errorf("getting enabled routes for node(%d): %w", node.ID, err)
 	}
 
 	prefixes := []netip.Prefix{}
@@ -508,8 +488,6 @@ func IsRoutesEnabled(tx *gorm.DB, node *types.Node, routeStr string) bool {
 
 	enabledRoutes, err := GetEnabledRoutes(tx, node)
 	if err != nil {
-		log.Error().Err(err).Msg("Could not get enabled routes")
-
 		return false
 	}
 
@@ -681,8 +659,6 @@ func DeleteExpiredEphemeralNodes(tx *gorm.DB,
 ) ([]types.NodeID, []types.NodeID) {
 	users, err := ListUsers(tx)
 	if err != nil {
-		log.Error().Err(err).Msg("Error listing users")
-
 		return nil, nil
 	}
 
@@ -691,11 +667,6 @@ func DeleteExpiredEphemeralNodes(tx *gorm.DB,
 	for _, user := range users {
 		nodes, err := ListNodesByUser(tx, user.Name)
 		if err != nil {
-			log.Error().
-				Err(err).
-				Str("user", user.Name).
-				Msg("Error listing nodes in user")
-
 			return nil, nil
 		}
 
@@ -740,10 +711,6 @@ func ExpireExpiredNodes(tx *gorm.DB,
 
 	nodes, err := ListNodes(tx)
 	if err != nil {
-		log.Error().
-			Err(err).
-			Msg("Error listing nodes to find expired nodes")
-
 		return time.Unix(0, 0), types.StateUpdate{}, false
 	}
 	for _, node := range nodes {

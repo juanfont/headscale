@@ -417,12 +417,10 @@ func FailoverNodeRoutesIfNeccessary(
 		return nil, nil
 	}
 
-	log.Trace().Msgf("NODE ROUTES: %d", len(nodeRoutes))
 	changedNodes := make(set.Set[types.NodeID])
 
 nodeRouteLoop:
 	for _, nodeRoute := range nodeRoutes {
-		log.Trace().Msgf("NODE ROUTE: %d", nodeRoute.ID)
 		routes, err := getRoutesByPrefix(tx, netip.Prefix(nodeRoute.Prefix))
 		if err != nil {
 			return nil, fmt.Errorf("getting routes by prefix: %w", err)

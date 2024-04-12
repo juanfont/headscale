@@ -39,7 +39,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/oauth2"
@@ -79,10 +78,10 @@ const (
 	registerCacheCleanup    = time.Minute * 20
 )
 
-func init() {
-	deadlock.Opts.DeadlockTimeout = 15 * time.Second
-	deadlock.Opts.PrintAllCurrentGoroutines = true
-}
+// func init() {
+// 	deadlock.Opts.DeadlockTimeout = 15 * time.Second
+// 	deadlock.Opts.PrintAllCurrentGoroutines = true
+// }
 
 // Headscale represents the base app of the service.
 type Headscale struct {
@@ -107,7 +106,7 @@ type Headscale struct {
 	pollNetMapStreamWG sync.WaitGroup
 
 	mapSessions  map[types.NodeID]*mapSession
-	mapSessionMu deadlock.Mutex
+	mapSessionMu sync.Mutex
 }
 
 var (
@@ -323,11 +322,6 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 
 	meta, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		log.Error().
-			Caller().
-			Str("client_address", client.Addr.String()).
-			Msg("Retrieving metadata is failed")
-
 		return ctx, status.Errorf(
 			codes.InvalidArgument,
 			"Retrieving metadata is failed",
@@ -336,11 +330,6 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 
 	authHeader, ok := meta["authorization"]
 	if !ok {
-		log.Error().
-			Caller().
-			Str("client_address", client.Addr.String()).
-			Msg("Authorization token is not supplied")
-
 		return ctx, status.Errorf(
 			codes.Unauthenticated,
 			"Authorization token is not supplied",
@@ -350,11 +339,6 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	token := authHeader[0]
 
 	if !strings.HasPrefix(token, AuthPrefix) {
-		log.Error().
-			Caller().
-			Str("client_address", client.Addr.String()).
-			Msg(`missing "Bearer " prefix in "Authorization" header`)
-
 		return ctx, status.Error(
 			codes.Unauthenticated,
 			`missing "Bearer " prefix in "Authorization" header`,
@@ -363,12 +347,6 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 
 	valid, err := h.db.ValidateAPIKey(strings.TrimPrefix(token, AuthPrefix))
 	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Str("client_address", client.Addr.String()).
-			Msg("failed to validate token")
-
 		return ctx, status.Error(codes.Internal, "failed to validate token")
 	}
 

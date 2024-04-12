@@ -372,10 +372,7 @@ func (m *Mapper) marshalMapResponse(
 
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot marshal map response")
+		return nil, fmt.Errorf("marshalling map response: %w", err)
 	}
 
 	if debugDumpMapResponsePath != "" {
@@ -402,10 +399,7 @@ func (m *Mapper) marshalMapResponse(
 
 		body, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Cannot marshal map response")
+			return nil, fmt.Errorf("marshalling map response: %w", err)
 		}
 
 		perms := fs.FileMode(debugMapResponsePerm)

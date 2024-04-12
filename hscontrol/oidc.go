@@ -58,12 +58,7 @@ func (h *Headscale) initOIDC() error {
 		h.oidcProvider, err = oidc.NewProvider(context.Background(), h.cfg.OIDC.Issuer)
 
 		if err != nil {
-			log.Error().
-				Err(err).
-				Caller().
-				Msgf("Could not retrieve OIDC Config: %s", err.Error())
-
-			return err
+			return fmt.Errorf("creating OIDC provider from issuer config: %w", err)
 		}
 
 		h.oauth2Config = &oauth2.Config{
@@ -514,12 +509,6 @@ func (h *Headscale) validateNodeForOIDCCallback(
 			User: claims.Email,
 			Verb: "Reauthenticated",
 		}); err != nil {
-			log.Error().
-				Str("func", "OIDCCallback").
-				Str("type", "reauthenticate").
-				Err(err).
-				Msg("Could not render OIDC callback template")
-
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			writer.WriteHeader(http.StatusInternalServerError)
 			_, werr := writer.Write([]byte("Could not render OIDC callback template"))
@@ -527,7 +516,7 @@ func (h *Headscale) validateNodeForOIDCCallback(
 				util.LogErr(err, "Failed to write response")
 			}
 
-			return nil, true, err
+			return nil, true, fmt.Errorf("rendering OIDC callback template: %w", err)
 		}
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -579,10 +568,6 @@ func (h *Headscale) findOrCreateNewUserForOIDCCallback(
 	if errors.Is(err, db.ErrUserNotFound) {
 		user, err = h.db.CreateUser(userName)
 		if err != nil {
-			log.Error().
-				Err(err).
-				Caller().
-				Msgf("could not create new user '%s'", userName)
 			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			writer.WriteHeader(http.StatusInternalServerError)
 			_, werr := writer.Write([]byte("could not create user"))
@@ -590,14 +575,9 @@ func (h *Headscale) findOrCreateNewUserForOIDCCallback(
 				util.LogErr(err, "Failed to write response")
 			}
 
-			return nil, err
+			return nil, fmt.Errorf("creating new user: %w", err)
 		}
 	} else if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Str("user", userName).
-			Msg("could not find or create user")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
 		_, werr := writer.Write([]byte("could not find or create user"))
@@ -605,7 +585,7 @@ func (h *Headscale) findOrCreateNewUserForOIDCCallback(
 			util.LogErr(err, "Failed to write response")
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("find or create user: %w", err)
 	}
 
 	return user, nil
@@ -661,12 +641,6 @@ func renderOIDCCallbackTemplate(
 		User: claims.Email,
 		Verb: "Authenticated",
 	}); err != nil {
-		log.Error().
-			Str("func", "OIDCCallback").
-			Str("type", "authenticate").
-			Err(err).
-			Msg("Could not render OIDC callback template")
-
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
 		_, werr := writer.Write([]byte("Could not render OIDC callback template"))
@@ -674,7 +648,7 @@ func renderOIDCCallbackTemplate(
 			util.LogErr(err, "Failed to write response")
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("rendering OIDC callback template: %w", err)
 	}
 
 	return &content, nil
