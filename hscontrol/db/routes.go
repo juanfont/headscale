@@ -609,7 +609,7 @@ func EnableAutoApprovedRoutes(
 	aclPolicy *policy.ACLPolicy,
 	node *types.Node,
 ) error {
-	if len(node.IPAddresses) == 0 {
+	if node.IPv4 == nil && node.IPv6 == nil {
 		return nil // This node has no IPAddresses, so can't possibly match any autoApprovers ACLs
 	}
 
@@ -652,7 +652,7 @@ func EnableAutoApprovedRoutes(
 				}
 
 				// approvedIPs should contain all of node's IPs if it matches the rule, so check for first
-				if approvedIps.Contains(node.IPAddresses[0]) {
+				if approvedIps.Contains(*node.IPv4) {
 					approvedRoutes = append(approvedRoutes, advertisedRoute)
 				}
 			}

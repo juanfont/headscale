@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -46,12 +47,24 @@ func NewIPAllocator(db *HSDatabase, prefix4, prefix6 *netip.Prefix) (*IPAllocato
 		prefix6: prefix6,
 	}
 
-	var addressesSlices []string
+	var v4s []sql.NullString
+	var v6s []sql.NullString
 
 	if db != nil {
-		db.Read(func(rx *gorm.DB) error {
-			return rx.Model(&types.Node{}).Pluck("ip_addresses", &addressesSlices).Error
+		err := db.Read(func(rx *gorm.DB) error {
+			return rx.Model(&types.Node{}).Pluck("ipv4", &v4s).Error
 		})
+		if err != nil {
+			return nil, fmt.Errorf("reading IPv4 addresses from database: %w", err)
+		}
+
+		err = db.Read(func(rx *gorm.DB) error {
+			return rx.Model(&types.Node{}).Pluck("ipv6", &v6s).Error
+		})
+		if err != nil {
+			return nil, fmt.Errorf("reading IPv6 addresses from database: %w", err)
+		}
+
 	}
 
 	var ips netipx.IPSetBuilder
@@ -79,18 +92,14 @@ func NewIPAllocator(db *HSDatabase, prefix4, prefix6 *netip.Prefix) (*IPAllocato
 
 	// Fetch all the IP Addresses currently handed out from the Database
 	// and add them to the used IP set.
-	for _, slice := range addressesSlices {
-		var machineAddresses types.NodeAddresses
-		err := machineAddresses.Scan(slice)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"parsing IPs from database %v: %w", machineAddresses,
-				err,
-			)
-		}
+	for _, addrStr := range append(v4s, v6s...) {
+		if addrStr.Valid {
+			addr, err := netip.ParseAddr(addrStr.String)
+			if err != nil {
+				return nil, fmt.Errorf("parsing IP address from database: %w", err)
+			}
 
-		for _, ip := range machineAddresses {
-			ips.Add(ip)
+			ips.Add(addr)
 		}
 	}
 
@@ -108,31 +117,30 @@ func NewIPAllocator(db *HSDatabase, prefix4, prefix6 *netip.Prefix) (*IPAllocato
 	return &ret, nil
 }
 
-func (i *IPAllocator) Next() (types.NodeAddresses, error) {
+func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	var ret types.NodeAddresses
+	var err error
+	var ret4 *netip.Addr
+	var ret6 *netip.Addr
 
 	if i.prefix4 != nil {
-		v4, err := i.next(i.prev4, i.prefix4)
+		ret4, err = i.next(i.prev4, i.prefix4)
 		if err != nil {
-			return nil, fmt.Errorf("allocating IPv4 address: %w", err)
+			return nil, nil, fmt.Errorf("allocating IPv4 address: %w", err)
 		}
 
-		ret = append(ret, *v4)
 	}
 
 	if i.prefix6 != nil {
-		v6, err := i.next(i.prev6, i.prefix6)
+		ret6, err = i.next(i.prev6, i.prefix6)
 		if err != nil {
-			return nil, fmt.Errorf("allocating IPv6 address: %w", err)
+			return nil, nil, fmt.Errorf("allocating IPv6 address: %w", err)
 		}
-
-		ret = append(ret, *v6)
 	}
 
-	return ret, nil
+	return ret4, ret6, nil
 }
 
 var ErrCouldNotAllocateIP = errors.New("failed to allocate IP")

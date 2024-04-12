@@ -188,13 +188,12 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		nodeKey := key.NewNode()
 		machineKey := key.NewMachine()
 
+		v4 := netip.MustParseAddr(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1)))
 		node := types.Node{
-			ID:         types.NodeID(index),
-			MachineKey: machineKey.Public(),
-			NodeKey:    nodeKey.Public(),
-			IPAddresses: types.NodeAddresses{
-				netip.MustParseAddr(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1))),
-			},
+			ID:             types.NodeID(index),
+			MachineKey:     machineKey.Public(),
+			NodeKey:        nodeKey.Public(),
+			IPv4:           &v4,
 			Hostname:       "testnode" + strconv.Itoa(index),
 			UserID:         stor[index%2].user.ID,
 			RegisterMethod: util.RegisterMethodAuthKey,
@@ -299,27 +298,6 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	c.Assert(nodeFromDB.IsExpired(), check.Equals, true)
-}
-
-func (s *Suite) TestSerdeAddressStrignSlice(c *check.C) {
-	input := types.NodeAddresses([]netip.Addr{
-		netip.MustParseAddr("192.0.2.1"),
-		netip.MustParseAddr("2001:db8::1"),
-	})
-	serialized, err := input.Value()
-	c.Assert(err, check.IsNil)
-	if serial, ok := serialized.(string); ok {
-		c.Assert(serial, check.Equals, "192.0.2.1,2001:db8::1")
-	}
-
-	var deserialized types.NodeAddresses
-	err = deserialized.Scan(serialized)
-	c.Assert(err, check.IsNil)
-
-	c.Assert(len(deserialized), check.Equals, len(input))
-	for i := range deserialized {
-		c.Assert(deserialized[i], check.Equals, input[i])
-	}
 }
 
 func (s *Suite) TestGenerateGivenName(c *check.C) {
@@ -561,6 +539,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	// Check if a subprefix of an autoapproved route is approved
 	route2 := netip.MustParsePrefix("10.11.0.0/24")
 
+	v4 := netip.MustParseAddr("100.64.0.1")
 	node := types.Node{
 		ID:             0,
 		MachineKey:     machineKey.Public(),
@@ -573,7 +552,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 			RequestTags: []string{"tag:exit"},
 			RoutableIPs: []netip.Prefix{defaultRouteV4, defaultRouteV6, route1, route2},
 		},
-		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+		IPv4: &v4,
 	}
 
 	db.DB.Save(&node)

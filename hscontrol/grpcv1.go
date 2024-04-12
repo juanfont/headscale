@@ -195,7 +195,7 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, err
 	}
 
-	addrs, err := api.h.ipAlloc.Next()
+	ipv4, ipv6, err := api.h.ipAlloc.Next()
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (api headscaleV1APIServer) RegisterNode(
 			request.GetUser(),
 			nil,
 			util.RegisterMethodCLI,
-			addrs,
+			ipv4, ipv6,
 		)
 	})
 	if err != nil {

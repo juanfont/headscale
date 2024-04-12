@@ -383,7 +383,7 @@ func (h *Headscale) handleAuthKey(
 			ForcedTags:     pak.Proto().GetAclTags(),
 		}
 
-		addrs, err := h.ipAlloc.Next()
+		ipv4, ipv6, err := h.ipAlloc.Next()
 		if err != nil {
 			log.Error().
 				Caller().
@@ -397,7 +397,7 @@ func (h *Headscale) handleAuthKey(
 
 		node, err = h.db.RegisterNode(
 			nodeToRegister,
-			addrs,
+			ipv4, ipv6,
 		)
 		if err != nil {
 			log.Error().
@@ -461,7 +461,6 @@ func (h *Headscale) handleAuthKey(
 
 	log.Info().
 		Str("node", registerRequest.Hostinfo.Hostname).
-		Str("ips", strings.Join(node.IPAddresses.StringSlice(), ", ")).
 		Msg("Successfully authenticated via AuthKey")
 }
 

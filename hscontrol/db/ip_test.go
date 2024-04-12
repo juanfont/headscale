@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"net/netip"
 	"os"
 	"testing"
@@ -44,7 +45,8 @@ func TestIPAllocator(t *testing.T) {
 		prefix4  *netip.Prefix
 		prefix6  *netip.Prefix
 		getCount int
-		want     []types.NodeAddresses
+		want4    []netip.Addr
+		want6    []netip.Addr
 	}{
 		{
 			name: "simple",
@@ -57,11 +59,11 @@ func TestIPAllocator(t *testing.T) {
 
 			getCount: 1,
 
-			want: []types.NodeAddresses{
-				{
-					na("100.64.0.1"),
-					na("fd7a:115c:a1e0::1"),
-				},
+			want4: []netip.Addr{
+				na("100.64.0.1"),
+			},
+			want6: []netip.Addr{
+				na("fd7a:115c:a1e0::1"),
 			},
 		},
 		{
@@ -74,10 +76,8 @@ func TestIPAllocator(t *testing.T) {
 
 			getCount: 1,
 
-			want: []types.NodeAddresses{
-				{
-					na("100.64.0.1"),
-				},
+			want4: []netip.Addr{
+				na("100.64.0.1"),
 			},
 		},
 		{
@@ -90,10 +90,8 @@ func TestIPAllocator(t *testing.T) {
 
 			getCount: 1,
 
-			want: []types.NodeAddresses{
-				{
-					na("fd7a:115c:a1e0::1"),
-				},
+			want6: []netip.Addr{
+				na("fd7a:115c:a1e0::1"),
 			},
 		},
 		{
@@ -102,9 +100,13 @@ func TestIPAllocator(t *testing.T) {
 				db := newDb()
 
 				db.DB.Save(&types.Node{
-					IPAddresses: types.NodeAddresses{
-						na("100.64.0.1"),
-						na("fd7a:115c:a1e0::1"),
+					IPv4DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "100.64.0.1",
+					},
+					IPv6DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "fd7a:115c:a1e0::1",
 					},
 				})
 
@@ -116,11 +118,11 @@ func TestIPAllocator(t *testing.T) {
 
 			getCount: 1,
 
-			want: []types.NodeAddresses{
-				{
-					na("100.64.0.2"),
-					na("fd7a:115c:a1e0::2"),
-				},
+			want4: []netip.Addr{
+				na("100.64.0.2"),
+			},
+			want6: []netip.Addr{
+				na("fd7a:115c:a1e0::2"),
 			},
 		},
 		{
@@ -129,9 +131,13 @@ func TestIPAllocator(t *testing.T) {
 				db := newDb()
 
 				db.DB.Save(&types.Node{
-					IPAddresses: types.NodeAddresses{
-						na("100.64.0.2"),
-						na("fd7a:115c:a1e0::2"),
+					IPv4DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "100.64.0.2",
+					},
+					IPv6DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "fd7a:115c:a1e0::2",
 					},
 				})
 
@@ -143,15 +149,13 @@ func TestIPAllocator(t *testing.T) {
 
 			getCount: 2,
 
-			want: []types.NodeAddresses{
-				{
-					na("100.64.0.1"),
-					na("fd7a:115c:a1e0::1"),
-				},
-				{
-					na("100.64.0.3"),
-					na("fd7a:115c:a1e0::3"),
-				},
+			want4: []netip.Addr{
+				na("100.64.0.1"),
+				na("100.64.0.3"),
+			},
+			want6: []netip.Addr{
+				na("fd7a:115c:a1e0::1"),
+				na("fd7a:115c:a1e0::3"),
 			},
 		},
 	}
@@ -164,18 +168,29 @@ func TestIPAllocator(t *testing.T) {
 
 			spew.Dump(alloc)
 
-			var got []types.NodeAddresses
+			var got4s []netip.Addr
+			var got6s []netip.Addr
 
 			for range tt.getCount {
-				gotSet, err := alloc.Next()
+				got4, got6, err := alloc.Next()
 				if err != nil {
 					t.Fatalf("allocating next IP: %s", err)
 				}
 
-				got = append(got, gotSet)
+				if got4 != nil {
+					got4s = append(got4s, *got4)
+				}
+
+				if got6 != nil {
+					got6s = append(got6s, *got6)
+				}
 			}
-			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
-				t.Errorf("IPAllocator unexpected result (-want +got):\n%s", diff)
+			if diff := cmp.Diff(tt.want4, got4s, util.Comparers...); diff != "" {
+				t.Errorf("IPAllocator 4s unexpected result (-want +got):\n%s", diff)
+			}
+
+			if diff := cmp.Diff(tt.want6, got6s, util.Comparers...); diff != "" {
+				t.Errorf("IPAllocator 6s unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}

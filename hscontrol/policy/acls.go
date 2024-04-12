@@ -229,7 +229,7 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 				continue
 			}
 
-			if node.IPAddresses.InIPSet(expanded) {
+			if node.InIPSet(expanded) {
 				dests = append(dests, dest)
 			}
 
@@ -306,7 +306,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			return nil, err
 		}
 
-		if !node.IPAddresses.InIPSet(destSet) {
+		if !node.InIPSet(destSet) {
 			continue
 		}
 
@@ -744,7 +744,7 @@ func (pol *ACLPolicy) expandIPsFromGroup(
 	for _, user := range users {
 		filteredNodes := filterNodesByUser(nodes, user)
 		for _, node := range filteredNodes {
-			node.IPAddresses.AppendToIPSet(&build)
+			node.AppendToIPSet(&build)
 		}
 	}
 
@@ -760,7 +760,7 @@ func (pol *ACLPolicy) expandIPsFromTag(
 	// check for forced tags
 	for _, node := range nodes {
 		if util.StringOrPrefixListContains(node.ForcedTags, alias) {
-			node.IPAddresses.AppendToIPSet(&build)
+			node.AppendToIPSet(&build)
 		}
 	}
 
@@ -792,7 +792,7 @@ func (pol *ACLPolicy) expandIPsFromTag(
 			}
 
 			if util.StringOrPrefixListContains(node.Hostinfo.RequestTags, alias) {
-				node.IPAddresses.AppendToIPSet(&build)
+				node.AppendToIPSet(&build)
 			}
 		}
 	}
@@ -815,7 +815,7 @@ func (pol *ACLPolicy) expandIPsFromUser(
 	}
 
 	for _, node := range filteredNodes {
-		node.IPAddresses.AppendToIPSet(&build)
+		node.AppendToIPSet(&build)
 	}
 
 	return build.IPSet()
@@ -833,7 +833,7 @@ func (pol *ACLPolicy) expandIPsFromSingleIP(
 	build.Add(ip)
 
 	for _, node := range matches {
-		node.IPAddresses.AppendToIPSet(&build)
+		node.AppendToIPSet(&build)
 	}
 
 	return build.IPSet()
@@ -850,11 +850,11 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 	// This is suboptimal and quite expensive, but if we only add the prefix, we will miss all the relevant IPv6
 	// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
 	for _, node := range nodes {
-		for _, ip := range node.IPAddresses {
+		for _, ip := range node.IPs() {
 			// log.Trace().
 			// 	Msgf("checking if node ip (%s) is part of prefix (%s): %v, is single ip prefix (%v), addr: %s", ip.String(), prefix.String(), prefix.Contains(ip), prefix.IsSingleIP(), prefix.Addr().String())
 			if prefix.Contains(ip) {
-				node.IPAddresses.AppendToIPSet(&build)
+				node.AppendToIPSet(&build)
 			}
 		}
 	}

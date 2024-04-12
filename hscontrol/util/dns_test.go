@@ -148,10 +148,7 @@ func TestCheckForFQDNRules(t *testing.T) {
 }
 
 func TestMagicDNSRootDomains100(t *testing.T) {
-	prefixes := []netip.Prefix{
-		netip.MustParsePrefix("100.64.0.0/10"),
-	}
-	domains := GenerateMagicDNSRootDomains(prefixes)
+	domains := GenerateIPv4DNSRootDomain(netip.MustParsePrefix("100.64.0.0/10"))
 
 	found := false
 	for _, domain := range domains {
@@ -185,10 +182,7 @@ func TestMagicDNSRootDomains100(t *testing.T) {
 }
 
 func TestMagicDNSRootDomains172(t *testing.T) {
-	prefixes := []netip.Prefix{
-		netip.MustParsePrefix("172.16.0.0/16"),
-	}
-	domains := GenerateMagicDNSRootDomains(prefixes)
+	domains := GenerateIPv4DNSRootDomain(netip.MustParsePrefix("172.16.0.0/16"))
 
 	found := false
 	for _, domain := range domains {
@@ -213,20 +207,14 @@ func TestMagicDNSRootDomains172(t *testing.T) {
 
 // Happens when netmask is a multiple of 4 bits (sounds likely).
 func TestMagicDNSRootDomainsIPv6Single(t *testing.T) {
-	prefixes := []netip.Prefix{
-		netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
-	}
-	domains := GenerateMagicDNSRootDomains(prefixes)
+	domains := GenerateIPv6DNSRootDomain(netip.MustParsePrefix("fd7a:115c:a1e0::/48"))
 
 	assert.Len(t, domains, 1)
 	assert.Equal(t, "0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa.", domains[0].WithTrailingDot())
 }
 
 func TestMagicDNSRootDomainsIPv6SingleMultiple(t *testing.T) {
-	prefixes := []netip.Prefix{
-		netip.MustParsePrefix("fd7a:115c:a1e0::/50"),
-	}
-	domains := GenerateMagicDNSRootDomains(prefixes)
+	domains := GenerateIPv6DNSRootDomain(netip.MustParsePrefix("fd7a:115c:a1e0::/50"))
 
 	yieldsRoot := func(dom string) bool {
 		for _, candidate := range domains {
