@@ -16,7 +16,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
-	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -43,7 +42,7 @@ type mapSession struct {
 	mapper *mapper.Mapper
 
 	serving   bool
-	servingMu deadlock.Mutex
+	servingMu sync.Mutex
 
 	ch       chan types.StateUpdate
 	cancelCh chan struct{}

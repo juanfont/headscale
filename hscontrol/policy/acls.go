@@ -159,23 +159,14 @@ func (pol *ACLPolicy) CompileFilterRules(
 		for srcIndex, src := range acl.Sources {
 			srcs, err := pol.expandSource(src, nodes)
 			if err != nil {
-				log.Error().
-					Interface("src", src).
-					Int("ACL index", index).
-					Int("Src index", srcIndex).
-					Msgf("Error parsing ACL")
-
-				return nil, err
+				return nil, fmt.Errorf("parsing policy, acl index: %d->%d: %w", index, srcIndex, err)
 			}
 			srcIPs = append(srcIPs, srcs...)
 		}
 
 		protocols, isWildcard, err := parseProtocol(acl.Protocol)
 		if err != nil {
-			log.Error().
-				Msgf("Error parsing ACL %d. protocol unknown %s", index, acl.Protocol)
-
-			return nil, err
+			return nil, fmt.Errorf("parsing policy, protocol err: %w ", err)
 		}
 
 		destPorts := []tailcfg.NetPortRange{}
@@ -326,16 +317,12 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 		case "check":
 			checkAction, err := sshCheckAction(sshACL.CheckPeriod)
 			if err != nil {
-				log.Error().
-					Msgf("Error parsing SSH %d, check action with unparsable duration '%s'", index, sshACL.CheckPeriod)
+				return nil, fmt.Errorf("parsing SSH policy, parsing check duration, index: %d: %w", index, err)
 			} else {
 				action = *checkAction
 			}
 		default:
-			log.Error().
-				Msgf("Error parsing SSH %d, unknown action '%s', skipping", index, sshACL.Action)
-
-			continue
+			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", sshACL.Action, index, err)
 		}
 
 		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
@@ -347,10 +334,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			} else if isGroup(rawSrc) {
 				users, err := pol.expandUsersFromGroup(rawSrc)
 				if err != nil {
-					log.Error().
-						Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
-
-					return nil, err
+					return nil, fmt.Errorf("parsing SSH policy, expanding user from group, index: %d->%d: %w", index, innerIndex, err)
 				}
 
 				for _, user := range users {
@@ -364,10 +348,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 					rawSrc,
 				)
 				if err != nil {
-					log.Error().
-						Msgf("Error parsing SSH %d, Source %d", index, innerIndex)
-
-					return nil, err
+					return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
 				}
 				for _, expandedSrc := range expandedSrcs.Prefixes() {
 					principals = append(principals, &tailcfg.SSHPrincipal{
@@ -499,7 +480,7 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 	default:
 		protocolNumber, err := strconv.Atoi(protocol)
 		if err != nil {
-			return nil, false, err
+			return nil, false, fmt.Errorf("parsing protocol number: %w", err)
 		}
 		needsWildcard := protocolNumber != protocolTCP &&
 			protocolNumber != protocolUDP &&
