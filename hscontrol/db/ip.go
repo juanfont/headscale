@@ -1,9 +1,11 @@
 package db
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/netip"
 	"sync"
 
@@ -25,8 +27,11 @@ type IPAllocator struct {
 	prefix6 *netip.Prefix
 
 	// Previous IPs handed out
-	prev4 *netip.Addr
-	prev6 *netip.Addr
+	prev4 netip.Addr
+	prev6 netip.Addr
+
+	// strategy used for handing out IP addresses.
+	strategy types.IPAllocationStrategy
 
 	// Set of all IPs handed out.
 	// This might not be in sync with the database,
@@ -41,10 +46,16 @@ type IPAllocator struct {
 // provided IPv4 and IPv6 prefix. It needs to be created
 // when headscale starts and needs to finish its read
 // transaction before any writes to the database occur.
-func NewIPAllocator(db *HSDatabase, prefix4, prefix6 *netip.Prefix) (*IPAllocator, error) {
+func NewIPAllocator(
+	db *HSDatabase,
+	prefix4, prefix6 *netip.Prefix,
+	strategy types.IPAllocationStrategy,
+) (*IPAllocator, error) {
 	ret := IPAllocator{
 		prefix4: prefix4,
 		prefix6: prefix6,
+
+		strategy: strategy,
 	}
 
 	var v4s []sql.NullString
@@ -79,7 +90,7 @@ func NewIPAllocator(db *HSDatabase, prefix4, prefix6 *netip.Prefix) (*IPAllocato
 		// Use network as starting point, it will be used to call .Next()
 		// TODO(kradalby): Could potentially take all the IPs loaded from
 		// the database into account to start at a more "educated" location.
-		ret.prev4 = &network4
+		ret.prev4 = network4
 	}
 
 	if prefix6 != nil {
@@ -87,7 +98,7 @@ func NewIPAllocator(db *HSDatabase, prefix4, prefix6 *netip.Prefix) (*IPAllocato
 		ips.Add(network6)
 		ips.Add(broadcast6)
 
-		ret.prev6 = &network6
+		ret.prev6 = network6
 	}
 
 	// Fetch all the IP Addresses currently handed out from the Database
@@ -130,7 +141,7 @@ func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("allocating IPv4 address: %w", err)
 		}
-
+		i.prev4 = *ret4
 	}
 
 	if i.prefix6 != nil {
@@ -138,6 +149,7 @@ func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("allocating IPv6 address: %w", err)
 		}
+		i.prev6 = *ret6
 	}
 
 	return ret4, ret6, nil
@@ -146,8 +158,19 @@ func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 var ErrCouldNotAllocateIP = errors.New("failed to allocate IP")
 
 func (i *IPAllocator) next(prev *netip.Addr, prefix *netip.Prefix) (*netip.Addr, error) {
-	// Get the first IP in our prefix
-	ip := prev.Next()
+	var err error
+	var ip netip.Addr
+
+	switch i.strategy {
+	case types.IPAllocationStrategySequential:
+		// Get the first IP in our prefix
+		ip = prev.Next()
+	case types.IPAllocationStrategyRandom:
+		ip, err = randomNext(*prefix)
+		if err != nil {
+			return nil, fmt.Errorf("getting random IP: %w", err)
+		}
+	}
 
 	// TODO(kradalby): maybe this can be done less often.
 	set, err := i.usedIPs.IPSet()
@@ -162,7 +185,15 @@ func (i *IPAllocator) next(prev *netip.Addr, prefix *netip.Prefix) (*netip.Addr,
 
 		// Check if the IP has already been allocated.
 		if set.Contains(ip) {
-			ip = ip.Next()
+			switch i.strategy {
+			case types.IPAllocationStrategySequential:
+				ip = ip.Next()
+			case types.IPAllocationStrategyRandom:
+				ip, err = randomNext(*prefix)
+				if err != nil {
+					return nil, fmt.Errorf("getting random IP: %w", err)
+				}
+			}
 
 			continue
 		}
@@ -171,4 +202,41 @@ func (i *IPAllocator) next(prev *netip.Addr, prefix *netip.Prefix) (*netip.Addr,
 
 		return &ip, nil
 	}
+}
+
+func randomNext(pfx netip.Prefix) (netip.Addr, error) {
+	rang := netipx.RangeOfPrefix(pfx)
+	fromIP, toIP := rang.From(), rang.To()
+
+	var from, to big.Int
+
+	from.SetBytes(fromIP.AsSlice())
+	to.SetBytes(toIP.AsSlice())
+
+	// Find the max, this is how we can do "random range",
+	// get the "max" as 0 -> to - from and then add back from
+	// after.
+	tempMax := big.NewInt(0).Sub(&to, &from)
+
+	out, err := rand.Int(rand.Reader, tempMax)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("generating random IP: %w", err)
+	}
+
+	valInRange := big.NewInt(0).Add(&from, out)
+
+	ip, ok := netip.AddrFromSlice(valInRange.Bytes())
+	if !ok {
+		return netip.Addr{}, fmt.Errorf("generated ip bytes are invalid ip")
+	}
+
+	if !pfx.Contains(ip) {
+		return netip.Addr{}, fmt.Errorf(
+			"generated ip(%s) not in prefix(%s)",
+			ip.String(),
+			pfx.String(),
+		)
+	}
+
+	return ip, nil
 }

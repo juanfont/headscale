@@ -31,6 +31,13 @@ var errOidcMutuallyExclusive = errors.New(
 	"oidc_client_secret and oidc_client_secret_path are mutually exclusive",
 )
 
+type IPAllocationStrategy string
+
+const (
+	IPAllocationStrategySequential IPAllocationStrategy = "sequential"
+	IPAllocationStrategyRandom     IPAllocationStrategy = "random"
+)
+
 // Config contains the initial Headscale configuration.
 type Config struct {
 	ServerURL                      string
@@ -42,6 +49,7 @@ type Config struct {
 	NodeUpdateCheckInterval        time.Duration
 	PrefixV4                       *netip.Prefix
 	PrefixV6                       *netip.Prefix
+	IPAllocation                   IPAllocationStrategy
 	NoisePrivateKeyPath            string
 	BaseDomain                     string
 	Log                            LogConfig
@@ -229,6 +237,8 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
+
+	viper.SetDefault("prefixes.allocation", IPAllocationStrategySequential)
 
 	if IsCLIConfigured() {
 		return nil
@@ -652,6 +662,17 @@ func GetHeadscaleConfig() (*Config, error) {
 		return nil, err
 	}
 
+	allocStr := viper.GetString("prefixes.allocation")
+	var alloc IPAllocationStrategy
+	switch allocStr {
+	case string(IPAllocationStrategySequential):
+		alloc = IPAllocationStrategySequential
+	case string(IPAllocationStrategyRandom):
+		alloc = IPAllocationStrategyRandom
+	default:
+		log.Fatal().Msgf("config error, prefixes.allocation is set to %s, which is not a valid strategy, allowed options: %s, %s", allocStr, IPAllocationStrategySequential, IPAllocationStrategyRandom)
+	}
+
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
 	logConfig := GetLogTailConfig()
@@ -678,8 +699,9 @@ func GetHeadscaleConfig() (*Config, error) {
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 
-		PrefixV4: prefix4,
-		PrefixV6: prefix6,
+		PrefixV4:     prefix4,
+		PrefixV6:     prefix6,
+		IPAllocation: IPAllocationStrategy(alloc),
 
 		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),

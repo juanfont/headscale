@@ -39,6 +39,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - `/var/lib/headscale` and `/var/run/headscale` is no longer created automatically, see [container docs](./docs/running-headscale-container.md)
 - Prefixes are now defined per v4 and v6 range. [#1756](https://github.com/juanfont/headscale/pull/1756)
   - `ip_prefixes` option is now `prefixes.v4` and `prefixes.v6`
+  - `prefixes.allocation` can be set to assign IPs at `sequential` or `random`. [#1869](https://github.com/juanfont/headscale/pull/1869)
 
 ### Changes
 

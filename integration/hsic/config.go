@@ -1,5 +1,7 @@
 package hsic
 
+import "github.com/juanfont/headscale/hscontrol/types"
+
 // const (
 // 	defaultEphemeralNodeInactivityTimeout = time.Second * 30
 // 	defaultNodeUpdateCheckInterval        = time.Second * 10
@@ -129,5 +131,9 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_DERP_URLS":                         "https://controlplane.tailscale.com/derpmap/default",
 		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":          "false",
 		"HEADSCALE_DERP_UPDATE_FREQUENCY":             "1m",
+
+		// a bunch of tests (ACL/Policy) rely on predicable IP alloc,
+		// so ensure the sequential alloc is used by default.
+		"HEADSCALE_PREFIXES_ALLOCATION": string(types.IPAllocationStrategySequential),
 	}
 }

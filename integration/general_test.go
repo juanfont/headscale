@@ -9,6 +9,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/rs/zerolog/log"
@@ -53,6 +54,7 @@ func TestPingAllByIP(t *testing.T) {
 		hsic.WithConfigEnv(headscaleConfig),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
+		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 

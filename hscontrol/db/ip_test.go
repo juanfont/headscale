@@ -1,9 +1,7 @@
 package db
 
 import (
-	"database/sql"
 	"net/netip"
-	"os"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -12,32 +10,15 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 )
 
-func TestIPAllocator(t *testing.T) {
-	mpp := func(pref string) *netip.Prefix {
-		p := netip.MustParsePrefix(pref)
-		return &p
-	}
-	na := func(pref string) netip.Addr {
-		return netip.MustParseAddr(pref)
-	}
-	newDb := func() *HSDatabase {
-		tmpDir, err := os.MkdirTemp("", "headscale-db-test-*")
-		if err != nil {
-			t.Fatalf("creating temp dir: %s", err)
-		}
-		db, _ = NewHeadscaleDatabase(
-			types.DatabaseConfig{
-				Type: "sqlite3",
-				Sqlite: types.SqliteConfig{
-					Path: tmpDir + "/headscale_test.db",
-				},
-			},
-			"",
-		)
+var mpp = func(pref string) *netip.Prefix {
+	p := netip.MustParsePrefix(pref)
+	return &p
+}
+var na = func(pref string) netip.Addr {
+	return netip.MustParseAddr(pref)
+}
 
-		return db
-	}
-
+func TestIPAllocatorSequential(t *testing.T) {
 	tests := []struct {
 		name   string
 		dbFunc func() *HSDatabase
@@ -97,17 +78,11 @@ func TestIPAllocator(t *testing.T) {
 		{
 			name: "simple-with-db",
 			dbFunc: func() *HSDatabase {
-				db := newDb()
+				db := dbForTest(t, "simple-with-db")
 
 				db.DB.Save(&types.Node{
-					IPv4DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "100.64.0.1",
-					},
-					IPv6DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "fd7a:115c:a1e0::1",
-					},
+					IPv4: nap("100.64.0.1"),
+					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
 
 				return db
@@ -128,17 +103,11 @@ func TestIPAllocator(t *testing.T) {
 		{
 			name: "before-after-free-middle-in-db",
 			dbFunc: func() *HSDatabase {
-				db := newDb()
+				db := dbForTest(t, "before-after-free-middle-in-db")
 
 				db.DB.Save(&types.Node{
-					IPv4DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "100.64.0.2",
-					},
-					IPv6DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "fd7a:115c:a1e0::2",
-					},
+					IPv4: nap("100.64.0.2"),
+					IPv6: nap("fd7a:115c:a1e0::2"),
 				})
 
 				return db
@@ -164,7 +133,12 @@ func TestIPAllocator(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := tt.dbFunc()
 
-			alloc, _ := NewIPAllocator(db, tt.prefix4, tt.prefix6)
+			alloc, _ := NewIPAllocator(
+				db,
+				tt.prefix4,
+				tt.prefix6,
+				types.IPAllocationStrategySequential,
+			)
 
 			spew.Dump(alloc)
 
@@ -191,6 +165,106 @@ func TestIPAllocator(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want6, got6s, util.Comparers...); diff != "" {
 				t.Errorf("IPAllocator 6s unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestIPAllocatorRandom(t *testing.T) {
+	tests := []struct {
+		name   string
+		dbFunc func() *HSDatabase
+
+		getCount int
+
+		prefix4 *netip.Prefix
+		prefix6 *netip.Prefix
+		want4   bool
+		want6   bool
+	}{
+		{
+			name: "simple",
+			dbFunc: func() *HSDatabase {
+				return nil
+			},
+
+			prefix4: mpp("100.64.0.0/10"),
+			prefix6: mpp("fd7a:115c:a1e0::/48"),
+
+			getCount: 1,
+
+			want4: true,
+			want6: true,
+		},
+		{
+			name: "simple-v4",
+			dbFunc: func() *HSDatabase {
+				return nil
+			},
+
+			prefix4: mpp("100.64.0.0/10"),
+
+			getCount: 1,
+
+			want4: true,
+			want6: false,
+		},
+		{
+			name: "simple-v6",
+			dbFunc: func() *HSDatabase {
+				return nil
+			},
+
+			prefix6: mpp("fd7a:115c:a1e0::/48"),
+
+			getCount: 1,
+
+			want4: false,
+			want6: true,
+		},
+		{
+			name: "generate-lots-of-random",
+			dbFunc: func() *HSDatabase {
+				return nil
+			},
+
+			prefix4: mpp("100.64.0.0/10"),
+			prefix6: mpp("fd7a:115c:a1e0::/48"),
+
+			getCount: 1000,
+
+			want4: true,
+			want6: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := tt.dbFunc()
+
+			alloc, _ := NewIPAllocator(db, tt.prefix4, tt.prefix6, types.IPAllocationStrategyRandom)
+
+			spew.Dump(alloc)
+
+			for range tt.getCount {
+				got4, got6, err := alloc.Next()
+				if err != nil {
+					t.Fatalf("allocating next IP: %s", err)
+				}
+
+				t.Logf("addrs ipv4: %v, ipv6: %v", got4, got6)
+
+				if tt.want4 {
+					if got4 == nil {
+						t.Fatalf("expected ipv4 addr, got nil")
+					}
+				}
+
+				if tt.want6 {
+					if got6 == nil {
+						t.Fatalf("expected ipv4 addr, got nil")
+					}
+				}
 			}
 		})
 	}
