@@ -97,6 +97,8 @@ func init() {
 	tagCmd.Flags().
 		StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
+
+	nodeCmd.AddCommand(backfillNodeIPsCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -474,6 +476,57 @@ var moveNodeCmd = &cobra.Command{
 		}
 
 		SuccessOutput(moveResponse.GetNode(), "Node moved to another user", output)
+	},
+}
+
+var backfillNodeIPsCmd = &cobra.Command{
+	Use:   "backfillips",
+	Short: "Backfill IPs missing from nodes",
+	Long: `
+Backfill IPs can be used to add/remove IPs from nodes
+based on the current configuration of Headscale.
+
+If there are nodes that does not have IPv4 or IPv6
+even if prefixes for both are configured in the config,
+this command can be used to assign IPs of the sort to
+all nodes that are missing.
+
+If you remove IPv4 or IPv6 prefixes from the config,
+it can be run to remove the IPs that should no longer
+be assigned to nodes.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		var err error
+		output, _ := cmd.Flags().GetString("output")
+
+		confirm := false
+		prompt := &survey.Confirm{
+			Message: "Are you sure that you want to assign/remove IPs to/from nodes?",
+		}
+		err = survey.AskOne(prompt, &confirm)
+		if err != nil {
+			return
+		}
+		if confirm {
+			ctx, client, conn, cancel := getHeadscaleCLIClient()
+			defer cancel()
+			defer conn.Close()
+
+			changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: confirm})
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf(
+						"Error backfilling IPs: %s",
+						status.Convert(err).Message(),
+					),
+					output,
+				)
+
+				return
+			}
+
+			SuccessOutput(changes, "Node IPs backfilled successfully", output)
+		}
 	},
 }
 

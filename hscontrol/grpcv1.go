@@ -3,6 +3,7 @@ package hscontrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -466,6 +467,24 @@ func (api headscaleV1APIServer) MoveNode(
 	}
 
 	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
+}
+
+func (api headscaleV1APIServer) BackfillNodeIPs(
+	ctx context.Context,
+	request *v1.BackfillNodeIPsRequest,
+) (*v1.BackfillNodeIPsResponse, error) {
+	log.Trace().Msg("Backfill called")
+
+	if !request.Confirmed {
+		return nil, errors.New("not confirmed, aborting")
+	}
+
+	changes, err := api.h.db.BackfillNodeIPs(api.h.ipAlloc)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.BackfillNodeIPsResponse{Changes: changes}, nil
 }
 
 func (api headscaleV1APIServer) GetRoutes(
