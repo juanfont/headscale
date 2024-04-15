@@ -1,11 +1,15 @@
 package db
 
 import (
+	"database/sql"
+	"fmt"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -16,6 +20,10 @@ var mpp = func(pref string) *netip.Prefix {
 }
 var na = func(pref string) netip.Addr {
 	return netip.MustParseAddr(pref)
+}
+var nap = func(pref string) *netip.Addr {
+	n := na(pref)
+	return &n
 }
 
 func TestIPAllocatorSequential(t *testing.T) {
@@ -265,6 +273,215 @@ func TestIPAllocatorRandom(t *testing.T) {
 						t.Fatalf("expected ipv4 addr, got nil")
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestBackfillIPAddresses(t *testing.T) {
+	fullNodeP := func(i int) *types.Node {
+		v4 := fmt.Sprintf("100.64.0.%d", i)
+		v6 := fmt.Sprintf("fd7a:115c:a1e0::%d", i)
+		return &types.Node{
+			IPv4DatabaseField: sql.NullString{
+				Valid:  true,
+				String: v4,
+			},
+			IPv4: nap(v4),
+			IPv6DatabaseField: sql.NullString{
+				Valid:  true,
+				String: v6,
+			},
+			IPv6: nap(v6),
+		}
+	}
+	tests := []struct {
+		name   string
+		dbFunc func() *HSDatabase
+
+		prefix4 *netip.Prefix
+		prefix6 *netip.Prefix
+		want    types.Nodes
+	}{
+		{
+			name: "simple-backfill-ipv6",
+			dbFunc: func() *HSDatabase {
+				db := dbForTest(t, "simple-backfill-ipv6")
+
+				db.DB.Save(&types.Node{
+					IPv4: nap("100.64.0.1"),
+				})
+
+				return db
+			},
+
+			prefix4: mpp("100.64.0.0/10"),
+			prefix6: mpp("fd7a:115c:a1e0::/48"),
+
+			want: types.Nodes{
+				&types.Node{
+					IPv4DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "100.64.0.1",
+					},
+					IPv4: nap("100.64.0.1"),
+					IPv6DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "fd7a:115c:a1e0::1",
+					},
+					IPv6: nap("fd7a:115c:a1e0::1"),
+				},
+			},
+		},
+		{
+			name: "simple-backfill-ipv4",
+			dbFunc: func() *HSDatabase {
+				db := dbForTest(t, "simple-backfill-ipv4")
+
+				db.DB.Save(&types.Node{
+					IPv6: nap("fd7a:115c:a1e0::1"),
+				})
+
+				return db
+			},
+
+			prefix4: mpp("100.64.0.0/10"),
+			prefix6: mpp("fd7a:115c:a1e0::/48"),
+
+			want: types.Nodes{
+				&types.Node{
+					IPv4DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "100.64.0.1",
+					},
+					IPv4: nap("100.64.0.1"),
+					IPv6DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "fd7a:115c:a1e0::1",
+					},
+					IPv6: nap("fd7a:115c:a1e0::1"),
+				},
+			},
+		},
+		{
+			name: "simple-backfill-remove-ipv6",
+			dbFunc: func() *HSDatabase {
+				db := dbForTest(t, "simple-backfill-remove-ipv6")
+
+				db.DB.Save(&types.Node{
+					IPv4: nap("100.64.0.1"),
+					IPv6: nap("fd7a:115c:a1e0::1"),
+				})
+
+				return db
+			},
+
+			prefix4: mpp("100.64.0.0/10"),
+
+			want: types.Nodes{
+				&types.Node{
+					IPv4DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "100.64.0.1",
+					},
+					IPv4: nap("100.64.0.1"),
+				},
+			},
+		},
+		{
+			name: "simple-backfill-remove-ipv4",
+			dbFunc: func() *HSDatabase {
+				db := dbForTest(t, "simple-backfill-remove-ipv4")
+
+				db.DB.Save(&types.Node{
+					IPv4: nap("100.64.0.1"),
+					IPv6: nap("fd7a:115c:a1e0::1"),
+				})
+
+				return db
+			},
+
+			prefix6: mpp("fd7a:115c:a1e0::/48"),
+
+			want: types.Nodes{
+				&types.Node{
+					IPv6DatabaseField: sql.NullString{
+						Valid:  true,
+						String: "fd7a:115c:a1e0::1",
+					},
+					IPv6: nap("fd7a:115c:a1e0::1"),
+				},
+			},
+		},
+		{
+			name: "multi-backfill-ipv6",
+			dbFunc: func() *HSDatabase {
+				db := dbForTest(t, "simple-backfill-ipv6")
+
+				db.DB.Save(&types.Node{
+					IPv4: nap("100.64.0.1"),
+				})
+				db.DB.Save(&types.Node{
+					IPv4: nap("100.64.0.2"),
+				})
+				db.DB.Save(&types.Node{
+					IPv4: nap("100.64.0.3"),
+				})
+				db.DB.Save(&types.Node{
+					IPv4: nap("100.64.0.4"),
+				})
+
+				return db
+			},
+
+			prefix4: mpp("100.64.0.0/10"),
+			prefix6: mpp("fd7a:115c:a1e0::/48"),
+
+			want: types.Nodes{
+				fullNodeP(1),
+				fullNodeP(2),
+				fullNodeP(3),
+				fullNodeP(4),
+			},
+		},
+	}
+
+	comps := append(util.Comparers, cmpopts.IgnoreFields(types.Node{},
+		"ID",
+		"MachineKeyDatabaseField",
+		"NodeKeyDatabaseField",
+		"DiscoKeyDatabaseField",
+		"Endpoints",
+		"HostinfoDatabaseField",
+		"Hostinfo",
+		"Routes",
+		"CreatedAt",
+		"UpdatedAt",
+	))
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := tt.dbFunc()
+
+			alloc, err := NewIPAllocator(db, tt.prefix4, tt.prefix6, types.IPAllocationStrategySequential)
+			if err != nil {
+				t.Fatalf("failed to set up ip alloc: %s", err)
+			}
+
+			logs, err := db.BackfillNodeIPs(alloc)
+			if err != nil {
+				t.Fatalf("failed to backfill: %s", err)
+			}
+
+			t.Logf("backfill log: \n%s", strings.Join(logs, "\n"))
+
+			got, err := db.ListNodes()
+			if err != nil {
+				t.Fatalf("failed to get nodes: %s", err)
+			}
+
+			if diff := cmp.Diff(tt.want, got, comps...); diff != "" {
+				t.Errorf("Backfill unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}
