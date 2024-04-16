@@ -9,7 +9,6 @@ require (
 	github.com/coreos/go-oidc/v3 v3.9.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/deckarep/golang-set/v2 v2.6.0
-	github.com/efekarakus/termcolor v1.0.1
 	github.com/glebarez/sqlite v1.10.0
 	github.com/go-gormigrate/gormigrate/v2 v2.1.1
 	github.com/gofrs/uuid/v5 v5.0.0
@@ -17,6 +16,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.19.1
+	github.com/jagottsicher/termcolor v1.0.2
 	github.com/klauspost/compress v1.17.6
 	github.com/oauth2-proxy/mockoidc v0.0.0-20220308204021-b9169deeb282
 	github.com/ory/dockertest/v3 v3.10.0

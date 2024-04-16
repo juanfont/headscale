@@ -34,24 +34,10 @@ func TestPingAllByIP(t *testing.T) {
 		"user2": len(MustTestVersions),
 	}
 
-	headscaleConfig := map[string]string{
-		"HEADSCALE_DERP_URLS":                    "",
-		"HEADSCALE_DERP_SERVER_ENABLED":          "true",
-		"HEADSCALE_DERP_SERVER_REGION_ID":        "999",
-		"HEADSCALE_DERP_SERVER_REGION_CODE":      "headscale",
-		"HEADSCALE_DERP_SERVER_REGION_NAME":      "Headscale Embedded DERP",
-		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
-		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",
-
-		// Envknob for enabling DERP debug logs
-		"DERP_DEBUG_LOGS":        "true",
-		"DERP_PROBER_DEBUG_LOGS": "true",
-	}
-
 	err = scenario.CreateHeadscaleEnv(spec,
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyip"),
-		hsic.WithConfigEnv(headscaleConfig),
+		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
 		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
