@@ -173,6 +173,26 @@ func WithPostgres() Option {
 	}
 }
 
+// WithEmbeddedDERPServerOnly configures Headscale to start
+// and only use the embedded DERP server.
+// It requires WithTLS and WithHostnameAsServerURL to be
+// set.
+func WithEmbeddedDERPServerOnly() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_DERP_URLS"] = ""
+		hsic.env["HEADSCALE_DERP_SERVER_ENABLED"] = "true"
+		hsic.env["HEADSCALE_DERP_SERVER_REGION_ID"] = "999"
+		hsic.env["HEADSCALE_DERP_SERVER_REGION_CODE"] = "headscale"
+		hsic.env["HEADSCALE_DERP_SERVER_REGION_NAME"] = "Headscale Embedded DERP"
+		hsic.env["HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR"] = "0.0.0.0:3478"
+		hsic.env["HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH"] = "/tmp/derp.key"
+
+		// Envknob for enabling DERP debug logs
+		hsic.env["DERP_DEBUG_LOGS"] = "true"
+		hsic.env["DERP_PROBER_DEBUG_LOGS"] = "true"
+	}
+}
+
 // New returns a new HeadscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,

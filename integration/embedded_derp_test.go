@@ -37,25 +37,11 @@ func TestDERPServerScenario(t *testing.T) {
 		// "user1": len(MustTestVersions),
 	}
 
-	headscaleConfig := map[string]string{
-		"HEADSCALE_DERP_URLS":                    "",
-		"HEADSCALE_DERP_SERVER_ENABLED":          "true",
-		"HEADSCALE_DERP_SERVER_REGION_ID":        "999",
-		"HEADSCALE_DERP_SERVER_REGION_CODE":      "headscale",
-		"HEADSCALE_DERP_SERVER_REGION_NAME":      "Headscale Embedded DERP",
-		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
-		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",
-
-		// Envknob for enabling DERP debug logs
-		"DERP_DEBUG_LOGS":        "true",
-		"DERP_PROBER_DEBUG_LOGS": "true",
-	}
-
 	err = scenario.CreateHeadscaleEnv(
 		spec,
-		hsic.WithConfigEnv(headscaleConfig),
 		hsic.WithTestName("derpserver"),
 		hsic.WithExtraPorts([]string{"3478/udp"}),
+		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
 	)
