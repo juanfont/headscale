@@ -386,6 +386,13 @@ func (s *Suite) TestSetTags(c *check.C) {
 		check.DeepEquals,
 		types.StringList([]string{"tag:bar", "tag:test", "tag:unknown"}),
 	)
+
+	// test removing tags
+	err = db.SetTags(node.ID, []string{})
+	c.Assert(err, check.IsNil)
+	node, err = db.getNode("test", "testnode")
+	c.Assert(err, check.IsNil)
+	c.Assert(node.ForcedTags, check.DeepEquals, types.StringList([]string{}))
 }
 
 func TestHeadscale_generateGivenName(t *testing.T) {
