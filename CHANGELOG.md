@@ -55,6 +55,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
 - Add support for deleting api keys [#1702](https://github.com/juanfont/headscale/pull/1702)
 - Add command to backfill IP addresses for nodes missing IPs from configured prefixes. [#1869](https://github.com/juanfont/headscale/pull/1869)
+- Log available update as warning [#1877](https://github.com/juanfont/headscale/pull/1877)
 
 ## 0.22.3 (2023-05-12)
 
