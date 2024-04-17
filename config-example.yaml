@@ -61,6 +61,11 @@ prefixes:
   v6: fd7a:115c:a1e0::/48
   v4: 100.64.0.0/10
 
+  # Strategy used for allocation of IPs to nodes, available options:
+  # - sequential (default): assigns the next free IP from the previous given IP.
+  # - random: assigns the next free IP from a pseudo-random IP generator (crypto/rand).
+  allocation: sequential
+
 # DERP is a relay system that Tailscale uses when a direct
 # connection cannot be established.
 # https://tailscale.com/blog/how-tailscale-works/#encrypted-tcp-relays-derp

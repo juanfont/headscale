@@ -123,6 +123,13 @@ service HeadscaleService {
             post: "/api/v1/node/{node_id}/user"
         };
     }
+
+    rpc BackfillNodeIPs(BackfillNodeIPsRequest) returns (BackfillNodeIPsResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/node/backfillips"
+        };
+    }
+
     // --- Node end ---
 
     // --- Route start ---

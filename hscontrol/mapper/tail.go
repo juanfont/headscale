@@ -44,7 +44,7 @@ func tailNode(
 	pol *policy.ACLPolicy,
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
-	addrs := node.IPAddresses.Prefixes()
+	addrs := node.Prefixes()
 
 	allowedIPs := append(
 		[]netip.Prefix{},

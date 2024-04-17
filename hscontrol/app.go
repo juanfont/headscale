@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" //nolint
-	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -56,6 +55,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
+	"tailscale.com/util/dnsname"
 )
 
 var (
@@ -148,7 +148,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, err
 	}
 
-	app.ipAlloc, err = db.NewIPAllocator(app.db, *cfg.PrefixV4, *cfg.PrefixV6)
+	app.ipAlloc, err = db.NewIPAllocator(app.db, cfg.PrefixV4, cfg.PrefixV6, cfg.IPAllocation)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,15 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	if app.cfg.DNSConfig != nil && app.cfg.DNSConfig.Proxied { // if MagicDNS
 		// TODO(kradalby): revisit why this takes a list.
-		magicDNSDomains := util.GenerateMagicDNSRootDomains([]netip.Prefix{*cfg.PrefixV4, *cfg.PrefixV6})
+
+		var magicDNSDomains []dnsname.FQDN
+		if cfg.PrefixV4 != nil {
+			magicDNSDomains = append(magicDNSDomains, util.GenerateIPv4DNSRootDomain(*cfg.PrefixV4)...)
+		}
+		if cfg.PrefixV6 != nil {
+			magicDNSDomains = append(magicDNSDomains, util.GenerateIPv6DNSRootDomain(*cfg.PrefixV6)...)
+		}
+
 		// we might have routes already from Split DNS
 		if app.cfg.DNSConfig.Routes == nil {
 			app.cfg.DNSConfig.Routes = make(map[string][]*dnstype.Resolver)

@@ -24,6 +24,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -170,6 +171,13 @@ func WithFileInContainer(path string, contents []byte) Option {
 func WithPostgres() Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.postgres = true
+	}
+}
+
+// WithIPAllocationStrategy sets the tests IP Allocation strategy.
+func WithIPAllocationStrategy(strat types.IPAllocationStrategy) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_PREFIXES_ALLOCATION"] = string(strat)
 	}
 }
 

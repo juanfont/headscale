@@ -174,8 +174,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 				"device_model": []string{node.Hostinfo.OS},
 			}
 
-			if len(node.IPAddresses) > 0 {
-				attrs.Add("device_ip", node.IPAddresses[0].String())
+			if len(node.IPs()) > 0 {
+				attrs.Add("device_ip", node.IPs()[0].String())
 			}
 
 			resolver.Addr = fmt.Sprintf("%s?%s", resolver.Addr, attrs.Encode())

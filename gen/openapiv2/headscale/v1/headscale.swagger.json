@@ -194,6 +194,36 @@
         ]
       }
     },
+    "/api/v1/node/backfillips": {
+      "post": {
+        "operationId": "HeadscaleService_BackfillNodeIPs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BackfillNodeIPsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "confirmed",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/node/register": {
       "post": {
         "operationId": "HeadscaleService_RegisterNode",
@@ -883,6 +913,17 @@
         "lastSeen": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "v1BackfillNodeIPsResponse": {
+      "type": "object",
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

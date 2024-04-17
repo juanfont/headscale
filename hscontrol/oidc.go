@@ -597,7 +597,7 @@ func (h *Headscale) registerNodeForOIDCCallback(
 	machineKey *key.MachinePublic,
 	expiry time.Time,
 ) error {
-	addrs, err := h.ipAlloc.Next()
+	ipv4, ipv6, err := h.ipAlloc.Next()
 	if err != nil {
 		return err
 	}
@@ -611,7 +611,7 @@ func (h *Headscale) registerNodeForOIDCCallback(
 			user.Name,
 			&expiry,
 			util.RegisterMethodOIDC,
-			addrs,
+			ipv4, ipv6,
 		); err != nil {
 			return err
 		}

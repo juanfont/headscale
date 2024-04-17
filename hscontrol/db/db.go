@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/netip"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -325,6 +326,66 @@ func NewHeadscaleDatabase(
 					}
 
 					return err
+				},
+				Rollback: func(tx *gorm.DB) error {
+					return nil
+				},
+			},
+			{
+				// Replace column with IP address list with dedicated
+				// IP v4 and v6 column.
+				// Note that previously, the list _could_ contain more
+				// than two addresses, which should not really happen.
+				// In that case, the first occurence of each type will
+				// be kept.
+				ID: "2024041121742",
+				Migrate: func(tx *gorm.DB) error {
+					_ = tx.Migrator().AddColumn(&types.Node{}, "ipv4")
+					_ = tx.Migrator().AddColumn(&types.Node{}, "ipv6")
+
+					type node struct {
+						ID        uint64 `gorm:"column:id"`
+						Addresses string `gorm:"column:ip_addresses"`
+					}
+
+					var nodes []node
+
+					_ = tx.Raw("SELECT id, ip_addresses FROM nodes").Scan(&nodes).Error
+
+					for _, node := range nodes {
+						addrs := strings.Split(node.Addresses, ",")
+
+						if len(addrs) == 0 {
+							fmt.Errorf("no addresses found for node(%d)", node.ID)
+						}
+
+						var v4 *netip.Addr
+						var v6 *netip.Addr
+
+						for _, addrStr := range addrs {
+							addr, err := netip.ParseAddr(addrStr)
+							if err != nil {
+								return fmt.Errorf("parsing IP for node(%d) from database: %w", node.ID, err)
+							}
+
+							if addr.Is4() && v4 == nil {
+								v4 = &addr
+							}
+
+							if addr.Is6() && v6 == nil {
+								v6 = &addr
+							}
+						}
+
+						err = tx.Save(&types.Node{ID: types.NodeID(node.ID), IPv4: v4, IPv6: v6}).Error
+						if err != nil {
+							return fmt.Errorf("saving ip addresses to new columns: %w", err)
+						}
+					}
+
+					_ = tx.Migrator().DropColumn(&types.Node{}, "ip_addresses")
+
+					return nil
 				},
 				Rollback: func(tx *gorm.DB) error {
 					return nil

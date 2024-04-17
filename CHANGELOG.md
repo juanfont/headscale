@@ -39,6 +39,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - `/var/lib/headscale` and `/var/run/headscale` is no longer created automatically, see [container docs](./docs/running-headscale-container.md)
 - Prefixes are now defined per v4 and v6 range. [#1756](https://github.com/juanfont/headscale/pull/1756)
   - `ip_prefixes` option is now `prefixes.v4` and `prefixes.v6`
+  - `prefixes.allocation` can be set to assign IPs at `sequential` or `random`. [#1869](https://github.com/juanfont/headscale/pull/1869)
 
 ### Changes
 
@@ -53,6 +54,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Turn off gRPC logging [#1640](https://github.com/juanfont/headscale/pull/1640) fixes [#1259](https://github.com/juanfont/headscale/issues/1259)
 - Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
 - Add support for deleting api keys [#1702](https://github.com/juanfont/headscale/pull/1702)
+- Add command to backfill IP addresses for nodes missing IPs from configured prefixes. [#1869](https://github.com/juanfont/headscale/pull/1869)
 
 ## 0.22.3 (2023-05-12)
 

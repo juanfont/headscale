@@ -12,6 +12,10 @@ import (
 )
 
 func Test_NodeCanAccess(t *testing.T) {
+	iap := func(ipStr string) *netip.Addr {
+		ip := netip.MustParseAddr(ipStr)
+		return &ip
+	}
 	tests := []struct {
 		name  string
 		node1 Node
@@ -22,10 +26,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "no-rules",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
+				IPv4: iap("10.0.0.1"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
+				IPv4: iap("10.0.0.2"),
 			},
 			rules: []tailcfg.FilterRule{},
 			want:  false,
@@ -33,10 +37,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "wildcard",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
+				IPv4: iap("10.0.0.1"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
+				IPv4: iap("10.0.0.2"),
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -54,10 +58,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "other-cant-access-src",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+				IPv4: iap("100.64.0.1"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+				IPv4: iap("100.64.0.3"),
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -72,10 +76,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "dest-cant-access-src",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+				IPv4: iap("100.64.0.3"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+				IPv4: iap("100.64.0.2"),
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -90,10 +94,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "src-can-access-dest",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+				IPv4: iap("100.64.0.2"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+				IPv4: iap("100.64.0.3"),
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -115,32 +119,6 @@ func Test_NodeCanAccess(t *testing.T) {
 				t.Errorf("canAccess() failed: want (%t), got (%t)", tt.want, got)
 			}
 		})
-	}
-}
-
-func TestNodeAddressesOrder(t *testing.T) {
-	machineAddresses := NodeAddresses{
-		netip.MustParseAddr("2001:db8::2"),
-		netip.MustParseAddr("100.64.0.2"),
-		netip.MustParseAddr("2001:db8::1"),
-		netip.MustParseAddr("100.64.0.1"),
-	}
-
-	strSlice := machineAddresses.StringSlice()
-	expected := []string{
-		"100.64.0.1",
-		"100.64.0.2",
-		"2001:db8::1",
-		"2001:db8::2",
-	}
-
-	if len(strSlice) != len(expected) {
-		t.Fatalf("unexpected slice length: got %v, want %v", len(strSlice), len(expected))
-	}
-	for i, addr := range strSlice {
-		if addr != expected[i] {
-			t.Errorf("unexpected address at index %v: got %v, want %v", i, addr, expected[i])
-		}
 	}
 }
 
