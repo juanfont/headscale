@@ -377,14 +377,18 @@ func NewHeadscaleDatabase(
 							}
 						}
 
-						err = tx.Model(&types.Node{}).Where("id = ?", node.ID).Update("ipv4", v4.String()).Error
-						if err != nil {
-							return fmt.Errorf("saving ip addresses to new columns: %w", err)
+						if v4 != nil {
+							err = tx.Model(&types.Node{}).Where("id = ?", node.ID).Update("ipv4", v4.String()).Error
+							if err != nil {
+								return fmt.Errorf("saving ip addresses to new columns: %w", err)
+							}
 						}
 
-						err = tx.Model(&types.Node{}).Where("id = ?", node.ID).Update("ipv6", v6.String()).Error
-						if err != nil {
-							return fmt.Errorf("saving ip addresses to new columns: %w", err)
+						if v6 != nil {
+							err = tx.Model(&types.Node{}).Where("id = ?", node.ID).Update("ipv6", v6.String()).Error
+							if err != nil {
+								return fmt.Errorf("saving ip addresses to new columns: %w", err)
+							}
 						}
 					}
 
