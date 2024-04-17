@@ -206,6 +206,11 @@ func SetTags(
 	tags []string,
 ) error {
 	if len(tags) == 0 {
+		// if no tags are provided, we remove all forced tags
+		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", types.StringList{}).Error; err != nil {
+			return fmt.Errorf("failed to remove tags for node in the database: %w", err)
+		}
+
 		return nil
 	}
 
