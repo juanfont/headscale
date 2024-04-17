@@ -137,12 +137,6 @@ disable_check_updates: false
 # Time before an inactive ephemeral node is deleted?
 ephemeral_node_inactivity_timeout: 30m
 
-# Period to check for node updates within the tailnet. A value too low will severely affect
-# CPU consumption of Headscale. A value too high (over 60s) will cause problems
-# for the nodes, as they won't get updates or keep alive messages frequently enough.
-# In case of doubts, do not touch the default 10s.
-node_update_check_interval: 10s
-
 database:
   type: sqlite
 
