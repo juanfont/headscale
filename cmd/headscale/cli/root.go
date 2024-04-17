@@ -78,7 +78,7 @@ func initConfig() {
 			res, err := latest.Check(githubTag, Version)
 			if err == nil && res.Outdated {
 				//nolint
-				fmt.Printf(
+				log.Warn().Msgf(
 					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
 					res.Current,
 					Version,
