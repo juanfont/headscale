@@ -238,7 +238,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
 
-	viper.SetDefault("prefixes.allocation", IPAllocationStrategySequential)
+	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
 	if IsCLIConfigured() {
 		return nil

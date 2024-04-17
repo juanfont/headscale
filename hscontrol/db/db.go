@@ -356,7 +356,7 @@ func NewHeadscaleDatabase(
 						addrs := strings.Split(node.Addresses, ",")
 
 						if len(addrs) == 0 {
-							fmt.Errorf("no addresses found for node(%d)", node.ID)
+							return fmt.Errorf("no addresses found for node(%d)", node.ID)
 						}
 
 						var v4 *netip.Addr
@@ -377,7 +377,12 @@ func NewHeadscaleDatabase(
 							}
 						}
 
-						err = tx.Save(&types.Node{ID: types.NodeID(node.ID), IPv4: v4, IPv6: v6}).Error
+						err = tx.Model(&types.Node{}).Where("id = ?", node.ID).Update("ipv4", v4.String()).Error
+						if err != nil {
+							return fmt.Errorf("saving ip addresses to new columns: %w", err)
+						}
+
+						err = tx.Model(&types.Node{}).Where("id = ?", node.ID).Update("ipv6", v6.String()).Error
 						if err != nil {
 							return fmt.Errorf("saving ip addresses to new columns: %w", err)
 						}
