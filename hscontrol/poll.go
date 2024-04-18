@@ -336,7 +336,7 @@ func (m *mapSession) serve() {
 
 				log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
 
-				m.infof("update sent")
+				m.tracef("update sent")
 			}
 
 			// reset
