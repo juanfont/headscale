@@ -28,7 +28,7 @@ func TestEnablingRoutes(t *testing.T) {
 
 	user := "enable-routing"
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
 	defer scenario.Shutdown()
 
@@ -250,7 +250,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	user := "enable-routing"
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
 	// defer scenario.Shutdown()
 
@@ -822,7 +822,7 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 
 	user := "enable-disable-routing"
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
 	defer scenario.Shutdown()
 
@@ -966,7 +966,7 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	user := "subnet-route-acl"
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
 	defer scenario.Shutdown()
 

@@ -23,7 +23,7 @@ func TestDERPServerScenario(t *testing.T) {
 	IntegrationSkip(t)
 	// t.Parallel()
 
-	baseScenario, err := NewScenario()
+	baseScenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
 	scenario := EmbeddedDERPServerScenario{
