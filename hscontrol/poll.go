@@ -467,7 +467,7 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 		node.LastSeen = &now
 		change.LastSeen = &now
 
-		err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+		err := h.db.Write(func(tx *gorm.DB) error {
 			return db.SetLastSeen(tx, node.ID, *node.LastSeen)
 		})
 		if err != nil {

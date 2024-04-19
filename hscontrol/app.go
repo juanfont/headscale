@@ -225,7 +225,7 @@ func (h *Headscale) deleteExpireEphemeralNodes(milliSeconds int64) {
 	for range ticker.C {
 		var removed []types.NodeID
 		var changed []types.NodeID
-		if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := h.db.Write(func(tx *gorm.DB) error {
 			removed, changed = db.DeleteExpiredEphemeralNodes(tx, h.cfg.EphemeralNodeInactivityTimeout)
 
 			return nil
@@ -263,7 +263,7 @@ func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 	var changed bool
 
 	for range ticker.C {
-		if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := h.db.Write(func(tx *gorm.DB) error {
 			lastCheck, update, changed = db.ExpireExpiredNodes(tx, lastCheck)
 
 			return nil

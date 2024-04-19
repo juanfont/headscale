@@ -147,7 +147,7 @@ func (*Suite) TestEphemeralKeyReusable(c *check.C) {
 	_, err = db.getNode("test7", "testest")
 	c.Assert(err, check.IsNil)
 
-	db.DB.Transaction(func(tx *gorm.DB) error {
+	db.Write(func(tx *gorm.DB) error {
 		DeleteExpiredEphemeralNodes(tx, time.Second*20)
 		return nil
 	})
@@ -181,7 +181,7 @@ func (*Suite) TestEphemeralKeyNotReusable(c *check.C) {
 	_, err = db.getNode("test7", "testest")
 	c.Assert(err, check.IsNil)
 
-	db.DB.Transaction(func(tx *gorm.DB) error {
+	db.Write(func(tx *gorm.DB) error {
 		DeleteExpiredEphemeralNodes(tx, time.Second*20)
 		return nil
 	})

@@ -145,7 +145,7 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	ctx context.Context,
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
-	err := api.h.db.DB.Transaction(func(tx *gorm.DB) error {
+	err := api.h.db.Write(func(tx *gorm.DB) error {
 		preAuthKey, err := db.GetPreAuthKey(tx, request.GetUser(), request.Key)
 		if err != nil {
 			return err

@@ -401,7 +401,7 @@ func (h *Headscale) handleAuthKey(
 		}
 	}
 
-	err = h.db.DB.Transaction(func(tx *gorm.DB) error {
+	h.db.Write(func(tx *gorm.DB) error {
 		return db.UsePreAuthKey(tx, pak)
 	})
 	if err != nil {
@@ -633,7 +633,7 @@ func (h *Headscale) handleNodeKeyRefresh(
 		Str("node", node.Hostname).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
 
-	err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+	err := h.db.Write(func(tx *gorm.DB) error {
 		return db.NodeSetNodeKey(tx, &node, registerRequest.NodeKey)
 	})
 	if err != nil {
