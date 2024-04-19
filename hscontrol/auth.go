@@ -273,8 +273,6 @@ func (h *Headscale) handleAuthKey(
 				Err(err).
 				Msg("Cannot encode message")
 			http.Error(writer, "Internal server error", http.StatusInternalServerError)
-			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-				Inc()
 
 			return
 		}
@@ -293,13 +291,6 @@ func (h *Headscale) handleAuthKey(
 			Caller().
 			Str("node", registerRequest.Hostinfo.Hostname).
 			Msg("Failed authentication via AuthKey")
-
-		if pak != nil {
-			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-				Inc()
-		} else {
-			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", "unknown").Inc()
-		}
 
 		return
 	}
@@ -404,8 +395,6 @@ func (h *Headscale) handleAuthKey(
 				Caller().
 				Err(err).
 				Msg("could not register node")
-			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-				Inc()
 			http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 			return
@@ -420,8 +409,6 @@ func (h *Headscale) handleAuthKey(
 			Caller().
 			Err(err).
 			Msg("Failed to use pre-auth key")
-		nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-			Inc()
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
@@ -440,14 +427,10 @@ func (h *Headscale) handleAuthKey(
 			Str("node", registerRequest.Hostinfo.Hostname).
 			Err(err).
 			Msg("Cannot encode message")
-		nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-			Inc()
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "success", pak.User.Name).
-		Inc()
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 	_, err = writer.Write(respBody)
@@ -616,14 +599,10 @@ func (h *Headscale) handleNodeWithValidRegistration(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		nodeRegistrations.WithLabelValues("update", "web", "error", node.User.Name).
-			Inc()
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	nodeRegistrations.WithLabelValues("update", "web", "success", node.User.Name).
-		Inc()
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
@@ -737,14 +716,10 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		nodeRegistrations.WithLabelValues("reauth", "web", "error", node.User.Name).
-			Inc()
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	nodeRegistrations.WithLabelValues("reauth", "web", "success", node.User.Name).
-		Inc()
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)

@@ -95,6 +95,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 	// The HTTP2 server that exposes this router is created for
 	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
 	router := mux.NewRouter()
+	router.Use(prometheusMiddleware)
 
 	router.HandleFunc("/machine/register", noiseServer.NoiseRegistrationHandler).
 		Methods(http.MethodPost)

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
@@ -31,8 +32,10 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 		Uint64("node.id", nodeID.Uint64()).
 		Msg("releasing lock to add node")
 
+	start := time.Now()
 	n.l.Lock()
 	defer n.l.Unlock()
+	notifierWaitForLock.WithLabelValues("add").Observe(time.Since(start).Seconds())
 
 	n.nodes[nodeID] = c
 	n.connected[nodeID] = true
@@ -50,8 +53,10 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID) {
 		Uint64("node.id", nodeID.Uint64()).
 		Msg("releasing lock to remove node")
 
+	start := time.Now()
 	n.l.Lock()
 	defer n.l.Unlock()
+	notifierWaitForLock.WithLabelValues("remove").Observe(time.Since(start).Seconds())
 
 	if len(n.nodes) == 0 {
 		return
@@ -101,12 +106,10 @@ func (n *Notifier) NotifyWithIgnore(
 		Str("type", update.Type.String()).
 		Msg("releasing lock, finished notifying")
 
+	start := time.Now()
 	n.l.RLock()
 	defer n.l.RUnlock()
-
-	if update.Type == types.StatePeerChangedPatch {
-		log.Trace().Interface("update", update).Interface("online", n.connected).Msg("PATCH UPDATE SENT")
-	}
+	notifierWaitForLock.WithLabelValues("notify").Observe(time.Since(start).Seconds())
 
 	for nodeID, c := range n.nodes {
 		if slices.Contains(ignoreNodeIDs, nodeID) {
@@ -121,6 +124,7 @@ func (n *Notifier) NotifyWithIgnore(
 				Any("origin", ctx.Value("origin")).
 				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update not sent, context cancelled")
+			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String()).Inc()
 
 			return
 		case c <- update:
@@ -129,6 +133,7 @@ func (n *Notifier) NotifyWithIgnore(
 				Any("origin", ctx.Value("origin")).
 				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update successfully sent on chan")
+			notifierUpdateSent.WithLabelValues("ok", update.Type.String()).Inc()
 		}
 	}
 }
@@ -144,8 +149,10 @@ func (n *Notifier) NotifyByMachineKey(
 		Str("type", update.Type.String()).
 		Msg("releasing lock, finished notifying")
 
+	start := time.Now()
 	n.l.RLock()
 	defer n.l.RUnlock()
+	notifierWaitForLock.WithLabelValues("notify").Observe(time.Since(start).Seconds())
 
 	if c, ok := n.nodes[nodeID]; ok {
 		select {
@@ -156,6 +163,7 @@ func (n *Notifier) NotifyByMachineKey(
 				Any("origin", ctx.Value("origin")).
 				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update not sent, context cancelled")
+			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String()).Inc()
 
 			return
 		case c <- update:
@@ -164,6 +172,7 @@ func (n *Notifier) NotifyByMachineKey(
 				Any("origin", ctx.Value("origin")).
 				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update successfully sent on chan")
+			notifierUpdateSent.WithLabelValues("ok", update.Type.String()).Inc()
 		}
 	}
 }
