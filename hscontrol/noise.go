@@ -268,10 +268,12 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 			defer ns.headscale.mapSessionMu.Unlock()
 
 			sess.infof("node has an open stream(%p), rejecting new stream", sess)
+			mapResponseRejected.WithLabelValues("exists").Inc()
 			return
 		}
 
 		ns.headscale.mapSessions[node.ID] = sess
+		mapResponseSessions.Inc()
 		ns.headscale.mapSessionMu.Unlock()
 		sess.tracef("releasing lock to check stream")
 	}
@@ -284,6 +286,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		defer ns.headscale.mapSessionMu.Unlock()
 
 		delete(ns.headscale.mapSessions, node.ID)
+		mapResponseSessions.Dec()
 
 		sess.tracef("releasing lock to remove stream")
 	}

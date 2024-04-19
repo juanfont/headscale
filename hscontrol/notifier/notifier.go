@@ -9,19 +9,20 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 )
 
 type Notifier struct {
 	l         sync.RWMutex
 	nodes     map[types.NodeID]chan<- types.StateUpdate
-	connected types.NodeConnectedMap
+	connected *xsync.MapOf[types.NodeID, bool]
 }
 
 func NewNotifier() *Notifier {
 	return &Notifier{
 		nodes:     make(map[types.NodeID]chan<- types.StateUpdate),
-		connected: make(types.NodeConnectedMap),
+		connected: xsync.NewMapOf[types.NodeID, bool](),
 	}
 }
 
@@ -38,12 +39,13 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	notifierWaitForLock.WithLabelValues("add").Observe(time.Since(start).Seconds())
 
 	n.nodes[nodeID] = c
-	n.connected[nodeID] = true
+	n.connected.Store(nodeID, true)
 
 	log.Trace().
 		Uint64("node.id", nodeID.Uint64()).
 		Int("open_chans", len(n.nodes)).
 		Msg("Added new channel")
+	notifierNodeUpdateChans.Inc()
 }
 
 func (n *Notifier) RemoveNode(nodeID types.NodeID) {
@@ -63,12 +65,13 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID) {
 	}
 
 	delete(n.nodes, nodeID)
-	n.connected[nodeID] = false
+	n.connected.Store(nodeID, false)
 
 	log.Trace().
 		Uint64("node.id", nodeID.Uint64()).
 		Int("open_chans", len(n.nodes)).
 		Msg("Removed channel")
+	notifierNodeUpdateChans.Dec()
 }
 
 // IsConnected reports if a node is connected to headscale and has a
@@ -77,17 +80,22 @@ func (n *Notifier) IsConnected(nodeID types.NodeID) bool {
 	n.l.RLock()
 	defer n.l.RUnlock()
 
-	return n.connected[nodeID]
+	if val, ok := n.connected.Load(nodeID); ok {
+		return val
+	}
+	return false
 }
 
 // IsLikelyConnected reports if a node is connected to headscale and has a
 // poll session open, but doesnt lock, so might be wrong.
 func (n *Notifier) IsLikelyConnected(nodeID types.NodeID) bool {
-	return n.connected[nodeID]
+	if val, ok := n.connected.Load(nodeID); ok {
+		return val
+	}
+	return false
 }
 
-// TODO(kradalby): This returns a pointer and can be dangerous.
-func (n *Notifier) ConnectedMap() types.NodeConnectedMap {
+func (n *Notifier) LikelyConnectedMap() *xsync.MapOf[types.NodeID, bool] {
 	return n.connected
 }
 
@@ -162,9 +170,10 @@ func (n *Notifier) String() string {
 	b.WriteString("\n")
 	b.WriteString("connected:\n")
 
-	for k, v := range n.connected {
+	n.connected.Range(func(k types.NodeID, v bool) bool {
 		fmt.Fprintf(&b, "\t%d: %t\n", k, v)
-	}
+		return true
+	})
 
 	return b.String()
 }

@@ -546,7 +546,7 @@ func (h *Headscale) handleNodeLogOut(
 	}
 
 	if node.IsEphemeral() {
-		changedNodes, err := h.db.DeleteNode(&node, h.nodeNotifier.ConnectedMap())
+		changedNodes, err := h.db.DeleteNode(&node, h.nodeNotifier.LikelyConnectedMap())
 		if err != nil {
 			log.Error().
 				Err(err).

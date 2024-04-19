@@ -19,4 +19,9 @@ var (
 		Name:      "notifier_update_sent_total",
 		Help:      "total count of update sent on nodes channel",
 	}, []string{"status", "type"})
+	notifierNodeUpdateChans = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "notifier_open_channels_total",
+		Help:      "total count open channels in notifier",
+	})
 )

@@ -37,6 +37,16 @@ var (
 		Name:      "mapresponse_readonly_requests_total",
 		Help:      "total count of readonly requests received",
 	}, []string{"status"})
+	mapResponseSessions = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "mapresponse_current_sessions_total",
+		Help:      "total count open map response sessions",
+	})
+	mapResponseRejected = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: prometheusNamespace,
+		Name:      "mapresponse_rejected_new_sessions_total",
+		Help:      "total count of new mapsessions rejected",
+	}, []string{"reason"})
 	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: prometheusNamespace,
 		Name:      "http_duration_seconds",

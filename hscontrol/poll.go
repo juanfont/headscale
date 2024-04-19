@@ -64,7 +64,7 @@ func (h *Headscale) newMapSession(
 	w http.ResponseWriter,
 	node *types.Node,
 ) *mapSession {
-	warnf, tracef, infof, errf := logPollFunc(req, node)
+	warnf, infof, tracef, errf := logPollFunc(req, node)
 
 	// Use a buffered channel in case a node is not fully ready
 	// to receive a message to make sure we dont block the entire
@@ -437,7 +437,7 @@ func (m *mapSession) serve() {
 
 func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
 	update, err := db.Write(m.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return db.FailoverNodeRoutesIfNeccessary(tx, m.h.nodeNotifier.ConnectedMap(), node)
+		return db.FailoverNodeRoutesIfNeccessary(tx, m.h.nodeNotifier.LikelyConnectedMap(), node)
 	})
 	if err != nil {
 		m.errf(err, fmt.Sprintf("failed to ensure failover routes, %s", where))
