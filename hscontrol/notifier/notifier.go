@@ -100,45 +100,16 @@ func (n *Notifier) NotifyWithIgnore(
 	update types.StateUpdate,
 	ignoreNodeIDs ...types.NodeID,
 ) {
-	log.Trace().Caller().Str("type", update.Type.String()).Msg("acquiring lock to notify")
-	defer log.Trace().
-		Caller().
-		Str("type", update.Type.String()).
-		Msg("releasing lock, finished notifying")
-
-	start := time.Now()
-	n.l.RLock()
-	defer n.l.RUnlock()
-	notifierWaitForLock.WithLabelValues("notify").Observe(time.Since(start).Seconds())
-
-	for nodeID, c := range n.nodes {
+	for nodeID := range n.nodes {
 		if slices.Contains(ignoreNodeIDs, nodeID) {
 			continue
 		}
 
-		select {
-		case <-ctx.Done():
-			log.Error().
-				Err(ctx.Err()).
-				Uint64("node.id", nodeID.Uint64()).
-				Any("origin", ctx.Value("origin")).
-				Any("origin-hostname", ctx.Value("hostname")).
-				Msgf("update not sent, context cancelled")
-			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String()).Inc()
-
-			return
-		case c <- update:
-			log.Trace().
-				Uint64("node.id", nodeID.Uint64()).
-				Any("origin", ctx.Value("origin")).
-				Any("origin-hostname", ctx.Value("hostname")).
-				Msgf("update successfully sent on chan")
-			notifierUpdateSent.WithLabelValues("ok", update.Type.String()).Inc()
-		}
+		n.NotifyByNodeID(ctx, update, nodeID)
 	}
 }
 
-func (n *Notifier) NotifyByMachineKey(
+func (n *Notifier) NotifyByNodeID(
 	ctx context.Context,
 	update types.StateUpdate,
 	nodeID types.NodeID,

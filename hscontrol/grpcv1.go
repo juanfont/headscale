@@ -343,7 +343,7 @@ func (api headscaleV1APIServer) ExpireNode(
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
-	api.h.nodeNotifier.NotifyByMachineKey(
+	api.h.nodeNotifier.NotifyByNodeID(
 		ctx,
 		types.StateUpdate{
 			Type:        types.StateSelfUpdate,

@@ -550,7 +550,7 @@ func (m *mapSession) handleEndpointUpdate() {
 		// has an updated packetfilter allowing the new route
 		// if it is defined in the ACL.
 		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
-		m.h.nodeNotifier.NotifyByMachineKey(
+		m.h.nodeNotifier.NotifyByNodeID(
 			ctx,
 			types.StateUpdate{
 				Type:        types.StateSelfUpdate,
