@@ -68,8 +68,9 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 
 		// Ignore streaming and noise sessions
 		// it has its own router further down.
-		if path == "/ts2021" || path == "/machine/map" {
+		if path == "/ts2021" || path == "/machine/map" || path == "/derp" || path == "/derp/probe" || path == "/bootstrap-dns" {
 			next.ServeHTTP(w, r)
+			return
 		}
 
 		rw := &respWriterProm{ResponseWriter: w}
