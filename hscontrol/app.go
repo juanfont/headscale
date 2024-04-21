@@ -453,7 +453,6 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 	router.Use(prometheusMiddleware)
-	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
 	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost)
 
@@ -681,7 +680,7 @@ func (h *Headscale) Serve() error {
 	// HTTP setup
 	//
 	// This is the regular router that we expose
-	// over our main Addr. It also serves the legacy Tailcale API
+	// over our main Addr
 	router := h.createRouter(grpcGatewayMux)
 
 	httpServer := &http.Server{
@@ -711,11 +710,10 @@ func (h *Headscale) Serve() error {
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
 	debugMux := http.NewServeMux()
+	debugMux.Handle("/debug/pprof/", http.DefaultServeMux)
 	debugMux.HandleFunc("/debug/notifier", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(h.nodeNotifier.String()))
-
-		return
 	})
 	debugMux.HandleFunc("/debug/mapresp", func(w http.ResponseWriter, r *http.Request) {
 		h.mapSessionMu.Lock()
@@ -729,8 +727,6 @@ func (h *Headscale) Serve() error {
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(b.String()))
-
-		return
 	})
 	debugMux.Handle("/metrics", promhttp.Handler())
 
