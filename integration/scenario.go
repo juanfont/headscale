@@ -510,7 +510,7 @@ func (s *Scenario) GetIPs(user string) ([]netip.Addr, error) {
 	return ips, fmt.Errorf("failed to get ips: %w", errNoUserAvailable)
 }
 
-// GetIPs returns all TailscaleClients associated with a User in a Scenario.
+// GetClients returns all TailscaleClients associated with a User in a Scenario.
 func (s *Scenario) GetClients(user string) ([]TailscaleClient, error) {
 	var clients []TailscaleClient
 	if ns, ok := s.users[user]; ok {
@@ -586,7 +586,7 @@ func (s *Scenario) ListTailscaleClientsIPs(users ...string) ([]netip.Addr, error
 	return allIps, nil
 }
 
-// ListTailscaleClientsIPs returns a list of FQDN based on Users
+// ListTailscaleClientsFQDNs returns a list of FQDN based on Users
 // passed as parameters.
 func (s *Scenario) ListTailscaleClientsFQDNs(users ...string) ([]string, error) {
 	allFQDNs := make([]string, 0)
