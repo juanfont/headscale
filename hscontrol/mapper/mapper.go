@@ -17,6 +17,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -51,10 +52,10 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 type Mapper struct {
 	// Configuration
 	// TODO(kradalby): figure out if this is the format we want this in
-	db                *db.HSDatabase
-	cfg               *types.Config
-	derpMap           *tailcfg.DERPMap
-	isLikelyConnected types.NodeConnectedMap
+	db      *db.HSDatabase
+	cfg     *types.Config
+	derpMap *tailcfg.DERPMap
+	notif   *notifier.Notifier
 
 	uid     string
 	created time.Time
@@ -70,15 +71,15 @@ func NewMapper(
 	db *db.HSDatabase,
 	cfg *types.Config,
 	derpMap *tailcfg.DERPMap,
-	isLikelyConnected types.NodeConnectedMap,
+	notif *notifier.Notifier,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
-		db:                db,
-		cfg:               cfg,
-		derpMap:           derpMap,
-		isLikelyConnected: isLikelyConnected,
+		db:      db,
+		cfg:     cfg,
+		derpMap: derpMap,
+		notif:   notif,
 
 		uid:     uid,
 		created: time.Now(),
@@ -517,7 +518,7 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	}
 
 	for _, peer := range peers {
-		online := m.isLikelyConnected[peer.ID]
+		online := m.notif.IsLikelyConnected(peer.ID)
 		peer.IsOnline = &online
 	}
 

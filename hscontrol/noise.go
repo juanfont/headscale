@@ -95,6 +95,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 	// The HTTP2 server that exposes this router is created for
 	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
 	router := mux.NewRouter()
+	router.Use(prometheusMiddleware)
 
 	router.HandleFunc("/machine/register", noiseServer.NoiseRegistrationHandler).
 		Methods(http.MethodPost)
@@ -267,10 +268,12 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 			defer ns.headscale.mapSessionMu.Unlock()
 
 			sess.infof("node has an open stream(%p), rejecting new stream", sess)
+			mapResponseRejected.WithLabelValues("exists").Inc()
 			return
 		}
 
 		ns.headscale.mapSessions[node.ID] = sess
+		mapResponseSessions.Inc()
 		ns.headscale.mapSessionMu.Unlock()
 		sess.tracef("releasing lock to check stream")
 	}
@@ -283,6 +286,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		defer ns.headscale.mapSessionMu.Unlock()
 
 		delete(ns.headscale.mapSessions, node.ID)
+		mapResponseSessions.Dec()
 
 		sess.tracef("releasing lock to remove stream")
 	}

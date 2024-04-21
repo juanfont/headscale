@@ -8,6 +8,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/util/set"
@@ -126,7 +127,7 @@ func EnableRoute(tx *gorm.DB, id uint64) (*types.StateUpdate, error) {
 
 func DisableRoute(tx *gorm.DB,
 	id uint64,
-	isConnected types.NodeConnectedMap,
+	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 ) ([]types.NodeID, error) {
 	route, err := GetRoute(tx, id)
 	if err != nil {
@@ -147,7 +148,7 @@ func DisableRoute(tx *gorm.DB,
 			return nil, err
 		}
 
-		update, err = failoverRouteTx(tx, isConnected, route)
+		update, err = failoverRouteTx(tx, isLikelyConnected, route)
 		if err != nil {
 			return nil, err
 		}
@@ -182,17 +183,17 @@ func DisableRoute(tx *gorm.DB,
 
 func (hsdb *HSDatabase) DeleteRoute(
 	id uint64,
-	isConnected types.NodeConnectedMap,
+	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 ) ([]types.NodeID, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
-		return DeleteRoute(tx, id, isConnected)
+		return DeleteRoute(tx, id, isLikelyConnected)
 	})
 }
 
 func DeleteRoute(
 	tx *gorm.DB,
 	id uint64,
-	isConnected types.NodeConnectedMap,
+	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 ) ([]types.NodeID, error) {
 	route, err := GetRoute(tx, id)
 	if err != nil {
@@ -207,7 +208,7 @@ func DeleteRoute(
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
 	var update []types.NodeID
 	if !route.IsExitRoute() {
-		update, err = failoverRouteTx(tx, isConnected, route)
+		update, err = failoverRouteTx(tx, isLikelyConnected, route)
 		if err != nil {
 			return nil, nil
 		}
@@ -252,7 +253,7 @@ func DeleteRoute(
 	return update, nil
 }
 
-func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isConnected types.NodeConnectedMap) ([]types.NodeID, error) {
+func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isLikelyConnected *xsync.MapOf[types.NodeID, bool]) ([]types.NodeID, error) {
 	routes, err := GetNodeRoutes(tx, node)
 	if err != nil {
 		return nil, fmt.Errorf("getting node routes: %w", err)
@@ -266,7 +267,7 @@ func deleteNodeRoutes(tx *gorm.DB, node *types.Node, isConnected types.NodeConne
 
 		// TODO(kradalby): This is a bit too aggressive, we could probably
 		// figure out which routes needs to be failed over rather than all.
-		chn, err := failoverRouteTx(tx, isConnected, &routes[i])
+		chn, err := failoverRouteTx(tx, isLikelyConnected, &routes[i])
 		if err != nil {
 			return changed, fmt.Errorf("failing over route after delete: %w", err)
 		}
@@ -409,7 +410,7 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 // If needed, the failover will be attempted.
 func FailoverNodeRoutesIfNeccessary(
 	tx *gorm.DB,
-	isConnected types.NodeConnectedMap,
+	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 	node *types.Node,
 ) (*types.StateUpdate, error) {
 	nodeRoutes, err := GetNodeRoutes(tx, node)
@@ -430,12 +431,12 @@ nodeRouteLoop:
 			if route.IsPrimary {
 				// if we have a primary route, and the node is connected
 				// nothing needs to be done.
-				if conn, ok := isConnected[route.Node.ID]; conn && ok {
+				if val, ok := isLikelyConnected.Load(route.Node.ID); ok && val {
 					continue nodeRouteLoop
 				}
 
 				// if not, we need to failover the route
-				failover := failoverRoute(isConnected, &route, routes)
+				failover := failoverRoute(isLikelyConnected, &route, routes)
 				if failover != nil {
 					err := failover.save(tx)
 					if err != nil {
@@ -477,7 +478,7 @@ nodeRouteLoop:
 // If the given route was not primary, it returns early.
 func failoverRouteTx(
 	tx *gorm.DB,
-	isConnected types.NodeConnectedMap,
+	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 	r *types.Route,
 ) ([]types.NodeID, error) {
 	if r == nil {
@@ -500,7 +501,7 @@ func failoverRouteTx(
 		return nil, fmt.Errorf("getting routes by prefix: %w", err)
 	}
 
-	fo := failoverRoute(isConnected, r, routes)
+	fo := failoverRoute(isLikelyConnected, r, routes)
 	if fo == nil {
 		return nil, nil
 	}
@@ -538,7 +539,7 @@ func (f *failover) save(tx *gorm.DB) error {
 }
 
 func failoverRoute(
-	isConnected types.NodeConnectedMap,
+	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 	routeToReplace *types.Route,
 	altRoutes types.Routes,
 
@@ -570,9 +571,11 @@ func failoverRoute(
 			continue
 		}
 
-		if isConnected != nil && isConnected[route.Node.ID] {
-			newPrimary = &altRoutes[idx]
-			break
+		if isLikelyConnected != nil {
+			if val, ok := isLikelyConnected.Load(route.Node.ID); ok && val {
+				newPrimary = &altRoutes[idx]
+				break
+			}
 		}
 	}
 

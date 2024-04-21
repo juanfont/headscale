@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -198,6 +199,14 @@ func WithEmbeddedDERPServerOnly() Option {
 		// Envknob for enabling DERP debug logs
 		hsic.env["DERP_DEBUG_LOGS"] = "true"
 		hsic.env["DERP_PROBER_DEBUG_LOGS"] = "true"
+	}
+}
+
+// WithTuning allows changing the tuning settings easily.
+func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_TUNING_BATCH_CHANGE_DELAY"] = batchTimeout.String()
+		hsic.env["HEADSCALE_TUNING_NODE_MAPSESSION_BUFFERED_CHAN_SIZE"] = strconv.Itoa(mapSessionChanSize)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/puzpuzpuz/xsync/v3"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -120,7 +121,7 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 	}
 	db.DB.Save(&node)
 
-	_, err = db.DeleteNode(&node, types.NodeConnectedMap{})
+	_, err = db.DeleteNode(&node, xsync.NewMapOf[types.NodeID, bool]())
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(user.Name, "testnode3")

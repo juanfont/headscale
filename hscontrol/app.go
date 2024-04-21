@@ -225,7 +225,7 @@ func (h *Headscale) deleteExpireEphemeralNodes(milliSeconds int64) {
 	for range ticker.C {
 		var removed []types.NodeID
 		var changed []types.NodeID
-		if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := h.db.Write(func(tx *gorm.DB) error {
 			removed, changed = db.DeleteExpiredEphemeralNodes(tx, h.cfg.EphemeralNodeInactivityTimeout)
 
 			return nil
@@ -263,7 +263,7 @@ func (h *Headscale) expireExpiredMachines(intervalMs int64) {
 	var changed bool
 
 	for range ticker.C {
-		if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := h.db.Write(func(tx *gorm.DB) error {
 			lastCheck, update, changed = db.ExpireExpiredNodes(tx, lastCheck)
 
 			return nil
@@ -452,6 +452,7 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 
 func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
+	router.Use(prometheusMiddleware)
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
 	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost)
@@ -508,7 +509,7 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier.ConnectedMap())
+	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier)
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server

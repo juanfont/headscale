@@ -145,7 +145,7 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	ctx context.Context,
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
-	err := api.h.db.DB.Transaction(func(tx *gorm.DB) error {
+	err := api.h.db.Write(func(tx *gorm.DB) error {
 		preAuthKey, err := db.GetPreAuthKey(tx, request.GetUser(), request.Key)
 		if err != nil {
 			return err
@@ -301,7 +301,7 @@ func (api headscaleV1APIServer) DeleteNode(
 
 	changedNodes, err := api.h.db.DeleteNode(
 		node,
-		api.h.nodeNotifier.ConnectedMap(),
+		api.h.nodeNotifier.LikelyConnectedMap(),
 	)
 	if err != nil {
 		return nil, err
@@ -343,7 +343,7 @@ func (api headscaleV1APIServer) ExpireNode(
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
-	api.h.nodeNotifier.NotifyByMachineKey(
+	api.h.nodeNotifier.NotifyByNodeID(
 		ctx,
 		types.StateUpdate{
 			Type:        types.StateSelfUpdate,
@@ -401,7 +401,7 @@ func (api headscaleV1APIServer) ListNodes(
 	ctx context.Context,
 	request *v1.ListNodesRequest,
 ) (*v1.ListNodesResponse, error) {
-	isConnected := api.h.nodeNotifier.ConnectedMap()
+	isLikelyConnected := api.h.nodeNotifier.LikelyConnectedMap()
 	if request.GetUser() != "" {
 		nodes, err := db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
 			return db.ListNodesByUser(rx, request.GetUser())
@@ -416,7 +416,9 @@ func (api headscaleV1APIServer) ListNodes(
 
 			// Populate the online field based on
 			// currently connected nodes.
-			resp.Online = isConnected[node.ID]
+			if val, ok := isLikelyConnected.Load(node.ID); ok && val {
+				resp.Online = true
+			}
 
 			response[index] = resp
 		}
@@ -439,7 +441,9 @@ func (api headscaleV1APIServer) ListNodes(
 
 		// Populate the online field based on
 		// currently connected nodes.
-		resp.Online = isConnected[node.ID]
+		if val, ok := isLikelyConnected.Load(node.ID); ok && val {
+			resp.Online = true
+		}
 
 		validTags, invalidTags := api.h.ACLPolicy.TagsOfNode(
 			node,
@@ -528,7 +532,7 @@ func (api headscaleV1APIServer) DisableRoute(
 	request *v1.DisableRouteRequest,
 ) (*v1.DisableRouteResponse, error) {
 	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
-		return db.DisableRoute(tx, request.GetRouteId(), api.h.nodeNotifier.ConnectedMap())
+		return db.DisableRoute(tx, request.GetRouteId(), api.h.nodeNotifier.LikelyConnectedMap())
 	})
 	if err != nil {
 		return nil, err
@@ -568,7 +572,7 @@ func (api headscaleV1APIServer) DeleteRoute(
 	ctx context.Context,
 	request *v1.DeleteRouteRequest,
 ) (*v1.DeleteRouteResponse, error) {
-	isConnected := api.h.nodeNotifier.ConnectedMap()
+	isConnected := api.h.nodeNotifier.LikelyConnectedMap()
 	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
 		return db.DeleteRoute(tx, request.GetRouteId(), isConnected)
 	})

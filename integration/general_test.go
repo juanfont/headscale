@@ -23,7 +23,7 @@ func TestPingAllByIP(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -67,7 +67,7 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -105,7 +105,7 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -216,7 +216,7 @@ func TestEphemeral(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -299,7 +299,7 @@ func TestPingAllByHostname(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -348,7 +348,7 @@ func TestTaildrop(t *testing.T) {
 		return err
 	}
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -509,7 +509,7 @@ func TestResolveMagicDNS(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -577,7 +577,7 @@ func TestExpireNode(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -703,7 +703,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -818,7 +818,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
