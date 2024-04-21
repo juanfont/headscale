@@ -4,7 +4,6 @@ package hscontrol
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -279,13 +278,13 @@ func (api headscaleV1APIServer) SetTags(
 
 func validateTag(tag string) error {
 	if strings.Index(tag, "tag:") != 0 {
-		return fmt.Errorf("tag must start with the string 'tag:'")
+		return errors.New("tag must start with the string 'tag:'")
 	}
 	if strings.ToLower(tag) != tag {
-		return fmt.Errorf("tag should be lowercase")
+		return errors.New("tag should be lowercase")
 	}
 	if len(strings.Fields(tag)) > 1 {
-		return fmt.Errorf("tag should not contains space")
+		return errors.New("tag should not contains space")
 	}
 	return nil
 }
