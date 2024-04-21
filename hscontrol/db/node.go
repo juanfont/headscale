@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/patrickmn/go-cache"
+	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -260,9 +261,9 @@ func NodeSetExpiry(tx *gorm.DB,
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry).Error
 }
 
-func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected types.NodeConnectedMap) ([]types.NodeID, error) {
+func (hsdb *HSDatabase) DeleteNode(node *types.Node, isLikelyConnected *xsync.MapOf[types.NodeID, bool]) ([]types.NodeID, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
-		return DeleteNode(tx, node, isConnected)
+		return DeleteNode(tx, node, isLikelyConnected)
 	})
 }
 
@@ -270,9 +271,9 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node, isConnected types.NodeConne
 // Caller is responsible for notifying all of change.
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
-	isConnected types.NodeConnectedMap,
+	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 ) ([]types.NodeID, error) {
-	changed, err := deleteNodeRoutes(tx, node, isConnected)
+	changed, err := deleteNodeRoutes(tx, node, isLikelyConnected)
 	if err != nil {
 		return changed, err
 	}

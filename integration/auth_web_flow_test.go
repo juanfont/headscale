@@ -26,7 +26,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	baseScenario, err := NewScenario()
+	baseScenario, err := NewScenario(dockertestMaxWait())
 	if err != nil {
 		t.Fatalf("failed to create scenario: %s", err)
 	}
@@ -67,7 +67,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	baseScenario, err := NewScenario()
+	baseScenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
 	scenario := AuthWebFlowScenario{

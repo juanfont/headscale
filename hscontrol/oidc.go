@@ -602,7 +602,7 @@ func (h *Headscale) registerNodeForOIDCCallback(
 		return err
 	}
 
-	if err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+	if err := h.db.Write(func(tx *gorm.DB) error {
 		if _, err := db.RegisterNodeFromAuthCallback(
 			// TODO(kradalby): find a better way to use the cache across modules
 			tx,
