@@ -95,15 +95,7 @@ The maintainers work together on setting the direction for the project. The unde
 
 ## Contributing
 
-Headscale is "Open Source, acknowledged contribution", this means that any
-contribution will have to be discussed with the Maintainers before being submitted.
-
-This model has been chosen to reduce the risk of burnout by limiting the
-maintenance overhead of reviewing and validating third-party code.
-
-Headscale is open to code contributions for bug fixes without discussion.
-
-If you find mistakes in the documentation, please submit a fix to the documentation.
+Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) file.
 
 ### Requirements
 
