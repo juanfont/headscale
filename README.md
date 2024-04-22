@@ -87,8 +87,11 @@ Please have a look at the [`documentation`](https://headscale.net/).
 
 ## Disclaimer
 
-1. This project is not associated with Tailscale Inc.
-2. The purpose of Headscale is maintaining a working, self-hosted Tailscale control panel.
+This project is not associated with Tailscale Inc.
+
+However, one of the active maintainers for Headscale [is employed by Tailscale](https://tailscale.com/blog/opensource) and he is allowed to spend work hours contributing to the project. Contributions from this maintainer are reviewed by other maintainers.
+
+The maintainers work together on setting the direction for the project. The underlying principle is to serve the community of self-hosters, enthusiasts and hobbyists - while having a sustainable project.
 
 ## Contributing
 
