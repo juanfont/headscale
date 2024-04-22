@@ -241,7 +241,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		sess.tracef("aquiring lock to check stream")
 
 		ns.headscale.mapSessionMu.Lock()
-		if _, ok := ns.headscale.mapSessions[node.ID]; ok {
+		if oldSession, ok := ns.headscale.mapSessions[node.ID]; ok {
 			// NOTE/TODO(kradalby): From how I understand the protocol, when
 			// a client connects with stream=true, and already has a streaming
 			// connection open, the correct way is to close the current channel
@@ -266,7 +266,12 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 			defer ns.headscale.mapSessionMu.Unlock()
 
-			sess.infof("node has an open stream(%p), rejecting new stream", sess)
+			go func() {
+				oldSession.infof("mapSession (%p) is open, trying to close stream and replace with %p", oldSession, sess)
+				oldSession.close()
+			}()
+
+			sess.infof("mapSession (%p) has an open stream, rejecting new stream", sess)
 			mapResponseRejected.WithLabelValues("exists").Inc()
 			return
 		}

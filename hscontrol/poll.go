@@ -41,11 +41,11 @@ type mapSession struct {
 	capVer tailcfg.CapabilityVersion
 	mapper *mapper.Mapper
 
-	serving   bool
-	servingMu sync.Mutex
+	cancelChMu sync.Mutex
 
-	ch       chan types.StateUpdate
-	cancelCh chan struct{}
+	ch           chan types.StateUpdate
+	cancelCh     chan struct{}
+	cancelChOpen bool
 
 	keepAliveTicker *time.Ticker
 
@@ -86,11 +86,9 @@ func (h *Headscale) newMapSession(
 		capVer: req.Version,
 		mapper: h.mapper,
 
-		// serving indicates if a client is being served.
-		serving: false,
-
-		ch:       updateChan,
-		cancelCh: make(chan struct{}),
+		ch:           updateChan,
+		cancelCh:     make(chan struct{}),
+		cancelChOpen: true,
 
 		keepAliveTicker: time.NewTicker(keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)),
 
@@ -103,15 +101,20 @@ func (h *Headscale) newMapSession(
 }
 
 func (m *mapSession) close() {
-	m.servingMu.Lock()
-	defer m.servingMu.Unlock()
-	if !m.serving {
+	m.cancelChMu.Lock()
+	defer m.cancelChMu.Unlock()
+
+	if !m.cancelChOpen {
 		return
 	}
 
-	m.tracef("mapSession (%p) sending message on cancel chan")
-	m.cancelCh <- struct{}{}
-	m.tracef("mapSession (%p) sent message on cancel chan")
+	m.tracef("mapSession (%p) sending message on cancel chan", m)
+	select {
+	case m.cancelCh <- struct{}{}:
+		m.tracef("mapSession (%p) sent message on cancel chan", m)
+	case <-time.After(30 * time.Second):
+		m.tracef("mapSession (%p) timed out sending close message", m)
+	}
 }
 
 func (m *mapSession) isStreaming() bool {
@@ -145,14 +148,12 @@ func (m *mapSession) serve() {
 		defer m.h.nodeNotifier.RemoveNode(m.node.ID)
 
 		defer func() {
-			m.servingMu.Lock()
-			defer m.servingMu.Unlock()
+			m.cancelChMu.Lock()
+			defer m.cancelChMu.Unlock()
 
-			m.serving = false
+			m.cancelChOpen = false
 			close(m.cancelCh)
 		}()
-
-		m.serving = true
 
 		m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
 		m.h.updateNodeOnlineStatus(true, m.node)
