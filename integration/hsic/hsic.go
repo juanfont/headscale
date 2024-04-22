@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net"
@@ -396,6 +397,14 @@ func (t *HeadscaleInContainer) Shutdown() error {
 		)
 	}
 
+	err = t.SaveMetrics("/tmp/control/metrics.txt")
+	if err != nil {
+		log.Printf(
+			"Failed to metrics from control: %s",
+			err,
+		)
+	}
+
 	// Send a interrupt signal to the "headscale" process inside the container
 	// allowing it to shut down gracefully and flush the profile to disk.
 	// The container will live for a bit longer due to the sleep at the end.
@@ -446,6 +455,25 @@ func (t *HeadscaleInContainer) Shutdown() error {
 // on the host system.
 func (t *HeadscaleInContainer) SaveLog(path string) error {
 	return dockertestutil.SaveLog(t.pool, t.container, path)
+}
+
+func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
+	resp, err := http.Get(fmt.Sprintf("http://%s:9090/metrics", t.hostname))
+	if err != nil {
+		return fmt.Errorf("getting metrics: %w", err)
+	}
+	defer resp.Body.Close()
+	out, err := os.Create(savePath)
+	if err != nil {
+		return fmt.Errorf("creating file for metrics: %w", err)
+	}
+	defer out.Close()
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return fmt.Errorf("copy response to file: %w", err)
+	}
+
+	return nil
 }
 
 func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
