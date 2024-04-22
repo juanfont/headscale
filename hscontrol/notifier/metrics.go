@@ -18,7 +18,12 @@ var (
 		Namespace: prometheusNamespace,
 		Name:      "notifier_update_sent_total",
 		Help:      "total count of update sent on nodes channel",
-	}, []string{"status", "type"})
+	}, []string{"status", "type", "trigger"})
+	notifierUpdateReceived = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: prometheusNamespace,
+		Name:      "notifier_update_received_total",
+		Help:      "total count of updates received by notifier",
+	}, []string{"type", "trigger"})
 	notifierNodeUpdateChans = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: prometheusNamespace,
 		Name:      "notifier_open_channels_total",
