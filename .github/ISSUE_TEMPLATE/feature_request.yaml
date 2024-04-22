@@ -1,0 +1,36 @@
+name: 🚀 Feature Request
+description: Suggest an idea for Headscale
+title: "[Feature] <title>"
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: Use case
+      description: Please describe the use case for this feature.
+      placeholder: |
+        <!-- Include the reason, why you would need the feature. E.g. what problem
+          does it solve? Or which workflow is currently frustrating and will be improved by
+          this? -->
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Description
+      description: A clear and precise description of what new or changed feature you want.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Contribution
+      description: Are you willing to contribute to the implementation of this feature?
+      options:
+        - label: I can write the design doc for this feature
+          required: true
+        - label: I can contribute this feature
+          required: true
+  - type: textarea
+    attributes:
+      label: How can it be implemented?
+      description: Free text for your ideas on how this feature could be implemented.
+    validations:
+      required: false
