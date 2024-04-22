@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: headscale-config
-data:
-  server_url: $(PUBLIC_PROTO)://$(PUBLIC_HOSTNAME)
-  listen_addr: "0.0.0.0:8080"
-  metrics_listen_addr: "127.0.0.1:9090"
-  ephemeral_node_inactivity_timeout: "30m"
