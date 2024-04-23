@@ -226,7 +226,6 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	if err != nil {
 		log.Error().
 			Str("handler", "NoisePollNetMap").
-			Uint64("node.id", node.ID.Uint64()).
 			Msgf("Failed to fetch node from the database with node key: %s", mapRequest.NodeKey.String())
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 
