@@ -19,7 +19,7 @@ This means that when someone contributes, we are mostly happy about it, but we d
 
 A general description is provided here and an explicit list is provided in our pull request template.
 
-All new features have to start with a design document that has to be discussed in the issue tracker (not discord) with a use case for the feature, how it can be implemented, who will implement it and what the plan for maintaining it is.
+All new features have to start out with a design document, which should be discussed on the issue tracker (not discord). It should include a use case for the feature, how it can be implemented, who will implement it and a plan for maintaining it.
 
 All features have to be end to end tested (integration tests) and have good unit test coverage to ensure that they work as expected, and work as expected over time. If the change cannot be tested, a strong case for why this is not possible needs to be presented.
 
