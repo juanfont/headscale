@@ -11,7 +11,7 @@ When we work on issues ourselves, we develop first hand knowledge of the code an
 
 When code is contributed to the project, it is typically a positive thing. People enjoy and engage with our project, but it also comes with some challenges; we have to understand the code, we have to understand the feature, we might have to become familiar with external libraries or services that this new feature integrates with and it needs to be reviewed from a security perspective. And that is only when it comes to reviewing it. After the code has been merged, the feature has to be maintained, meaning that changes to external parts need to be updated, and kept working.
 
-The review and the day-1 maintenance adds a significant burden on them maintainers. Often we hope that the contributor of the feature will help out, but we found that most of the time, they disappear when they have their new feature added.
+The review and the day-1 maintenance adds a significant burden on the maintainers. Often we hope that the contributor will help out, but we found that most of the time, they disappear after their new feature was added.
 
 This means that when someone contributes, we are mostly happy about it, but we do have to run it through a series of checks to establish if we actually can maintain this feature.
 
