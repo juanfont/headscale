@@ -241,7 +241,11 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 				// require database access in this part of the code.
 				if len(node.Hostinfo.RoutableIPs) > 0 {
 					for _, routableIP := range node.Hostinfo.RoutableIPs {
-						if expanded.ContainsPrefix(routableIP) {
+						routableIPSet, err := util.ParseIPSet(routableIP.String(), nil)
+						if err != nil {
+							continue
+						}
+						if routableIPSet.ContainsPrefix(netip.MustParsePrefix(dest.IP)) {
 							dests = append(dests, dest)
 						}
 					}
