@@ -137,7 +137,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		noisePrivateKey:    noisePrivateKey,
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
-		nodeNotifier:       notifier.NewNotifier(),
+		nodeNotifier:       notifier.NewNotifier(cfg),
 		mapSessions:        make(map[types.NodeID]*mapSession),
 	}
 
