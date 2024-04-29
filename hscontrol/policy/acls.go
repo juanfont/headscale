@@ -36,6 +36,38 @@ const (
 	expectedTokenItems = 2
 )
 
+var theInternetSet *netipx.IPSet
+
+// theInternet returns the IPSet for the Internet.
+// https://www.youtube.com/watch?v=iDbyYGrswtg
+func theInternet() *netipx.IPSet {
+	if theInternetSet != nil {
+		return theInternetSet
+	}
+
+	var internetBuilder netipx.IPSetBuilder
+	internetBuilder.AddPrefix(netip.MustParsePrefix("2000::/3"))
+	internetBuilder.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+
+	// Delete Private network addresses
+	// https://datatracker.ietf.org/doc/html/rfc1918
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("fc00::/7"))
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("10.0.0.0/8"))
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("172.16.0.0/12"))
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("192.168.0.0/16"))
+
+	// Delete Tailscale networks
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("fd7a:115c:a1e0::/48"))
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("100.64.0.0/10"))
+
+	// Delete "cant find DHCP networks"
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-loca
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
+
+	theInternetSet, _ := internetBuilder.IPSet()
+	return theInternetSet
+}
+
 // For some reason golang.org/x/net/internal/iana is an internal package.
 const (
 	protocolICMP     = 1   // Internet Control Message
@@ -517,6 +549,7 @@ func (pol *ACLPolicy) expandSource(
 // - a host
 // - an ip
 // - a cidr
+// - an autogroup
 // and transform these in IPAddresses.
 func (pol *ACLPolicy) ExpandAlias(
 	nodes types.Nodes,
@@ -540,6 +573,10 @@ func (pol *ACLPolicy) ExpandAlias(
 	// if alias is a tag
 	if isTag(alias) {
 		return pol.expandIPsFromTag(alias, nodes)
+	}
+
+	if isAutoGroup(alias) {
+		return expandAutoGroup(alias)
 	}
 
 	// if alias is a user
@@ -862,6 +899,16 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 	return build.IPSet()
 }
 
+func expandAutoGroup(alias string) (*netipx.IPSet, error) {
+	switch {
+	case strings.HasPrefix(alias, "autogroup:internet"):
+		return theInternet(), nil
+
+	default:
+		return nil, fmt.Errorf("unknown autogroup %q", alias)
+	}
+}
+
 func isWildcard(str string) bool {
 	return str == "*"
 }
@@ -872,6 +919,10 @@ func isGroup(str string) bool {
 
 func isTag(str string) bool {
 	return strings.HasPrefix(str, "tag:")
+}
+
+func isAutoGroup(str string) bool {
+	return strings.HasPrefix(str, "autogroup:")
 }
 
 // TagsOfNode will return the tags of the current node.
