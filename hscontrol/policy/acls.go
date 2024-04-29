@@ -253,28 +253,28 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 		// record if the rule is actually relevant for the given node.
 		dests := []tailcfg.NetPortRange{}
 
+	DEST_LOOP:
 		for _, dest := range rule.DstPorts {
 			expanded, err := util.ParseIPSet(dest.IP, nil)
 			// Fail closed, if we cant parse it, then we should not allow
 			// access.
 			if err != nil {
-				continue
+				continue DEST_LOOP
 			}
 
 			if node.InIPSet(expanded) {
 				dests = append(dests, dest)
+				continue DEST_LOOP
 			}
 
 			// If the node exposes routes, ensure they are note removed
 			// when the filters are reduced.
 			if node.Hostinfo != nil {
-				// TODO(kradalby): Evaluate if we should only keep
-				// the routes if the route is enabled. This will
-				// require database access in this part of the code.
 				if len(node.Hostinfo.RoutableIPs) > 0 {
 					for _, routableIP := range node.Hostinfo.RoutableIPs {
-						if expanded.ContainsPrefix(routableIP) {
+						if expanded.OverlapsPrefix(routableIP) {
 							dests = append(dests, dest)
+							continue DEST_LOOP
 						}
 					}
 				}

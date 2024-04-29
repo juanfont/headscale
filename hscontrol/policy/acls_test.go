@@ -1801,26 +1801,70 @@ var tsExitNodeDest = []tailcfg.NetPortRange{
 // hsExitNodeDest is the list of destination IP ranges that are allowed when
 // we use headscale "autogroup:internet"
 var hsExitNodeDest = []tailcfg.NetPortRange{
-	{
-		IP:    "0.0.0.0/5",
-		Ports: tailcfg.PortRangeAny,
-	},
-	{
-		IP:    "8.0.0.0/7",
-		Ports: tailcfg.PortRangeAny,
-	},
-	{
-		IP:    "11.0.0.0/8",
-		Ports: tailcfg.PortRangeAny,
-	},
-	{
-		IP:    "12.0.0.0/6",
-		Ports: tailcfg.PortRangeAny,
-	},
-	// {
-	// 	IP:    "",
-	// 	Ports: tailcfg.PortRangeAny,
-	// },
+	{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
+	{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
+	{IP: "11.0.0.0/8", Ports: tailcfg.PortRangeAny},
+	{IP: "12.0.0.0/6", Ports: tailcfg.PortRangeAny},
+	{IP: "16.0.0.0/4", Ports: tailcfg.PortRangeAny},
+	{IP: "32.0.0.0/3", Ports: tailcfg.PortRangeAny},
+	{IP: "64.0.0.0/3", Ports: tailcfg.PortRangeAny},
+	{IP: "96.0.0.0/6", Ports: tailcfg.PortRangeAny},
+	{IP: "100.0.0.0/10", Ports: tailcfg.PortRangeAny},
+	{IP: "100.128.0.0/9", Ports: tailcfg.PortRangeAny},
+	{IP: "101.0.0.0/8", Ports: tailcfg.PortRangeAny},
+	{IP: "102.0.0.0/7", Ports: tailcfg.PortRangeAny},
+	{IP: "104.0.0.0/5", Ports: tailcfg.PortRangeAny},
+	{IP: "112.0.0.0/4", Ports: tailcfg.PortRangeAny},
+	{IP: "128.0.0.0/3", Ports: tailcfg.PortRangeAny},
+	{IP: "160.0.0.0/5", Ports: tailcfg.PortRangeAny},
+	{IP: "168.0.0.0/8", Ports: tailcfg.PortRangeAny},
+	{IP: "169.0.0.0/9", Ports: tailcfg.PortRangeAny},
+	{IP: "169.128.0.0/10", Ports: tailcfg.PortRangeAny},
+	{IP: "169.192.0.0/11", Ports: tailcfg.PortRangeAny},
+	{IP: "169.224.0.0/12", Ports: tailcfg.PortRangeAny},
+	{IP: "169.240.0.0/13", Ports: tailcfg.PortRangeAny},
+	{IP: "169.248.0.0/14", Ports: tailcfg.PortRangeAny},
+	{IP: "169.252.0.0/15", Ports: tailcfg.PortRangeAny},
+	{IP: "169.255.0.0/16", Ports: tailcfg.PortRangeAny},
+	{IP: "170.0.0.0/7", Ports: tailcfg.PortRangeAny},
+	{IP: "172.0.0.0/12", Ports: tailcfg.PortRangeAny},
+	{IP: "172.32.0.0/11", Ports: tailcfg.PortRangeAny},
+	{IP: "172.64.0.0/10", Ports: tailcfg.PortRangeAny},
+	{IP: "172.128.0.0/9", Ports: tailcfg.PortRangeAny},
+	{IP: "173.0.0.0/8", Ports: tailcfg.PortRangeAny},
+	{IP: "174.0.0.0/7", Ports: tailcfg.PortRangeAny},
+	{IP: "176.0.0.0/4", Ports: tailcfg.PortRangeAny},
+	{IP: "192.0.0.0/9", Ports: tailcfg.PortRangeAny},
+	{IP: "192.128.0.0/11", Ports: tailcfg.PortRangeAny},
+	{IP: "192.160.0.0/13", Ports: tailcfg.PortRangeAny},
+	{IP: "192.169.0.0/16", Ports: tailcfg.PortRangeAny},
+	{IP: "192.170.0.0/15", Ports: tailcfg.PortRangeAny},
+	{IP: "192.172.0.0/14", Ports: tailcfg.PortRangeAny},
+	{IP: "192.176.0.0/12", Ports: tailcfg.PortRangeAny},
+	{IP: "192.192.0.0/10", Ports: tailcfg.PortRangeAny},
+	{IP: "193.0.0.0/8", Ports: tailcfg.PortRangeAny},
+	{IP: "194.0.0.0/7", Ports: tailcfg.PortRangeAny},
+	{IP: "196.0.0.0/6", Ports: tailcfg.PortRangeAny},
+	{IP: "200.0.0.0/5", Ports: tailcfg.PortRangeAny},
+	{IP: "208.0.0.0/4", Ports: tailcfg.PortRangeAny},
+	{IP: "224.0.0.0/3", Ports: tailcfg.PortRangeAny},
+	{IP: "2000::/3", Ports: tailcfg.PortRangeAny},
+}
+
+func TestTheInternet(t *testing.T) {
+	internetSet := theInternet()
+
+	internetPrefs := internetSet.Prefixes()
+
+	for i, _ := range internetPrefs {
+		if internetPrefs[i].String() != hsExitNodeDest[i].IP {
+			t.Errorf("prefix from internet set %q != hsExit list %q", internetPrefs[i].String(), hsExitNodeDest[i].IP)
+		}
+	}
+
+	if len(internetPrefs) != len(hsExitNodeDest) {
+		t.Fatalf("expected same length of prefixes, internet: %d, hsExit: %d", len(internetPrefs), len(hsExitNodeDest))
+	}
 }
 
 func TestReduceFilterRules(t *testing.T) {
@@ -2135,8 +2179,42 @@ func TestReduceFilterRules(t *testing.T) {
 					},
 				},
 				{
-					SrcIPs:   []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: hsExitNodeDest,
+					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
+						{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
+						{IP: "11.0.0.0/8", Ports: tailcfg.PortRangeAny},
+						{IP: "12.0.0.0/6", Ports: tailcfg.PortRangeAny},
+						{IP: "16.0.0.0/4", Ports: tailcfg.PortRangeAny},
+						{IP: "32.0.0.0/3", Ports: tailcfg.PortRangeAny},
+						{IP: "64.0.0.0/2", Ports: tailcfg.PortRangeAny},
+						{IP: "fd7a:115c:a1e0::1/128", Ports: tailcfg.PortRangeAny},
+						{IP: "fd7a:115c:a1e0::2/128", Ports: tailcfg.PortRangeAny},
+						{IP: "fd7a:115c:a1e0::100/128", Ports: tailcfg.PortRangeAny},
+						{IP: "128.0.0.0/3", Ports: tailcfg.PortRangeAny},
+						{IP: "160.0.0.0/5", Ports: tailcfg.PortRangeAny},
+						{IP: "168.0.0.0/6", Ports: tailcfg.PortRangeAny},
+						{IP: "172.0.0.0/12", Ports: tailcfg.PortRangeAny},
+						{IP: "172.32.0.0/11", Ports: tailcfg.PortRangeAny},
+						{IP: "172.64.0.0/10", Ports: tailcfg.PortRangeAny},
+						{IP: "172.128.0.0/9", Ports: tailcfg.PortRangeAny},
+						{IP: "173.0.0.0/8", Ports: tailcfg.PortRangeAny},
+						{IP: "174.0.0.0/7", Ports: tailcfg.PortRangeAny},
+						{IP: "176.0.0.0/4", Ports: tailcfg.PortRangeAny},
+						{IP: "192.0.0.0/9", Ports: tailcfg.PortRangeAny},
+						{IP: "192.128.0.0/11", Ports: tailcfg.PortRangeAny},
+						{IP: "192.160.0.0/13", Ports: tailcfg.PortRangeAny},
+						{IP: "192.169.0.0/16", Ports: tailcfg.PortRangeAny},
+						{IP: "192.170.0.0/15", Ports: tailcfg.PortRangeAny},
+						{IP: "192.172.0.0/14", Ports: tailcfg.PortRangeAny},
+						{IP: "192.176.0.0/12", Ports: tailcfg.PortRangeAny},
+						{IP: "192.192.0.0/10", Ports: tailcfg.PortRangeAny},
+						{IP: "193.0.0.0/8", Ports: tailcfg.PortRangeAny},
+						{IP: "194.0.0.0/7", Ports: tailcfg.PortRangeAny},
+						{IP: "196.0.0.0/6", Ports: tailcfg.PortRangeAny},
+						{IP: "200.0.0.0/5", Ports: tailcfg.PortRangeAny},
+						{IP: "208.0.0.0/4", Ports: tailcfg.PortRangeAny},
+					},
 				},
 			},
 		},
@@ -2288,6 +2366,63 @@ func TestReduceFilterRules(t *testing.T) {
 						},
 						{
 							IP:    "16.0.0.0/16",
+							Ports: tailcfg.PortRangeAny,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "1817-reduce-breaks-32-mask",
+			pol: ACLPolicy{
+				Hosts: Hosts{
+					"vlan1": netip.MustParsePrefix("172.16.0.0/24"),
+					"dns1":  netip.MustParsePrefix("172.16.0.21/32"),
+				},
+				Groups: Groups{
+					"group:access": {"user1"},
+				},
+				ACLs: []ACL{
+					{
+						Action:  "accept",
+						Sources: []string{"group:access"},
+						Destinations: []string{
+							"tag:access-servers:*",
+							"dns1:*",
+						},
+					},
+				},
+			},
+			node: &types.Node{
+				IPv4: iap("100.64.0.100"),
+				IPv6: iap("fd7a:115c:a1e0::100"),
+				User: types.User{Name: "user100"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
+				},
+				ForcedTags: types.StringList{"tag:access-servers"},
+			},
+			peers: types.Nodes{
+				&types.Node{
+					IPv4: iap("100.64.0.1"),
+					IPv6: iap("fd7a:115c:a1e0::1"),
+					User: types.User{Name: "user1"},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32", "fd7a:115c:a1e0::1/128"},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP:    "100.64.0.100/32",
+							Ports: tailcfg.PortRangeAny,
+						},
+						{
+							IP:    "fd7a:115c:a1e0::100/128",
+							Ports: tailcfg.PortRangeAny,
+						},
+						{
+							IP:    "172.16.0.21/32",
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
