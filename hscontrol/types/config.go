@@ -650,6 +650,10 @@ func GetHeadscaleConfig() (*Config, error) {
 		return nil, err
 	}
 
+	if prefix4 == nil && prefix6 == nil {
+		return nil, fmt.Errorf("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
+	}
+
 	allocStr := viper.GetString("prefixes.allocation")
 	var alloc IPAllocationStrategy
 	switch allocStr {
@@ -658,7 +662,7 @@ func GetHeadscaleConfig() (*Config, error) {
 	case string(IPAllocationStrategyRandom):
 		alloc = IPAllocationStrategyRandom
 	default:
-		log.Fatal().Msgf("config error, prefixes.allocation is set to %s, which is not a valid strategy, allowed options: %s, %s", allocStr, IPAllocationStrategySequential, IPAllocationStrategyRandom)
+		return nil, fmt.Errorf("config error, prefixes.allocation is set to %s, which is not a valid strategy, allowed options: %s, %s", allocStr, IPAllocationStrategySequential, IPAllocationStrategyRandom)
 	}
 
 	dnsConfig, baseDomain := GetDNSConfig()

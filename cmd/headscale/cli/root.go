@@ -51,7 +51,7 @@ func initConfig() {
 
 	cfg, err := types.GetHeadscaleConfig()
 	if err != nil {
-		log.Fatal().Caller().Err(err).Msg("Failed to get headscale configuration")
+		log.Fatal().Err(err).Msg("Failed to read headscale configuration")
 	}
 
 	machineOutput := HasMachineOutputFlag()
