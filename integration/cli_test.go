@@ -461,8 +461,8 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		t.Fatalf("expected node to be logged in, backend state: %s", status.BackendState)
 	}
 
-	if status.Self.UserID.String() != "2" {
-		t.Fatalf("expected node to be logged in as user2, got: %s", status.Self.UserID.String())
+	if status.Self.UserID.String() != "userid:2" {
+		t.Fatalf("expected node to be logged in as userid:2, got: %s", status.Self.UserID.String())
 	}
 
 	var listNodes []v1.Node

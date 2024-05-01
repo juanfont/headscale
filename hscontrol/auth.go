@@ -315,13 +315,16 @@ func (h *Headscale) handleAuthKey(
 
 		node.NodeKey = nodeKey
 		node.AuthKeyID = uint(pak.ID)
-		err := h.db.NodeSetExpiry(node.ID, registerRequest.Expiry)
+		node.Expiry = &registerRequest.Expiry
+		node.User = pak.User
+		node.UserID = pak.UserID
+		err := h.db.DB.Save(node).Error
 		if err != nil {
 			log.Error().
 				Caller().
 				Str("node", node.Hostname).
 				Err(err).
-				Msg("Failed to refresh node")
+				Msg("failed to save node after logging in with auth key")
 
 			return
 		}
@@ -344,7 +347,7 @@ func (h *Headscale) handleAuthKey(
 		}
 
 		ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
-		h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, registerRequest.Expiry), node.ID)
+		h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{Type: types.StatePeerChanged, ChangeNodes: []types.NodeID{node.ID}})
 	} else {
 		now := time.Now().UTC()
 
