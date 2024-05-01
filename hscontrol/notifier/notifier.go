@@ -34,6 +34,11 @@ func NewNotifier(cfg *types.Config) *Notifier {
 	return n
 }
 
+// Close stops the batcher inside the notifier.
+func (n *Notifier) Close() {
+	n.b.close()
+}
+
 func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	log.Trace().Caller().Uint64("node.id", nodeID.Uint64()).Msg("acquiring lock to add node")
 	defer log.Trace().
