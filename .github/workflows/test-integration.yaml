@@ -26,6 +26,7 @@ jobs:
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry
           - TestPreAuthKeyCommandReusableEphemeral
+          - TestPreAuthKeyCorrectUserLoggedInCommand
           - TestApiKeyCommand
           - TestNodeTagCommand
           - TestNodeAdvertiseTagNoACLCommand
