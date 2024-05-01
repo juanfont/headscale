@@ -306,11 +306,15 @@ func (node *Node) AfterFind(tx *gorm.DB) error {
 	}
 	node.NodeKey = nodeKey
 
-	var discoKey key.DiscoPublic
-	if err := discoKey.UnmarshalText([]byte(node.DiscoKeyDatabaseField)); err != nil {
-		return fmt.Errorf("unmarshalling disco key from db: %w", err)
+	// DiscoKey might be empty if a node has not sent it to headscale.
+	// This means that this might fail if the disco key is empty.
+	if node.DiscoKeyDatabaseField != "" {
+		var discoKey key.DiscoPublic
+		if err := discoKey.UnmarshalText([]byte(node.DiscoKeyDatabaseField)); err != nil {
+			return fmt.Errorf("unmarshalling disco key from db: %w", err)
+		}
+		node.DiscoKey = discoKey
 	}
-	node.DiscoKey = discoKey
 
 	endpoints := make([]netip.AddrPort, len(node.EndpointsDatabaseField))
 	for idx, ep := range node.EndpointsDatabaseField {
