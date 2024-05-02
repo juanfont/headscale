@@ -1,7 +1,7 @@
 ---
 before:
   hooks:
-    - go mod tidy -compat=1.20
+    - go mod tidy -compat=1.22
     - go mod vendor
 
 release:
@@ -9,7 +9,7 @@ release:
 
 builds:
   - id: headscale
-    main: ./cmd/headscale/headscale.go
+    main: ./cmd/headscale
     mod_timestamp: "{{ .CommitTimestamp }}"
     env:
       - CGO_ENABLED=0
@@ -63,7 +63,6 @@ nfpms:
     bindir: /usr/bin
     formats:
       - deb
-      # - rpm
     contents:
       - src: ./config-example.yaml
         dst: /etc/headscale/config.yaml
@@ -79,6 +78,108 @@ nfpms:
     scripts:
       postinstall: ./docs/packaging/postinstall.sh
       postremove: ./docs/packaging/postremove.sh
+
+kos:
+  - id: ghcr
+    repository: ghcr.io/juanfont/headscale
+
+    # bare tells KO to only use the repository
+    # for tagging and naming the container.
+    bare: true
+    base_image: gcr.io/distroless/base-debian12
+    build: headscale
+    main: ./cmd/headscale
+    env:
+      - CGO_ENABLED=0
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+    tags:
+      - "{{ if not .Prerelease }}latest{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
+      - "{{ .Tag }}"
+      - '{{ trimprefix .Tag "v" }}'
+      - "sha-{{ .ShortCommit }}"
+
+  - id: dockerhub
+    build: headscale
+    base_image: gcr.io/distroless/base-debian12
+    repository: headscale/headscale
+    bare: true
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+    tags:
+      - "{{ if not .Prerelease }}latest{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable{{ end }}"
+      - "{{ .Tag }}"
+      - '{{ trimprefix .Tag "v" }}'
+      - "sha-{{ .ShortCommit }}"
+
+  - id: ghcr-debug
+    repository: ghcr.io/juanfont/headscale
+    bare: true
+    base_image: "debian:12"
+    build: headscale
+    main: ./cmd/headscale
+    env:
+      - CGO_ENABLED=0
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+    tags:
+      - "{{ if not .Prerelease }}latest-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable-debug{{ end }}"
+      - "{{ .Tag }}-debug"
+      - '{{ trimprefix .Tag "v" }}-debug'
+      - "sha-{{ .ShortCommit }}-debug"
+
+  - id: dockerhub-debug
+    build: headscale
+    base_image: "debian:12"
+    repository: headscale/headscale
+    bare: true
+    platforms:
+      - linux/amd64
+      - linux/386
+      - linux/arm64
+      - linux/arm/v7
+    tags:
+      - "{{ if not .Prerelease }}latest-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}-debug{{ end }}"
+      - "{{ if not .Prerelease }}stable{{ else }}unstable-debug{{ end }}"
+      - "{{ .Tag }}-debug"
+      - '{{ trimprefix .Tag "v" }}-debug'
+      - "sha-{{ .ShortCommit }}-debug"
 
 checksum:
   name_template: "checksums.txt"

@@ -17,6 +17,11 @@ import (
 	"tailscale.com/types/key"
 )
 
+var iap = func(ipStr string) *netip.Addr {
+	ip := netip.MustParseAddr(ipStr)
+	return &ip
+}
+
 func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	mach := func(hostname, username string, userid uint) *types.Node {
 		return &types.Node{
@@ -166,21 +171,26 @@ func Test_fullMapResponse(t *testing.T) {
 	expire := time.Date(2500, time.November, 11, 23, 0, 0, 0, time.UTC)
 
 	mini := &types.Node{
-		ID:          0,
-		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		DiscoKey:    "discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
-		Hostname:    "mini",
-		GivenName:   "mini",
-		UserID:      0,
-		User:        types.User{Name: "mini"},
-		ForcedTags:  []string{},
+		ID: 0,
+		MachineKey: mustMK(
+			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		),
+		NodeKey: mustNK(
+			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		),
+		DiscoKey: mustDK(
+			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		),
+		IPv4:       iap("100.64.0.1"),
+		Hostname:   "mini",
+		GivenName:  "mini",
+		UserID:     0,
+		User:       types.User{Name: "mini"},
+		ForcedTags: []string{},
 		AuthKey:     &types.PreAuthKey{},
 		LastSeen:    &lastSeen,
 		Expiry:      &expire,
-		HostInfo:    types.HostInfo{},
-		Endpoints:   []string{},
+		Hostinfo:   &tailcfg.Hostinfo{},
 		Routes: []types.Route{
 			{
 				Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),
@@ -225,40 +235,43 @@ func Test_fullMapResponse(t *testing.T) {
 			netip.MustParsePrefix("0.0.0.0/0"),
 			netip.MustParsePrefix("192.168.0.0/24"),
 		},
-		Endpoints:         []string{},
 		DERP:              "127.3.3.40:0",
 		Hostinfo:          hiview(tailcfg.Hostinfo{}),
 		Created:           created,
 		Tags:              []string{},
 		PrimaryRoutes:     []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
 		LastSeen:          &lastSeen,
-		Online:            new(bool),
-		KeepAlive:         true,
 		MachineAuthorized: true,
-		Capabilities: []string{
+		Capabilities: []tailcfg.NodeCapability{
 			tailcfg.CapabilityFileSharing,
 			tailcfg.CapabilityAdmin,
 			tailcfg.CapabilitySSH,
+			tailcfg.NodeAttrDisableUPnP,
 		},
 	}
 
 	peer1 := &types.Node{
-		ID:          1,
-		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		DiscoKey:    "discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
-		Hostname:    "peer1",
-		GivenName:   "peer1",
-		UserID:      0,
-		User:        types.User{Name: "mini"},
-		ForcedTags:  []string{},
-		LastSeen:    &lastSeen,
-		Expiry:      &expire,
-		HostInfo:    types.HostInfo{},
-		Endpoints:   []string{},
-		Routes:      []types.Route{},
-		CreatedAt:   created,
+		ID: 1,
+		MachineKey: mustMK(
+			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		),
+		NodeKey: mustNK(
+			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		),
+		DiscoKey: mustDK(
+			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		),
+		IPv4:       iap("100.64.0.2"),
+		Hostname:   "peer1",
+		GivenName:  "peer1",
+		UserID:     0,
+		User:       types.User{Name: "mini"},
+		ForcedTags: []string{},
+		LastSeen:   &lastSeen,
+		Expiry:     &expire,
+		Hostinfo:   &tailcfg.Hostinfo{},
+		Routes:     []types.Route{},
+		CreatedAt:  created,
 	}
 
 	tailPeer1 := &tailcfg.Node{
@@ -277,40 +290,43 @@ func Test_fullMapResponse(t *testing.T) {
 		),
 		Addresses:         []netip.Prefix{netip.MustParsePrefix("100.64.0.2/32")},
 		AllowedIPs:        []netip.Prefix{netip.MustParsePrefix("100.64.0.2/32")},
-		Endpoints:         []string{},
 		DERP:              "127.3.3.40:0",
 		Hostinfo:          hiview(tailcfg.Hostinfo{}),
 		Created:           created,
 		Tags:              []string{},
 		PrimaryRoutes:     []netip.Prefix{},
 		LastSeen:          &lastSeen,
-		Online:            new(bool),
-		KeepAlive:         true,
 		MachineAuthorized: true,
-		Capabilities: []string{
+		Capabilities: []tailcfg.NodeCapability{
 			tailcfg.CapabilityFileSharing,
 			tailcfg.CapabilityAdmin,
 			tailcfg.CapabilitySSH,
+			tailcfg.NodeAttrDisableUPnP,
 		},
 	}
 
 	peer2 := &types.Node{
-		ID:          2,
-		MachineKey:  "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		NodeKey:     "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		DiscoKey:    "discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
-		Hostname:    "peer2",
-		GivenName:   "peer2",
-		UserID:      1,
-		User:        types.User{Name: "peer2"},
-		ForcedTags:  []string{},
-		LastSeen:    &lastSeen,
-		Expiry:      &expire,
-		HostInfo:    types.HostInfo{},
-		Endpoints:   []string{},
-		Routes:      []types.Route{},
-		CreatedAt:   created,
+		ID: 2,
+		MachineKey: mustMK(
+			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		),
+		NodeKey: mustNK(
+			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		),
+		DiscoKey: mustDK(
+			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		),
+		IPv4:       iap("100.64.0.3"),
+		Hostname:   "peer2",
+		GivenName:  "peer2",
+		UserID:     1,
+		User:       types.User{Name: "peer2"},
+		ForcedTags: []string{},
+		LastSeen:   &lastSeen,
+		Expiry:     &expire,
+		Hostinfo:   &tailcfg.Hostinfo{},
+		Routes:     []types.Route{},
+		CreatedAt:  created,
 	}
 
 	tests := []struct {
@@ -319,13 +335,10 @@ func Test_fullMapResponse(t *testing.T) {
 		node  *types.Node
 		peers types.Nodes
 
-		baseDomain       string
-		dnsConfig        *tailcfg.DNSConfig
-		derpMap          *tailcfg.DERPMap
-		logtail          bool
-		randomClientPort bool
-		want             *tailcfg.MapResponse
-		wantErr          bool
+		derpMap *tailcfg.DERPMap
+		cfg     *types.Config
+		want    *tailcfg.MapResponse
+		wantErr bool
 	}{
 		// {
 		// 	name:             "empty-node",
@@ -337,15 +350,17 @@ func Test_fullMapResponse(t *testing.T) {
 		// 	wantErr:          true,
 		// },
 		{
-			name:             "no-pol-no-peers-map-response",
-			pol:              &policy.ACLPolicy{},
-			node:             mini,
-			peers:            types.Nodes{},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			name:    "no-pol-no-peers-map-response",
+			pol:     &policy.ACLPolicy{},
+			node:    mini,
+			peers:   types.Nodes{},
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				Node:            tailMini,
 				KeepAlive:       false,
@@ -371,11 +386,13 @@ func Test_fullMapResponse(t *testing.T) {
 			peers: types.Nodes{
 				peer1,
 			},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				KeepAlive: false,
 				Node:      tailMini,
@@ -386,7 +403,6 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				OnlineChange:    map[tailcfg.NodeID]bool{tailPeer1.ID: false},
 				PacketFilter:    []tailcfg.FilterRule{},
 				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
 				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
@@ -413,11 +429,13 @@ func Test_fullMapResponse(t *testing.T) {
 				peer1,
 				peer2,
 			},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				KeepAlive: false,
 				Node:      tailMini,
@@ -428,10 +446,6 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				OnlineChange: map[tailcfg.NodeID]bool{
-					tailPeer1.ID:             false,
-					tailcfg.NodeID(peer2.ID): false,
-				},
 				PacketFilter: []tailcfg.FilterRule{
 					{
 						SrcIPs: []string{"100.64.0.2/32"},
@@ -456,20 +470,17 @@ func Test_fullMapResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mappy := NewMapper(
-				tt.node,
-				tt.peers,
 				nil,
-				false,
+				tt.cfg,
 				tt.derpMap,
-				tt.baseDomain,
-				tt.dnsConfig,
-				tt.logtail,
-				tt.randomClientPort,
+				nil,
 			)
 
 			got, err := mappy.fullMapResponse(
 				tt.node,
+				tt.peers,
 				tt.pol,
+				0,
 			)
 
 			if (err != nil) != tt.wantErr {

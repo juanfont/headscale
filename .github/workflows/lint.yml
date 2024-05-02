@@ -1,7 +1,6 @@
----
 name: Lint
 
-on: [push, pull_request]
+on: [pull_request]
 
 concurrency:
   group: ${{ github.workflow }}-$${{ github.head_ref || github.run_id }}
@@ -11,70 +10,66 @@ jobs:
   golangci-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v34
+        uses: dorny/paths-filter@v3
         with:
-          files: |
-            *.nix
-            go.*
-            **/*.go
-            integration_test/
-            config-example.yaml
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration_test/'
+              - 'config-example.yaml'
+      - uses: DeterminateSystems/nix-installer-action@main
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        if: steps.changed-files.outputs.files == 'true'
 
       - name: golangci-lint
-        if: steps.changed-files.outputs.any_changed == 'true'
-        uses: golangci/golangci-lint-action@v2
-        with:
-          version: v1.51.2
-
-          # Only block PRs on new problems.
-          # If this is not enabled, we will end up having PRs
-          # blocked because new linters has appared and other
-          # parts of the code is affected.
-          only-new-issues: true
+        if: steps.changed-files.outputs.files == 'true'
+        run: nix develop --command -- golangci-lint run --new-from-rev=${{github.event.pull_request.base.sha}} --out-format=github-actions .
 
   prettier-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v14.1
+        uses: dorny/paths-filter@v3
         with:
-          files: |
-            *.nix
-            **/*.md
-            **/*.yml
-            **/*.yaml
-            **/*.ts
-            **/*.js
-            **/*.sass
-            **/*.css
-            **/*.scss
-            **/*.html
+          filters: |
+            files:
+              - '*.nix'
+              - '**/*.md'
+              - '**/*.yml'
+              - '**/*.yaml'
+              - '**/*.ts'
+              - '**/*.js'
+              - '**/*.sass'
+              - '**/*.css'
+              - '**/*.scss'
+              - '**/*.html'
+      - uses: DeterminateSystems/nix-installer-action@main
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        if: steps.changed-files.outputs.files == 'true'
 
       - name: Prettify code
-        if: steps.changed-files.outputs.any_changed == 'true'
-        uses: creyD/prettier_action@v4.3
-        with:
-          prettier_options: >-
-            --check **/*.{ts,js,md,yaml,yml,sass,css,scss,html}
-          only_changed: false
-          dry: true
+        if: steps.changed-files.outputs.files == 'true'
+        run: nix develop --command -- prettier --no-error-on-unmatched-pattern --ignore-unknown --check **/*.{ts,js,md,yaml,yml,sass,css,scss,html}
 
   proto-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: bufbuild/buf-setup-action@v1.7.0
-      - uses: bufbuild/buf-lint-action@v1
-        with:
-          input: "proto"
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Buf lint
+        run: nix develop --command -- buf lint proto

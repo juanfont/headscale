@@ -17,100 +17,124 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 
 1. Prepare a directory on the host Docker node in your directory of choice, used to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
-```shell
-mkdir -p ./headscale/config
-cd ./headscale
-```
+    ```shell
+    mkdir -p ./headscale/config
+    cd ./headscale
+    ```
 
-2. Create an empty SQlite datebase in the headscale directory:
+1. Create an empty SQlite datebase in the headscale directory:
 
-```shell
-touch ./config/db.sqlite
-```
+    ```shell
+    touch ./config/db.sqlite
+    ```
 
-3. **(Strongly Recommended)** Download a copy of the [example configuration][config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
+1. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
-Using wget:
+    - Using `wget`:
 
-```shell
-wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
-```
+        ```shell
+        wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
+        ```
 
-Using curl:
+    - Using `curl`:
 
-```shell
-curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
-```
+        ```shell
+        curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
+        ```
 
-**(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
+    - **(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
 
-```shell
-touch ./config/config.yaml
-```
+        ```shell
+        touch ./config/config.yaml
+        ```
 
-Modify the config file to your preferences before launching Docker container.
-Here are some settings that you likely want:
+        Modify the config file to your preferences before launching Docker container.
+        Here are some settings that you likely want:
 
-```yaml
-# Change to your hostname or host IP
-server_url: http://your-host-name:8080
-# Listen to 0.0.0.0 so it's accessible outside the container
-metrics_listen_addr: 0.0.0.0:9090
-# The default /var/lib/headscale path is not writable in the container
-private_key_path: /etc/headscale/private.key
-# The default /var/lib/headscale path is not writable in the container
-noise:
-  private_key_path: /etc/headscale/noise_private.key
-# The default /var/lib/headscale path is not writable  in the container
-db_type: sqlite3
-db_path: /etc/headscale/db.sqlite
-```
+        ```yaml
+        # Change to your hostname or host IP
+        server_url: http://your-host-name:8080
+        # Listen to 0.0.0.0 so it's accessible outside the container
+        metrics_listen_addr: 0.0.0.0:9090
+        # The default /var/lib/headscale path is not writable in the container
+        noise:
+          private_key_path: /etc/headscale/noise_private.key
+        # The default /var/lib/headscale path is not writable in the container
+        derp:
+          private_key_path: /etc/headscale/private.key
+        # The default /var/run/headscale path is not writable  in the container
+        unix_socket: /etc/headscale/headscale.sock
+        # The default /var/lib/headscale path is not writable  in the container
+        database.type: sqlite3
+        database.sqlite.path: /etc/headscale/db.sqlite
+        ```
 
-4. Start the headscale server while working in the host headscale directory:
+        Alternatively, you can mount `/var/lib` and `/var/run` from your host system by adding
+        `--volume $(pwd)/lib:/var/lib/headscale` and `--volume $(pwd)/run:/var/run/headscale`
+        in the next step.
 
-```shell
-docker run \
-  --name headscale \
-  --detach \
-  --volume $(pwd)/config:/etc/headscale/ \
-  --publish 127.0.0.1:8080:8080 \
-  --publish 127.0.0.1:9090:9090 \
-  headscale/headscale:<VERSION> \
-  headscale serve
+1. Start the headscale server while working in the host headscale directory:
 
-```
+    ```shell
+    docker run \
+      --name headscale \
+      --detach \
+      --volume $(pwd)/config:/etc/headscale/ \
+      --publish 127.0.0.1:8080:8080 \
+      --publish 127.0.0.1:9090:9090 \
+      headscale/headscale:<VERSION> \
+      headscale serve
+    ```
 
-Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
+    Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
 
-This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
-`headscale` instance becomes available and then detach so headscale runs in the background.
+    This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
+    `headscale` instance becomes available and then detach so headscale runs in the background.
 
-5. Verify `headscale` is running:
+    Example `docker-compose.yaml`
 
-Follow the container logs:
+      ```yaml
+      version: "3.7"
+      
+      services:
+        headscale:
+          image: headscale/headscale:0.22.3
+          restart: unless-stopped
+          container_name: headscale
+          ports:
+            - "127.0.0.1:8080:8080"
+            - "127.0.0.1:9090:9090"
+          volumes:
+            # pls change [config_path] to the fullpath of the config folder just created
+            - [config_path]:/etc/headscale
+          command: headscale serve
+      ```
 
-```shell
-docker logs --follow headscale
-```
+1. Verify `headscale` is running:
+   Follow the container logs:
 
-Verify running containers:
+    ```shell
+    docker logs --follow headscale
+    ```
 
-```shell
-docker ps
-```
+    Verify running containers:
 
-Verify `headscale` is available:
+    ```shell
+    docker ps
+    ```
 
-```shell
-curl http://127.0.0.1:9090/metrics
-```
+    Verify `headscale` is available:
 
-6. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+    ```shell
+    curl http://127.0.0.1:9090/metrics
+    ```
 
-```shell
-docker exec headscale \
-  headscale users create myfirstuser
-```
+1. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+
+    ```shell
+    docker exec headscale \
+    headscale users create myfirstuser
+    ```
 
 ### Register a machine (normal login)
 

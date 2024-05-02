@@ -84,7 +84,7 @@ var listPreAuthKeys = &cobra.Command{
 		}
 
 		if output != "" {
-			SuccessOutput(response.PreAuthKeys, "", output)
+			SuccessOutput(response.GetPreAuthKeys(), "", output)
 
 			return
 		}
@@ -101,22 +101,15 @@ var listPreAuthKeys = &cobra.Command{
 				"Tags",
 			},
 		}
-		for _, key := range response.PreAuthKeys {
+		for _, key := range response.GetPreAuthKeys() {
 			expiration := "-"
 			if key.GetExpiration() != nil {
-				expiration = ColourTime(key.Expiration.AsTime())
-			}
-
-			var reusable string
-			if key.GetEphemeral() {
-				reusable = "N/A"
-			} else {
-				reusable = fmt.Sprintf("%v", key.GetReusable())
+				expiration = ColourTime(key.GetExpiration().AsTime())
 			}
 
 			aclTags := ""
 
-			for _, tag := range key.AclTags {
+			for _, tag := range key.GetAclTags() {
 				aclTags += "," + tag
 			}
 
@@ -125,7 +118,7 @@ var listPreAuthKeys = &cobra.Command{
 			tableData = append(tableData, []string{
 				key.GetId(),
 				key.GetKey(),
-				reusable,
+				strconv.FormatBool(key.GetReusable()),
 				strconv.FormatBool(key.GetEphemeral()),
 				strconv.FormatBool(key.GetUsed()),
 				expiration,
@@ -214,7 +207,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.PreAuthKey, response.PreAuthKey.Key, output)
+		SuccessOutput(response.GetPreAuthKey(), response.GetPreAuthKey().GetKey(), output)
 	},
 }
 

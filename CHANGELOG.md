@@ -23,18 +23,41 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 
 ### BREAKING
 
-Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1473](https://github.com/juanfont/headscale/pull/1473)
-API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
+- Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1473](https://github.com/juanfont/headscale/pull/1473)
+- Change the structure of database configuration, see [config-example.yaml](./config-example.yaml) for the new structure. [#1700](https://github.com/juanfont/headscale/pull/1700)
+  - Old structure has been remove and the configuration _must_ be converted.
+  - Adds additional configuration for PostgreSQL for setting max open, idle conection and idle connection lifetime.
+- API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
+- Remove support for older Tailscale clients [#1611](https://github.com/juanfont/headscale/pull/1611)
+  - The latest supported client is 1.38
+- Headscale checks that _at least_ one DERP is defined at start [#1564](https://github.com/juanfont/headscale/pull/1564)
+  - If no DERP is configured, the server will fail to start, this can be because it cannot load the DERPMap from file or url.
+- Embedded DERP server requires a private key [#1611](https://github.com/juanfont/headscale/pull/1611)
+  - Add a filepath entry to [`derp.server.private_key_path`](https://github.com/juanfont/headscale/blob/b35993981297e18393706b2c963d6db882bba6aa/config-example.yaml#L95)
+- Docker images are now built with goreleaser (ko) [#1716](https://github.com/juanfont/headscale/pull/1716) [#1763](https://github.com/juanfont/headscale/pull/1763)
+  - Entrypoint of container image has changed from shell to headscale, require change from `headscale serve` to `serve`
+  - `/var/lib/headscale` and `/var/run/headscale` is no longer created automatically, see [container docs](./docs/running-headscale-container.md)
+- Prefixes are now defined per v4 and v6 range. [#1756](https://github.com/juanfont/headscale/pull/1756)
+  - `ip_prefixes` option is now `prefixes.v4` and `prefixes.v6`
+  - `prefixes.allocation` can be set to assign IPs at `sequential` or `random`. [#1869](https://github.com/juanfont/headscale/pull/1869)
 
 ### Changes
 
-Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
-SSH support [#1487](https://github.com/juanfont/headscale/pull/1487)
-State management has been improved [#1492](https://github.com/juanfont/headscale/pull/1492)
-Use error group handling to ensure tests actually pass [#1535](https://github.com/juanfont/headscale/pull/1535) based on [#1460](https://github.com/juanfont/headscale/pull/1460)
-Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) taken from [#1480](https://github.com/juanfont/headscale/pull/1480)
-Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
-Restore foreign keys and add constraints [#1562](https://github.com/juanfont/headscale/pull/1562)
+- Use versioned migrations [#1644](https://github.com/juanfont/headscale/pull/1644)
+- Make the OIDC callback page better [#1484](https://github.com/juanfont/headscale/pull/1484)
+- SSH support [#1487](https://github.com/juanfont/headscale/pull/1487)
+- State management has been improved [#1492](https://github.com/juanfont/headscale/pull/1492)
+- Use error group handling to ensure tests actually pass [#1535](https://github.com/juanfont/headscale/pull/1535) based on [#1460](https://github.com/juanfont/headscale/pull/1460)
+- Fix hang on SIGTERM [#1492](https://github.com/juanfont/headscale/pull/1492) taken from [#1480](https://github.com/juanfont/headscale/pull/1480)
+- Send logs to stderr by default [#1524](https://github.com/juanfont/headscale/pull/1524)
+- Fix [TS-2023-006](https://tailscale.com/security-bulletins/#ts-2023-006) security UPnP issue [#1563](https://github.com/juanfont/headscale/pull/1563)
+- Turn off gRPC logging [#1640](https://github.com/juanfont/headscale/pull/1640) fixes [#1259](https://github.com/juanfont/headscale/issues/1259)
+- Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
+- Add support for deleting api keys [#1702](https://github.com/juanfont/headscale/pull/1702)
+- Add command to backfill IP addresses for nodes missing IPs from configured prefixes. [#1869](https://github.com/juanfont/headscale/pull/1869)
+- Log available update as warning [#1877](https://github.com/juanfont/headscale/pull/1877)
+- Add `autogroup:internet` to Policy [#1917](https://github.com/juanfont/headscale/pull/1917)
+- Restore foreign keys and add constraints [#1562](https://github.com/juanfont/headscale/pull/1562)
 
 ## 0.22.3 (2023-05-12)
 

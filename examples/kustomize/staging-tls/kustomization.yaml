@@ -1,9 +1,0 @@
-namespace: headscale
-bases:
-  - ../base
-resources:
-  - staging-issuer.yaml
-patches:
-  - path: ingress-patch.yaml
-    target:
-      kind: Ingress

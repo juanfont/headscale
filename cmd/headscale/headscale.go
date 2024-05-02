@@ -4,27 +4,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/efekarakus/termcolor"
+	"github.com/jagottsicher/termcolor"
 	"github.com/juanfont/headscale/cmd/headscale/cli"
-	"github.com/pkg/profile"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 func main() {
-	if _, enableProfile := os.LookupEnv("HEADSCALE_PROFILING_ENABLED"); enableProfile {
-		if profilePath, ok := os.LookupEnv("HEADSCALE_PROFILING_PATH"); ok {
-			err := os.MkdirAll(profilePath, os.ModePerm)
-			if err != nil {
-				log.Fatal().Err(err).Msg("failed to create profiling directory")
-			}
-
-			defer profile.Start(profile.ProfilePath(profilePath)).Stop()
-		} else {
-			defer profile.Start().Stop()
-		}
-	}
-
 	var colors bool
 	switch l := termcolor.SupportLevel(os.Stderr); l {
 	case termcolor.Level16M:

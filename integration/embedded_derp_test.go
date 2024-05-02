@@ -23,7 +23,7 @@ func TestDERPServerScenario(t *testing.T) {
 	IntegrationSkip(t)
 	// t.Parallel()
 
-	baseScenario, err := NewScenario()
+	baseScenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
 	scenario := EmbeddedDERPServerScenario{
@@ -33,22 +33,15 @@ func TestDERPServerScenario(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": len(MustTestVersions),
+		"user1": 10,
+		// "user1": len(MustTestVersions),
 	}
-
-	headscaleConfig := map[string]string{}
-	headscaleConfig["HEADSCALE_DERP_URLS"] = ""
-	headscaleConfig["HEADSCALE_DERP_SERVER_ENABLED"] = "true"
-	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_ID"] = "999"
-	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_CODE"] = "headscale"
-	headscaleConfig["HEADSCALE_DERP_SERVER_REGION_NAME"] = "Headscale Embedded DERP"
-	headscaleConfig["HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR"] = "0.0.0.0:3478"
 
 	err = scenario.CreateHeadscaleEnv(
 		spec,
-		hsic.WithConfigEnv(headscaleConfig),
 		hsic.WithTestName("derpserver"),
 		hsic.WithExtraPorts([]string{"3478/udp"}),
+		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
 	)

@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"testing"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +22,7 @@ func executeAndUnmarshal[T any](headscale ControlServer, command []string, resul
 
 	err = json.Unmarshal([]byte(str), result)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal: %s\n command err: %s", err, str)
 	}
 
 	return nil
@@ -32,7 +32,7 @@ func TestUserCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -60,7 +60,7 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	result := []string{listUsers[0].Name, listUsers[1].Name}
+	result := []string{listUsers[0].GetName(), listUsers[1].GetName()}
 	sort.Strings(result)
 
 	assert.Equal(
@@ -95,7 +95,7 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	result = []string{listAfterRenameUsers[0].Name, listAfterRenameUsers[1].Name}
+	result = []string{listAfterRenameUsers[0].GetName(), listAfterRenameUsers[1].GetName()}
 	sort.Strings(result)
 
 	assert.Equal(
@@ -112,7 +112,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	user := "preauthkeyspace"
 	count := 3
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -177,29 +177,33 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 	assert.Equal(
 		t,
-		[]string{keys[0].Id, keys[1].Id, keys[2].Id},
-		[]string{listedPreAuthKeys[1].Id, listedPreAuthKeys[2].Id, listedPreAuthKeys[3].Id},
+		[]string{keys[0].GetId(), keys[1].GetId(), keys[2].GetId()},
+		[]string{
+			listedPreAuthKeys[1].GetId(),
+			listedPreAuthKeys[2].GetId(),
+			listedPreAuthKeys[3].GetId(),
+		},
 	)
 
-	assert.NotEmpty(t, listedPreAuthKeys[1].Key)
-	assert.NotEmpty(t, listedPreAuthKeys[2].Key)
-	assert.NotEmpty(t, listedPreAuthKeys[3].Key)
+	assert.NotEmpty(t, listedPreAuthKeys[1].GetKey())
+	assert.NotEmpty(t, listedPreAuthKeys[2].GetKey())
+	assert.NotEmpty(t, listedPreAuthKeys[3].GetKey())
 
-	assert.True(t, listedPreAuthKeys[1].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeys[2].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeys[3].Expiration.AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[2].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[3].GetExpiration().AsTime().After(time.Now()))
 
 	assert.True(
 		t,
-		listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedPreAuthKeys[2].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[2].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedPreAuthKeys[3].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[3].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 
 	for index := range listedPreAuthKeys {
@@ -207,7 +211,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			continue
 		}
 
-		assert.Equal(t, listedPreAuthKeys[index].AclTags, []string{"tag:test1", "tag:test2"})
+		assert.Equal(t, listedPreAuthKeys[index].GetAclTags(), []string{"tag:test1", "tag:test2"})
 	}
 
 	// Test key expiry
@@ -218,7 +222,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			"--user",
 			user,
 			"expire",
-			listedPreAuthKeys[1].Key,
+			listedPreAuthKeys[1].GetKey(),
 		},
 	)
 	assertNoErr(t, err)
@@ -239,9 +243,9 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	assert.True(t, listedPreAuthKeysAfterExpire[1].Expiration.AsTime().Before(time.Now()))
-	assert.True(t, listedPreAuthKeysAfterExpire[2].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeysAfterExpire[3].Expiration.AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[1].GetExpiration().AsTime().Before(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[2].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[3].GetExpiration().AsTime().After(time.Now()))
 }
 
 func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
@@ -250,7 +254,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 
 	user := "pre-auth-key-without-exp-user"
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -300,10 +304,10 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 2)
 
-	assert.True(t, listedPreAuthKeys[1].Expiration.AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
 	assert.True(
 		t,
-		listedPreAuthKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Minute*70)),
+		listedPreAuthKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Minute*70)),
 	)
 }
 
@@ -313,7 +317,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 	user := "pre-auth-key-reus-ephm-user"
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -384,139 +388,99 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	assert.Len(t, listedPreAuthKeys, 3)
 }
 
-func TestEnablingRoutes(t *testing.T) {
+func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	user := "enable-routing"
+	user1 := "user1"
+	user2 := "user2"
 
-	scenario, err := NewScenario()
-	assertNoErrf(t, "failed to create scenario: %s", err)
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		user: 3,
+		user1: 1,
+		user2: 0,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
-	assertNoErrHeadscaleEnv(t, err)
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipak"))
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	var user2Key v1.PreAuthKey
+
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--user",
+			user2,
+			"create",
+			"--reusable",
+			"--expiration",
+			"24h",
+			"--output",
+			"json",
+			"--tags",
+			"tag:test1,tag:test2",
+		},
+		&user2Key,
+	)
+	assertNoErr(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
 
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	assert.Len(t, allClients, 1)
 
-	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
+	client := allClients[0]
 
-	// advertise routes using the up command
-	for i, client := range allClients {
-		routeStr := fmt.Sprintf("10.0.%d.0/24", i)
-		command := []string{
-			"tailscale",
-			"set",
-			"--advertise-routes=" + routeStr,
-		}
-		_, _, err := client.Execute(command)
-		assertNoErrf(t, "failed to advertise route: %s", err)
+	// Log out from user1
+	err = client.Logout()
+	assertNoErr(t, err)
+
+	err = scenario.WaitForTailscaleLogout()
+	assertNoErr(t, err)
+
+	status, err := client.Status()
+	assertNoErr(t, err)
+	if status.BackendState == "Starting" || status.BackendState == "Running" {
+		t.Fatalf("expected node to be logged out, backend state: %s", status.BackendState)
 	}
 
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
+	assertNoErr(t, err)
 
-	var routes []*v1.Route
+	status, err = client.Status()
+	assertNoErr(t, err)
+	if status.BackendState != "Running" {
+		t.Fatalf("expected node to be logged in, backend state: %s", status.BackendState)
+	}
+
+	if status.Self.UserID.String() != "userid:2" {
+		t.Fatalf("expected node to be logged in as userid:2, got: %s", status.Self.UserID.String())
+	}
+
+	var listNodes []v1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
 			"headscale",
-			"routes",
+			"nodes",
 			"list",
 			"--output",
 			"json",
 		},
-		&routes,
+		&listNodes,
 	)
+	assert.Nil(t, err)
+	assert.Len(t, listNodes, 1)
 
-	assertNoErr(t, err)
-	assert.Len(t, routes, 3)
-
-	for _, route := range routes {
-		assert.Equal(t, route.Advertised, true)
-		assert.Equal(t, route.Enabled, false)
-		assert.Equal(t, route.IsPrimary, false)
-	}
-
-	for _, route := range routes {
-		_, err = headscale.Execute(
-			[]string{
-				"headscale",
-				"routes",
-				"enable",
-				"--route",
-				strconv.Itoa(int(route.Id)),
-			})
-		assertNoErr(t, err)
-	}
-
-	var enablingRoutes []*v1.Route
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"routes",
-			"list",
-			"--output",
-			"json",
-		},
-		&enablingRoutes,
-	)
-	assertNoErr(t, err)
-	assert.Len(t, enablingRoutes, 3)
-
-	for _, route := range enablingRoutes {
-		assert.Equal(t, route.Advertised, true)
-		assert.Equal(t, route.Enabled, true)
-		assert.Equal(t, route.IsPrimary, true)
-	}
-
-	routeIDToBeDisabled := enablingRoutes[0].Id
-
-	_, err = headscale.Execute(
-		[]string{
-			"headscale",
-			"routes",
-			"disable",
-			"--route",
-			strconv.Itoa(int(routeIDToBeDisabled)),
-		})
-	assertNoErr(t, err)
-
-	var disablingRoutes []*v1.Route
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"routes",
-			"list",
-			"--output",
-			"json",
-		},
-		&disablingRoutes,
-	)
-	assertNoErr(t, err)
-
-	for _, route := range disablingRoutes {
-		assert.Equal(t, true, route.Advertised)
-
-		if route.Id == routeIDToBeDisabled {
-			assert.Equal(t, route.Enabled, false)
-			assert.Equal(t, route.IsPrimary, false)
-		} else {
-			assert.Equal(t, route.Enabled, true)
-			assert.Equal(t, route.IsPrimary, true)
-		}
-	}
+	assert.Equal(t, "user2", listNodes[0].User.Name)
 }
 
 func TestApiKeyCommand(t *testing.T) {
@@ -525,7 +489,7 @@ func TestApiKeyCommand(t *testing.T) {
 
 	count := 5
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -577,43 +541,43 @@ func TestApiKeyCommand(t *testing.T) {
 
 	assert.Len(t, listedAPIKeys, 5)
 
-	assert.Equal(t, uint64(1), listedAPIKeys[0].Id)
-	assert.Equal(t, uint64(2), listedAPIKeys[1].Id)
-	assert.Equal(t, uint64(3), listedAPIKeys[2].Id)
-	assert.Equal(t, uint64(4), listedAPIKeys[3].Id)
-	assert.Equal(t, uint64(5), listedAPIKeys[4].Id)
+	assert.Equal(t, uint64(1), listedAPIKeys[0].GetId())
+	assert.Equal(t, uint64(2), listedAPIKeys[1].GetId())
+	assert.Equal(t, uint64(3), listedAPIKeys[2].GetId())
+	assert.Equal(t, uint64(4), listedAPIKeys[3].GetId())
+	assert.Equal(t, uint64(5), listedAPIKeys[4].GetId())
 
-	assert.NotEmpty(t, listedAPIKeys[0].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[1].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[2].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[3].Prefix)
-	assert.NotEmpty(t, listedAPIKeys[4].Prefix)
+	assert.NotEmpty(t, listedAPIKeys[0].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[1].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[2].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[3].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[4].GetPrefix())
 
-	assert.True(t, listedAPIKeys[0].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[1].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[2].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[3].Expiration.AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[4].Expiration.AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[0].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[1].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[2].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[3].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[4].GetExpiration().AsTime().After(time.Now()))
 
 	assert.True(
 		t,
-		listedAPIKeys[0].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[0].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[1].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[2].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[2].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[3].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[3].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[4].Expiration.AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[4].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
 	)
 
 	expiredPrefixes := make(map[string]bool)
@@ -626,12 +590,12 @@ func TestApiKeyCommand(t *testing.T) {
 				"apikeys",
 				"expire",
 				"--prefix",
-				listedAPIKeys[idx].Prefix,
+				listedAPIKeys[idx].GetPrefix(),
 			},
 		)
 		assert.Nil(t, err)
 
-		expiredPrefixes[listedAPIKeys[idx].Prefix] = true
+		expiredPrefixes[listedAPIKeys[idx].GetPrefix()] = true
 	}
 
 	var listedAfterExpireAPIKeys []v1.ApiKey
@@ -648,27 +612,52 @@ func TestApiKeyCommand(t *testing.T) {
 	assert.Nil(t, err)
 
 	for index := range listedAfterExpireAPIKeys {
-		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].Prefix]; ok {
+		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].GetPrefix()]; ok {
 			// Expired
 			assert.True(
 				t,
-				listedAfterExpireAPIKeys[index].Expiration.AsTime().Before(time.Now()),
+				listedAfterExpireAPIKeys[index].GetExpiration().AsTime().Before(time.Now()),
 			)
 		} else {
 			// Not expired
 			assert.False(
 				t,
-				listedAfterExpireAPIKeys[index].Expiration.AsTime().Before(time.Now()),
+				listedAfterExpireAPIKeys[index].GetExpiration().AsTime().Before(time.Now()),
 			)
 		}
 	}
+
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"apikeys",
+			"delete",
+			"--prefix",
+			listedAPIKeys[0].GetPrefix(),
+		})
+	assert.Nil(t, err)
+
+	var listedAPIKeysAfterDelete []v1.ApiKey
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"apikeys",
+			"list",
+			"--output",
+			"json",
+		},
+		&listedAPIKeysAfterDelete,
+	)
+	assert.Nil(t, err)
+
+	assert.Len(t, listedAPIKeysAfterDelete, 4)
 }
 
 func TestNodeTagCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -683,8 +672,8 @@ func TestNodeTagCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	machineKeys := []string{
-		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
 	}
 	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
@@ -744,7 +733,7 @@ func TestNodeTagCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, []string{"tag:test"}, node.ForcedTags)
+	assert.Equal(t, []string{"tag:test"}, node.GetForcedTags())
 
 	// try to set a wrong tag and retrieve the error
 	type errOutput struct {
@@ -781,8 +770,8 @@ func TestNodeTagCommand(t *testing.T) {
 	assert.Nil(t, err)
 	found := false
 	for _, node := range resultMachines {
-		if node.ForcedTags != nil {
-			for _, tag := range node.ForcedTags {
+		if node.GetForcedTags() != nil {
+			for _, tag := range node.GetForcedTags() {
 				if tag == "tag:test" {
 					found = true
 				}
@@ -797,11 +786,124 @@ func TestNodeTagCommand(t *testing.T) {
 	)
 }
 
+func TestNodeAdvertiseTagNoACLCommand(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:test"})}, hsic.WithTestName("cliadvtags"))
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	// Test list all nodes after added seconds
+	resultMachines := make([]*v1.Node, spec["user1"])
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--tags",
+			"--output", "json",
+		},
+		&resultMachines,
+	)
+	assert.Nil(t, err)
+	found := false
+	for _, node := range resultMachines {
+		if node.GetInvalidTags() != nil {
+			for _, tag := range node.GetInvalidTags() {
+				if tag == "tag:test" {
+					found = true
+				}
+			}
+		}
+	}
+	assert.Equal(
+		t,
+		true,
+		found,
+		"should not find a node with the tag 'tag:test' in the list of nodes",
+	)
+}
+
+func TestNodeAdvertiseTagWithACLCommand(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:exists"})}, hsic.WithTestName("cliadvtags"), hsic.WithACLPolicy(
+		&policy.ACLPolicy{
+			ACLs: []policy.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"*"},
+					Destinations: []string{"*:*"},
+				},
+			},
+			TagOwners: map[string][]string{
+				"tag:exists": {"user1"},
+			},
+		},
+	))
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	// Test list all nodes after added seconds
+	resultMachines := make([]*v1.Node, spec["user1"])
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--tags",
+			"--output", "json",
+		},
+		&resultMachines,
+	)
+	assert.Nil(t, err)
+	found := false
+	for _, node := range resultMachines {
+		if node.GetValidTags() != nil {
+			for _, tag := range node.GetValidTags() {
+				if tag == "tag:exists" {
+					found = true
+				}
+			}
+		}
+	}
+	assert.Equal(
+		t,
+		true,
+		found,
+		"should not find a node with the tag 'tag:exists' in the list of nodes",
+	)
+}
+
 func TestNodeCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -816,13 +918,13 @@ func TestNodeCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated node keys
+	// Pregenerated machine keys
 	machineKeys := []string{
-		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
 	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
@@ -885,21 +987,21 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.Equal(t, uint64(1), listAll[0].Id)
-	assert.Equal(t, uint64(2), listAll[1].Id)
-	assert.Equal(t, uint64(3), listAll[2].Id)
-	assert.Equal(t, uint64(4), listAll[3].Id)
-	assert.Equal(t, uint64(5), listAll[4].Id)
+	assert.Equal(t, uint64(1), listAll[0].GetId())
+	assert.Equal(t, uint64(2), listAll[1].GetId())
+	assert.Equal(t, uint64(3), listAll[2].GetId())
+	assert.Equal(t, uint64(4), listAll[3].GetId())
+	assert.Equal(t, uint64(5), listAll[4].GetId())
 
-	assert.Equal(t, "node-1", listAll[0].Name)
-	assert.Equal(t, "node-2", listAll[1].Name)
-	assert.Equal(t, "node-3", listAll[2].Name)
-	assert.Equal(t, "node-4", listAll[3].Name)
-	assert.Equal(t, "node-5", listAll[4].Name)
+	assert.Equal(t, "node-1", listAll[0].GetName())
+	assert.Equal(t, "node-2", listAll[1].GetName())
+	assert.Equal(t, "node-3", listAll[2].GetName())
+	assert.Equal(t, "node-4", listAll[3].GetName())
+	assert.Equal(t, "node-5", listAll[4].GetName())
 
 	otherUserMachineKeys := []string{
-		"nodekey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
-		"nodekey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
+		"mkey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
+		"mkey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
 	}
 	otherUserMachines := make([]*v1.Node, len(otherUserMachineKeys))
 	assert.Nil(t, err)
@@ -963,11 +1065,11 @@ func TestNodeCommand(t *testing.T) {
 	// All nodes, nodes + otherUser
 	assert.Len(t, listAllWithotherUser, 7)
 
-	assert.Equal(t, uint64(6), listAllWithotherUser[5].Id)
-	assert.Equal(t, uint64(7), listAllWithotherUser[6].Id)
+	assert.Equal(t, uint64(6), listAllWithotherUser[5].GetId())
+	assert.Equal(t, uint64(7), listAllWithotherUser[6].GetId())
 
-	assert.Equal(t, "otherUser-node-1", listAllWithotherUser[5].Name)
-	assert.Equal(t, "otherUser-node-2", listAllWithotherUser[6].Name)
+	assert.Equal(t, "otherUser-node-1", listAllWithotherUser[5].GetName())
+	assert.Equal(t, "otherUser-node-2", listAllWithotherUser[6].GetName())
 
 	// Test list all nodes after added otherUser
 	var listOnlyotherUserMachineUser []v1.Node
@@ -988,18 +1090,18 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.Len(t, listOnlyotherUserMachineUser, 2)
 
-	assert.Equal(t, uint64(6), listOnlyotherUserMachineUser[0].Id)
-	assert.Equal(t, uint64(7), listOnlyotherUserMachineUser[1].Id)
+	assert.Equal(t, uint64(6), listOnlyotherUserMachineUser[0].GetId())
+	assert.Equal(t, uint64(7), listOnlyotherUserMachineUser[1].GetId())
 
 	assert.Equal(
 		t,
 		"otherUser-node-1",
-		listOnlyotherUserMachineUser[0].Name,
+		listOnlyotherUserMachineUser[0].GetName(),
 	)
 	assert.Equal(
 		t,
 		"otherUser-node-2",
-		listOnlyotherUserMachineUser[1].Name,
+		listOnlyotherUserMachineUser[1].GetName(),
 	)
 
 	// Delete a nodes
@@ -1042,7 +1144,7 @@ func TestNodeExpireCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -1056,13 +1158,13 @@ func TestNodeExpireCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated node keys
+	// Pregenerated machine keys
 	machineKeys := []string{
-		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 	}
 	nodes := make([]*v1.Node, len(machineKeys))
 
@@ -1123,11 +1225,11 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.True(t, listAll[0].Expiry.AsTime().IsZero())
-	assert.True(t, listAll[1].Expiry.AsTime().IsZero())
-	assert.True(t, listAll[2].Expiry.AsTime().IsZero())
-	assert.True(t, listAll[3].Expiry.AsTime().IsZero())
-	assert.True(t, listAll[4].Expiry.AsTime().IsZero())
+	assert.True(t, listAll[0].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAll[1].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAll[2].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAll[3].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAll[4].GetExpiry().AsTime().IsZero())
 
 	for idx := 0; idx < 3; idx++ {
 		_, err := headscale.Execute(
@@ -1136,7 +1238,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				"nodes",
 				"expire",
 				"--identifier",
-				fmt.Sprintf("%d", listAll[idx].Id),
+				fmt.Sprintf("%d", listAll[idx].GetId()),
 			},
 		)
 		assert.Nil(t, err)
@@ -1158,18 +1260,18 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterExpiry, 5)
 
-	assert.True(t, listAllAfterExpiry[0].Expiry.AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[1].Expiry.AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[2].Expiry.AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[3].Expiry.AsTime().IsZero())
-	assert.True(t, listAllAfterExpiry[4].Expiry.AsTime().IsZero())
+	assert.True(t, listAllAfterExpiry[0].GetExpiry().AsTime().Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[1].GetExpiry().AsTime().Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[2].GetExpiry().AsTime().Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[3].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAllAfterExpiry[4].GetExpiry().AsTime().IsZero())
 }
 
 func TestNodeRenameCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -1183,13 +1285,13 @@ func TestNodeRenameCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Randomly generated node keys
+	// Pregenerated machine keys
 	machineKeys := []string{
-		"nodekey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-		"nodekey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"nodekey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"nodekey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 	}
 	nodes := make([]*v1.Node, len(machineKeys))
 	assert.Nil(t, err)
@@ -1210,7 +1312,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.Nil(t, err)
+		assertNoErr(t, err)
 
 		var node v1.Node
 		err = executeAndUnmarshal(
@@ -1228,7 +1330,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			},
 			&node,
 		)
-		assert.Nil(t, err)
+		assertNoErr(t, err)
 
 		nodes[index] = &node
 	}
@@ -1258,17 +1360,19 @@ func TestNodeRenameCommand(t *testing.T) {
 	assert.Contains(t, listAll[4].GetGivenName(), "node-5")
 
 	for idx := 0; idx < 3; idx++ {
-		_, err := headscale.Execute(
+		res, err := headscale.Execute(
 			[]string{
 				"headscale",
 				"nodes",
 				"rename",
 				"--identifier",
-				fmt.Sprintf("%d", listAll[idx].Id),
+				fmt.Sprintf("%d", listAll[idx].GetId()),
 				fmt.Sprintf("newnode-%d", idx+1),
 			},
 		)
 		assert.Nil(t, err)
+
+		assert.Contains(t, res, "Node renamed")
 	}
 
 	var listAllAfterRename []v1.Node
@@ -1300,7 +1404,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			"nodes",
 			"rename",
 			"--identifier",
-			fmt.Sprintf("%d", listAll[4].Id),
+			fmt.Sprintf("%d", listAll[4].GetId()),
 			"testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
 		},
 	)
@@ -1334,7 +1438,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -1350,7 +1454,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	// Randomly generated node key
-	machineKey := "nodekey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
+	machineKey := "mkey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
 
 	_, err = headscale.Execute(
 		[]string{
@@ -1387,11 +1491,11 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, uint64(1), node.Id)
-	assert.Equal(t, "nomad-node", node.Name)
-	assert.Equal(t, node.User.Name, "old-user")
+	assert.Equal(t, uint64(1), node.GetId())
+	assert.Equal(t, "nomad-node", node.GetName())
+	assert.Equal(t, node.GetUser().GetName(), "old-user")
 
-	nodeID := fmt.Sprintf("%d", node.Id)
+	nodeID := fmt.Sprintf("%d", node.GetId())
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1410,7 +1514,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, node.User.Name, "new-user")
+	assert.Equal(t, node.GetUser().GetName(), "new-user")
 
 	var allNodes []v1.Node
 	err = executeAndUnmarshal(
@@ -1428,9 +1532,9 @@ func TestNodeMoveCommand(t *testing.T) {
 
 	assert.Len(t, allNodes, 1)
 
-	assert.Equal(t, allNodes[0].Id, node.Id)
-	assert.Equal(t, allNodes[0].User, node.User)
-	assert.Equal(t, allNodes[0].User.Name, "new-user")
+	assert.Equal(t, allNodes[0].GetId(), node.GetId())
+	assert.Equal(t, allNodes[0].GetUser(), node.GetUser())
+	assert.Equal(t, allNodes[0].GetUser().GetName(), "new-user")
 
 	moveToNonExistingNSResult, err := headscale.Execute(
 		[]string{
@@ -1452,7 +1556,7 @@ func TestNodeMoveCommand(t *testing.T) {
 		moveToNonExistingNSResult,
 		"user not found",
 	)
-	assert.Equal(t, node.User.Name, "new-user")
+	assert.Equal(t, node.GetUser().GetName(), "new-user")
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1471,7 +1575,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, node.User.Name, "old-user")
+	assert.Equal(t, node.GetUser().GetName(), "old-user")
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1490,5 +1594,5 @@ func TestNodeMoveCommand(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	assert.Equal(t, node.User.Name, "old-user")
+	assert.Equal(t, node.GetUser().GetName(), "old-user")
 }

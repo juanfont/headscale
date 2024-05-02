@@ -6,6 +6,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
 )
 
 func (*Suite) TestCreatePreAuthKey(c *check.C) {
@@ -41,7 +42,7 @@ func (*Suite) TestExpiredPreAuthKey(c *check.C) {
 	user, err := db.CreateUser("test2")
 	c.Assert(err, check.IsNil)
 
-	now := time.Now()
+	now := time.Now().Add(-5 * time.Second)
 	pak, err := db.CreatePreAuthKey(user.Name, true, false, &now, nil)
 	c.Assert(err, check.IsNil)
 
@@ -78,15 +79,12 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      &pakID,
 	}
-	trx := db.db.Save(&node)
+	trx := db.DB.Save(&node)
 	c.Assert(trx.Error, check.IsNil)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
@@ -104,15 +102,12 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             1,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      &pakID,
 	}
-	trx := db.db.Save(&node)
+	trx := db.DB.Save(&node)
 	c.Assert(trx.Error, check.IsNil)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
@@ -132,7 +127,43 @@ func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
 	c.Assert(key.ID, check.Equals, pak.ID)
 }
 
-func (*Suite) TestEphemeralKey(c *check.C) {
+func (*Suite) TestEphemeralKeyReusable(c *check.C) {
+	user, err := db.CreateUser("test7")
+	c.Assert(err, check.IsNil)
+
+	pak, err := db.CreatePreAuthKey(user.Name, true, true, nil, nil)
+	c.Assert(err, check.IsNil)
+
+	now := time.Now().Add(-time.Second * 30)
+	pakID := uint(pak.ID)
+	node := types.Node{
+		ID:             0,
+		Hostname:       "testest",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		LastSeen:       &now,
+		AuthKeyID:      &pakID,
+	}
+	trx := db.DB.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
+
+	_, err = db.ValidatePreAuthKey(pak.Key)
+	c.Assert(err, check.IsNil)
+
+	_, err = db.getNode("test7", "testest")
+	c.Assert(err, check.IsNil)
+
+	db.Write(func(tx *gorm.DB) error {
+		DeleteExpiredEphemeralNodes(tx, time.Second*20)
+		return nil
+	})
+
+	// The machine record should have been deleted
+	_, err = db.getNode("test7", "testest")
+	c.Assert(err, check.NotNil)
+}
+
+func (*Suite) TestEphemeralKeyNotReusable(c *check.C) {
 	user, err := db.CreateUser("test7")
 	c.Assert(err, check.IsNil)
 
@@ -140,32 +171,29 @@ func (*Suite) TestEphemeralKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	now := time.Now().Add(-time.Second * 30)
-	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
-		MachineKey:     "foo",
-		NodeKey:        "bar",
-		DiscoKey:       "faa",
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		LastSeen:       &now,
-		AuthKeyID:      &pakID,
+		AuthKeyID:      uint(pak.ID),
 	}
-	trx := db.db.Save(&node)
-	c.Assert(trx.Error, check.IsNil)
+	db.DB.Save(&node)
 
 	_, err = db.ValidatePreAuthKey(pak.Key)
-	// Ephemeral keys are by definition reusable
+	c.Assert(err, check.NotNil)
+
+	_, err = db.getNode("test7", "testest")
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetNode("test7", "testest")
-	c.Assert(err, check.IsNil)
-
-	db.ExpireEphemeralNodes(time.Second * 20)
+	db.Write(func(tx *gorm.DB) error {
+		DeleteExpiredEphemeralNodes(tx, time.Second*20)
+		return nil
+	})
 
 	// The machine record should have been deleted
-	_, err = db.GetNode("test7", "testest")
+	_, err = db.getNode("test7", "testest")
 	c.Assert(err, check.NotNil)
 }
 
@@ -193,7 +221,7 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 	pak.Used = true
-	db.db.Save(&pak)
+	db.DB.Save(&pak)
 
 	_, err = db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
@@ -213,5 +241,5 @@ func (*Suite) TestPreAuthKeyACLTags(c *check.C) {
 
 	listedPaks, err := db.ListPreAuthKeys("test8")
 	c.Assert(err, check.IsNil)
-	c.Assert(listedPaks[0].Proto().AclTags, check.DeepEquals, tags)
+	c.Assert(listedPaks[0].Proto().GetAclTags(), check.DeepEquals, tags)
 }

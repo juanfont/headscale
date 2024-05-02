@@ -1,5 +1,7 @@
 package hsic
 
+import "github.com/juanfont/headscale/hscontrol/types"
+
 // const (
 // 	defaultEphemeralNodeInactivityTimeout = time.Second * 30
 // 	defaultNodeUpdateCheckInterval        = time.Second * 10
@@ -67,13 +69,13 @@ func DefaultConfigYAML() string {
 log:
   level: trace
 acl_policy_path: ""
-db_type: sqlite3
-db_path: /tmp/integration_test_db.sqlite3
+database:
+  type: sqlite3
+  sqlite.path: /tmp/integration_test_db.sqlite3
 ephemeral_node_inactivity_timeout: 30m
-node_update_check_interval: 10s
-ip_prefixes:
-  - fd7a:115c:a1e0::/48
-  - 100.64.0.0/10
+prefixes:
+  v6: fd7a:115c:a1e0::/48
+  v4: 100.64.0.0/10
 dns_config:
   base_domain: headscale.net
   magic_dns: true
@@ -110,11 +112,11 @@ func DefaultConfigEnv() map[string]string {
 	return map[string]string{
 		"HEADSCALE_LOG_LEVEL":                         "trace",
 		"HEADSCALE_ACL_POLICY_PATH":                   "",
-		"HEADSCALE_DB_TYPE":                           "sqlite3",
-		"HEADSCALE_DB_PATH":                           "/tmp/integration_test_db.sqlite3",
+		"HEADSCALE_DATABASE_TYPE":                     "sqlite",
+		"HEADSCALE_DATABASE_SQLITE_PATH":              "/tmp/integration_test_db.sqlite3",
 		"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": "30m",
-		"HEADSCALE_NODE_UPDATE_CHECK_INTERVAL":        "10s",
-		"HEADSCALE_IP_PREFIXES":                       "fd7a:115c:a1e0::/48 100.64.0.0/10",
+		"HEADSCALE_PREFIXES_V4":                       "100.64.0.0/10",
+		"HEADSCALE_PREFIXES_V6":                       "fd7a:115c:a1e0::/48",
 		"HEADSCALE_DNS_CONFIG_BASE_DOMAIN":            "headscale.net",
 		"HEADSCALE_DNS_CONFIG_MAGIC_DNS":              "true",
 		"HEADSCALE_DNS_CONFIG_DOMAINS":                "",
@@ -122,10 +124,14 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_PRIVATE_KEY_PATH":                  "/tmp/private.key",
 		"HEADSCALE_NOISE_PRIVATE_KEY_PATH":            "/tmp/noise_private.key",
 		"HEADSCALE_LISTEN_ADDR":                       "0.0.0.0:8080",
-		"HEADSCALE_METRICS_LISTEN_ADDR":               "127.0.0.1:9090",
+		"HEADSCALE_METRICS_LISTEN_ADDR":               "0.0.0.0:9090",
 		"HEADSCALE_SERVER_URL":                        "http://headscale:8080",
 		"HEADSCALE_DERP_URLS":                         "https://controlplane.tailscale.com/derpmap/default",
 		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":          "false",
 		"HEADSCALE_DERP_UPDATE_FREQUENCY":             "1m",
+
+		// a bunch of tests (ACL/Policy) rely on predicable IP alloc,
+		// so ensure the sequential alloc is used by default.
+		"HEADSCALE_PREFIXES_ALLOCATION": string(types.IPAllocationStrategySequential),
 	}
 }

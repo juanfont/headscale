@@ -18,23 +18,25 @@ An example use case is to serve apps on the same host via a reverse proxy like N
 
 1. Change the `config.yaml` to contain the desired records like so:
 
-```yaml
-dns_config:
-  ...
-  extra_records:
-    - name: "prometheus.myvpn.example.com"
-      type: "A"
-      value: "100.64.0.3"
+    ```yaml
+    dns_config:
+      ...
+      extra_records:
+        - name: "prometheus.myvpn.example.com"
+          type: "A"
+          value: "100.64.0.3"
 
-    - name: "grafana.myvpn.example.com"
-      type: "A"
-      value: "100.64.0.3"
-  ...
-```
+        - name: "grafana.myvpn.example.com"
+          type: "A"
+          value: "100.64.0.3"
+      ...
+    ```
 
-2. Restart your headscale instance.
+1. Restart your headscale instance.
 
-Beware of the limitations listed later on!
+    !!! warning
+
+        Beware of the limitations listed later on!
 
 ### 2. Verify that the records are set
 

@@ -42,7 +42,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	baseScenario, err := NewScenario()
+	baseScenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
 	scenario := AuthOIDCScenario{
@@ -83,6 +83,8 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
+	// assertClientsState(t, allClients)
+
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
 	})
@@ -98,7 +100,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 
 	shortAccessTTL := 5 * time.Minute
 
-	baseScenario, err := NewScenario()
+	baseScenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
 	baseScenario.pool.MaxWait = 5 * time.Minute
@@ -139,6 +141,8 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
+
+	// assertClientsState(t, allClients)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()

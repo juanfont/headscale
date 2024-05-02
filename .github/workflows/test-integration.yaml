@@ -1,0 +1,115 @@
+name: Integration Tests
+on: [pull_request]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - TestACLHostsInNetMapTable
+          - TestACLAllowUser80Dst
+          - TestACLDenyAllPort80
+          - TestACLAllowUserDst
+          - TestACLAllowStarDst
+          - TestACLNamedHostsCanReachBySubnet
+          - TestACLNamedHostsCanReach
+          - TestACLDevice1CanAccessDevice2
+          - TestOIDCAuthenticationPingAll
+          - TestOIDCExpireNodesBasedOnTokenExpiry
+          - TestAuthWebFlowAuthenticationPingAll
+          - TestAuthWebFlowLogoutAndRelogin
+          - TestUserCommand
+          - TestPreAuthKeyCommand
+          - TestPreAuthKeyCommandWithoutExpiry
+          - TestPreAuthKeyCommandReusableEphemeral
+          - TestPreAuthKeyCorrectUserLoggedInCommand
+          - TestApiKeyCommand
+          - TestNodeTagCommand
+          - TestNodeAdvertiseTagNoACLCommand
+          - TestNodeAdvertiseTagWithACLCommand
+          - TestNodeCommand
+          - TestNodeExpireCommand
+          - TestNodeRenameCommand
+          - TestNodeMoveCommand
+          - TestDERPServerScenario
+          - TestPingAllByIP
+          - TestPingAllByIPPublicDERP
+          - TestAuthKeyLogoutAndRelogin
+          - TestEphemeral
+          - TestPingAllByHostname
+          - TestTaildrop
+          - TestResolveMagicDNS
+          - TestExpireNode
+          - TestNodeOnlineStatus
+          - TestPingAllByIPManyUpDown
+          - TestEnablingRoutes
+          - TestHASubnetRouterFailover
+          - TestEnableDisableAutoApprovedRoute
+          - TestSubnetRouteACL
+          - TestHeadscale
+          - TestCreateTailscale
+          - TestTailscaleNodesJoiningHeadcale
+          - TestSSHOneUserToAll
+          - TestSSHMultipleUsersAllToAll
+          - TestSSHNoSSHConfigured
+          - TestSSHIsBlockedInACL
+          - TestSSHUserOnlyIsolation
+        database: [postgres, sqlite]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Get changed files
+        id: changed-files
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration_test/'
+              - 'config-example.yaml'
+      - uses: DeterminateSystems/nix-installer-action@main
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: satackey/action-docker-layer-caching@main
+        if: steps.changed-files.outputs.files == 'true'
+        continue-on-error: true
+      - name: Run Integration Test
+        uses: Wandalen/wretry.action@master
+        if: steps.changed-files.outputs.files == 'true'
+        env:
+          USE_POSTGRES: ${{ matrix.database == 'postgres' && '1' || '0' }}
+        with:
+          attempt_limit: 5
+          command: |
+            nix develop --command -- docker run \
+              --tty --rm \
+              --volume ~/.cache/hs-integration-go:/go \
+              --name headscale-test-suite \
+              --volume $PWD:$PWD -w $PWD/integration \
+              --volume /var/run/docker.sock:/var/run/docker.sock \
+              --volume $PWD/control_logs:/tmp/control \
+              --env HEADSCALE_INTEGRATION_POSTGRES=${{env.USE_POSTGRES}} \
+              golang:1 \
+                go run gotest.tools/gotestsum@latest -- ./... \
+                  -failfast \
+                  -timeout 120m \
+                  -parallel 1 \
+                  -run "^${{ matrix.test }}$"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.changed-files.outputs.files == 'true'
+        with:
+          name: ${{ matrix.test }}-${{matrix.database}}-logs
+          path: "control_logs/*.log"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.changed-files.outputs.files == 'true'
+        with:
+          name: ${{ matrix.test }}-${{matrix.database}}-pprof
+          path: "control_logs/*.pprof.tar"

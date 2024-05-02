@@ -53,24 +53,43 @@ func TestTailNode(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name:       "empty-node",
-			node:       &types.Node{},
+			name: "empty-node",
+			node: &types.Node{
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
 			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
-			want:       nil,
-			wantErr:    true,
+			want: &tailcfg.Node{
+				StableID:          "0",
+				Addresses:         []netip.Prefix{},
+				AllowedIPs:        []netip.Prefix{},
+				DERP:              "127.3.3.40:0",
+				Hostinfo:          hiview(tailcfg.Hostinfo{}),
+				Tags:              []string{},
+				PrimaryRoutes:     []netip.Prefix{},
+				MachineAuthorized: true,
+				Capabilities: []tailcfg.NodeCapability{
+					"https://tailscale.com/cap/file-sharing", "https://tailscale.com/cap/is-admin",
+					"https://tailscale.com/cap/ssh", "debug-disable-upnp",
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "minimal-node",
 			node: &types.Node{
-				ID:         0,
-				MachineKey: "mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-				NodeKey:    "nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-				DiscoKey:   "discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-				IPAddresses: []netip.Addr{
-					netip.MustParseAddr("100.64.0.1"),
-				},
+				ID: 0,
+				MachineKey: mustMK(
+					"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+				),
+				NodeKey: mustNK(
+					"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+				),
+				DiscoKey: mustDK(
+					"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+				),
+				IPv4:      iap("100.64.0.1"),
 				Hostname:  "mini",
 				GivenName: "mini",
 				UserID:    0,
@@ -81,8 +100,7 @@ func TestTailNode(t *testing.T) {
 				AuthKey:    &types.PreAuthKey{},
 				LastSeen:   &lastSeen,
 				Expiry:     &expire,
-				HostInfo:   types.HostInfo{},
-				Endpoints:  []string{},
+				Hostinfo:   &tailcfg.Hostinfo{},
 				Routes: []types.Route{
 					{
 						Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),
@@ -132,10 +150,9 @@ func TestTailNode(t *testing.T) {
 					netip.MustParsePrefix("0.0.0.0/0"),
 					netip.MustParsePrefix("192.168.0.0/24"),
 				},
-				Endpoints: []string{},
-				DERP:      "127.3.3.40:0",
-				Hostinfo:  hiview(tailcfg.Hostinfo{}),
-				Created:   created,
+				DERP:     "127.3.3.40:0",
+				Hostinfo: hiview(tailcfg.Hostinfo{}),
+				Created:  created,
 
 				Tags: []string{},
 
@@ -144,14 +161,13 @@ func TestTailNode(t *testing.T) {
 				},
 
 				LastSeen:          &lastSeen,
-				Online:            new(bool),
-				KeepAlive:         true,
 				MachineAuthorized: true,
 
-				Capabilities: []string{
+				Capabilities: []tailcfg.NodeCapability{
 					tailcfg.CapabilityFileSharing,
 					tailcfg.CapabilityAdmin,
 					tailcfg.CapabilitySSH,
+					tailcfg.NodeAttrDisableUPnP,
 				},
 			},
 			wantErr: false,
@@ -163,11 +179,16 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cfg := &types.Config{
+				BaseDomain:          tt.baseDomain,
+				DNSConfig:           tt.dnsConfig,
+				RandomizeClientPort: false,
+			}
 			got, err := tailNode(
 				tt.node,
+				0,
 				tt.pol,
-				tt.dnsConfig,
-				tt.baseDomain,
+				cfg,
 			)
 
 			if (err != nil) != tt.wantErr {

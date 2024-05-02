@@ -51,7 +51,7 @@ func aclScenario(
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
 	spec := map[string]int{
@@ -264,7 +264,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
-			scenario, err := NewScenario()
+			scenario, err := NewScenario(dockertestMaxWait())
 			assertNoErr(t, err)
 
 			spec := testCase.users
@@ -415,7 +415,7 @@ func TestACLAllowUserDst(t *testing.T) {
 		},
 		2,
 	)
-	defer scenario.Shutdown()
+	// defer scenario.Shutdown()
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	assertNoErr(t, err)

@@ -33,8 +33,7 @@ The following example configuration can be used in your nginx setup, substitutin
 
 ```Nginx
 map $http_upgrade $connection_upgrade {
-    default      keep-alive;
-    'websocket'  upgrade;
+    default      upgrade;
     ''           close;
 }
 
@@ -61,7 +60,7 @@ server {
         proxy_buffering off;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        proxy_set_header X-Forwarded-Proto $scheme;
         add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
     }
 }

@@ -15,47 +15,47 @@ This includes running Headscale with SystemD.
 If you are migrating from the old manual install, the best thing would be to remove
 the files installed by following [the guide in reverse](./running-headscale-linux-manual.md).
 
-You should _not_ delete the database (`/var/headscale/db.sqlite`) and the
+You should _not_ delete the database (`/var/lib/headscale/db.sqlite`) and the
 configuration (`/etc/headscale/config.yaml`).
 
 ## Installation
 
-1. Download the lastest Headscale package for your platform (`.deb` for Ubuntu and Debian) from [Headscale's releases page](https://github.com/juanfont/headscale/releases):
+1. Download the latest Headscale package for your platform (`.deb` for Ubuntu and Debian) from [Headscale's releases page](https://github.com/juanfont/headscale/releases):
 
-```shell
-wget --output-document=headscale.deb \
-  https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>.deb
-```
+    ```shell
+    wget --output-document=headscale.deb \
+      https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>.deb
+    ```
 
-2. Install Headscale:
+1. Install Headscale:
 
-```shell
-sudo dpkg --install headscale.deb
-```
+    ```shell
+    sudo apt install headscale.deb
+    ```
 
-3. Enable Headscale service, this will start Headscale at boot:
+1. Enable Headscale service, this will start Headscale at boot:
 
-```shell
-sudo systemctl enable headscale
-```
+    ```shell
+    sudo systemctl enable headscale
+    ```
 
-4. Configure Headscale by editing the configuration file:
+1. Configure Headscale by editing the configuration file:
 
-```shell
-nano /etc/headscale/config.yaml
-```
+    ```shell
+    nano /etc/headscale/config.yaml
+    ```
 
-5. Start Headscale:
+1. Start Headscale:
 
-```shell
-sudo systemctl start headscale
-```
+    ```shell
+    sudo systemctl start headscale
+    ```
 
-6. Check that Headscale is running as intended:
+1. Check that Headscale is running as intended:
 
-```shell
-systemctl status headscale
-```
+    ```shell
+    systemctl status headscale
+    ```
 
 ## Using Headscale
 

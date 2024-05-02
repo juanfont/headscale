@@ -2,7 +2,6 @@ package types
 
 import (
 	"strconv"
-	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -22,13 +21,13 @@ type User struct {
 
 func (n *User) TailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
-		ID:            tailcfg.UserID(n.ID),
-		LoginName:     n.Name,
-		DisplayName:   n.Name,
+		ID:          tailcfg.UserID(n.ID),
+		LoginName:   n.Name,
+		DisplayName: n.Name,
+		// TODO(kradalby): See if we can fill in Gravatar here
 		ProfilePicURL: "",
-		Domain:        "headscale.net",
 		Logins:        []tailcfg.LoginID{},
-		Created:       time.Time{},
+		Created:       n.CreatedAt,
 	}
 
 	return &user
@@ -36,11 +35,11 @@ func (n *User) TailscaleUser() *tailcfg.User {
 
 func (n *User) TailscaleLogin() *tailcfg.Login {
 	login := tailcfg.Login{
-		ID:            tailcfg.LoginID(n.ID),
-		LoginName:     n.Name,
-		DisplayName:   n.Name,
+		ID:          tailcfg.LoginID(n.ID),
+		LoginName:   n.Name,
+		DisplayName: n.Name,
+		// TODO(kradalby): See if we can fill in Gravatar here
 		ProfilePicURL: "",
-		Domain:        "headscale.net",
 	}
 
 	return &login

@@ -6,7 +6,9 @@ import (
 	"log"
 	"net/netip"
 	"os"
+	"sort"
 	"sync"
+	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -14,13 +16,30 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
-	"github.com/puzpuzpuz/xsync/v2"
+	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
+	"tailscale.com/envknob"
 )
 
 const (
 	scenarioHashLength = 6
 )
+
+var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
+
+func enabledVersions(vs map[string]bool) []string {
+	var ret []string
+	for version, enabled := range vs {
+		if enabled {
+			ret = append(ret, version)
+		}
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(ret)))
+
+	return ret
+}
 
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
@@ -29,28 +48,34 @@ var (
 
 	// Tailscale started adding TS2021 support in CapabilityVersion>=28 (v1.24.0), but
 	// proper support in Headscale was only added for CapabilityVersion>=39 clients (v1.30.0).
-	tailscaleVersions2021 = []string{
-		"head",
-		"unstable",
-		"1.48",
-		"1.46",
-		"1.44",
-		"1.42",
-		"1.40",
-		"1.38",
-		"1.36",
-		"1.34",
-		"1.32",
-		"1.30",
+	tailscaleVersions2021 = map[string]bool{
+		"head":     true,
+		"unstable": true,
+		"1.60":     true,  // CapVer: 82
+		"1.58":     true,  // CapVer: 82
+		"1.56":     true,  // CapVer: 82
+		"1.54":     true,  // CapVer: 79
+		"1.52":     true,  // CapVer: 79
+		"1.50":     true,  // CapVer: 74
+		"1.48":     true,  // CapVer: 68
+		"1.46":     true,  // CapVer: 65
+		"1.44":     true,  // CapVer: 63
+		"1.42":     true,  // CapVer: 61
+		"1.40":     true,  // CapVer: 61
+		"1.38":     true,  // Oldest supported version, CapVer: 58
+		"1.36":     false, // CapVer: 56
+		"1.34":     false, // CapVer: 51
+		"1.32":     false, // CapVer: 46
+		"1.30":     false,
 	}
 
-	tailscaleVersions2019 = []string{
-		"1.28",
-		"1.26",
-		"1.24", // Tailscale SSH
-		"1.22",
-		"1.20",
-		"1.18",
+	tailscaleVersions2019 = map[string]bool{
+		"1.28": false,
+		"1.26": false,
+		"1.24": false, // Tailscale SSH
+		"1.22": false,
+		"1.20": false,
+		"1.18": false,
 	}
 
 	// tailscaleVersionsUnavailable = []string{
@@ -71,8 +96,8 @@ var (
 	// The rest of the version represents Tailscale versions that can be
 	// found in Tailscale's apt repository.
 	AllVersions = append(
-		tailscaleVersions2021,
-		tailscaleVersions2019...,
+		enabledVersions(tailscaleVersions2021),
+		enabledVersions(tailscaleVersions2019)...,
 	)
 
 	// MustTestVersions is the minimum set of versions we should test.
@@ -80,10 +105,10 @@ var (
 	//
 	// - Two unstable (HEAD and unstable)
 	// - Two latest versions
-	// - Two oldest versions.
+	// - Two oldest supported version.
 	MustTestVersions = append(
-		tailscaleVersions2021[0:4],
-		tailscaleVersions2019[len(tailscaleVersions2019)-2:]...,
+		AllVersions[0:4],
+		AllVersions[len(AllVersions)-2:]...,
 	)
 )
 
@@ -117,7 +142,7 @@ type Scenario struct {
 
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
 // a set of Users and TailscaleClients.
-func NewScenario() (*Scenario, error) {
+func NewScenario(maxWait time.Duration) (*Scenario, error) {
 	hash, err := util.GenerateRandomStringDNSSafe(scenarioHashLength)
 	if err != nil {
 		return nil, err
@@ -128,7 +153,7 @@ func NewScenario() (*Scenario, error) {
 		return nil, fmt.Errorf("could not connect to docker: %w", err)
 	}
 
-	pool.MaxWait = dockertestMaxWait()
+	pool.MaxWait = maxWait
 
 	networkName := fmt.Sprintf("hs-%s", hash)
 	if overrideNetworkName := os.Getenv("HEADSCALE_TEST_NETWORK_NAME"); overrideNetworkName != "" {
@@ -149,7 +174,7 @@ func NewScenario() (*Scenario, error) {
 	}
 
 	return &Scenario{
-		controlServers: xsync.NewMapOf[ControlServer](),
+		controlServers: xsync.NewMapOf[string, ControlServer](),
 		users:          make(map[string]*User),
 
 		pool:    pool,
@@ -283,11 +308,13 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 	opts ...tsic.Option,
 ) error {
 	if user, ok := s.users[userStr]; ok {
+		var versions []string
 		for i := 0; i < count; i++ {
 			version := requestedVersion
 			if requestedVersion == "all" {
 				version = MustTestVersions[i%len(MustTestVersions)]
 			}
+			versions = append(versions, version)
 
 			headscale, err := s.Headscale()
 			if err != nil {
@@ -336,6 +363,8 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 		if err := user.createWaitGroup.Wait(); err != nil {
 			return err
 		}
+
+		log.Printf("testing versions %v, MustTestVersions %v", lo.Uniq(versions), MustTestVersions)
 
 		return nil
 	}
@@ -390,7 +419,17 @@ func (s *Scenario) CountTailscale() int {
 func (s *Scenario) WaitForTailscaleSync() error {
 	tsCount := s.CountTailscale()
 
-	return s.WaitForTailscaleSyncWithPeerCount(tsCount - 1)
+	err := s.WaitForTailscaleSyncWithPeerCount(tsCount - 1)
+	if err != nil {
+		for _, user := range s.users {
+			for _, client := range user.Clients {
+				peers, _ := client.PrettyPeers()
+				log.Println(peers)
+			}
+		}
+	}
+
+	return err
 }
 
 // WaitForTailscaleSyncWithPeerCount blocks execution until all the TailscaleClient reports
@@ -419,6 +458,10 @@ func (s *Scenario) CreateHeadscaleEnv(
 	tsOpts []tsic.Option,
 	opts ...hsic.Option,
 ) error {
+	if usePostgresForTest {
+		opts = append(opts, hsic.WithPostgres())
+	}
+
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
@@ -468,7 +511,7 @@ func (s *Scenario) GetIPs(user string) ([]netip.Addr, error) {
 	return ips, fmt.Errorf("failed to get ips: %w", errNoUserAvailable)
 }
 
-// GetIPs returns all TailscaleClients associated with a User in a Scenario.
+// GetClients returns all TailscaleClients associated with a User in a Scenario.
 func (s *Scenario) GetClients(user string) ([]TailscaleClient, error) {
 	var clients []TailscaleClient
 	if ns, ok := s.users[user]; ok {
@@ -544,7 +587,7 @@ func (s *Scenario) ListTailscaleClientsIPs(users ...string) ([]netip.Addr, error
 	return allIps, nil
 }
 
-// ListTailscaleClientsIPs returns a list of FQDN based on Users
+// ListTailscaleClientsFQDNs returns a list of FQDN based on Users
 // passed as parameters.
 func (s *Scenario) ListTailscaleClientsFQDNs(users ...string) ([]string, error) {
 	allFQDNs := make([]string, 0)

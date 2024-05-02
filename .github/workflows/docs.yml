@@ -1,4 +1,5 @@
 name: Build documentation
+
 on:
   push:
     branches:
@@ -15,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install python
         uses: actions/setup-python@v4
         with:
@@ -26,20 +27,26 @@ jobs:
           key: ${{ github.ref }}
           path: .cache
       - name: Setup dependencies
-        run: pip install mkdocs-material pillow cairosvg mkdocs-minify-plugin
+        run: pip install -r docs/requirements.txt
       - name: Build docs
         run: mkdocs build --strict
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./site
+
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v4
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v1
+        uses: actions/deploy-pages@v4

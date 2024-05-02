@@ -1,28 +1,24 @@
-# Builder image
-FROM docker.io/golang:1.20-bullseye AS build
+# This Dockerfile and the images produced are for testing headscale,
+# and are in no way endorsed by Headscale's maintainers as an
+# official nor supported release or distribution.
+
+FROM docker.io/golang:1.22-bookworm
 ARG VERSION=dev
 ENV GOPATH /go
 WORKDIR /go/src/headscale
+
+RUN apt-get update \
+  && apt-get install --no-install-recommends --yes less jq \
+  && rm -rf /var/lib/apt/lists/* \
+  && apt-get clean
+RUN mkdir -p /var/run/headscale
 
 COPY go.mod go.sum /go/src/headscale/
 RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go install -tags ts2019 -ldflags="-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$VERSION" -a ./cmd/headscale
-RUN test -e /go/bin/headscale
-
-# Debug image
-FROM docker.io/golang:1.20.0-bullseye
-
-COPY --from=build /go/bin/headscale /bin/headscale
-ENV TZ UTC
-
-RUN apt-get update \
-    && apt-get install --no-install-recommends --yes less jq \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-RUN mkdir -p /var/run/headscale
+RUN CGO_ENABLED=0 GOOS=linux go install -ldflags="-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$VERSION" -a ./cmd/headscale && test -e /go/bin/headscale
 
 # Need to reset the entrypoint or everything will run as a busybox script
 ENTRYPOINT []

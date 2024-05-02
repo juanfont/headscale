@@ -1,4 +1,5 @@
 name: Close inactive issues
+
 on:
   schedule:
     - cron: "30 1 * * *"
@@ -10,12 +11,12 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/stale@v5
+      - uses: actions/stale@v9
         with:
-          days-before-issue-stale: 180
-          days-before-issue-close: 14
+          days-before-issue-stale: 90
+          days-before-issue-close: 7
           stale-issue-label: "stale"
-          stale-issue-message: "This issue is stale because it has been open for 180 days with no activity."
+          stale-issue-message: "This issue is stale because it has been open for 90 days with no activity."
           close-issue-message: "This issue was closed because it has been inactive for 14 days since being marked as stale."
           days-before-pr-stale: -1
           days-before-pr-close: -1

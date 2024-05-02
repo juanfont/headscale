@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
+	"tailscale.com/types/key"
 )
 
 const (
@@ -93,11 +93,13 @@ var createNodeCmd = &cobra.Command{
 
 			return
 		}
-		if !util.NodePublicKeyRegex.Match([]byte(machineKey)) {
-			err = errPreAuthKeyMalformed
+
+		var mkey key.MachinePublic
+		err = mkey.UnmarshalText([]byte(machineKey))
+		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error: %s", err),
+				fmt.Sprintf("Failed to parse machine key from flag: %s", err),
 				output,
 			)
 
@@ -133,6 +135,6 @@ var createNodeCmd = &cobra.Command{
 			return
 		}
 
-		SuccessOutput(response.Node, "Node created", output)
+		SuccessOutput(response.GetNode(), "Node created", output)
 	},
 }

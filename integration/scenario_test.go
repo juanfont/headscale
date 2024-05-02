@@ -33,7 +33,7 @@ func TestHeadscale(t *testing.T) {
 
 	user := "test-space"
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -78,7 +78,7 @@ func TestCreateTailscale(t *testing.T) {
 
 	user := "only-create-containers"
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -114,7 +114,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 
 	count := 1
 
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 	defer scenario.Shutdown()
 
@@ -142,7 +142,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	})
 
 	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInUser(user, "1.30.2", count)
+		err := scenario.CreateTailscaleNodesInUser(user, "unstable", count)
 		if err != nil {
 			t.Fatalf("failed to add tailscale nodes: %s", err)
 		}
