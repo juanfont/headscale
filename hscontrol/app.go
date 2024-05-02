@@ -800,10 +800,23 @@ func (h *Headscale) Serve() error {
 				}
 
 			default:
+				trace := log.Trace().Msgf
 				log.Info().
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
 
+				trace("closing map sessions")
+				wg := sync.WaitGroup{}
+				for _, mapSess := range h.mapSessions {
+					wg.Add(1)
+					go func() {
+						mapSess.close()
+						wg.Done()
+					}()
+				}
+				wg.Wait()
+
+				trace("waiting for netmap stream to close")
 				h.pollNetMapStreamWG.Wait()
 
 				// Gracefully shut down servers
@@ -811,32 +824,44 @@ func (h *Headscale) Serve() error {
 					context.Background(),
 					types.HTTPShutdownTimeout,
 				)
+				trace("shutting down debug http server")
 				if err := debugHTTPServer.Shutdown(ctx); err != nil {
 					log.Error().Err(err).Msg("Failed to shutdown prometheus http")
 				}
+				trace("shutting down main http server")
 				if err := httpServer.Shutdown(ctx); err != nil {
 					log.Error().Err(err).Msg("Failed to shutdown http")
 				}
+
+				trace("shutting down grpc server (socket)")
 				grpcSocket.GracefulStop()
 
 				if grpcServer != nil {
+					trace("shutting down grpc server (external)")
 					grpcServer.GracefulStop()
 					grpcListener.Close()
 				}
 
 				if tailsqlContext != nil {
+					trace("shutting down tailsql")
 					tailsqlContext.Done()
 				}
 
+				trace("closing node notifier")
+				h.nodeNotifier.Close()
+
 				// Close network listeners
+				trace("closing network listeners")
 				debugHTTPListener.Close()
 				httpListener.Close()
 				grpcGatewayConn.Close()
 
 				// Stop listening (and unlink the socket if unix type):
+				trace("closing socket listener")
 				socketListener.Close()
 
 				// Close db connections
+				trace("closing database connection")
 				err = h.db.Close()
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to close db")
