@@ -625,7 +625,16 @@ func TestFailoverNodeRoutesIfNeccessary(t *testing.T) {
 
 			db := dbForTest(t, tt.name)
 
+			user := types.User{Name: tt.name}
+			if err := db.DB.Save(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %s", err)
+			}
+
 			for _, route := range tt.routes {
+				route.Node.User = user
+				if err := db.DB.Save(&route.Node).Error; err != nil {
+					t.Fatalf("failed to create node: %s", err)
+				}
 				if err := db.DB.Save(&route).Error; err != nil {
 					t.Fatalf("failed to create route: %s", err)
 				}
@@ -1021,8 +1030,16 @@ func TestFailoverRouteTx(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := dbForTest(t, tt.name)
+			user := types.User{Name: "test"}
+			if err := db.DB.Save(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %s", err)
+			}
 
 			for _, route := range tt.routes {
+				route.Node.User = user
+				if err := db.DB.Save(&route.Node).Error; err != nil {
+					t.Fatalf("failed to create node: %s", err)
+				}
 				if err := db.DB.Save(&route).Error; err != nil {
 					t.Fatalf("failed to create route: %s", err)
 				}
