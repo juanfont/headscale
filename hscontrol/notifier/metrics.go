@@ -34,4 +34,9 @@ var (
 		Name:      "notifier_open_channels_total",
 		Help:      "total count open channels in notifier",
 	})
+	notifierBatcherWaitersForLock = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "notifier_batcher_waiters_for_lock_total",
+		Help:      "gauge of waiters for the notifier batcher lock",
+	}, []string{"type", "action"})
 )
