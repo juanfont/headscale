@@ -169,18 +169,20 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 }
 
 func (n *Notifier) String() string {
+	notifierWaitersForLock.WithLabelValues("rlock", "string").Inc()
 	n.l.RLock()
 	defer n.l.RUnlock()
+	notifierWaitersForLock.WithLabelValues("rlock", "string").Dec()
 
 	var b strings.Builder
-	b.WriteString("chans:\n")
+	fmt.Fprintf(&b, "chans (%d):\n", len(n.nodes))
 
 	for k, v := range n.nodes {
 		fmt.Fprintf(&b, "\t%d: %p\n", k, v)
 	}
 
 	b.WriteString("\n")
-	b.WriteString("connected:\n")
+	fmt.Fprintf(&b, "connected (%d):\n", len(n.nodes))
 
 	n.connected.Range(func(k types.NodeID, v bool) bool {
 		fmt.Fprintf(&b, "\t%d: %t\n", k, v)
