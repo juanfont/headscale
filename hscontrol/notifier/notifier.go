@@ -236,10 +236,10 @@ func (b *batcher) close() {
 // addOrPassthrough adds the update to the batcher, if it is not a
 // type that is currently batched, it will be sent immediately.
 func (b *batcher) addOrPassthrough(update types.StateUpdate) {
-	notifierWaitersForLock.WithLabelValues("lock", "add").Inc()
+	notifierBatcherWaitersForLock.WithLabelValues("lock", "add").Inc()
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	notifierWaitersForLock.WithLabelValues("lock", "add").Dec()
+	notifierBatcherWaitersForLock.WithLabelValues("lock", "add").Dec()
 
 	switch update.Type {
 	case types.StatePeerChanged:
@@ -267,10 +267,10 @@ func (b *batcher) addOrPassthrough(update types.StateUpdate) {
 // flush sends all the accumulated patches to all
 // nodes in the notifier.
 func (b *batcher) flush() {
-	notifierWaitersForLock.WithLabelValues("lock", "flush").Inc()
+	notifierBatcherWaitersForLock.WithLabelValues("lock", "flush").Inc()
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	notifierWaitersForLock.WithLabelValues("lock", "flush").Inc()
+	notifierBatcherWaitersForLock.WithLabelValues("lock", "flush").Dec()
 
 	if b.nodesChanged || b.patchesChanged {
 		var patches []*tailcfg.PeerChange
