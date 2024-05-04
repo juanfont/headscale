@@ -232,10 +232,12 @@ func (m *mapSession) serve() {
 		select {
 		case <-m.cancelCh:
 			m.tracef("poll cancelled received")
+			mapResponseEnded.WithLabelValues("cancelled").Inc()
 			return
 
 		case <-ctx.Done():
 			m.tracef("poll context done")
+			mapResponseEnded.WithLabelValues("done").Inc()
 			return
 
 		// Consume updates sent to node

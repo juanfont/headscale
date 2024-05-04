@@ -47,6 +47,11 @@ var (
 		Name:      "mapresponse_rejected_new_sessions_total",
 		Help:      "total count of new mapsessions rejected",
 	}, []string{"reason"})
+	mapResponseRejected = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: prometheusNamespace,
+		Name:      "mapresponse_ended_total",
+		Help:      "total count of new mapsessions ended",
+	}, []string{"reason"})
 	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: prometheusNamespace,
 		Name:      "http_duration_seconds",
