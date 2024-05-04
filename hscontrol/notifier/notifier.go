@@ -40,15 +40,11 @@ func (n *Notifier) Close() {
 }
 
 func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
-	log.Trace().Caller().Uint64("node.id", nodeID.Uint64()).Msg("acquiring lock to add node")
-	defer log.Trace().
-		Caller().
-		Uint64("node.id", nodeID.Uint64()).
-		Msg("releasing lock to add node")
-
 	start := time.Now()
+	notifierWaitersForLock.WithLabelValues("lock", "add").Inc()
 	n.l.Lock()
 	defer n.l.Unlock()
+	notifierWaitersForLock.WithLabelValues("lock", "add").Dec()
 	notifierWaitForLock.WithLabelValues("add").Observe(time.Since(start).Seconds())
 
 	n.nodes[nodeID] = c
@@ -62,15 +58,11 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 }
 
 func (n *Notifier) RemoveNode(nodeID types.NodeID) {
-	log.Trace().Caller().Uint64("node.id", nodeID.Uint64()).Msg("acquiring lock to remove node")
-	defer log.Trace().
-		Caller().
-		Uint64("node.id", nodeID.Uint64()).
-		Msg("releasing lock to remove node")
-
 	start := time.Now()
+	notifierWaitersForLock.WithLabelValues("lock", "remove").Inc()
 	n.l.Lock()
 	defer n.l.Unlock()
+	notifierWaitersForLock.WithLabelValues("lock", "remove").Dec()
 	notifierWaitForLock.WithLabelValues("remove").Observe(time.Since(start).Seconds())
 
 	if len(n.nodes) == 0 {
@@ -90,8 +82,10 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID) {
 // IsConnected reports if a node is connected to headscale and has a
 // poll session open.
 func (n *Notifier) IsConnected(nodeID types.NodeID) bool {
+	notifierWaitersForLock.WithLabelValues("rlock", "conncheck").Inc()
 	n.l.RLock()
 	defer n.l.RUnlock()
+	notifierWaitersForLock.WithLabelValues("rlock", "conncheck").Dec()
 
 	if val, ok := n.connected.Load(nodeID); ok {
 		return val
@@ -130,15 +124,11 @@ func (n *Notifier) NotifyByNodeID(
 	update types.StateUpdate,
 	nodeID types.NodeID,
 ) {
-	log.Trace().Caller().Str("type", update.Type.String()).Msg("acquiring lock to notify")
-	defer log.Trace().
-		Caller().
-		Str("type", update.Type.String()).
-		Msg("releasing lock, finished notifying")
-
 	start := time.Now()
+	notifierWaitersForLock.WithLabelValues("rlock", "notify").Inc()
 	n.l.RLock()
 	defer n.l.RUnlock()
+	notifierWaitersForLock.WithLabelValues("rlock", "notify").Dec()
 	notifierWaitForLock.WithLabelValues("notify").Observe(time.Since(start).Seconds())
 
 	if c, ok := n.nodes[nodeID]; ok {
@@ -166,29 +156,45 @@ func (n *Notifier) NotifyByNodeID(
 
 func (n *Notifier) sendAll(update types.StateUpdate) {
 	start := time.Now()
+	notifierWaitersForLock.WithLabelValues("rlock", "send-all").Inc()
 	n.l.RLock()
 	defer n.l.RUnlock()
+	notifierWaitersForLock.WithLabelValues("rlock", "send-all").Dec()
 	notifierWaitForLock.WithLabelValues("send-all").Observe(time.Since(start).Seconds())
 
-	for _, c := range n.nodes {
-		c <- update
-		notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all").Inc()
+	for id, c := range n.nodes {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		select {
+		case <-ctx.Done():
+			log.Error().
+				Err(ctx.Err()).
+				Uint64("node.id", id.Uint64()).
+				Msgf("update not sent, context cancelled")
+			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), "send-all").Inc()
+
+			return
+		case c <- update:
+			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all").Inc()
+		}
 	}
 }
 
 func (n *Notifier) String() string {
+	notifierWaitersForLock.WithLabelValues("rlock", "string").Inc()
 	n.l.RLock()
 	defer n.l.RUnlock()
+	notifierWaitersForLock.WithLabelValues("rlock", "string").Dec()
 
 	var b strings.Builder
-	b.WriteString("chans:\n")
+	fmt.Fprintf(&b, "chans (%d):\n", len(n.nodes))
 
 	for k, v := range n.nodes {
 		fmt.Fprintf(&b, "\t%d: %p\n", k, v)
 	}
 
 	b.WriteString("\n")
-	b.WriteString("connected:\n")
+	fmt.Fprintf(&b, "connected (%d):\n", len(n.nodes))
 
 	n.connected.Range(func(k types.NodeID, v bool) bool {
 		fmt.Fprintf(&b, "\t%d: %t\n", k, v)
@@ -230,13 +236,16 @@ func (b *batcher) close() {
 // addOrPassthrough adds the update to the batcher, if it is not a
 // type that is currently batched, it will be sent immediately.
 func (b *batcher) addOrPassthrough(update types.StateUpdate) {
+	notifierBatcherWaitersForLock.WithLabelValues("lock", "add").Inc()
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	notifierBatcherWaitersForLock.WithLabelValues("lock", "add").Dec()
 
 	switch update.Type {
 	case types.StatePeerChanged:
 		b.changedNodeIDs.Add(update.ChangeNodes...)
 		b.nodesChanged = true
+		notifierBatcherChanges.WithLabelValues().Set(float64(b.changedNodeIDs.Len()))
 
 	case types.StatePeerChangedPatch:
 		for _, newPatch := range update.ChangePatches {
@@ -248,6 +257,7 @@ func (b *batcher) addOrPassthrough(update types.StateUpdate) {
 			}
 		}
 		b.patchesChanged = true
+		notifierBatcherPatches.WithLabelValues().Set(float64(len(b.patches)))
 
 	default:
 		b.n.sendAll(update)
@@ -257,8 +267,10 @@ func (b *batcher) addOrPassthrough(update types.StateUpdate) {
 // flush sends all the accumulated patches to all
 // nodes in the notifier.
 func (b *batcher) flush() {
+	notifierBatcherWaitersForLock.WithLabelValues("lock", "flush").Inc()
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	notifierBatcherWaitersForLock.WithLabelValues("lock", "flush").Dec()
 
 	if b.nodesChanged || b.patchesChanged {
 		var patches []*tailcfg.PeerChange
@@ -296,8 +308,10 @@ func (b *batcher) flush() {
 		}
 
 		b.changedNodeIDs = set.Slice[types.NodeID]{}
+		notifierBatcherChanges.WithLabelValues().Set(0)
 		b.nodesChanged = false
 		b.patches = make(map[types.NodeID]tailcfg.PeerChange, len(b.patches))
+		notifierBatcherPatches.WithLabelValues().Set(0)
 		b.patchesChanged = false
 	}
 }

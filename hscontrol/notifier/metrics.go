@@ -8,6 +8,11 @@ import (
 const prometheusNamespace = "headscale"
 
 var (
+	notifierWaitersForLock = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "notifier_waiters_for_lock",
+		Help:      "gauge of waiters for the notifier lock",
+	}, []string{"type", "action"})
 	notifierWaitForLock = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: prometheusNamespace,
 		Name:      "notifier_wait_for_lock_seconds",
@@ -29,4 +34,19 @@ var (
 		Name:      "notifier_open_channels_total",
 		Help:      "total count open channels in notifier",
 	})
+	notifierBatcherWaitersForLock = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "notifier_batcher_waiters_for_lock",
+		Help:      "gauge of waiters for the notifier batcher lock",
+	}, []string{"type", "action"})
+	notifierBatcherChanges = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "notifier_batcher_changes_pending",
+		Help:      "gauge of full changes pending in the notifier batcher",
+	}, []string{})
+	notifierBatcherPatches = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "notifier_batcher_patches_pending",
+		Help:      "gauge of patches pending in the notifier batcher",
+	}, []string{})
 )

@@ -105,14 +105,17 @@ func (m *mapSession) close() {
 	defer m.cancelChMu.Unlock()
 
 	if !m.cancelChOpen {
+		mapResponseClosed.WithLabelValues("chanclosed").Inc()
 		return
 	}
 
 	m.tracef("mapSession (%p) sending message on cancel chan", m)
 	select {
 	case m.cancelCh <- struct{}{}:
+		mapResponseClosed.WithLabelValues("sent").Inc()
 		m.tracef("mapSession (%p) sent message on cancel chan", m)
 	case <-time.After(30 * time.Second):
+		mapResponseClosed.WithLabelValues("timeout").Inc()
 		m.tracef("mapSession (%p) timed out sending close message", m)
 	}
 }
@@ -232,12 +235,15 @@ func (m *mapSession) serve() {
 		select {
 		case <-m.cancelCh:
 			m.tracef("poll cancelled received")
-			return
-		case <-ctx.Done():
-			m.tracef("poll context done")
+			mapResponseEnded.WithLabelValues("cancelled").Inc()
 			return
 
-		// Consume all updates sent to node
+		case <-ctx.Done():
+			m.tracef("poll context done")
+			mapResponseEnded.WithLabelValues("done").Inc()
+			return
+
+		// Consume updates sent to node
 		case update := <-m.ch:
 			m.tracef("received stream update: %s %s", update.Type.String(), update.Message)
 			mapResponseUpdateReceived.WithLabelValues(update.Type.String()).Inc()
@@ -303,8 +309,6 @@ func (m *mapSession) serve() {
 
 				return
 			}
-
-			// log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startMapResp).Str("mkey", m.node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished making map response")
 
 			// Only send update if there is change
 			if data != nil {
