@@ -231,6 +231,7 @@ func (b *batcher) addOrPassthrough(update types.StateUpdate) {
 	case types.StatePeerChanged:
 		b.changedNodeIDs.Add(update.ChangeNodes...)
 		b.nodesChanged = true
+		notifierBatcherChanges.WithLabelValues().Set(float64(b.changedNodeIDs.Len()))
 
 	case types.StatePeerChangedPatch:
 		for _, newPatch := range update.ChangePatches {
@@ -242,6 +243,7 @@ func (b *batcher) addOrPassthrough(update types.StateUpdate) {
 			}
 		}
 		b.patchesChanged = true
+		notifierBatcherPatches.WithLabelValues().Set(float64(len(b.patches)))
 
 	default:
 		b.n.sendAll(update)
@@ -292,8 +294,10 @@ func (b *batcher) flush() {
 		}
 
 		b.changedNodeIDs = set.Slice[types.NodeID]{}
+		notifierBatcherChanges.WithLabelValues().Set(0)
 		b.nodesChanged = false
 		b.patches = make(map[types.NodeID]tailcfg.PeerChange, len(b.patches))
+		notifierBatcherPatches.WithLabelValues().Set(0)
 		b.patchesChanged = false
 	}
 }
