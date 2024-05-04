@@ -162,9 +162,21 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 	notifierWaitersForLock.WithLabelValues("rlock", "send-all").Dec()
 	notifierWaitForLock.WithLabelValues("send-all").Observe(time.Since(start).Seconds())
 
-	for _, c := range n.nodes {
-		c <- update
-		notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all").Inc()
+	for id, c := range n.nodes {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		select {
+		case <-ctx.Done():
+			log.Error().
+				Err(ctx.Err()).
+				Uint64("node.id", id.Uint64()).
+				Msgf("update not sent, context cancelled")
+			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), "send-all").Inc()
+
+			return
+		case c <- update:
+			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all").Inc()
+		}
 	}
 }
 

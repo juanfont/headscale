@@ -233,11 +233,12 @@ func (m *mapSession) serve() {
 		case <-m.cancelCh:
 			m.tracef("poll cancelled received")
 			return
+
 		case <-ctx.Done():
 			m.tracef("poll context done")
 			return
 
-		// Consume all updates sent to node
+		// Consume updates sent to node
 		case update := <-m.ch:
 			m.tracef("received stream update: %s %s", update.Type.String(), update.Message)
 			mapResponseUpdateReceived.WithLabelValues(update.Type.String()).Inc()
@@ -303,8 +304,6 @@ func (m *mapSession) serve() {
 
 				return
 			}
-
-			// log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startMapResp).Str("mkey", m.node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished making map response")
 
 			// Only send update if there is change
 			if data != nil {
