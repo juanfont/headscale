@@ -105,14 +105,17 @@ func (m *mapSession) close() {
 	defer m.cancelChMu.Unlock()
 
 	if !m.cancelChOpen {
+		mapResponseClosed.WithLabelValues("chanclosed").Inc()
 		return
 	}
 
 	m.tracef("mapSession (%p) sending message on cancel chan", m)
 	select {
 	case m.cancelCh <- struct{}{}:
+		mapResponseClosed.WithLabelValues("sent").Inc()
 		m.tracef("mapSession (%p) sent message on cancel chan", m)
 	case <-time.After(30 * time.Second):
+		mapResponseClosed.WithLabelValues("timeout").Inc()
 		m.tracef("mapSession (%p) timed out sending close message", m)
 	}
 }
