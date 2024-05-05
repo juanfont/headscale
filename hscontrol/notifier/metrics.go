@@ -23,7 +23,7 @@ var (
 		Namespace: prometheusNamespace,
 		Name:      "notifier_update_sent_total",
 		Help:      "total count of update sent on nodes channel",
-	}, []string{"status", "type", "trigger"})
+	}, []string{"status", "type", "trigger", "id"})
 	notifierUpdateReceived = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "notifier_update_received_total",

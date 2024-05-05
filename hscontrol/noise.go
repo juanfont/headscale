@@ -272,7 +272,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 			}()
 
 			sess.infof("mapSession (%p) has an open stream, rejecting new stream", sess)
-			mapResponseRejected.WithLabelValues("exists").Inc()
+			mapResponseRejected.WithLabelValues("exists", node.ID.NodeID().String()).Inc()
 			return
 		}
 
