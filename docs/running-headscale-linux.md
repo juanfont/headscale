@@ -32,7 +32,7 @@ configuration (`/etc/headscale/config.yaml`).
 1. Install Headscale:
 
     ```shell
-    sudo dpkg -i headscale.deb
+    sudo apt install ./headscale.deb
     ```
 
 1. Enable Headscale service, this will start Headscale at boot:
