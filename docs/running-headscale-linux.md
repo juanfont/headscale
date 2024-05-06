@@ -20,17 +20,19 @@ configuration (`/etc/headscale/config.yaml`).
 
 ## Installation
 
-1. Download the latest Headscale package for your platform (`.deb` for Ubuntu and Debian) from [Headscale's releases page](https://github.com/juanfont/headscale/releases):
+1. Download the [latest Headscale package](https://github.com/juanfont/headscale/releases/latest) for your platform (`.deb` for Ubuntu and Debian).
 
     ```shell
+    HEADSCALE_VERSION="" # See above URL for latest version, e.g. "X.Y.Z" (NOTE: do not add the "v" prefix!)
+    HEADSCALE_ARCH="" # Your system architecture, e.g. "amd64"
     wget --output-document=headscale.deb \
-      https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>.deb
+      "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_${HEADSCALE_ARCH}.deb"
     ```
 
 1. Install Headscale:
 
     ```shell
-    sudo apt install headscale.deb
+    sudo apt install ./headscale.deb
     ```
 
 1. Enable Headscale service, this will start Headscale at boot:
