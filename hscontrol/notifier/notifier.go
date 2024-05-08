@@ -140,7 +140,7 @@ func (n *Notifier) NotifyByNodeID(
 				Any("origin", types.NotifyOriginKey.Value(ctx)).
 				Any("origin-hostname", types.NotifyHostnameKey.Value(ctx)).
 				Msgf("update not sent, context cancelled")
-			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.NodeID().String()).Inc()
+			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.String()).Inc()
 
 			return
 		case c <- update:
@@ -149,7 +149,7 @@ func (n *Notifier) NotifyByNodeID(
 				Any("origin", ctx.Value("origin")).
 				Any("origin-hostname", ctx.Value("hostname")).
 				Msgf("update successfully sent on chan")
-			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.NodeID().String()).Inc()
+			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.String()).Inc()
 		}
 	}
 }
@@ -171,11 +171,11 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 				Err(ctx.Err()).
 				Uint64("node.id", id.Uint64()).
 				Msgf("update not sent, context cancelled")
-			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), "send-all", id.NodeID().String()).Inc()
+			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), "send-all", id.String()).Inc()
 
 			return
 		case c <- update:
-			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all", id.NodeID().String()).Inc()
+			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all", id.String()).Inc()
 		}
 	}
 }

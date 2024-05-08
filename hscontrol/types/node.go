@@ -43,6 +43,10 @@ func (id NodeID) Uint64() uint64 {
 	return uint64(id)
 }
 
+func (id NodeID) String() string {
+	return strconv.FormatUint(id.Uint64(), 10)
+}
+
 // Node is a Headscale client.
 type Node struct {
 	ID NodeID `gorm:"primary_key"`

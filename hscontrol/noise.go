@@ -231,67 +231,50 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 		return
 	}
-	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
-
-	sess.tracef("a node sending a MapRequest with Noise protocol")
 
 	// If a streaming mapSession exists for this node, close it
 	// and start a new one.
-	if sess.isStreaming() {
-		sess.tracef("aquiring lock to check stream")
-
+	if isStreaming(&mapRequest) {
 		ns.headscale.mapSessionMu.Lock()
-		if oldSession, ok := ns.headscale.mapSessions[node.ID]; ok {
-			// NOTE/TODO(kradalby): From how I understand the protocol, when
-			// a client connects with stream=true, and already has a streaming
-			// connection open, the correct way is to close the current channel
-			// and replace it. However, I cannot manage to get that working with
-			// some sort of lock/block happening on the cancelCh in the streaming
-			// session.
-			// Not closing the channel and replacing it puts us in a weird state
-			// which keeps a ghost stream open, receiving keep alives, but no updates.
-			//
-			// Typically a new connection is opened when one exists as a client which
-			// is already authenticated reconnects (e.g. down, then up). The client will
-			// start auth and streaming at the same time, and then cancel the streaming
-			// when the auth has finished successfully, opening a new connection.
-			//
-			// As a work-around to not replacing, abusing the clients "resilience"
-			// by reject the new connection which will cause the client to immediately
-			// reconnect and "fix" the issue, as the other connection typically has been
-			// closed, meaning there is nothing to replace.
-			//
-			// sess.infof("node has an open stream(%p), replacing with %p", oldSession, sess)
-			// oldSession.close()
-
+		if currentSession, ok := ns.headscale.mapSessions[node.ID]; ok {
 			defer ns.headscale.mapSessionMu.Unlock()
 
-			go func() {
-				oldSession.infof("mapSession (%p) is open, trying to close stream and replace with %p", oldSession, sess)
-				oldSession.close()
-			}()
+			currentSession.infof("mapSession is an open stream, replacing with new writer")
+			err := currentSession.replaceWriter(writer, mapRequest)
+			if err != nil {
+				log.Error().
+					Caller().
+					Err(err).
+					Msg("replacing writer in streaming session")
+				http.Error(writer, "Internal error", http.StatusInternalServerError)
+				mapResponseReplaced.WithLabelValues("error", "exists", node.ID.String()).Inc()
 
-			sess.infof("mapSession (%p) has an open stream, rejecting new stream", sess)
-			mapResponseRejected.WithLabelValues("exists", node.ID.NodeID().String()).Inc()
+				return
+			}
+
+			// TODO(kradalby): Verify if it is ok to return here? The writer is now
+			// attached to the old session and it should continue to serve the client?
+			mapResponseReplaced.WithLabelValues("ok", "exists", node.ID.String()).Inc()
 			return
+		} else {
+			sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
+			sess.tracef("a node sending a MapRequest with Noise protocol")
+
+			ns.headscale.mapSessions[node.ID] = sess
+			mapResponseSessions.Inc()
+			defer mapResponseSessions.Dec()
+			ns.headscale.mapSessionMu.Unlock()
+			sess.serve()
+			ns.headscale.mapSessionMu.Lock()
+			defer ns.headscale.mapSessionMu.Unlock()
+			delete(ns.headscale.mapSessions, node.ID)
 		}
-
-		ns.headscale.mapSessions[node.ID] = sess
-		mapResponseSessions.Inc()
-		ns.headscale.mapSessionMu.Unlock()
-		sess.tracef("releasing lock to check stream")
+	} else {
+		sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
+		sess.serve()
 	}
+}
 
-	sess.serve()
-
-	if sess.isStreaming() {
-		sess.tracef("aquiring lock to remove stream")
-		ns.headscale.mapSessionMu.Lock()
-		defer ns.headscale.mapSessionMu.Unlock()
-
-		delete(ns.headscale.mapSessions, node.ID)
-		mapResponseSessions.Dec()
-
-		sess.tracef("releasing lock to remove stream")
-	}
+func isStreaming(mapReq *tailcfg.MapRequest) bool {
+	return mapReq.Stream && !mapReq.ReadOnly
 }

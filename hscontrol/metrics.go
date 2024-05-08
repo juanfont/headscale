@@ -42,11 +42,11 @@ var (
 		Name:      "mapresponse_current_sessions_total",
 		Help:      "total count open map response sessions",
 	})
-	mapResponseRejected = promauto.NewCounterVec(prometheus.CounterOpts{
+	mapResponseReplaced = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
-		Name:      "mapresponse_rejected_new_sessions_total",
-		Help:      "total count of new mapsessions rejected",
-	}, []string{"reason", "id"})
+		Name:      "mapresponse_replaced_writer_total",
+		Help:      "total count of new mapsessions which has had a writer replaced",
+	}, []string{"status", "reason", "id"})
 	mapResponseEnded = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "mapresponse_ended_total",

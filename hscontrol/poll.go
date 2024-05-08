@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -51,6 +52,7 @@ type mapSession struct {
 
 	node *types.Node
 	w    http.ResponseWriter
+	rc   *http.ResponseController
 
 	warnf  func(string, ...any)
 	infof  func(string, ...any)
@@ -66,6 +68,7 @@ func (h *Headscale) newMapSession(
 ) *mapSession {
 	warnf, infof, tracef, errf := logPollFunc(req, node)
 
+	var rc *http.ResponseController
 	var updateChan chan types.StateUpdate
 	if req.Stream {
 		// Use a buffered channel in case a node is not fully ready
@@ -75,20 +78,29 @@ func (h *Headscale) newMapSession(
 		updateChan <- types.StateUpdate{
 			Type: types.StateFullUpdate,
 		}
+
+		// Upgrade the writer to a ResponseController
+		rc = http.NewResponseController(w)
+
+		// Longpolling will break if there is a write timeout,
+		// so it needs to be disabled.
+		rc.SetWriteDeadline(time.Time{})
 	}
 
 	return &mapSession{
 		h:      h,
 		ctx:    ctx,
 		req:    req,
-		w:      w,
-		node:   node,
 		capVer: req.Version,
 		mapper: h.mapper,
 
 		ch:           updateChan,
 		cancelCh:     make(chan struct{}),
 		cancelChOpen: true,
+
+		node: node,
+		w:    w,
+		rc:   rc,
 
 		keepAliveTicker: time.NewTicker(keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)),
 
@@ -98,6 +110,30 @@ func (h *Headscale) newMapSession(
 		tracef: tracef,
 		errf:   errf,
 	}
+}
+
+func (m *mapSession) replaceWriter(w http.ResponseWriter, mapReq tailcfg.MapRequest) error {
+	if !m.isStreaming() {
+		return errors.New("cannot replace writer on non-streaming session")
+	}
+
+	// Upgrade the writer to a ResponseController
+	rc := http.NewResponseController(m.w)
+
+	// Longpolling will break if there is a write timeout,
+	// so it needs to be disabled.
+	rc.SetWriteDeadline(time.Time{})
+
+	m.w = w
+	m.rc = rc
+	m.req = mapReq
+
+	// New writer means we need to send a new full update
+	m.ch <- types.StateUpdate{
+		Type: types.StateFullUpdate,
+	}
+
+	return nil
 }
 
 func (m *mapSession) close() {
@@ -218,13 +254,6 @@ func (m *mapSession) serve() {
 
 	m.pollFailoverRoutes("node connected", m.node)
 
-	// Upgrade the writer to a ResponseController
-	rc := http.NewResponseController(m.w)
-
-	// Longpolling will break if there is a write timeout,
-	// so it needs to be disabled.
-	rc.SetWriteDeadline(time.Time{})
-
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
 	defer cancel()
 
@@ -320,7 +349,7 @@ func (m *mapSession) serve() {
 					return
 				}
 
-				err = rc.Flush()
+				err = m.rc.Flush()
 				if err != nil {
 					mapResponseSent.WithLabelValues("error", updateType).Inc()
 					m.errf(err, "flushing the map response to client, for mapSession: %p", m)
@@ -346,7 +375,7 @@ func (m *mapSession) serve() {
 				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
 				return
 			}
-			err = rc.Flush()
+			err = m.rc.Flush()
 			if err != nil {
 				m.errf(err, "flushing keep alive to client, for mapSession: %p", m)
 				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
@@ -602,11 +631,11 @@ func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.Pe
 	trace := log.Trace().Uint64("node.id", uint64(change.NodeID)).Str("hostname", hostname)
 
 	if change.Key != nil {
-		trace = trace.Str("node_key", change.Key.ShortString())
+		trace = trace.Str("node.key", change.Key.ShortString())
 	}
 
 	if change.DiscoKey != nil {
-		trace = trace.Str("disco_key", change.DiscoKey.ShortString())
+		trace = trace.Str("disco.key", change.DiscoKey.ShortString())
 	}
 
 	if change.Online != nil {
@@ -623,11 +652,11 @@ func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.Pe
 	}
 
 	if hostinfoChange {
-		trace = trace.Bool("hostinfo_changed", hostinfoChange)
+		trace = trace.Bool("hostinfo.changed", hostinfoChange)
 	}
 
 	if change.DERPRegion != 0 {
-		trace = trace.Int("derp_region", change.DERPRegion)
+		trace = trace.Int("derp.region", change.DERPRegion)
 	}
 
 	trace.Time("last_seen", *change.LastSeen).Msg("PeerChange received")
