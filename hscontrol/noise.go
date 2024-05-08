@@ -232,8 +232,14 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
-	// If a streaming mapSession exists for this node, close it
-	// and start a new one.
+	// If this is a streaming service, check if the node already has
+	// a session open, if it does try to replace current writer, the
+	// connection, with the new writer. This means that the update
+	// channel in notifier is reused and we do not have to remove the
+	// old connection.
+	// If there is not an existing session, create a new one and serve
+	// it.
+	// If this is not a streaming request, create a session and serve it.
 	if isStreaming(&mapRequest) {
 		ns.headscale.mapSessionMu.Lock()
 		if currentSession, ok := ns.headscale.mapSessions[node.ID]; ok {
@@ -264,7 +270,9 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 			mapResponseSessions.Inc()
 			defer mapResponseSessions.Dec()
 			ns.headscale.mapSessionMu.Unlock()
+
 			sess.serve()
+
 			ns.headscale.mapSessionMu.Lock()
 			defer ns.headscale.mapSessionMu.Unlock()
 			delete(ns.headscale.mapSessions, node.ID)
