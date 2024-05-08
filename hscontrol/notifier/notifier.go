@@ -53,7 +53,8 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	notifierWaitersForLock.WithLabelValues("lock", "add").Dec()
 	notifierWaitForLock.WithLabelValues("add").Observe(time.Since(start).Seconds())
 
-	// If a channel exists, close it
+	// If a channel exists, it means the node has opened a new
+	// connection. Close the old channel and replace it.
 	if curr, ok := n.nodes[nodeID]; ok {
 		n.tracef(nodeID, "channel present, closing and replacing")
 		close(curr)
@@ -82,7 +83,8 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID, c chan<- types.StateUpdate) b
 		return true
 	}
 
-	// If a channel exists, close it
+	// If the channel exist, but it does not belong
+	// to the caller, ignore.
 	if curr, ok := n.nodes[nodeID]; ok {
 		if curr != c {
 			n.tracef(nodeID, "channel has been replaced, not removing")
