@@ -29,7 +29,7 @@ func NewNotifier(cfg *types.Config) *Notifier {
 	}
 	b := newBatcher(cfg.Tuning.BatchChangeDelay, n)
 	n.b = b
-	// TODO(kradalby): clean this up
+
 	go b.doWork()
 	return n
 }
@@ -37,6 +37,12 @@ func NewNotifier(cfg *types.Config) *Notifier {
 // Close stops the batcher inside the notifier.
 func (n *Notifier) Close() {
 	n.b.close()
+}
+
+func (n *Notifier) tracef(nID types.NodeID, msg string, args ...any) {
+	log.Trace().
+		Uint64("node.id", nID.Uint64()).
+		Int("open_chans", len(n.nodes)).Msgf(msg, args...)
 }
 
 func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
@@ -49,17 +55,14 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 
 	// If a channel exists, close it
 	if curr, ok := n.nodes[nodeID]; ok {
-		log.Trace().Uint64("node.id", nodeID.Uint64()).Msg("channel present, closing and replacing")
+		n.tracef(nodeID, "channel present, closing and replacing")
 		close(curr)
 	}
 
 	n.nodes[nodeID] = c
 	n.connected.Store(nodeID, true)
 
-	log.Trace().
-		Uint64("node.id", nodeID.Uint64()).
-		Int("open_chans", len(n.nodes)).
-		Msg("Added new channel")
+	n.tracef(nodeID, "added new channel")
 	notifierNodeUpdateChans.Inc()
 }
 
@@ -82,7 +85,7 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID, c chan<- types.StateUpdate) b
 	// If a channel exists, close it
 	if curr, ok := n.nodes[nodeID]; ok {
 		if curr != c {
-			log.Trace().Uint64("node.id", nodeID.Uint64()).Msg("channel has been replaced, not removing")
+			n.tracef(nodeID, "channel has been replaced, not removing")
 			return false
 		}
 	}
@@ -90,10 +93,7 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID, c chan<- types.StateUpdate) b
 	delete(n.nodes, nodeID)
 	n.connected.Store(nodeID, false)
 
-	log.Trace().
-		Uint64("node.id", nodeID.Uint64()).
-		Int("open_chans", len(n.nodes)).
-		Msg("Removed channel")
+	n.tracef(nodeID, "removed channel")
 	notifierNodeUpdateChans.Dec()
 
 	return true
@@ -164,11 +164,7 @@ func (n *Notifier) NotifyByNodeID(
 
 			return
 		case c <- update:
-			log.Trace().
-				Uint64("node.id", nodeID.Uint64()).
-				Any("origin", ctx.Value("origin")).
-				Any("origin-hostname", ctx.Value("hostname")).
-				Msgf("update successfully sent on chan")
+			n.tracef(nodeID, "update successfully sent on chan, origin: %s, origin-hostname: %s", ctx.Value("origin"), ctx.Value("hostname"))
 			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.NodeID().String()).Inc()
 		}
 	}
