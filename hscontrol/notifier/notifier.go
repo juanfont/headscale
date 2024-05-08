@@ -47,6 +47,12 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	notifierWaitersForLock.WithLabelValues("lock", "add").Dec()
 	notifierWaitForLock.WithLabelValues("add").Observe(time.Since(start).Seconds())
 
+	// If a channel exists, close it
+	if curr, ok := n.nodes[nodeID]; ok {
+		log.Trace().Uint64("node.id", nodeID.Uint64()).Msg("channel present, closing and replacing")
+		close(curr)
+	}
+
 	n.nodes[nodeID] = c
 	n.connected.Store(nodeID, true)
 
@@ -57,7 +63,11 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	notifierNodeUpdateChans.Inc()
 }
 
-func (n *Notifier) RemoveNode(nodeID types.NodeID) {
+// RemoveNode removes a node and a given channel from the notifier.
+// It checks that the channel is the same as currently being updated
+// and ignores the removal if it is not.
+// RemoveNode reports if the node/chan was removed.
+func (n *Notifier) RemoveNode(nodeID types.NodeID, c chan<- types.StateUpdate) bool {
 	start := time.Now()
 	notifierWaitersForLock.WithLabelValues("lock", "remove").Inc()
 	n.l.Lock()
@@ -66,7 +76,15 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID) {
 	notifierWaitForLock.WithLabelValues("remove").Observe(time.Since(start).Seconds())
 
 	if len(n.nodes) == 0 {
-		return
+		return true
+	}
+
+	// If a channel exists, close it
+	if curr, ok := n.nodes[nodeID]; ok {
+		if curr != c {
+			log.Trace().Uint64("node.id", nodeID.Uint64()).Msg("channel has been replaced, not removing")
+			return false
+		}
 	}
 
 	delete(n.nodes, nodeID)
@@ -77,6 +95,8 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID) {
 		Int("open_chans", len(n.nodes)).
 		Msg("Removed channel")
 	notifierNodeUpdateChans.Dec()
+
+	return true
 }
 
 // IsConnected reports if a node is connected to headscale and has a
@@ -189,17 +209,26 @@ func (n *Notifier) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "chans (%d):\n", len(n.nodes))
 
-	for k, v := range n.nodes {
-		fmt.Fprintf(&b, "\t%d: %p\n", k, v)
+	var keys []types.NodeID
+	n.connected.Range(func(key types.NodeID, value bool) bool {
+		keys = append(keys, key)
+		return true
+	})
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	for _, key := range keys {
+		fmt.Fprintf(&b, "\t%d: %p\n", key, n.nodes[key])
 	}
 
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "connected (%d):\n", len(n.nodes))
 
-	n.connected.Range(func(k types.NodeID, v bool) bool {
-		fmt.Fprintf(&b, "\t%d: %t\n", k, v)
-		return true
-	})
+	for _, key := range keys {
+		val, _ := n.connected.Load(key)
+		fmt.Fprintf(&b, "\t%d: %t\n", key, val)
+	}
 
 	return b.String()
 }

@@ -47,6 +47,7 @@ type mapSession struct {
 	cancelCh     chan struct{}
 	cancelChOpen bool
 
+	keepAlive       time.Duration
 	keepAliveTicker *time.Ticker
 
 	node *types.Node
@@ -77,6 +78,8 @@ func (h *Headscale) newMapSession(
 		}
 	}
 
+	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)
+
 	return &mapSession{
 		h:      h,
 		ctx:    ctx,
@@ -90,7 +93,8 @@ func (h *Headscale) newMapSession(
 		cancelCh:     make(chan struct{}),
 		cancelChOpen: true,
 
-		keepAliveTicker: time.NewTicker(keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)),
+		keepAlive:       ka,
+		keepAliveTicker: nil,
 
 		// Loggers
 		warnf:  warnf,
@@ -132,6 +136,10 @@ func (m *mapSession) isReadOnlyUpdate() bool {
 	return !m.req.Stream && m.req.OmitPeers && m.req.ReadOnly
 }
 
+func (m *mapSession) resetKeepAlive() {
+	m.keepAliveTicker.Reset(m.keepAlive)
+}
+
 // handlePoll ensures the node gets the appropriate updates from either
 // polling or immediate responses.
 //
@@ -145,10 +153,16 @@ func (m *mapSession) serve() {
 
 		// Failover the node's routes if any.
 		defer m.infof("node has disconnected, mapSession: %p", m)
-		defer m.pollFailoverRoutes("node closing connection", m.node)
-
-		defer m.h.updateNodeOnlineStatus(false, m.node)
-		defer m.h.nodeNotifier.RemoveNode(m.node.ID)
+		defer func() {
+			// only update node status if the node channel was removed.
+			// in principal, it will be removed, but the client rapidly
+			// reconnects, the channel might be of another connection.
+			// In that case, it is not closed and the node is still online.
+			if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
+				m.h.updateNodeOnlineStatus(false, m.node)
+				m.pollFailoverRoutes("node closing connection", m.node)
+			}
+		}()
 
 		defer func() {
 			m.cancelChMu.Lock()
@@ -228,6 +242,8 @@ func (m *mapSession) serve() {
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
 	defer cancel()
 
+	m.keepAliveTicker = time.NewTicker(m.keepAlive)
+
 	// Loop through updates and continuously send them to the
 	// client.
 	for {
@@ -244,7 +260,12 @@ func (m *mapSession) serve() {
 			return
 
 		// Consume updates sent to node
-		case update := <-m.ch:
+		case update, ok := <-m.ch:
+			if !ok {
+				m.tracef("update channel closed, streaming session is likely being replaced")
+				return
+			}
+
 			m.tracef("received stream update: %s %s", update.Type.String(), update.Message)
 			mapResponseUpdateReceived.WithLabelValues(update.Type.String()).Inc()
 
@@ -316,7 +337,7 @@ func (m *mapSession) serve() {
 				_, err = m.w.Write(data)
 				if err != nil {
 					mapResponseSent.WithLabelValues("error", updateType).Inc()
-					m.errf(err, "Could not write the map response, for mapSession: %p", m)
+					m.errf(err, "could not write the map response(%s), for mapSession: %p", update.Type.String(), m)
 					return
 				}
 
@@ -331,6 +352,7 @@ func (m *mapSession) serve() {
 
 				mapResponseSent.WithLabelValues("ok", updateType).Inc()
 				m.tracef("update sent")
+				m.resetKeepAlive()
 			}
 
 		case <-m.keepAliveTicker.C:
@@ -407,16 +429,6 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 			change,
 		},
 	}, node.ID)
-}
-
-func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](channel C, node, name string) {
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Str("node", node).
-		Str("channel", "Done").
-		Msg(fmt.Sprintf("Closing %s channel", name))
-
-	close(channel)
 }
 
 func (m *mapSession) handleEndpointUpdate() {

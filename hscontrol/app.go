@@ -104,9 +104,6 @@ type Headscale struct {
 	registrationCache *cache.Cache
 
 	pollNetMapStreamWG sync.WaitGroup
-
-	mapSessions  map[types.NodeID]*mapSession
-	mapSessionMu sync.Mutex
 }
 
 var (
@@ -138,7 +135,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
 		nodeNotifier:       notifier.NewNotifier(cfg),
-		mapSessions:        make(map[types.NodeID]*mapSession),
 	}
 
 	app.db, err = db.NewHeadscaleDatabase(
@@ -729,19 +725,6 @@ func (h *Headscale) Serve() error {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(h.nodeNotifier.String()))
 	})
-	debugMux.HandleFunc("/debug/mapresp", func(w http.ResponseWriter, r *http.Request) {
-		h.mapSessionMu.Lock()
-		defer h.mapSessionMu.Unlock()
-
-		var b strings.Builder
-		b.WriteString("mapresponders:\n")
-		for k, v := range h.mapSessions {
-			fmt.Fprintf(&b, "\t%d: %p\n", k, v)
-		}
-
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(b.String()))
-	})
 	debugMux.Handle("/metrics", promhttp.Handler())
 
 	debugHTTPServer := &http.Server{
@@ -821,17 +804,6 @@ func (h *Headscale) Serve() error {
 
 				expireNodeCancel()
 				expireEphemeralCancel()
-
-				trace("closing map sessions")
-				wg := sync.WaitGroup{}
-				for _, mapSess := range h.mapSessions {
-					wg.Add(1)
-					go func() {
-						mapSess.close()
-						wg.Done()
-					}()
-				}
-				wg.Wait()
 
 				trace("waiting for netmap stream to close")
 				h.pollNetMapStreamWG.Wait()
