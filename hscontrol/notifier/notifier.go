@@ -259,6 +259,12 @@ func (b *batcher) addOrPassthrough(update types.StateUpdate) {
 		b.patchesChanged = true
 		notifierBatcherPatches.WithLabelValues().Set(float64(len(b.patches)))
 
+	case types.StateFullUpdate:
+		// Full updates send all info to nodes, so all queued up
+		// changes can be discarded.
+		b.reset()
+		b.n.sendAll(update)
+
 	default:
 		b.n.sendAll(update)
 	}
@@ -307,13 +313,17 @@ func (b *batcher) flush() {
 			b.n.sendAll(patchUpdate)
 		}
 
-		b.changedNodeIDs = set.Slice[types.NodeID]{}
-		notifierBatcherChanges.WithLabelValues().Set(0)
-		b.nodesChanged = false
-		b.patches = make(map[types.NodeID]tailcfg.PeerChange, len(b.patches))
-		notifierBatcherPatches.WithLabelValues().Set(0)
-		b.patchesChanged = false
+		b.reset()
 	}
+}
+
+func (b *batcher) reset() {
+	b.changedNodeIDs = set.Slice[types.NodeID]{}
+	notifierBatcherChanges.WithLabelValues().Set(0)
+	b.nodesChanged = false
+	b.patches = make(map[types.NodeID]tailcfg.PeerChange, len(b.patches))
+	notifierBatcherPatches.WithLabelValues().Set(0)
+	b.patchesChanged = false
 }
 
 func (b *batcher) doWork() {
