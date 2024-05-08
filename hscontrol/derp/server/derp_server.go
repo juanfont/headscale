@@ -136,7 +136,7 @@ func (d *DERPServer) DERPHandler(
 
 	hijacker, ok := writer.(http.Hijacker)
 	if !ok {
-		log.Error().Caller().Msg("DERP requires Hijacker interface from Gin")
+		log.Error().Caller().Msg("DERP requires Hijacker interface")
 		writer.Header().Set("Content-Type", "text/plain")
 		writer.WriteHeader(http.StatusInternalServerError)
 		_, err := writer.Write([]byte("HTTP does not support general TCP support"))

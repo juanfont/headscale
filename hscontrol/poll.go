@@ -51,8 +51,10 @@ type mapSession struct {
 	keepAliveTicker *time.Ticker
 
 	node *types.Node
-	w    http.ResponseWriter
-	rc   *http.ResponseController
+
+	writerMu sync.Mutex
+	w        http.ResponseWriter
+	rc       *http.ResponseController
 
 	warnf  func(string, ...any)
 	infof  func(string, ...any)
@@ -116,15 +118,21 @@ func (m *mapSession) replaceWriter(w http.ResponseWriter, mapReq tailcfg.MapRequ
 	}
 
 	// Upgrade the writer to a ResponseController
-	rc := http.NewResponseController(m.w)
+	rc := http.NewResponseController(w)
+
+	if rc == nil {
+		return errors.New("could not create ResponseController, received nil")
+	}
 
 	// Longpolling will break if there is a write timeout,
 	// so it needs to be disabled.
 	rc.SetWriteDeadline(time.Time{})
 
+	m.writerMu.Lock()
 	m.w = w
 	m.rc = rc
 	m.req = mapReq
+	m.writerMu.Unlock()
 
 	// New writer means we need to send a new full update
 	m.ch <- types.FullUpdate
@@ -336,9 +344,11 @@ func (m *mapSession) serve() {
 
 			// Only send update if there is change
 			if data != nil {
+				m.writerMu.Lock()
 				startWrite := time.Now()
 				_, err = m.w.Write(data)
 				if err != nil {
+					m.writerMu.Unlock()
 					mapResponseSent.WithLabelValues("error", updateType).Inc()
 					m.errf(err, "Could not write the map response, for mapSession: %p", m)
 					return
@@ -346,6 +356,7 @@ func (m *mapSession) serve() {
 
 				err = m.rc.Flush()
 				if err != nil {
+					m.writerMu.Unlock()
 					mapResponseSent.WithLabelValues("error", updateType).Inc()
 					m.errf(err, "flushing the map response to client, for mapSession: %p", m)
 					return
@@ -355,6 +366,7 @@ func (m *mapSession) serve() {
 
 				mapResponseSent.WithLabelValues("ok", updateType).Inc()
 				m.tracef("update sent")
+				m.writerMu.Unlock()
 			}
 
 		case <-m.keepAliveTicker.C:
@@ -364,20 +376,25 @@ func (m *mapSession) serve() {
 				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
 				return
 			}
+
+			m.writerMu.Lock()
 			_, err = m.w.Write(data)
 			if err != nil {
+				m.writerMu.Unlock()
 				m.errf(err, "Cannot write keep alive message")
 				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
 				return
 			}
 			err = m.rc.Flush()
 			if err != nil {
+				m.writerMu.Unlock()
 				m.errf(err, "flushing keep alive to client, for mapSession: %p", m)
 				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
 				return
 			}
 
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
+			m.writerMu.Unlock()
 		}
 	}
 }
