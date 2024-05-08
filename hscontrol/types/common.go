@@ -184,6 +184,10 @@ func StateUpdateExpire(nodeID NodeID, expiry time.Time) StateUpdate {
 	}
 }
 
+var FullUpdate = StateUpdate{
+	Type: StateFullUpdate,
+}
+
 var (
 	NotifyOriginKey   = ctxkey.New("notify.origin", "")
 	NotifyHostnameKey = ctxkey.New("notify.hostname", "")

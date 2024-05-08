@@ -808,9 +808,7 @@ func (h *Headscale) Serve() error {
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
 					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-						Type: types.StateFullUpdate,
-					})
+					h.nodeNotifier.NotifyAll(ctx, types.FullUpdate)
 				}
 
 			default:

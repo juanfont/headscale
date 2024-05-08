@@ -75,9 +75,7 @@ func (h *Headscale) newMapSession(
 		// to receive a message to make sure we dont block the entire
 		// notifier.
 		updateChan = make(chan types.StateUpdate, h.cfg.Tuning.NodeMapSessionBufferedChanSize)
-		updateChan <- types.StateUpdate{
-			Type: types.StateFullUpdate,
-		}
+		updateChan <- types.FullUpdate
 
 		// Upgrade the writer to a ResponseController
 		rc = http.NewResponseController(w)
@@ -129,10 +127,7 @@ func (m *mapSession) replaceWriter(w http.ResponseWriter, mapReq tailcfg.MapRequ
 	m.req = mapReq
 
 	// New writer means we need to send a new full update
-	m.ch <- types.StateUpdate{
-		Type: types.StateFullUpdate,
-	}
-
+	m.ch <- types.FullUpdate
 	return nil
 }
 
