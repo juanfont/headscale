@@ -272,10 +272,10 @@ dns_config:
 unix_socket: /var/run/headscale/headscale.sock
 unix_socket_permission: "0770"
 #
-# headscale supports experimental OpenID connect support,
-# it is still being tested and might have some bugs, please
-# help us test it.
-# OpenID Connect
+# # headscale supports experimental OpenID connect support,
+# # it is still being tested and might have some bugs, please
+# # help us test it.
+# # OpenID Connect
 # oidc:
 #   only_start_if_oidc_is_available: true
 #   issuer: "https://your-oidc.issuer.com/path"
@@ -284,44 +284,59 @@ unix_socket_permission: "0770"
 #   # Alternatively, set `client_secret_path` to read the secret from the file.
 #   # It resolves environment variables, making integration to systemd's
 #   # `LoadCredential` straightforward:
-#   client_secret_path: "${CREDENTIALS_DIRECTORY}/oidc_client_secret"
+#   # client_secret_path: "${CREDENTIALS_DIRECTORY}/oidc_client_secret"
 #   # client_secret and client_secret_path are mutually exclusive.
-#
-#   # The amount of time from a node is authenticated with OpenID until it
-#   # expires and needs to reauthenticate.
-#   # Setting the value to "0" will mean no expiry.
-#   expiry: 180d
-#
-#   # Use the expiry from the token received from OpenID when the user logged
-#   # in, this will typically lead to frequent need to reauthenticate and should
-#   # only been enabled if you know what you are doing.
-#   # Note: enabling this will cause `oidc.expiry` to be ignored.
-#   use_expiry_from_token: false
-#
+#   #
 #   # Customize the scopes used in the OIDC flow, defaults to "openid", "profile" and "email" and add custom query
 #   # parameters to the Authorize Endpoint request. Scopes default to "openid", "profile" and "email".
-#
 #   scope: ["openid", "profile", "email", "custom"]
-#   extra_params:
-#     domain_hint: example.com
-#
-#   # List allowed principal domains and/or users. If an authenticated user's domain is not in this list, the
-#   # authentication request will be rejected.
-#
-#   allowed_domains:
-#     - example.com
-#   # Note: Groups from keycloak have a leading '/'
-#   allowed_groups:
-#     - /headscale
-#   allowed_users:
-#     - alice@example.com
-#
-#   # If `strip_email_domain` is set to `true`, the domain part of the username email address will be removed.
-#   # This will transform `first-name.last-name@example.com` to the user `first-name.last-name`
-#   # If `strip_email_domain` is set to `false` the domain part will NOT be removed resulting to the following
-#   user: `first-name.last-name.example.com`
-#
-#   strip_email_domain: true
+#   #   extra_params:
+#   #     domain_hint: example.com
+
+#   expiry:
+#     #
+#     # Use the expiry from the token received from OpenID when the user logged
+#     # in, this will typically lead to frequent need to reauthenticate and should
+#     # only been enabled if you know what you are doing.
+#     # Note: enabling this will cause `oidc.expiry.fixed_time` to be ignored.
+#     from_token: false
+#     #
+#     # The amount of time from a node is authenticated with OpenID until it
+#     # expires and needs to reauthenticate.
+#     # Setting the value to "0" will mean no expiry.
+#     fixed_time: 180d
+
+#   # # List allowed principal domains and/or users. If an authenticated user's domain is not in this list, the
+#   # # authentication request will be rejected.
+#   # allowd:
+#   #   domains:
+#   #     - example.com
+#   #   groups:
+#   #     - admins
+#   #   users:
+#   #     - admin@example.com
+
+#   #  Map claims from the OIDC token to the user object
+#   claims_map:
+#     name: name
+#     username: preferred_username
+#     email: email
+#     groups: groups
+    
+
+#   #  some random configuration
+#   misc:
+#     # if the username is set to `email` then `strip_email_domain` is valid
+#     # If `strip_email_domain` is set to `true`, the domain part of the username email address will be removed.
+#     # This will transform `first-name.last-name@example.com` to the user `first-name.last-name`
+#     # If `strip_email_domain` is set to `false` the domain part will NOT be removed resulting to the following
+#     # user: `first-name.last-name.example.com`
+#     strip_email_domain: true
+#     # If `flatten_groups` is set to `true`, the groups claim will be flattened to a single level.
+#     # this is used for keycloak where the groups are nested. the groups format from keycloak is `group1/subgroup1/subgroup2`
+#     flatten_groups: true
+#     # If `flatten_splitter` is set to a string, the groups claim will be split by the string and flattened to a single level.
+#     flatten_splitter: "/"
 
 # Logtail configuration
 # Logtail is Tailscales logging and auditing infrastructure, it allows the control panel
