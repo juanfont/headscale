@@ -662,7 +662,7 @@ func PrefixV6() (*netip.Prefix, error) {
 func GetOIDCConfig() (OIDCConfig, error) {
 
 	// get expiry config
-	expireConfig := OIDCExpireConfig{
+	oidcExpireConfig := OIDCExpireConfig{
 		FromToken: viper.GetBool("oidc.expiry.from_token"),
 		FixedTime: func() time.Duration {
 			// if set to 0, we assume no expiry
@@ -681,20 +681,20 @@ func GetOIDCConfig() (OIDCConfig, error) {
 		}(),
 	}
 	// get allowed config
-	allowedConfig := OIDCAllowedConfig{
+	oidcAllowed := OIDCAllowedConfig{
 		Domains: viper.GetStringSlice("oidc.allowed.domains"),
 		Users:   viper.GetStringSlice("oidc.allowed.users"),
 		Groups:  viper.GetStringSlice("oidc.allowed.groups"),
 	}
 	// get claims map
-	claimsMap := OIDCClaimsMap{
+	oidcClaimsMap := OIDCClaimsMap{
 		Name:     viper.GetString("oidc.claims_map.name"),
 		Username: viper.GetString("oidc.claims_map.username"),
 		Email:    viper.GetString("oidc.claims_map.email"),
 		Groups:   viper.GetString("oidc.claims_map.groups"),
 	}
 	// get misc config
-	miscConfig := OIDCMiscConfig{
+	oidcMiscConfig := OIDCMiscConfig{
 		StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 		FlattenGroups:    viper.GetBool("oidc.flatten_groups"),
 		FlattenSplter:    viper.GetString("oidc.flatten_splitter"),
@@ -721,10 +721,10 @@ func GetOIDCConfig() (OIDCConfig, error) {
 		ClientSecret:     oidcClientSecret,
 		Scope:            viper.GetStringSlice("oidc.scope"),
 		ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
-		Allowed:          allowedConfig,
-		ClaimsMap:        claimsMap,
-		Expiry:           expireConfig,
-		Misc:             miscConfig,
+		Allowed:          oidcAllowed,
+		ClaimsMap:        oidcClaimsMap,
+		Expiry:           oidcExpireConfig,
+		Misc:             oidcMiscConfig,
 	}
 	return OIDC, nil
 }
