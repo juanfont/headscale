@@ -73,6 +73,15 @@ buttons available in the repo.
 | Android | Yes [docs](./docs/android-client.md)                      |
 | iOS     | Yes [docs](./docs/iOS-client.md)                          |
 
+These are not supported by headscale
+## Unofficial Web UI
+| Name      |OS      |build  |
+| ------- | -------|--------------- |
+| [Headscale-UI](https://github.com/gurucomputing/headscale-ui)   | Linux, Windows    |  Docker     |
+| [HeadscaleUi](https://github.com/simcu/headscale-ui)   |    |      |
+| [cockpit-tailscale](https://github.com/spotsnel/cockpit-tailscale)   |    |      |
+| [Headscale-UI](https://github.com/Arispex/headscale-ui)   |    |      |
+
 ## Running headscale
 
 **Please note that we do not support nor encourage the use of reverse proxies
