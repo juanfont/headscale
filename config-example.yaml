@@ -319,7 +319,8 @@ unix_socket_permission: "0770"
 #   #  Map claims from the OIDC token to the user object
 #   claims_map:
 #     name: name
-#     username: preferred_username
+#     username: email
+#    # username: preferred_username
 #     email: email
 #     groups: groups
     
