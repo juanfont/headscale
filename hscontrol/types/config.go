@@ -126,12 +126,34 @@ type OIDCConfig struct {
 	ClientSecret               string
 	Scope                      []string
 	ExtraParams                map[string]string
-	AllowedDomains             []string
-	AllowedUsers               []string
-	AllowedGroups              []string
-	StripEmaildomain           bool
-	Expiry                     time.Duration
-	UseExpiryFromToken         bool
+	ClaimsMap				   OIDCClaimsMap
+	Allowed 				   OIDCAllowedConfig
+	Expiry                     OIDCExpireConfig
+	Misc					   OIDCMiscConfig
+}
+
+type OIDCExpireConfig struct {
+	FromToken 	bool
+	FixedTime 	time.Duration
+}
+
+type OIDCAllowedConfig struct {
+	Domains 	[]string
+	Users   	[]string
+	Groups  	[]string
+}
+
+type OIDCClaimsMap struct {
+	Name 		string
+	Username 	string
+	Email 		string
+	Groups 		string
+}
+
+type OIDCMiscConfig struct {
+	StripEmaildomain 	bool
+	FlattenGroups 		bool
+	FlattenSplter 		string
 }
 
 type DERPConfig struct {
@@ -222,10 +244,19 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.postgres.conn_max_idle_time_secs", 3600)
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
-	viper.SetDefault("oidc.strip_email_domain", true)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
-	viper.SetDefault("oidc.expiry", "180d")
-	viper.SetDefault("oidc.use_expiry_from_token", false)
+	// expiry
+	viper.SetDefault("oidc.expiry.fixed_time", "180d")
+	viper.SetDefault("oidc.expiry.from_token", false)
+	// claims_map
+	viper.SetDefault("oidc.claims_map.name", "name")
+	viper.SetDefault("oidc.claims_map.username", "preferred_username")
+	viper.SetDefault("oidc.claims_map.email", "email")
+	viper.SetDefault("oidc.claims_map.groups", "groups")
+	// misc
+	viper.SetDefault("oidc.strip_email_domain", false)
+	viper.SetDefault("oidc.flatten_groups", false)
+	viper.SetDefault("oidc.flatten_splitter", "/")
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -628,6 +659,76 @@ func PrefixV6() (*netip.Prefix, error) {
 	return &prefixV6, nil
 }
 
+func GetOIDCConfig() (OIDCConfig, error) {
+
+	// get expiry config
+	expireConfig := OIDCExpireConfig{
+		FromToken: viper.GetBool("oidc.expiry.from_token"),
+		FixedTime: func() time.Duration {
+			// if set to 0, we assume no expiry
+			if value := viper.GetString("oidc.expiry.fixed_time"); value == "0" {
+				return maxDuration
+			} else {
+				expiry, err := model.ParseDuration(value)
+				if err != nil {
+					log.Warn().Msg("failed to parse oidc.expiry.fixed_time, defaulting back to 180 days")
+
+					return defaultOIDCExpiryTime
+				}
+
+				return time.Duration(expiry)
+			}
+		}(),
+	}
+	// get allowed config
+	allowedConfig := OIDCAllowedConfig{
+		Domains: viper.GetStringSlice("oidc.allowed.domains"),
+		Users:   viper.GetStringSlice("oidc.allowed.users"),
+		Groups:  viper.GetStringSlice("oidc.allowed.groups"),
+	}
+	// get claims map
+	claimsMap := OIDCClaimsMap{
+		Name:     viper.GetString("oidc.claims_map.name"),
+		Username: viper.GetString("oidc.claims_map.username"),
+		Email:    viper.GetString("oidc.claims_map.email"),
+		Groups:   viper.GetString("oidc.claims_map.groups"),
+	}
+	// get misc config
+	miscConfig := OIDCMiscConfig{
+		StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
+		FlattenGroups:    viper.GetBool("oidc.flatten_groups"),
+		FlattenSplter:    viper.GetString("oidc.flatten_splitter"),
+	}
+	// get client secret
+	oidcClientSecret := viper.GetString("oidc.client_secret")
+	oidcClientSecretPath := viper.GetString("oidc.client_secret_path")
+	if oidcClientSecretPath != "" && oidcClientSecret != "" {
+		return OIDCConfig{}, errOidcMutuallyExclusive
+	}
+	if oidcClientSecretPath != "" {
+		secretBytes, err := os.ReadFile(os.ExpandEnv(oidcClientSecretPath))
+		if err != nil {
+			return OIDCConfig{}, err
+		}
+		oidcClientSecret = strings.TrimSpace(string(secretBytes))
+	}
+	OIDC := OIDCConfig{
+		OnlyStartIfOIDCIsAvailable: viper.GetBool(
+			"oidc.only_start_if_oidc_is_available",
+		),
+		Issuer:           viper.GetString("oidc.issuer"),
+		ClientID:         viper.GetString("oidc.client_id"),
+		ClientSecret:     oidcClientSecret,
+		Scope:            viper.GetStringSlice("oidc.scope"),
+		ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
+		Allowed:          allowedConfig,
+		ClaimsMap:        claimsMap,
+		Expiry:           expireConfig,
+		Misc:             miscConfig,
+	}
+	return OIDC, nil
+}
+
 func GetHeadscaleConfig() (*Config, error) {
 	if IsCLIConfigured() {
 		return &Config{
@@ -670,17 +771,9 @@ func GetHeadscaleConfig() (*Config, error) {
 	logConfig := GetLogTailConfig()
 	randomizeClientPort := viper.GetBool("randomize_client_port")
 
-	oidcClientSecret := viper.GetString("oidc.client_secret")
-	oidcClientSecretPath := viper.GetString("oidc.client_secret_path")
-	if oidcClientSecretPath != "" && oidcClientSecret != "" {
-		return nil, errOidcMutuallyExclusive
-	}
-	if oidcClientSecretPath != "" {
-		secretBytes, err := os.ReadFile(os.ExpandEnv(oidcClientSecretPath))
-		if err != nil {
-			return nil, err
-		}
-		oidcClientSecret = strings.TrimSpace(string(secretBytes))
+	oidcConfig, err := GetOIDCConfig()
+	if err != nil {
+		return nil, err
 	}
 
 	return &Config{
@@ -717,38 +810,7 @@ func GetHeadscaleConfig() (*Config, error) {
 
 		UnixSocket:           viper.GetString("unix_socket"),
 		UnixSocketPermission: util.GetFileMode("unix_socket_permission"),
-
-		OIDC: OIDCConfig{
-			OnlyStartIfOIDCIsAvailable: viper.GetBool(
-				"oidc.only_start_if_oidc_is_available",
-			),
-			Issuer:           viper.GetString("oidc.issuer"),
-			ClientID:         viper.GetString("oidc.client_id"),
-			ClientSecret:     oidcClientSecret,
-			Scope:            viper.GetStringSlice("oidc.scope"),
-			ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
-			AllowedDomains:   viper.GetStringSlice("oidc.allowed_domains"),
-			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
-			AllowedGroups:    viper.GetStringSlice("oidc.allowed_groups"),
-			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
-			Expiry: func() time.Duration {
-				// if set to 0, we assume no expiry
-				if value := viper.GetString("oidc.expiry"); value == "0" {
-					return maxDuration
-				} else {
-					expiry, err := model.ParseDuration(value)
-					if err != nil {
-						log.Warn().Msg("failed to parse oidc.expiry, defaulting back to 180 days")
-
-						return defaultOIDCExpiryTime
-					}
-
-					return time.Duration(expiry)
-				}
-			}(),
-			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
-		},
-
+		OIDC: 			  	oidcConfig,
 		LogTail:             logConfig,
 		RandomizeClientPort: randomizeClientPort,
 
