@@ -350,7 +350,7 @@ func extractIDTokenClaims(
 		writer.WriteHeader(http.StatusBadRequest)
 		_, werr := writer.Write([]byte("Failed to decode id token claims"))
 		if werr != nil {
-			util.LogErr(err,"Failed to write response")
+			util.LogErr(err, "Failed to write response")
 		}
 		return nil, err
 	}
@@ -358,7 +358,7 @@ func extractIDTokenClaims(
 	// Unmarshal the claims into a map
 	mappedClaims := make(map[string]interface{})
 	if err := json.Unmarshal(claims, &mappedClaims); err != nil {
-		util.LogErr(err,"Failed to unmarshal id token claims")
+		util.LogErr(err, "Failed to unmarshal id token claims")
 		return nil, err
 	}
 
@@ -387,24 +387,6 @@ func extractIDTokenClaims(
 	}
 	return &finalClaims, nil
 }
-
-// {
-// 	var claims IDTokenClaims
-// 	if err := idToken.Claims(&claims); err != nil {
-// 		util.LogErr(err, "Failed to decode id token claims")
-
-// 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-// 		writer.WriteHeader(http.StatusBadRequest)
-// 		_, werr := writer.Write([]byte("Failed to decode id token claims"))
-// 		if werr != nil {
-// 			util.LogErr(err, "Failed to write response")
-// 		}
-
-// 		return nil, err
-// 	}
-
-// 	return &claims, nil
-// }
 
 // validateOIDCAllowedDomains checks that if AllowedDomains is provided,
 // that the authenticated principal ends with @<alloweddomain>.
@@ -589,7 +571,7 @@ func getUserName(
 	writer http.ResponseWriter,
 	claims *IDTokenClaims,
 	stripEmaildomain bool,
-) (string, error) {		
+) (string, error) {
 	userName, err := util.NormalizeToFQDNRules(
 		claims.Username,
 		stripEmaildomain,
