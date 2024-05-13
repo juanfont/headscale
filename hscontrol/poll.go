@@ -29,11 +29,6 @@ type contextKey string
 
 const nodeNameContextKey = contextKey("nodeName")
 
-type sessionManager struct {
-	mu   sync.RWMutex
-	sess map[types.NodeID]*mapSession
-}
-
 type mapSession struct {
 	h      *Headscale
 	req    tailcfg.MapRequest
@@ -173,7 +168,7 @@ func (m *mapSession) serve() {
 		}()
 
 		m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
-		m.h.updateNodeOnlineStatus(true, m.node)
+		go m.h.updateNodeOnlineStatus(true, m.node)
 
 		m.infof("node has connected, mapSession: %p", m)
 	}
@@ -216,14 +211,18 @@ func (m *mapSession) serve() {
 
 	// From version 68, all streaming requests can be treated as read only.
 	if m.capVer < 68 {
-		// Error has been handled/written to client in the func
-		// return
-		err := m.handleSaveNode()
-		if err != nil {
-			mapResponseWriteUpdatesInStream.WithLabelValues("error").Inc()
-			return
-		}
-		mapResponseWriteUpdatesInStream.WithLabelValues("ok").Inc()
+		go func() {
+			// Error has been handled/written to client in the func
+			// return
+			err := m.handleSaveNode()
+			if err != nil {
+				mapResponseWriteUpdatesInStream.WithLabelValues("error").Inc()
+
+				m.close()
+				return
+			}
+			mapResponseWriteUpdatesInStream.WithLabelValues("ok").Inc()
+		}()
 	}
 
 	// Set up the client stream
