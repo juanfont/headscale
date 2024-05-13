@@ -747,7 +747,7 @@ func createCertificate(hostname string) ([]byte, []byte, error) {
 			Locality:     []string{"Leiden"},
 		},
 		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(60 * time.Minute),
+		NotAfter:  time.Now().Add(60 * time.Hour),
 		IsCA:      true,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,
