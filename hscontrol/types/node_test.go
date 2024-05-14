@@ -478,6 +478,13 @@ func TestHostInfoAsProtoStruct(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "hostinfo-set-with-error",
+			node: Node{
+				HostinfoDatabaseField: "{IPNVersion: 1.66.1-hash}",
+			},
+			want: nil,
+		},
 	}
 
 	for _, tt := range tests {
