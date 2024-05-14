@@ -1,6 +1,7 @@
 package types
 
 import (
+	structpb "github.com/golang/protobuf/ptypes/struct"
 	"net/netip"
 	"testing"
 
@@ -448,6 +449,43 @@ func TestApplyPeerChange(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, tt.nodeBefore, util.Comparers...); diff != "" {
 				t.Errorf("Patch unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestHostInfoAsProtoStruct(t *testing.T) {
+	tests := []struct {
+		name string
+		node Node
+		want *structpb.Struct
+	}{
+		{
+			name: "hostinfo-not-set",
+			node: Node{},
+			want: nil,
+		},
+		{
+			name: "hostinfo-set",
+			node: Node{
+				HostinfoDatabaseField: "{\"IPNVersion\": \"1.66.1-hash\"}",
+			},
+			want: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"IPNVersion": {
+						Kind: &structpb.Value_StringValue{StringValue: "1.66.1-hash"},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.node.HostInfoAsProtoStruct()
+
+			if got.String() != tt.want.String() {
+				t.Errorf("HostInfoAsProtoStruct() failed: want (%v), got (%v)", tt.want, got)
 			}
 		})
 	}
