@@ -56,8 +56,6 @@ func initConfig() {
 
 	machineOutput := HasMachineOutputFlag()
 
-	zerolog.SetGlobalLevel(cfg.Log.Level)
-
 	// If the user has requested a "node" readable format,
 	// then disable login so the output remains valid.
 	if machineOutput {
