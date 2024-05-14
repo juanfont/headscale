@@ -4,6 +4,7 @@ package hscontrol
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -735,6 +736,40 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	)
 
 	return &v1.DebugCreateNodeResponse{Node: newNode.Proto()}, nil
+}
+
+func (api headscaleV1APIServer) GetAcl(
+	ctx context.Context,
+	request *v1.GetAclRequest,
+) (*v1.GetAclResponse, error) {
+	if api.h.ACLPolicy == nil {
+		return nil, fmt.Errorf("acl policy not initialized")
+	}
+
+	aclGroups := api.h.ACLPolicy.Groups
+	aclTagOwners := api.h.ACLPolicy.TagOwners
+
+	groups := make(map[string]*v1.AclGroup, len(aclGroups))
+	tagOwners := make(map[string]*v1.AclTagOwner, len(aclTagOwners))
+
+	for k, v := range aclGroups {
+		groups[k] = &v1.AclGroup{
+			Name:   k,
+			Owners: v,
+		}
+	}
+
+	for k, v := range aclTagOwners {
+		tagOwners[k] = &v1.AclTagOwner{
+			Name:   k,
+			Owners: v,
+		}
+	}
+
+	return &v1.GetAclResponse{
+		Groups:    groups,
+		TagOwners: tagOwners,
+	}, nil
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}

@@ -9,6 +9,7 @@ import "headscale/v1/preauthkey.proto";
 import "headscale/v1/node.proto";
 import "headscale/v1/routes.proto";
 import "headscale/v1/apikey.proto";
+import "headscale/v1/acl.proto";
 // import "headscale/v1/device.proto";
 
 service HeadscaleService {
@@ -192,6 +193,14 @@ service HeadscaleService {
         };
     }
     // --- ApiKeys end ---
+
+    // --- Acl start ---
+    rpc GetAcl(GetAclRequest) returns (GetAclResponse) {
+        option (google.api.http) = {
+            get: "/api/v1/acl"
+        };
+    }
+    // --- Acl end ---
 
     // Implement Tailscale API
     // rpc GetDevice(GetDeviceRequest) returns(GetDeviceResponse) {

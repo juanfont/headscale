@@ -1,0 +1,21 @@
+syntax = "proto3";
+package headscale.v1;
+option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+message AclGroup {
+    string          name   = 1;
+    repeated string owners = 2;
+}
+
+message AclTagOwner {
+    string          name   = 1;
+    repeated string owners = 2;
+}
+
+message GetAclRequest {
+}
+
+message GetAclResponse {
+    map<string, AclGroup>    groups    = 1;
+    map<string, AclTagOwner> tagOwners = 2;
+}
