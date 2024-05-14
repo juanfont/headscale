@@ -375,6 +375,17 @@ func (node *Node) Proto() *v1.Node {
 		CreatedAt: timestamppb.New(node.CreatedAt),
 	}
 
+	if node.Hostinfo != nil {
+		nodeProto.HostInfo = &v1.HostInfo{
+			IPNVersion:     node.Hostinfo.IPNVersion,
+			OS:             node.Hostinfo.OS,
+			OSVersion:      node.Hostinfo.OSVersion,
+			Distro:         node.Hostinfo.Distro,
+			DistroVersion:  node.Hostinfo.DistroVersion,
+			DistroCodeName: node.Hostinfo.DistroCodeName,
+		}
+	}
+
 	if node.AuthKey != nil {
 		nodeProto.PreAuthKey = node.AuthKey.Proto()
 	}

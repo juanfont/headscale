@@ -1111,6 +1111,29 @@
         }
       }
     },
+    "v1HostInfo": {
+      "type": "object",
+      "properties": {
+        "IPNVersion": {
+          "type": "string"
+        },
+        "OS": {
+          "type": "string"
+        },
+        "OSVersion": {
+          "type": "string"
+        },
+        "Distro": {
+          "type": "string"
+        },
+        "DistroVersion": {
+          "type": "string"
+        },
+        "DistroCodeName": {
+          "type": "string"
+        }
+      }
+    },
     "v1ListApiKeysResponse": {
       "type": "object",
       "properties": {
@@ -1212,6 +1235,9 @@
         },
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
+        },
+        "hostInfo": {
+          "$ref": "#/definitions/v1HostInfo"
         },
         "forcedTags": {
           "type": "array",

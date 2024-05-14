@@ -4,6 +4,7 @@ package headscale.v1;
 import "google/protobuf/timestamp.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/user.proto";
+import "headscale/v1/hostinfo.proto";
 
 option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
@@ -35,11 +36,12 @@ message Node {
 
     RegisterMethod register_method = 13;
 
-    reserved 14 to 17;
+    reserved 14;
     // google.protobuf.Timestamp updated_at = 14;
-    // google.protobuf.Timestamp deleted_at = 15;
 
-    // bytes host_info      = 15;
+    HostInfo host_info = 15;
+
+    reserved 16 to 17;
     // bytes endpoints      = 16;
     // bytes enabled_routes = 17;
 
