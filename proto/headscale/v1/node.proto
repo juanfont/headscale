@@ -5,7 +5,6 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/user.proto";
-import "headscale/v1/hostinfo.proto";
 
 option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
