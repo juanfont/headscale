@@ -425,8 +425,10 @@ func (s *Scenario) WaitForTailscaleSync() error {
 	if err != nil {
 		for _, user := range s.users {
 			for _, client := range user.Clients {
-				peers, _ := client.PrettyPeers()
-				log.Println(peers)
+				peers, allOnline, _ := client.FailingPeersAsString()
+				if !allOnline {
+					log.Println(peers)
+				}
 			}
 		}
 	}
