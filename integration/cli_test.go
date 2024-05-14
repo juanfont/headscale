@@ -999,6 +999,9 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "node-4", listAll[3].GetName())
 	assert.Equal(t, "node-5", listAll[4].GetName())
 
+	assert.Equal(t, "TestOS", listAll[0].GetHostInfo().AsMap()["OS"])
+	assert.Equal(t, "DebugTestNode", listAll[0].GetHostInfo().AsMap()["Hostname"])
+
 	otherUserMachineKeys := []string{
 		"mkey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
 		"mkey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",

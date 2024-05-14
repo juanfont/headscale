@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/types/known/structpb"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -190,6 +192,33 @@ func (node *Node) IPsAsString() []string {
 	return ret
 }
 
+func (node *Node) HostInfoAsProtoStruct() *structpb.Struct {
+	if node.HostinfoDatabaseField == "" {
+		return nil
+	}
+
+	var mapper map[string]interface{}
+	if err := json.Unmarshal([]byte(node.HostinfoDatabaseField), &mapper); err != nil {
+		log.Error().
+			Err(err).
+			Str("host_info", node.HostinfoDatabaseField).
+			Msg("Error unmarshalling host_info from database")
+
+		return nil
+	}
+
+	data, err := structpb.NewStruct(mapper)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("Error creating gRPC struct a host_info from mapper")
+
+		return nil
+	}
+
+	return data
+}
+
 func (node *Node) InIPSet(set *netipx.IPSet) bool {
 	for _, nodeAddr := range node.IPs() {
 		if set.Contains(nodeAddr) {
@@ -368,22 +397,12 @@ func (node *Node) Proto() *v1.Node {
 		GivenName:   node.GivenName,
 		User:        node.User.Proto(),
 		ForcedTags:  node.ForcedTags,
+		HostInfo:    node.HostInfoAsProtoStruct(),
 
 		// TODO(kradalby): Implement register method enum converter
 		// RegisterMethod: ,
 
 		CreatedAt: timestamppb.New(node.CreatedAt),
-	}
-
-	if node.Hostinfo != nil {
-		nodeProto.HostInfo = &v1.HostInfo{
-			IPNVersion:     node.Hostinfo.IPNVersion,
-			OS:             node.Hostinfo.OS,
-			OSVersion:      node.Hostinfo.OSVersion,
-			Distro:         node.Hostinfo.Distro,
-			DistroVersion:  node.Hostinfo.DistroVersion,
-			DistroCodeName: node.Hostinfo.DistroCodeName,
-		}
 	}
 
 	if node.AuthKey != nil {

@@ -2,6 +2,7 @@ syntax = "proto3";
 package headscale.v1;
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/user.proto";
 import "headscale/v1/hostinfo.proto";
@@ -39,7 +40,7 @@ message Node {
     reserved 14;
     // google.protobuf.Timestamp updated_at = 14;
 
-    HostInfo host_info = 15;
+    google.protobuf.Struct host_info = 15;
 
     reserved 16 to 17;
     // bytes endpoints      = 16;
