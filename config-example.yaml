@@ -308,7 +308,7 @@ unix_socket_permission: "0770"
 
 #   # # List allowed principal domains and/or users. If an authenticated user's domain is not in this list, the
 #   # # authentication request will be rejected.
-#   # allowd:
+#   # allowed:
 #   #   domains:
 #   #     - example.com
 #   #   groups:
