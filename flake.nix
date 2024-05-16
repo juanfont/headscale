@@ -31,7 +31,7 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorHash = "sha256-dTGPXe6tRfwHVFDyv7AXCsoPQszCJ/5lCdWwe6oD9H0=";
+          vendorHash = "sha256-4itQ81kmURv/zCtc2JiWNOS+iVZFepk1smqTG3i8/8s=";
 
           subPackages = ["cmd/headscale"];
 
