@@ -279,7 +279,7 @@ func DeleteNode(tx *gorm.DB,
 	}
 
 	// Unscoped causes the node to be fully removed from the database.
-	if err := tx.Unscoped().Delete(&node).Error; err != nil {
+	if err := tx.Unscoped().Delete(&types.Node{}, node.ID).Error; err != nil {
 		return changed, err
 	}
 
