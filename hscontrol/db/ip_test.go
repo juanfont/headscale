@@ -87,8 +87,11 @@ func TestIPAllocatorSequential(t *testing.T) {
 			name: "simple-with-db",
 			dbFunc: func() *HSDatabase {
 				db := dbForTest(t, "simple-with-db")
+				user := types.User{Name: ""}
+				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -112,8 +115,11 @@ func TestIPAllocatorSequential(t *testing.T) {
 			name: "before-after-free-middle-in-db",
 			dbFunc: func() *HSDatabase {
 				db := dbForTest(t, "before-after-free-middle-in-db")
+				user := types.User{Name: ""}
+				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.2"),
 					IPv6: nap("fd7a:115c:a1e0::2"),
 				})
@@ -307,8 +313,11 @@ func TestBackfillIPAddresses(t *testing.T) {
 			name: "simple-backfill-ipv6",
 			dbFunc: func() *HSDatabase {
 				db := dbForTest(t, "simple-backfill-ipv6")
+				user := types.User{Name: ""}
+				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.1"),
 				})
 
@@ -337,8 +346,11 @@ func TestBackfillIPAddresses(t *testing.T) {
 			name: "simple-backfill-ipv4",
 			dbFunc: func() *HSDatabase {
 				db := dbForTest(t, "simple-backfill-ipv4")
+				user := types.User{Name: ""}
+				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
 
@@ -367,8 +379,11 @@ func TestBackfillIPAddresses(t *testing.T) {
 			name: "simple-backfill-remove-ipv6",
 			dbFunc: func() *HSDatabase {
 				db := dbForTest(t, "simple-backfill-remove-ipv6")
+				user := types.User{Name: ""}
+				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -392,8 +407,11 @@ func TestBackfillIPAddresses(t *testing.T) {
 			name: "simple-backfill-remove-ipv4",
 			dbFunc: func() *HSDatabase {
 				db := dbForTest(t, "simple-backfill-remove-ipv4")
+				user := types.User{Name: ""}
+				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -417,17 +435,23 @@ func TestBackfillIPAddresses(t *testing.T) {
 			name: "multi-backfill-ipv6",
 			dbFunc: func() *HSDatabase {
 				db := dbForTest(t, "simple-backfill-ipv6")
+				user := types.User{Name: ""}
+				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.1"),
 				})
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.2"),
 				})
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.3"),
 				})
 				db.DB.Save(&types.Node{
+					User: user,
 					IPv4: nap("100.64.0.4"),
 				})
 
@@ -451,6 +475,8 @@ func TestBackfillIPAddresses(t *testing.T) {
 		"MachineKeyDatabaseField",
 		"NodeKeyDatabaseField",
 		"DiscoKeyDatabaseField",
+		"User",
+		"UserID",
 		"Endpoints",
 		"HostinfoDatabaseField",
 		"Hostinfo",

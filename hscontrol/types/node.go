@@ -109,20 +109,20 @@ type Node struct {
 	// parts of headscale.
 	GivenName string `gorm:"type:varchar(63);unique_index"`
 	UserID    uint
-	User      User `gorm:"foreignKey:UserID"`
+	User      User `gorm:"constraint:OnDelete:CASCADE;"`
 
 	RegisterMethod string
 
 	ForcedTags StringList
 
 	// TODO(kradalby): This seems like irrelevant information?
-	AuthKeyID uint
-	AuthKey   *PreAuthKey
+	AuthKeyID *uint       `sql:"DEFAULT:NULL"`
+	AuthKey   *PreAuthKey `gorm:"constraint:OnDelete:SET NULL;"`
 
 	LastSeen *time.Time
 	Expiry   *time.Time
 
-	Routes []Route
+	Routes []Route `gorm:"constraint:OnDelete:CASCADE;"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

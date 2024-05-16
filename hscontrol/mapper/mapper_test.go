@@ -187,10 +187,9 @@ func Test_fullMapResponse(t *testing.T) {
 		UserID:     0,
 		User:       types.User{Name: "mini"},
 		ForcedTags: []string{},
-		AuthKeyID:  0,
-		AuthKey:    &types.PreAuthKey{},
-		LastSeen:   &lastSeen,
-		Expiry:     &expire,
+		AuthKey:     &types.PreAuthKey{},
+		LastSeen:    &lastSeen,
+		Expiry:      &expire,
 		Hostinfo:   &tailcfg.Hostinfo{},
 		Routes: []types.Route{
 			{
