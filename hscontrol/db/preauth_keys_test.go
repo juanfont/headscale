@@ -76,14 +76,16 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.DB.Save(&node)
+	trx := db.DB.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.Equals, ErrSingleUseAuthKeyHasBeenUsed)
@@ -97,14 +99,16 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	pak, err := db.CreatePreAuthKey(user.Name, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             1,
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.DB.Save(&node)
+	trx := db.DB.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.IsNil)
@@ -131,15 +135,17 @@ func (*Suite) TestEphemeralKeyReusable(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	now := time.Now().Add(-time.Second * 30)
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		LastSeen:       &now,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 	}
-	db.DB.Save(&node)
+	trx := db.DB.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	_, err = db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.IsNil)
@@ -165,13 +171,14 @@ func (*Suite) TestEphemeralKeyNotReusable(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	now := time.Now().Add(-time.Second * 30)
+	pakId := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testest",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		LastSeen:       &now,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakId,
 	}
 	db.DB.Save(&node)
 
