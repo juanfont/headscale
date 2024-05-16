@@ -314,7 +314,11 @@ func (h *Headscale) handleAuthKey(
 			Msg("node was already registered before, refreshing with new auth key")
 
 		node.NodeKey = nodeKey
-		node.AuthKeyID = uint(pak.ID)
+		pakID := uint(pak.ID)
+		if pakID != 0 {
+			node.AuthKeyID = &pakID
+		}
+
 		node.Expiry = &registerRequest.Expiry
 		node.User = pak.User
 		node.UserID = pak.UserID
@@ -373,7 +377,6 @@ func (h *Headscale) handleAuthKey(
 			Expiry:         &registerRequest.Expiry,
 			NodeKey:        nodeKey,
 			LastSeen:       &now,
-			AuthKeyID:      uint(pak.ID),
 			ForcedTags:     pak.Proto().GetAclTags(),
 		}
 
@@ -389,6 +392,10 @@ func (h *Headscale) handleAuthKey(
 			return
 		}
 
+		pakID := uint(pak.ID)
+		if pakID != 0 {
+			nodeToRegister.AuthKeyID = &pakID
+		}
 		node, err = h.db.RegisterNode(
 			nodeToRegister,
 			ipv4, ipv6,

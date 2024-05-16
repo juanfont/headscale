@@ -31,6 +31,7 @@ test_integration:
 		--name headscale-test-suite \
 		-v $$PWD:$$PWD -w $$PWD/integration \
 		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $$PWD/control_logs:/tmp/control \
 		golang:1 \
 		go run gotest.tools/gotestsum@latest -- -failfast ./... -timeout 120m -parallel 8
 

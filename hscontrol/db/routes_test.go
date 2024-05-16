@@ -43,15 +43,17 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		RoutableIPs: []netip.Prefix{route},
 	}
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "test_get_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		Hostinfo:       &hostInfo,
 	}
-	db.DB.Save(&node)
+	trx := db.DB.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	su, err := db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
@@ -93,15 +95,17 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		RoutableIPs: []netip.Prefix{route, route2},
 	}
 
+	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		Hostinfo:       &hostInfo,
 	}
-	db.DB.Save(&node)
+	trx := db.DB.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	sendUpdate, err := db.SaveNodeRoutes(&node)
 	c.Assert(err, check.IsNil)
@@ -165,15 +169,17 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	hostInfo1 := tailcfg.Hostinfo{
 		RoutableIPs: []netip.Prefix{route, route2},
 	}
+	pakID := uint(pak.ID)
 	node1 := types.Node{
 		ID:             1,
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		Hostinfo:       &hostInfo1,
 	}
-	db.DB.Save(&node1)
+	trx := db.DB.Save(&node1)
+	c.Assert(trx.Error, check.IsNil)
 
 	sendUpdate, err := db.SaveNodeRoutes(&node1)
 	c.Assert(err, check.IsNil)
@@ -193,7 +199,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		Hostinfo:       &hostInfo2,
 	}
 	db.DB.Save(&node2)
@@ -247,16 +253,18 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	}
 
 	now := time.Now()
+	pakID := uint(pak.ID)
 	node1 := types.Node{
 		ID:             1,
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      &pakID,
 		Hostinfo:       &hostInfo1,
 		LastSeen:       &now,
 	}
-	db.DB.Save(&node1)
+	trx := db.DB.Save(&node1)
+	c.Assert(trx.Error, check.IsNil)
 
 	sendUpdate, err := db.SaveNodeRoutes(&node1)
 	c.Assert(err, check.IsNil)
@@ -617,7 +625,16 @@ func TestFailoverNodeRoutesIfNeccessary(t *testing.T) {
 
 			db := dbForTest(t, tt.name)
 
+			user := types.User{Name: tt.name}
+			if err := db.DB.Save(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %s", err)
+			}
+
 			for _, route := range tt.routes {
+				route.Node.User = user
+				if err := db.DB.Save(&route.Node).Error; err != nil {
+					t.Fatalf("failed to create node: %s", err)
+				}
 				if err := db.DB.Save(&route).Error; err != nil {
 					t.Fatalf("failed to create route: %s", err)
 				}
@@ -1013,8 +1030,16 @@ func TestFailoverRouteTx(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := dbForTest(t, tt.name)
+			user := types.User{Name: "test"}
+			if err := db.DB.Save(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %s", err)
+			}
 
 			for _, route := range tt.routes {
+				route.Node.User = user
+				if err := db.DB.Save(&route.Node).Error; err != nil {
+					t.Fatalf("failed to create node: %s", err)
+				}
 				if err := db.DB.Save(&route).Error; err != nil {
 					t.Fatalf("failed to create route: %s", err)
 				}

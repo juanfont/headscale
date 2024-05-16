@@ -91,7 +91,8 @@ func NewHeadscaleDatabase(
 					_ = tx.Migrator().
 						RenameColumn(&types.Node{}, "nickname", "given_name")
 
-					// If the Node table has a column for registered,
+					dbConn.Model(&types.Node{}).Where("auth_key_id = ?", 0).Update("auth_key_id", nil)
+	// If the Node table has a column for registered,
 					// find all occourences of "false" and drop them. Then
 					// remove the column.
 					if tx.Migrator().HasColumn(&types.Node{}, "registered") {
@@ -441,8 +442,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		db, err := gorm.Open(
 			sqlite.Open(cfg.Sqlite.Path+"?_synchronous=1&_journal_mode=WAL"),
 			&gorm.Config{
-				DisableForeignKeyConstraintWhenMigrating: true,
-				Logger:                                   dbLogger,
+				Logger: dbLogger,
 			},
 		)
 
@@ -488,8 +488,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		}
 
 		db, err := gorm.Open(postgres.Open(dbString), &gorm.Config{
-			DisableForeignKeyConstraintWhenMigrating: true,
-			Logger:                                   dbLogger,
+			Logger: dbLogger,
 		})
 		if err != nil {
 			return nil, err

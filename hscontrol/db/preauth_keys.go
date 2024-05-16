@@ -197,9 +197,10 @@ func ValidatePreAuthKey(tx *gorm.DB, k string) (*types.PreAuthKey, error) {
 	}
 
 	nodes := types.Nodes{}
+	pakID := uint(pak.ID)
 	if err := tx.
 		Preload("AuthKey").
-		Where(&types.Node{AuthKeyID: uint(pak.ID)}).
+		Where(&types.Node{AuthKeyID: &pakID}).
 		Find(&nodes).Error; err != nil {
 		return nil, err
 	}

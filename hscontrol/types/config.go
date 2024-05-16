@@ -741,6 +741,9 @@ func GetHeadscaleConfig() (*Config, error) {
 		}, nil
 	}
 
+  logConfig := GetLogConfig()
+	zerolog.SetGlobalLevel(logConfig.Level)
+
 	prefix4, err := PrefixV4()
 	if err != nil {
 		return nil, err
@@ -768,7 +771,7 @@ func GetHeadscaleConfig() (*Config, error) {
 
 	dnsConfig, baseDomain := GetDNSConfig()
 	derpConfig := GetDERPConfig()
-	logConfig := GetLogTailConfig()
+	logTailConfig := GetLogTailConfig()
 	randomizeClientPort := viper.GetBool("randomize_client_port")
 
 	oidcConfig, err := GetOIDCConfig()
@@ -823,7 +826,7 @@ func GetHeadscaleConfig() (*Config, error) {
 			Insecure: viper.GetBool("cli.insecure"),
 		},
 
-		Log: GetLogConfig(),
+		Log: logConfig,
 
 		// TODO(kradalby): Document these settings when more stable
 		Tuning: Tuning{
