@@ -1,7 +1,6 @@
 package types
 
 import (
-	structpb "github.com/golang/protobuf/ptypes/struct"
 	"net/netip"
 	"testing"
 
@@ -454,45 +453,51 @@ func TestApplyPeerChange(t *testing.T) {
 	}
 }
 
-func TestHostInfoAsProtoStruct(t *testing.T) {
+func TestHostInfoAsString(t *testing.T) {
 	tests := []struct {
 		name string
 		node Node
-		want *structpb.Struct
+		want string
 	}{
 		{
 			name: "hostinfo-not-set",
 			node: Node{},
-			want: nil,
+			want: "",
 		},
 		{
-			name: "hostinfo-set",
+			name: "hostinfo-empty",
 			node: Node{
-				HostinfoDatabaseField: "{\"IPNVersion\": \"1.66.1-hash\"}",
+				Hostinfo: &tailcfg.Hostinfo{},
 			},
-			want: &structpb.Struct{
-				Fields: map[string]*structpb.Value{
-					"IPNVersion": {
-						Kind: &structpb.Value_StringValue{StringValue: "1.66.1-hash"},
-					},
+			want: "",
+		},
+		{
+			name: "hostinfo-set-ipnVersion",
+			node: Node{
+				Hostinfo: &tailcfg.Hostinfo{
+					IPNVersion: "1.66.3-hash",
 				},
 			},
+			want: "{\"IPNVersion\":\"1.66.3-hash\"}",
 		},
 		{
-			name: "hostinfo-set-with-error",
+			name: "hostinfo-set-os",
 			node: Node{
-				HostinfoDatabaseField: "{IPNVersion: 1.66.1-hash}",
+				Hostinfo: &tailcfg.Hostinfo{
+					OS:        "linux",
+					OSVersion: "1.0.0",
+				},
 			},
-			want: nil,
+			want: "{\"OS\":\"linux\", \"OSVersion\":\"1.0.0\"}",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.node.HostInfoAsProtoStruct()
+			got := tt.node.HostInfoAsString()
 
-			if got.String() != tt.want.String() {
-				t.Errorf("HostInfoAsProtoStruct() failed: want (%v), got (%v)", tt.want, got)
+			if got != tt.want {
+				t.Errorf("TestHostInfoAsString() failed: want (%v), got (%v)", tt.want, got)
 			}
 		})
 	}

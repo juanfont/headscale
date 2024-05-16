@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"tailscale.com/tailcfg"
 	"testing"
 	"time"
 
@@ -999,8 +1000,14 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "node-4", listAll[3].GetName())
 	assert.Equal(t, "node-5", listAll[4].GetName())
 
-	assert.Equal(t, "TestOS", listAll[0].GetHostInfo().AsMap()["OS"])
-	assert.Equal(t, "DebugTestNode", listAll[0].GetHostInfo().AsMap()["Hostname"])
+	assert.NotNil(t, listAll[0].TailCfg)
+
+	var hi *tailcfg.Hostinfo
+	err = json.Unmarshal([]byte(listAll[0].TailCfg.HostInfo), &hi)
+	assert.Nil(t, err)
+
+	assert.Equal(t, "TestOS", hi.OS)
+	assert.Equal(t, "DebugTestNode", hi.Hostname)
 
 	otherUserMachineKeys := []string{
 		"mkey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",

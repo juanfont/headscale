@@ -873,14 +873,6 @@
       },
       "additionalProperties": {}
     },
-    "protobufNullValue": {
-      "type": "string",
-      "enum": [
-        "NULL_VALUE"
-      ],
-      "default": "NULL_VALUE",
-      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
-    },
     "rpcStatus": {
       "type": "object",
       "properties": {
@@ -1221,9 +1213,6 @@
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
         },
-        "hostInfo": {
-          "type": "object"
-        },
         "forcedTags": {
           "type": "array",
           "items": {
@@ -1247,6 +1236,9 @@
         },
         "online": {
           "type": "boolean"
+        },
+        "tailCfg": {
+          "$ref": "#/definitions/v1TailCfg"
         }
       }
     },
@@ -1362,6 +1354,14 @@
       "properties": {
         "node": {
           "$ref": "#/definitions/v1Node"
+        }
+      }
+    },
+    "v1TailCfg": {
+      "type": "object",
+      "properties": {
+        "hostInfo": {
+          "type": "string"
         }
       }
     },

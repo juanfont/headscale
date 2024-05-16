@@ -5,6 +5,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/user.proto";
+import "headscale/v1/tailCfg.proto";
 
 option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
@@ -36,12 +37,11 @@ message Node {
 
     RegisterMethod register_method = 13;
 
-    reserved 14;
+    reserved 14 to 17;
     // google.protobuf.Timestamp updated_at = 14;
+    // google.protobuf.Timestamp deleted_at = 15;
 
-    google.protobuf.Struct host_info = 15;
-
-    reserved 16 to 17;
+    // bytes host_info      = 15;
     // bytes endpoints      = 16;
     // bytes enabled_routes = 17;
 
@@ -50,6 +50,8 @@ message Node {
     repeated string valid_tags   = 20;
     string          given_name   = 21;
     bool            online       = 22;
+
+    TailCfg         tailCfg      = 23;
 }
 
 message RegisterNodeRequest {
