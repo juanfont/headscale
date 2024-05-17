@@ -290,7 +290,7 @@
 
     <footer>
         <div class="container">
-            <p>Headscale is a community implementation of Tailscale. Thanks to Tailscale.</p>
+            <p>Headscale is a community implementation of <a href="https://tailscale.com" target="_blank">Tailscale</a>.</p>
         </div>
     </footer>
 
@@ -301,25 +301,17 @@
 
             options.forEach(option => {
                 option.addEventListener('click', function () {
-                    // 移除所有选项的活动状态
+                    // remove active status from all options and details
                     options.forEach(opt => opt.classList.remove('active'));
                     details.forEach(detail => detail.classList.remove('active'));
 
-                    // 为点击的选项添加活动状态
+                    // add active status to the clicked option and its corresponding detail
                     const targetId = this.getAttribute('data-target');
                     this.classList.add('active');
                     document.getElementById(targetId).classList.add('active');
                 });
             });
 
-            // 获取当前网站地址
-            const currentUrl = window.location.origin;
-
-            // 将当前网站地址插入到所有的位置
-            const urlElements = document.querySelectorAll('#current-url');
-            urlElements.forEach(element => {
-                element.textContent = currentUrl;
-            });
         });
 
         function copyToClipboard() {
