@@ -355,8 +355,4 @@ func overwritePatch(currPatch, newPatch *tailcfg.PeerChange) {
 	if newPatch.KeyExpiry != nil {
 		currPatch.KeyExpiry = newPatch.KeyExpiry
 	}
-
-	if newPatch.Capabilities != nil {
-		currPatch.Capabilities = newPatch.Capabilities
-	}
 }
