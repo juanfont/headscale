@@ -135,10 +135,7 @@ func (m *mapSession) resetKeepAlive() {
 	m.keepAliveTicker.Reset(m.keepAlive)
 }
 
-// handlePoll ensures the node gets the appropriate updates from either
-// polling or immediate responses.
-//
-//nolint:gocyclo
+// serve handles non-streaming requests.
 func (m *mapSession) serve() {
 	// TODO(kradalby): A set todos to harden:
 	// - func to tell the stream to die, readonly -> false, !stream && omitpeers -> false, true
@@ -176,7 +173,35 @@ func (m *mapSession) serve() {
 		return
 	}
 
+}
+
+// serveLongPoll ensures the node gets the appropriate updates from either
+// polling or immediate responses.
+//
+//nolint:gocyclo
+func (m *mapSession) serveLongPoll() {
+	// Clean up the session when the client disconnects
+	defer func() {
+		m.cancelChMu.Lock()
+		m.cancelChOpen = false
+		close(m.cancelCh)
+		m.cancelChMu.Unlock()
+
+		// only update node status if the node channel was removed.
+		// in principal, it will be removed, but the client rapidly
+		// reconnects, the channel might be of another connection.
+		// In that case, it is not closed and the node is still online.
+		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
+			// Failover the node's routes if any.
+			m.h.updateNodeOnlineStatus(false, m.node)
+			m.pollFailoverRoutes("node closing connection", m.node)
+		}
+
+		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
+	}()
+
 	// From version 68, all streaming requests can be treated as read only.
+	// TODO: Remove when we drop support for 1.48
 	if m.capVer < 68 {
 		// Error has been handled/written to client in the func
 		// return
@@ -207,26 +232,6 @@ func (m *mapSession) serve() {
 	defer cancel()
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
-
-	// Clean up the session when the client disconnects
-	defer func() {
-		m.cancelChMu.Lock()
-		m.cancelChOpen = false
-		close(m.cancelCh)
-		m.cancelChMu.Unlock()
-
-		// only update node status if the node channel was removed.
-		// in principal, it will be removed, but the client rapidly
-		// reconnects, the channel might be of another connection.
-		// In that case, it is not closed and the node is still online.
-		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
-			// Failover the node's routes if any.
-			m.h.updateNodeOnlineStatus(false, m.node)
-			m.pollFailoverRoutes("node closing connection", m.node)
-		}
-
-		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
-	}()
 
 	m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
 	go m.h.updateNodeOnlineStatus(true, m.node)

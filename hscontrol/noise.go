@@ -234,5 +234,9 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
 	sess.tracef("a node sending a MapRequest with Noise protocol")
-	sess.serve()
+	if !sess.isStreaming() {
+		sess.serve()
+	} else {
+		sess.serveLongPoll()
+	}
 }
