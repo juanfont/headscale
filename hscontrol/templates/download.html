@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Headscale</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #2E5632;
+            color: white;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.2em;
+        }
+
+        .download-options {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .option {
+            background-color: #4A7A52;
+            padding: 20px;
+            margin: 10px;
+            border-radius: 8px;
+            text-align: center;
+            width: 150px;
+            transition: background-color 0.3s;
+            text-decoration: none;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        .option svg {
+            width: 50px;
+            height: 50px;
+            margin-bottom: 10px;
+            fill: white;
+        }
+
+        .option h3 {
+            margin-bottom: 10px;
+        }
+
+        .option p {
+            font-size: 0.9em;
+        }
+
+        .option:hover {
+            background-color: #3B6A42;
+        }
+
+        .option.active {
+            background-color: #FFFFFF;
+            color: #2E5632;
+        }
+
+        .option.active svg {
+            fill: #2E5632;
+        }
+
+        .details {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .details.active {
+            display: block;
+        }
+
+        .details h2 {
+            font-size: 1.8em;
+            margin-bottom: 10px;
+        }
+
+        .details .download-button,
+        .details .setup-guide-button {
+            display: block;
+            padding: 10px;
+            background-color: #FFFFFF;
+            color: #2E5632;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px auto;
+            transition: background-color 0.3s;
+        }
+
+        .details .download-button:hover,
+        .details .setup-guide-button:hover {
+            background-color: #DDDDDD;
+        }
+
+        .details code {
+            display: block;
+            background-color: #333;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px auto;
+            max-width: 80%;
+            color: #FFF;
+        }
+
+        .code-container {
+            display: flex;
+            align-items: center;
+            background-color: #f9f9f9;
+            padding: 10px 15px;
+            border-radius: 10px;
+            margin: 10px auto;
+            max-width: 80%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .code-container code {
+            background-color: transparent;
+            color: #333;
+            padding: 0;
+            margin: 0;
+            font-family: monospace;
+            flex-grow: 1;
+        }
+
+        .copy-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0 10px;
+        }
+
+        .copy-button svg {
+            fill: #333;
+            transition: fill 0.3s;
+        }
+
+        .copy-button:hover svg {
+            fill: #000;
+        }
+
+        .script-source {
+            color: #FFFFFF;
+            text-decoration: underline;
+            display: block;
+            margin-top: 10px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <h1>Download</h1>
+            <p>Install the app and sign in to get started.</p>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <section class="downloads">
+                <div class="download-options">
+                    <button class="option" data-target="macos">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 315" fill="#FFFFFF">
+                            <path
+                                d="M213.123 112.605c-.147-35.046 28.741-51.916 30.023-52.748-16.453-24.03-42.082-27.298-51.178-27.613-21.787-2.279-42.489 13.314-53.476 13.314-11.044 0-28.04-12.995-46.062-12.645-23.7.34-45.594 13.766-57.688 34.96-24.755 42.887-6.344 106.324 17.732 141.216 11.761 17.184 25.68 36.433 43.983 35.747 17.845-.701 24.569-11.52 46.152-11.52 21.526 0 27.615 11.52 46.048 11.137 19.102-.3 31.19-17.363 42.8-34.646 13.466-19.594 19.054-38.525 19.18-39.548-.41-.19-36.793-14.127-36.982-55.987zM173.064 49.25c9.623-11.74 16.144-28.04 14.35-44.225-13.845.551-30.617 9.242-40.488 20.972-8.846 10.359-16.612 27.194-14.522 43.243 15.307 1.189 30.917-7.786 40.66-19.99z" />
+                        </svg>
+                        <h3>macOS</h3>
+                        <p>Requires macOS 10.15 or later</p>
+                    </button>
+                    <button class="option" data-target="ios">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 315" fill="#FFFFFF">
+                            <path
+                                d="M213.123 112.605c-.147-35.046 28.741-51.916 30.023-52.748-16.453-24.03-42.082-27.298-51.178-27.613-21.787-2.279-42.489 13.314-53.476 13.314-11.044 0-28.04-12.995-46.062-12.645-23.7.34-45.594 13.766-57.688 34.96-24.755 42.887-6.344 106.324 17.732 141.216 11.761 17.184 25.68 36.433 43.983 35.747 17.845-.701 24.569-11.52 46.152-11.52 21.526 0 27.615 11.52 46.048 11.137 19.102-.3 31.19-17.363 42.8-34.646 13.466-19.594 19.054-38.525 19.18-39.548-.41-.19-36.793-14.127-36.982-55.987zM173.064 49.25c9.623-11.74 16.144-28.04 14.35-44.225-13.845.551-30.617 9.242-40.488 20.972-8.846 10.359-16.612 27.194-14.522 43.243 15.307 1.189 30.917-7.786 40.66-19.99z" />
+                        </svg>
+                        <h3>iOS</h3>
+                        <p>Requires iOS 13.0 or later</p>
+                    </button>
+                    <button class="option" data-target="windows">
+                        <svg class="fill-white" fill="none" viewBox="0 0 46 46" height="46" width="46">
+                            <path fill="currentColor"
+                                d="M0.296875 6.56799L18.9443 4.0173V21.9762H0.296875V6.56799ZM21.1903 3.66333L45.8969 0.0663452V21.8252H21.1903V3.66333ZM0.296875 23.8762H18.9443V41.8872L0.296875 39.2844V23.8762ZM21.1903 24.1157H45.8969V45.6663L21.1903 42.1787">
+                            </path>
+                        </svg>
+                        <h3>Windows</h3>
+                        <p>Requires Windows 10 or later</p>
+                    </button>
+                    <button class=" option" data-target="linux">
+                        <svg class="fill-white" fill="none" viewBox="0 0 55 40" height="40" width="55">
+                            <path fill="currentColor"
+                                d="M0.613281 0.225403H54.3397V39.0278H0.613281V0.225403ZM8.36288 8.47665C8.75143 8.08811 9.38138 8.08811 9.76993 8.47665L14.7446 13.4513C15.1331 13.8399 15.1331 14.4698 14.7446 14.8584L9.76993 19.833C9.38138 20.2216 8.75143 20.2216 8.36288 19.833C7.97434 19.4445 7.97434 18.8145 8.36288 18.426L12.634 14.1548L8.36288 9.8837C7.97434 9.49515 7.97434 8.8652 8.36288 8.47665ZM16.534 22.1143C15.9845 22.1143 15.5391 22.5597 15.5391 23.1092C15.5391 23.6587 15.9845 24.1041 16.534 24.1041H25.4884C26.0379 24.1041 26.4833 23.6587 26.4833 23.1092C26.4833 22.5597 26.0379 22.1143 25.4884 22.1143H16.534Z"
+                                clip-rule="evenodd" fill-rule="evenodd">
+                            </path>
+                        </svg>
+                        <h3>Linux</h3>
+                        <p>For Debian, Ubuntu, Fedora, and more</p>
+                    </button>
+                    <button class="option" data-target="android">
+                        <svg class="fill-white" fill="none" viewBox="0 0 63 36" height="36" width="63">
+                            <path fill="currentColor"
+                                d="M47.0239 10.6522L52.1669 1.64895C52.4571 1.14423 52.2816 0.503129 51.7889 0.209825C51.2962 -0.0834073 50.655 0.0871143 50.3716 0.59178L45.161 9.71096C41.1856 7.87622 36.7108 6.8531 31.8985 6.8531C27.0861 6.8531 22.6113 7.87622 18.6359 9.71096L13.4253 0.59178C13.1351 0.0870609 12.5007 -0.0834429 12.0012 0.209825C11.5018 0.50304 11.333 1.14423 11.6232 1.64895L16.7663 10.6522C7.89757 15.5085 1.89061 24.5799 0.898438 35.1997H62.8984C61.9063 24.5799 55.8993 15.5085 47.0238 10.6522H47.0239ZM17.664 26.4011C16.2264 26.4011 15.0655 25.2211 15.0655 23.7751C15.0655 22.3223 16.2331 21.1492 17.664 21.1492C19.1016 21.1492 20.2625 22.3292 20.2625 23.7751C20.2695 25.2211 19.1016 26.4011 17.664 26.4011ZM46.1262 26.4011C44.6886 26.4011 43.5277 25.2211 43.5277 23.7751C43.5277 22.3223 44.6953 21.1492 46.1262 21.1492C47.5638 21.1492 48.7247 22.3292 48.7247 23.7751C48.7318 25.2211 47.5638 26.4011 46.1262 26.4011Z">
+                            </path>
+                        </svg>
+                        <h3>Android</h3>
+                        <p>Requires Android 6.0 or later</p>
+                    </button>
+                </div>
+            </section>
+            <section id="macos" class="details">
+                <h2>Download for macOS</h2>
+                <a href="https://apps.apple.com/ca/app/tailscale/id1475387142" class="download-button">Download
+                    Tailscale for macOS</a>
+                
+                <a href="{{.URL}}/apple" class="setup-guide-button">macOS Setup Guide</a>
+
+            </section>
+            <section id="ios" class="details">
+                <h2>Download for iOS</h2>
+                <a href="https://apps.apple.com/us/app/tailscale/id1470499037?ls=1" class="download-button">Download
+                    Tailscale for iOS</a>
+
+                <a href="https://github.com/juanfont/headscale/blob/main/docs/iOS-client.md"
+                    class="setup-guide-button">iOS Setup Guide</a>
+
+            </section>
+            <section id="windows" class="details">
+                <h2>Download for Windows</h2>
+                <a href="https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" class="download-button">Download
+                    Tailscale for Windows</a>
+
+                <a href="{{.URL}}/windows" class="setup-guide-button">Windows Setup Guide</a>
+
+            </section>
+            <section id="linux" class="details">
+                <h2>Install with one command</h2>
+                <div class="code-container">
+                    <code>curl -fsSL https://headscale.net/install.sh | sh</code>
+                    <button class="copy-button" onclick="copyToClipboard()">
+                        <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 96 960 960" width="24">
+                            <path
+                                d="M480 976v-60h240V656h60v320q0 24-18 42t-42 18H480Zm-180-180q-24 0-42-18t-18-42V316q0-24 18-42t42-18h320q24 0 42 18t18 42v100h-60V316H300v420h100v60H300Zm60 60q-24 0-42-18t-18-42V496q0-24 18-42t42-18h320q24 0 42 18t18 42v300q0 24-18 42t-42 18H360Zm0-60h320V496H360v300Zm0 0V496v300Z" />
+                        </svg>
+                    </button>
+                </div>
+                <a href="https://github.com/tailscale/tailscale/blob/main/scripts/installer.sh"
+                    class="script-source">View script source</a>
+                <p><code>tailscale up --login-server {{.URL}}</span></code></p>
+            </section>
+            <section id="android" class="details">
+                <h2>Download for Android</h2>
+                <a href="https://play.google.com/store/apps/details?id=com.tailscale.ipn"
+                    class="download-button">Download Tailscale for Android</a>
+                <a href="https://github.com/juanfont/headscale/blob/main/docs/android-client.md"
+                    class="setup-guide-button">Android Setup Guide</a>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>Headscale is a community implementation of Tailscale. Thanks to Tailscale.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const options = document.querySelectorAll('.option');
+            const details = document.querySelectorAll('.details');
+
+            options.forEach(option => {
+                option.addEventListener('click', function () {
+                    // 移除所有选项的活动状态
+                    options.forEach(opt => opt.classList.remove('active'));
+                    details.forEach(detail => detail.classList.remove('active'));
+
+                    // 为点击的选项添加活动状态
+                    const targetId = this.getAttribute('data-target');
+                    this.classList.add('active');
+                    document.getElementById(targetId).classList.add('active');
+                });
+            });
+
+            // 获取当前网站地址
+            const currentUrl = window.location.origin;
+
+            // 将当前网站地址插入到所有的位置
+            const urlElements = document.querySelectorAll('#current-url');
+            urlElements.forEach(element => {
+                element.textContent = currentUrl;
+            });
+        });
+
+        function copyToClipboard() {
+            const codeText = document.querySelector('.code-container code').textContent;
+            navigator.clipboard.writeText(codeText).then(() => {
+                alert('Copied to clipboard');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+    </script>
+</body>
+
+</html>

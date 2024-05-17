@@ -18,6 +18,51 @@ var appleTemplate string
 //go:embed templates/windows.html
 var windowsTemplate string
 
+//go:embed templates/download.html
+var downloadTemplate string
+
+
+// DownloadMessage shows a simple message in the browser for how to configure the Tailscale client.
+func (h *Headscale) DownloadMessage(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	winTemplate := template.Must(template.New("download").Parse(downloadTemplate))
+	config := map[string]interface{}{
+		"URL": h.cfg.ServerURL,
+	}
+
+	var payload bytes.Buffer
+	if err := winTemplate.Execute(&payload, config); err != nil {
+		log.Error().
+			Str("handler", "DownloadMessage").
+			Err(err).
+			Msg("Could not render download index template")
+
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.WriteHeader(http.StatusInternalServerError)
+		_, err := writer.Write([]byte("Could not render download index template"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
+
+		return
+	}
+
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+	_, err := writer.Write(payload.Bytes())
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
+}
+
 // WindowsConfigMessage shows a simple message in the browser for how to configure the Windows Tailscale client.
 func (h *Headscale) WindowsConfigMessage(
 	writer http.ResponseWriter,
