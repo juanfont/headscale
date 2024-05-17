@@ -204,6 +204,13 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 	notifierWaitForLock.WithLabelValues("send-all").Observe(time.Since(start).Seconds())
 
 	for id, c := range n.nodes {
+		// Whenever an update is sent to all nodes, there is a chance that the node
+		// has disconnected and the goroutine that was supposed to consume the update
+		// has shut down the channel and is waiting for the lock held here in RemoveNode.
+		// This means that there is potential for a deadlock which would stop all updates
+		// going out to clients. This timeout prevents that from happening by moving on to the
+		// next node if the context is cancelled. Afther sendAll releases the lock, the add/remove
+		// call will succeed and the update will go to the correct nodes on the next call.
 		ctx, cancel := context.WithTimeout(context.Background(), n.cfg.Tuning.NotifierSendTimeout)
 		defer cancel()
 		select {
