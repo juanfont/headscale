@@ -11,12 +11,25 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
+	"github.com/sasha-s/go-deadlock"
+	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/set"
 )
 
+var debugDeadlock = envknob.Bool("HEADSCALE_DEBUG_DEADLOCK")
+var debugDeadlockTimeout = envknob.RegisterDuration("HEADSCALE_DEBUG_DEADLOCK_TIMEOUT")
+
+func init() {
+	deadlock.Opts.Disable = !debugDeadlock
+	if debugDeadlock {
+		deadlock.Opts.DeadlockTimeout = debugDeadlockTimeout()
+		deadlock.Opts.PrintAllCurrentGoroutines = true
+	}
+}
+
 type Notifier struct {
-	l         sync.RWMutex
+	l         deadlock.Mutex
 	nodes     map[types.NodeID]chan<- types.StateUpdate
 	connected *xsync.MapOf[types.NodeID, bool]
 	b         *batcher

@@ -286,8 +286,8 @@ func New(
 	}
 
 	env := []string{
-		"HEADSCALE_PROFILING_ENABLED=1",
-		"HEADSCALE_PROFILING_PATH=/tmp/profile",
+		"HEADSCALE_DEBUG_PROFILING_ENABLED=1",
+		"HEADSCALE_DEBUG_PROFILING_PATH=/tmp/profile",
 		"HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH=/tmp/mapresponses",
 	}
 	for key, value := range hsic.env {

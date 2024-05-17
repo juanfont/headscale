@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -107,10 +108,12 @@ type Headscale struct {
 }
 
 var (
-	profilingEnabled = envknob.Bool("HEADSCALE_PROFILING_ENABLED")
+	profilingEnabled = envknob.Bool("HEADSCALE_DEBUG_PROFILING_ENABLED")
+	profilingPath    = envknob.String("HEADSCALE_DEBUG_PROFILING_PATH")
 	tailsqlEnabled   = envknob.Bool("HEADSCALE_DEBUG_TAILSQL_ENABLED")
 	tailsqlStateDir  = envknob.String("HEADSCALE_DEBUG_TAILSQL_STATE_DIR")
 	tailsqlTSKey     = envknob.String("TS_AUTHKEY")
+	dumpConfig       = envknob.Bool("HEADSCALE_DEBUG_DUMP_CONFIG")
 )
 
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
@@ -498,20 +501,24 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
-	if _, enableProfile := os.LookupEnv("HEADSCALE_PROFILING_ENABLED"); enableProfile {
-		if profilePath, ok := os.LookupEnv("HEADSCALE_PROFILING_PATH"); ok {
-			err := os.MkdirAll(profilePath, os.ModePerm)
+	if profilingEnabled {
+		if profilingPath != "" {
+			err := os.MkdirAll(profilingPath, os.ModePerm)
 			if err != nil {
 				log.Fatal().Err(err).Msg("failed to create profiling directory")
 			}
 
-			defer profile.Start(profile.ProfilePath(profilePath)).Stop()
+			defer profile.Start(profile.ProfilePath(profilingPath)).Stop()
 		} else {
 			defer profile.Start().Stop()
 		}
 	}
 
 	var err error
+
+	if dumpConfig {
+		spew.Dump(h.cfg)
+	}
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
