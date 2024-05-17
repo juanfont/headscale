@@ -10,12 +10,22 @@ const prometheusNamespace = "headscale"
 
 var debugHighCardinalityMetrics = envknob.Bool("HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS")
 
+var notifierUpdateSent *prometheus.CounterVec
+
 func init() {
-	notifierUpdateSent = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "notifier_update_sent_total",
-		Help:      "total count of update sent on nodes channel",
-	}, []string{"status", "type", "trigger", "id"})
+	if debugHighCardinalityMetrics {
+		notifierUpdateSent = promauto.NewCounterVec(prometheus.CounterOpts{
+			Namespace: prometheusNamespace,
+			Name:      "notifier_update_sent_total",
+			Help:      "total count of update sent on nodes channel",
+		}, []string{"status", "type", "trigger", "id"})
+	} else {
+		notifierUpdateSent = promauto.NewCounterVec(prometheus.CounterOpts{
+			Namespace: prometheusNamespace,
+			Name:      "notifier_update_sent_total",
+			Help:      "total count of update sent on nodes channel",
+		}, []string{"status", "type", "trigger"})
+	}
 }
 
 var (
@@ -30,11 +40,6 @@ var (
 		Help:      "histogram of time spent waiting for the notifier lock",
 		Buckets:   []float64{0.001, 0.01, 0.1, 0.3, 0.5, 1, 3, 5, 10},
 	}, []string{"action"})
-	notifierUpdateSent = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "notifier_update_sent_total",
-		Help:      "total count of update sent on nodes channel",
-	}, []string{"status", "type", "trigger"})
 	notifierUpdateReceived = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "notifier_update_received_total",
