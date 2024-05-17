@@ -227,7 +227,7 @@ func TestBatcher(t *testing.T) {
 			ch := make(chan types.StateUpdate, 30)
 			defer close(ch)
 			n.AddNode(1, ch)
-			defer n.RemoveNode(1)
+			defer n.RemoveNode(1, ch)
 
 			for _, u := range tt.updates {
 				n.NotifyAll(context.Background(), u)

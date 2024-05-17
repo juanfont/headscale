@@ -20,12 +20,14 @@ type Notifier struct {
 	nodes     map[types.NodeID]chan<- types.StateUpdate
 	connected *xsync.MapOf[types.NodeID, bool]
 	b         *batcher
+	cfg       *types.Config
 }
 
 func NewNotifier(cfg *types.Config) *Notifier {
 	n := &Notifier{
 		nodes:     make(map[types.NodeID]chan<- types.StateUpdate),
 		connected: xsync.NewMapOf[types.NodeID, bool](),
+		cfg:       cfg,
 	}
 	b := newBatcher(cfg.Tuning.BatchChangeDelay, n)
 	n.b = b
@@ -104,10 +106,10 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID, c chan<- types.StateUpdate) b
 // IsConnected reports if a node is connected to headscale and has a
 // poll session open.
 func (n *Notifier) IsConnected(nodeID types.NodeID) bool {
-	notifierWaitersForLock.WithLabelValues("rlock", "conncheck").Inc()
-	n.l.RLock()
-	defer n.l.RUnlock()
-	notifierWaitersForLock.WithLabelValues("rlock", "conncheck").Dec()
+	notifierWaitersForLock.WithLabelValues("lock", "conncheck").Inc()
+	n.l.Lock()
+	defer n.l.Unlock()
+	notifierWaitersForLock.WithLabelValues("lock", "conncheck").Dec()
 
 	if val, ok := n.connected.Load(nodeID); ok {
 		return val
@@ -147,10 +149,10 @@ func (n *Notifier) NotifyByNodeID(
 	nodeID types.NodeID,
 ) {
 	start := time.Now()
-	notifierWaitersForLock.WithLabelValues("rlock", "notify").Inc()
-	n.l.RLock()
-	defer n.l.RUnlock()
-	notifierWaitersForLock.WithLabelValues("rlock", "notify").Dec()
+	notifierWaitersForLock.WithLabelValues("lock", "notify").Inc()
+	n.l.Lock()
+	defer n.l.Unlock()
+	notifierWaitersForLock.WithLabelValues("lock", "notify").Dec()
 	notifierWaitForLock.WithLabelValues("notify").Observe(time.Since(start).Seconds())
 
 	if c, ok := n.nodes[nodeID]; ok {
@@ -174,14 +176,14 @@ func (n *Notifier) NotifyByNodeID(
 
 func (n *Notifier) sendAll(update types.StateUpdate) {
 	start := time.Now()
-	notifierWaitersForLock.WithLabelValues("rlock", "send-all").Inc()
-	n.l.RLock()
-	defer n.l.RUnlock()
-	notifierWaitersForLock.WithLabelValues("rlock", "send-all").Dec()
+	notifierWaitersForLock.WithLabelValues("lock", "send-all").Inc()
+	n.l.Lock()
+	defer n.l.Unlock()
+	notifierWaitersForLock.WithLabelValues("lock", "send-all").Dec()
 	notifierWaitForLock.WithLabelValues("send-all").Observe(time.Since(start).Seconds())
 
 	for id, c := range n.nodes {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), n.cfg.Tuning.NotifierSendTimeout)
 		defer cancel()
 		select {
 		case <-ctx.Done():
@@ -194,15 +196,16 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 			return
 		case c <- update:
 			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all", id.String()).Inc()
+			n.tracef(id, "DONE SENDING TO NODE, CHAN: %p", c)
 		}
 	}
 }
 
 func (n *Notifier) String() string {
-	notifierWaitersForLock.WithLabelValues("rlock", "string").Inc()
-	n.l.RLock()
-	defer n.l.RUnlock()
-	notifierWaitersForLock.WithLabelValues("rlock", "string").Dec()
+	notifierWaitersForLock.WithLabelValues("lock", "string").Inc()
+	n.l.Lock()
+	defer n.l.Unlock()
+	notifierWaitersForLock.WithLabelValues("lock", "string").Dec()
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "chans (%d):\n", len(n.nodes))

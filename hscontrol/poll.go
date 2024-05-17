@@ -140,39 +140,6 @@ func (m *mapSession) resetKeepAlive() {
 //
 //nolint:gocyclo
 func (m *mapSession) serve() {
-	// Register with the notifier if this is a streaming
-	// session
-	if m.isStreaming() {
-		// defers are called in reverse order,
-		// so top one is executed last.
-
-		// Failover the node's routes if any.
-		defer m.infof("node has disconnected, mapSession: %p", m)
-		defer func() {
-			// only update node status if the node channel was removed.
-			// in principal, it will be removed, but the client rapidly
-			// reconnects, the channel might be of another connection.
-			// In that case, it is not closed and the node is still online.
-			if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
-				m.h.updateNodeOnlineStatus(false, m.node)
-				m.pollFailoverRoutes("node closing connection", m.node)
-			}
-		}()
-
-		defer func() {
-			m.cancelChMu.Lock()
-			defer m.cancelChMu.Unlock()
-
-			m.cancelChOpen = false
-			close(m.cancelCh)
-		}()
-
-		m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
-		go m.h.updateNodeOnlineStatus(true, m.node)
-
-		m.infof("node has connected, mapSession: %p", m)
-	}
-
 	// TODO(kradalby): A set todos to harden:
 	// - func to tell the stream to die, readonly -> false, !stream && omitpeers -> false, true
 
@@ -211,18 +178,16 @@ func (m *mapSession) serve() {
 
 	// From version 68, all streaming requests can be treated as read only.
 	if m.capVer < 68 {
-		go func() {
-			// Error has been handled/written to client in the func
-			// return
-			err := m.handleSaveNode()
-			if err != nil {
-				mapResponseWriteUpdatesInStream.WithLabelValues("error").Inc()
+		// Error has been handled/written to client in the func
+		// return
+		err := m.handleSaveNode()
+		if err != nil {
+			mapResponseWriteUpdatesInStream.WithLabelValues("error").Inc()
 
-				m.close()
-				return
-			}
-			mapResponseWriteUpdatesInStream.WithLabelValues("ok").Inc()
-		}()
+			m.close()
+			return
+		}
+		mapResponseWriteUpdatesInStream.WithLabelValues("ok").Inc()
 	}
 
 	// Set up the client stream
@@ -242,6 +207,31 @@ func (m *mapSession) serve() {
 	defer cancel()
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
+
+	// Clean up the session when the client disconnects
+	defer func() {
+		m.cancelChMu.Lock()
+		m.cancelChOpen = false
+		close(m.cancelCh)
+		m.cancelChMu.Unlock()
+
+		// only update node status if the node channel was removed.
+		// in principal, it will be removed, but the client rapidly
+		// reconnects, the channel might be of another connection.
+		// In that case, it is not closed and the node is still online.
+		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
+			// Failover the node's routes if any.
+			m.h.updateNodeOnlineStatus(false, m.node)
+			m.pollFailoverRoutes("node closing connection", m.node)
+		}
+
+		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
+	}()
+
+	m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
+	go m.h.updateNodeOnlineStatus(true, m.node)
+
+	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
 	// Loop through updates and continuously send them to the
 	// client.

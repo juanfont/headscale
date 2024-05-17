@@ -171,6 +171,7 @@ type LogConfig struct {
 }
 
 type Tuning struct {
+	NotifierSendTimeout            time.Duration
 	BatchChangeDelay               time.Duration
 	NodeMapSessionBufferedChanSize int
 }
@@ -232,6 +233,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
+	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
 
@@ -640,7 +642,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		}, nil
 	}
 
-  logConfig := GetLogConfig()
+	logConfig := GetLogConfig()
 	zerolog.SetGlobalLevel(logConfig.Level)
 
 	prefix4, err := PrefixV4()
