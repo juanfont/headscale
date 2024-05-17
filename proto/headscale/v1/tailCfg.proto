@@ -1,8 +1,0 @@
-syntax = "proto3";
-package headscale.v1;
-
-option go_package = "github.com/juanfont/headscale/gen/go/v1";
-
-message TailCfg {
-    string host_info = 1;
-}

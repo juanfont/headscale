@@ -1000,10 +1000,8 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "node-4", listAll[3].GetName())
 	assert.Equal(t, "node-5", listAll[4].GetName())
 
-	assert.NotNil(t, listAll[0].TailCfg)
-
 	var hi *tailcfg.Hostinfo
-	err = json.Unmarshal([]byte(listAll[0].TailCfg.HostInfo), &hi)
+	err = json.Unmarshal([]byte(listAll[0].HostInfo), &hi)
 	assert.Nil(t, err)
 
 	assert.Equal(t, "TestOS", hi.OS)

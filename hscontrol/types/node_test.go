@@ -494,9 +494,9 @@ func TestHostInfoAsString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.node.HostInfoAsString()
+			got := tt.node.HostInfoAsJson()
 
-			if got != tt.want {
+			if string(got) != tt.want {
 				t.Errorf("TestHostInfoAsString() failed: want (%v), got (%v)", tt.want, got)
 			}
 		})

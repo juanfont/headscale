@@ -191,9 +191,9 @@ func (node *Node) IPsAsString() []string {
 	return ret
 }
 
-func (node *Node) HostInfoAsString() string {
+func (node *Node) HostInfoAsJson() []byte {
 	if node.Hostinfo == nil {
-		return ""
+		return nil
 	}
 
 	b, err := json.Marshal(node.Hostinfo)
@@ -202,10 +202,10 @@ func (node *Node) HostInfoAsString() string {
 			Err(err).
 			Msg("Error marshalling host_info")
 
-		return ""
+		return nil
 	}
 
-	return string(b)
+	return b
 }
 
 func (node *Node) InIPSet(set *netipx.IPSet) bool {
@@ -391,10 +391,10 @@ func (node *Node) Proto() *v1.Node {
 		// RegisterMethod: ,
 
 		CreatedAt: timestamppb.New(node.CreatedAt),
+	}
 
-		TailCfg: &v1.TailCfg{
-			HostInfo: node.HostInfoAsString(),
-		},
+	if hostInfo := node.HostInfoAsJson(); hostInfo != nil {
+		nodeProto.HostInfo = string(hostInfo)
 	}
 
 	if node.AuthKey != nil {

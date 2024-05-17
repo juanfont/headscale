@@ -1237,8 +1237,8 @@
         "online": {
           "type": "boolean"
         },
-        "tailCfg": {
-          "$ref": "#/definitions/v1TailCfg"
+        "hostInfo": {
+          "type": "string"
         }
       }
     },
@@ -1354,14 +1354,6 @@
       "properties": {
         "node": {
           "$ref": "#/definitions/v1Node"
-        }
-      }
-    },
-    "v1TailCfg": {
-      "type": "object",
-      "properties": {
-        "hostInfo": {
-          "type": "string"
         }
       }
     },

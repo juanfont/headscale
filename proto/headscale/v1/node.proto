@@ -2,10 +2,8 @@ syntax = "proto3";
 package headscale.v1;
 
 import "google/protobuf/timestamp.proto";
-import "google/protobuf/struct.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/user.proto";
-import "headscale/v1/tailCfg.proto";
 
 option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
@@ -51,7 +49,7 @@ message Node {
     string          given_name   = 21;
     bool            online       = 22;
 
-    TailCfg         tailCfg      = 23;
+    string          host_info    = 23;
 }
 
 message RegisterNodeRequest {
