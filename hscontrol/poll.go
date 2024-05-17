@@ -344,6 +344,9 @@ func (m *mapSession) serveLongPoll() {
 
 				log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
 
+				if debugHighCardinalityMetrics {
+					mapResponseLastSentSeconds.WithLabelValues(updateType, m.node.ID.String()).Set(float64(time.Now().Unix()))
+				}
 				mapResponseSent.WithLabelValues("ok", updateType).Inc()
 				m.tracef("update sent")
 				m.resetKeepAlive()
@@ -369,6 +372,9 @@ func (m *mapSession) serveLongPoll() {
 				return
 			}
 
+			if debugHighCardinalityMetrics {
+				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
+			}
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
 		}
 	}

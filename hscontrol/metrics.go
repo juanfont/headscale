@@ -7,7 +7,22 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"tailscale.com/envknob"
 )
+
+var debugHighCardinalityMetrics = envknob.Bool("HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS")
+
+var mapResponseLastSentSeconds *prometheus.GaugeVec
+
+func init() {
+	if debugHighCardinalityMetrics {
+		mapResponseLastSentSeconds = promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: prometheusNamespace,
+			Name:      "mapresponse_last_sent_seconds",
+			Help:      "last sent metric to node.id",
+		}, []string{"type", "id"})
+	}
+}
 
 const prometheusNamespace = "headscale"
 
