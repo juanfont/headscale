@@ -397,7 +397,7 @@ func (t *HeadscaleInContainer) Shutdown() error {
 		)
 	}
 
-	err = t.SaveMetrics("/tmp/control/metrics.txt")
+	err = t.SaveMetrics(fmt.Sprintf("/tmp/control/%s_metrics.txt", t.hostname))
 	if err != nil {
 		log.Printf(
 			"Failed to metrics from control: %s",
