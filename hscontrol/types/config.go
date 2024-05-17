@@ -233,7 +233,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
-	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
+	viper.SetDefault("tuning.notifier_send_timeout", "3000ms")
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
 
