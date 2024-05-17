@@ -3,9 +3,20 @@ package notifier
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"tailscale.com/envknob"
 )
 
 const prometheusNamespace = "headscale"
+
+var debugHighCardinalityMetrics = envknob.Bool("HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS")
+
+func init() {
+	notifierUpdateSent = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: prometheusNamespace,
+		Name:      "notifier_update_sent_total",
+		Help:      "total count of update sent on nodes channel",
+	}, []string{"status", "type", "trigger", "id"})
+}
 
 var (
 	notifierWaitersForLock = promauto.NewGaugeVec(prometheus.GaugeOpts{
@@ -23,7 +34,7 @@ var (
 		Namespace: prometheusNamespace,
 		Name:      "notifier_update_sent_total",
 		Help:      "total count of update sent on nodes channel",
-	}, []string{"status", "type", "trigger", "id"})
+	}, []string{"status", "type", "trigger"})
 	notifierUpdateReceived = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "notifier_update_received_total",

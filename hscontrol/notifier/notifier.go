@@ -177,12 +177,20 @@ func (n *Notifier) NotifyByNodeID(
 				Any("origin", types.NotifyOriginKey.Value(ctx)).
 				Any("origin-hostname", types.NotifyHostnameKey.Value(ctx)).
 				Msgf("update not sent, context cancelled")
-			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.String()).Inc()
+			if debugHighCardinalityMetrics {
+				notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.String()).Inc()
+			} else {
+				notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), types.NotifyOriginKey.Value(ctx)).Inc()
+			}
 
 			return
 		case c <- update:
 			n.tracef(nodeID, "update successfully sent on chan, origin: %s, origin-hostname: %s", ctx.Value("origin"), ctx.Value("hostname"))
-			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.String()).Inc()
+			if debugHighCardinalityMetrics {
+				notifierUpdateSent.WithLabelValues("ok", update.Type.String(), types.NotifyOriginKey.Value(ctx), nodeID.String()).Inc()
+			} else {
+				notifierUpdateSent.WithLabelValues("ok", update.Type.String(), types.NotifyOriginKey.Value(ctx)).Inc()
+			}
 		}
 	}
 }
@@ -204,12 +212,19 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 				Err(ctx.Err()).
 				Uint64("node.id", id.Uint64()).
 				Msgf("update not sent, context cancelled")
-			notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), "send-all", id.String()).Inc()
+			if debugHighCardinalityMetrics {
+				notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), "send-all", id.String()).Inc()
+			} else {
+				notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), "send-all").Inc()
+			}
 
 			return
 		case c <- update:
-			notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all", id.String()).Inc()
-			n.tracef(id, "DONE SENDING TO NODE, CHAN: %p", c)
+			if debugHighCardinalityMetrics {
+				notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all", id.String()).Inc()
+			} else {
+				notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all").Inc()
+			}
 		}
 	}
 }

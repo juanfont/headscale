@@ -289,6 +289,9 @@ func New(
 		"HEADSCALE_DEBUG_PROFILING_ENABLED=1",
 		"HEADSCALE_DEBUG_PROFILING_PATH=/tmp/profile",
 		"HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH=/tmp/mapresponses",
+		"HEADSCALE_DEBUG_DEADLOCK=1",
+		"HEADSCALE_DEBUG_DEADLOCK_TIMEOUT=5s",
+		"HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS=1",
 	}
 	for key, value := range hsic.env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
