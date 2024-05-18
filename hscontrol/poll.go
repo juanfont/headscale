@@ -192,7 +192,6 @@ func (m *mapSession) serve() {
 	// start-up before their first real endpoint update.
 	if m.isReadOnlyUpdate() {
 		m.handleReadOnlyRequest()
-	// update ACLRules with peer information (to update server tags if necessary)
 
 		return
 	}
