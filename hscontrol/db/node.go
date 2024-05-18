@@ -725,7 +725,6 @@ func ExpireExpiredNodes(tx *gorm.DB,
 				NodeID:    tailcfg.NodeID(node.ID),
 				KeyExpiry: node.Expiry,
 			})
-			// and there is no point in notifying twice.
 		}
 	}
 
