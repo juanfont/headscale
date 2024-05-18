@@ -312,7 +312,6 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	c.Assert(nodeFromDB.IsExpired(), check.Equals, true)
 }
 
-func (s *Suite) TestSerdeAddressStringSlice(c *check.C) {
 func (s *Suite) TestGenerateGivenName(c *check.C) {
 	user1, err := db.CreateUser("user-1")
 	c.Assert(err, check.IsNil)
