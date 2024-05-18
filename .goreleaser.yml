@@ -135,7 +135,7 @@ kos:
   - id: ghcr-debug
     repository: ghcr.io/juanfont/headscale
     bare: true
-    base_image: "debian:12"
+    base_image: gcr.io/distroless/base-debian12:debug
     build: headscale
     main: ./cmd/headscale
     env:
@@ -160,7 +160,7 @@ kos:
 
   - id: dockerhub-debug
     build: headscale
-    base_image: "debian:12"
+    base_image: gcr.io/distroless/base-debian12:debug
     repository: headscale/headscale
     bare: true
     platforms:
