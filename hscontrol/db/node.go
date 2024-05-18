@@ -692,7 +692,7 @@ func DeleteExpiredEphemeralNodes(tx *gorm.DB,
 					log.Error().
 						Err(err).
 						Str("node", node.Hostname).
-						Msg("� Cannot delete ephemeral node from the database")
+						Msg("🤮 Cannot delete ephemeral node from the database")
 				}
 
 				changedNodes = append(changedNodes, changed...)
