@@ -331,7 +331,7 @@ func dockertestMaxWait() time.Duration {
 // 	return timeout
 // }
 
-// pingAllNegativeHelper is intended to have 1 or more nodes timeing out from the ping,
+// pingAllNegativeHelper is intended to have 1 or more nodes timing out from the ping,
 // it counts failures instead of successes.
 // func pingAllNegativeHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
 // 	t.Helper()

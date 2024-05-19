@@ -58,12 +58,12 @@ A solution could be to consider a headscale server (in it's entirety) as a
 tailnet.
 
 For personal users the default behavior could either allow all communications
-between all namespaces (like tailscale) or dissallow all communications between
+between all namespaces (like tailscale) or disallow all communications between
 namespaces (current behavior).
 
 For businesses and organisations, viewing a headscale instance a single tailnet
 would allow users (namespace) to talk to each other with the ACLs. As described
-in tailscale's documentation [[1]], a server should be tagged and personnal
+in tailscale's documentation [[1]], a server should be tagged and personal
 devices should be tied to a user. Translated in headscale's terms each user can
 have multiple devices and all those devices should be in the same namespace.
 The servers should be tagged and used as such.
@@ -88,7 +88,7 @@ the ability to rules in either format (HuJSON or YAML).
 Let's build an example use case for a small business (It may be the place where
 ACL's are the most useful).
 
-We have a small company with a boss, an admin, two developper and an intern.
+We have a small company with a boss, an admin, two developer and an intern.
 
 The boss should have access to all servers but not to the users hosts. Admin
 should also have access to all hosts except that their permissions should be
@@ -173,7 +173,7 @@ need to add the following ACLs
       "ports": ["prod:*", "dev:*", "internal:*"]
     },
 
-    // admin have access to adminstration port (lets only consider port 22 here)
+    // admin have access to administration port (lets only consider port 22 here)
     {
       "action": "accept",
       "users": ["group:admin"],

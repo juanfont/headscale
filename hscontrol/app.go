@@ -330,7 +330,7 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	// Check if the request is coming from the on-server client.
 	// This is not secure, but it is to maintain maintainability
 	// with the "legacy" database-based client
-	// It is also neede for grpc-gateway to be able to connect to
+	// It is also needed for grpc-gateway to be able to connect to
 	// the server
 	client, _ := peer.FromContext(ctx)
 

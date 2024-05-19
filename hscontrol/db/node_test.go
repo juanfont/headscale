@@ -393,7 +393,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(node.ForcedTags, check.DeepEquals, types.StringList(sTags))
 
-	// assign duplicat tags, expect no errors but no doubles in DB
+	// assign duplicate tags, expect no errors but no doubles in DB
 	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
 	err = db.SetTags(node.ID, eTags)
 	c.Assert(err, check.IsNil)

@@ -532,7 +532,7 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 				"example-host-2:80"
 			],
 			"deny": [
-				"exapmle-host-2:100"
+				"example-host-2:100"
 			],
 		},
 		{
@@ -635,7 +635,7 @@ func Test_expandGroup(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "InexistantGroup",
+			name: "InexistentGroup",
 			field: field{
 				pol: ACLPolicy{
 					Groups: Groups{
@@ -2604,7 +2604,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "all hosts can talk to each other",
 			args: args{
-				nodes: types.Nodes{ // list of all nodess in the database
+				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
 						ID:   1,
 						IPv4: iap("100.64.0.1"),
@@ -2651,7 +2651,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "One host can talk to another, but not all hosts",
 			args: args{
-				nodes: types.Nodes{ // list of all nodess in the database
+				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
 						ID:   1,
 						IPv4: iap("100.64.0.1"),
@@ -2693,7 +2693,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "host cannot directly talk to destination, but return path is authorized",
 			args: args{
-				nodes: types.Nodes{ // list of all nodess in the database
+				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
 						ID:   1,
 						IPv4: iap("100.64.0.1"),
@@ -2735,7 +2735,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "rules allows all hosts to reach one destination",
 			args: args{
-				nodes: types.Nodes{ // list of all nodess in the database
+				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
 						ID:   1,
 						IPv4: iap("100.64.0.1"),
@@ -2777,7 +2777,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "rules allows all hosts to reach one destination, destination can reach all hosts",
 			args: args{
-				nodes: types.Nodes{ // list of all nodess in the database
+				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
 						ID:   1,
 						IPv4: iap("100.64.0.1"),
@@ -2824,7 +2824,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "rule allows all hosts to reach all destinations",
 			args: args{
-				nodes: types.Nodes{ // list of all nodess in the database
+				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
 						ID:   1,
 						IPv4: iap("100.64.0.1"),
@@ -2871,7 +2871,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		{
 			name: "without rule all communications are forbidden",
 			args: args{
-				nodes: types.Nodes{ // list of all nodess in the database
+				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
 						ID:   1,
 						IPv4: iap("100.64.0.1"),

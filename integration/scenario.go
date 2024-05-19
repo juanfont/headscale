@@ -450,7 +450,7 @@ func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int) error {
 	return nil
 }
 
-// CreateHeadscaleEnv is a conventient method returning a complete Headcale
+// CreateHeadscaleEnv is a convenient method returning a complete Headcale
 // test environment with nodes of all versions, joined to the server with X
 // users.
 func (s *Scenario) CreateHeadscaleEnv(

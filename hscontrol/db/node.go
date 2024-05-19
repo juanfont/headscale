@@ -661,7 +661,7 @@ func GenerateGivenName(
 }
 
 func DeleteExpiredEphemeralNodes(tx *gorm.DB,
-	inactivityThreshhold time.Duration,
+	inactivityThreshold time.Duration,
 ) ([]types.NodeID, []types.NodeID) {
 	users, err := ListUsers(tx)
 	if err != nil {
@@ -679,7 +679,7 @@ func DeleteExpiredEphemeralNodes(tx *gorm.DB,
 		for idx, node := range nodes {
 			if node.IsEphemeral() && node.LastSeen != nil &&
 				time.Now().
-					After(node.LastSeen.Add(inactivityThreshhold)) {
+					After(node.LastSeen.Add(inactivityThreshold)) {
 				expired = append(expired, node.ID)
 
 				log.Info().

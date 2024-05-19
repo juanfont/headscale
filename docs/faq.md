@@ -36,7 +36,7 @@ We don't know. We might be working on it. If you want to help, please send us a 
 Please be aware that there are a number of reasons why we might not accept specific contributions:
 
 - It is not possible to implement the feature in a way that makes sense in a self-hosted environment.
-- Given that we are reverse-engineering Tailscale to satify our own curiosity, we might be interested in implementing the feature ourselves.
+- Given that we are reverse-engineering Tailscale to satisfy our own curiosity, we might be interested in implementing the feature ourselves.
 - You are not sending unit and integration tests with it.
 
 ## Do you support Y method of deploying Headscale?
