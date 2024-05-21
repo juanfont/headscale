@@ -1,21 +1,43 @@
-# This Dockerfile and the images produced are for testing headscale,
-# and are in no way endorsed by Headscale's maintainers as an
-# official nor supported release or distribution.
+# Copyright (c) Tailscale Inc & AUTHORS
+# SPDX-License-Identifier: BSD-3-Clause
 
-FROM golang:latest
+# This Dockerfile is more or less lifted from tailscale/tailscale
+# to ensure a similar build process when testing the HEAD of tailscale.
 
-RUN apt-get update \
-    && apt-get install -y dnsutils git iptables ssh ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+FROM golang:1.22-alpine AS build-env
 
-RUN useradd --shell=/bin/bash --create-home ssh-it-user
+WORKDIR /go/src
 
+RUN apk add --no-cache git
+
+# Replace `RUN git...` with `COPY` and a local checked out version of Tailscale in `./tailscale`
+# to test specific commits of the Tailscale client. This is useful when trying to find out why
+# something specific broke between two versions of Tailscale with for example `git bisect`.
+# COPY ./tailscale .
 RUN git clone https://github.com/tailscale/tailscale.git
 
-WORKDIR /go/tailscale
+WORKDIR /go/src/tailscale
 
-RUN git checkout main \
-    && sh build_dist.sh tailscale.com/cmd/tailscale \
-    && sh build_dist.sh tailscale.com/cmd/tailscaled \
-    && cp tailscale /usr/local/bin/ \
-    && cp tailscaled /usr/local/bin/
+
+# see build_docker.sh
+ARG VERSION_LONG=""
+ENV VERSION_LONG=$VERSION_LONG
+ARG VERSION_SHORT=""
+ENV VERSION_SHORT=$VERSION_SHORT
+ARG VERSION_GIT_HASH=""
+ENV VERSION_GIT_HASH=$VERSION_GIT_HASH
+ARG TARGETARCH
+
+RUN GOARCH=$TARGETARCH go install -ldflags="\
+      -X tailscale.com/version.longStamp=$VERSION_LONG \
+      -X tailscale.com/version.shortStamp=$VERSION_SHORT \
+      -X tailscale.com/version.gitCommitStamp=$VERSION_GIT_HASH" \
+      -v ./cmd/tailscale ./cmd/tailscaled ./cmd/containerboot
+
+FROM alpine:3.18
+RUN apk add --no-cache ca-certificates iptables iproute2 ip6tables curl
+
+COPY --from=build-env /go/bin/* /usr/local/bin/
+# For compat with the previous run.sh, although ideally you should be
+# using build_docker.sh which sets an entrypoint for the image.
+RUN mkdir /tailscale && ln -s /usr/local/bin/containerboot /tailscale/run.sh
