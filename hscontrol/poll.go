@@ -442,6 +442,17 @@ func (m *mapSession) handleEndpointUpdate() {
 	m.node.ApplyPeerChange(&change)
 
 	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
+
+	// The node might not set NetInfo if it has not changed and if
+	// the full HostInfo object is overrwritten, the information is lost.
+	// If there is no NetInfo, keep the previous one.
+	// From 1.66 the client only sends it if changed:
+	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
+	// TODO(kradalby): evaulate if we need better comparing of hostinfo
+	// before we take the changes.
+	if m.req.Hostinfo.NetInfo == nil {
+		m.req.Hostinfo.NetInfo = m.node.Hostinfo.NetInfo
+	}
 	m.node.Hostinfo = m.req.Hostinfo
 
 	logTracePeerChange(m.node.Hostname, sendUpdate, &change)
