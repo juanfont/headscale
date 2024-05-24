@@ -231,62 +231,12 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 		return
 	}
+
 	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
-
 	sess.tracef("a node sending a MapRequest with Noise protocol")
-
-	// If a streaming mapSession exists for this node, close it
-	// and start a new one.
-	if sess.isStreaming() {
-		sess.tracef("aquiring lock to check stream")
-
-		ns.headscale.mapSessionMu.Lock()
-		if _, ok := ns.headscale.mapSessions[node.ID]; ok {
-			// NOTE/TODO(kradalby): From how I understand the protocol, when
-			// a client connects with stream=true, and already has a streaming
-			// connection open, the correct way is to close the current channel
-			// and replace it. However, I cannot manage to get that working with
-			// some sort of lock/block happening on the cancelCh in the streaming
-			// session.
-			// Not closing the channel and replacing it puts us in a weird state
-			// which keeps a ghost stream open, receiving keep alives, but no updates.
-			//
-			// Typically a new connection is opened when one exists as a client which
-			// is already authenticated reconnects (e.g. down, then up). The client will
-			// start auth and streaming at the same time, and then cancel the streaming
-			// when the auth has finished successfully, opening a new connection.
-			//
-			// As a work-around to not replacing, abusing the clients "resilience"
-			// by reject the new connection which will cause the client to immediately
-			// reconnect and "fix" the issue, as the other connection typically has been
-			// closed, meaning there is nothing to replace.
-			//
-			// sess.infof("node has an open stream(%p), replacing with %p", oldSession, sess)
-			// oldSession.close()
-
-			defer ns.headscale.mapSessionMu.Unlock()
-
-			sess.infof("node has an open stream(%p), rejecting new stream", sess)
-			mapResponseRejected.WithLabelValues("exists").Inc()
-			return
-		}
-
-		ns.headscale.mapSessions[node.ID] = sess
-		mapResponseSessions.Inc()
-		ns.headscale.mapSessionMu.Unlock()
-		sess.tracef("releasing lock to check stream")
-	}
-
-	sess.serve()
-
-	if sess.isStreaming() {
-		sess.tracef("aquiring lock to remove stream")
-		ns.headscale.mapSessionMu.Lock()
-		defer ns.headscale.mapSessionMu.Unlock()
-
-		delete(ns.headscale.mapSessions, node.ID)
-		mapResponseSessions.Dec()
-
-		sess.tracef("releasing lock to remove stream")
+	if !sess.isStreaming() {
+		sess.serve()
+	} else {
+		sess.serveLongPoll()
 	}
 }

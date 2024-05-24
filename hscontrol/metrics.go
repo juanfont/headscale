@@ -7,7 +7,22 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"tailscale.com/envknob"
 )
+
+var debugHighCardinalityMetrics = envknob.Bool("HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS")
+
+var mapResponseLastSentSeconds *prometheus.GaugeVec
+
+func init() {
+	if debugHighCardinalityMetrics {
+		mapResponseLastSentSeconds = promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: prometheusNamespace,
+			Name:      "mapresponse_last_sent_seconds",
+			Help:      "last sent metric to node.id",
+		}, []string{"type", "id"})
+	}
+}
 
 const prometheusNamespace = "headscale"
 
@@ -37,16 +52,16 @@ var (
 		Name:      "mapresponse_readonly_requests_total",
 		Help:      "total count of readonly requests received",
 	}, []string{"status"})
-	mapResponseSessions = promauto.NewGauge(prometheus.GaugeOpts{
+	mapResponseEnded = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
-		Name:      "mapresponse_current_sessions_total",
-		Help:      "total count open map response sessions",
-	})
-	mapResponseRejected = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "mapresponse_rejected_new_sessions_total",
-		Help:      "total count of new mapsessions rejected",
+		Name:      "mapresponse_ended_total",
+		Help:      "total count of new mapsessions ended",
 	}, []string{"reason"})
+	mapResponseClosed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: prometheusNamespace,
+		Name:      "mapresponse_closed_total",
+		Help:      "total count of calls to mapresponse close",
+	}, []string{"return"})
 	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: prometheusNamespace,
 		Name:      "http_duration_seconds",

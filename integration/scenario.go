@@ -51,8 +51,11 @@ var (
 	tailscaleVersions2021 = map[string]bool{
 		"head":     true,
 		"unstable": true,
-		"1.60":     true,  // CapVer: 82
-		"1.58":     true,  // CapVer: 82
+		"1.66":     true,  // CapVer: not checked
+		"1.64":     true,  // CapVer: not checked
+		"1.62":     true,  // CapVer: not checked
+		"1.60":     true,  // CapVer: not checked
+		"1.58":     true,  // CapVer: not checked
 		"1.56":     true,  // CapVer: 82
 		"1.54":     true,  // CapVer: 79
 		"1.52":     true,  // CapVer: 79
@@ -423,8 +426,10 @@ func (s *Scenario) WaitForTailscaleSync() error {
 	if err != nil {
 		for _, user := range s.users {
 			for _, client := range user.Clients {
-				peers, _ := client.PrettyPeers()
-				log.Println(peers)
+				peers, allOnline, _ := client.FailingPeersAsString()
+				if !allOnline {
+					log.Println(peers)
+				}
 			}
 		}
 	}

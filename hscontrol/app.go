@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -104,16 +105,15 @@ type Headscale struct {
 	registrationCache *cache.Cache
 
 	pollNetMapStreamWG sync.WaitGroup
-
-	mapSessions  map[types.NodeID]*mapSession
-	mapSessionMu sync.Mutex
 }
 
 var (
-	profilingEnabled = envknob.Bool("HEADSCALE_PROFILING_ENABLED")
+	profilingEnabled = envknob.Bool("HEADSCALE_DEBUG_PROFILING_ENABLED")
+	profilingPath    = envknob.String("HEADSCALE_DEBUG_PROFILING_PATH")
 	tailsqlEnabled   = envknob.Bool("HEADSCALE_DEBUG_TAILSQL_ENABLED")
 	tailsqlStateDir  = envknob.String("HEADSCALE_DEBUG_TAILSQL_STATE_DIR")
 	tailsqlTSKey     = envknob.String("TS_AUTHKEY")
+	dumpConfig       = envknob.Bool("HEADSCALE_DEBUG_DUMP_CONFIG")
 )
 
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
@@ -138,7 +138,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
 		nodeNotifier:       notifier.NewNotifier(cfg),
-		mapSessions:        make(map[types.NodeID]*mapSession),
 	}
 
 	app.db, err = db.NewHeadscaleDatabase(
@@ -502,20 +501,24 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
-	if _, enableProfile := os.LookupEnv("HEADSCALE_PROFILING_ENABLED"); enableProfile {
-		if profilePath, ok := os.LookupEnv("HEADSCALE_PROFILING_PATH"); ok {
-			err := os.MkdirAll(profilePath, os.ModePerm)
+	if profilingEnabled {
+		if profilingPath != "" {
+			err := os.MkdirAll(profilingPath, os.ModePerm)
 			if err != nil {
 				log.Fatal().Err(err).Msg("failed to create profiling directory")
 			}
 
-			defer profile.Start(profile.ProfilePath(profilePath)).Stop()
+			defer profile.Start(profile.ProfilePath(profilingPath)).Stop()
 		} else {
 			defer profile.Start().Stop()
 		}
 	}
 
 	var err error
+
+	if dumpConfig {
+		spew.Dump(h.cfg)
+	}
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
@@ -729,19 +732,6 @@ func (h *Headscale) Serve() error {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(h.nodeNotifier.String()))
 	})
-	debugMux.HandleFunc("/debug/mapresp", func(w http.ResponseWriter, r *http.Request) {
-		h.mapSessionMu.Lock()
-		defer h.mapSessionMu.Unlock()
-
-		var b strings.Builder
-		b.WriteString("mapresponders:\n")
-		for k, v := range h.mapSessions {
-			fmt.Fprintf(&b, "\t%d: %p\n", k, v)
-		}
-
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(b.String()))
-	})
 	debugMux.Handle("/metrics", promhttp.Handler())
 
 	debugHTTPServer := &http.Server{
@@ -821,17 +811,6 @@ func (h *Headscale) Serve() error {
 
 				expireNodeCancel()
 				expireEphemeralCancel()
-
-				trace("closing map sessions")
-				wg := sync.WaitGroup{}
-				for _, mapSess := range h.mapSessions {
-					wg.Add(1)
-					go func() {
-						mapSess.close()
-						wg.Done()
-					}()
-				}
-				wg.Wait()
 
 				trace("waiting for netmap stream to close")
 				h.pollNetMapStreamWG.Wait()

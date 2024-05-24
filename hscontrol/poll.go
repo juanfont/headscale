@@ -9,13 +9,13 @@ import (
 	"net/netip"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
+	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -29,11 +29,6 @@ type contextKey string
 
 const nodeNameContextKey = contextKey("nodeName")
 
-type sessionManager struct {
-	mu   sync.RWMutex
-	sess map[types.NodeID]*mapSession
-}
-
 type mapSession struct {
 	h      *Headscale
 	req    tailcfg.MapRequest
@@ -41,12 +36,13 @@ type mapSession struct {
 	capVer tailcfg.CapabilityVersion
 	mapper *mapper.Mapper
 
-	serving   bool
-	servingMu sync.Mutex
+	cancelChMu deadlock.Mutex
 
-	ch       chan types.StateUpdate
-	cancelCh chan struct{}
+	ch           chan types.StateUpdate
+	cancelCh     chan struct{}
+	cancelChOpen bool
 
+	keepAlive       time.Duration
 	keepAliveTicker *time.Ticker
 
 	node *types.Node
@@ -77,6 +73,8 @@ func (h *Headscale) newMapSession(
 		}
 	}
 
+	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)
+
 	return &mapSession{
 		h:      h,
 		ctx:    ctx,
@@ -86,13 +84,12 @@ func (h *Headscale) newMapSession(
 		capVer: req.Version,
 		mapper: h.mapper,
 
-		// serving indicates if a client is being served.
-		serving: false,
+		ch:           updateChan,
+		cancelCh:     make(chan struct{}),
+		cancelChOpen: true,
 
-		ch:       updateChan,
-		cancelCh: make(chan struct{}),
-
-		keepAliveTicker: time.NewTicker(keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)),
+		keepAlive:       ka,
+		keepAliveTicker: nil,
 
 		// Loggers
 		warnf:  warnf,
@@ -103,15 +100,23 @@ func (h *Headscale) newMapSession(
 }
 
 func (m *mapSession) close() {
-	m.servingMu.Lock()
-	defer m.servingMu.Unlock()
-	if !m.serving {
+	m.cancelChMu.Lock()
+	defer m.cancelChMu.Unlock()
+
+	if !m.cancelChOpen {
+		mapResponseClosed.WithLabelValues("chanclosed").Inc()
 		return
 	}
 
-	m.tracef("mapSession (%p) sending message on cancel chan")
-	m.cancelCh <- struct{}{}
-	m.tracef("mapSession (%p) sent message on cancel chan")
+	m.tracef("mapSession (%p) sending message on cancel chan", m)
+	select {
+	case m.cancelCh <- struct{}{}:
+		mapResponseClosed.WithLabelValues("sent").Inc()
+		m.tracef("mapSession (%p) sent message on cancel chan", m)
+	case <-time.After(30 * time.Second):
+		mapResponseClosed.WithLabelValues("timeout").Inc()
+		m.tracef("mapSession (%p) timed out sending close message", m)
+	}
 }
 
 func (m *mapSession) isStreaming() bool {
@@ -126,40 +131,12 @@ func (m *mapSession) isReadOnlyUpdate() bool {
 	return !m.req.Stream && m.req.OmitPeers && m.req.ReadOnly
 }
 
-// handlePoll ensures the node gets the appropriate updates from either
-// polling or immediate responses.
-//
-//nolint:gocyclo
+func (m *mapSession) resetKeepAlive() {
+	m.keepAliveTicker.Reset(m.keepAlive)
+}
+
+// serve handles non-streaming requests.
 func (m *mapSession) serve() {
-	// Register with the notifier if this is a streaming
-	// session
-	if m.isStreaming() {
-		// defers are called in reverse order,
-		// so top one is executed last.
-
-		// Failover the node's routes if any.
-		defer m.infof("node has disconnected, mapSession: %p", m)
-		defer m.pollFailoverRoutes("node closing connection", m.node)
-
-		defer m.h.updateNodeOnlineStatus(false, m.node)
-		defer m.h.nodeNotifier.RemoveNode(m.node.ID)
-
-		defer func() {
-			m.servingMu.Lock()
-			defer m.servingMu.Unlock()
-
-			m.serving = false
-			close(m.cancelCh)
-		}()
-
-		m.serving = true
-
-		m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
-		m.h.updateNodeOnlineStatus(true, m.node)
-
-		m.infof("node has connected, mapSession: %p", m)
-	}
-
 	// TODO(kradalby): A set todos to harden:
 	// - func to tell the stream to die, readonly -> false, !stream && omitpeers -> false, true
 
@@ -196,13 +173,43 @@ func (m *mapSession) serve() {
 		return
 	}
 
+}
+
+// serveLongPoll ensures the node gets the appropriate updates from either
+// polling or immediate responses.
+//
+//nolint:gocyclo
+func (m *mapSession) serveLongPoll() {
+	// Clean up the session when the client disconnects
+	defer func() {
+		m.cancelChMu.Lock()
+		m.cancelChOpen = false
+		close(m.cancelCh)
+		m.cancelChMu.Unlock()
+
+		// only update node status if the node channel was removed.
+		// in principal, it will be removed, but the client rapidly
+		// reconnects, the channel might be of another connection.
+		// In that case, it is not closed and the node is still online.
+		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
+			// Failover the node's routes if any.
+			m.h.updateNodeOnlineStatus(false, m.node)
+			m.pollFailoverRoutes("node closing connection", m.node)
+		}
+
+		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
+	}()
+
 	// From version 68, all streaming requests can be treated as read only.
+	// TODO: Remove when we drop support for 1.48
 	if m.capVer < 68 {
 		// Error has been handled/written to client in the func
 		// return
 		err := m.handleSaveNode()
 		if err != nil {
 			mapResponseWriteUpdatesInStream.WithLabelValues("error").Inc()
+
+			m.close()
 			return
 		}
 		mapResponseWriteUpdatesInStream.WithLabelValues("ok").Inc()
@@ -224,6 +231,13 @@ func (m *mapSession) serve() {
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
 	defer cancel()
 
+	m.keepAliveTicker = time.NewTicker(m.keepAlive)
+
+	m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
+	go m.h.updateNodeOnlineStatus(true, m.node)
+
+	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
+
 	// Loop through updates and continuously send them to the
 	// client.
 	for {
@@ -231,13 +245,21 @@ func (m *mapSession) serve() {
 		select {
 		case <-m.cancelCh:
 			m.tracef("poll cancelled received")
-			return
-		case <-ctx.Done():
-			m.tracef("poll context done")
+			mapResponseEnded.WithLabelValues("cancelled").Inc()
 			return
 
-		// Consume all updates sent to node
-		case update := <-m.ch:
+		case <-ctx.Done():
+			m.tracef("poll context done")
+			mapResponseEnded.WithLabelValues("done").Inc()
+			return
+
+		// Consume updates sent to node
+		case update, ok := <-m.ch:
+			if !ok {
+				m.tracef("update channel closed, streaming session is likely being replaced")
+				return
+			}
+
 			m.tracef("received stream update: %s %s", update.Type.String(), update.Message)
 			mapResponseUpdateReceived.WithLabelValues(update.Type.String()).Inc()
 
@@ -303,15 +325,13 @@ func (m *mapSession) serve() {
 				return
 			}
 
-			// log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startMapResp).Str("mkey", m.node.MachineKey.String()).Int("type", int(update.Type)).Msg("finished making map response")
-
 			// Only send update if there is change
 			if data != nil {
 				startWrite := time.Now()
 				_, err = m.w.Write(data)
 				if err != nil {
 					mapResponseSent.WithLabelValues("error", updateType).Inc()
-					m.errf(err, "Could not write the map response, for mapSession: %p", m)
+					m.errf(err, "could not write the map response(%s), for mapSession: %p", update.Type.String(), m)
 					return
 				}
 
@@ -324,8 +344,12 @@ func (m *mapSession) serve() {
 
 				log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
 
+				if debugHighCardinalityMetrics {
+					mapResponseLastSentSeconds.WithLabelValues(updateType, m.node.ID.String()).Set(float64(time.Now().Unix()))
+				}
 				mapResponseSent.WithLabelValues("ok", updateType).Inc()
 				m.tracef("update sent")
+				m.resetKeepAlive()
 			}
 
 		case <-m.keepAliveTicker.C:
@@ -348,6 +372,9 @@ func (m *mapSession) serve() {
 				return
 			}
 
+			if debugHighCardinalityMetrics {
+				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
+			}
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
 		}
 	}
@@ -404,16 +431,6 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 	}, node.ID)
 }
 
-func closeChanWithLog[C chan []byte | chan struct{} | chan types.StateUpdate](channel C, node, name string) {
-	log.Trace().
-		Str("handler", "PollNetMap").
-		Str("node", node).
-		Str("channel", "Done").
-		Msg(fmt.Sprintf("Closing %s channel", name))
-
-	close(channel)
-}
-
 func (m *mapSession) handleEndpointUpdate() {
 	m.tracef("received endpoint update")
 
@@ -425,6 +442,17 @@ func (m *mapSession) handleEndpointUpdate() {
 	m.node.ApplyPeerChange(&change)
 
 	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
+
+	// The node might not set NetInfo if it has not changed and if
+	// the full HostInfo object is overrwritten, the information is lost.
+	// If there is no NetInfo, keep the previous one.
+	// From 1.66 the client only sends it if changed:
+	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
+	// TODO(kradalby): evaulate if we need better comparing of hostinfo
+	// before we take the changes.
+	if m.req.Hostinfo.NetInfo == nil {
+		m.req.Hostinfo.NetInfo = m.node.Hostinfo.NetInfo
+	}
 	m.node.Hostinfo = m.req.Hostinfo
 
 	logTracePeerChange(m.node.Hostname, sendUpdate, &change)

@@ -286,9 +286,13 @@ func New(
 	}
 
 	env := []string{
-		"HEADSCALE_PROFILING_ENABLED=1",
-		"HEADSCALE_PROFILING_PATH=/tmp/profile",
+		"HEADSCALE_DEBUG_PROFILING_ENABLED=1",
+		"HEADSCALE_DEBUG_PROFILING_PATH=/tmp/profile",
 		"HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH=/tmp/mapresponses",
+		"HEADSCALE_DEBUG_DEADLOCK=1",
+		"HEADSCALE_DEBUG_DEADLOCK_TIMEOUT=5s",
+		"HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS=1",
+		"HEADSCALE_DEBUG_DUMP_CONFIG=1",
 	}
 	for key, value := range hsic.env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
@@ -397,7 +401,7 @@ func (t *HeadscaleInContainer) Shutdown() error {
 		)
 	}
 
-	err = t.SaveMetrics("/tmp/control/metrics.txt")
+	err = t.SaveMetrics(fmt.Sprintf("/tmp/control/%s_metrics.txt", t.hostname))
 	if err != nil {
 		log.Printf(
 			"Failed to metrics from control: %s",
@@ -747,7 +751,7 @@ func createCertificate(hostname string) ([]byte, []byte, error) {
 			Locality:     []string{"Leiden"},
 		},
 		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(60 * time.Minute),
+		NotAfter:  time.Now().Add(60 * time.Hour),
 		IsCA:      true,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,

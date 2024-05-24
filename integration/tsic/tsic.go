@@ -691,15 +691,18 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 	return status.Self.DNSName, nil
 }
 
-// PrettyPeers returns a formatted-ish table of peers in the client.
-func (t *TailscaleInContainer) PrettyPeers() (string, error) {
+// FailingPeersAsString returns a formatted-ish multi-line-string of peers in the client
+// and a bool indicating if the clients online count and peer count is equal.
+func (t *TailscaleInContainer) FailingPeersAsString() (string, bool, error) {
 	status, err := t.Status()
 	if err != nil {
-		return "", fmt.Errorf("failed to get FQDN: %w", err)
+		return "", false, fmt.Errorf("failed to get FQDN: %w", err)
 	}
 
-	str := fmt.Sprintf("Peers of %s\n", t.hostname)
-	str += "Hostname\tOnline\tLastSeen\n"
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "Peers of %s\n", t.hostname)
+	fmt.Fprint(&b, "Hostname\tOnline\tLastSeen\n")
 
 	peerCount := len(status.Peers())
 	onlineCount := 0
@@ -711,12 +714,12 @@ func (t *TailscaleInContainer) PrettyPeers() (string, error) {
 			onlineCount++
 		}
 
-		str += fmt.Sprintf("%s\t%t\t%s\n", peer.HostName, peer.Online, peer.LastSeen)
+		fmt.Fprintf(&b, "%s\t%t\t%s\n", peer.HostName, peer.Online, peer.LastSeen)
 	}
 
-	str += fmt.Sprintf("Peer Count: %d, Online Count: %d\n\n", peerCount, onlineCount)
+	fmt.Fprintf(&b, "Peer Count: %d, Online Count: %d\n\n", peerCount, onlineCount)
 
-	return str, nil
+	return b.String(), peerCount == onlineCount, nil
 }
 
 // WaitForNeedsLogin blocks until the Tailscale (tailscaled) instance has
