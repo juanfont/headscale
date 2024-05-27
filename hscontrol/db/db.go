@@ -92,7 +92,7 @@ func NewHeadscaleDatabase(
 						RenameColumn(&types.Node{}, "nickname", "given_name")
 
 					dbConn.Model(&types.Node{}).Where("auth_key_id = ?", 0).Update("auth_key_id", nil)
-	// If the Node table has a column for registered,
+					// If the Node table has a column for registered,
 					// find all occourences of "false" and drop them. Then
 					// remove the column.
 					if tx.Migrator().HasColumn(&types.Node{}, "registered") {
@@ -319,14 +319,8 @@ func NewHeadscaleDatabase(
 				// no longer used.
 				ID: "202402151347",
 				Migrate: func(tx *gorm.DB) error {
-					err := tx.Migrator().DropColumn(&types.Node{}, "last_successful_update")
-					if err != nil && strings.Contains(err.Error(), `of relation "nodes" does not exist`) {
-						return nil
-					} else {
-						return err
-					}
-
-					return err
+					_ = tx.Migrator().DropColumn(&types.Node{}, "last_successful_update")
+					return nil
 				},
 				Rollback: func(tx *gorm.DB) error {
 					return nil
