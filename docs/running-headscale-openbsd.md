@@ -93,7 +93,7 @@ describing how to make `headscale` run properly in a server environment.
     touch /etc/headscale/config.yaml
     ```
 
-**(Strongly Recommended)** Download a copy of the [example configuration][config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
+**(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
 1. Start the headscale server:
 
