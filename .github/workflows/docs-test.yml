@@ -24,4 +24,4 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Run tests
-        run: nix develop --command -- poetry install && poetry run mkdocs build --strict
+        run: nix develop --command bash -c "poetry install && poetry run mkdocs build --strict"
