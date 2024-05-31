@@ -1,10 +1,19 @@
 name: Test documentation build
 
-on: [pull_request]
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - pyproject.toml
+      - poetry.lock
 
 concurrency:
   group: ${{ github.workflow }}-$${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   test:
@@ -12,16 +21,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Install python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.x
-      - name: Setup cache
-        uses: actions/cache@v2
-        with:
-          key: ${{ github.ref }}
-          path: .cache
-      - name: Setup dependencies
-        run: pip install -r docs/requirements.txt
-      - name: Build docs
-        run: mkdocs build --strict
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Run tests
+        run: nix develop --command -- poetry run mkdocs build --strict

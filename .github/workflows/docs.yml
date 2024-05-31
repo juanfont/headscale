@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'docs/**'
+      - pyproject.toml
+      - poetry.lock
   workflow_dispatch:
 
 permissions:
@@ -17,19 +21,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Install python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.x
-      - name: Setup cache
-        uses: actions/cache@v2
-        with:
-          key: ${{ github.ref }}
-          path: .cache
-      - name: Setup dependencies
-        run: pip install -r docs/requirements.txt
-      - name: Build docs
-        run: mkdocs build --strict
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Run tests
+        run: nix develop --command -- poetry run mkdocs build --strict
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -39,9 +34,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      pages: write
-      id-token: write
     runs-on: ubuntu-latest
     needs: build
     steps:

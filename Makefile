@@ -52,3 +52,9 @@ compress: build
 generate:
 	rm -rf gen
 	buf generate proto
+
+docs-serve:
+	poetry run mkdocs serve
+
+docs-build:
+	poetry run mkdocs build
