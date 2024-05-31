@@ -94,6 +94,7 @@
           # Docu dependencies
           python311
           poetry
+          mkdocs
         ];
 
       # Add entry to build a docker image with headscale

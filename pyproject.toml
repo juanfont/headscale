@@ -8,7 +8,6 @@ package-mode = false
 [tool.poetry.dependencies]
 python = "^3.11"
 cairosvg = "^2.7.1,<2.8.0"
-mkdocs = "^1.6.0,<1.7.0"
 mkdocs-material = "^9.4.14"
 mkdocs-minify-plugin = ">=0.7.1,<0.8.0"
 pillow = ">=10.1.0,<10.2.0"
