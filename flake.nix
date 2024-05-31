@@ -95,6 +95,7 @@
           python311
           poetry
           mkdocs
+          cairo
         ];
 
       # Add entry to build a docker image with headscale
