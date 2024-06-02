@@ -18,6 +18,7 @@ jobs:
           - TestACLNamedHostsCanReachBySubnet
           - TestACLNamedHostsCanReach
           - TestACLDevice1CanAccessDevice2
+          - TestPolicyUpdateWhileRunningWithCLIInDatabase
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestAuthWebFlowAuthenticationPingAll
@@ -35,6 +36,7 @@ jobs:
           - TestNodeExpireCommand
           - TestNodeRenameCommand
           - TestNodeMoveCommand
+          - TestPolicyCommand
           - TestDERPServerScenario
           - TestPingAllByIP
           - TestPingAllByIPPublicDERP

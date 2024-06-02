@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -20,6 +19,8 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 const (
@@ -36,6 +37,13 @@ type IPAllocationStrategy string
 const (
 	IPAllocationStrategySequential IPAllocationStrategy = "sequential"
 	IPAllocationStrategyRandom     IPAllocationStrategy = "random"
+)
+
+type PolicyMode string
+
+const (
+	PolicyModeDB   = "database"
+	PolicyModeFile = "file"
 )
 
 // Config contains the initial Headscale configuration.
@@ -76,7 +84,7 @@ type Config struct {
 
 	CLI CLIConfig
 
-	ACL ACLConfig
+	Policy PolicyConfig
 
 	Tuning Tuning
 }
@@ -163,8 +171,9 @@ type CLIConfig struct {
 	Insecure bool
 }
 
-type ACLConfig struct {
-	PolicyPath string
+type PolicyConfig struct {
+	Path string
+	Mode PolicyMode
 }
 
 type LogConfig struct {
@@ -196,6 +205,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetEnvPrefix("headscale")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+
+	viper.SetDefault("policy.mode", "file")
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
@@ -253,6 +264,13 @@ func LoadConfig(path string, isFile bool) error {
 
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
+
+	// Register aliases for backward compatibility
+	// Has to be called _after_ viper.ReadInConfig()
+	// https://github.com/spf13/viper/issues/560
+
+	// Alias the old ACL Policy path with the new configuration option.
+	registerAliasAndDeprecate("policy.path", "acl_policy_path")
 
 	// Collect any validation errors and return them all at once
 	var errorText string
@@ -390,11 +408,13 @@ func GetLogTailConfig() LogTailConfig {
 	}
 }
 
-func GetACLConfig() ACLConfig {
-	policyPath := viper.GetString("acl_policy_path")
+func GetPolicyConfig() PolicyConfig {
+	policyPath := viper.GetString("policy.path")
+	policyMode := viper.GetString("policy.mode")
 
-	return ACLConfig{
-		PolicyPath: policyPath,
+	return PolicyConfig{
+		Path: policyPath,
+		Mode: PolicyMode(policyMode),
 	}
 }
 
@@ -764,7 +784,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		LogTail:             logTailConfig,
 		RandomizeClientPort: randomizeClientPort,
 
-		ACL: GetACLConfig(),
+		Policy: GetPolicyConfig(),
 
 		CLI: CLIConfig{
 			Address:  viper.GetString("cli.address"),
@@ -786,4 +806,21 @@ func GetHeadscaleConfig() (*Config, error) {
 
 func IsCLIConfigured() bool {
 	return viper.GetString("cli.address") != "" && viper.GetString("cli.api_key") != ""
+}
+
+// registerAliasAndDeprecate will register an alias between the newKey and the oldKey,
+// and log a deprecation warning if the oldKey is set.
+func registerAliasAndDeprecate(newKey, oldKey string) {
+	// NOTE: RegisterAlias is called with NEW KEY -> OLD KEY
+	viper.RegisterAlias(newKey, oldKey)
+	if viper.IsSet(oldKey) {
+		log.Warn().Msgf("The %q configuration key is deprecated. Please use %q instead. %q will be removed in the future.", oldKey, newKey, oldKey)
+	}
+}
+
+// deprecateAndFatal will log a fatal deprecation warning if the oldKey is set.
+func deprecateAndFatal(newKey, oldKey string) {
+	if viper.IsSet(oldKey) {
+		log.Fatal().Msgf("The %q configuration key is deprecated. Please use %q instead. %q has been removed.", oldKey, newKey, oldKey)
+	}
 }

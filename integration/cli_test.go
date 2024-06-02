@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
-	"github.com/stretchr/testify/assert"
 )
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
@@ -1595,4 +1596,84 @@ func TestNodeMoveCommand(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, node.GetUser().GetName(), "old-user")
+}
+
+func TestPolicyCommand(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"policy-user": 0,
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		[]tsic.Option{},
+		hsic.WithTestName("clins"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_POLICY_MODE": "database",
+		}),
+	)
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	p := policy.ACLPolicy{
+		ACLs: []policy.ACL{
+			{
+				Action:       "accept",
+				Sources:      []string{"*"},
+				Destinations: []string{"*:*"},
+			},
+		},
+		TagOwners: map[string][]string{
+			"tag:exists": {"policy-user"},
+		},
+	}
+
+	pBytes, _ := json.Marshal(p)
+
+	policyFilePath := "/etc/headscale/policy.json"
+
+	err = headscale.WriteFile(policyFilePath, pBytes)
+	assertNoErr(t, err)
+
+	// No policy is present at this time.
+	// Add a new policy from a file.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"set",
+			"-f",
+			policyFilePath,
+		},
+	)
+
+	assertNoErr(t, err)
+
+	// Get the current policy and check
+	// if it is the same as the one we set.
+	var output *policy.ACLPolicy
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"policy",
+			"get",
+			"--output",
+			"json",
+		},
+		&output,
+	)
+	assertNoErr(t, err)
+
+	assert.Len(t, output.TagOwners, 1)
+	assert.Len(t, output.ACLs, 1)
+	assert.Equal(t, output.TagOwners["tag:exists"], []string{"policy-user"})
 }
