@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -20,6 +19,8 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 const (
@@ -36,6 +37,13 @@ type IPAllocationStrategy string
 const (
 	IPAllocationStrategySequential IPAllocationStrategy = "sequential"
 	IPAllocationStrategyRandom     IPAllocationStrategy = "random"
+)
+
+type PolicyMode string
+
+const (
+	PolicyModeDB   = "db"
+	PolicyModeFile = "file"
 )
 
 // Config contains the initial Headscale configuration.
@@ -75,7 +83,7 @@ type Config struct {
 
 	CLI CLIConfig
 
-	ACL ACLConfig
+	Policy PolicyConfig
 
 	Tuning Tuning
 }
@@ -161,8 +169,9 @@ type CLIConfig struct {
 	Insecure bool
 }
 
-type ACLConfig struct {
-	PolicyPath string
+type PolicyConfig struct {
+	Path string
+	Mode PolicyMode
 }
 
 type LogConfig struct {
@@ -194,6 +203,10 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetEnvPrefix("headscale")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+
+	viper.SetDefault("policy.mode", "file")
+	// This maintains backward-compatibility with the old config file.
+	viper.RegisterAlias("acl_policy_path", "policy.path")
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
@@ -385,11 +398,13 @@ func GetLogTailConfig() LogTailConfig {
 	}
 }
 
-func GetACLConfig() ACLConfig {
-	policyPath := viper.GetString("acl_policy_path")
+func GetPolicyConfig() PolicyConfig {
+	policyPath := viper.GetString("policy.path")
+	policyMode := viper.GetString("policy.mode")
 
-	return ACLConfig{
-		PolicyPath: policyPath,
+	return PolicyConfig{
+		Path: policyPath,
+		Mode: PolicyMode(policyMode),
 	}
 }
 
@@ -757,7 +772,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		LogTail:             logTailConfig,
 		RandomizeClientPort: randomizeClientPort,
 
-		ACL: GetACLConfig(),
+		Policy: GetPolicyConfig(),
 
 		CLI: CLIConfig{
 			Address:  viper.GetString("cli.address"),

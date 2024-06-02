@@ -8,16 +8,17 @@ import (
 	"os"
 	"reflect"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol"
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/yaml.v3"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol"
+	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 const (
@@ -41,8 +42,8 @@ func getHeadscaleApp() (*hscontrol.Headscale, error) {
 
 	// We are doing this here, as in the future could be cool to have it also hot-reload
 
-	if cfg.ACL.PolicyPath != "" {
-		aclPath := util.AbsolutePathFromConfigPath(cfg.ACL.PolicyPath)
+	if cfg.Policy.Path != "" {
+		aclPath := util.AbsolutePathFromConfigPath(cfg.Policy.Path)
 		pol, err := policy.LoadACLPolicyFromPath(aclPath)
 		if err != nil {
 			log.Fatal().
@@ -89,7 +90,7 @@ func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.
 
 		// Try to give the user better feedback if we cannot write to the headscale
 		// socket.
-		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, SocketWritePermissions) //nolint
+		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, SocketWritePermissions) // nolint
 		if err != nil {
 			if os.IsPermission(err) {
 				log.Fatal().
@@ -167,13 +168,13 @@ func SuccessOutput(result interface{}, override string, outputFormat string) {
 			log.Fatal().Err(err).Msg("failed to unmarshal output")
 		}
 	default:
-		//nolint
+		// nolint
 		fmt.Println(override)
 
 		return
 	}
 
-	//nolint
+	// nolint
 	fmt.Println(string(jsonBytes))
 }
 
