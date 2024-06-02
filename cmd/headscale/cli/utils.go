@@ -16,7 +16,6 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol"
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -38,21 +37,6 @@ func getHeadscaleApp() (*hscontrol.Headscale, error) {
 	app, err := hscontrol.NewHeadscale(cfg)
 	if err != nil {
 		return nil, err
-	}
-
-	// We are doing this here, as in the future could be cool to have it also hot-reload
-
-	if cfg.Policy.Path != "" {
-		aclPath := util.AbsolutePathFromConfigPath(cfg.Policy.Path)
-		pol, err := policy.LoadACLPolicyFromPath(aclPath)
-		if err != nil {
-			log.Fatal().
-				Str("path", aclPath).
-				Err(err).
-				Msg("Could not load the ACL policy")
-		}
-
-		app.ACLPolicy = pol
 	}
 
 	return app, nil

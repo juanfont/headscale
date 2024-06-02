@@ -3,6 +3,7 @@ package hscontrol
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -11,12 +12,14 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -669,6 +672,73 @@ func (api headscaleV1APIServer) DeleteApiKey(
 	}
 
 	return &v1.DeleteApiKeyResponse{}, nil
+}
+
+func (api headscaleV1APIServer) GetPolicy(
+	_ context.Context,
+	_ *v1.GetPolicyRequest,
+) (*v1.GetPolicyResponse, error) {
+	switch api.h.cfg.Policy.Mode {
+	case types.PolicyModeDB:
+		p, err := api.h.db.GetPolicy()
+		if err != nil {
+			return nil, err
+		}
+
+		// We retain the HuJSON format of the policy while storing
+		// it in the database. But should we return the same in the
+		// get policy response? Or should we consider returning the
+		// policy in JSON format?
+
+		return &v1.GetPolicyResponse{
+			Policy:    p.Data,
+			UpdatedAt: timestamppb.New(p.UpdatedAt),
+		}, nil
+	case types.PolicyModeFile:
+		b, err := json.Marshal(api.h.ACLPolicy)
+		if err != nil {
+			return nil, err
+		}
+
+		return &v1.GetPolicyResponse{Policy: string(b)}, nil
+	}
+
+	return nil, nil
+}
+
+func (api headscaleV1APIServer) SetPolicy(
+	_ context.Context,
+	request *v1.SetPolicyRequest,
+) (*v1.SetPolicyResponse, error) {
+	if api.h.cfg.Policy.Mode != types.PolicyModeDB {
+		return nil, types.ErrPolicyUpdateIsDisabled
+	}
+
+	p := request.GetPolicy()
+
+	valid, err := policy.LoadACLPolicyFromBytes([]byte(p), "hujson")
+	if err != nil {
+		return nil, err
+	}
+
+	updated, err := api.h.db.SetPolicy(p)
+	if err != nil {
+		return nil, err
+	}
+
+	api.h.ACLPolicy = valid
+
+	ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
+	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+		Type: types.StateFullUpdate,
+	})
+
+	response := &v1.SetPolicyResponse{
+		Policy:    updated.Data,
+		UpdatedAt: timestamppb.New(updated.UpdatedAt),
+	}
+
+	return response, nil
 }
 
 // The following service calls are for testing and debugging
