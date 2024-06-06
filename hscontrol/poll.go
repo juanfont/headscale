@@ -252,7 +252,7 @@ func (m *mapSession) serveLongPoll() {
 		// consume channels with update, keep alives or "batch" blocking signals
 		select {
 		case <-sigc:
-			log.Info().Msg("Received SIGINT or SIGTERM signal, exiting...")
+			m.tracef("Received SIGINT or SIGTERM signal, exiting...")
 			return
 		case <-m.cancelCh:
 			m.tracef("poll cancelled received")
