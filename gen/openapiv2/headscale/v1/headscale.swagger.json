@@ -1236,6 +1236,9 @@
         },
         "online": {
           "type": "boolean"
+        },
+        "hostInfo": {
+          "type": "string"
         }
       }
     },

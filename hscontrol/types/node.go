@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -194,6 +195,23 @@ func (node *Node) IPsAsString() []string {
 	return ret
 }
 
+func (node *Node) HostInfoAsJson() []byte {
+	if node.Hostinfo == nil {
+		return nil
+	}
+
+	b, err := json.Marshal(node.Hostinfo)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("Error marshalling host_info")
+
+		return nil
+	}
+
+	return b
+}
+
 func (node *Node) InIPSet(set *netipx.IPSet) bool {
 	for _, nodeAddr := range node.IPs() {
 		if set.Contains(nodeAddr) {
@@ -377,6 +395,10 @@ func (node *Node) Proto() *v1.Node {
 		// RegisterMethod: ,
 
 		CreatedAt: timestamppb.New(node.CreatedAt),
+	}
+
+	if hostInfo := node.HostInfoAsJson(); hostInfo != nil {
+		nodeProto.HostInfo = string(hostInfo)
 	}
 
 	if node.AuthKey != nil {

@@ -452,3 +452,53 @@ func TestApplyPeerChange(t *testing.T) {
 		})
 	}
 }
+
+func TestHostInfoAsString(t *testing.T) {
+	tests := []struct {
+		name string
+		node Node
+		want string
+	}{
+		{
+			name: "hostinfo-not-set",
+			node: Node{},
+			want: "",
+		},
+		{
+			name: "hostinfo-empty",
+			node: Node{
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			want: "",
+		},
+		{
+			name: "hostinfo-set-ipnVersion",
+			node: Node{
+				Hostinfo: &tailcfg.Hostinfo{
+					IPNVersion: "1.66.3-hash",
+				},
+			},
+			want: "{\"IPNVersion\":\"1.66.3-hash\"}",
+		},
+		{
+			name: "hostinfo-set-os",
+			node: Node{
+				Hostinfo: &tailcfg.Hostinfo{
+					OS:        "linux",
+					OSVersion: "1.0.0",
+				},
+			},
+			want: "{\"OS\":\"linux\", \"OSVersion\":\"1.0.0\"}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.node.HostInfoAsJson()
+
+			if string(got) != tt.want {
+				t.Errorf("TestHostInfoAsString() failed: want (%v), got (%v)", tt.want, got)
+			}
+		})
+	}
+}
