@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -138,22 +139,12 @@ type registerWebAPITemplateConfig struct {
 	Key string
 }
 
+//go:embed assets/register_template.html
+var registerWebAPITemplateContent string
+
 var registerWebAPITemplate = template.Must(
-	template.New("registerweb").Parse(`
-<html>
-	<head>
-		<title>Registration - Headscale</title>
-	</head>
-	<body>
-		<h1>headscale</h1>
-		<h2>Machine registration</h2>
-		<p>
-			Run the command below in the headscale server to add this machine to your network:
-		</p>
-		<pre><code>headscale nodes register --user USERNAME --key {{.Key}}</code></pre>
-	</body>
-</html>
-`))
+	template.New("registerweb").Parse(registerWebAPITemplateContent),
+)
 
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
 // Listens in /register/:nkey.
