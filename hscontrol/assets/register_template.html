@@ -1,15 +1,2885 @@
-<html>
-  )
+<!doctype html>
+<html lang="en">
   <head>
-    <title>Registration - Headscale</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style>
+      /*
+! tailwindcss v3.4.3 | MIT License | https://tailwindcss.com
+*/
+      *,
+      :after,
+      :before {
+        box-sizing: border-box;
+        border: 0 solid #e5e7eb;
+      }
+      :after,
+      :before {
+        --tw-content: "";
+      }
+      :host,
+      html {
+        line-height: 1.5;
+        -webkit-text-size-adjust: 100%;
+        -moz-tab-size: 4;
+        tab-size: 4;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          sans-serif,
+          Apple Color Emoji,
+          Segoe UI Emoji,
+          Segoe UI Symbol,
+          Noto Color Emoji;
+        font-feature-settings: normal;
+        font-variation-settings: normal;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        margin: 0;
+        line-height: inherit;
+      }
+      hr {
+        height: 0;
+        color: inherit;
+        border-top-width: 1px;
+      }
+      abbr:where([title]) {
+        text-decoration: underline dotted;
+      }
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6 {
+        font-size: inherit;
+        font-weight: inherit;
+      }
+      a {
+        color: inherit;
+        text-decoration: inherit;
+      }
+      b,
+      strong {
+        font-weight: bolder;
+      }
+      code,
+      kbd,
+      pre,
+      samp {
+        font-family:
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          Liberation Mono,
+          Courier New,
+          monospace;
+        font-feature-settings: normal;
+        font-variation-settings: normal;
+        font-size: 1em;
+      }
+      small {
+        font-size: 80%;
+      }
+      sub,
+      sup {
+        font-size: 75%;
+        line-height: 0;
+        position: relative;
+        vertical-align: baseline;
+      }
+      sub {
+        bottom: -0.25em;
+      }
+      sup {
+        top: -0.5em;
+      }
+      table {
+        text-indent: 0;
+        border-color: inherit;
+        border-collapse: collapse;
+      }
+      button,
+      input,
+      optgroup,
+      select,
+      textarea {
+        font-family: inherit;
+        font-feature-settings: inherit;
+        font-variation-settings: inherit;
+        font-size: 100%;
+        font-weight: inherit;
+        line-height: inherit;
+        letter-spacing: inherit;
+        color: inherit;
+        margin: 0;
+        padding: 0;
+      }
+      button,
+      select {
+        text-transform: none;
+      }
+      button,
+      input:where([type="button"]),
+      input:where([type="reset"]),
+      input:where([type="submit"]) {
+        -webkit-appearance: button;
+        background-color: transparent;
+        background-image: none;
+      }
+      :-moz-focusring {
+        outline: auto;
+      }
+      :-moz-ui-invalid {
+        box-shadow: none;
+      }
+      progress {
+        vertical-align: baseline;
+      }
+      ::-webkit-inner-spin-button,
+      ::-webkit-outer-spin-button {
+        height: auto;
+      }
+      [type="search"] {
+        -webkit-appearance: textfield;
+        outline-offset: -2px;
+      }
+      ::-webkit-search-decoration {
+        -webkit-appearance: none;
+      }
+      ::-webkit-file-upload-button {
+        -webkit-appearance: button;
+        font: inherit;
+      }
+      summary {
+        display: list-item;
+      }
+      blockquote,
+      dd,
+      dl,
+      figure,
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6,
+      hr,
+      p,
+      pre {
+        margin: 0;
+      }
+      fieldset {
+        margin: 0;
+      }
+      fieldset,
+      legend {
+        padding: 0;
+      }
+      menu,
+      ol,
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      dialog {
+        padding: 0;
+      }
+      textarea {
+        resize: vertical;
+      }
+      input::placeholder,
+      textarea::placeholder {
+        opacity: 1;
+        color: #9ca3af;
+      }
+      [role="button"],
+      button {
+        cursor: pointer;
+      }
+      :disabled {
+        cursor: default;
+      }
+      audio,
+      canvas,
+      embed,
+      iframe,
+      img,
+      object,
+      svg,
+      video {
+        display: block;
+        vertical-align: middle;
+      }
+      img,
+      video {
+        max-width: 100%;
+        height: auto;
+      }
+      .hidden,
+      [hidden] {
+        display: none;
+      }
+      *,
+      :after,
+      :before {
+        --tw-border-spacing-x: 0;
+        --tw-border-spacing-y: 0;
+        --tw-translate-x: 0;
+        --tw-translate-y: 0;
+        --tw-rotate: 0;
+        --tw-skew-x: 0;
+        --tw-skew-y: 0;
+        --tw-scale-x: 1;
+        --tw-scale-y: 1;
+        --tw-pan-x: ;
+        --tw-pan-y: ;
+        --tw-pinch-zoom: ;
+        --tw-scroll-snap-strictness: proximity;
+        --tw-gradient-from-position: ;
+        --tw-gradient-via-position: ;
+        --tw-gradient-to-position: ;
+        --tw-ordinal: ;
+        --tw-slashed-zero: ;
+        --tw-numeric-figure: ;
+        --tw-numeric-spacing: ;
+        --tw-numeric-fraction: ;
+        --tw-ring-inset: ;
+        --tw-ring-offset-width: 0px;
+        --tw-ring-offset-color: #fff;
+        --tw-ring-color: rgba(59, 130, 246, 0.5);
+        --tw-ring-offset-shadow: 0 0 #0000;
+        --tw-ring-shadow: 0 0 #0000;
+        --tw-shadow: 0 0 #0000;
+        --tw-shadow-colored: 0 0 #0000;
+        --tw-blur: ;
+        --tw-brightness: ;
+        --tw-contrast: ;
+        --tw-grayscale: ;
+        --tw-hue-rotate: ;
+        --tw-invert: ;
+        --tw-saturate: ;
+        --tw-sepia: ;
+        --tw-drop-shadow: ;
+        --tw-backdrop-blur: ;
+        --tw-backdrop-brightness: ;
+        --tw-backdrop-contrast: ;
+        --tw-backdrop-grayscale: ;
+        --tw-backdrop-hue-rotate: ;
+        --tw-backdrop-invert: ;
+        --tw-backdrop-opacity: ;
+        --tw-backdrop-saturate: ;
+        --tw-backdrop-sepia: ;
+        --tw-contain-size: ;
+        --tw-contain-layout: ;
+        --tw-contain-paint: ;
+        --tw-contain-style: ;
+      }
+      ::backdrop {
+        --tw-border-spacing-x: 0;
+        --tw-border-spacing-y: 0;
+        --tw-translate-x: 0;
+        --tw-translate-y: 0;
+        --tw-rotate: 0;
+        --tw-skew-x: 0;
+        --tw-skew-y: 0;
+        --tw-scale-x: 1;
+        --tw-scale-y: 1;
+        --tw-pan-x: ;
+        --tw-pan-y: ;
+
+        --tw-pinch-zoom: ;
+        --tw-scroll-snap-strictness: proximity;
+        --tw-gradient-from-position: ;
+        --tw-gradient-via-position: ;
+        --tw-gradient-to-position: ;
+        --tw-ordinal: ;
+        --tw-slashed-zero: ;
+        --tw-numeric-figure: ;
+        --tw-numeric-spacing: ;
+        --tw-numeric-fraction: ;
+        --tw-ring-inset: ;
+        --tw-ring-offset-width: 0px;
+        --tw-ring-offset-color: #fff;
+        --tw-ring-color: rgba(59, 130, 246, 0.5);
+        --tw-ring-offset-shadow: 0 0 #0000;
+        --tw-ring-shadow: 0 0 #0000;
+        --tw-shadow: 0 0 #0000;
+        --tw-shadow-colored: 0 0 #0000;
+        --tw-blur: ;
+        --tw-brightness: ;
+        --tw-contrast: ;
+        --tw-grayscale: ;
+        --tw-hue-rotate: ;
+        --tw-invert: ;
+        --tw-saturate: ;
+        --tw-sepia: ;
+        --tw-drop-shadow: ;
+        --tw-backdrop-blur: ;
+        --tw-backdrop-brightness: ;
+        --tw-backdrop-contrast: ;
+        --tw-backdrop-grayscale: ;
+        --tw-backdrop-hue-rotate: ;
+        --tw-backdrop-invert: ;
+        --tw-backdrop-opacity: ;
+        --tw-backdrop-saturate: ;
+        --tw-backdrop-sepia: ;
+        --tw-contain-size: ;
+        --tw-contain-layout: ;
+        --tw-contain-paint: ;
+        --tw-contain-style: ;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border-width: 0;
+      }
+      .pointer-events-none {
+        pointer-events: none;
+      }
+      .fixed {
+        position: fixed;
+      }
+      .relative {
+        position: relative;
+      }
+      .bottom-0 {
+        bottom: 0;
+      }
+      .left-0 {
+        left: 0;
+      }
+      .top-0 {
+        top: 0;
+      }
+      .z-10 {
+        z-index: 10;
+      }
+      .z-\[-1\] {
+        z-index: -1;
+      }
+      .m-0 {
+        margin: 0;
+      }
+      .mx-auto {
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .mb-3 {
+        margin-bottom: 0.75rem;
+      }
+      .mb-32 {
+        margin-bottom: 8rem;
+      }
+      .inline-block {
+        display: inline-block;
+      }
+      .flex {
+        display: flex;
+      }
+      .inline-flex {
+        display: inline-flex;
+      }
+      .grid {
+        display: grid;
+      }
+      .h-10 {
+        height: 2.5rem;
+      }
+      .h-11 {
+        height: 2.75rem;
+      }
+      .h-48 {
+        height: 12rem;
+      }
+      .h-5 {
+        height: 1.25rem;
+      }
+      .h-9 {
+        height: 2.25rem;
+      }
+      .h-auto {
+        height: auto;
+      }
+      .min-h-\[100dvh\] {
+        min-height: 100dvh;
+      }
+      .min-h-\[100px\] {
+        min-height: 100px;
+      }
+      .min-h-\[80px\] {
+        min-height: 80px;
+      }
+      .min-h-screen {
+        min-height: 100vh;
+      }
+      .w-10 {
+        width: 2.5rem;
+      }
+      .w-5 {
+        width: 1.25rem;
+      }
+      .w-full {
+        width: 100%;
+      }
+      .max-w-2xl {
+        max-width: 42rem;
+      }
+      .max-w-5xl {
+        max-width: 64rem;
+      }
+      .max-w-\[30ch\] {
+        max-width: 30ch;
+      }
+      .max-w-md {
+        max-width: 28rem;
+      }
+      .flex-1 {
+        flex: 1 1 0%;
+      }
+      .flex-col {
+        flex-direction: column;
+      }
+      .place-items-center {
+        place-items: center;
+      }
+      .items-end {
+        align-items: flex-end;
+      }
+      .items-center {
+        align-items: center;
+      }
+      .justify-center {
+        justify-content: center;
+      }
+      @media (min-width: 768px) {
+        .md:justify-center {
+          justify-content: center;
+        }
+      }
+      .justify-between {
+        justify-content: space-between;
+      }
+      .gap-2 {
+        gap: 0.5rem;
+      }
+      .gap-6 {
+        gap: 1.5rem;
+      }
+      .space-x-2 > :not([hidden]) ~ :not([hidden]) {
+        --tw-space-x-reverse: 0;
+        margin-right: calc(0.5rem * var(--tw-space-x-reverse));
+        margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));
+      }
+      .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+        --tw-space-y-reverse: 0;
+        margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));
+        margin-bottom: calc(0.5rem * var(--tw-space-y-reverse));
+      }
+      .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+        --tw-space-y-reverse: 0;
+        margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));
+        margin-bottom: calc(1rem * var(--tw-space-y-reverse));
+      }
+      .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+        --tw-space-y-reverse: 0;
+        margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
+        margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
+      }
+      .space-y-8 > :not([hidden]) ~ :not([hidden]) {
+        --tw-space-y-reverse: 0;
+        margin-top: calc(2rem * calc(1 - var(--tw-space-y-reverse)));
+        margin-bottom: calc(2rem * var(--tw-space-y-reverse));
+      }
+      .whitespace-nowrap {
+        white-space: nowrap;
+      }
+      .rounded-lg {
+        border-radius: 0.5rem;
+      }
+      .rounded-md {
+        border-radius: 0.375rem;
+      }
+      .border {
+        border-width: 1px;
+      }
+      .border-b {
+        border-bottom-width: 1px;
+      }
+      .border-gray-200 {
+        --tw-border-opacity: 1;
+        border-color: rgb(229 231 235 / var(--tw-border-opacity));
+      }
+      .border-gray-300 {
+        --tw-border-opacity: 1;
+        border-color: rgb(209 213 219 / var(--tw-border-opacity));
+      }
+      .border-transparent {
+        border-color: transparent;
+      }
+      .bg-gray-100 {
+        --tw-bg-opacity: 1;
+        background-color: rgb(243 244 246 / var(--tw-bg-opacity));
+      }
+      .bg-gray-900 {
+        --tw-bg-opacity: 1;
+        background-color: rgb(17 24 39 / var(--tw-bg-opacity));
+      }
+      .bg-red-500 {
+        --tw-bg-opacity: 1;
+        background-color: rgb(239 68 68 / var(--tw-bg-opacity));
+      }
+      .bg-white {
+        --tw-bg-opacity: 1;
+        background-color: rgb(255 255 255 / var(--tw-bg-opacity));
+      }
+      .bg-gradient-to-b {
+        background-image: linear-gradient(to bottom, var(--tw-gradient-stops));
+      }
+      .bg-gradient-to-t {
+        background-image: linear-gradient(to top, var(--tw-gradient-stops));
+      }
+      .from-white {
+        --tw-gradient-from: #fff var(--tw-gradient-from-position);
+        --tw-gradient-to: hsla(0, 0%, 100%, 0) var(--tw-gradient-to-position);
+        --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+      }
+      .from-zinc-200 {
+        --tw-gradient-from: #e4e4e7 var(--tw-gradient-from-position);
+        --tw-gradient-to: hsla(240, 6%, 90%, 0) var(--tw-gradient-to-position);
+        --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+      }
+      .via-white {
+        --tw-gradient-to: hsla(0, 0%, 100%, 0) var(--tw-gradient-to-position);
+        --tw-gradient-stops: var(--tw-gradient-from),
+          #fff var(--tw-gradient-via-position), var(--tw-gradient-to);
+      }
+      .p-24 {
+        padding: 6rem;
+      }
+      .p-4 {
+        padding: 1rem;
+      }
+      .p-6 {
+        padding: 1.5rem;
+      }
+      .p-8 {
+        padding: 2rem;
+      }
+      .px-3 {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+      }
+      .px-4 {
+        padding-left: 1rem;
+        padding-right: 1rem;
+      }
+      .px-5 {
+        padding-left: 1.25rem;
+        padding-right: 1.25rem;
+      }
+      .px-8 {
+        padding-left: 2rem;
+        padding-right: 2rem;
+      }
+      .py-12 {
+        padding-top: 3rem;
+        padding-bottom: 3rem;
+      }
+      .py-2 {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+      }
+      .py-4 {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+      }
+      .pb-6 {
+        padding-bottom: 1.5rem;
+      }
+      .pt-8 {
+        padding-top: 2rem;
+      }
+      .text-center {
+        text-align: center;
+      }
+      .font-mono {
+        font-family:
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          Liberation Mono,
+          Courier New,
+          monospace;
+      }
+      .text-2xl {
+        font-size: 1.5rem;
+        line-height: 2rem;
+      }
+      .text-3xl {
+        font-size: 1.875rem;
+        line-height: 2.25rem;
+      }
+      .text-sm {
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+      }
+      .font-bold {
+        font-weight: 700;
+      }
+      .font-medium {
+        font-weight: 500;
+      }
+      .font-semibold {
+        font-weight: 600;
+      }
+      .leading-none {
+        line-height: 1;
+      }
+      .text-gray-50 {
+        --tw-text-opacity: 1;
+        color: rgb(249 250 251 / var(--tw-text-opacity));
+      }
+      .text-gray-500 {
+        --tw-text-opacity: 1;
+        color: rgb(107 114 128 / var(--tw-text-opacity));
+      }
+      .text-gray-900 {
+        --tw-text-opacity: 1;
+        color: rgb(17 24 39 / var(--tw-text-opacity));
+      }
+      .underline-offset-4 {
+        text-underline-offset: 4px;
+      }
+      .opacity-50 {
+        opacity: 0.5;
+      }
+      .shadow-lg {
+        --tw-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+          0 4px 6px -4px rgba(0, 0, 0, 0.1);
+        --tw-shadow-colored: 0 10px 15px -3px var(--tw-shadow-color),
+          0 4px 6px -4px var(--tw-shadow-color);
+        box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000),
+          var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+      }
+      .outline {
+        outline-style: solid;
+      }
+      .ring-offset-white {
+        --tw-ring-offset-color: #fff;
+      }
+      .backdrop-blur-2xl {
+        --tw-backdrop-blur: blur(40px);
+        backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness)
+          var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale)
+          var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert)
+          var(--tw-backdrop-opacity) var(--tw-backdrop-saturate)
+          var(--tw-backdrop-sepia);
+      }
+      .transition-colors {
+        transition-property: color, background-color, border-color,
+          text-decoration-color, fill, stroke;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 0.15s;
+      }
+      .transition-transform {
+        transition-property: transform;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 0.15s;
+      }
+      @keyframes enter {
+        0% {
+          opacity: var(--tw-enter-opacity, 1);
+          transform: translate3d(
+              var(--tw-enter-translate-x, 0),
+              var(--tw-enter-translate-y, 0),
+              0
+            )
+            scale3d(
+              var(--tw-enter-scale, 1),
+              var(--tw-enter-scale, 1),
+              var(--tw-enter-scale, 1)
+            )
+            rotate(var(--tw-enter-rotate, 0));
+        }
+      }
+      @keyframes exit {
+        to {
+          opacity: var(--tw-exit-opacity, 1);
+          transform: translate3d(
+              var(--tw-exit-translate-x, 0),
+              var(--tw-exit-translate-y, 0),
+              0
+            )
+            scale3d(
+              var(--tw-exit-scale, 1),
+              var(--tw-exit-scale, 1),
+              var(--tw-exit-scale, 1)
+            )
+            rotate(var(--tw-exit-rotate, 0));
+        }
+      }
+      .text-balance {
+        text-wrap: balance;
+      }
+      :root {
+        --foreground-rgb: 0, 0, 0;
+        --background-start-rgb: 214, 219, 220;
+        --background-end-rgb: 255, 255, 255;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --foreground-rgb: 255, 255, 255;
+          --background-start-rgb: 0, 0, 0;
+          --background-end-rgb: 0, 0, 0;
+        }
+      }
+      body,
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6 {
+        font-family: var(--font-inter), sans-serif;
+      }
+      body {
+        color: rgb(var(--foreground-rgb));
+        background: linear-gradient(
+            to bottom,
+            transparent,
+            rgb(var(--background-end-rgb))
+          )
+          rgb(var(--background-start-rgb));
+      }
+      .file\:border-0::file-selector-button {
+        border-width: 0;
+      }
+      .file\:bg-transparent::file-selector-button {
+        background-color: transparent;
+      }
+      .file\:text-sm::file-selector-button {
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+      }
+      .file\:font-medium::file-selector-button {
+        font-weight: 500;
+      }
+      .placeholder\:text-gray-500::placeholder {
+        --tw-text-opacity: 1;
+        color: rgb(107 114 128 / var(--tw-text-opacity));
+      }
+      .before\:absolute:before {
+        content: var(--tw-content);
+        position: absolute;
+      }
+      .before\:h-\[300px\]:before {
+        content: var(--tw-content);
+        height: 300px;
+      }
+      .before\:w-full:before {
+        content: var(--tw-content);
+        width: 100%;
+      }
+      .before\:-translate-x-1\/2:before {
+        content: var(--tw-content);
+        --tw-translate-x: -50%;
+        transform: translate(var(--tw-translate-x), var(--tw-translate-y))
+          rotate(var(--tw-rotate)) skewX(var(--tw-skew-x))
+          skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x))
+          scaleY(var(--tw-scale-y));
+      }
+      .before\:rounded-full:before {
+        content: var(--tw-content);
+        border-radius: 9999px;
+      }
+      .before\:bg-gradient-radial:before {
+        content: var(--tw-content);
+        background-image: radial-gradient(var(--tw-gradient-stops));
+      }
+      .before\:from-white:before {
+        content: var(--tw-content);
+        --tw-gradient-from: #fff var(--tw-gradient-from-position);
+        --tw-gradient-to: hsla(0, 0%, 100%, 0) var(--tw-gradient-to-position);
+        --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+      }
+      .before\:to-transparent:before {
+        content: var(--tw-content);
+        --tw-gradient-to: transparent var(--tw-gradient-to-position);
+      }
+      .before\:blur-2xl:before {
+        content: var(--tw-content);
+        --tw-blur: blur(40px);
+        filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast)
+          var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert)
+          var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
+      }
+      .before\:content-\[\'\'\]:before {
+        --tw-content: "";
+        content: var(--tw-content);
+      }
+      .after\:absolute:after {
+        content: var(--tw-content);
+        position: absolute;
+      }
+      .after\:-z-20:after {
+        content: var(--tw-content);
+        z-index: -20;
+      }
+      .after\:h-\[180px\]:after {
+        content: var(--tw-content);
+        height: 180px;
+      }
+      .after\:w-full:after {
+        content: var(--tw-content);
+        width: 100%;
+      }
+      .after\:translate-x-1\/3:after {
+        content: var(--tw-content);
+        --tw-translate-x: 33.333333%;
+        transform: translate(var(--tw-translate-x), var(--tw-translate-y))
+          rotate(var(--tw-rotate)) skewX(var(--tw-skew-x))
+          skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x))
+          scaleY(var(--tw-scale-y));
+      }
+      .after\:bg-gradient-conic:after {
+        content: var(--tw-content);
+        background-image: conic-gradient(
+          from 180deg at 50% 50%,
+          var(--tw-gradient-stops)
+        );
+      }
+      .after\:from-sky-200:after {
+        content: var(--tw-content);
+        --tw-gradient-from: #bae6fd var(--tw-gradient-from-position);
+        --tw-gradient-to: rgba(186, 230, 253, 0) var(--tw-gradient-to-position);
+        --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+      }
+      .after\:via-blue-200:after {
+        content: var(--tw-content);
+        --tw-gradient-to: rgba(191, 219, 254, 0) var(--tw-gradient-to-position);
+        --tw-gradient-stops: var(--tw-gradient-from),
+          #bfdbfe var(--tw-gradient-via-position), var(--tw-gradient-to);
+      }
+      .after\:blur-2xl:after {
+        content: var(--tw-content);
+        --tw-blur: blur(40px);
+        filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast)
+          var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert)
+          var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
+      }
+      .after\:content-\[\'\'\]:after {
+        --tw-content: "";
+        content: var(--tw-content);
+      }
+      .hover\:border-gray-300:hover {
+        --tw-border-opacity: 1;
+        border-color: rgb(209 213 219 / var(--tw-border-opacity));
+      }
+      .hover\:bg-gray-100:hover {
+        --tw-bg-opacity: 1;
+        background-color: rgb(243 244 246 / var(--tw-bg-opacity));
+      }
+      .hover\:bg-gray-100\/80:hover {
+        background-color: rgba(243, 244, 246, 0.8);
+      }
+      .hover\:bg-gray-900\/90:hover {
+        background-color: rgba(17, 24, 39, 0.9);
+      }
+      .hover\:bg-red-500\/90:hover {
+        background-color: rgba(239, 68, 68, 0.9);
+      }
+      .hover\:text-gray-900:hover {
+        --tw-text-opacity: 1;
+        color: rgb(17 24 39 / var(--tw-text-opacity));
+      }
+      .hover\:underline:hover {
+        text-decoration-line: underline;
+      }
+      .focus-visible\:outline-none:focus-visible {
+        outline: 2px solid transparent;
+        outline-offset: 2px;
+      }
+      .focus-visible\:ring-2:focus-visible {
+        --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0
+          var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+        --tw-ring-shadow: var(--tw-ring-inset) 0 0 0
+          calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+        box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow),
+          var(--tw-shadow, 0 0 #0000);
+      }
+      .focus-visible\:ring-gray-950:focus-visible {
+        --tw-ring-opacity: 1;
+        --tw-ring-color: rgb(3 7 18 / var(--tw-ring-opacity));
+      }
+      .focus-visible\:ring-offset-2:focus-visible {
+        --tw-ring-offset-width: 2px;
+      }
+      .disabled\:pointer-events-none:disabled {
+        pointer-events: none;
+      }
+      .disabled\:cursor-not-allowed:disabled {
+        cursor: not-allowed;
+      }
+      .disabled\:opacity-50:disabled {
+        opacity: 0.5;
+      }
+      .group:hover .group-hover\:translate-x-1 {
+        --tw-translate-x: 0.25rem;
+        transform: translate(var(--tw-translate-x), var(--tw-translate-y))
+          rotate(var(--tw-rotate)) skewX(var(--tw-skew-x))
+          skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x))
+          scaleY(var(--tw-scale-y));
+      }
+      .peer:disabled ~ .peer-disabled\:cursor-not-allowed {
+        cursor: not-allowed;
+      }
+      .peer:disabled ~ .peer-disabled\:opacity-70 {
+        opacity: 0.7;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .motion-reduce\:transform-none {
+          transform: none;
+        }
+      }
+      @media (min-width: 640px) {
+        .sm\:p-6 {
+          padding: 1.5rem;
+        }
+        .sm\:p-8 {
+          padding: 2rem;
+        }
+        .sm\:before\:w-\[480px\]:before {
+          content: var(--tw-content);
+          width: 480px;
+        }
+        .sm\:after\:w-\[240px\]:after {
+          content: var(--tw-content);
+          width: 240px;
+        }
+      }
+      @media (min-width: 768px) {
+        .md\:grid-cols-2 {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .md\:p-8 {
+          padding: 2rem;
+        }
+      }
+      @media (min-width: 1024px) {
+        .lg\:pointer-events-auto {
+          pointer-events: auto;
+        }
+        .lg\:static {
+          position: static;
+        }
+        .lg\:mb-0 {
+          margin-bottom: 0;
+        }
+        .lg\:flex {
+          display: flex;
+        }
+        .lg\:size-auto {
+          width: auto;
+          height: auto;
+        }
+        .lg\:w-auto {
+          width: auto;
+        }
+        .lg\:w-full {
+          width: 100%;
+        }
+        .lg\:max-w-5xl {
+          max-width: 64rem;
+        }
+        .lg\:grid-cols-4 {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        .lg\:rounded-xl {
+          border-radius: 0.75rem;
+        }
+        .lg\:border {
+          border-width: 1px;
+        }
+        .lg\:bg-gray-200 {
+          --tw-bg-opacity: 1;
+          background-color: rgb(229 231 235 / var(--tw-bg-opacity));
+        }
+        .lg\:bg-none {
+          background-image: none;
+        }
+        .lg\:p-0 {
+          padding: 0;
+        }
+        .lg\:p-4 {
+          padding: 1rem;
+        }
+        .lg\:text-left {
+          text-align: left;
+        }
+        .before\:lg\:h-\[360px\]:before {
+          content: var(--tw-content);
+          height: 360px;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        .dark\:border-gray-800 {
+          --tw-border-opacity: 1;
+          border-color: rgb(31 41 55 / var(--tw-border-opacity));
+        }
+        .dark\:border-neutral-800 {
+          --tw-border-opacity: 1;
+          border-color: rgb(38 38 38 / var(--tw-border-opacity));
+        }
+        .dark\:bg-gray-50 {
+          --tw-bg-opacity: 1;
+          background-color: rgb(249 250 251 / var(--tw-bg-opacity));
+        }
+        .dark\:bg-gray-800 {
+          --tw-bg-opacity: 1;
+          background-color: rgb(31 41 55 / var(--tw-bg-opacity));
+        }
+        .dark\:bg-gray-900 {
+          --tw-bg-opacity: 1;
+          background-color: rgb(17 24 39 / var(--tw-bg-opacity));
+        }
+        .dark\:bg-gray-950 {
+          --tw-bg-opacity: 1;
+          background-color: rgb(3 7 18 / var(--tw-bg-opacity));
+        }
+        .dark\:bg-red-900 {
+          --tw-bg-opacity: 1;
+          background-color: rgb(127 29 29 / var(--tw-bg-opacity));
+        }
+        .dark\:bg-zinc-800\/30 {
+          background-color: rgba(39, 39, 42, 0.3);
+        }
+        .dark\:from-black {
+          --tw-gradient-from: #000 var(--tw-gradient-from-position);
+          --tw-gradient-to: transparent var(--tw-gradient-to-position);
+          --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+        }
+        .dark\:from-inherit {
+          --tw-gradient-from: inherit var(--tw-gradient-from-position);
+          --tw-gradient-to: hsla(0, 0%, 100%, 0) var(--tw-gradient-to-position);
+          --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+        }
+        .dark\:via-black {
+          --tw-gradient-to: transparent var(--tw-gradient-to-position);
+          --tw-gradient-stops: var(--tw-gradient-from),
+            #000 var(--tw-gradient-via-position), var(--tw-gradient-to);
+        }
+        .dark\:text-gray-400 {
+          --tw-text-opacity: 1;
+          color: rgb(156 163 175 / var(--tw-text-opacity));
+        }
+        .dark\:text-gray-50 {
+          --tw-text-opacity: 1;
+          color: rgb(249 250 251 / var(--tw-text-opacity));
+        }
+        .dark\:text-gray-900 {
+          --tw-text-opacity: 1;
+          color: rgb(17 24 39 / var(--tw-text-opacity));
+        }
+        .dark\:ring-offset-gray-950 {
+          --tw-ring-offset-color: #030712;
+        }
+        .dark\:drop-shadow-\[0_0_0\.3rem_\#ffffff70\] {
+          --tw-drop-shadow: drop-shadow(0 0 0.3rem #ffffff70);
+        }
+        .dark\:drop-shadow-\[0_0_0\.3rem_\#ffffff70\],
+        .dark\:invert {
+          filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast)
+            var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert)
+            var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
+        }
+        .dark\:invert {
+          --tw-invert: invert(100%);
+        }
+        .dark\:placeholder\:text-gray-400::placeholder {
+          --tw-text-opacity: 1;
+          color: rgb(156 163 175 / var(--tw-text-opacity));
+        }
+        .before\:dark\:bg-gradient-to-br:before {
+          content: var(--tw-content);
+          background-image: linear-gradient(
+            to bottom right,
+            var(--tw-gradient-stops)
+          );
+        }
+        .before\:dark\:from-transparent:before {
+          content: var(--tw-content);
+          --tw-gradient-from: transparent var(--tw-gradient-from-position);
+          --tw-gradient-to: transparent var(--tw-gradient-to-position);
+          --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+        }
+        .before\:dark\:to-blue-700:before {
+          content: var(--tw-content);
+          --tw-gradient-to: #1d4ed8 var(--tw-gradient-to-position);
+        }
+        .before\:dark\:opacity-10:before {
+          content: var(--tw-content);
+          opacity: 0.1;
+        }
+        .after\:dark\:from-sky-900:after {
+          content: var(--tw-content);
+          --tw-gradient-from: #0c4a6e var(--tw-gradient-from-position);
+          --tw-gradient-to: rgba(12, 74, 110, 0) var(--tw-gradient-to-position);
+          --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+        }
+        .after\:dark\:via-\[\#0141ff\]:after {
+          content: var(--tw-content);
+          --tw-gradient-to: rgba(1, 65, 255, 0) var(--tw-gradient-to-position);
+          --tw-gradient-stops: var(--tw-gradient-from),
+            #0141ff var(--tw-gradient-via-position), var(--tw-gradient-to);
+        }
+        .after\:dark\:opacity-40:after {
+          content: var(--tw-content);
+          opacity: 0.4;
+        }
+        .hover\:dark\:border-neutral-700:hover {
+          --tw-border-opacity: 1;
+          border-color: rgb(64 64 64 / var(--tw-border-opacity));
+        }
+        .dark\:hover\:bg-gray-50\/90:hover {
+          background-color: rgba(249, 250, 251, 0.9);
+        }
+        .dark\:hover\:bg-gray-800:hover {
+          --tw-bg-opacity: 1;
+          background-color: rgb(31 41 55 / var(--tw-bg-opacity));
+        }
+        .dark\:hover\:bg-gray-800\/80:hover {
+          background-color: rgba(31, 41, 55, 0.8);
+        }
+        .dark\:hover\:bg-red-900\/90:hover {
+          background-color: rgba(127, 29, 29, 0.9);
+        }
+        .hover\:dark\:bg-neutral-800\/30:hover {
+          background-color: rgba(38, 38, 38, 0.3);
+        }
+        .dark\:hover\:text-gray-50:hover {
+          --tw-text-opacity: 1;
+          color: rgb(249 250 251 / var(--tw-text-opacity));
+        }
+        .dark\:focus-visible\:ring-gray-300:focus-visible {
+          --tw-ring-opacity: 1;
+          --tw-ring-color: rgb(209 213 219 / var(--tw-ring-opacity));
+        }
+      }
+      @media (min-width: 1024px) {
+        @media (prefers-color-scheme: dark) {
+          .lg\:dark\:bg-zinc-800\/30 {
+            background-color: rgba(39, 39, 42, 0.3);
+          }
+        }
+      }
+    </style>
+    <title>Headscale Registration</title>
   </head>
-  <body>
-    <h1>headscale</h1>
-    <h2>Machine registration</h2>
-    <p>
-      Run the command below in the headscale server to add this machine to your
-      network:
-    </p>
-    <pre><code>headscale nodes register --user USERNAME --key {{.Key}}</code></pre>
+  <body class="__className_aaf875">
+    <div
+      class="flex flex-col items-center md:justify-center min-h-[100dvh] bg-gray-100 dark:bg-gray-950 p-4 sm:p-6 md:p-8"
+    >
+      <div class="max-w-2xl w-full space-y-8">
+        <div>
+          <h1 class="text-3xl font-bold">Headscale Node Registration</h1>
+        </div>
+        <div
+          class="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 sm:p-8 space-y-6"
+        >
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="hidden" id="hidden-qr-code">
+              <div class="flex flex-col items-center justify-center">
+                <div
+                  class="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 shadow-lg"
+                >
+                  <div
+                    width="200"
+                    height="200"
+                    alt="QR Code"
+                    class="w-full h-auto"
+                    id="qr-holder"
+                  ></div>
+                  <noscript>
+                    <img
+                      src="placeholder.svg"
+                      width="200"
+                      height="200"
+                      alt="QR Code"
+                      class="w-full h-auto"
+                    />
+                  </noscript>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-4">
+              <p class="text-gray-500 dark:text-gray-400">
+                To register your machine, run the following command in your
+                terminal:
+              </p>
+              <div
+                class="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 font-mono text-sm"
+              >
+                headscale register --username=USER --key={{.Key}}
+              </div>
+              <noscript>
+                <div class="py-4 sm:py-6 md:py-8">
+                  <p class="text-gray-500 dark:text-gray-400">
+                    Enable javascript to visualize a QR code
+                  </p>
+                </div>
+              </noscript>
+              <div class="hidden" id="hide-if-no-js">
+                <div class="flex items-center space-x-2">
+                  <input
+                    class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800 dark:bg-gray-950 dark:ring-offset-gray-950 dark:placeholder:text-gray-400 dark:focus-visible:ring-gray-300 flex-1"
+                    readonly=""
+                    value="headscale register --username=USER --key={{.Key}}"
+                  />
+                  <button
+                    id="copy"
+                    class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 dark:ring-offset-gray-950 dark:focus-visible:ring-gray-300 border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-800 dark:hover:text-gray-50 h-10 w-10"
+                  >
+                    <svg
+                      class="h-5 w-5"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <rect
+                        width="14"
+                        height="14"
+                        x="8"
+                        y="8"
+                        rx="2"
+                        ry="2"
+                      ></rect>
+                      <path
+                        d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                      ></path>
+                    </svg>
+                    <span class="sr-only">Copy command </span>
+                  </button>
+                  <span id="copyPopover" class="hidden">Copied!</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      /**
+       * @fileoverview
+       * - Using the 'QRCode for Javascript library'
+       * - Fixed dataset of 'QRCode for Javascript library' for support full-spec.
+       * - this library has no dependencies.
+       *
+       * @author davidshimjs
+       * @license MIT
+       * @see <a href="http://www.d-project.com/" target="_blank">http://www.d-project.com/</a>
+       * @see <a href="http://jeromeetienne.github.com/jquery-qrcode/" target="_blank">http://jeromeetienne.github.com/jquery-qrcode/</a>
+       */
+      var QRCode;
+
+      (function () {
+        //---------------------------------------------------------------------
+        // QRCode for JavaScript
+        //
+        // Copyright (c) 2009 Kazuhiko Arase
+        //
+        // URL: http://www.d-project.com/
+        //
+        // Licensed under the MIT license:
+        //   http://www.opensource.org/licenses/mit-license.php
+        //
+        // The word "QR Code" is registered trademark of
+        // DENSO WAVE INCORPORATED
+        //   http://www.denso-wave.com/qrcode/faqpatent-e.html
+        //
+        //---------------------------------------------------------------------
+        function QR8bitByte(data) {
+          this.mode = QRMode.MODE_8BIT_BYTE;
+          this.data = data;
+          this.parsedData = [];
+
+          // Added to support UTF-8 Characters
+          for (var i = 0, l = this.data.length; i < l; i++) {
+            var byteArray = [];
+            var code = this.data.charCodeAt(i);
+
+            if (code > 0x10000) {
+              byteArray[0] = 0xf0 | ((code & 0x1c0000) >>> 18);
+              byteArray[1] = 0x80 | ((code & 0x3f000) >>> 12);
+              byteArray[2] = 0x80 | ((code & 0xfc0) >>> 6);
+              byteArray[3] = 0x80 | (code & 0x3f);
+            } else if (code > 0x800) {
+              byteArray[0] = 0xe0 | ((code & 0xf000) >>> 12);
+              byteArray[1] = 0x80 | ((code & 0xfc0) >>> 6);
+              byteArray[2] = 0x80 | (code & 0x3f);
+            } else if (code > 0x80) {
+              byteArray[0] = 0xc0 | ((code & 0x7c0) >>> 6);
+              byteArray[1] = 0x80 | (code & 0x3f);
+            } else {
+              byteArray[0] = code;
+            }
+
+            this.parsedData.push(byteArray);
+          }
+
+          this.parsedData = Array.prototype.concat.apply([], this.parsedData);
+
+          if (this.parsedData.length != this.data.length) {
+            this.parsedData.unshift(191);
+            this.parsedData.unshift(187);
+            this.parsedData.unshift(239);
+          }
+        }
+
+        QR8bitByte.prototype = {
+          getLength: function (buffer) {
+            return this.parsedData.length;
+          },
+          write: function (buffer) {
+            for (var i = 0, l = this.parsedData.length; i < l; i++) {
+              buffer.put(this.parsedData[i], 8);
+            }
+          },
+        };
+
+        function QRCodeModel(typeNumber, errorCorrectLevel) {
+          this.typeNumber = typeNumber;
+          this.errorCorrectLevel = errorCorrectLevel;
+          this.modules = null;
+          this.moduleCount = 0;
+          this.dataCache = null;
+          this.dataList = [];
+        }
+
+        QRCodeModel.prototype = {
+          addData: function (data) {
+            var newData = new QR8bitByte(data);
+            this.dataList.push(newData);
+            this.dataCache = null;
+          },
+          isDark: function (row, col) {
+            if (
+              row < 0 ||
+              this.moduleCount <= row ||
+              col < 0 ||
+              this.moduleCount <= col
+            ) {
+              throw new Error(row + "," + col);
+            }
+            return this.modules[row][col];
+          },
+          getModuleCount: function () {
+            return this.moduleCount;
+          },
+          make: function () {
+            this.makeImpl(false, this.getBestMaskPattern());
+          },
+          makeImpl: function (test, maskPattern) {
+            this.moduleCount = this.typeNumber * 4 + 17;
+            this.modules = new Array(this.moduleCount);
+            for (var row = 0; row < this.moduleCount; row++) {
+              this.modules[row] = new Array(this.moduleCount);
+              for (var col = 0; col < this.moduleCount; col++) {
+                this.modules[row][col] = null;
+              }
+            }
+            this.setupPositionProbePattern(0, 0);
+            this.setupPositionProbePattern(this.moduleCount - 7, 0);
+            this.setupPositionProbePattern(0, this.moduleCount - 7);
+            this.setupPositionAdjustPattern();
+            this.setupTimingPattern();
+            this.setupTypeInfo(test, maskPattern);
+            if (this.typeNumber >= 7) {
+              this.setupTypeNumber(test);
+            }
+            if (this.dataCache == null) {
+              this.dataCache = QRCodeModel.createData(
+                this.typeNumber,
+                this.errorCorrectLevel,
+                this.dataList,
+              );
+            }
+            this.mapData(this.dataCache, maskPattern);
+          },
+          setupPositionProbePattern: function (row, col) {
+            for (var r = -1; r <= 7; r++) {
+              if (row + r <= -1 || this.moduleCount <= row + r) continue;
+              for (var c = -1; c <= 7; c++) {
+                if (col + c <= -1 || this.moduleCount <= col + c) continue;
+                if (
+                  (0 <= r && r <= 6 && (c == 0 || c == 6)) ||
+                  (0 <= c && c <= 6 && (r == 0 || r == 6)) ||
+                  (2 <= r && r <= 4 && 2 <= c && c <= 4)
+                ) {
+                  this.modules[row + r][col + c] = true;
+                } else {
+                  this.modules[row + r][col + c] = false;
+                }
+              }
+            }
+          },
+          getBestMaskPattern: function () {
+            var minLostPoint = 0;
+            var pattern = 0;
+            for (var i = 0; i < 8; i++) {
+              this.makeImpl(true, i);
+              var lostPoint = QRUtil.getLostPoint(this);
+              if (i == 0 || minLostPoint > lostPoint) {
+                minLostPoint = lostPoint;
+                pattern = i;
+              }
+            }
+            return pattern;
+          },
+          createMovieClip: function (target_mc, instance_name, depth) {
+            var qr_mc = target_mc.createEmptyMovieClip(instance_name, depth);
+            var cs = 1;
+            this.make();
+            for (var row = 0; row < this.modules.length; row++) {
+              var y = row * cs;
+              for (var col = 0; col < this.modules[row].length; col++) {
+                var x = col * cs;
+                var dark = this.modules[row][col];
+                if (dark) {
+                  qr_mc.beginFill(0, 100);
+                  qr_mc.moveTo(x, y);
+                  qr_mc.lineTo(x + cs, y);
+                  qr_mc.lineTo(x + cs, y + cs);
+                  qr_mc.lineTo(x, y + cs);
+                  qr_mc.endFill();
+                }
+              }
+            }
+            return qr_mc;
+          },
+          setupTimingPattern: function () {
+            for (var r = 8; r < this.moduleCount - 8; r++) {
+              if (this.modules[r][6] != null) {
+                continue;
+              }
+              this.modules[r][6] = r % 2 == 0;
+            }
+            for (var c = 8; c < this.moduleCount - 8; c++) {
+              if (this.modules[6][c] != null) {
+                continue;
+              }
+              this.modules[6][c] = c % 2 == 0;
+            }
+          },
+          setupPositionAdjustPattern: function () {
+            var pos = QRUtil.getPatternPosition(this.typeNumber);
+            for (var i = 0; i < pos.length; i++) {
+              for (var j = 0; j < pos.length; j++) {
+                var row = pos[i];
+                var col = pos[j];
+                if (this.modules[row][col] != null) {
+                  continue;
+                }
+                for (var r = -2; r <= 2; r++) {
+                  for (var c = -2; c <= 2; c++) {
+                    if (
+                      r == -2 ||
+                      r == 2 ||
+                      c == -2 ||
+                      c == 2 ||
+                      (r == 0 && c == 0)
+                    ) {
+                      this.modules[row + r][col + c] = true;
+                    } else {
+                      this.modules[row + r][col + c] = false;
+                    }
+                  }
+                }
+              }
+            }
+          },
+          setupTypeNumber: function (test) {
+            var bits = QRUtil.getBCHTypeNumber(this.typeNumber);
+            for (var i = 0; i < 18; i++) {
+              var mod = !test && ((bits >> i) & 1) == 1;
+              this.modules[Math.floor(i / 3)][
+                (i % 3) + this.moduleCount - 8 - 3
+              ] = mod;
+            }
+            for (var i = 0; i < 18; i++) {
+              var mod = !test && ((bits >> i) & 1) == 1;
+              this.modules[(i % 3) + this.moduleCount - 8 - 3][
+                Math.floor(i / 3)
+              ] = mod;
+            }
+          },
+          setupTypeInfo: function (test, maskPattern) {
+            var data = (this.errorCorrectLevel << 3) | maskPattern;
+            var bits = QRUtil.getBCHTypeInfo(data);
+            for (var i = 0; i < 15; i++) {
+              var mod = !test && ((bits >> i) & 1) == 1;
+              if (i < 6) {
+                this.modules[i][8] = mod;
+              } else if (i < 8) {
+                this.modules[i + 1][8] = mod;
+              } else {
+                this.modules[this.moduleCount - 15 + i][8] = mod;
+              }
+            }
+            for (var i = 0; i < 15; i++) {
+              var mod = !test && ((bits >> i) & 1) == 1;
+              if (i < 8) {
+                this.modules[8][this.moduleCount - i - 1] = mod;
+              } else if (i < 9) {
+                this.modules[8][15 - i - 1 + 1] = mod;
+              } else {
+                this.modules[8][15 - i - 1] = mod;
+              }
+            }
+            this.modules[this.moduleCount - 8][8] = !test;
+          },
+          mapData: function (data, maskPattern) {
+            var inc = -1;
+            var row = this.moduleCount - 1;
+            var bitIndex = 7;
+            var byteIndex = 0;
+            for (var col = this.moduleCount - 1; col > 0; col -= 2) {
+              if (col == 6) col--;
+              while (true) {
+                for (var c = 0; c < 2; c++) {
+                  if (this.modules[row][col - c] == null) {
+                    var dark = false;
+                    if (byteIndex < data.length) {
+                      dark = ((data[byteIndex] >>> bitIndex) & 1) == 1;
+                    }
+                    var mask = QRUtil.getMask(maskPattern, row, col - c);
+                    if (mask) {
+                      dark = !dark;
+                    }
+                    this.modules[row][col - c] = dark;
+                    bitIndex--;
+                    if (bitIndex == -1) {
+                      byteIndex++;
+                      bitIndex = 7;
+                    }
+                  }
+                }
+                row += inc;
+                if (row < 0 || this.moduleCount <= row) {
+                  row -= inc;
+                  inc = -inc;
+                  break;
+                }
+              }
+            }
+          },
+        };
+        QRCodeModel.PAD0 = 0xec;
+        QRCodeModel.PAD1 = 0x11;
+        QRCodeModel.createData = function (
+          typeNumber,
+          errorCorrectLevel,
+          dataList,
+        ) {
+          var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, errorCorrectLevel);
+          var buffer = new QRBitBuffer();
+          for (var i = 0; i < dataList.length; i++) {
+            var data = dataList[i];
+            buffer.put(data.mode, 4);
+            buffer.put(
+              data.getLength(),
+              QRUtil.getLengthInBits(data.mode, typeNumber),
+            );
+            data.write(buffer);
+          }
+          var totalDataCount = 0;
+          for (var i = 0; i < rsBlocks.length; i++) {
+            totalDataCount += rsBlocks[i].dataCount;
+          }
+          if (buffer.getLengthInBits() > totalDataCount * 8) {
+            throw new Error(
+              "code length overflow. (" +
+                buffer.getLengthInBits() +
+                ">" +
+                totalDataCount * 8 +
+                ")",
+            );
+          }
+          if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) {
+            buffer.put(0, 4);
+          }
+          while (buffer.getLengthInBits() % 8 != 0) {
+            buffer.putBit(false);
+          }
+          while (true) {
+            if (buffer.getLengthInBits() >= totalDataCount * 8) {
+              break;
+            }
+            buffer.put(QRCodeModel.PAD0, 8);
+            if (buffer.getLengthInBits() >= totalDataCount * 8) {
+              break;
+            }
+            buffer.put(QRCodeModel.PAD1, 8);
+          }
+          return QRCodeModel.createBytes(buffer, rsBlocks);
+        };
+        QRCodeModel.createBytes = function (buffer, rsBlocks) {
+          var offset = 0;
+          var maxDcCount = 0;
+          var maxEcCount = 0;
+          var dcdata = new Array(rsBlocks.length);
+          var ecdata = new Array(rsBlocks.length);
+          for (var r = 0; r < rsBlocks.length; r++) {
+            var dcCount = rsBlocks[r].dataCount;
+            var ecCount = rsBlocks[r].totalCount - dcCount;
+            maxDcCount = Math.max(maxDcCount, dcCount);
+            maxEcCount = Math.max(maxEcCount, ecCount);
+            dcdata[r] = new Array(dcCount);
+            for (var i = 0; i < dcdata[r].length; i++) {
+              dcdata[r][i] = 0xff & buffer.buffer[i + offset];
+            }
+            offset += dcCount;
+            var rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+            var rawPoly = new QRPolynomial(dcdata[r], rsPoly.getLength() - 1);
+            var modPoly = rawPoly.mod(rsPoly);
+            ecdata[r] = new Array(rsPoly.getLength() - 1);
+            for (var i = 0; i < ecdata[r].length; i++) {
+              var modIndex = i + modPoly.getLength() - ecdata[r].length;
+              ecdata[r][i] = modIndex >= 0 ? modPoly.get(modIndex) : 0;
+            }
+          }
+          var totalCodeCount = 0;
+          for (var i = 0; i < rsBlocks.length; i++) {
+            totalCodeCount += rsBlocks[i].totalCount;
+          }
+          var data = new Array(totalCodeCount);
+          var index = 0;
+          for (var i = 0; i < maxDcCount; i++) {
+            for (var r = 0; r < rsBlocks.length; r++) {
+              if (i < dcdata[r].length) {
+                data[index++] = dcdata[r][i];
+              }
+            }
+          }
+          for (var i = 0; i < maxEcCount; i++) {
+            for (var r = 0; r < rsBlocks.length; r++) {
+              if (i < ecdata[r].length) {
+                data[index++] = ecdata[r][i];
+              }
+            }
+          }
+          return data;
+        };
+        var QRMode = {
+          MODE_NUMBER: 1 << 0,
+          MODE_ALPHA_NUM: 1 << 1,
+          MODE_8BIT_BYTE: 1 << 2,
+          MODE_KANJI: 1 << 3,
+        };
+        var QRErrorCorrectLevel = { L: 1, M: 0, Q: 3, H: 2 };
+        var QRMaskPattern = {
+          PATTERN000: 0,
+          PATTERN001: 1,
+          PATTERN010: 2,
+          PATTERN011: 3,
+          PATTERN100: 4,
+          PATTERN101: 5,
+          PATTERN110: 6,
+          PATTERN111: 7,
+        };
+        var QRUtil = {
+          PATTERN_POSITION_TABLE: [
+            [],
+            [6, 18],
+            [6, 22],
+            [6, 26],
+            [6, 30],
+            [6, 34],
+            [6, 22, 38],
+            [6, 24, 42],
+            [6, 26, 46],
+            [6, 28, 50],
+            [6, 30, 54],
+            [6, 32, 58],
+            [6, 34, 62],
+            [6, 26, 46, 66],
+            [6, 26, 48, 70],
+            [6, 26, 50, 74],
+            [6, 30, 54, 78],
+            [6, 30, 56, 82],
+            [6, 30, 58, 86],
+            [6, 34, 62, 90],
+            [6, 28, 50, 72, 94],
+            [6, 26, 50, 74, 98],
+            [6, 30, 54, 78, 102],
+            [6, 28, 54, 80, 106],
+            [6, 32, 58, 84, 110],
+            [6, 30, 58, 86, 114],
+            [6, 34, 62, 90, 118],
+            [6, 26, 50, 74, 98, 122],
+            [6, 30, 54, 78, 102, 126],
+            [6, 26, 52, 78, 104, 130],
+            [6, 30, 56, 82, 108, 134],
+            [6, 34, 60, 86, 112, 138],
+            [6, 30, 58, 86, 114, 142],
+            [6, 34, 62, 90, 118, 146],
+            [6, 30, 54, 78, 102, 126, 150],
+            [6, 24, 50, 76, 102, 128, 154],
+            [6, 28, 54, 80, 106, 132, 158],
+            [6, 32, 58, 84, 110, 136, 162],
+            [6, 26, 54, 82, 110, 138, 166],
+            [6, 30, 58, 86, 114, 142, 170],
+          ],
+          G15:
+            (1 << 10) |
+            (1 << 8) |
+            (1 << 5) |
+            (1 << 4) |
+            (1 << 2) |
+            (1 << 1) |
+            (1 << 0),
+          G18:
+            (1 << 12) |
+            (1 << 11) |
+            (1 << 10) |
+            (1 << 9) |
+            (1 << 8) |
+            (1 << 5) |
+            (1 << 2) |
+            (1 << 0),
+          G15_MASK: (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1),
+          getBCHTypeInfo: function (data) {
+            var d = data << 10;
+            while (
+              QRUtil.getBCHDigit(d) - QRUtil.getBCHDigit(QRUtil.G15) >=
+              0
+            ) {
+              d ^=
+                QRUtil.G15 <<
+                (QRUtil.getBCHDigit(d) - QRUtil.getBCHDigit(QRUtil.G15));
+            }
+            return ((data << 10) | d) ^ QRUtil.G15_MASK;
+          },
+          getBCHTypeNumber: function (data) {
+            var d = data << 12;
+            while (
+              QRUtil.getBCHDigit(d) - QRUtil.getBCHDigit(QRUtil.G18) >=
+              0
+            ) {
+              d ^=
+                QRUtil.G18 <<
+                (QRUtil.getBCHDigit(d) - QRUtil.getBCHDigit(QRUtil.G18));
+            }
+            return (data << 12) | d;
+          },
+          getBCHDigit: function (data) {
+            var digit = 0;
+            while (data != 0) {
+              digit++;
+              data >>>= 1;
+            }
+            return digit;
+          },
+          getPatternPosition: function (typeNumber) {
+            return QRUtil.PATTERN_POSITION_TABLE[typeNumber - 1];
+          },
+          getMask: function (maskPattern, i, j) {
+            switch (maskPattern) {
+              case QRMaskPattern.PATTERN000:
+                return (i + j) % 2 == 0;
+              case QRMaskPattern.PATTERN001:
+                return i % 2 == 0;
+              case QRMaskPattern.PATTERN010:
+                return j % 3 == 0;
+              case QRMaskPattern.PATTERN011:
+                return (i + j) % 3 == 0;
+              case QRMaskPattern.PATTERN100:
+                return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 == 0;
+              case QRMaskPattern.PATTERN101:
+                return ((i * j) % 2) + ((i * j) % 3) == 0;
+              case QRMaskPattern.PATTERN110:
+                return (((i * j) % 2) + ((i * j) % 3)) % 2 == 0;
+              case QRMaskPattern.PATTERN111:
+                return (((i * j) % 3) + ((i + j) % 2)) % 2 == 0;
+              default:
+                throw new Error("bad maskPattern:" + maskPattern);
+            }
+          },
+          getErrorCorrectPolynomial: function (errorCorrectLength) {
+            var a = new QRPolynomial([1], 0);
+            for (var i = 0; i < errorCorrectLength; i++) {
+              a = a.multiply(new QRPolynomial([1, QRMath.gexp(i)], 0));
+            }
+            return a;
+          },
+          getLengthInBits: function (mode, type) {
+            if (1 <= type && type < 10) {
+              switch (mode) {
+                case QRMode.MODE_NUMBER:
+                  return 10;
+                case QRMode.MODE_ALPHA_NUM:
+                  return 9;
+                case QRMode.MODE_8BIT_BYTE:
+                  return 8;
+                case QRMode.MODE_KANJI:
+                  return 8;
+                default:
+                  throw new Error("mode:" + mode);
+              }
+            } else if (type < 27) {
+              switch (mode) {
+                case QRMode.MODE_NUMBER:
+                  return 12;
+                case QRMode.MODE_ALPHA_NUM:
+                  return 11;
+                case QRMode.MODE_8BIT_BYTE:
+                  return 16;
+                case QRMode.MODE_KANJI:
+                  return 10;
+                default:
+                  throw new Error("mode:" + mode);
+              }
+            } else if (type < 41) {
+              switch (mode) {
+                case QRMode.MODE_NUMBER:
+                  return 14;
+                case QRMode.MODE_ALPHA_NUM:
+                  return 13;
+                case QRMode.MODE_8BIT_BYTE:
+                  return 16;
+                case QRMode.MODE_KANJI:
+                  return 12;
+                default:
+                  throw new Error("mode:" + mode);
+              }
+            } else {
+              throw new Error("type:" + type);
+            }
+          },
+          getLostPoint: function (qrCode) {
+            var moduleCount = qrCode.getModuleCount();
+            var lostPoint = 0;
+            for (var row = 0; row < moduleCount; row++) {
+              for (var col = 0; col < moduleCount; col++) {
+                var sameCount = 0;
+                var dark = qrCode.isDark(row, col);
+                for (var r = -1; r <= 1; r++) {
+                  if (row + r < 0 || moduleCount <= row + r) {
+                    continue;
+                  }
+                  for (var c = -1; c <= 1; c++) {
+                    if (col + c < 0 || moduleCount <= col + c) {
+                      continue;
+                    }
+                    if (r == 0 && c == 0) {
+                      continue;
+                    }
+                    if (dark == qrCode.isDark(row + r, col + c)) {
+                      sameCount++;
+                    }
+                  }
+                }
+                if (sameCount > 5) {
+                  lostPoint += 3 + sameCount - 5;
+                }
+              }
+            }
+            for (var row = 0; row < moduleCount - 1; row++) {
+              for (var col = 0; col < moduleCount - 1; col++) {
+                var count = 0;
+                if (qrCode.isDark(row, col)) count++;
+                if (qrCode.isDark(row + 1, col)) count++;
+                if (qrCode.isDark(row, col + 1)) count++;
+                if (qrCode.isDark(row + 1, col + 1)) count++;
+                if (count == 0 || count == 4) {
+                  lostPoint += 3;
+                }
+              }
+            }
+            for (var row = 0; row < moduleCount; row++) {
+              for (var col = 0; col < moduleCount - 6; col++) {
+                if (
+                  qrCode.isDark(row, col) &&
+                  !qrCode.isDark(row, col + 1) &&
+                  qrCode.isDark(row, col + 2) &&
+                  qrCode.isDark(row, col + 3) &&
+                  qrCode.isDark(row, col + 4) &&
+                  !qrCode.isDark(row, col + 5) &&
+                  qrCode.isDark(row, col + 6)
+                ) {
+                  lostPoint += 40;
+                }
+              }
+            }
+            for (var col = 0; col < moduleCount; col++) {
+              for (var row = 0; row < moduleCount - 6; row++) {
+                if (
+                  qrCode.isDark(row, col) &&
+                  !qrCode.isDark(row + 1, col) &&
+                  qrCode.isDark(row + 2, col) &&
+                  qrCode.isDark(row + 3, col) &&
+                  qrCode.isDark(row + 4, col) &&
+                  !qrCode.isDark(row + 5, col) &&
+                  qrCode.isDark(row + 6, col)
+                ) {
+                  lostPoint += 40;
+                }
+              }
+            }
+            var darkCount = 0;
+            for (var col = 0; col < moduleCount; col++) {
+              for (var row = 0; row < moduleCount; row++) {
+                if (qrCode.isDark(row, col)) {
+                  darkCount++;
+                }
+              }
+            }
+            var ratio =
+              Math.abs((100 * darkCount) / moduleCount / moduleCount - 50) / 5;
+            lostPoint += ratio * 10;
+            return lostPoint;
+          },
+        };
+        var QRMath = {
+          glog: function (n) {
+            if (n < 1) {
+              throw new Error("glog(" + n + ")");
+            }
+            return QRMath.LOG_TABLE[n];
+          },
+          gexp: function (n) {
+            while (n < 0) {
+              n += 255;
+            }
+            while (n >= 256) {
+              n -= 255;
+            }
+            return QRMath.EXP_TABLE[n];
+          },
+          EXP_TABLE: new Array(256),
+          LOG_TABLE: new Array(256),
+        };
+        for (var i = 0; i < 8; i++) {
+          QRMath.EXP_TABLE[i] = 1 << i;
+        }
+        for (var i = 8; i < 256; i++) {
+          QRMath.EXP_TABLE[i] =
+            QRMath.EXP_TABLE[i - 4] ^
+            QRMath.EXP_TABLE[i - 5] ^
+            QRMath.EXP_TABLE[i - 6] ^
+            QRMath.EXP_TABLE[i - 8];
+        }
+        for (var i = 0; i < 255; i++) {
+          QRMath.LOG_TABLE[QRMath.EXP_TABLE[i]] = i;
+        }
+        function QRPolynomial(num, shift) {
+          if (num.length == undefined) {
+            throw new Error(num.length + "/" + shift);
+          }
+          var offset = 0;
+          while (offset < num.length && num[offset] == 0) {
+            offset++;
+          }
+          this.num = new Array(num.length - offset + shift);
+          for (var i = 0; i < num.length - offset; i++) {
+            this.num[i] = num[i + offset];
+          }
+        }
+        QRPolynomial.prototype = {
+          get: function (index) {
+            return this.num[index];
+          },
+          getLength: function () {
+            return this.num.length;
+          },
+          multiply: function (e) {
+            var num = new Array(this.getLength() + e.getLength() - 1);
+            for (var i = 0; i < this.getLength(); i++) {
+              for (var j = 0; j < e.getLength(); j++) {
+                num[i + j] ^= QRMath.gexp(
+                  QRMath.glog(this.get(i)) + QRMath.glog(e.get(j)),
+                );
+              }
+            }
+            return new QRPolynomial(num, 0);
+          },
+          mod: function (e) {
+            if (this.getLength() - e.getLength() < 0) {
+              return this;
+            }
+            var ratio = QRMath.glog(this.get(0)) - QRMath.glog(e.get(0));
+            var num = new Array(this.getLength());
+            for (var i = 0; i < this.getLength(); i++) {
+              num[i] = this.get(i);
+            }
+            for (var i = 0; i < e.getLength(); i++) {
+              num[i] ^= QRMath.gexp(QRMath.glog(e.get(i)) + ratio);
+            }
+            return new QRPolynomial(num, 0).mod(e);
+          },
+        };
+        function QRRSBlock(totalCount, dataCount) {
+          this.totalCount = totalCount;
+          this.dataCount = dataCount;
+        }
+        QRRSBlock.RS_BLOCK_TABLE = [
+          [1, 26, 19],
+          [1, 26, 16],
+          [1, 26, 13],
+          [1, 26, 9],
+          [1, 44, 34],
+          [1, 44, 28],
+          [1, 44, 22],
+          [1, 44, 16],
+          [1, 70, 55],
+          [1, 70, 44],
+          [2, 35, 17],
+          [2, 35, 13],
+          [1, 100, 80],
+          [2, 50, 32],
+          [2, 50, 24],
+          [4, 25, 9],
+          [1, 134, 108],
+          [2, 67, 43],
+          [2, 33, 15, 2, 34, 16],
+          [2, 33, 11, 2, 34, 12],
+          [2, 86, 68],
+          [4, 43, 27],
+          [4, 43, 19],
+          [4, 43, 15],
+          [2, 98, 78],
+          [4, 49, 31],
+          [2, 32, 14, 4, 33, 15],
+          [4, 39, 13, 1, 40, 14],
+          [2, 121, 97],
+          [2, 60, 38, 2, 61, 39],
+          [4, 40, 18, 2, 41, 19],
+          [4, 40, 14, 2, 41, 15],
+          [2, 146, 116],
+          [3, 58, 36, 2, 59, 37],
+          [4, 36, 16, 4, 37, 17],
+          [4, 36, 12, 4, 37, 13],
+          [2, 86, 68, 2, 87, 69],
+          [4, 69, 43, 1, 70, 44],
+          [6, 43, 19, 2, 44, 20],
+          [6, 43, 15, 2, 44, 16],
+          [4, 101, 81],
+          [1, 80, 50, 4, 81, 51],
+          [4, 50, 22, 4, 51, 23],
+          [3, 36, 12, 8, 37, 13],
+          [2, 116, 92, 2, 117, 93],
+          [6, 58, 36, 2, 59, 37],
+          [4, 46, 20, 6, 47, 21],
+          [7, 42, 14, 4, 43, 15],
+          [4, 133, 107],
+          [8, 59, 37, 1, 60, 38],
+          [8, 44, 20, 4, 45, 21],
+          [12, 33, 11, 4, 34, 12],
+          [3, 145, 115, 1, 146, 116],
+          [4, 64, 40, 5, 65, 41],
+          [11, 36, 16, 5, 37, 17],
+          [11, 36, 12, 5, 37, 13],
+          [5, 109, 87, 1, 110, 88],
+          [5, 65, 41, 5, 66, 42],
+          [5, 54, 24, 7, 55, 25],
+          [11, 36, 12],
+          [5, 122, 98, 1, 123, 99],
+          [7, 73, 45, 3, 74, 46],
+          [15, 43, 19, 2, 44, 20],
+          [3, 45, 15, 13, 46, 16],
+          [1, 135, 107, 5, 136, 108],
+          [10, 74, 46, 1, 75, 47],
+          [1, 50, 22, 15, 51, 23],
+          [2, 42, 14, 17, 43, 15],
+          [5, 150, 120, 1, 151, 121],
+          [9, 69, 43, 4, 70, 44],
+          [17, 50, 22, 1, 51, 23],
+          [2, 42, 14, 19, 43, 15],
+          [3, 141, 113, 4, 142, 114],
+          [3, 70, 44, 11, 71, 45],
+          [17, 47, 21, 4, 48, 22],
+          [9, 39, 13, 16, 40, 14],
+          [3, 135, 107, 5, 136, 108],
+          [3, 67, 41, 13, 68, 42],
+          [15, 54, 24, 5, 55, 25],
+          [15, 43, 15, 10, 44, 16],
+          [4, 144, 116, 4, 145, 117],
+          [17, 68, 42],
+          [17, 50, 22, 6, 51, 23],
+          [19, 46, 16, 6, 47, 17],
+          [2, 139, 111, 7, 140, 112],
+          [17, 74, 46],
+          [7, 54, 24, 16, 55, 25],
+          [34, 37, 13],
+          [4, 151, 121, 5, 152, 122],
+          [4, 75, 47, 14, 76, 48],
+          [11, 54, 24, 14, 55, 25],
+          [16, 45, 15, 14, 46, 16],
+          [6, 147, 117, 4, 148, 118],
+          [6, 73, 45, 14, 74, 46],
+          [11, 54, 24, 16, 55, 25],
+          [30, 46, 16, 2, 47, 17],
+          [8, 132, 106, 4, 133, 107],
+          [8, 75, 47, 13, 76, 48],
+          [7, 54, 24, 22, 55, 25],
+          [22, 45, 15, 13, 46, 16],
+          [10, 142, 114, 2, 143, 115],
+          [19, 74, 46, 4, 75, 47],
+          [28, 50, 22, 6, 51, 23],
+          [33, 46, 16, 4, 47, 17],
+          [8, 152, 122, 4, 153, 123],
+          [22, 73, 45, 3, 74, 46],
+          [8, 53, 23, 26, 54, 24],
+          [12, 45, 15, 28, 46, 16],
+          [3, 147, 117, 10, 148, 118],
+          [3, 73, 45, 23, 74, 46],
+          [4, 54, 24, 31, 55, 25],
+          [11, 45, 15, 31, 46, 16],
+          [7, 146, 116, 7, 147, 117],
+          [21, 73, 45, 7, 74, 46],
+          [1, 53, 23, 37, 54, 24],
+          [19, 45, 15, 26, 46, 16],
+          [5, 145, 115, 10, 146, 116],
+          [19, 75, 47, 10, 76, 48],
+          [15, 54, 24, 25, 55, 25],
+          [23, 45, 15, 25, 46, 16],
+          [13, 145, 115, 3, 146, 116],
+          [2, 74, 46, 29, 75, 47],
+          [42, 54, 24, 1, 55, 25],
+          [23, 45, 15, 28, 46, 16],
+          [17, 145, 115],
+          [10, 74, 46, 23, 75, 47],
+          [10, 54, 24, 35, 55, 25],
+          [19, 45, 15, 35, 46, 16],
+          [17, 145, 115, 1, 146, 116],
+          [14, 74, 46, 21, 75, 47],
+          [29, 54, 24, 19, 55, 25],
+          [11, 45, 15, 46, 46, 16],
+          [13, 145, 115, 6, 146, 116],
+          [14, 74, 46, 23, 75, 47],
+          [44, 54, 24, 7, 55, 25],
+          [59, 46, 16, 1, 47, 17],
+          [12, 151, 121, 7, 152, 122],
+          [12, 75, 47, 26, 76, 48],
+          [39, 54, 24, 14, 55, 25],
+          [22, 45, 15, 41, 46, 16],
+          [6, 151, 121, 14, 152, 122],
+          [6, 75, 47, 34, 76, 48],
+          [46, 54, 24, 10, 55, 25],
+          [2, 45, 15, 64, 46, 16],
+          [17, 152, 122, 4, 153, 123],
+          [29, 74, 46, 14, 75, 47],
+          [49, 54, 24, 10, 55, 25],
+          [24, 45, 15, 46, 46, 16],
+          [4, 152, 122, 18, 153, 123],
+          [13, 74, 46, 32, 75, 47],
+          [48, 54, 24, 14, 55, 25],
+          [42, 45, 15, 32, 46, 16],
+          [20, 147, 117, 4, 148, 118],
+          [40, 75, 47, 7, 76, 48],
+          [43, 54, 24, 22, 55, 25],
+          [10, 45, 15, 67, 46, 16],
+          [19, 148, 118, 6, 149, 119],
+          [18, 75, 47, 31, 76, 48],
+          [34, 54, 24, 34, 55, 25],
+          [20, 45, 15, 61, 46, 16],
+        ];
+        QRRSBlock.getRSBlocks = function (typeNumber, errorCorrectLevel) {
+          var rsBlock = QRRSBlock.getRsBlockTable(
+            typeNumber,
+            errorCorrectLevel,
+          );
+          if (rsBlock == undefined) {
+            throw new Error(
+              "bad rs block @ typeNumber:" +
+                typeNumber +
+                "/errorCorrectLevel:" +
+                errorCorrectLevel,
+            );
+          }
+          var length = rsBlock.length / 3;
+          var list = [];
+          for (var i = 0; i < length; i++) {
+            var count = rsBlock[i * 3 + 0];
+            var totalCount = rsBlock[i * 3 + 1];
+            var dataCount = rsBlock[i * 3 + 2];
+            for (var j = 0; j < count; j++) {
+              list.push(new QRRSBlock(totalCount, dataCount));
+            }
+          }
+          return list;
+        };
+        QRRSBlock.getRsBlockTable = function (typeNumber, errorCorrectLevel) {
+          switch (errorCorrectLevel) {
+            case QRErrorCorrectLevel.L:
+              return QRRSBlock.RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 0];
+            case QRErrorCorrectLevel.M:
+              return QRRSBlock.RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 1];
+            case QRErrorCorrectLevel.Q:
+              return QRRSBlock.RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 2];
+            case QRErrorCorrectLevel.H:
+              return QRRSBlock.RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 3];
+            default:
+              return undefined;
+          }
+        };
+        function QRBitBuffer() {
+          this.buffer = [];
+          this.length = 0;
+        }
+        QRBitBuffer.prototype = {
+          get: function (index) {
+            var bufIndex = Math.floor(index / 8);
+            return ((this.buffer[bufIndex] >>> (7 - (index % 8))) & 1) == 1;
+          },
+          put: function (num, length) {
+            for (var i = 0; i < length; i++) {
+              this.putBit(((num >>> (length - i - 1)) & 1) == 1);
+            }
+          },
+          getLengthInBits: function () {
+            return this.length;
+          },
+          putBit: function (bit) {
+            var bufIndex = Math.floor(this.length / 8);
+            if (this.buffer.length <= bufIndex) {
+              this.buffer.push(0);
+            }
+            if (bit) {
+              this.buffer[bufIndex] |= 0x80 >>> this.length % 8;
+            }
+            this.length++;
+          },
+        };
+        var QRCodeLimitLength = [
+          [17, 14, 11, 7],
+          [32, 26, 20, 14],
+          [53, 42, 32, 24],
+          [78, 62, 46, 34],
+          [106, 84, 60, 44],
+          [134, 106, 74, 58],
+          [154, 122, 86, 64],
+          [192, 152, 108, 84],
+          [230, 180, 130, 98],
+          [271, 213, 151, 119],
+          [321, 251, 177, 137],
+          [367, 287, 203, 155],
+          [425, 331, 241, 177],
+          [458, 362, 258, 194],
+          [520, 412, 292, 220],
+          [586, 450, 322, 250],
+          [644, 504, 364, 280],
+          [718, 560, 394, 310],
+          [792, 624, 442, 338],
+          [858, 666, 482, 382],
+          [929, 711, 509, 403],
+          [1003, 779, 565, 439],
+          [1091, 857, 611, 461],
+          [1171, 911, 661, 511],
+          [1273, 997, 715, 535],
+          [1367, 1059, 751, 593],
+          [1465, 1125, 805, 625],
+          [1528, 1190, 868, 658],
+          [1628, 1264, 908, 698],
+          [1732, 1370, 982, 742],
+          [1840, 1452, 1030, 790],
+          [1952, 1538, 1112, 842],
+          [2068, 1628, 1168, 898],
+          [2188, 1722, 1228, 958],
+          [2303, 1809, 1283, 983],
+          [2431, 1911, 1351, 1051],
+          [2563, 1989, 1423, 1093],
+          [2699, 2099, 1499, 1139],
+          [2809, 2213, 1579, 1219],
+          [2953, 2331, 1663, 1273],
+        ];
+
+        function _isSupportCanvas() {
+          return typeof CanvasRenderingContext2D != "undefined";
+        }
+
+        // android 2.x doesn't support Data-URI spec
+        function _getAndroid() {
+          var android = false;
+          var sAgent = navigator.userAgent;
+
+          if (/android/i.test(sAgent)) {
+            // android
+            android = true;
+            var aMat = sAgent.toString().match(/android ([0-9]\.[0-9])/i);
+
+            if (aMat && aMat[1]) {
+              android = parseFloat(aMat[1]);
+            }
+          }
+
+          return android;
+        }
+
+        var svgDrawer = (function () {
+          var Drawing = function (el, htOption) {
+            this._el = el;
+            this._htOption = htOption;
+          };
+
+          Drawing.prototype.draw = function (oQRCode) {
+            var _htOption = this._htOption;
+            var _el = this._el;
+            var nCount = oQRCode.getModuleCount();
+            var nWidth = Math.floor(_htOption.width / nCount);
+            var nHeight = Math.floor(_htOption.height / nCount);
+
+            this.clear();
+
+            function makeSVG(tag, attrs) {
+              var el = document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                tag,
+              );
+              for (var k in attrs)
+                if (attrs.hasOwnProperty(k)) el.setAttribute(k, attrs[k]);
+              return el;
+            }
+
+            var svg = makeSVG("svg", {
+              viewBox: "0 0 " + String(nCount) + " " + String(nCount),
+              width: "100%",
+              height: "100%",
+              fill: _htOption.colorLight,
+            });
+            svg.setAttributeNS(
+              "http://www.w3.org/2000/xmlns/",
+              "xmlns:xlink",
+              "http://www.w3.org/1999/xlink",
+            );
+            _el.appendChild(svg);
+
+            svg.appendChild(
+              makeSVG("rect", {
+                fill: _htOption.colorLight,
+                width: "100%",
+                height: "100%",
+              }),
+            );
+            svg.appendChild(
+              makeSVG("rect", {
+                fill: _htOption.colorDark,
+                width: "1",
+                height: "1",
+                id: "template",
+              }),
+            );
+
+            for (var row = 0; row < nCount; row++) {
+              for (var col = 0; col < nCount; col++) {
+                if (oQRCode.isDark(row, col)) {
+                  var child = makeSVG("use", {
+                    x: String(col),
+                    y: String(row),
+                  });
+                  child.setAttributeNS(
+                    "http://www.w3.org/1999/xlink",
+                    "href",
+                    "#template",
+                  );
+                  svg.appendChild(child);
+                }
+              }
+            }
+          };
+          Drawing.prototype.clear = function () {
+            while (this._el.hasChildNodes())
+              this._el.removeChild(this._el.lastChild);
+          };
+          return Drawing;
+        })();
+
+        var useSVG = document.documentElement.tagName.toLowerCase() === "svg";
+
+        // Drawing in DOM by using Table tag
+        var Drawing = useSVG
+          ? svgDrawer
+          : !_isSupportCanvas()
+            ? (function () {
+                var Drawing = function (el, htOption) {
+                  this._el = el;
+                  this._htOption = htOption;
+                };
+
+                /**
+                 * Draw the QRCode
+                 *
+                 * @param {QRCode} oQRCode
+                 */
+                Drawing.prototype.draw = function (oQRCode) {
+                  var _htOption = this._htOption;
+                  var _el = this._el;
+                  var nCount = oQRCode.getModuleCount();
+                  var nWidth = Math.floor(_htOption.width / nCount);
+                  var nHeight = Math.floor(_htOption.height / nCount);
+                  var aHTML = [
+                    '<table style="border:0;border-collapse:collapse;">',
+                  ];
+
+                  for (var row = 0; row < nCount; row++) {
+                    aHTML.push("<tr>");
+
+                    for (var col = 0; col < nCount; col++) {
+                      aHTML.push(
+                        '<td style="border:0;border-collapse:collapse;padding:0;margin:0;width:' +
+                          nWidth +
+                          "px;height:" +
+                          nHeight +
+                          "px;background-color:" +
+                          (oQRCode.isDark(row, col)
+                            ? _htOption.colorDark
+                            : _htOption.colorLight) +
+                          ';"></td>',
+                      );
+                    }
+
+                    aHTML.push("</tr>");
+                  }
+
+                  aHTML.push("</table>");
+                  _el.innerHTML = aHTML.join("");
+
+                  // Fix the margin values as real size.
+                  var elTable = _el.childNodes[0];
+                  var nLeftMarginTable =
+                    (_htOption.width - elTable.offsetWidth) / 2;
+                  var nTopMarginTable =
+                    (_htOption.height - elTable.offsetHeight) / 2;
+
+                  if (nLeftMarginTable > 0 && nTopMarginTable > 0) {
+                    elTable.style.margin =
+                      nTopMarginTable + "px " + nLeftMarginTable + "px";
+                  }
+                };
+
+                /**
+                 * Clear the QRCode
+                 */
+                Drawing.prototype.clear = function () {
+                  this._el.innerHTML = "";
+                };
+
+                return Drawing;
+              })()
+            : (function () {
+                // Drawing in Canvas
+                function _onMakeImage() {
+                  this._elImage.src = this._elCanvas.toDataURL("image/png");
+                  this._elImage.style.display = "block";
+                  this._elCanvas.style.display = "none";
+                }
+
+                // Android 2.1 bug workaround
+                // http://code.google.com/p/android/issues/detail?id=5141
+                if (this._android && this._android <= 2.1) {
+                  var factor = 1 / window.devicePixelRatio;
+                  var drawImage = CanvasRenderingContext2D.prototype.drawImage;
+                  CanvasRenderingContext2D.prototype.drawImage = function (
+                    image,
+                    sx,
+                    sy,
+                    sw,
+                    sh,
+                    dx,
+                    dy,
+                    dw,
+                    dh,
+                  ) {
+                    if ("nodeName" in image && /img/i.test(image.nodeName)) {
+                      for (var i = arguments.length - 1; i >= 1; i--) {
+                        arguments[i] = arguments[i] * factor;
+                      }
+                    } else if (typeof dw == "undefined") {
+                      arguments[1] *= factor;
+                      arguments[2] *= factor;
+                      arguments[3] *= factor;
+                      arguments[4] *= factor;
+                    }
+
+                    drawImage.apply(this, arguments);
+                  };
+                }
+
+                /**
+                 * Check whether the user's browser supports Data URI or not
+                 *
+                 * @private
+                 * @param {Function} fSuccess Occurs if it supports Data URI
+                 * @param {Function} fFail Occurs if it doesn't support Data URI
+                 */
+                function _safeSetDataURI(fSuccess, fFail) {
+                  var self = this;
+                  self._fFail = fFail;
+                  self._fSuccess = fSuccess;
+
+                  // Check it just once
+                  if (self._bSupportDataURI === null) {
+                    var el = document.createElement("img");
+                    var fOnError = function () {
+                      self._bSupportDataURI = false;
+
+                      if (self._fFail) {
+                        self._fFail.call(self);
+                      }
+                    };
+                    var fOnSuccess = function () {
+                      self._bSupportDataURI = true;
+
+                      if (self._fSuccess) {
+                        self._fSuccess.call(self);
+                      }
+                    };
+
+                    el.onabort = fOnError;
+                    el.onerror = fOnError;
+                    el.onload = fOnSuccess;
+                    el.src =
+                      "data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=="; // the Image contains 1px data.
+                    return;
+                  } else if (self._bSupportDataURI === true && self._fSuccess) {
+                    self._fSuccess.call(self);
+                  } else if (self._bSupportDataURI === false && self._fFail) {
+                    self._fFail.call(self);
+                  }
+                }
+
+                /**
+                 * Drawing QRCode by using canvas
+                 *
+                 * @constructor
+                 * @param {HTMLElement} el
+                 * @param {Object} htOption QRCode Options
+                 */
+                var Drawing = function (el, htOption) {
+                  this._bIsPainted = false;
+                  this._android = _getAndroid();
+
+                  this._htOption = htOption;
+                  this._elCanvas = document.createElement("canvas");
+                  this._elCanvas.width = htOption.width;
+                  this._elCanvas.height = htOption.height;
+                  el.appendChild(this._elCanvas);
+                  this._el = el;
+                  this._oContext = this._elCanvas.getContext("2d");
+                  this._bIsPainted = false;
+                  this._elImage = document.createElement("img");
+                  this._elImage.alt = "Scan me!";
+                  this._elImage.style.display = "none";
+                  this._el.appendChild(this._elImage);
+                  this._bSupportDataURI = null;
+                };
+
+                /**
+                 * Draw the QRCode
+                 *
+                 * @param {QRCode} oQRCode
+                 */
+                Drawing.prototype.draw = function (oQRCode) {
+                  var _elImage = this._elImage;
+                  var _oContext = this._oContext;
+                  var _htOption = this._htOption;
+
+                  var nCount = oQRCode.getModuleCount();
+                  var nWidth = _htOption.width / nCount;
+                  var nHeight = _htOption.height / nCount;
+                  var nRoundedWidth = Math.round(nWidth);
+                  var nRoundedHeight = Math.round(nHeight);
+
+                  _elImage.style.display = "none";
+                  this.clear();
+
+                  for (var row = 0; row < nCount; row++) {
+                    for (var col = 0; col < nCount; col++) {
+                      var bIsDark = oQRCode.isDark(row, col);
+                      var nLeft = col * nWidth;
+                      var nTop = row * nHeight;
+                      _oContext.strokeStyle = bIsDark
+                        ? _htOption.colorDark
+                        : _htOption.colorLight;
+                      _oContext.lineWidth = 1;
+                      _oContext.fillStyle = bIsDark
+                        ? _htOption.colorDark
+                        : _htOption.colorLight;
+                      _oContext.fillRect(nLeft, nTop, nWidth, nHeight);
+
+                      // 안티 앨리어싱 방지 처리
+                      _oContext.strokeRect(
+                        Math.floor(nLeft) + 0.5,
+                        Math.floor(nTop) + 0.5,
+                        nRoundedWidth,
+                        nRoundedHeight,
+                      );
+
+                      _oContext.strokeRect(
+                        Math.ceil(nLeft) - 0.5,
+                        Math.ceil(nTop) - 0.5,
+                        nRoundedWidth,
+                        nRoundedHeight,
+                      );
+                    }
+                  }
+
+                  this._bIsPainted = true;
+                };
+
+                /**
+                 * Make the image from Canvas if the browser supports Data URI.
+                 */
+                Drawing.prototype.makeImage = function () {
+                  if (this._bIsPainted) {
+                    _safeSetDataURI.call(this, _onMakeImage);
+                  }
+                };
+
+                /**
+                 * Return whether the QRCode is painted or not
+                 *
+                 * @return {Boolean}
+                 */
+                Drawing.prototype.isPainted = function () {
+                  return this._bIsPainted;
+                };
+
+                /**
+                 * Clear the QRCode
+                 */
+                Drawing.prototype.clear = function () {
+                  this._oContext.clearRect(
+                    0,
+                    0,
+                    this._elCanvas.width,
+                    this._elCanvas.height,
+                  );
+                  this._bIsPainted = false;
+                };
+
+                /**
+                 * @private
+                 * @param {Number} nNumber
+                 */
+                Drawing.prototype.round = function (nNumber) {
+                  if (!nNumber) {
+                    return nNumber;
+                  }
+
+                  return Math.floor(nNumber * 1000) / 1000;
+                };
+
+                return Drawing;
+              })();
+
+        /**
+         * Get the type by string length
+         *
+         * @private
+         * @param {String} sText
+         * @param {Number} nCorrectLevel
+         * @return {Number} type
+         */
+        function _getTypeNumber(sText, nCorrectLevel) {
+          var nType = 1;
+          var length = _getUTF8Length(sText);
+
+          for (var i = 0, len = QRCodeLimitLength.length; i <= len; i++) {
+            var nLimit = 0;
+
+            switch (nCorrectLevel) {
+              case QRErrorCorrectLevel.L:
+                nLimit = QRCodeLimitLength[i][0];
+                break;
+              case QRErrorCorrectLevel.M:
+                nLimit = QRCodeLimitLength[i][1];
+                break;
+              case QRErrorCorrectLevel.Q:
+                nLimit = QRCodeLimitLength[i][2];
+                break;
+              case QRErrorCorrectLevel.H:
+                nLimit = QRCodeLimitLength[i][3];
+                break;
+            }
+
+            if (length <= nLimit) {
+              break;
+            } else {
+              nType++;
+            }
+          }
+
+          if (nType > QRCodeLimitLength.length) {
+            throw new Error("Too long data");
+          }
+
+          return nType;
+        }
+
+        function _getUTF8Length(sText) {
+          var replacedText = encodeURI(sText)
+            .toString()
+            .replace(/\%[0-9a-fA-F]{2}/g, "a");
+          return replacedText.length + (replacedText.length != sText ? 3 : 0);
+        }
+
+        /**
+         * @class QRCode
+         * @constructor
+         * @example
+         * new QRCode(document.getElementById("test"), "http://jindo.dev.naver.com/collie");
+         *
+         * @example
+         * var oQRCode = new QRCode("test", {
+         *    text : "http://naver.com",
+         *    width : 128,
+         *    height : 128
+         * });
+         *
+         * oQRCode.clear(); // Clear the QRCode.
+         * oQRCode.makeCode("http://map.naver.com"); // Re-create the QRCode.
+         *
+         * @param {HTMLElement|String} el target element or 'id' attribute of element.
+         * @param {Object|String} vOption
+         * @param {String} vOption.text QRCode link data
+         * @param {Number} [vOption.width=256]
+         * @param {Number} [vOption.height=256]
+         * @param {String} [vOption.colorDark="#000000"]
+         * @param {String} [vOption.colorLight="#ffffff"]
+         * @param {QRCode.CorrectLevel} [vOption.correctLevel=QRCode.CorrectLevel.H] [L|M|Q|H]
+         */
+        QRCode = function (el, vOption) {
+          this._htOption = {
+            width: 256,
+            height: 256,
+            typeNumber: 4,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRErrorCorrectLevel.H,
+          };
+
+          if (typeof vOption === "string") {
+            vOption = {
+              text: vOption,
+            };
+          }
+
+          // Overwrites options
+          if (vOption) {
+            for (var i in vOption) {
+              this._htOption[i] = vOption[i];
+            }
+          }
+
+          if (typeof el == "string") {
+            el = document.getElementById(el);
+          }
+
+          if (this._htOption.useSVG) {
+            Drawing = svgDrawer;
+          }
+
+          this._android = _getAndroid();
+          this._el = el;
+          this._oQRCode = null;
+          this._oDrawing = new Drawing(this._el, this._htOption);
+
+          if (this._htOption.text) {
+            this.makeCode(this._htOption.text);
+          }
+        };
+
+        /**
+         * Make the QRCode
+         *
+         * @param {String} sText link data
+         */
+        QRCode.prototype.makeCode = function (sText) {
+          this._oQRCode = new QRCodeModel(
+            _getTypeNumber(sText, this._htOption.correctLevel),
+            this._htOption.correctLevel,
+          );
+          this._oQRCode.addData(sText);
+          this._oQRCode.make();
+          this._el.title = sText;
+          this._oDrawing.draw(this._oQRCode);
+          this.makeImage();
+        };
+
+        /**
+         * Make the Image from Canvas element
+         * - It occurs automatically
+         * - Android below 3 doesn't support Data-URI spec.
+         *
+         * @private
+         */
+        QRCode.prototype.makeImage = function () {
+          if (
+            typeof this._oDrawing.makeImage == "function" &&
+            (!this._android || this._android >= 3)
+          ) {
+            this._oDrawing.makeImage();
+          }
+        };
+
+        /**
+         * Clear the QRCode
+         */
+        QRCode.prototype.clear = function () {
+          this._oDrawing.clear();
+        };
+
+        /**
+         * @name QRCode.CorrectLevel
+         */
+        QRCode.CorrectLevel = QRErrorCorrectLevel;
+      })();
+    </script>
+    <script type="text/javascript">
+      window.addEventListener("load", function () {
+        var hiddenCopyForm = document.querySelector("#hide-if-no-js");
+        hiddenCopyForm.classList.toggle("hidden");
+        var hiddenQrCode = document.querySelector("#hidden-qr-code");
+        hiddenQrCode.classList.toggle("hidden");
+        var copyButton = document.querySelector("#copy");
+        var text = "headscale register --username=USER --key={{.Key}}";
+        copyButton.addEventListener("click", function () {
+          navigator.clipboard.writeText(text);
+          var copyPopover = document.querySelector("#copyPopover");
+          copyPopover.classList.toggle("hidden");
+          setTimeout(function () {
+            copyPopover.classList.toggle("hidden");
+          }, 1000);
+        });
+        const qrcode = new QRCode("qr-holder", {
+          text,
+          width: 200,
+          height: 200,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.H,
+        });
+      });
+    </script>
   </body>
 </html>
