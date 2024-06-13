@@ -12,8 +12,8 @@ Ensure that the installed version is at least 1.30.0, as that is the first relea
 
 ## Configuring the headscale URL
 
-After opening the app, the kebab menu icon (three dots) on the top bar on the right must be repeatedly opened and closed until the _Change server_ option appears in the menu. This is where you can enter your headscale URL.
+After opening the app:
 
-A screen recording of this process can be seen in the `tailscale-android` PR which implemented this functionality: <https://github.com/tailscale/tailscale-android/pull/55>
-
-After saving and restarting the app, selecting the regular _Sign in_ option (non-SSO) should open up the headscale authentication page.
+- Open setting and go into account settings
+- In the kebab menu icon (three dots) on the top bar on the right select “Use an alternate server”
+- Enter your server URL and follow the instructions
