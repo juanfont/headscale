@@ -143,6 +143,18 @@ var registerWebAPITemplate = template.Must(
 <html>
 	<head>
 		<title>Registration - Headscale</title>
+		<meta name=viewport content="width=device-width, initial-scale=1">
+		<style>
+			body {
+				font-family: sans;
+			}
+			code {
+				display: block;
+				padding: 20px;
+				border: 1px solid #bbb;
+				background-color: #eee;
+			}
+		</style>
 	</head>
 	<body>
 		<h1>headscale</h1>
@@ -150,7 +162,7 @@ var registerWebAPITemplate = template.Must(
 		<p>
 			Run the command below in the headscale server to add this machine to your network:
 		</p>
-		<pre><code>headscale nodes register --user USERNAME --key {{.Key}}</code></pre>
+		<code>headscale nodes register --user USERNAME --key {{.Key}}</code>
 	</body>
 </html>
 `))
