@@ -16,6 +16,20 @@ func (s *Suite) TestCreateAndDestroyUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(users), check.Equals, 1)
 
+	err = db.SetUserDisplayName("test", "Test Test")
+	c.Assert(err, check.IsNil)
+
+	user, err = db.GetUser("test")
+	c.Assert(err, check.NotNil)
+	c.Assert(user.DisplayName, check.Equals, "Test Test")
+
+	err = db.SetUserProfilePicURL("test", "https://headscale.net/logo/headscale3-dots.svg")
+	c.Assert(err, check.IsNil)
+
+	user, err = db.GetUser("test")
+	c.Assert(err, check.NotNil)
+	c.Assert(user.ProfilePicURL, check.Equals, "https://headscale.net/logo/headscale3-dots.svg")
+
 	err = db.DestroyUser("test")
 	c.Assert(err, check.IsNil)
 

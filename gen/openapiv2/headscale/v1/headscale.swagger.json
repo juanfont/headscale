@@ -1366,6 +1366,12 @@
         "createdAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "profilePicURL": {
+          "type": "string"
         }
       }
     }

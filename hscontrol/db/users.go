@@ -33,11 +33,54 @@ func CreateUser(tx *gorm.DB, name string) (*types.User, error) {
 		return nil, ErrUserExists
 	}
 	user.Name = name
+
 	if err := tx.Create(&user).Error; err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
 	}
 
 	return &user, nil
+}
+
+func (hsdb *HSDatabase) SetUserDisplayName(name string, displayName string) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return SetUserDisplayName(tx, name, displayName)
+	})
+}
+
+func SetUserDisplayName(tx *gorm.DB, name string, displayName string) error {
+	var err error
+	user, err := GetUser(tx, name)
+	if err != nil {
+		return err
+	}
+
+	user.DisplayName = displayName
+	if result := tx.Save(&user); result.Error != nil {
+		return result.Error
+	}
+
+	return nil
+}
+
+func (hsdb *HSDatabase) SetUserProfilePicURL(name string, profilePicURL string) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return SetUserProfilePicURL(tx, name, profilePicURL)
+	})
+}
+
+func SetUserProfilePicURL(tx *gorm.DB, name string, profilePicURL string) error {
+	var err error
+	user, err := GetUser(tx, name)
+	if err != nil {
+		return err
+	}
+
+	user.ProfilePicURL = profilePicURL
+	if result := tx.Save(&user); result.Error != nil {
+		return result.Error
+	}
+
+	return nil
 }
 
 func (hsdb *HSDatabase) DestroyUser(name string) error {
