@@ -144,6 +144,10 @@ database:
   sqlite:
     path: /var/lib/headscale/db.sqlite
 
+    # Enable WAL mode for SQLite. This is recommended for production environments.
+    # https://www.sqlite.org/wal.html
+    write_ahead_log: true
+
   # # Postgres config
   # postgres:
   #   # If using a Unix socket to connect to Postgres, set the socket path in the 'host' field and leave 'port' blank.
