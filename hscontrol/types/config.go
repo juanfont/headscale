@@ -536,16 +536,6 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			dnsConfig.Domains = domains
 		}
 
-		if viper.IsSet("dns_config.domains") {
-			domains := viper.GetStringSlice("dns_config.domains")
-			if len(dnsConfig.Resolvers) > 0 {
-				dnsConfig.Domains = domains
-			} else if domains != nil {
-				log.Warn().
-					Msg("Warning: dns_config.domains is set, but no nameservers are configured. Ignoring domains.")
-			}
-		}
-
 		if viper.IsSet("dns_config.extra_records") {
 			var extraRecords []tailcfg.DNSRecord
 
@@ -571,8 +561,11 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			baseDomain = "headscale.net" // does not really matter when MagicDNS is not enabled
 		}
 
-		log.Trace().Interface("dns_config", dnsConfig).Msg("DNS configuration loaded")
+		if domains := viper.GetStringSlice("dns_config.domains"); len(domains) > 0 {
+			dnsConfig.Domains = append(dnsConfig.Domains, domains...)
+		}
 
+		log.Trace().Interface("dns_config", dnsConfig).Msg("DNS configuration loaded")
 		return dnsConfig, baseDomain
 	}
 
