@@ -122,37 +122,41 @@ func generateUserProfiles(
 }
 
 func generateDNSConfig(
-	base *tailcfg.DNSConfig,
+	cfg *types.Config,
 	baseDomain string,
 	node *types.Node,
 	peers types.Nodes,
 ) *tailcfg.DNSConfig {
-	dnsConfig := base.Clone()
+	if cfg.DNSConfig == nil {
+		return nil
+	}
+
+	dnsConfig := cfg.DNSConfig.Clone()
 
 	// if MagicDNS is enabled
-	if base != nil && base.Proxied {
-		// Only inject the Search Domain of the current user
-		// shared nodes should use their full FQDN
-		dnsConfig.Domains = append(
-			dnsConfig.Domains,
-			fmt.Sprintf(
-				"%s.%s",
-				node.User.Name,
-				baseDomain,
-			),
-		)
+	if dnsConfig.Proxied {
+		if cfg.DNSUserNameInMagicDNS {
+			// Only inject the Search Domain of the current user
+			// shared nodes should use their full FQDN
+			dnsConfig.Domains = append(
+				dnsConfig.Domains,
+				fmt.Sprintf(
+					"%s.%s",
+					node.User.Name,
+					baseDomain,
+				),
+			)
 
-		userSet := mapset.NewSet[types.User]()
-		userSet.Add(node.User)
-		for _, p := range peers {
-			userSet.Add(p.User)
+			userSet := mapset.NewSet[types.User]()
+			userSet.Add(node.User)
+			for _, p := range peers {
+				userSet.Add(p.User)
+			}
+			for _, user := range userSet.ToSlice() {
+				dnsRoute := fmt.Sprintf("%v.%v", user.Name, baseDomain)
+				dnsConfig.Routes[dnsRoute] = nil
+			}
 		}
-		for _, user := range userSet.ToSlice() {
-			dnsRoute := fmt.Sprintf("%v.%v", user.Name, baseDomain)
-			dnsConfig.Routes[dnsRoute] = nil
-		}
-	} else {
-		dnsConfig = base
 	}
 
 	addNextDNSMetadata(dnsConfig.Resolvers, node)
@@ -568,7 +572,7 @@ func appendPeerChanges(
 	profiles := generateUserProfiles(node, changed, cfg.BaseDomain)
 
 	dnsConfig := generateDNSConfig(
-		cfg.DNSConfig,
+		cfg,
 		cfg.BaseDomain,
 		node,
 		peers,

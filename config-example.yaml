@@ -261,6 +261,15 @@ dns_config:
   # Only works if there is at least a nameserver defined.
   magic_dns: true
 
+  # DEPRECATED
+  # Use the username as part of the DNS name for nodes, with this option enabled:
+  # node1.username.example.com
+  # while when this is disabled:
+  # node1.example.com
+  # This is a legacy option as Headscale has have this wrongly implemented
+  # while in upstream Tailscale, the username is not included.
+  use_username_in_magic_dns: false
+
   # Defines the base domain to create the hostnames for MagicDNS.
   # `base_domain` must be a FQDNs, without the trailing dot.
   # The FQDN of the hosts will be

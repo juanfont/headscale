@@ -63,7 +63,8 @@ type Config struct {
 	ACMEURL   string
 	ACMEEmail string
 
-	DNSConfig *tailcfg.DNSConfig
+	DNSConfig             *tailcfg.DNSConfig
+	DNSUserNameInMagicDNS bool
 
 	UnixSocket           string
 	UnixSocketPermission fs.FileMode
@@ -203,6 +204,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("dns_config", nil)
 	viper.SetDefault("dns_config.override_local_dns", true)
+	viper.SetDefault("dns_config.use_username_in_magic_dns", false)
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
@@ -561,6 +563,13 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			baseDomain = "headscale.net" // does not really matter when MagicDNS is not enabled
 		}
 
+		if !viper.GetBool("dns_config.use_username_in_magic_dns") {
+			dnsConfig.Domains = []string{baseDomain}
+		} else {
+			log.Warn().Msg("DNS: Usernames in DNS has been deprecated, this option will be remove in future versions")
+			log.Warn().Msg("DNS: see 0.23.0 changelog for more information.")
+		}
+
 		if domains := viper.GetStringSlice("dns_config.domains"); len(domains) > 0 {
 			dnsConfig.Domains = append(dnsConfig.Domains, domains...)
 		}
@@ -708,7 +717,8 @@ func GetHeadscaleConfig() (*Config, error) {
 
 		TLS: GetTLSConfig(),
 
-		DNSConfig: dnsConfig,
+		DNSConfig:             dnsConfig,
+		DNSUserNameInMagicDNS: viper.GetBool("dns_config.use_username_in_magic_dns"),
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
