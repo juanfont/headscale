@@ -222,7 +222,7 @@ func DeleteRoute(
 			return nil, err
 		}
 
-		routesToDelete := types.Routes{}
+		var routesToDelete types.Routes
 		for _, r := range routes {
 			if r.IsExitRoute() {
 				routesToDelete = append(routesToDelete, r)
@@ -623,7 +623,7 @@ func EnableAutoApprovedRoutes(
 
 	log.Trace().Interface("routes", routes).Msg("routes for autoapproving")
 
-	approvedRoutes := types.Routes{}
+	var approvedRoutes types.Routes
 
 	for _, advertisedRoute := range routes {
 		if advertisedRoute.Enabled {
