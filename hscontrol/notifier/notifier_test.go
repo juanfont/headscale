@@ -3,6 +3,7 @@ package notifier
 import (
 	"context"
 	"net/netip"
+	"sort"
 	"testing"
 	"time"
 
@@ -221,6 +222,11 @@ func TestBatcher(t *testing.T) {
 					// We will call flush manually for the tests,
 					// so do not run the worker.
 					BatchChangeDelay: time.Hour,
+
+					// Since we do not load the config, we wont get the
+					// default, so set it manually so we dont time out
+					// and have flakes.
+					NotifierSendTimeout: time.Second,
 				},
 			})
 
@@ -239,6 +245,16 @@ func TestBatcher(t *testing.T) {
 			for len(ch) > 0 {
 				out := <-ch
 				got = append(got, out)
+			}
+
+			// Make the inner order stable for comparison.
+			for _, u := range got {
+				sort.Slice(u.ChangeNodes, func(i, j int) bool {
+					return u.ChangeNodes[i] < u.ChangeNodes[j]
+				})
+				sort.Slice(u.ChangePatches, func(i, j int) bool {
+					return u.ChangePatches[i].NodeID < u.ChangePatches[j].NodeID
+				})
 			}
 
 			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
