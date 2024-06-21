@@ -1,9 +1,12 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/netip"
 	"strings"
 	"testing"
@@ -18,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -815,7 +819,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 
 // TestPingAllByIPManyUpDown is a variant of the PingAll
 // test which will take the tailscale node up and down
-// five times ensuring they are able to restablish connectivity.
+// three times ensuring they are able to restablish connectivity.
 func TestPingAllByIPManyUpDown(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -897,4 +901,61 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		success := pingAllHelper(t, allClients, allAddrs)
 		t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 	}
+}
+
+func TestDERPVerify(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": 10,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("derpverify"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	var controlServer ControlServer
+	scenario.controlServers.Range(
+		func(key string, value ControlServer) bool {
+			controlServer = value
+			return false
+		},
+	)
+	if controlServer == nil {
+		t.Fatalf("no control server found")
+	}
+
+	// https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159
+	sendDerpVerifyRequest := func(t *testing.T, pub string) *tailcfg.DERPAdmitClientResponse {
+		jreq, err := json.Marshal(
+			map[string]interface{}{
+				"NodePublic": pub,
+				"Source":     "127.0.0.1", // not used
+			})
+
+		assertNoErr(t, err)
+		req, err := http.NewRequest("POST", fmt.Sprintf("%s/verify", controlServer.GetEndpoint()), bytes.NewReader(jreq))
+		assertNoErr(t, err)
+		res, err := http.DefaultClient.Do(req)
+		assertNoErr(t, err)
+		defer res.Body.Close()
+
+		var jres tailcfg.DERPAdmitClientResponse
+		err = json.NewDecoder(io.LimitReader(res.Body, 4<<10)).Decode(&jres)
+		assertNoErr(t, err)
+		return &jres
+	}
+
+	// Test that the DERP server rejects a node that is not in the user's list.
+	resp := sendDerpVerifyRequest(t, key.NewNode().Public().String())
+	assert.False(t, resp.Allow)
+
+	// Test that the DERP server accepts a node that is in the user's list.
+	nodes, err := controlServer.ListNodesInUser("user1")
+	assertNoErr(t, err)
+	resp = sendDerpVerifyRequest(t, nodes[0].NodeKey)
+	assert.True(t, resp.Allow)
 }

@@ -11,10 +11,10 @@ Tests are located in files ending with `_test.go` and the framework are located 
 
 ## Running integration tests locally
 
-The easiest way to run tests locally is to use `[act](INSERT LINK)`, a local GitHub Actions runner:
+The easiest way to run tests locally is to use [act](https://github.com/nektos/act), a local GitHub Actions runner:
 
 ```
-act pull_request -W .github/workflows/test-integration-v2-TestPingAllByIP.yaml
+act pull_request -W .github/workflows/test-integration.yaml
 ```
 
 Alternatively, the `docker run` command in each GitHub workflow file can be used.
