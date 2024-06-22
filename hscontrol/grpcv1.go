@@ -3,8 +3,9 @@ package hscontrol
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -685,17 +686,20 @@ func (api headscaleV1APIServer) GetPolicy(
 			return nil, err
 		}
 
-		// We retain the HuJSON format of the policy while storing
-		// it in the database. But should we return the same in the
-		// get policy response? Or should we consider returning the
-		// policy in JSON format?
-
 		return &v1.GetPolicyResponse{
 			Policy:    p.Data,
 			UpdatedAt: timestamppb.New(p.UpdatedAt),
 		}, nil
 	case types.PolicyModeFile:
-		b, err := json.Marshal(api.h.ACLPolicy)
+		// Read the file and return the contents as-is.
+		f, err := os.Open(api.h.cfg.Policy.Path)
+		if err != nil {
+			return nil, err
+		}
+
+		defer f.Close()
+
+		b, err := io.ReadAll(f)
 		if err != nil {
 			return nil, err
 		}
