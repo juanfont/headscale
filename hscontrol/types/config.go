@@ -42,7 +42,7 @@ const (
 type PolicyMode string
 
 const (
-	PolicyModeDB   = "db"
+	PolicyModeDB   = "database"
 	PolicyModeFile = "file"
 )
 
