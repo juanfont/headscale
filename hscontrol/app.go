@@ -627,8 +627,8 @@ func (h *Headscale) Serve() error {
 
 	// Start the local gRPC server without TLS and without authentication
 	grpcSocket := grpc.NewServer(
-		// Uncomment to debug grpc communication.
-		// zerolog.UnaryInterceptor(),
+	// Uncomment to debug grpc communication.
+	// zerolog.UnaryInterceptor(),
 	)
 
 	v1.RegisterHeadscaleServiceServer(grpcSocket, newHeadscaleV1APIServer(h))
@@ -1045,7 +1045,7 @@ func (h *Headscale) loadACLPolicy() error {
 			return fmt.Errorf("failed to parse policy: %w", err)
 		}
 	default:
-		log.Warn().
+		log.Fatal().
 			Str("mode", string(h.cfg.Policy.Mode)).
 			Msg("Unknown ACL policy mode")
 	}
