@@ -943,7 +943,7 @@ func Test_listNodesInUser(t *testing.T) {
 				},
 				user: "mickael",
 			},
-			want: types.Nodes{},
+			want: nil,
 		},
 	}
 	for _, test := range tests {
@@ -1645,7 +1645,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 			name:    "no-policy",
 			field:   field{},
 			args:    args{},
-			want:    []tailcfg.FilterRule{},
+			want:    nil,
 			wantErr: false,
 		},
 		{
@@ -2896,7 +2896,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					User: types.User{Name: "marc"},
 				},
 			},
-			want: types.Nodes{},
+			want: nil,
 		},
 		{
 			// Investigating 699
@@ -3426,7 +3426,7 @@ func TestSSHRules(t *testing.T) {
 					},
 				},
 			},
-			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
+			want: &tailcfg.SSHPolicy{Rules: nil},
 		},
 	}
 

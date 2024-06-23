@@ -102,7 +102,7 @@ func generateUserProfiles(
 		userMap[peer.User.Name] = peer.User // not worth checking if already is there
 	}
 
-	profiles := []tailcfg.UserProfile{}
+	var profiles []tailcfg.UserProfile
 	for _, user := range userMap {
 		displayName := user.Name
 

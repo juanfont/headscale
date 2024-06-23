@@ -215,7 +215,7 @@ func SetTags(
 		return nil
 	}
 
-	newTags := types.StringList{}
+	var newTags types.StringList
 	for _, tag := range tags {
 		if !util.StringOrPrefixListContains(newTags, tag) {
 			newTags = append(newTags, tag)
@@ -452,7 +452,7 @@ func GetAdvertisedRoutes(tx *gorm.DB, node *types.Node) ([]netip.Prefix, error) 
 		return nil, fmt.Errorf("getting advertised routes for node(%d): %w", node.ID, err)
 	}
 
-	prefixes := []netip.Prefix{}
+	var prefixes []netip.Prefix
 	for _, route := range routes {
 		prefixes = append(prefixes, netip.Prefix(route.Prefix))
 	}
@@ -478,7 +478,7 @@ func GetEnabledRoutes(tx *gorm.DB, node *types.Node) ([]netip.Prefix, error) {
 		return nil, fmt.Errorf("getting enabled routes for node(%d): %w", node.ID, err)
 	}
 
-	prefixes := []netip.Prefix{}
+	var prefixes []netip.Prefix
 	for _, route := range routes {
 		prefixes = append(prefixes, netip.Prefix(route.Prefix))
 	}
