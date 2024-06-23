@@ -81,7 +81,8 @@ type Config struct {
 }
 
 type SqliteConfig struct {
-	Path string
+	Path          string
+	WriteAheadLog bool
 }
 
 type PostgresConfig struct {
@@ -221,6 +222,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.postgres.max_open_conns", 10)
 	viper.SetDefault("database.postgres.max_idle_conns", 10)
 	viper.SetDefault("database.postgres.conn_max_idle_time_secs", 3600)
+
+	viper.SetDefault("database.sqlite.write_ahead_log", true)
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
@@ -443,6 +446,7 @@ func GetDatabaseConfig() DatabaseConfig {
 			Path: util.AbsolutePathFromConfigPath(
 				viper.GetString("database.sqlite.path"),
 			),
+			WriteAheadLog: viper.GetBool("database.sqlite.write_ahead_log"),
 		},
 		Postgres: PostgresConfig{
 			Host:               viper.GetString("database.postgres.host"),

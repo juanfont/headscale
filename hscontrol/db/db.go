@@ -434,13 +434,29 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 			Msg("Opening database")
 
 		db, err := gorm.Open(
-			sqlite.Open(cfg.Sqlite.Path+"?_synchronous=1&_journal_mode=WAL"),
+			sqlite.Open(cfg.Sqlite.Path),
 			&gorm.Config{
 				Logger: dbLogger,
 			},
 		)
 
-		db.Exec("PRAGMA foreign_keys=ON")
+		if err := db.Exec(`
+			PRAGMA foreign_keys=ON;
+			PRAGMA busy_timeout=10000;
+			PRAGMA auto_vacuum=INCREMENTAL;
+			PRAGMA synchronous=NORMAL;
+			`).Error; err != nil {
+			return nil, fmt.Errorf("enabling foreign keys: %w", err)
+		}
+
+		if cfg.Sqlite.WriteAheadLog {
+			if err := db.Exec(`
+				PRAGMA journal_mode=WAL;
+				PRAGMA wal_autocheckpoint=0;
+				`).Error; err != nil {
+				return nil, fmt.Errorf("setting WAL mode: %w", err)
+			}
+		}
 
 		// The pure Go SQLite library does not handle locking in
 		// the same way as the C based one and we cant use the gorm
