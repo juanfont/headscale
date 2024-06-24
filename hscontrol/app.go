@@ -1040,7 +1040,7 @@ func (h *Headscale) loadACLPolicy() error {
 			return fmt.Errorf("failed to get policy from database: %w", err)
 		}
 
-		pol, err = policy.LoadACLPolicyFromBytes([]byte(p.Data), "hujson")
+		pol, err = policy.LoadACLPolicyFromBytes([]byte(p.Data))
 		if err != nil {
 			return fmt.Errorf("failed to parse policy: %w", err)
 		}

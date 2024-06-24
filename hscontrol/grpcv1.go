@@ -720,7 +720,7 @@ func (api headscaleV1APIServer) SetPolicy(
 
 	p := request.GetPolicy()
 
-	valid, err := policy.LoadACLPolicyFromBytes([]byte(p), "hujson")
+	valid, err := policy.LoadACLPolicyFromBytes([]byte(p))
 	if err != nil {
 		return nil, err
 	}
