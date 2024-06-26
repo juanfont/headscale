@@ -63,7 +63,8 @@ type Config struct {
 	ACMEURL   string
 	ACMEEmail string
 
-	DNSConfig *tailcfg.DNSConfig
+	DNSConfig             *tailcfg.DNSConfig
+	DNSUserNameInMagicDNS bool
 
 	UnixSocket           string
 	UnixSocketPermission fs.FileMode
@@ -204,6 +205,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("dns_config", nil)
 	viper.SetDefault("dns_config.override_local_dns", true)
+	viper.SetDefault("dns_config.use_username_in_magic_dns", false)
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
@@ -540,16 +542,6 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			dnsConfig.Domains = domains
 		}
 
-		if viper.IsSet("dns_config.domains") {
-			domains := viper.GetStringSlice("dns_config.domains")
-			if len(dnsConfig.Resolvers) > 0 {
-				dnsConfig.Domains = domains
-			} else if domains != nil {
-				log.Warn().
-					Msg("Warning: dns_config.domains is set, but no nameservers are configured. Ignoring domains.")
-			}
-		}
-
 		if viper.IsSet("dns_config.extra_records") {
 			var extraRecords []tailcfg.DNSRecord
 
@@ -575,8 +567,18 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 			baseDomain = "headscale.net" // does not really matter when MagicDNS is not enabled
 		}
 
-		log.Trace().Interface("dns_config", dnsConfig).Msg("DNS configuration loaded")
+		if !viper.GetBool("dns_config.use_username_in_magic_dns") {
+			dnsConfig.Domains = []string{baseDomain}
+		} else {
+			log.Warn().Msg("DNS: Usernames in DNS has been deprecated, this option will be remove in future versions")
+			log.Warn().Msg("DNS: see 0.23.0 changelog for more information.")
+		}
 
+		if domains := viper.GetStringSlice("dns_config.domains"); len(domains) > 0 {
+			dnsConfig.Domains = append(dnsConfig.Domains, domains...)
+		}
+
+		log.Trace().Interface("dns_config", dnsConfig).Msg("DNS configuration loaded")
 		return dnsConfig, baseDomain
 	}
 
@@ -719,7 +721,8 @@ func GetHeadscaleConfig() (*Config, error) {
 
 		TLS: GetTLSConfig(),
 
-		DNSConfig: dnsConfig,
+		DNSConfig:             dnsConfig,
+		DNSUserNameInMagicDNS: viper.GetBool("dns_config.use_username_in_magic_dns"),
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),

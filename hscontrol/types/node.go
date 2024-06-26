@@ -394,23 +394,32 @@ func (node *Node) Proto() *v1.Node {
 	return nodeProto
 }
 
-func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (string, error) {
+func (node *Node) GetFQDN(cfg *Config, baseDomain string) (string, error) {
 	var hostname string
-	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
+	if cfg.DNSConfig != nil && cfg.DNSConfig.Proxied { // MagicDNS
 		if node.GivenName == "" {
 			return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeHasNoGivenName)
 		}
 
-		if node.User.Name == "" {
-			return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeUserHasNoName)
-		}
-
 		hostname = fmt.Sprintf(
-			"%s.%s.%s",
+			"%s.%s",
 			node.GivenName,
-			node.User.Name,
 			baseDomain,
 		)
+
+		if cfg.DNSUserNameInMagicDNS {
+			if node.User.Name == "" {
+				return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeUserHasNoName)
+			}
+
+			hostname = fmt.Sprintf(
+				"%s.%s.%s",
+				node.GivenName,
+				node.User.Name,
+				baseDomain,
+			)
+		}
+
 		if len(hostname) > MaxHostnameLength {
 			return "", fmt.Errorf(
 				"failed to create valid FQDN (%s): %w",
