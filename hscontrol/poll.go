@@ -7,8 +7,11 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/netip"
+	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
@@ -238,11 +241,19 @@ func (m *mapSession) serveLongPoll() {
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc,
+		syscall.SIGINT,
+		syscall.SIGTERM)
+
 	// Loop through updates and continuously send them to the
 	// client.
 	for {
 		// consume channels with update, keep alives or "batch" blocking signals
 		select {
+		case <-sigc:
+			m.tracef("Received SIGINT or SIGTERM signal, exiting...")
+			return
 		case <-m.cancelCh:
 			m.tracef("poll cancelled received")
 			mapResponseEnded.WithLabelValues("cancelled").Inc()
