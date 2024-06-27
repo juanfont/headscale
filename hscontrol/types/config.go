@@ -134,6 +134,7 @@ type OIDCConfig struct {
 	StripEmaildomain           bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
+	UseDesiredUsername         bool
 }
 
 type DERPConfig struct {
@@ -229,6 +230,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.strip_email_domain", true)
+	viper.SetDefault("oidc.use_desired_username", false)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
@@ -734,15 +736,16 @@ func GetHeadscaleConfig() (*Config, error) {
 			OnlyStartIfOIDCIsAvailable: viper.GetBool(
 				"oidc.only_start_if_oidc_is_available",
 			),
-			Issuer:           viper.GetString("oidc.issuer"),
-			ClientID:         viper.GetString("oidc.client_id"),
-			ClientSecret:     oidcClientSecret,
-			Scope:            viper.GetStringSlice("oidc.scope"),
-			ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
-			AllowedDomains:   viper.GetStringSlice("oidc.allowed_domains"),
-			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
-			AllowedGroups:    viper.GetStringSlice("oidc.allowed_groups"),
-			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
+			Issuer:             viper.GetString("oidc.issuer"),
+			ClientID:           viper.GetString("oidc.client_id"),
+			ClientSecret:       oidcClientSecret,
+			Scope:              viper.GetStringSlice("oidc.scope"),
+			ExtraParams:        viper.GetStringMapString("oidc.extra_params"),
+			AllowedDomains:     viper.GetStringSlice("oidc.allowed_domains"),
+			AllowedUsers:       viper.GetStringSlice("oidc.allowed_users"),
+			AllowedGroups:      viper.GetStringSlice("oidc.allowed_groups"),
+			StripEmaildomain:   viper.GetBool("oidc.strip_email_domain"),
+			UseDesiredUsername: viper.GetBool("oidc.use_desired_username"),
 			Expiry: func() time.Duration {
 				// if set to 0, we assume no expiry
 				if value := viper.GetString("oidc.expiry"); value == "0" {

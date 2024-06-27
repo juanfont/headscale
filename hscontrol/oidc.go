@@ -224,7 +224,12 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	userName, err := getUserName(writer, claims, h.cfg.OIDC.StripEmaildomain)
+	userName, err := getUserName(
+		writer,
+		claims,
+		h.cfg.OIDC.UseDesiredUsername,
+		h.cfg.OIDC.StripEmaildomain,
+	)
 	if err != nil {
 		return
 	}
@@ -538,12 +543,24 @@ func (h *Headscale) validateNodeForOIDCCallback(
 func getUserName(
 	writer http.ResponseWriter,
 	claims *IDTokenClaims,
+	useDesiredUsername bool,
 	stripEmaildomain bool,
 ) (string, error) {
-	userName, err := util.NormalizeToFQDNRules(
-		claims.Email,
-		stripEmaildomain,
-	)
+	var userName string
+	var err error
+
+	if useDesiredUsername {
+		userName, err = util.NormalizeToFQDNRules(
+			claims.Username,
+			stripEmaildomain,
+		)
+	} else {
+		userName, err = util.NormalizeToFQDNRules(
+			claims.Email,
+			stripEmaildomain,
+		)
+	}
+
 	if err != nil {
 		util.LogErr(err, "couldn't normalize email")
 
