@@ -175,23 +175,26 @@ func (h *Headscale) OIDCCallback(
 	req *http.Request,
 ) {
 	code, state, err := validateOIDCCallbackParams(writer, req)
+
 	if err != nil {
 		return
 	}
 
 	rawIDToken, err := h.getIDTokenForOIDCCallback(req.Context(), writer, code, state)
+
 	if err != nil {
 		return
 	}
 
 	idToken, err := h.verifyIDTokenForOIDCCallback(req.Context(), writer, rawIDToken)
+
 	if err != nil {
 		return
 	}
 	idTokenExpiry := h.determineTokenExpiration(idToken.Expiry)
 
 	// TODO: we can use userinfo at some point to grab additional information about the user (groups membership, etc)
-	// userInfo, err := oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
+	// userInfo, err := h.oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
 	// if err != nil {
 	// 	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo"))
 	// 	return
@@ -210,7 +213,7 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	if err := validateOIDCAllowedUsers(writer, h.cfg.OIDC.AllowedUsers, claims); err != nil {
+	if err := validateOIDCAllowedUsers(writer, idToken, h.cfg.OIDC.AllowedUsers, claims); err != nil {
 		return
 	}
 
@@ -224,7 +227,8 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	userName, err := getUserName(writer, claims, h.cfg.OIDC.StripEmaildomain)
+	userName, err := getUserName(h, idToken, writer, claims)
+
 	if err != nil {
 		return
 	}
@@ -416,11 +420,23 @@ func validateOIDCAllowedGroups(
 // that the authenticated principal is part of that list.
 func validateOIDCAllowedUsers(
 	writer http.ResponseWriter,
+	idToken *oidc.IDToken,
 	allowedUsers []string,
 	claims *IDTokenClaims,
 ) error {
-	if len(allowedUsers) > 0 &&
-		!util.IsStringInSlice(allowedUsers, claims.Email) {
+	if len(allowedUsers) == 0 {
+		return nil
+	}
+
+	var allowed = false
+
+	if idToken.Issuer == "https://discord.com" {
+		allowed = util.IsStringInSlice(allowedUsers, idToken.Subject)
+	} else {
+		allowed = util.IsStringInSlice(allowedUsers, claims.Email)
+	}
+
+	if !allowed {
 		log.Trace().Msg("authenticated principal does not match any allowed user")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
@@ -536,13 +552,26 @@ func (h *Headscale) validateNodeForOIDCCallback(
 }
 
 func getUserName(
+	h *Headscale,
+	token *oidc.IDToken,
 	writer http.ResponseWriter,
 	claims *IDTokenClaims,
-	stripEmaildomain bool,
+) (string, error) {
+	if token.Issuer == "https://discord.com" {
+		return token.Subject, nil
+	}
+
+	return getStandardOIDCUserName(h, writer, claims)
+}
+
+func getStandardOIDCUserName(
+	h *Headscale,
+	writer http.ResponseWriter,
+	claims *IDTokenClaims,
 ) (string, error) {
 	userName, err := util.NormalizeToFQDNRules(
 		claims.Email,
-		stripEmaildomain,
+		h.cfg.OIDC.StripEmaildomain,
 	)
 	if err != nil {
 		util.LogErr(err, "couldn't normalize email")
