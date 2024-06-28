@@ -64,6 +64,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Restore foreign keys and add constraints [#1562](https://github.com/juanfont/headscale/pull/1562)
 - Make registration page easier to use on mobile devices
 - Make write-ahead-log default on and configurable for SQLite [#1985](https://github.com/juanfont/headscale/pull/1985)
+- Allow OIDC desired_username to be used with config bool [#1997](https://github.com/juanfont/headscale/pull/1997)
 
 ## 0.22.3 (2023-05-12)
 
