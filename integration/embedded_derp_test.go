@@ -43,6 +43,7 @@ func TestDERPServerScenario(t *testing.T) {
 		hsic.WithExtraPorts([]string{"3478/udp"}),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
+		hsic.WithGrpcTLS(),
 		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErrHeadscaleEnv(t, err)

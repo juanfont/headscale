@@ -40,6 +40,8 @@ const (
 	aclPolicyPath        = "/etc/headscale/acl.hujson"
 	tlsCertPath          = "/etc/headscale/tls.cert"
 	tlsKeyPath           = "/etc/headscale/tls.key"
+	grpcTlsCertPath      = "/etc/headscale/grpc_tls.cert"
+	grpcTlsKeyPath       = "/etc/headscale/grpc_tls.key"
 	headscaleDefaultPort = 8080
 )
 
@@ -69,6 +71,8 @@ type HeadscaleInContainer struct {
 	env              map[string]string
 	tlsCert          []byte
 	tlsKey           []byte
+	grpcTlsCert      []byte
+	grpcTlsKey       []byte
 	filesInContainer []fileInContainer
 	postgres         bool
 }
@@ -102,6 +106,19 @@ func WithTLS() Option {
 
 		hsic.tlsCert = cert
 		hsic.tlsKey = key
+	}
+}
+
+// WithGrpcTLS creates gRPC certificates and enables them.
+func WithGrpcTLS() Option {
+	return func(hsic *HeadscaleInContainer) {
+		cert, key, err := createCertificate(hsic.hostname)
+		if err != nil {
+			log.Fatalf("failed to create grpc certificates for headscale test: %s", err)
+		}
+
+		hsic.grpcTlsCert = cert
+		hsic.grpcTlsKey = key
 	}
 }
 
@@ -253,6 +270,11 @@ func New(
 		hsic.env["HEADSCALE_SERVER_URL"] = serverURL.String()
 	}
 
+	if hsic.hasGrpcTLS() {
+		hsic.env["HEADSCALE_GRPC_TLS_CERT_PATH"] = grpcTlsCertPath
+		hsic.env["HEADSCALE_GRPC_TLS_KEY_PATH"] = grpcTlsKeyPath
+	}
+
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile.debug",
 		ContextDir: dockerContextPath,
@@ -374,6 +396,18 @@ func New(
 		}
 	}
 
+	if hsic.hasGrpcTLS() {
+		err = hsic.WriteFile(grpcTlsCertPath, hsic.grpcTlsCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+		}
+
+		err = hsic.WriteFile(grpcTlsKeyPath, hsic.grpcTlsKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write TLS key to container: %w", err)
+		}
+	}
+
 	for _, f := range hsic.filesInContainer {
 		if err := hsic.WriteFile(f.path, f.contents); err != nil {
 			return nil, fmt.Errorf("failed to write %q: %w", f.path, err)
@@ -389,6 +423,10 @@ func (t *HeadscaleInContainer) ConnectToNetwork(network *dockertest.Network) err
 
 func (t *HeadscaleInContainer) hasTLS() bool {
 	return len(t.tlsCert) != 0 && len(t.tlsKey) != 0
+}
+
+func (t *HeadscaleInContainer) hasGrpcTLS() bool {
+	return len(t.grpcTlsCert) != 0 && len(t.grpcTlsKey) != 0
 }
 
 // Shutdown stops and cleans up the Headscale container.

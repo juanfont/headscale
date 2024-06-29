@@ -108,8 +108,10 @@ type DatabaseConfig struct {
 }
 
 type TLSConfig struct {
-	CertPath string
-	KeyPath  string
+	CertPath     string
+	KeyPath      string
+	GRPCCertPath string
+	GRPCKeyPath  string
 
 	LetsEncrypt LetsEncryptConfig
 }
@@ -214,8 +216,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("unix_socket", "/var/run/headscale/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
 
-	viper.SetDefault("grpc_listen_addr", ":50443")
-	viper.SetDefault("grpc_allow_insecure", false)
+	viper.SetDefault("grpc.listen_addr", ":50443")
+	viper.SetDefault("grpc.allow_insecure", false)
 
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
@@ -317,6 +319,12 @@ func GetTLSConfig() TLSConfig {
 		),
 		KeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("tls_key_path"),
+		),
+		GRPCCertPath: util.AbsolutePathFromConfigPath(
+			viper.GetString("grpc.tls_cert_path"),
+		),
+		GRPCKeyPath: util.AbsolutePathFromConfigPath(
+			viper.GetString("grpc.tls_key_path"),
 		),
 	}
 }
@@ -698,8 +706,8 @@ func GetHeadscaleConfig() (*Config, error) {
 		ServerURL:          viper.GetString("server_url"),
 		Addr:               viper.GetString("listen_addr"),
 		MetricsAddr:        viper.GetString("metrics_listen_addr"),
-		GRPCAddr:           viper.GetString("grpc_listen_addr"),
-		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
+		GRPCAddr:           viper.GetString("grpc.listen_addr"),
+		GRPCAllowInsecure:  viper.GetBool("grpc.allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 
 		PrefixV4:     prefix4,
