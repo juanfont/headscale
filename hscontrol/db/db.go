@@ -395,6 +395,20 @@ func NewHeadscaleDatabase(
 					return nil
 				},
 			},
+			{
+				// Create display_name and profile_pic_url columns for Users
+				// so that we can save them from OIDC
+				ID: "202406161200",
+				Migrate: func(tx *gorm.DB) error {
+					_ = tx.Migrator().AddColumn(&types.User{}, "display_name")
+					_ = tx.Migrator().AddColumn(&types.User{}, "profile_pic_url")
+
+					return nil
+				},
+				Rollback: func(tx *gorm.DB) error {
+					return nil
+				},
+			},
 		},
 	)
 
