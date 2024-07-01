@@ -57,7 +57,7 @@ To use ACLs in headscale, you must edit your config.yaml file. In there you will
 
 Here are the ACL's to implement the same permissions as above:
 
-```json
+```json5
 {
   // groups are collections of users having a common scope. A user can be in multiple groups
   // groups cannot be composed of groups
