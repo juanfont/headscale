@@ -16,6 +16,29 @@
     "application/json"
   ],
   "paths": {
+    "/api/v1/acl": {
+      "get": {
+        "summary": "--- Acl start ---",
+        "operationId": "HeadscaleService_GetAcl",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetAclResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/apikey": {
       "get": {
         "operationId": "HeadscaleService_ListApiKeys",
@@ -892,6 +915,34 @@
         }
       }
     },
+    "v1AclGroup": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "v1AclTagOwner": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "v1ApiKey": {
       "type": "object",
       "properties": {
@@ -1070,6 +1121,23 @@
     },
     "v1ExpirePreAuthKeyResponse": {
       "type": "object"
+    },
+    "v1GetAclResponse": {
+      "type": "object",
+      "properties": {
+        "groups": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/v1AclGroup"
+          }
+        },
+        "tagOwners": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/v1AclTagOwner"
+          }
+        }
+      }
     },
     "v1GetNodeResponse": {
       "type": "object",

@@ -46,6 +46,7 @@ const (
 	HeadscaleService_ExpireApiKey_FullMethodName     = "/headscale.v1.HeadscaleService/ExpireApiKey"
 	HeadscaleService_ListApiKeys_FullMethodName      = "/headscale.v1.HeadscaleService/ListApiKeys"
 	HeadscaleService_DeleteApiKey_FullMethodName     = "/headscale.v1.HeadscaleService/DeleteApiKey"
+	HeadscaleService_GetAcl_FullMethodName           = "/headscale.v1.HeadscaleService/GetAcl"
 )
 
 // HeadscaleServiceClient is the client API for HeadscaleService service.
@@ -84,6 +85,8 @@ type HeadscaleServiceClient interface {
 	ExpireApiKey(ctx context.Context, in *ExpireApiKeyRequest, opts ...grpc.CallOption) (*ExpireApiKeyResponse, error)
 	ListApiKeys(ctx context.Context, in *ListApiKeysRequest, opts ...grpc.CallOption) (*ListApiKeysResponse, error)
 	DeleteApiKey(ctx context.Context, in *DeleteApiKeyRequest, opts ...grpc.CallOption) (*DeleteApiKeyResponse, error)
+	// --- Acl start ---
+	GetAcl(ctx context.Context, in *GetAclRequest, opts ...grpc.CallOption) (*GetAclResponse, error)
 }
 
 type headscaleServiceClient struct {
@@ -337,6 +340,15 @@ func (c *headscaleServiceClient) DeleteApiKey(ctx context.Context, in *DeleteApi
 	return out, nil
 }
 
+func (c *headscaleServiceClient) GetAcl(ctx context.Context, in *GetAclRequest, opts ...grpc.CallOption) (*GetAclResponse, error) {
+	out := new(GetAclResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_GetAcl_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HeadscaleServiceServer is the server API for HeadscaleService service.
 // All implementations must embed UnimplementedHeadscaleServiceServer
 // for forward compatibility
@@ -373,6 +385,8 @@ type HeadscaleServiceServer interface {
 	ExpireApiKey(context.Context, *ExpireApiKeyRequest) (*ExpireApiKeyResponse, error)
 	ListApiKeys(context.Context, *ListApiKeysRequest) (*ListApiKeysResponse, error)
 	DeleteApiKey(context.Context, *DeleteApiKeyRequest) (*DeleteApiKeyResponse, error)
+	// --- Acl start ---
+	GetAcl(context.Context, *GetAclRequest) (*GetAclResponse, error)
 	mustEmbedUnimplementedHeadscaleServiceServer()
 }
 
@@ -460,6 +474,9 @@ func (UnimplementedHeadscaleServiceServer) ListApiKeys(context.Context, *ListApi
 }
 func (UnimplementedHeadscaleServiceServer) DeleteApiKey(context.Context, *DeleteApiKeyRequest) (*DeleteApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteApiKey not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) GetAcl(context.Context, *GetAclRequest) (*GetAclResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAcl not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) mustEmbedUnimplementedHeadscaleServiceServer() {}
 
@@ -960,6 +977,24 @@ func _HeadscaleService_DeleteApiKey_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_GetAcl_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAclRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).GetAcl(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HeadscaleService_GetAcl_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).GetAcl(ctx, req.(*GetAclRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HeadscaleService_ServiceDesc is the grpc.ServiceDesc for HeadscaleService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1074,6 +1109,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteApiKey",
 			Handler:    _HeadscaleService_DeleteApiKey_Handler,
+		},
+		{
+			MethodName: "GetAcl",
+			Handler:    _HeadscaleService_GetAcl_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
