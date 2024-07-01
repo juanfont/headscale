@@ -62,7 +62,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
 		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
-		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": fmt.Sprintf("%t", oidcConfig.StripEmaildomain),
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": fmt.Sprintf("%t", oidcConfig.Misc.StripEmaildomain),
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -121,7 +121,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 		"HEADSCALE_OIDC_ISSUER":                oidcConfig.Issuer,
 		"HEADSCALE_OIDC_CLIENT_ID":             oidcConfig.ClientID,
 		"HEADSCALE_OIDC_CLIENT_SECRET":         oidcConfig.ClientSecret,
-		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN":    fmt.Sprintf("%t", oidcConfig.StripEmaildomain),
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN":    fmt.Sprintf("%t", oidcConfig.Misc.StripEmaildomain),
 		"HEADSCALE_OIDC_USE_EXPIRY_FROM_TOKEN": "1",
 	}
 
@@ -269,6 +269,9 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*types.OIDCConf
 
 	log.Printf("headscale mock oidc is ready for tests at %s", hostEndpoint)
 
+	oidcMisc := types.OIDCMiscConfig{
+		StripEmaildomain: true,
+	}
 	return &types.OIDCConfig{
 		Issuer: fmt.Sprintf(
 			"http://%s/oidc",
@@ -276,7 +279,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*types.OIDCConf
 		),
 		ClientID:                   "superclient",
 		ClientSecret:               "supersecret",
-		StripEmaildomain:           true,
+		Misc:                       oidcMisc,
 		OnlyStartIfOIDCIsAvailable: true,
 	}, nil
 }
