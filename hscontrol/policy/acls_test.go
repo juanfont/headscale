@@ -6,14 +6,15 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
+
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 var iap = func(ipStr string) *netip.Addr {
@@ -321,44 +322,27 @@ func TestParsing(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:   "port-wildcard-yaml",
-			format: "yaml",
+			name:   "ipv6",
+			format: "hujson",
 			acl: `
----
-hosts:
-  host-1: 100.100.100.100/32
-  subnet-1: 100.100.101.100/24
-acls:
-  - action: accept
-    src:
-      - "*"
-    dst:
-      - host-1:*
-`,
-			want: []tailcfg.FilterRule{
-				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
-					DstPorts: []tailcfg.NetPortRange{
-						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
-					},
-				},
-			},
-			wantErr: false,
-		},
+{
+	"hosts": {
+		"host-1": "100.100.100.100/32",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"acls": [
 		{
-			name:   "ipv6-yaml",
-			format: "yaml",
-			acl: `
----
-hosts:
-  host-1: 100.100.100.100/32
-  subnet-1: 100.100.101.100/24
-acls:
-  - action: accept
-    src:
-      - "*"
-    dst:
-      - host-1:*
+			"action": "accept",
+			"src": [
+				"*",
+			],
+			"dst": [
+				"host-1:*",
+			],
+		},
+	],
+}			
 `,
 			want: []tailcfg.FilterRule{
 				{
@@ -374,7 +358,7 @@ acls:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pol, err := LoadACLPolicyFromBytes([]byte(tt.acl), tt.format)
+			pol, err := LoadACLPolicyFromBytes([]byte(tt.acl))
 
 			if tt.wantErr && err == nil {
 				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
@@ -544,7 +528,7 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 	],
 }
 	`)
-	pol, err := LoadACLPolicyFromBytes(acl, "hujson")
+	pol, err := LoadACLPolicyFromBytes(acl)
 	c.Assert(pol.ACLs, check.HasLen, 6)
 	c.Assert(err, check.IsNil)
 
