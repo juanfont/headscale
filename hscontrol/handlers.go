@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -51,6 +52,76 @@ func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error)
 	}
 
 	return tailcfg.CapabilityVersion(clientCapabilityVersion), nil
+}
+
+// see https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159, Derp use verifyClientsURL to verify whether a client is allowed to connect to the DERP server.
+func (h *Headscale) VerifyHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	if req.Method != http.MethodPost {
+		http.Error(writer, "Wrong method", http.StatusMethodNotAllowed)
+		return
+	}
+	log.Debug().
+		Str("handler", "/verify").
+		Msg("verify client")
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		log.Error().
+			Str("handler", "/verify").
+			Err(err).
+			Msg("Cannot read request body")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
+	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot parse derpAdmitClientRequest")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	nodes, err := h.db.ListNodes()
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot list nodes")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+	}
+
+	for _, node := range nodes {
+		log.Debug().Str("node", node.NodeKey.String()).Msg("Node")
+	}
+
+	allow := false
+	// Check if the node is in the list of nodes
+	for _, node := range nodes {
+		if node.NodeKey == derpAdmitClientRequest.NodePublic {
+			allow = true
+			break
+		}
+	}
+
+	resp := tailcfg.DERPAdmitClientResponse{
+		Allow: allow,
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(writer).Encode(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }
 
 // KeyHandler provides the Headscale pub key
