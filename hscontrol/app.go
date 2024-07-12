@@ -90,6 +90,7 @@ type Headscale struct {
 	db              *db.HSDatabase
 	ipAlloc         *db.IPAllocator
 	noisePrivateKey *key.MachinePrivate
+	ephemeralGC     *db.EphemeralGarbageCollector
 
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *derpServer.DERPServer
@@ -151,6 +152,12 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	app.ephemeralGC = db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
+		if err := app.db.DeleteEphemeralNode(ni); err != nil {
+			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to delete ephemeral node")
+		}
+	})
 
 	if cfg.OIDC.Issuer != "" {
 		err = app.initOIDC()
@@ -214,47 +221,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	target := h.cfg.ServerURL + req.URL.RequestURI()
 	http.Redirect(w, req, target, http.StatusFound)
-}
-
-// deleteExpireEphemeralNodes deletes ephemeral node records that have not been
-// seen for longer than h.cfg.EphemeralNodeInactivityTimeout.
-func (h *Headscale) deleteExpireEphemeralNodes(ctx context.Context, every time.Duration) {
-	ticker := time.NewTicker(every)
-
-	for {
-		select {
-		case <-ctx.Done():
-			ticker.Stop()
-			return
-		case <-ticker.C:
-			var removed []types.NodeID
-			var changed []types.NodeID
-			if err := h.db.Write(func(tx *gorm.DB) error {
-				removed, changed = db.DeleteExpiredEphemeralNodes(tx, h.cfg.EphemeralNodeInactivityTimeout)
-
-				return nil
-			}); err != nil {
-				log.Error().Err(err).Msg("database error while expiring ephemeral nodes")
-				continue
-			}
-
-			if removed != nil {
-				ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
-				h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-					Type:    types.StatePeerRemoved,
-					Removed: removed,
-				})
-			}
-
-			if changed != nil {
-				ctx := types.NotifyCtx(context.Background(), "expire-ephemeral", "na")
-				h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-					Type:        types.StatePeerChanged,
-					ChangeNodes: changed,
-				})
-			}
-		}
-	}
 }
 
 // expireExpiredNodes expires nodes that have an explicit expiry set
@@ -552,9 +518,7 @@ func (h *Headscale) Serve() error {
 		return errEmptyInitialDERPMap
 	}
 
-	expireEphemeralCtx, expireEphemeralCancel := context.WithCancel(context.Background())
-	defer expireEphemeralCancel()
-	go h.deleteExpireEphemeralNodes(expireEphemeralCtx, updateInterval)
+	go h.ephemeralGC.Start()
 
 	expireNodeCtx, expireNodeCancel := context.WithCancel(context.Background())
 	defer expireNodeCancel()
@@ -810,7 +774,7 @@ func (h *Headscale) Serve() error {
 					Msg("Received signal to stop, shutting down gracefully")
 
 				expireNodeCancel()
-				expireEphemeralCancel()
+				h.ephemeralGC.Close()
 
 				trace("waiting for netmap stream to close")
 				h.pollNetMapStreamWG.Wait()

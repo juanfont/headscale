@@ -135,6 +135,18 @@ func (m *mapSession) resetKeepAlive() {
 	m.keepAliveTicker.Reset(m.keepAlive)
 }
 
+func (m *mapSession) beforeServeLongPoll() {
+	if m.node.IsEphemeral() {
+		m.h.ephemeralGC.Cancel(m.node.ID)
+	}
+}
+
+func (m *mapSession) afterServeLongPoll() {
+	if m.node.IsEphemeral() {
+		m.h.ephemeralGC.Schedule(m.node.ID, m.h.cfg.EphemeralNodeInactivityTimeout)
+	}
+}
+
 // serve handles non-streaming requests.
 func (m *mapSession) serve() {
 	// TODO(kradalby): A set todos to harden:
@@ -180,6 +192,8 @@ func (m *mapSession) serve() {
 //
 //nolint:gocyclo
 func (m *mapSession) serveLongPoll() {
+	m.beforeServeLongPoll()
+
 	// Clean up the session when the client disconnects
 	defer func() {
 		m.cancelChMu.Lock()
@@ -197,6 +211,7 @@ func (m *mapSession) serveLongPoll() {
 			m.pollFailoverRoutes("node closing connection", m.node)
 		}
 
+		m.afterServeLongPoll()
 		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
 	}()
 

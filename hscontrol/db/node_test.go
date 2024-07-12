@@ -1,13 +1,17 @@
 package db
 
 import (
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"net/netip"
 	"regexp"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -598,4 +602,65 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 	enabledRoutes, err := db.GetEnabledRoutes(node0ByID)
 	c.Assert(err, check.IsNil)
 	c.Assert(enabledRoutes, check.HasLen, 4)
+}
+
+func TestEphemeralGarbageCollectorOrder(t *testing.T) {
+	want := []types.NodeID{1, 3}
+	got := []types.NodeID{}
+
+	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
+		got = append(got, ni)
+	})
+	go e.Start()
+
+	e.Schedule(1, 1*time.Second)
+	e.Schedule(2, 2*time.Second)
+	e.Schedule(3, 3*time.Second)
+	e.Schedule(4, 4*time.Second)
+	e.Cancel(2)
+	e.Cancel(4)
+
+	time.Sleep(6 * time.Second)
+
+	e.Close()
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("wrong nodes deleted, unexpected result (-want +got):\n%s", diff)
+	}
+}
+
+func TestEphemeralGarbageCollectorLoads(t *testing.T) {
+	var got []types.NodeID
+	var mu sync.Mutex
+
+	want := 1000
+
+	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
+		defer mu.Unlock()
+		mu.Lock()
+
+		time.Sleep(time.Duration(generateRandomNumber(t, 3)) * time.Millisecond)
+		got = append(got, ni)
+	})
+	go e.Start()
+
+	for i := 0; i < want; i++ {
+		go e.Schedule(types.NodeID(i), 1*time.Second)
+	}
+
+	time.Sleep(10 * time.Second)
+
+	if len(got) != want {
+		t.Errorf("expected %d, got %d", want, len(got))
+	}
+}
+
+func generateRandomNumber(t *testing.T, max int64) int64 {
+	t.Helper()
+	maxB := big.NewInt(max)
+	n, err := rand.Int(rand.Reader, maxB)
+	if err != nil {
+		t.Fatalf("getting random number: %s", err)
+	}
+	return n.Int64() + 1
 }
