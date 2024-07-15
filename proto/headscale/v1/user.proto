@@ -5,9 +5,11 @@ option  go_package = "github.com/juanfont/headscale/gen/go/v1";
 import "google/protobuf/timestamp.proto";
 
 message User {
-    string                    id         = 1;
-    string                    name       = 2;
-    google.protobuf.Timestamp created_at = 3;
+    string                    id            = 1;
+    string                    name          = 2;
+    google.protobuf.Timestamp created_at    = 3;
+    string                    displayName   = 4;
+    string                    profilePicURL = 5;
 }
 
 message GetUserRequest {

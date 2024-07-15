@@ -16,16 +16,17 @@ import (
 // that contain our machines.
 type User struct {
 	gorm.Model
-	Name string `gorm:"unique"`
+	Name          string `gorm:"unique"`
+	DisplayName   string `gorm:"column:display_name"`
+	ProfilePicURL string `gorm:"column:profile_pic_url"`
 }
 
 func (n *User) TailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
-		ID:          tailcfg.UserID(n.ID),
-		LoginName:   n.Name,
-		DisplayName: n.Name,
-		// TODO(kradalby): See if we can fill in Gravatar here
-		ProfilePicURL: "",
+		ID:            tailcfg.UserID(n.ID),
+		LoginName:     n.Name,
+		DisplayName:   n.DisplayName,
+		ProfilePicURL: n.ProfilePicURL,
 		Logins:        []tailcfg.LoginID{},
 		Created:       n.CreatedAt,
 	}
@@ -35,11 +36,10 @@ func (n *User) TailscaleUser() *tailcfg.User {
 
 func (n *User) TailscaleLogin() *tailcfg.Login {
 	login := tailcfg.Login{
-		ID:          tailcfg.LoginID(n.ID),
-		LoginName:   n.Name,
-		DisplayName: n.Name,
-		// TODO(kradalby): See if we can fill in Gravatar here
-		ProfilePicURL: "",
+		ID:            tailcfg.LoginID(n.ID),
+		LoginName:     n.Name,
+		DisplayName:   n.DisplayName,
+		ProfilePicURL: n.ProfilePicURL,
 	}
 
 	return &login

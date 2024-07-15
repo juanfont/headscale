@@ -45,10 +45,11 @@ var (
 )
 
 type IDTokenClaims struct {
-	Name     string   `json:"name,omitempty"`
-	Groups   []string `json:"groups,omitempty"`
-	Email    string   `json:"email"`
-	Username string   `json:"preferred_username,omitempty"`
+	Name       string   `json:"name,omitempty"`
+	Groups     []string `json:"groups,omitempty"`
+	Email      string   `json:"email"`
+	Username   string   `json:"preferred_username,omitempty"`
+	PictureURL string   `json:"picture,omitempty"`
 }
 
 func (h *Headscale) initOIDC() error {
@@ -220,7 +221,7 @@ func (h *Headscale) OIDCCallback(
 		claims,
 		idTokenExpiry,
 	)
-	if err != nil || nodeExists {
+	if err != nil {
 		return
 	}
 
@@ -229,13 +230,31 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	// register the node if it's new
-	log.Debug().Msg("Registering new node after successful callback")
-
 	user, err := h.findOrCreateNewUserForOIDCCallback(writer, userName)
 	if err != nil {
 		return
 	}
+
+	if user.DisplayName != claims.Name {
+		if err := h.db.SetUserDisplayName(user.Name, claims.Name); err != nil {
+			util.LogErr(err, "Failed to set user display name")
+			return
+		}
+	}
+
+	if user.ProfilePicURL != claims.PictureURL {
+		if err := h.db.SetUserProfilePicURL(user.Name, claims.PictureURL); err != nil {
+			util.LogErr(err, "Failed to set user profile pic")
+			return
+		}
+	}
+
+	if nodeExists {
+		return
+	}
+
+	// register the node if it's new
+	log.Debug().Msg("Registering new node after successful callback")
 
 	if err := h.registerNodeForOIDCCallback(writer, user, machineKey, idTokenExpiry); err != nil {
 		return
