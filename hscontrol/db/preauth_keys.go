@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
+	"tailscale.com/types/ptr"
 )
 
 var (
@@ -197,10 +198,9 @@ func ValidatePreAuthKey(tx *gorm.DB, k string) (*types.PreAuthKey, error) {
 	}
 
 	nodes := types.Nodes{}
-	pakID := uint(pak.ID)
 	if err := tx.
 		Preload("AuthKey").
-		Where(&types.Node{AuthKeyID: &pakID}).
+		Where(&types.Node{AuthKeyID: ptr.To(pak.ID)}).
 		Find(&nodes).Error; err != nil {
 		return nil, err
 	}

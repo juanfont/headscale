@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 func logAuthFunc(
@@ -314,9 +315,8 @@ func (h *Headscale) handleAuthKey(
 			Msg("node was already registered before, refreshing with new auth key")
 
 		node.NodeKey = nodeKey
-		pakID := uint(pak.ID)
-		if pakID != 0 {
-			node.AuthKeyID = &pakID
+		if pak.ID != 0 {
+			node.AuthKeyID = ptr.To(pak.ID)
 		}
 
 		node.Expiry = &registerRequest.Expiry
@@ -394,7 +394,7 @@ func (h *Headscale) handleAuthKey(
 
 		pakID := uint(pak.ID)
 		if pakID != 0 {
-			nodeToRegister.AuthKeyID = &pakID
+			nodeToRegister.AuthKeyID = ptr.To(pak.ID)
 		}
 		node, err = h.db.RegisterNode(
 			nodeToRegister,

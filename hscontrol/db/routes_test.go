@@ -14,6 +14,7 @@ import (
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
 
 var smap = func(m map[types.NodeID]bool) *xsync.MapOf[types.NodeID, bool] {
@@ -43,13 +44,12 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 		RoutableIPs: []netip.Prefix{route},
 	}
 
-	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "test_get_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      &pakID,
+		AuthKeyID:      ptr.To(pak.ID),
 		Hostinfo:       &hostInfo,
 	}
 	trx := db.DB.Save(&node)
@@ -95,13 +95,12 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 		RoutableIPs: []netip.Prefix{route, route2},
 	}
 
-	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      &pakID,
+		AuthKeyID:      ptr.To(pak.ID),
 		Hostinfo:       &hostInfo,
 	}
 	trx := db.DB.Save(&node)
@@ -169,13 +168,12 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	hostInfo1 := tailcfg.Hostinfo{
 		RoutableIPs: []netip.Prefix{route, route2},
 	}
-	pakID := uint(pak.ID)
 	node1 := types.Node{
 		ID:             1,
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      &pakID,
+		AuthKeyID:      ptr.To(pak.ID),
 		Hostinfo:       &hostInfo1,
 	}
 	trx := db.DB.Save(&node1)
@@ -199,7 +197,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      &pakID,
+		AuthKeyID:      ptr.To(pak.ID),
 		Hostinfo:       &hostInfo2,
 	}
 	db.DB.Save(&node2)
@@ -253,13 +251,12 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	}
 
 	now := time.Now()
-	pakID := uint(pak.ID)
 	node1 := types.Node{
 		ID:             1,
 		Hostname:       "test_enable_route_node",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      &pakID,
+		AuthKeyID:      ptr.To(pak.ID),
 		Hostinfo:       &hostInfo1,
 		LastSeen:       &now,
 	}
