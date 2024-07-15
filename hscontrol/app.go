@@ -518,7 +518,18 @@ func (h *Headscale) Serve() error {
 		return errEmptyInitialDERPMap
 	}
 
+	// Start ephemeral node garbage collector and schedule all nodes
+	// that are already in the database and ephemeral. If they are still
+	// around between restarts, they will reconnect and the GC will
+	// be cancelled.
 	go h.ephemeralGC.Start()
+	ephmNodes, err := h.db.ListEphemeralNodes()
+	if err != nil {
+		return fmt.Errorf("failed to list ephemeral nodes: %w", err)
+	}
+	for _, node := range ephmNodes {
+		h.ephemeralGC.Schedule(node.ID, h.cfg.EphemeralNodeInactivityTimeout)
+	}
 
 	expireNodeCtx, expireNodeCancel := context.WithCancel(context.Background())
 	defer expireNodeCancel()
