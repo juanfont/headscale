@@ -643,6 +643,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 	time.Sleep(10 * time.Second)
 
+	e.Close()
 	if len(got) != want {
 		t.Errorf("expected %d, got %d", want, len(got))
 	}
@@ -656,4 +657,60 @@ func generateRandomNumber(t *testing.T, max int64) int64 {
 		t.Fatalf("getting random number: %s", err)
 	}
 	return n.Int64() + 1
+}
+
+func TestListEphemeralNodes(t *testing.T) {
+	db, err := newTestDB()
+	if err != nil {
+		t.Fatalf("creating db: %s", err)
+	}
+
+	user, err := db.CreateUser("test")
+	assert.NoError(t, err)
+
+	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	assert.NoError(t, err)
+
+	pakEph, err := db.CreatePreAuthKey(user.Name, false, true, nil, nil)
+	assert.NoError(t, err)
+
+	node := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "test",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		AuthKeyID:      ptr.To(pak.ID),
+	}
+
+	nodeEph := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "ephemeral",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		AuthKeyID:      ptr.To(pakEph.ID),
+	}
+
+	err = db.DB.Save(&node).Error
+	assert.NoError(t, err)
+
+	err = db.DB.Save(&nodeEph).Error
+	assert.NoError(t, err)
+
+	nodes, err := db.ListNodes()
+	assert.NoError(t, err)
+
+	ephemeralNodes, err := db.ListEphemeralNodes()
+	assert.NoError(t, err)
+
+	assert.Len(t, nodes, 2)
+	assert.Len(t, ephemeralNodes, 1)
+
+	assert.Equal(t, nodeEph.ID, ephemeralNodes[0].ID)
+	assert.Equal(t, nodeEph.AuthKeyID, ephemeralNodes[0].AuthKeyID)
+	assert.Equal(t, nodeEph.UserID, ephemeralNodes[0].UserID)
+	assert.Equal(t, nodeEph.Hostname, ephemeralNodes[0].Hostname)
 }
