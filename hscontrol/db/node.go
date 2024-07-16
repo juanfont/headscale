@@ -82,12 +82,9 @@ func ListNodes(tx *gorm.DB) (types.Nodes, error) {
 func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		nodes := types.Nodes{}
-		if err := rx.Debug().Joins("AuthKey").Where("AuthKey.ephemeral = true").Find(&nodes).Error; err != nil {
+		if err := rx.Joins("AuthKey").Where(`"AuthKey"."ephemeral" = true`).Find(&nodes).Error; err != nil {
 			return nil, err
 		}
-		// if err := rx.Debug().Preload("AuthKey", "ephemeral = 1").Find(&nodes).Error; err != nil {
-		// 	return nil, err
-		// }
 
 		return nodes, nil
 	})
