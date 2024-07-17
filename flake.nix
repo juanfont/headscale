@@ -74,6 +74,7 @@
           nfpm
           gotestsum
           gotests
+          gofumpt
           ksh
           ko
           yq-go
