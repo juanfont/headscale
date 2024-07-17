@@ -719,6 +719,10 @@ func ExpireExpiredNodes(tx *gorm.DB,
 	return started, types.StateUpdate{}, false
 }
 
+// EphemeralGarbageCollector is a garbage collector that will delete nodes after
+// a certain amount of time.
+// It is used to delete ephemeral nodes that have disconnected and should be
+// cleaned up.
 type EphemeralGarbageCollector struct {
 	mu deadlock.Mutex
 
@@ -729,6 +733,8 @@ type EphemeralGarbageCollector struct {
 	cancelCh chan struct{}
 }
 
+// NewEphemeralGarbageCollector creates a new EphemeralGarbageCollector, it takes
+// a deleteFunc that will be called when a node is scheduled for deletion.
 func NewEphemeralGarbageCollector(deleteFunc func(types.NodeID)) *EphemeralGarbageCollector {
 	return &EphemeralGarbageCollector{
 		toBeDeleted: make(map[types.NodeID]*time.Timer),
@@ -738,10 +744,12 @@ func NewEphemeralGarbageCollector(deleteFunc func(types.NodeID)) *EphemeralGarba
 	}
 }
 
+// Close stops the garbage collector.
 func (e *EphemeralGarbageCollector) Close() {
 	e.cancelCh <- struct{}{}
 }
 
+// Schedule schedules a node for deletion after the expiry duration.
 func (e *EphemeralGarbageCollector) Schedule(nodeID types.NodeID, expiry time.Duration) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -759,6 +767,7 @@ func (e *EphemeralGarbageCollector) Schedule(nodeID types.NodeID, expiry time.Du
 	}()
 }
 
+// Cancel cancels the deletion of a node.
 func (e *EphemeralGarbageCollector) Cancel(nodeID types.NodeID) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -769,6 +778,7 @@ func (e *EphemeralGarbageCollector) Cancel(nodeID types.NodeID) {
 	}
 }
 
+// Start starts the garbage collector.
 func (e *EphemeralGarbageCollector) Start() {
 	for {
 		select {
