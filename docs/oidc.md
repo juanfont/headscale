@@ -50,6 +50,11 @@ oidc:
   # If `strip_email_domain` is set to `false` the domain part will NOT be removed resulting to the following
   # user: `first-name.last-name.example.com`
   strip_email_domain: true
+
+  # If `use_desired_username` is set to `true`, the `prefered_username` oidc field will be used for the username instead of the email
+  # If `use_desired_username` and `strip_email_domain` are both active, the same transform
+  use_desired_username: false
+
 ```
 
 ## Azure AD example
