@@ -297,6 +297,122 @@ func TestEphemeral(t *testing.T) {
 	}
 }
 
+// TestEphemeral2006DeletedTooQuickly verifies that ephemeral nodes are not
+// deleted by accident if they are still online and active.
+func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": len(MustTestVersions),
+		"user2": len(MustTestVersions),
+	}
+
+	headscale, err := scenario.Headscale(
+		hsic.WithTestName("ephemeral2006"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": "1m6s",
+		}),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	for userName, clientCount := range spec {
+		err = scenario.CreateUser(userName)
+		if err != nil {
+			t.Fatalf("failed to create user %s: %s", userName, err)
+		}
+
+		err = scenario.CreateTailscaleNodesInUser(userName, "all", clientCount, []tsic.Option{}...)
+		if err != nil {
+			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
+		}
+
+		key, err := scenario.CreatePreAuthKey(userName, true, true)
+		if err != nil {
+			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
+		}
+
+		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+		if err != nil {
+			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
+		}
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	// All ephemeral nodes should be online and reachable.
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	// Take down all clients, this should start an expiry timer for each.
+	for _, client := range allClients {
+		err := client.Down()
+		if err != nil {
+			t.Fatalf("failed to take down client %s: %s", client.Hostname(), err)
+		}
+	}
+
+	// Wait a bit and bring up the clients again before the expiry
+	// time of the ephemeral nodes.
+	// Nodes should be able to reconnect and work fine.
+	time.Sleep(30 * time.Second)
+
+	for _, client := range allClients {
+		err := client.Up()
+		if err != nil {
+			t.Fatalf("failed to take down client %s: %s", client.Hostname(), err)
+		}
+	}
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	success = pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	// Take down all clients, this should start an expiry timer for each.
+	for _, client := range allClients {
+		err := client.Down()
+		if err != nil {
+			t.Fatalf("failed to take down client %s: %s", client.Hostname(), err)
+		}
+	}
+
+	// This time wait for all of the nodes to expire and check that they are no longer
+	// registered.
+	time.Sleep(3 * time.Minute)
+
+	for userName := range spec {
+		nodes, err := headscale.ListNodesInUser(userName)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("user", userName).
+				Msg("Error listing nodes in user")
+
+			return
+		}
+
+		if len(nodes) != 0 {
+			t.Fatalf("expected no nodes, got %d in user %s", len(nodes), userName)
+		}
+	}
+}
+
 func TestPingAllByHostname(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()

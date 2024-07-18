@@ -12,6 +12,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
+	"github.com/sasha-s/go-deadlock"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -76,6 +77,17 @@ func ListNodes(tx *gorm.DB) (types.Nodes, error) {
 	}
 
 	return nodes, nil
+}
+
+func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
+	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
+		nodes := types.Nodes{}
+		if err := rx.Joins("AuthKey").Where(`"AuthKey"."ephemeral" = true`).Find(&nodes).Error; err != nil {
+			return nil, err
+		}
+
+		return nodes, nil
+	})
 }
 
 func listNodesByGivenName(tx *gorm.DB, givenName string) (types.Nodes, error) {
@@ -284,6 +296,20 @@ func DeleteNode(tx *gorm.DB,
 	}
 
 	return changed, nil
+}
+
+// DeleteEphemeralNode deletes a Node from the database, note that this method
+// will remove it straight, and not notify any changes or consider any routes.
+// It is intended for Ephemeral nodes.
+func (hsdb *HSDatabase) DeleteEphemeralNode(
+	nodeID types.NodeID,
+) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Delete(&types.Node{}, nodeID).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // SetLastSeen sets a node's last seen field indicating that we
@@ -660,51 +686,6 @@ func GenerateGivenName(
 	return givenName, nil
 }
 
-func DeleteExpiredEphemeralNodes(tx *gorm.DB,
-	inactivityThreshold time.Duration,
-) ([]types.NodeID, []types.NodeID) {
-	users, err := ListUsers(tx)
-	if err != nil {
-		return nil, nil
-	}
-
-	var expired []types.NodeID
-	var changedNodes []types.NodeID
-	for _, user := range users {
-		nodes, err := ListNodesByUser(tx, user.Name)
-		if err != nil {
-			return nil, nil
-		}
-
-		for idx, node := range nodes {
-			if node.IsEphemeral() && node.LastSeen != nil &&
-				time.Now().
-					After(node.LastSeen.Add(inactivityThreshold)) {
-				expired = append(expired, node.ID)
-
-				log.Info().
-					Str("node", node.Hostname).
-					Msg("Ephemeral client removed from database")
-
-					// empty isConnected map as ephemeral nodes are not routes
-				changed, err := DeleteNode(tx, nodes[idx], nil)
-				if err != nil {
-					log.Error().
-						Err(err).
-						Str("node", node.Hostname).
-						Msg("🤮 Cannot delete ephemeral node from the database")
-				}
-
-				changedNodes = append(changedNodes, changed...)
-			}
-		}
-
-		// TODO(kradalby): needs to be moved out of transaction
-	}
-
-	return expired, changedNodes
-}
-
 func ExpireExpiredNodes(tx *gorm.DB,
 	lastCheck time.Time,
 ) (time.Time, types.StateUpdate, bool) {
@@ -736,4 +717,79 @@ func ExpireExpiredNodes(tx *gorm.DB,
 	}
 
 	return started, types.StateUpdate{}, false
+}
+
+// EphemeralGarbageCollector is a garbage collector that will delete nodes after
+// a certain amount of time.
+// It is used to delete ephemeral nodes that have disconnected and should be
+// cleaned up.
+type EphemeralGarbageCollector struct {
+	mu deadlock.Mutex
+
+	deleteFunc  func(types.NodeID)
+	toBeDeleted map[types.NodeID]*time.Timer
+
+	deleteCh chan types.NodeID
+	cancelCh chan struct{}
+}
+
+// NewEphemeralGarbageCollector creates a new EphemeralGarbageCollector, it takes
+// a deleteFunc that will be called when a node is scheduled for deletion.
+func NewEphemeralGarbageCollector(deleteFunc func(types.NodeID)) *EphemeralGarbageCollector {
+	return &EphemeralGarbageCollector{
+		toBeDeleted: make(map[types.NodeID]*time.Timer),
+		deleteCh:    make(chan types.NodeID, 10),
+		cancelCh:    make(chan struct{}),
+		deleteFunc:  deleteFunc,
+	}
+}
+
+// Close stops the garbage collector.
+func (e *EphemeralGarbageCollector) Close() {
+	e.cancelCh <- struct{}{}
+}
+
+// Schedule schedules a node for deletion after the expiry duration.
+func (e *EphemeralGarbageCollector) Schedule(nodeID types.NodeID, expiry time.Duration) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	timer := time.NewTimer(expiry)
+	e.toBeDeleted[nodeID] = timer
+
+	go func() {
+		select {
+		case _, ok := <-timer.C:
+			if ok {
+				e.deleteCh <- nodeID
+			}
+		}
+	}()
+}
+
+// Cancel cancels the deletion of a node.
+func (e *EphemeralGarbageCollector) Cancel(nodeID types.NodeID) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if timer, ok := e.toBeDeleted[nodeID]; ok {
+		timer.Stop()
+		delete(e.toBeDeleted, nodeID)
+	}
+}
+
+// Start starts the garbage collector.
+func (e *EphemeralGarbageCollector) Start() {
+	for {
+		select {
+		case <-e.cancelCh:
+			return
+		case nodeID := <-e.deleteCh:
+			e.mu.Lock()
+			delete(e.toBeDeleted, nodeID)
+			e.mu.Unlock()
+
+			go e.deleteFunc(nodeID)
+		}
+	}
 }

@@ -119,7 +119,7 @@ type Node struct {
 	ForcedTags StringList
 
 	// TODO(kradalby): This seems like irrelevant information?
-	AuthKeyID *uint       `sql:"DEFAULT:NULL"`
+	AuthKeyID *uint64     `sql:"DEFAULT:NULL"`
 	AuthKey   *PreAuthKey `gorm:"constraint:OnDelete:SET NULL;"`
 
 	LastSeen *time.Time

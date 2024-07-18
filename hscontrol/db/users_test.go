@@ -5,6 +5,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
+	"tailscale.com/types/ptr"
 )
 
 func (s *Suite) TestCreateAndDestroyUser(c *check.C) {
@@ -46,13 +47,12 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	pak, err = db.CreatePreAuthKey(user.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      &pakID,
+		AuthKeyID:      ptr.To(pak.ID),
 	}
 	trx := db.DB.Save(&node)
 	c.Assert(trx.Error, check.IsNil)
@@ -100,13 +100,12 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	pak, err := db.CreatePreAuthKey(oldUser.Name, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	pakID := uint(pak.ID)
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testnode",
 		UserID:         oldUser.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      &pakID,
+		AuthKeyID:      ptr.To(pak.ID),
 	}
 	trx := db.DB.Save(&node)
 	c.Assert(trx.Error, check.IsNil)
