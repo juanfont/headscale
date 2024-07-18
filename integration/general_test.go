@@ -41,6 +41,7 @@ func TestPingAllByIP(t *testing.T) {
 		hsic.WithTestName("pingallbyip"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
+		hsic.WithGrpcTLS(),
 		hsic.WithHostnameAsServerURL(),
 		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
 	)
@@ -836,6 +837,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		hsic.WithTestName("pingallbyipmany"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
+		hsic.WithGrpcTLS(),
 		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErrHeadscaleEnv(t, err)

@@ -7,7 +7,7 @@
 - Access to create API keys (local access to the `headscale` server)
 - `headscale` _must_ be served over TLS/HTTPS
   - Remote access does _not_ support unencrypted traffic.
-- Port `50443` must be open in the firewall (or port overridden by `grpc_listen_addr` option)
+- Port `50443` must be open in the firewall (or port overridden by `grpc.listen_addr` option)
 
 ## Goal
 

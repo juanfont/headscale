@@ -653,9 +653,27 @@ func (h *Headscale) Serve() error {
 	// https://github.com/soheilhy/cmux/issues/68
 	// https://github.com/soheilhy/cmux/issues/91
 
+	grpcTlsConfig := &tls.Config{
+		NextProtos:   []string{"http/1.1"},
+		Certificates: make([]tls.Certificate, 1),
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	if h.cfg.TLS.GRPCCertPath == "" && h.cfg.TLS.GRPCKeyPath == "" {
+		grpcTlsConfig = tlsConfig
+	} else {
+		grpcTlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLS.GRPCCertPath, h.cfg.TLS.GRPCKeyPath)
+
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to set up gRPC TLS configuration")
+
+			return err
+		}
+	}
+
 	var grpcServer *grpc.Server
 	var grpcListener net.Listener
-	if tlsConfig != nil || h.cfg.GRPCAllowInsecure {
+	if grpcTlsConfig != nil || h.cfg.GRPCAllowInsecure {
 		log.Info().Msgf("Enabling remote gRPC at %s", h.cfg.GRPCAddr)
 
 		grpcOptions := []grpc.ServerOption{
@@ -668,9 +686,9 @@ func (h *Headscale) Serve() error {
 			),
 		}
 
-		if tlsConfig != nil {
+		if grpcTlsConfig != nil {
 			grpcOptions = append(grpcOptions,
-				grpc.Creds(credentials.NewTLS(tlsConfig)),
+				grpc.Creds(credentials.NewTLS(grpcTlsConfig)),
 			)
 		} else {
 			log.Warn().Msg("gRPC is running without security")

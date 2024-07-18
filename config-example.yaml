@@ -24,21 +24,22 @@ listen_addr: 127.0.0.1:8080
 #
 metrics_listen_addr: 127.0.0.1:9090
 
-# Address to listen for gRPC.
 # gRPC is used for controlling a headscale server
 # remotely with the CLI
-# Note: Remote access _only_ works if you have
-# valid certificates.
-#
-# For production:
-# grpc_listen_addr: 0.0.0.0:50443
-grpc_listen_addr: 127.0.0.1:50443
+grpc: 
+  # Address to listen for gRPC.
+  # Note: Remote access _only_ works if you have
+  # valid certificates.
+  #
+  # For production:
+  # listen_addr: 0.0.0.0:50443
+  listen_addr: 127.0.0.1:50443
 
-# Allow the gRPC admin interface to run in INSECURE
-# mode. This is not recommended as the traffic will
-# be unencrypted. Only enable if you know what you
-# are doing.
-grpc_allow_insecure: false
+  # Allow the gRPC admin interface to run in INSECURE
+  # mode. This is not recommended as the traffic will
+  # be unencrypted. Only enable if you know what you
+  # are doing.
+  allow_insecure: false
 
 # The Noise section includes specific configuration for the
 # TS2021 Noise protocol
@@ -165,38 +166,44 @@ database:
   #   ssl: false
 
 ### TLS configuration
-#
-## Let's encrypt / ACME
-#
-# headscale supports automatically requesting and setting up
-# TLS for a domain with Let's Encrypt.
-#
-# URL to ACME directory
-acme_url: https://acme-v02.api.letsencrypt.org/directory
+tls:
+  ## Let's encrypt / ACME
+  #
+  # headscale supports automatically requesting and setting up
+  # TLS for a domain with Let's Encrypt.
+  #
+  # URL to ACME directory
+  acme_url: https://acme-v02.api.letsencrypt.org/directory
 
-# Email to register with ACME provider
-acme_email: ""
+  # Email to register with ACME provider
+  acme_email: ""
 
-# Domain name to request a TLS certificate for:
-tls_letsencrypt_hostname: ""
+  # Domain name to request a TLS certificate for:
+  letsencrypt_hostname: ""
 
-# Path to store certificates and metadata needed by
-# letsencrypt
-# For production:
-tls_letsencrypt_cache_dir: /var/lib/headscale/cache
+  # Path to store certificates and metadata needed by
+  # letsencrypt
+  # For production:
+  letsencrypt_cache_dir: /var/lib/headscale/cache
 
-# Type of ACME challenge to use, currently supported types:
-# HTTP-01 or TLS-ALPN-01
-# See [docs/tls.md](docs/tls.md) for more information
-tls_letsencrypt_challenge_type: HTTP-01
-# When HTTP-01 challenge is chosen, letsencrypt must set up a
-# verification endpoint, and it will be listening on:
-# :http = port 80
-tls_letsencrypt_listen: ":http"
+  # Type of ACME challenge to use, currently supported types:
+  # HTTP-01 or TLS-ALPN-01
+  # See [docs/tls.md](docs/tls.md) for more information
+  letsencrypt_challenge_type: HTTP-01
+  # When HTTP-01 challenge is chosen, letsencrypt must set up a
+  # verification endpoint, and it will be listening on:
+  # :http = port 80
+  letsencrypt_listen: ":http"
 
-## Use already defined certificates:
-tls_cert_path: ""
-tls_key_path: ""
+  ## Use already defined certificates:
+  cert_path: ""
+  key_path: ""
+
+  # Use a separate x509 certificate for gRPC, this is used
+  # instead of the global certificate.
+  grpc:
+    cert_path: ""
+    key_path: ""
 
 log:
   # Output formatting for logs: text or json

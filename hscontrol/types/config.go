@@ -108,8 +108,10 @@ type DatabaseConfig struct {
 }
 
 type TLSConfig struct {
-	CertPath string
-	KeyPath  string
+	CertPath     string
+	KeyPath      string
+	GRPCCertPath string
+	GRPCKeyPath  string
 
 	LetsEncrypt LetsEncryptConfig
 }
@@ -178,6 +180,13 @@ type Tuning struct {
 	NodeMapSessionBufferedChanSize int
 }
 
+func RegisterDeprecatedAlias(old, new string) {
+	if viper.IsSet(old) {
+		log.Warn().Msgf("%s is deprecated and may be removed in future versions, please use %s instead.", old, new)
+		viper.Set(new, viper.GetString(old))
+	}
+}
+
 func LoadConfig(path string, isFile bool) error {
 	if isFile {
 		viper.SetConfigFile(path)
@@ -197,8 +206,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
-	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
-	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
+	viper.SetDefault("tls.letsencrypt_cache_dir", "/var/www/.cache")
+	viper.SetDefault("tls.letsencrypt_challenge_type", HTTP01ChallengeType)
 
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", TextLogFormat)
@@ -214,8 +223,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("unix_socket", "/var/run/headscale/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
 
-	viper.SetDefault("grpc_listen_addr", ":50443")
-	viper.SetDefault("grpc_allow_insecure", false)
+	viper.SetDefault("grpc.listen_addr", ":50443")
+	viper.SetDefault("grpc.allow_insecure", false)
 
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
@@ -254,28 +263,39 @@ func LoadConfig(path string, isFile bool) error {
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
 
+	RegisterDeprecatedAlias("grpc_listen_addr", "grpc.listen_addr")
+	RegisterDeprecatedAlias("grpc_allow_insecure", "grpc.allow_insecure")
+	RegisterDeprecatedAlias("acme_url", "tls.acme_url")
+	RegisterDeprecatedAlias("acme_email", "tls.acme_email")
+	RegisterDeprecatedAlias("tls_letsencrypt_hostname", "tls.letsencrypt_hostname")
+	RegisterDeprecatedAlias("tls_letsencrypt_cache_dir", "tls.letsencrypt_cache_dir")
+	RegisterDeprecatedAlias("tls_letsencrypt_challenge_type", "tls.letsencrypt_challenge_type")
+	RegisterDeprecatedAlias("tls_letsencrypt_listen", "tls.letsencrypt_listen")
+	RegisterDeprecatedAlias("tls_cert_path", "tls.cert_path")
+	RegisterDeprecatedAlias("tls_key_path", "tls.key_path")
+
 	// Collect any validation errors and return them all at once
 	var errorText string
-	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
-		((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
-		errorText += "Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both\n"
+	if (viper.GetString("tls.letsencrypt_hostname") != "") &&
+		((viper.GetString("tls.cert_path") != "") || (viper.GetString("tls.key_path") != "")) {
+		errorText += "Fatal config error: set either tls.letsencrypt_hostname or tls.cert_path/tls.key_path, not both\n"
 	}
 
 	if !viper.IsSet("noise") || viper.GetString("noise.private_key_path") == "" {
 		errorText += "Fatal config error: headscale now requires a new `noise.private_key_path` field in the config file for the Tailscale v2 protocol\n"
 	}
 
-	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
-		(viper.GetString("tls_letsencrypt_challenge_type") == TLSALPN01ChallengeType) &&
+	if (viper.GetString("tls.letsencrypt_hostname") != "") &&
+		(viper.GetString("tls.letsencrypt_challenge_type") == TLSALPN01ChallengeType) &&
 		(!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
 		log.Warn().
-			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
+			Msg("Warning: when using tls.letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
-	if (viper.GetString("tls_letsencrypt_challenge_type") != HTTP01ChallengeType) &&
-		(viper.GetString("tls_letsencrypt_challenge_type") != TLSALPN01ChallengeType) {
-		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
+	if (viper.GetString("tls.letsencrypt_challenge_type") != HTTP01ChallengeType) &&
+		(viper.GetString("tls.letsencrypt_challenge_type") != TLSALPN01ChallengeType) {
+		errorText += "Fatal config error: the only supported values for tls.letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
 	}
 
 	if !strings.HasPrefix(viper.GetString("server_url"), "http://") &&
@@ -305,18 +325,24 @@ func LoadConfig(path string, isFile bool) error {
 func GetTLSConfig() TLSConfig {
 	return TLSConfig{
 		LetsEncrypt: LetsEncryptConfig{
-			Hostname: viper.GetString("tls_letsencrypt_hostname"),
-			Listen:   viper.GetString("tls_letsencrypt_listen"),
+			Hostname: viper.GetString("tls.letsencrypt_hostname"),
+			Listen:   viper.GetString("tls.letsencrypt_listen"),
 			CacheDir: util.AbsolutePathFromConfigPath(
-				viper.GetString("tls_letsencrypt_cache_dir"),
+				viper.GetString("tls.letsencrypt_cache_dir"),
 			),
-			ChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
+			ChallengeType: viper.GetString("tls.letsencrypt_challenge_type"),
 		},
 		CertPath: util.AbsolutePathFromConfigPath(
-			viper.GetString("tls_cert_path"),
+			viper.GetString("tls.cert_path"),
 		),
 		KeyPath: util.AbsolutePathFromConfigPath(
-			viper.GetString("tls_key_path"),
+			viper.GetString("tls.key_path"),
+		),
+		GRPCCertPath: util.AbsolutePathFromConfigPath(
+			viper.GetString("tls.grpc.cert_path"),
+		),
+		GRPCKeyPath: util.AbsolutePathFromConfigPath(
+			viper.GetString("tls.grpc.key_path"),
 		),
 	}
 }
@@ -698,8 +724,8 @@ func GetHeadscaleConfig() (*Config, error) {
 		ServerURL:          viper.GetString("server_url"),
 		Addr:               viper.GetString("listen_addr"),
 		MetricsAddr:        viper.GetString("metrics_listen_addr"),
-		GRPCAddr:           viper.GetString("grpc_listen_addr"),
-		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
+		GRPCAddr:           viper.GetString("grpc.listen_addr"),
+		GRPCAllowInsecure:  viper.GetBool("grpc.allow_insecure"),
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 
 		PrefixV4:     prefix4,
@@ -724,8 +750,8 @@ func GetHeadscaleConfig() (*Config, error) {
 		DNSConfig:             dnsConfig,
 		DNSUserNameInMagicDNS: viper.GetBool("dns_config.use_username_in_magic_dns"),
 
-		ACMEEmail: viper.GetString("acme_email"),
-		ACMEURL:   viper.GetString("acme_url"),
+		ACMEEmail: viper.GetString("tls.acme_email"),
+		ACMEURL:   viper.GetString("tls.acme_url"),
 
 		UnixSocket:           viper.GetString("unix_socket"),
 		UnixSocketPermission: util.GetFileMode("unix_socket_permission"),
