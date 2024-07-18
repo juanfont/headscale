@@ -1,8 +1,9 @@
 package integration
 
 import (
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
 type ControlServer interface {
@@ -10,6 +11,7 @@ type ControlServer interface {
 	SaveLog(string) error
 	SaveProfile(string) error
 	Execute(command []string) (string, error)
+	WriteFile(path string, content []byte) error
 	ConnectToNetwork(network *dockertest.Network) error
 	GetHealthEndpoint() string
 	GetEndpoint() string

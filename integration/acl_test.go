@@ -1,11 +1,13 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -1010,5 +1012,158 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			assert.Empty(t, result)
 			assert.Error(t, err)
 		})
+	}
+}
+
+func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"user1": 1,
+		"user2": 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec,
+		[]tsic.Option{
+			// Alpine containers dont have ip6tables set up, which causes
+			// tailscaled to stop configuring the wgengine, causing it
+			// to not configure DNS.
+			tsic.WithNetfilter("off"),
+			tsic.WithDockerEntrypoint([]string{
+				"/bin/sh",
+				"-c",
+				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+			}),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithTestName("policyreload"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_POLICY_MODE": "database",
+		}),
+	)
+	assertNoErr(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	assertNoErrListFQDN(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	assertNoErr(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	assertNoErr(t, err)
+
+	all := append(user1Clients, user2Clients...)
+
+	// Initially all nodes can reach each other
+	for _, client := range all {
+		for _, peer := range all {
+			if client.ID() == peer.ID() {
+				continue
+			}
+
+			fqdn, err := peer.FQDN()
+			assertNoErr(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			assertNoErr(t, err)
+		}
+	}
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	p := policy.ACLPolicy{
+		ACLs: []policy.ACL{
+			{
+				Action:       "accept",
+				Sources:      []string{"user1"},
+				Destinations: []string{"user2:*"},
+			},
+		},
+		Hosts: policy.Hosts{},
+	}
+
+	pBytes, _ := json.Marshal(p)
+
+	policyFilePath := "/etc/headscale/policy.json"
+
+	err = headscale.WriteFile(policyFilePath, pBytes)
+	assertNoErr(t, err)
+
+	// No policy is present at this time.
+	// Add a new policy from a file.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"set",
+			"-f",
+			policyFilePath,
+		},
+	)
+	assertNoErr(t, err)
+
+	// Get the current policy and check
+	// if it is the same as the one we set.
+	var output *policy.ACLPolicy
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"policy",
+			"get",
+			"--output",
+			"json",
+		},
+		&output,
+	)
+	assertNoErr(t, err)
+
+	assert.Len(t, output.ACLs, 1)
+
+	if diff := cmp.Diff(p, *output); diff != "" {
+		t.Errorf("unexpected policy(-want +got):\n%s", diff)
+	}
+
+	// Test that user1 can visit all user2
+	for _, client := range user1Clients {
+		for _, peer := range user2Clients {
+			fqdn, err := peer.FQDN()
+			assertNoErr(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			assertNoErr(t, err)
+		}
+	}
+
+	// Test that user2 _cannot_ visit user1
+	for _, client := range user2Clients {
+		for _, peer := range user1Clients {
+			fqdn, err := peer.FQDN()
+			assertNoErr(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Empty(t, result)
+			assert.Error(t, err)
+		}
 	}
 }

@@ -395,6 +395,18 @@ func NewHeadscaleDatabase(
 					return nil
 				},
 			},
+			{
+				ID: "202406021630",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.Policy{})
+					if err != nil {
+						return err
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
