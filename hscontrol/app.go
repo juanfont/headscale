@@ -80,11 +80,6 @@ const (
 	registerCacheCleanup    = time.Minute * 20
 )
 
-// func init() {
-// 	deadlock.Opts.DeadlockTimeout = 15 * time.Second
-// 	deadlock.Opts.PrintAllCurrentGoroutines = true
-// }
-
 // Headscale represents the base app of the service.
 type Headscale struct {
 	cfg             *types.Config
