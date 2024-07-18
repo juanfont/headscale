@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -617,14 +618,14 @@ func nodesToPtables(
 		forcedTags = strings.TrimLeft(forcedTags, ",")
 		var invalidTags string
 		for _, tag := range node.GetInvalidTags() {
-			if !contains(node.GetForcedTags(), tag) {
+			if !slices.Contains(node.GetForcedTags(), tag) {
 				invalidTags += "," + pterm.LightRed(tag)
 			}
 		}
 		invalidTags = strings.TrimLeft(invalidTags, ",")
 		var validTags string
 		for _, tag := range node.GetValidTags() {
-			if !contains(node.GetForcedTags(), tag) {
+			if !slices.Contains(node.GetForcedTags(), tag) {
 				validTags += "," + pterm.LightGreen(tag)
 			}
 		}
