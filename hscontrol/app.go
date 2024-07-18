@@ -8,7 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
-	_ "net/http/pprof" //nolint
+	_ "net/http/pprof" // nolint
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -23,16 +23,6 @@ import (
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/juanfont/headscale"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/derp"
-	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
-	"github.com/juanfont/headscale/hscontrol/mapper"
-	"github.com/juanfont/headscale/hscontrol/notifier"
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/pkg/profile"
@@ -57,6 +47,17 @@ import (
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
 	"tailscale.com/util/dnsname"
+
+	"github.com/juanfont/headscale"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/derp"
+	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
+	"github.com/juanfont/headscale/hscontrol/mapper"
+	"github.com/juanfont/headscale/hscontrol/notifier"
+	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 var (
@@ -482,6 +483,10 @@ func (h *Headscale) Serve() error {
 
 	var err error
 
+	if err = h.loadACLPolicy(); err != nil {
+		return fmt.Errorf("failed to load ACL policy: %w", err)
+	}
+
 	if dumpConfig {
 		spew.Dump(h.cfg)
 	}
@@ -759,17 +764,12 @@ func (h *Headscale) Serve() error {
 					Msg("Received SIGHUP, reloading ACL and Config")
 
 				// TODO(kradalby): Reload config on SIGHUP
+				if err := h.loadACLPolicy(); err != nil {
+					log.Error().Err(err).Msg("failed to reload ACL policy")
+				}
 
-				if h.cfg.ACL.PolicyPath != "" {
-					aclPath := util.AbsolutePathFromConfigPath(h.cfg.ACL.PolicyPath)
-					pol, err := policy.LoadACLPolicyFromPath(aclPath)
-					if err != nil {
-						log.Error().Err(err).Msg("Failed to reload ACL policy")
-					}
-
-					h.ACLPolicy = pol
+				if h.ACLPolicy != nil {
 					log.Info().
-						Str("path", aclPath).
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
 					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
@@ -777,7 +777,6 @@ func (h *Headscale) Serve() error {
 						Type: types.StateFullUpdate,
 					})
 				}
-
 			default:
 				trace := log.Trace().Msgf
 				log.Info().
@@ -986,4 +985,49 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	}
 
 	return &machineKey, nil
+}
+
+func (h *Headscale) loadACLPolicy() error {
+	var (
+		pol *policy.ACLPolicy
+		err error
+	)
+
+	switch h.cfg.Policy.Mode {
+	case types.PolicyModeFile:
+		path := h.cfg.Policy.Path
+
+		// It is fine to start headscale without a policy file.
+		if len(path) == 0 {
+			return nil
+		}
+
+		absPath := util.AbsolutePathFromConfigPath(path)
+		pol, err = policy.LoadACLPolicyFromPath(absPath)
+		if err != nil {
+			return fmt.Errorf("failed to load ACL policy from file: %w", err)
+		}
+	case types.PolicyModeDB:
+		p, err := h.db.GetPolicy()
+		if err != nil {
+			if errors.Is(err, types.ErrPolicyNotFound) {
+				return nil
+			}
+
+			return fmt.Errorf("failed to get policy from database: %w", err)
+		}
+
+		pol, err = policy.LoadACLPolicyFromBytes([]byte(p.Data))
+		if err != nil {
+			return fmt.Errorf("failed to parse policy: %w", err)
+		}
+	default:
+		log.Fatal().
+			Str("mode", string(h.cfg.Policy.Mode)).
+			Msg("Unknown ACL policy mode")
+	}
+
+	h.ACLPolicy = pol
+
+	return nil
 }

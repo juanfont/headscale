@@ -12,15 +12,16 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
+
+	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 func (s *Suite) TestGetNode(c *check.C) {
@@ -543,7 +544,7 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 }
 	`)
 
-	pol, err := policy.LoadACLPolicyFromBytes(acl, "hujson")
+	pol, err := policy.LoadACLPolicyFromBytes(acl)
 	c.Assert(err, check.IsNil)
 	c.Assert(pol, check.NotNil)
 

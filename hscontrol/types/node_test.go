@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -536,6 +537,56 @@ func TestApplyPeerChange(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, tt.nodeBefore, util.Comparers...); diff != "" {
 				t.Errorf("Patch unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNodeRegisterMethodToV1Enum(t *testing.T) {
+	tests := []struct {
+		name string
+		node Node
+		want v1.RegisterMethod
+	}{
+		{
+			name: "authkey",
+			node: Node{
+				ID:             1,
+				RegisterMethod: util.RegisterMethodAuthKey,
+			},
+			want: v1.RegisterMethod_REGISTER_METHOD_AUTH_KEY,
+		},
+		{
+			name: "oidc",
+			node: Node{
+				ID:             1,
+				RegisterMethod: util.RegisterMethodOIDC,
+			},
+			want: v1.RegisterMethod_REGISTER_METHOD_OIDC,
+		},
+		{
+			name: "cli",
+			node: Node{
+				ID:             1,
+				RegisterMethod: util.RegisterMethodCLI,
+			},
+			want: v1.RegisterMethod_REGISTER_METHOD_CLI,
+		},
+		{
+			name: "unknown",
+			node: Node{
+				ID: 0,
+			},
+			want: v1.RegisterMethod_REGISTER_METHOD_UNSPECIFIED,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.node.RegisterMethodToV1Enum()
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("RegisterMethodToV1Enum() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}

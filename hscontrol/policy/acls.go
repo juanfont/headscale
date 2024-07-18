@@ -7,18 +7,17 @@ import (
 	"io"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
-	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
+
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 var (
@@ -108,35 +107,22 @@ func LoadACLPolicyFromPath(path string) (*ACLPolicy, error) {
 		Bytes("file", policyBytes).
 		Msg("Loading ACLs")
 
-	switch filepath.Ext(path) {
-	case ".yml", ".yaml":
-		return LoadACLPolicyFromBytes(policyBytes, "yaml")
-	}
-
-	return LoadACLPolicyFromBytes(policyBytes, "hujson")
+	return LoadACLPolicyFromBytes(policyBytes)
 }
 
-func LoadACLPolicyFromBytes(acl []byte, format string) (*ACLPolicy, error) {
+func LoadACLPolicyFromBytes(acl []byte) (*ACLPolicy, error) {
 	var policy ACLPolicy
-	switch format {
-	case "yaml":
-		err := yaml.Unmarshal(acl, &policy)
-		if err != nil {
-			return nil, err
-		}
 
-	default:
-		ast, err := hujson.Parse(acl)
-		if err != nil {
-			return nil, err
-		}
+	ast, err := hujson.Parse(acl)
+	if err != nil {
+		return nil, fmt.Errorf("parsing hujson, err: %w", err)
+	}
 
-		ast.Standardize()
-		acl = ast.Pack()
-		err = json.Unmarshal(acl, &policy)
-		if err != nil {
-			return nil, err
-		}
+	ast.Standardize()
+	acl = ast.Pack()
+
+	if err := json.Unmarshal(acl, &policy); err != nil {
+		return nil, fmt.Errorf("unmarshalling policy, err: %w", err)
 	}
 
 	if policy.IsZero() {
@@ -846,7 +832,7 @@ func (pol *ACLPolicy) expandIPsFromUser(
 
 	// shortcurcuit if we have no nodes to get ips from.
 	if len(filteredNodes) == 0 {
-		return nil, nil //nolint
+		return nil, nil // nolint
 	}
 
 	for _, node := range filteredNodes {
