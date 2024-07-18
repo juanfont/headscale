@@ -94,7 +94,6 @@ func (m *Mapper) String() string {
 func generateUserProfiles(
 	node *types.Node,
 	peers types.Nodes,
-	baseDomain string,
 ) []tailcfg.UserProfile {
 	userMap := make(map[string]types.User)
 	userMap[node.User.Name] = node.User
@@ -104,18 +103,8 @@ func generateUserProfiles(
 
 	var profiles []tailcfg.UserProfile
 	for _, user := range userMap {
-		displayName := user.Name
-
-		if baseDomain != "" {
-			displayName = fmt.Sprintf("%s@%s", user.Name, baseDomain)
-		}
-
 		profiles = append(profiles,
-			tailcfg.UserProfile{
-				ID:          tailcfg.UserID(user.ID),
-				LoginName:   user.Name,
-				DisplayName: displayName,
-			})
+			user.TailscaleUserProfile())
 	}
 
 	return profiles
@@ -569,7 +558,7 @@ func appendPeerChanges(
 		changed = policy.FilterNodesByACL(node, changed, packetFilter)
 	}
 
-	profiles := generateUserProfiles(node, changed, cfg.BaseDomain)
+	profiles := generateUserProfiles(node, changed)
 
 	dnsConfig := generateDNSConfig(
 		cfg,
