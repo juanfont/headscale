@@ -10,7 +10,7 @@ import (
 
 // ACLPolicy represents a Tailscale ACL Policy.
 type ACLPolicy struct {
-	Groups        Groups        `json:"groups"    `
+	Groups        Groups        `json:"groups"`
 	Hosts         Hosts         `json:"hosts"`
 	TagOwners     TagOwners     `json:"tagOwners"`
 	ACLs          []ACL         `json:"acls"`

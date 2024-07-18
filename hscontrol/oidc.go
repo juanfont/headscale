@@ -56,7 +56,6 @@ func (h *Headscale) initOIDC() error {
 	// grab oidc config if it hasn't been already
 	if h.oauth2Config == nil {
 		h.oidcProvider, err = oidc.NewProvider(context.Background(), h.cfg.OIDC.Issuer)
-
 		if err != nil {
 			return fmt.Errorf("creating OIDC provider from issuer config: %w", err)
 		}

@@ -13,13 +13,12 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 var errDatabaseNotSupported = errors.New("database type not supported")
@@ -331,7 +330,7 @@ func NewHeadscaleDatabase(
 				// IP v4 and v6 column.
 				// Note that previously, the list _could_ contain more
 				// than two addresses, which should not really happen.
-				// In that case, the first occurence of each type will
+				// In that case, the first occurrence of each type will
 				// be kept.
 				ID: "2024041121742",
 				Migrate: func(tx *gorm.DB) error {

@@ -337,7 +337,6 @@ func (h *Headscale) handleAuthKey(
 		if len(aclTags) > 0 {
 			// This conditional preserves the existing behaviour, although SaaS would reset the tags on auth-key login
 			err = h.db.SetTags(node.ID, aclTags)
-
 			if err != nil {
 				log.Error().
 					Caller().

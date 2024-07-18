@@ -184,7 +184,6 @@ func (m *mapSession) serve() {
 
 		return
 	}
-
 }
 
 // serveLongPoll ensures the node gets the appropriate updates from either

@@ -177,9 +177,9 @@ func WithPostgres() Option {
 }
 
 // WithIPAllocationStrategy sets the tests IP Allocation strategy.
-func WithIPAllocationStrategy(strat types.IPAllocationStrategy) Option {
+func WithIPAllocationStrategy(start types.IPAllocationStrategy) Option {
 	return func(hsic *HeadscaleInContainer) {
-		hsic.env["HEADSCALE_PREFIXES_ALLOCATION"] = string(strat)
+		hsic.env["HEADSCALE_PREFIXES_ALLOCATION"] = string(start)
 	}
 }
 

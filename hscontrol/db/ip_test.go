@@ -18,9 +18,11 @@ var mpp = func(pref string) *netip.Prefix {
 	p := netip.MustParsePrefix(pref)
 	return &p
 }
+
 var na = func(pref string) netip.Addr {
 	return netip.MustParseAddr(pref)
 }
+
 var nap = func(pref string) *netip.Addr {
 	n := na(pref)
 	return &n

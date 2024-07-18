@@ -1,12 +1,11 @@
 package db
 
 import (
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-
 	"errors"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // SetPolicy sets the policy in the database.

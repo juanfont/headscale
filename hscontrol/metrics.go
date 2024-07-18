@@ -40,7 +40,7 @@ var (
 	mapResponseWriteUpdatesInStream = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "mapresponse_write_updates_in_stream_total",
-		Help:      "total count of writes that occured in a stream session, pre-68 nodes",
+		Help:      "total count of writes that occurred in a stream session, pre-68 nodes",
 	}, []string{"status"})
 	mapResponseEndpointUpdates = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
