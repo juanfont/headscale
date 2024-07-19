@@ -250,9 +250,6 @@ func NewHeadscaleDatabase(
 
 						for item, node := range nodes {
 							if node.GivenName == "" {
-								normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-									node.Hostname,
-								)
 								if err != nil {
 									log.Error().
 										Caller().
@@ -262,7 +259,7 @@ func NewHeadscaleDatabase(
 								}
 
 								err = tx.Model(nodes[item]).Updates(types.Node{
-									GivenName: normalizedHostname,
+									GivenName: node.Hostname,
 								}).Error
 								if err != nil {
 									log.Error().

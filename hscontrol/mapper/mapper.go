@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
@@ -95,10 +94,10 @@ func generateUserProfiles(
 	node *types.Node,
 	peers types.Nodes,
 ) []tailcfg.UserProfile {
-	userMap := make(map[string]types.User)
-	userMap[node.User.Name] = node.User
+	userMap := make(map[uint]types.User)
+	userMap[node.User.ID] = node.User
 	for _, peer := range peers {
-		userMap[peer.User.Name] = peer.User // not worth checking if already is there
+		userMap[peer.User.ID] = peer.User // not worth checking if already is there
 	}
 
 	var profiles []tailcfg.UserProfile
@@ -121,32 +120,6 @@ func generateDNSConfig(
 	}
 
 	dnsConfig := cfg.DNSConfig.Clone()
-
-	// if MagicDNS is enabled
-	if dnsConfig.Proxied {
-		if cfg.DNSUserNameInMagicDNS {
-			// Only inject the Search Domain of the current user
-			// shared nodes should use their full FQDN
-			dnsConfig.Domains = append(
-				dnsConfig.Domains,
-				fmt.Sprintf(
-					"%s.%s",
-					node.User.Name,
-					baseDomain,
-				),
-			)
-
-			userSet := mapset.NewSet[types.User]()
-			userSet.Add(node.User)
-			for _, p := range peers {
-				userSet.Add(p.User)
-			}
-			for _, user := range userSet.ToSlice() {
-				dnsRoute := fmt.Sprintf("%v.%v", user.Name, baseDomain)
-				dnsConfig.Routes[dnsRoute] = nil
-			}
-		}
-	}
 
 	addNextDNSMetadata(dnsConfig.Resolvers, node)
 

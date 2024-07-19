@@ -617,18 +617,15 @@ func enableRoutes(tx *gorm.DB,
 }
 
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
-	normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-		suppliedName,
-	)
-	if err != nil {
-		return "", err
+	if len(suppliedName) > util.LabelHostnameLength {
+		return "", types.ErrHostnameTooLong
 	}
 
 	if randomSuffix {
 		// Trim if a hostname will be longer than 63 chars after adding the hash.
 		trimmedHostnameLength := util.LabelHostnameLength - NodeGivenNameHashLength - NodeGivenNameTrimSize
-		if len(normalizedHostname) > trimmedHostnameLength {
-			normalizedHostname = normalizedHostname[:trimmedHostnameLength]
+		if len(suppliedName) > trimmedHostnameLength {
+			suppliedName = suppliedName[:trimmedHostnameLength]
 		}
 
 		suffix, err := util.GenerateRandomStringDNSSafe(NodeGivenNameHashLength)
@@ -636,10 +633,10 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 			return "", err
 		}
 
-		normalizedHostname += "-" + suffix
+		suppliedName += "-" + suffix
 	}
 
-	return normalizedHostname, nil
+	return suppliedName, nil
 }
 
 func (hsdb *HSDatabase) GenerateGivenName(

@@ -738,15 +738,7 @@ func (pol *ACLPolicy) expandUsersFromGroup(
 				ErrInvalidGroup,
 			)
 		}
-		grp, err := util.NormalizeToFQDNRulesConfigFromViper(group)
-		if err != nil {
-			return []string{}, fmt.Errorf(
-				"failed to normalize group %q, err: %w",
-				group,
-				ErrInvalidGroup,
-			)
-		}
-		users = append(users, grp)
+		users = append(users, group)
 	}
 
 	return users, nil

@@ -472,6 +472,7 @@ func (a *AuthProviderOIDC) registerNodeForOIDCCallback(
 			tx,
 			a.registrationCache,
 			*machineKey,
+			// TODO(kradalby): Should be ID, not name
 			user.Name,
 			&expiry,
 			util.RegisterMethodOIDC,
