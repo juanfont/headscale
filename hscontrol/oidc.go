@@ -196,7 +196,7 @@ func (a *AuthProviderOIDC) OIDCCallback(
 		return
 	}
 
-	rawIDToken, err := a.getIDTokenForOIDCCallback(req.Context(), code, state)
+	rawIDToken, err := a.getIDTokenForOIDCCallback(req.Context(), code)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
@@ -296,7 +296,7 @@ func validateOIDCCallbackParams(
 
 func (a *AuthProviderOIDC) getIDTokenForOIDCCallback(
 	ctx context.Context,
-	code, state string,
+	code string,
 ) (string, error) {
 	oauth2Token, err := a.oauth2Config.Exchange(ctx, code)
 	if err != nil {
