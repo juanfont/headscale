@@ -337,7 +337,7 @@ func RegisterNodeFromAuthCallback(
 
 	if nodeInterface, ok := cache.Get(mkey.String()); ok {
 		if registrationNode, ok := nodeInterface.(types.Node); ok {
-			user, err := GetUser(tx, userName)
+			user, err := GetUserByName(tx, userName)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"failed to find user in register node from auth callback, %w",
@@ -390,7 +390,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
-		Str("user", node.User.Name).
+		Str("user", node.User.Username()).
 		Msg("Registering node")
 
 	// If the node exists and it already has IP(s), we just save it
@@ -406,7 +406,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("node", node.Hostname).
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
-			Str("user", node.User.Name).
+			Str("user", node.User.Username()).
 			Msg("Node authorized again")
 
 		return &node, nil
@@ -617,18 +617,15 @@ func enableRoutes(tx *gorm.DB,
 }
 
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
-	normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-		suppliedName,
-	)
-	if err != nil {
-		return "", err
+	if len(suppliedName) > util.LabelHostnameLength {
+		return "", types.ErrHostnameTooLong
 	}
 
 	if randomSuffix {
 		// Trim if a hostname will be longer than 63 chars after adding the hash.
 		trimmedHostnameLength := util.LabelHostnameLength - NodeGivenNameHashLength - NodeGivenNameTrimSize
-		if len(normalizedHostname) > trimmedHostnameLength {
-			normalizedHostname = normalizedHostname[:trimmedHostnameLength]
+		if len(suppliedName) > trimmedHostnameLength {
+			suppliedName = suppliedName[:trimmedHostnameLength]
 		}
 
 		suffix, err := util.GenerateRandomStringDNSSafe(NodeGivenNameHashLength)
@@ -636,10 +633,10 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 			return "", err
 		}
 
-		normalizedHostname += "-" + suffix
+		suppliedName += "-" + suffix
 	}
 
-	return normalizedHostname, nil
+	return suppliedName, nil
 }
 
 func (hsdb *HSDatabase) GenerateGivenName(

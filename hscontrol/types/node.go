@@ -406,19 +406,6 @@ func (node *Node) GetFQDN(cfg *Config, baseDomain string) (string, error) {
 			baseDomain,
 		)
 
-		if cfg.DNSUserNameInMagicDNS {
-			if node.User.Name == "" {
-				return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeUserHasNoName)
-			}
-
-			hostname = fmt.Sprintf(
-				"%s.%s.%s",
-				node.GivenName,
-				node.User.Name,
-				baseDomain,
-			)
-		}
-
 		if len(hostname) > MaxHostnameLength {
 			return "", fmt.Errorf(
 				"failed to create valid FQDN (%s): %w",

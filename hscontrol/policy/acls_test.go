@@ -342,7 +342,7 @@ func TestParsing(t *testing.T) {
 			],
 		},
 	],
-}			
+}
 `,
 			want: []tailcfg.FilterRule{
 				{
@@ -635,25 +635,6 @@ func Test_expandGroup(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "Expand emails in group strip domains",
-			field: field{
-				pol: ACLPolicy{
-					Groups: Groups{
-						"group:admin": []string{
-							"joe.bar@gmail.com",
-							"john.doe@yahoo.fr",
-						},
-					},
-				},
-			},
-			args: args{
-				group:      "group:admin",
-				stripEmail: true,
-			},
-			want:    []string{"joe.bar", "john.doe"},
-			wantErr: false,
-		},
-		{
 			name: "Expand emails in group",
 			field: field{
 				pol: ACLPolicy{
@@ -668,7 +649,7 @@ func Test_expandGroup(t *testing.T) {
 			args: args{
 				group: "group:admin",
 			},
-			want:    []string{"joe.bar.gmail.com", "john.doe.yahoo.fr"},
+			want:    []string{"joe.bar@gmail.com", "john.doe@yahoo.fr"},
 			wantErr: false,
 		},
 	}
@@ -1840,7 +1821,7 @@ func TestTheInternet(t *testing.T) {
 
 	internetPrefs := internetSet.Prefixes()
 
-	for i, _ := range internetPrefs {
+	for i := range internetPrefs {
 		if internetPrefs[i].String() != hsExitNodeDest[i].IP {
 			t.Errorf("prefix from internet set %q != hsExit list %q", internetPrefs[i].String(), hsExitNodeDest[i].IP)
 		}

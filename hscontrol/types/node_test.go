@@ -133,71 +133,6 @@ func TestNodeFQDN(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "all-set-with-username",
-			node: Node{
-				GivenName: "test",
-				User: User{
-					Name: "user",
-				},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: true,
-			},
-			domain: "example.com",
-			want:   "test.user.example.com",
-		},
-		{
-			name: "no-given-name-with-username",
-			node: Node{
-				User: User{
-					Name: "user",
-				},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: true,
-			},
-			domain:  "example.com",
-			wantErr: "failed to create valid FQDN: node has no given name",
-		},
-		{
-			name: "no-user-name-with-username",
-			node: Node{
-				GivenName: "test",
-				User:      User{},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: true,
-			},
-			domain:  "example.com",
-			wantErr: "failed to create valid FQDN: node user has no name",
-		},
-		{
-			name: "no-magic-dns-with-username",
-			node: Node{
-				GivenName: "test",
-				User: User{
-					Name: "user",
-				},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: false,
-				},
-				DNSUserNameInMagicDNS: true,
-			},
-			domain: "example.com",
-			want:   "test",
-		},
-		{
 			name: "no-dnsconfig-with-username",
 			node: Node{
 				GivenName: "test",
@@ -220,7 +155,6 @@ func TestNodeFQDN(t *testing.T) {
 				DNSConfig: &tailcfg.DNSConfig{
 					Proxied: true,
 				},
-				DNSUserNameInMagicDNS: false,
 			},
 			domain: "example.com",
 			want:   "test.example.com",
@@ -236,7 +170,6 @@ func TestNodeFQDN(t *testing.T) {
 				DNSConfig: &tailcfg.DNSConfig{
 					Proxied: true,
 				},
-				DNSUserNameInMagicDNS: false,
 			},
 			domain:  "example.com",
 			wantErr: "failed to create valid FQDN: node has no given name",
@@ -251,7 +184,6 @@ func TestNodeFQDN(t *testing.T) {
 				DNSConfig: &tailcfg.DNSConfig{
 					Proxied: true,
 				},
-				DNSUserNameInMagicDNS: false,
 			},
 			domain: "example.com",
 			want:   "test.example.com",
@@ -268,7 +200,6 @@ func TestNodeFQDN(t *testing.T) {
 				DNSConfig: &tailcfg.DNSConfig{
 					Proxied: false,
 				},
-				DNSUserNameInMagicDNS: false,
 			},
 			domain: "example.com",
 			want:   "test",

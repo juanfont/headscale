@@ -250,9 +250,6 @@ func NewHeadscaleDatabase(
 
 						for item, node := range nodes {
 							if node.GivenName == "" {
-								normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-									node.Hostname,
-								)
 								if err != nil {
 									log.Error().
 										Caller().
@@ -262,7 +259,7 @@ func NewHeadscaleDatabase(
 								}
 
 								err = tx.Model(nodes[item]).Updates(types.Node{
-									GivenName: normalizedHostname,
+									GivenName: node.Hostname,
 								}).Error
 								if err != nil {
 									log.Error().
@@ -399,6 +396,18 @@ func NewHeadscaleDatabase(
 				ID: "202406021630",
 				Migrate: func(tx *gorm.DB) error {
 					err := tx.AutoMigrate(&types.Policy{})
+					if err != nil {
+						return err
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				ID: "202407191627",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.User{})
 					if err != nil {
 						return err
 					}

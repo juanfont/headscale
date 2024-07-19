@@ -40,7 +40,7 @@ func (api headscaleV1APIServer) GetUser(
 	ctx context.Context,
 	request *v1.GetUserRequest,
 ) (*v1.GetUserResponse, error) {
-	user, err := api.h.db.GetUser(request.GetName())
+	user, err := api.h.db.GetUserByName(request.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (api headscaleV1APIServer) RenameUser(
 		return nil, err
 	}
 
-	user, err := api.h.db.GetUser(request.GetNewName())
+	user, err := api.h.db.GetUserByName(request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
@@ -750,7 +750,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	ctx context.Context,
 	request *v1.DebugCreateNodeRequest,
 ) (*v1.DebugCreateNodeResponse, error) {
-	user, err := api.h.db.GetUser(request.GetUser())
+	user, err := api.h.db.GetUserByName(request.GetUser())
 	if err != nil {
 		return nil, err
 	}

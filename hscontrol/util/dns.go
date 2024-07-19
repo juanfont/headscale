@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/spf13/viper"
 	"go4.org/netipx"
 	"tailscale.com/util/dnsname"
 )
@@ -24,38 +23,6 @@ const (
 var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var ErrInvalidUserName = errors.New("invalid user name")
-
-func NormalizeToFQDNRulesConfigFromViper(name string) (string, error) {
-	strip := viper.GetBool("oidc.strip_email_domain")
-
-	return NormalizeToFQDNRules(name, strip)
-}
-
-// NormalizeToFQDNRules will replace forbidden chars in user
-// it can also return an error if the user doesn't respect RFC 952 and 1123.
-func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
-	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, "'", "")
-	atIdx := strings.Index(name, "@")
-	if stripEmailDomain && atIdx > 0 {
-		name = name[:atIdx]
-	} else {
-		name = strings.ReplaceAll(name, "@", ".")
-	}
-	name = invalidCharsInUserRegex.ReplaceAllString(name, "-")
-
-	for _, elt := range strings.Split(name, ".") {
-		if len(elt) > LabelHostnameLength {
-			return "", fmt.Errorf(
-				"label %v is more than 63 chars: %w",
-				elt,
-				ErrInvalidUserName,
-			)
-		}
-	}
-
-	return name, nil
-}
 
 func CheckForFQDNRules(name string) error {
 	if len(name) > LabelHostnameLength {

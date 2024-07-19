@@ -645,7 +645,7 @@ func EnableAutoApprovedRoutes(
 			Msg("looking up route for autoapproving")
 
 		for _, approvedAlias := range routeApprovers {
-			if approvedAlias == node.User.Name {
+			if approvedAlias == node.User.Username() {
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
 				// TODO(kradalby): figure out how to get this to depend on less stuff
