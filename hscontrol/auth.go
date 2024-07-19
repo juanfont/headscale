@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
@@ -18,6 +17,11 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
 )
+
+type AuthProvider interface {
+	RegisterHandler(http.ResponseWriter, *http.Request)
+	AuthURL(key.MachinePublic) string
+}
 
 func logAuthFunc(
 	registerRequest tailcfg.RegisterRequest,
@@ -472,17 +476,7 @@ func (h *Headscale) handleNewNode(
 	// The node registration is new, redirect the client to the registration URL
 	logTrace("The node seems to be new, sending auth url")
 
-	if h.oauth2Config != nil {
-		resp.AuthURL = fmt.Sprintf(
-			"%s/oidc/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			machineKey.String(),
-		)
-	} else {
-		resp.AuthURL = fmt.Sprintf("%s/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			machineKey.String())
-	}
+	resp.AuthURL = h.authProvider.AuthURL(machineKey)
 
 	respBody, err := json.Marshal(resp)
 	if err != nil {
@@ -710,15 +704,7 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 		Str("node_key_old", regReq.OldNodeKey.ShortString()).
 		Msg("Node registration has expired or logged out. Sending a auth url to register")
 
-	if h.oauth2Config != nil {
-		resp.AuthURL = fmt.Sprintf("%s/oidc/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			machineKey.String())
-	} else {
-		resp.AuthURL = fmt.Sprintf("%s/register/%s",
-			strings.TrimSuffix(h.cfg.ServerURL, "/"),
-			machineKey.String())
-	}
+	resp.AuthURL = h.authProvider.AuthURL(machineKey)
 
 	respBody, err := json.Marshal(resp)
 	if err != nil {
