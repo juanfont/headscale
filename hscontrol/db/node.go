@@ -390,7 +390,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
-		Str("user", node.User.Name).
+		Str("user", node.User.Username()).
 		Msg("Registering node")
 
 	// If the node exists and it already has IP(s), we just save it
@@ -406,7 +406,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("node", node.Hostname).
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
-			Str("user", node.User.Name).
+			Str("user", node.User.Username()).
 			Msg("Node authorized again")
 
 		return &node, nil

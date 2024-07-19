@@ -927,7 +927,7 @@ func (pol *ACLPolicy) TagsOfNode(
 			}
 			var found bool
 			for _, owner := range owners {
-				if node.User.Name == owner {
+				if node.User.Username() == owner {
 					found = true
 				}
 			}
@@ -951,7 +951,7 @@ func (pol *ACLPolicy) TagsOfNode(
 func filterNodesByUser(nodes types.Nodes, user string) types.Nodes {
 	var out types.Nodes
 	for _, node := range nodes {
-		if node.User.Name == user {
+		if node.User.Username() == user {
 			out = append(out, node)
 		}
 	}
