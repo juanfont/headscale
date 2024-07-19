@@ -179,7 +179,7 @@ func (h *Headscale) handleRegister(
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
 			if !regReq.Expiry.IsZero() &&
 				regReq.Expiry.UTC().Before(now) {
-				h.handleNodeLogOut(writer, *node, machineKey)
+				h.handleNodeLogOut(writer, *node)
 
 				return
 			}
@@ -187,7 +187,7 @@ func (h *Headscale) handleRegister(
 			// If node is not expired, and it is register, we have a already accepted this node,
 			// let it proceed with a valid registration
 			if !node.IsExpired() {
-				h.handleNodeWithValidRegistration(writer, *node, machineKey)
+				h.handleNodeWithValidRegistration(writer, *node)
 
 				return
 			}
@@ -200,7 +200,6 @@ func (h *Headscale) handleRegister(
 				writer,
 				regReq,
 				*node,
-				machineKey,
 			)
 
 			return
@@ -213,7 +212,6 @@ func (h *Headscale) handleRegister(
 				writer,
 				regReq,
 				*node,
-				machineKey,
 			)
 
 			return
@@ -415,7 +413,7 @@ func (h *Headscale) handleAuthKey(
 		}
 	}
 
-	h.db.Write(func(tx *gorm.DB) error {
+	err = h.db.Write(func(tx *gorm.DB) error {
 		return db.UsePreAuthKey(tx, pak)
 	})
 	if err != nil {
@@ -499,7 +497,6 @@ func (h *Headscale) handleNewNode(
 func (h *Headscale) handleNodeLogOut(
 	writer http.ResponseWriter,
 	node types.Node,
-	machineKey key.MachinePublic,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
@@ -582,7 +579,6 @@ func (h *Headscale) handleNodeLogOut(
 func (h *Headscale) handleNodeWithValidRegistration(
 	writer http.ResponseWriter,
 	node types.Node,
-	machineKey key.MachinePublic,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
@@ -628,7 +624,6 @@ func (h *Headscale) handleNodeKeyRefresh(
 	writer http.ResponseWriter,
 	registerRequest tailcfg.RegisterRequest,
 	node types.Node,
-	machineKey key.MachinePublic,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
