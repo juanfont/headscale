@@ -619,7 +619,6 @@ func PrefixV4() (*netip.Prefix, error) {
 
 	builder := netipx.IPSetBuilder{}
 	builder.AddPrefix(tsaddr.CGNATRange())
-	builder.AddPrefix(tsaddr.TailscaleULARange())
 	ipSet, _ := builder.IPSet()
 	if !ipSet.ContainsPrefix(prefixV4) {
 		log.Warn().
@@ -643,7 +642,6 @@ func PrefixV6() (*netip.Prefix, error) {
 	}
 
 	builder := netipx.IPSetBuilder{}
-	builder.AddPrefix(tsaddr.CGNATRange())
 	builder.AddPrefix(tsaddr.TailscaleULARange())
 	ipSet, _ := builder.IPSet()
 
