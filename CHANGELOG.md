@@ -2,10 +2,24 @@
 
 ## Next
 
+### BREAKING
+
+- Remove `dns.use_username_in_magic_dns` configuration option [#2020](https://github.com/juanfont/headscale/pull/2020)
+  - Having usernames in magic DNS is no longer possible.
+- Redo OpenID Connect configuration [#2020](https://github.com/juanfont/headscale/pull/2020)
+  - `strip_email_domain` has been removed, domain is _always_ part of the username for OIDC.
+  - Users are now identified by `sub` claim in the ID token instead of username, allowing the username, name and email to be updated.
+  - User has been extended to store username, display name, profile picture url and email.
+    - These fields are forwarded to the client, and shows up nicely in the user switcher.
+    - These fields can be made available via the API/CLI for non-OIDC users in the future.
 - Remove versions older than 1.56 [#2149](https://github.com/juanfont/headscale/pull/2149)
   - Clean up old code required by old versions
+
+### Changes
+
 - Improved compatibilty of built-in DERP server with clients connecting over WebSocket.
 - Allow nodes to use SSH agent forwarding [#2145](https://github.com/juanfont/headscale/pull/2145)
+
 
 ## 0.23.0 (2024-09-18)
 

@@ -18,7 +18,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -33,7 +32,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/pkg/profile"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -41,7 +39,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
-	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -57,6 +54,7 @@ import (
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
 	"tailscale.com/util/dnsname"
+	zcache "zgo.at/zcache/v2"
 )
 
 var (
@@ -95,10 +93,9 @@ type Headscale struct {
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
 
-	oidcProvider *oidc.Provider
-	oauth2Config *oauth2.Config
+	registrationCache *zcache.Cache[string, types.Node]
 
-	registrationCache *cache.Cache
+	authProvider AuthProvider
 
 	pollNetMapStreamWG sync.WaitGroup
 }
@@ -123,7 +120,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
-	registrationCache := cache.New(
+	registrationCache := zcache.New[string, types.Node](
 		registerCacheExpiration,
 		registerCacheCleanup,
 	)
@@ -138,7 +135,9 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	app.db, err = db.NewHeadscaleDatabase(
 		cfg.Database,
-		cfg.BaseDomain)
+		cfg.BaseDomain,
+		registrationCache,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -154,16 +153,30 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 	})
 
+	var authProvider AuthProvider
+	authProvider = NewAuthProviderWeb(cfg.ServerURL)
 	if cfg.OIDC.Issuer != "" {
-		err = app.initOIDC()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		oidcProvider, err := NewAuthProviderOIDC(
+			ctx,
+			cfg.ServerURL,
+			&cfg.OIDC,
+			app.db,
+			app.nodeNotifier,
+			app.ipAlloc,
+		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
 				return nil, err
 			} else {
 				log.Warn().Err(err).Msg("failed to set up OIDC provider, falling back to CLI based authentication")
 			}
+		} else {
+			authProvider = oidcProvider
 		}
 	}
+	app.authProvider = authProvider
 
 	if app.cfg.DNSConfig != nil && app.cfg.DNSConfig.Proxied { // if MagicDNS
 		// TODO(kradalby): revisit why this takes a list.
@@ -429,10 +442,11 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/register/{mkey}", h.RegisterWebAPI).Methods(http.MethodGet)
+	router.HandleFunc("/register/{mkey}", h.authProvider.RegisterHandler).Methods(http.MethodGet)
 
-	router.HandleFunc("/oidc/register/{mkey}", h.RegisterOIDC).Methods(http.MethodGet)
-	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
+	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
+		router.HandleFunc("/oidc/callback", provider.OIDCCallbackHandler).Methods(http.MethodGet)
+	}
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
 		Methods(http.MethodGet)

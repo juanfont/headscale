@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -29,6 +30,9 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 			Hostname: hostname,
 			UserID:   userid,
 			User: types.User{
+				Model: gorm.Model{
+					ID: userid,
+				},
 				Name: username,
 			},
 		}
@@ -73,14 +77,9 @@ func TestDNSConfigMapResponse(t *testing.T) {
 		{
 			magicDNS: true,
 			want: &tailcfg.DNSConfig{
-				Routes: map[string][]*dnstype.Resolver{
-					"shared1.foobar.headscale.net": {},
-					"shared2.foobar.headscale.net": {},
-					"shared3.foobar.headscale.net": {},
-				},
+				Routes: map[string][]*dnstype.Resolver{},
 				Domains: []string{
 					"foobar.headscale.net",
-					"shared1.foobar.headscale.net",
 				},
 				Proxied: true,
 			},
@@ -128,8 +127,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 
 			got := generateDNSConfig(
 				&types.Config{
-					DNSConfig:             &dnsConfigOrig,
-					DNSUserNameInMagicDNS: true,
+					DNSConfig: &dnsConfigOrig,
 				},
 				baseDomain,
 				nodeInShared1,

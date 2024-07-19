@@ -23,6 +23,7 @@ var (
 )
 
 func (hsdb *HSDatabase) CreatePreAuthKey(
+	// TODO(kradalby): Should be ID, not name
 	userName string,
 	reusable bool,
 	ephemeral bool,
@@ -37,13 +38,14 @@ func (hsdb *HSDatabase) CreatePreAuthKey(
 // CreatePreAuthKey creates a new PreAuthKey in a user, and returns it.
 func CreatePreAuthKey(
 	tx *gorm.DB,
+	// TODO(kradalby): Should be ID, not name
 	userName string,
 	reusable bool,
 	ephemeral bool,
 	expiration *time.Time,
 	aclTags []string,
 ) (*types.PreAuthKey, error) {
-	user, err := GetUser(tx, userName)
+	user, err := GetUserByUsername(tx, userName)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +97,7 @@ func (hsdb *HSDatabase) ListPreAuthKeys(userName string) ([]types.PreAuthKey, er
 
 // ListPreAuthKeys returns the list of PreAuthKeys for a user.
 func ListPreAuthKeys(tx *gorm.DB, userName string) ([]types.PreAuthKey, error) {
-	user, err := GetUser(tx, userName)
+	user, err := GetUserByUsername(tx, userName)
 	if err != nil {
 		return nil, err
 	}

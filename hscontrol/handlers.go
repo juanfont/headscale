@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -167,12 +168,29 @@ var registerWebAPITemplate = template.Must(
 </html>
 `))
 
+type AuthProviderWeb struct {
+	serverURL string
+}
+
+func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
+	return &AuthProviderWeb{
+		serverURL: serverURL,
+	}
+}
+
+func (a *AuthProviderWeb) AuthURL(mKey key.MachinePublic) string {
+	return fmt.Sprintf(
+		"%s/register/%s",
+		strings.TrimSuffix(a.serverURL, "/"),
+		mKey.String())
+}
+
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
 // Listens in /register/:nkey.
 //
 // This is not part of the Tailscale control API, as we could send whatever URL
 // in the RegisterResponse.AuthURL field.
-func (h *Headscale) RegisterWebAPI(
+func (a *AuthProviderWeb) RegisterHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
@@ -187,7 +205,7 @@ func (h *Headscale) RegisterWebAPI(
 		[]byte(machineKeyStr),
 	)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to parse incoming nodekey")
+		log.Warn().Err(err).Msg("Failed to parse incoming machinekey")
 
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)

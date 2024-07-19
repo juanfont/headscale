@@ -76,7 +76,7 @@ func tailNode(
 		keyExpiry = time.Time{}
 	}
 
-	hostname, err := node.GetFQDN(cfg, cfg.BaseDomain)
+	hostname, err := node.GetFQDN(cfg.BaseDomain)
 	if err != nil {
 		return nil, fmt.Errorf("tailNode, failed to create FQDN: %s", err)
 	}

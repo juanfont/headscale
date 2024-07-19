@@ -20,7 +20,7 @@ func (s *Suite) TestCreateAndDestroyUser(c *check.C) {
 	err = db.DestroyUser("test")
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetUser("test")
+	_, err = db.GetUserByName("test")
 	c.Assert(err, check.NotNil)
 }
 
@@ -73,10 +73,10 @@ func (s *Suite) TestRenameUser(c *check.C) {
 	err = db.RenameUser("test", "test-renamed")
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetUser("test")
+	_, err = db.GetUserByName("test")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	_, err = db.GetUser("test-renamed")
+	_, err = db.GetUserByName("test-renamed")
 	c.Assert(err, check.IsNil)
 
 	err = db.RenameUser("test-does-not-exit", "test")

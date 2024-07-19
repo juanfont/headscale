@@ -42,8 +42,7 @@ func TestReadConfig(t *testing.T) {
 					{Name: "grafana.myvpn.example.com", Type: "A", Value: "100.64.0.3"},
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
-				SearchDomains:      []string{"test.com", "bar.com"},
-				UserNameInMagicDNS: true,
+				SearchDomains: []string{"test.com", "bar.com"},
 			},
 		},
 		{
@@ -99,8 +98,7 @@ func TestReadConfig(t *testing.T) {
 					{Name: "grafana.myvpn.example.com", Type: "A", Value: "100.64.0.3"},
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
-				SearchDomains:      []string{"test.com", "bar.com"},
-				UserNameInMagicDNS: true,
+				SearchDomains: []string{"test.com", "bar.com"},
 			},
 		},
 		{
@@ -234,11 +232,10 @@ func TestReadConfigFromEnv(t *testing.T) {
 		{
 			name: "unmarshal-dns-full-config",
 			configEnv: map[string]string{
-				"HEADSCALE_DNS_MAGIC_DNS":                 "true",
-				"HEADSCALE_DNS_BASE_DOMAIN":               "example.com",
-				"HEADSCALE_DNS_NAMESERVERS_GLOBAL":        `1.1.1.1 8.8.8.8`,
-				"HEADSCALE_DNS_SEARCH_DOMAINS":            "test.com bar.com",
-				"HEADSCALE_DNS_USE_USERNAME_IN_MAGIC_DNS": "true",
+				"HEADSCALE_DNS_MAGIC_DNS":          "true",
+				"HEADSCALE_DNS_BASE_DOMAIN":        "example.com",
+				"HEADSCALE_DNS_NAMESERVERS_GLOBAL": `1.1.1.1 8.8.8.8`,
+				"HEADSCALE_DNS_SEARCH_DOMAINS":     "test.com bar.com",
 
 				// TODO(kradalby): Figure out how to pass these as env vars
 				// "HEADSCALE_DNS_NAMESERVERS_SPLIT":  `{foo.bar.com: ["1.1.1.1"]}`,
@@ -266,8 +263,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				ExtraRecords: []tailcfg.DNSRecord{
 					// {Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
-				SearchDomains:      []string{"test.com", "bar.com"},
-				UserNameInMagicDNS: true,
+				SearchDomains: []string{"test.com", "bar.com"},
 			},
 		},
 	}

@@ -253,7 +253,7 @@ func (node *Node) Proto() *v1.Node {
 	return nodeProto
 }
 
-func (node *Node) GetFQDN(cfg *Config, baseDomain string) (string, error) {
+func (node *Node) GetFQDN(baseDomain string) (string, error) {
 	if node.GivenName == "" {
 		return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeHasNoGivenName)
 	}
@@ -264,19 +264,6 @@ func (node *Node) GetFQDN(cfg *Config, baseDomain string) (string, error) {
 		hostname = fmt.Sprintf(
 			"%s.%s",
 			node.GivenName,
-			baseDomain,
-		)
-	}
-
-	if cfg.DNSUserNameInMagicDNS {
-		if node.User.Name == "" {
-			return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeUserHasNoName)
-		}
-
-		hostname = fmt.Sprintf(
-			"%s.%s.%s",
-			node.GivenName,
-			node.User.Name,
 			baseDomain,
 		)
 	}

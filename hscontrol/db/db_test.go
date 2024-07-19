@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -16,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
+	"zgo.at/zcache/v2"
 )
 
 func TestMigrations(t *testing.T) {
@@ -206,7 +208,7 @@ func TestMigrations(t *testing.T) {
 				Sqlite: types.SqliteConfig{
 					Path: dbPath,
 				},
-			}, "")
+			}, "", emptyCache())
 			if err != nil && tt.wantErr != err.Error() {
 				t.Errorf("TestMigrations() unexpected error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -249,4 +251,8 @@ func testCopyOfDatabase(src string) (string, error) {
 	defer destination.Close()
 	_, err = io.Copy(destination, source)
 	return dst, err
+}
+
+func emptyCache() *zcache.Cache[string, types.Node] {
+	return zcache.New[string, types.Node](time.Minute, time.Hour)
 }

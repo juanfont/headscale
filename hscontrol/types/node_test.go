@@ -1,7 +1,9 @@
 package types
 
 import (
+	"fmt"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -127,76 +129,10 @@ func TestNodeFQDN(t *testing.T) {
 	tests := []struct {
 		name    string
 		node    Node
-		cfg     Config
 		domain  string
 		want    string
 		wantErr string
 	}{
-		{
-			name: "all-set-with-username",
-			node: Node{
-				GivenName: "test",
-				User: User{
-					Name: "user",
-				},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: true,
-			},
-			domain: "example.com",
-			want:   "test.user.example.com",
-		},
-		{
-			name: "no-given-name-with-username",
-			node: Node{
-				User: User{
-					Name: "user",
-				},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: true,
-			},
-			domain:  "example.com",
-			wantErr: "failed to create valid FQDN: node has no given name",
-		},
-		{
-			name: "no-user-name-with-username",
-			node: Node{
-				GivenName: "test",
-				User:      User{},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: true,
-			},
-			domain:  "example.com",
-			wantErr: "failed to create valid FQDN: node user has no name",
-		},
-		{
-			name: "no-magic-dns-with-username",
-			node: Node{
-				GivenName: "test",
-				User: User{
-					Name: "user",
-				},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: false,
-				},
-				DNSUserNameInMagicDNS: true,
-			},
-			domain: "example.com",
-			want:   "test.user.example.com",
-		},
 		{
 			name: "no-dnsconfig-with-username",
 			node: Node{
@@ -216,12 +152,6 @@ func TestNodeFQDN(t *testing.T) {
 					Name: "user",
 				},
 			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: false,
-			},
 			domain: "example.com",
 			want:   "test.example.com",
 		},
@@ -232,46 +162,16 @@ func TestNodeFQDN(t *testing.T) {
 					Name: "user",
 				},
 			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: false,
-			},
 			domain:  "example.com",
 			wantErr: "failed to create valid FQDN: node has no given name",
 		},
 		{
-			name: "no-user-name",
+			name: "too-long-username",
 			node: Node{
-				GivenName: "test",
-				User:      User{},
+				GivenName: strings.Repeat("a", 256),
 			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: true,
-				},
-				DNSUserNameInMagicDNS: false,
-			},
-			domain: "example.com",
-			want:   "test.example.com",
-		},
-		{
-			name: "no-magic-dns",
-			node: Node{
-				GivenName: "test",
-				User: User{
-					Name: "user",
-				},
-			},
-			cfg: Config{
-				DNSConfig: &tailcfg.DNSConfig{
-					Proxied: false,
-				},
-				DNSUserNameInMagicDNS: false,
-			},
-			domain: "example.com",
-			want:   "test.example.com",
+			domain:  "example.com",
+			wantErr: fmt.Sprintf("failed to create valid FQDN (%s.example.com): hostname too long, cannot except 255 ASCII chars", strings.Repeat("a", 256)),
 		},
 		{
 			name: "no-dnsconfig",
@@ -288,7 +188,9 @@ func TestNodeFQDN(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := tc.node.GetFQDN(&tc.cfg, tc.domain)
+			got, err := tc.node.GetFQDN(tc.domain)
+
+			t.Logf("GOT: %q, %q", got, tc.domain)
 
 			if (err != nil) && (err.Error() != tc.wantErr) {
 				t.Errorf("GetFQDN() error = %s, wantErr %s", err, tc.wantErr)

@@ -12,7 +12,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/patrickmn/go-cache"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -320,26 +319,17 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
 }
 
-func RegisterNodeFromAuthCallback(
-	tx *gorm.DB,
-	cache *cache.Cache,
+func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 	mkey key.MachinePublic,
-	userName string,
+	userID types.UserID,
 	nodeExpiry *time.Time,
 	registrationMethod string,
 	ipv4 *netip.Addr,
 	ipv6 *netip.Addr,
 ) (*types.Node, error) {
-	log.Debug().
-		Str("machine_key", mkey.ShortString()).
-		Str("userName", userName).
-		Str("registrationMethod", registrationMethod).
-		Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
-		Msg("Registering node from API/CLI or auth callback")
-
-	if nodeInterface, ok := cache.Get(mkey.String()); ok {
-		if registrationNode, ok := nodeInterface.(types.Node); ok {
-			user, err := GetUser(tx, userName)
+	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
+		if node, ok := hsdb.regCache.Get(mkey.String()); ok {
+			user, err := GetUserByID(tx, userID)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"failed to find user in register node from auth callback, %w",
@@ -347,37 +337,42 @@ func RegisterNodeFromAuthCallback(
 				)
 			}
 
+			log.Debug().
+				Str("machine_key", mkey.ShortString()).
+				Str("username", user.Username()).
+				Str("registrationMethod", registrationMethod).
+				Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
+				Msg("Registering node from API/CLI or auth callback")
+
 			// Registration of expired node with different user
-			if registrationNode.ID != 0 &&
-				registrationNode.UserID != user.ID {
+			if node.ID != 0 &&
+				node.UserID != user.ID {
 				return nil, ErrDifferentRegisteredUser
 			}
 
-			registrationNode.UserID = user.ID
-			registrationNode.User = *user
-			registrationNode.RegisterMethod = registrationMethod
+			node.UserID = user.ID
+			node.User = *user
+			node.RegisterMethod = registrationMethod
 
 			if nodeExpiry != nil {
-				registrationNode.Expiry = nodeExpiry
+				node.Expiry = nodeExpiry
 			}
 
 			node, err := RegisterNode(
 				tx,
-				registrationNode,
+				node,
 				ipv4, ipv6,
 			)
 
 			if err == nil {
-				cache.Delete(mkey.String())
+				hsdb.regCache.Delete(mkey.String())
 			}
 
 			return node, err
-		} else {
-			return nil, ErrCouldNotConvertNodeInterface
 		}
-	}
 
-	return nil, ErrNodeNotFoundRegistrationCache
+		return nil, ErrNodeNotFoundRegistrationCache
+	})
 }
 
 func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
@@ -392,7 +387,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
-		Str("user", node.User.Name).
+		Str("user", node.User.Username()).
 		Msg("Registering node")
 
 	// If the node exists and it already has IP(s), we just save it
@@ -408,7 +403,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("node", node.Hostname).
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
-			Str("user", node.User.Name).
+			Str("user", node.User.Username()).
 			Msg("Node authorized again")
 
 		return &node, nil
@@ -612,18 +607,15 @@ func enableRoutes(tx *gorm.DB,
 }
 
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
-	normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-		suppliedName,
-	)
-	if err != nil {
-		return "", err
+	if len(suppliedName) > util.LabelHostnameLength {
+		return "", types.ErrHostnameTooLong
 	}
 
 	if randomSuffix {
 		// Trim if a hostname will be longer than 63 chars after adding the hash.
 		trimmedHostnameLength := util.LabelHostnameLength - NodeGivenNameHashLength - NodeGivenNameTrimSize
-		if len(normalizedHostname) > trimmedHostnameLength {
-			normalizedHostname = normalizedHostname[:trimmedHostnameLength]
+		if len(suppliedName) > trimmedHostnameLength {
+			suppliedName = suppliedName[:trimmedHostnameLength]
 		}
 
 		suffix, err := util.GenerateRandomStringDNSSafe(NodeGivenNameHashLength)
@@ -631,10 +623,10 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 			return "", err
 		}
 
-		normalizedHostname += "-" + suffix
+		suppliedName += "-" + suffix
 	}
 
-	return normalizedHostname, nil
+	return suppliedName, nil
 }
 
 func isUnqiueName(tx *gorm.DB, name string) (bool, error) {
