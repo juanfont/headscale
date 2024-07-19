@@ -43,7 +43,6 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		types.Nodes{
 			nodeInShared2, nodeInShared3, node2InShared1,
 		},
-		"",
 	)
 
 	c.Assert(len(userProfiles), check.Equals, 3)

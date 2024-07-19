@@ -19,30 +19,44 @@ type User struct {
 	Name string `gorm:"unique"`
 }
 
-func (n *User) TailscaleUser() *tailcfg.User {
+// TODO(kradalby): See if we can fill in Gravatar here
+func (u *User) profilePicURL() string {
+	return ""
+}
+
+func (u *User) TailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
-		ID:          tailcfg.UserID(n.ID),
-		LoginName:   n.Name,
-		DisplayName: n.Name,
-		// TODO(kradalby): See if we can fill in Gravatar here
-		ProfilePicURL: "",
+		ID:            tailcfg.UserID(u.ID),
+		LoginName:     u.Name,
+		DisplayName:   u.Name,
+		ProfilePicURL: u.profilePicURL(),
 		Logins:        []tailcfg.LoginID{},
-		Created:       n.CreatedAt,
+		Created:       u.CreatedAt,
 	}
 
 	return &user
 }
 
-func (n *User) TailscaleLogin() *tailcfg.Login {
+func (u *User) TailscaleLogin() *tailcfg.Login {
 	login := tailcfg.Login{
-		ID:          tailcfg.LoginID(n.ID),
-		LoginName:   n.Name,
-		DisplayName: n.Name,
-		// TODO(kradalby): See if we can fill in Gravatar here
-		ProfilePicURL: "",
+		ID: tailcfg.LoginID(u.ID),
+		// TODO(kradalby): this should reflect registration method.
+		Provider:      "",
+		LoginName:     u.Name,
+		DisplayName:   u.Name,
+		ProfilePicURL: u.profilePicURL(),
 	}
 
 	return &login
+}
+
+func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
+	return tailcfg.UserProfile{
+		ID:            tailcfg.UserID(u.ID),
+		LoginName:     u.Name,
+		DisplayName:   u.Name,
+		ProfilePicURL: u.profilePicURL(),
+	}
 }
 
 func (n *User) Proto() *v1.User {
