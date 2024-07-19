@@ -42,7 +42,7 @@ func CreatePreAuthKey(
 	expiration *time.Time,
 	aclTags []string,
 ) (*types.PreAuthKey, error) {
-	user, err := GetUser(tx, userName)
+	user, err := GetUserByName(tx, userName)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (hsdb *HSDatabase) ListPreAuthKeys(userName string) ([]types.PreAuthKey, er
 
 // ListPreAuthKeys returns the list of PreAuthKeys for a user.
 func ListPreAuthKeys(tx *gorm.DB, userName string) ([]types.PreAuthKey, error) {
-	user, err := GetUser(tx, userName)
+	user, err := GetUserByName(tx, userName)
 	if err != nil {
 		return nil, err
 	}

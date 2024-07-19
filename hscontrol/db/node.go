@@ -337,7 +337,7 @@ func RegisterNodeFromAuthCallback(
 
 	if nodeInterface, ok := cache.Get(mkey.String()); ok {
 		if registrationNode, ok := nodeInterface.(types.Node); ok {
-			user, err := GetUser(tx, userName)
+			user, err := GetUserByName(tx, userName)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"failed to find user in register node from auth callback, %w",

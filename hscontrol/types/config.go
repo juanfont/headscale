@@ -139,7 +139,6 @@ type OIDCConfig struct {
 	AllowedDomains             []string
 	AllowedUsers               []string
 	AllowedGroups              []string
-	StripEmaildomain           bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
 }
@@ -239,7 +238,6 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.sqlite.write_ahead_log", true)
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
-	viper.SetDefault("oidc.strip_email_domain", true)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
@@ -271,6 +269,10 @@ func LoadConfig(path string, isFile bool) error {
 
 	// Alias the old ACL Policy path with the new configuration option.
 	registerAliasAndDeprecate("policy.path", "acl_policy_path")
+
+	if viper.IsSet("oidc.strip_email_domain") {
+		log.Fatal().Msgf("Fatal config error: oidc.strip_email_domain has been removed. Please remove it from your config file")
+	}
 
 	// Collect any validation errors and return them all at once
 	var errorText string
@@ -752,15 +754,14 @@ func GetHeadscaleConfig() (*Config, error) {
 			OnlyStartIfOIDCIsAvailable: viper.GetBool(
 				"oidc.only_start_if_oidc_is_available",
 			),
-			Issuer:           viper.GetString("oidc.issuer"),
-			ClientID:         viper.GetString("oidc.client_id"),
-			ClientSecret:     oidcClientSecret,
-			Scope:            viper.GetStringSlice("oidc.scope"),
-			ExtraParams:      viper.GetStringMapString("oidc.extra_params"),
-			AllowedDomains:   viper.GetStringSlice("oidc.allowed_domains"),
-			AllowedUsers:     viper.GetStringSlice("oidc.allowed_users"),
-			AllowedGroups:    viper.GetStringSlice("oidc.allowed_groups"),
-			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
+			Issuer:         viper.GetString("oidc.issuer"),
+			ClientID:       viper.GetString("oidc.client_id"),
+			ClientSecret:   oidcClientSecret,
+			Scope:          viper.GetStringSlice("oidc.scope"),
+			ExtraParams:    viper.GetStringMapString("oidc.extra_params"),
+			AllowedDomains: viper.GetStringSlice("oidc.allowed_domains"),
+			AllowedUsers:   viper.GetStringSlice("oidc.allowed_users"),
+			AllowedGroups:  viper.GetStringSlice("oidc.allowed_groups"),
 			Expiry: func() time.Duration {
 				// if set to 0, we assume no expiry
 				if value := viper.GetString("oidc.expiry"); value == "0" {

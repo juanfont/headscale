@@ -1,6 +1,8 @@
 package types
 
 import (
+	"cmp"
+	"fmt"
 	"strconv"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -16,19 +18,57 @@ import (
 // that contain our machines.
 type User struct {
 	gorm.Model
+
+	// Username for the user, is used if email is empty
+	// Should not be used, please use Username().
 	Name string `gorm:"unique"`
+
+	// Typically a full name of the user
+	DisplayName string
+
+	// Email of the user
+	// Should not be used, please use Username().
+	Email string
+
+	// Unique identifier of the user from OIDC,
+	// comes from `sub` claim in the OIDC token
+	// and is used to lookup the user.
+	ProviderIdentifier string `gorm:"index"`
+
+	// Provider is the origin of the user account,
+	// same as RegistrationMethod, without authkey.
+	Provider string
+
+	ProfilePicURL string
+}
+
+// Username is the main way to get the username of a user,
+// it will return the email if it exists, the name if it exists,
+// the OIDCIdentifier if it exists, and the ID if nothing else exists.
+// Email and OIDCIdentifier will be set when the user has headscale
+// enabled with OIDC, which means that there is a domain involved which
+// should be used throughout headscale, in information returned to the
+// user and the Policy engine.
+func (u *User) Username() string {
+	return cmp.Or(u.Email, u.Name, u.ProviderIdentifier, fmt.Sprintf("%d", u.ID))
+}
+
+// DisplayNameOrUsername returns the DisplayName if it exists, otherwise
+// it will return the Username.
+func (u *User) DisplayNameOrUsername() string {
+	return cmp.Or(u.DisplayName, u.Username())
 }
 
 // TODO(kradalby): See if we can fill in Gravatar here
 func (u *User) profilePicURL() string {
-	return ""
+	return u.ProfilePicURL
 }
 
 func (u *User) TailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
 		ID:            tailcfg.UserID(u.ID),
-		LoginName:     u.Name,
-		DisplayName:   u.Name,
+		LoginName:     u.Username(),
+		DisplayName:   u.DisplayNameOrUsername(),
 		ProfilePicURL: u.profilePicURL(),
 		Logins:        []tailcfg.LoginID{},
 		Created:       u.CreatedAt,
@@ -41,9 +81,9 @@ func (u *User) TailscaleLogin() *tailcfg.Login {
 	login := tailcfg.Login{
 		ID: tailcfg.LoginID(u.ID),
 		// TODO(kradalby): this should reflect registration method.
-		Provider:      "",
-		LoginName:     u.Name,
-		DisplayName:   u.Name,
+		Provider:      u.Provider,
+		LoginName:     u.Username(),
+		DisplayName:   u.DisplayNameOrUsername(),
 		ProfilePicURL: u.profilePicURL(),
 	}
 
@@ -53,8 +93,8 @@ func (u *User) TailscaleLogin() *tailcfg.Login {
 func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 	return tailcfg.UserProfile{
 		ID:            tailcfg.UserID(u.ID),
-		LoginName:     u.Name,
-		DisplayName:   u.Name,
+		LoginName:     u.Username(),
+		DisplayName:   u.DisplayNameOrUsername(),
 		ProfilePicURL: u.profilePicURL(),
 	}
 }
@@ -65,4 +105,28 @@ func (n *User) Proto() *v1.User {
 		Name:      n.Name,
 		CreatedAt: timestamppb.New(n.CreatedAt),
 	}
+}
+
+type OIDCClaims struct {
+	// Sub is the user's unique identifier at the provider.
+	Sub string `json:"sub"`
+
+	// Name is the user's full name.
+	Name              string   `json:"name,omitempty"`
+	Groups            []string `json:"groups,omitempty"`
+	Email             string   `json:"email,omitempty"`
+	EmailVerified     bool     `json:"email_verified,omitempty"`
+	ProfilePictureURL string   `json:"picture,omitempty"`
+	Username          string   `json:"preferred_username,omitempty"`
+}
+
+// FromClaim overrides a User from OIDC claims.
+// All fields will be updated, except for the ID.
+func (u *User) FromClaim(claims *OIDCClaims) {
+	u.ProviderIdentifier = claims.Sub
+	u.DisplayName = claims.Username
+	u.Email = claims.Email
+	u.Name = claims.Username
+	u.ProfilePicURL = claims.ProfilePictureURL
+	u.Provider = util.RegisterMethodOIDC
 }

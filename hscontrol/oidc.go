@@ -47,13 +47,6 @@ var (
 	errOIDCNodeKeyMissing = errors.New("could not get node key from cache")
 )
 
-type IDTokenClaims struct {
-	Name     string   `json:"name,omitempty"`
-	Groups   []string `json:"groups,omitempty"`
-	Email    string   `json:"email"`
-	Username string   `json:"preferred_username,omitempty"`
-}
-
 type AuthProviderOIDC struct {
 	serverURL         string
 	cfg               *types.OIDCConfig
@@ -209,30 +202,23 @@ func (a *AuthProviderOIDC) OIDCCallback(
 	}
 	idTokenExpiry := a.determineTokenExpiration(idToken.Expiry)
 
-	// TODO: we can use userinfo at some point to grab additional information about the user (groups membership, etc)
-	// userInfo, err := oidcProvider.UserInfo(context.Background(), oauth2.StaticTokenSource(oauth2Token))
-	// if err != nil {
-	// 	c.String(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve userinfo"))
-	// 	return
-	// }
-
-	claims, err := extractIDTokenClaims(idToken)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
+	var claims types.OIDCClaims
+	if err := idToken.Claims(&claims); err != nil {
+		http.Error(writer, fmt.Errorf("failed to decode ID token claims: %w", err).Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if err := validateOIDCAllowedDomains(a.cfg.AllowedDomains, claims); err != nil {
+	if err := validateOIDCAllowedDomains(a.cfg.AllowedDomains, &claims); err != nil {
 		http.Error(writer, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	if err := validateOIDCAllowedGroups(a.cfg.AllowedGroups, claims); err != nil {
+	if err := validateOIDCAllowedGroups(a.cfg.AllowedGroups, &claims); err != nil {
 		http.Error(writer, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	if err := validateOIDCAllowedUsers(a.cfg.AllowedUsers, claims); err != nil {
+	if err := validateOIDCAllowedUsers(a.cfg.AllowedUsers, &claims); err != nil {
 		http.Error(writer, err.Error(), http.StatusUnauthorized)
 		return
 	}
@@ -240,7 +226,7 @@ func (a *AuthProviderOIDC) OIDCCallback(
 	machineKey, nodeExists, err := a.validateNodeForOIDCCallback(
 		writer,
 		state,
-		claims,
+		&claims,
 		idTokenExpiry,
 	)
 	if err != nil || nodeExists {
@@ -248,16 +234,10 @@ func (a *AuthProviderOIDC) OIDCCallback(
 		return
 	}
 
-	userName, err := getUserName(claims, a.cfg.StripEmaildomain)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	// register the node if it's new
 	log.Debug().Msg("Registering new node after successful callback")
 
-	user, err := a.findOrCreateNewUserForOIDCCallback(userName)
+	user, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -268,7 +248,7 @@ func (a *AuthProviderOIDC) OIDCCallback(
 		return
 	}
 
-	content, err := renderOIDCCallbackTemplate(claims)
+	content, err := renderOIDCCallbackTemplate(&claims)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -324,22 +304,11 @@ func (a *AuthProviderOIDC) verifyIDTokenForOIDCCallback(
 	return idToken, nil
 }
 
-func extractIDTokenClaims(
-	idToken *oidc.IDToken,
-) (*IDTokenClaims, error) {
-	var claims IDTokenClaims
-	if err := idToken.Claims(&claims); err != nil {
-		return nil, fmt.Errorf("failed to decode ID token claims: %w", err)
-	}
-
-	return &claims, nil
-}
-
 // validateOIDCAllowedDomains checks that if AllowedDomains is provided,
 // that the authenticated principal ends with @<alloweddomain>.
 func validateOIDCAllowedDomains(
 	allowedDomains []string,
-	claims *IDTokenClaims,
+	claims *types.OIDCClaims,
 ) error {
 	if len(allowedDomains) > 0 {
 		if at := strings.LastIndex(claims.Email, "@"); at < 0 ||
@@ -357,7 +326,7 @@ func validateOIDCAllowedDomains(
 // 'groups' that contains group membership.
 func validateOIDCAllowedGroups(
 	allowedGroups []string,
-	claims *IDTokenClaims,
+	claims *types.OIDCClaims,
 ) error {
 	if len(allowedGroups) > 0 {
 		for _, group := range allowedGroups {
@@ -376,7 +345,7 @@ func validateOIDCAllowedGroups(
 // that the authenticated principal is part of that list.
 func validateOIDCAllowedUsers(
 	allowedUsers []string,
-	claims *IDTokenClaims,
+	claims *types.OIDCClaims,
 ) error {
 	if len(allowedUsers) > 0 &&
 		!slices.Contains(allowedUsers, claims.Email) {
@@ -394,7 +363,7 @@ func validateOIDCAllowedUsers(
 func (a *AuthProviderOIDC) validateNodeForOIDCCallback(
 	writer http.ResponseWriter,
 	state string,
-	claims *IDTokenClaims,
+	claims *types.OIDCClaims,
 	expiry time.Time,
 ) (*key.MachinePublic, bool, error) {
 	// retrieve nodekey from state cache
@@ -427,7 +396,7 @@ func (a *AuthProviderOIDC) validateNodeForOIDCCallback(
 		}
 		log.Debug().
 			Str("node", node.Hostname).
-			Str("expiresAt", fmt.Sprintf("%v", expiry)).
+			Time("expiresAt", expiry).
 			Msg("successfully refreshed node")
 
 		var content bytes.Buffer
@@ -454,32 +423,34 @@ func (a *AuthProviderOIDC) validateNodeForOIDCCallback(
 	return &machineKey, false, nil
 }
 
-func getUserName(
-	claims *IDTokenClaims,
-	stripEmaildomain bool,
-) (string, error) {
-	userName, err := util.NormalizeToFQDNRules(
-		claims.Email,
-		stripEmaildomain,
-	)
-	if err != nil {
-		return "", fmt.Errorf("normalising email: %w", err)
+func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
+	claims *types.OIDCClaims,
+) (*types.User, error) {
+	var user *types.User
+	var err error
+	user, err = a.db.GetUserByOIDCIdentifier(claims.Sub)
+	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
+		return nil, fmt.Errorf("creating or updating user: %w", err)
 	}
 
-	return userName, nil
-}
-
-func (a *AuthProviderOIDC) findOrCreateNewUserForOIDCCallback(
-	userName string,
-) (*types.User, error) {
-	user, err := a.db.GetUser(userName)
-	if errors.Is(err, db.ErrUserNotFound) {
-		user, err = a.db.CreateUser(userName)
-		if err != nil {
-			return nil, fmt.Errorf("creating new user: %w", err)
+	// This check is for legacy, if the user cannot be found by the OIDC identifier
+	// look it up by username. This should only be needed once.
+	if user == nil {
+		user, err = a.db.GetUserByName(claims.Username)
+		if err != nil && !errors.Is(err, db.ErrUserNotFound) {
+			return nil, fmt.Errorf("creating or updating user: %w", err)
 		}
-	} else if err != nil {
-		return nil, fmt.Errorf("find or create user: %w", err)
+
+		// if the user is still not found, create a new empty user.
+		if user == nil {
+			user = &types.User{}
+		}
+	}
+
+	user.FromClaim(claims)
+	err = a.db.DB.Save(user).Error
+	if err != nil {
+		return nil, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	return user, nil
@@ -518,7 +489,7 @@ func (a *AuthProviderOIDC) registerNodeForOIDCCallback(
 }
 
 func renderOIDCCallbackTemplate(
-	claims *IDTokenClaims,
+	claims *types.OIDCClaims,
 ) (*bytes.Buffer, error) {
 	var content bytes.Buffer
 	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{

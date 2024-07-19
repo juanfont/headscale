@@ -46,9 +46,7 @@ func (s *Suite) ResetDB(c *check.C) {
 				Path: tmpDir + "/headscale_test.db",
 			},
 		},
-		OIDC: types.OIDCConfig{
-			StripEmaildomain: false,
-		},
+		OIDC: types.OIDCConfig{},
 	}
 
 	app, err = NewHeadscale(&cfg)
