@@ -600,8 +600,11 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 	want := []types.NodeID{1, 3}
 	got := []types.NodeID{}
+	var mu sync.Mutex
 
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
+		mu.Lock()
+		defer mu.Unlock()
 		got = append(got, ni)
 	})
 	go e.Start()
@@ -617,6 +620,9 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 
 	e.Close()
 
+	mu.Lock()
+	defer mu.Unlock()
+
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("wrong nodes deleted, unexpected result (-want +got):\n%s", diff)
 	}
@@ -629,8 +635,8 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 	want := 1000
 
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
-		defer mu.Unlock()
 		mu.Lock()
+		defer mu.Unlock()
 
 		time.Sleep(time.Duration(generateRandomNumber(t, 3)) * time.Millisecond)
 		got = append(got, ni)
@@ -644,6 +650,10 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	e.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+
 	if len(got) != want {
 		t.Errorf("expected %d, got %d", want, len(got))
 	}
