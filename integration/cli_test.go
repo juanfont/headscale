@@ -7,12 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/stretchr/testify/assert"
 )
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
@@ -481,7 +480,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Len(t, listNodes, 1)
 
-	assert.Equal(t, "user2", listNodes[0].User.Name)
+	assert.Equal(t, "user2", listNodes[0].GetUser().GetName())
 }
 
 func TestApiKeyCommand(t *testing.T) {

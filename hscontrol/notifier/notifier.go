@@ -17,8 +17,10 @@ import (
 	"tailscale.com/util/set"
 )
 
-var debugDeadlock = envknob.Bool("HEADSCALE_DEBUG_DEADLOCK")
-var debugDeadlockTimeout = envknob.RegisterDuration("HEADSCALE_DEBUG_DEADLOCK_TIMEOUT")
+var (
+	debugDeadlock        = envknob.Bool("HEADSCALE_DEBUG_DEADLOCK")
+	debugDeadlockTimeout = envknob.RegisterDuration("HEADSCALE_DEBUG_DEADLOCK_TIMEOUT")
+)
 
 func init() {
 	deadlock.Opts.Disable = !debugDeadlock
@@ -291,7 +293,6 @@ func newBatcher(batchTime time.Duration, n *Notifier) *batcher {
 		patches:  make(map[types.NodeID]tailcfg.PeerChange),
 		n:        n,
 	}
-
 }
 
 func (b *batcher) close() {
@@ -393,7 +394,7 @@ func (b *batcher) doWork() {
 }
 
 // overwritePatch takes the current patch and a newer patch
-// and override any field that has changed
+// and override any field that has changed.
 func overwritePatch(currPatch, newPatch *tailcfg.PeerChange) {
 	if newPatch.DERPRegion != 0 {
 		currPatch.DERPRegion = newPatch.DERPRegion

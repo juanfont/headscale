@@ -1,9 +1,8 @@
 package integration
 
 import (
-	"github.com/ory/dockertest/v3"
-
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/ory/dockertest/v3"
 )
 
 type ControlServer interface {

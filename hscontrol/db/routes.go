@@ -542,7 +542,6 @@ func failoverRoute(
 	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 	routeToReplace *types.Route,
 	altRoutes types.Routes,
-
 ) *failover {
 	if routeToReplace == nil {
 		return nil

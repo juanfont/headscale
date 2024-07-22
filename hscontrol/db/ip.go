@@ -76,7 +76,6 @@ func NewIPAllocator(
 		if err != nil {
 			return nil, fmt.Errorf("reading IPv6 addresses from database: %w", err)
 		}
-
 	}
 
 	var ips netipx.IPSetBuilder

@@ -6,15 +6,14 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"tailscale.com/tailcfg"
-
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 var iap = func(ipStr string) *netip.Addr {
@@ -1783,7 +1782,7 @@ var tsExitNodeDest = []tailcfg.NetPortRange{
 }
 
 // hsExitNodeDest is the list of destination IP ranges that are allowed when
-// we use headscale "autogroup:internet"
+// we use headscale "autogroup:internet".
 var hsExitNodeDest = []tailcfg.NetPortRange{
 	{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
 	{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
@@ -1840,7 +1839,7 @@ func TestTheInternet(t *testing.T) {
 
 	internetPrefs := internetSet.Prefixes()
 
-	for i, _ := range internetPrefs {
+	for i := range internetPrefs {
 		if internetPrefs[i].String() != hsExitNodeDest[i].IP {
 			t.Errorf("prefix from internet set %q != hsExit list %q", internetPrefs[i].String(), hsExitNodeDest[i].IP)
 		}

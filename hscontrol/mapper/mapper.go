@@ -541,7 +541,6 @@ func appendPeerChanges(
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
-
 	packetFilter, err := pol.CompileFilterRules(append(peers, node))
 	if err != nil {
 		return err

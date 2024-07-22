@@ -285,25 +285,30 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	c.Assert(len(enabledRoutes1), check.Equals, 1)
 }
 
-var ipp = func(s string) types.IPPrefix { return types.IPPrefix(netip.MustParsePrefix(s)) }
-var n = func(nid types.NodeID) types.Node {
-	return types.Node{ID: nid}
-}
+var (
+	ipp    = func(s string) types.IPPrefix { return types.IPPrefix(netip.MustParsePrefix(s)) }
+	mkNode = func(nid types.NodeID) types.Node {
+		return types.Node{ID: nid}
+	}
+)
+
 var np = func(nid types.NodeID) *types.Node {
-	no := n(nid)
+	no := mkNode(nid)
 	return &no
 }
+
 var r = func(id uint, nid types.NodeID, prefix types.IPPrefix, enabled, primary bool) types.Route {
 	return types.Route{
 		Model: gorm.Model{
 			ID: id,
 		},
-		Node:      n(nid),
+		Node:      mkNode(nid),
 		Prefix:    prefix,
 		Enabled:   enabled,
 		IsPrimary: primary,
 	}
 }
+
 var rp = func(id uint, nid types.NodeID, prefix types.IPPrefix, enabled, primary bool) *types.Route {
 	ro := r(id, nid, prefix, enabled, primary)
 	return &ro
