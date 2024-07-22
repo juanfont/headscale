@@ -604,8 +604,8 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		mu.Lock()
-		got = append(got, ni)
 		defer mu.Unlock()
+		got = append(got, ni)
 	})
 	go e.Start()
 
@@ -635,8 +635,8 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 	want := 1000
 
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
-		defer mu.Unlock()
 		mu.Lock()
+		defer mu.Unlock()
 
 		time.Sleep(time.Duration(generateRandomNumber(t, 3)) * time.Millisecond)
 		got = append(got, ni)
