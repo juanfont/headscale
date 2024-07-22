@@ -605,7 +605,7 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		mu.Lock()
 		got = append(got, ni)
-		mu.Unlock()
+		defer mu.Unlock()
 	})
 	go e.Start()
 
