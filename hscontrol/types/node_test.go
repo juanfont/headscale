@@ -195,7 +195,7 @@ func TestNodeFQDN(t *testing.T) {
 				DNSUserNameInMagicDNS: true,
 			},
 			domain: "example.com",
-			want:   "test",
+			want:   "test.user.example.com",
 		},
 		{
 			name: "no-dnsconfig-with-username",
@@ -206,7 +206,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test",
+			want:   "test.example.com",
 		},
 		{
 			name: "all-set",
@@ -271,7 +271,7 @@ func TestNodeFQDN(t *testing.T) {
 				DNSUserNameInMagicDNS: false,
 			},
 			domain: "example.com",
-			want:   "test",
+			want:   "test.example.com",
 		},
 		{
 			name: "no-dnsconfig",
@@ -282,7 +282,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test",
+			want:   "test.example.com",
 		},
 	}
 

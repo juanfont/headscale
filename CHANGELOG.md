@@ -29,7 +29,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - Adds additional configuration for PostgreSQL for setting max open, idle connection and idle connection lifetime.
 - API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
 - Remove support for older Tailscale clients [#1611](https://github.com/juanfont/headscale/pull/1611)
-  - The latest supported client is 1.38
+  - The latest supported client is 1.42
 - Headscale checks that _at least_ one DERP is defined at start [#1564](https://github.com/juanfont/headscale/pull/1564)
   - If no DERP is configured, the server will fail to start, this can be because it cannot load the DERPMap from file or url.
 - Embedded DERP server requires a private key [#1611](https://github.com/juanfont/headscale/pull/1611)
@@ -43,9 +43,12 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - MagicDNS domains no longer contain usernames []()
   - This is in preperation to fix Headscales implementation of tags which currently does not correctly remove the link between a tagged device and a user. As tagged devices will not have a user, this will require a change to the DNS generation, removing the username, see [#1369](https://github.com/juanfont/headscale/issues/1369) for more information.
   - `use_username_in_magic_dns` can be used to turn this behaviour on again, but note that this option _will be removed_ when tags are fixed.
-  - This option brings Headscales behaviour in line with Tailscale.
+    - dns.base_domain can no longer be the same as (or part of) server_url.
+    - This option brings Headscales behaviour in line with Tailscale.
 - YAML files are no longer supported for headscale policy.  [#1792](https://github.com/juanfont/headscale/pull/1792)
   - HuJSON is now the only supported format for policy.
+- DNS configuration has been restructured [#2034](https://github.com/juanfont/headscale/pull/2034)
+  - Please review the new [config-example.yaml](./config-example.yaml) for the new structure.
 
 ### Changes
 

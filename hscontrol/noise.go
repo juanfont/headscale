@@ -166,7 +166,7 @@ func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
 }
 
 const (
-	MinimumCapVersion tailcfg.CapabilityVersion = 58
+	MinimumCapVersion tailcfg.CapabilityVersion = 61
 )
 
 // NoisePollNetMapHandler takes care of /machine/:id/map using the Noise protocol

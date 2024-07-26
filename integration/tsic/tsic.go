@@ -1,6 +1,8 @@
 package tsic
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -997,4 +999,42 @@ func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 // on the host system.
 func (t *TailscaleInContainer) SaveLog(path string) error {
 	return dockertestutil.SaveLog(t.pool, t.container, path)
+}
+
+// ReadFile reads a file from the Tailscale container.
+// It returns the content of the file as a byte slice.
+func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
+	tarBytes, err := integrationutil.FetchPathFromContainer(t.pool, t.container, path)
+	if err != nil {
+		return nil, fmt.Errorf("reading file from container: %w", err)
+	}
+
+	var out bytes.Buffer
+	tr := tar.NewReader(bytes.NewReader(tarBytes))
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break // End of archive
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading tar header: %w", err)
+		}
+
+		if !strings.Contains(path, hdr.Name) {
+			return nil, fmt.Errorf("file not found in tar archive, looking for: %s, header was: %s", path, hdr.Name)
+		}
+
+		if _, err := io.Copy(&out, tr); err != nil {
+			return nil, fmt.Errorf("copying file to buffer: %w", err)
+		}
+
+		// Only support reading the first tile
+		break
+	}
+
+	if out.Len() == 0 {
+		return nil, fmt.Errorf("file is empty")
+	}
+
+	return out.Bytes(), nil
 }
