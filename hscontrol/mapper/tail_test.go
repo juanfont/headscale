@@ -55,12 +55,14 @@ func TestTailNode(t *testing.T) {
 		{
 			name: "empty-node",
 			node: &types.Node{
-				Hostinfo: &tailcfg.Hostinfo{},
+				GivenName: "empty",
+				Hostinfo:  &tailcfg.Hostinfo{},
 			},
 			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
+				Name:              "empty",
 				StableID:          "0",
 				Addresses:         []netip.Prefix{},
 				AllowedIPs:        []netip.Prefix{},
