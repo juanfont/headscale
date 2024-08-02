@@ -13,7 +13,7 @@ noise:
 func DefaultConfigEnv() map[string]string {
 	return map[string]string{
 		"HEADSCALE_LOG_LEVEL":                         "trace",
-		"HEADSCALE_ACL_POLICY_PATH":                   "",
+		"HEADSCALE_POLICY_PATH":                       "",
 		"HEADSCALE_DATABASE_TYPE":                     "sqlite",
 		"HEADSCALE_DATABASE_SQLITE_PATH":              "/tmp/integration_test_db.sqlite3",
 		"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": "30m",
