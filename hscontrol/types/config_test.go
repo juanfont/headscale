@@ -161,6 +161,25 @@ func TestReadConfig(t *testing.T) {
 			},
 			wantErr: "",
 		},
+		{
+			name:       "policy-path-is-loaded",
+			configPath: "testdata/policy-path-is-loaded.yaml",
+			setup: func(t *testing.T) (any, error) {
+				cfg, err := GetHeadscaleConfig()
+				if err != nil {
+					return nil, err
+				}
+
+				return map[string]string{
+					"policy.mode": string(cfg.Policy.Mode),
+					"policy.path": cfg.Policy.Path,
+				}, err
+			},
+			want: map[string]string{
+				"policy.mode": "file",
+				"policy.path": "/etc/policy.hujson",
+			},
+		},
 	}
 
 	for _, tt := range tests {
