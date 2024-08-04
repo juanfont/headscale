@@ -36,6 +36,7 @@ type TailscaleClient interface {
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)
 	ID() string
+	ReadFile(path string) ([]byte, error)
 
 	// FailingPeersAsString returns a formatted-ish multi-line-string of peers in the client
 	// and a bool indicating if the clients online count and peer count is equal.

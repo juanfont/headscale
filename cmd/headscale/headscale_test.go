@@ -63,7 +63,6 @@ func (*Suite) TestConfigFileLoading(c *check.C) {
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
 	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
-	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 	c.Assert(
 		util.GetFileMode("unix_socket_permission"),
 		check.Equals,
@@ -106,7 +105,6 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
 	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
 	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
-	c.Assert(viper.GetStringSlice("dns_config.nameservers")[0], check.Equals, "1.1.1.1")
 	c.Assert(
 		util.GetFileMode("unix_socket_permission"),
 		check.Equals,
@@ -114,39 +112,6 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	)
 	c.Assert(viper.GetBool("logtail.enabled"), check.Equals, false)
 	c.Assert(viper.GetBool("randomize_client_port"), check.Equals, false)
-}
-
-func (*Suite) TestDNSConfigLoading(c *check.C) {
-	tmpDir, err := os.MkdirTemp("", "headscale")
-	if err != nil {
-		c.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	path, err := os.Getwd()
-	if err != nil {
-		c.Fatal(err)
-	}
-
-	// Symlink the example config file
-	err = os.Symlink(
-		filepath.Clean(path+"/../../config-example.yaml"),
-		filepath.Join(tmpDir, "config.yaml"),
-	)
-	if err != nil {
-		c.Fatal(err)
-	}
-
-	// Load example config, it should load without validation errors
-	err = types.LoadConfig(tmpDir, false)
-	c.Assert(err, check.IsNil)
-
-	dnsConfig, baseDomain := types.GetDNSConfig()
-
-	c.Assert(dnsConfig.Nameservers[0].String(), check.Equals, "1.1.1.1")
-	c.Assert(dnsConfig.Resolvers[0].Addr, check.Equals, "1.1.1.1")
-	c.Assert(dnsConfig.Proxied, check.Equals, true)
-	c.Assert(baseDomain, check.Equals, "example.com")
 }
 
 func writeConfig(c *check.C, tmpDir string, configYaml []byte) {

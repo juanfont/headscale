@@ -224,53 +224,66 @@ policy:
 # - https://tailscale.com/kb/1081/magicdns/
 # - https://tailscale.com/blog/2021-09-private-dns-with-magicdns/
 #
-dns_config:
-  # Whether to prefer using Headscale provided DNS or use local.
-  override_local_dns: true
+# Please not that for the DNS configuration to have any effect,
+# clients must have the `--accept-ds=true` option enabled. This is the
+# default for the Tailscale client. This option is enabled by default
+# in the Tailscale client.
+#
+# Setting _any_ of the configuration and `--accept-dns=true` on the
+# clients will integrate with the DNS manager on the client or
+# overwrite /etc/resolv.conf.
+# https://tailscale.com/kb/1235/resolv-conf
+#
+# If you want stop Headscale from managing the DNS configuration
+# all the fields under `dns` should be set to empty values.
+dns:
+  # Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
+  # Only works if there is at least a nameserver defined.
+  magic_dns: true
+
+  # Defines the base domain to create the hostnames for MagicDNS.
+  # This domain _must_ be different from the server_url domain.
+  # `base_domain` must be a FQDN, without the trailing dot.
+  # The FQDN of the hosts will be
+  # `hostname.base_domain` (e.g., _myhost.example.com_).
+  base_domain: example.com
 
   # List of DNS servers to expose to clients.
   nameservers:
-    - 1.1.1.1
+    global:
+      - 1.1.1.1
+      - 1.0.0.1
+      - 2606:4700:4700::1111
+      - 2606:4700:4700::1001
 
-  # NextDNS (see https://tailscale.com/kb/1218/nextdns/).
-  # "abc123" is example NextDNS ID, replace with yours.
-  #
-  # With metadata sharing:
-  # nameservers:
-  #   - https://dns.nextdns.io/abc123
-  #
-  # Without metadata sharing:
-  # nameservers:
-  #   - 2a07:a8c0::ab:c123
-  #   - 2a07:a8c1::ab:c123
+      # NextDNS (see https://tailscale.com/kb/1218/nextdns/).
+      # "abc123" is example NextDNS ID, replace with yours.
+      # - https://dns.nextdns.io/abc123
 
-  # Split DNS (see https://tailscale.com/kb/1054/dns/),
-  # list of search domains and the DNS to query for each one.
-  #
-  # restricted_nameservers:
-  #   foo.bar.com:
-  #     - 1.1.1.1
-  #   darp.headscale.net:
-  #     - 1.1.1.1
-  #     - 8.8.8.8
+    # Split DNS (see https://tailscale.com/kb/1054/dns/),
+    # a map of domains and which DNS server to use for each.
+    split:
+      {}
+      # foo.bar.com:
+      #   - 1.1.1.1
+      # darp.headscale.net:
+      #   - 1.1.1.1
+      #   - 8.8.8.8
 
-  # Search domains to inject.
-  domains: []
+  # Set custom DNS search domains. With MagicDNS enabled,
+  # your tailnet base_domain is always the first search domain.
+  search_domains: []
 
   # Extra DNS records
   # so far only A-records are supported (on the tailscale side)
   # See https://github.com/juanfont/headscale/blob/main/docs/dns-records.md#Limitations
-  # extra_records:
+  extra_records: []
   #   - name: "grafana.myvpn.example.com"
   #     type: "A"
   #     value: "100.64.0.3"
   #
   #   # you can also put it in one line
   #   - { name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.3" }
-
-  # Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
-  # Only works if there is at least a nameserver defined.
-  magic_dns: true
 
   # DEPRECATED
   # Use the username as part of the DNS name for nodes, with this option enabled:
@@ -280,12 +293,6 @@ dns_config:
   # This is a legacy option as Headscale has have this wrongly implemented
   # while in upstream Tailscale, the username is not included.
   use_username_in_magic_dns: false
-
-  # Defines the base domain to create the hostnames for MagicDNS.
-  # `base_domain` must be a FQDNs, without the trailing dot.
-  # The FQDN of the hosts will be
-  # `hostname.user.base_domain` (e.g., _myhost.myuser.example.com_).
-  base_domain: example.com
 
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:
