@@ -47,7 +47,9 @@ func (s *Suite) ResetDB(c *check.C) {
 			},
 		},
 		OIDC: types.OIDCConfig{
-			StripEmaildomain: false,
+			Misc: types.OIDCMiscConfig{
+				StripEmaildomain: false,
+			},
 		},
 	}
 

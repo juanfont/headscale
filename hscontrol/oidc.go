@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -77,11 +78,11 @@ func (h *Headscale) initOIDC() error {
 }
 
 func (h *Headscale) determineTokenExpiration(idTokenExpiration time.Time) time.Time {
-	if h.cfg.OIDC.UseExpiryFromToken {
+	if h.cfg.OIDC.Expiry.FromToken {
 		return idTokenExpiration
 	}
 
-	return time.Now().Add(h.cfg.OIDC.Expiry)
+	return time.Now().Add(h.cfg.OIDC.Expiry.FixedTime)
 }
 
 // RegisterOIDC redirects to the OIDC provider for authentication
@@ -197,20 +198,20 @@ func (h *Headscale) OIDCCallback(
 	// 	return
 	// }
 
-	claims, err := extractIDTokenClaims(writer, idToken)
+	claims, err := extractIDTokenClaims(writer, idToken, h.cfg.OIDC.ClaimsMap, h.cfg.OIDC.Misc.FlattenGroups, h.cfg.OIDC.Misc.FlattenSplter)
 	if err != nil {
 		return
 	}
 
-	if err := validateOIDCAllowedDomains(writer, h.cfg.OIDC.AllowedDomains, claims); err != nil {
+	if err := validateOIDCAllowedDomains(writer, h.cfg.OIDC.Allowed.Domains, claims); err != nil {
 		return
 	}
 
-	if err := validateOIDCAllowedGroups(writer, h.cfg.OIDC.AllowedGroups, claims); err != nil {
+	if err := validateOIDCAllowedGroups(writer, h.cfg.OIDC.Allowed.Groups, claims); err != nil {
 		return
 	}
 
-	if err := validateOIDCAllowedUsers(writer, h.cfg.OIDC.AllowedUsers, claims); err != nil {
+	if err := validateOIDCAllowedUsers(writer, h.cfg.OIDC.Allowed.Users, claims); err != nil {
 		return
 	}
 
@@ -223,8 +224,7 @@ func (h *Headscale) OIDCCallback(
 	if err != nil || nodeExists {
 		return
 	}
-
-	userName, err := getUserName(writer, claims, h.cfg.OIDC.StripEmaildomain)
+	userName, err := getUserName(writer, claims, h.cfg.OIDC.Misc.StripEmaildomain)
 	if err != nil {
 		return
 	}
@@ -338,22 +338,54 @@ func (h *Headscale) verifyIDTokenForOIDCCallback(
 func extractIDTokenClaims(
 	writer http.ResponseWriter,
 	idToken *oidc.IDToken,
+	claimsMap types.OIDCClaimsMap,
+	flattenGroup bool,
+	flattenSpliter string,
 ) (*IDTokenClaims, error) {
-	var claims IDTokenClaims
+	var claims json.RawMessage
+	// Parse the ID Token claims into the struct
 	if err := idToken.Claims(&claims); err != nil {
 		util.LogErr(err, "Failed to decode id token claims")
-
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusBadRequest)
 		_, werr := writer.Write([]byte("Failed to decode id token claims"))
 		if werr != nil {
 			util.LogErr(err, "Failed to write response")
 		}
-
 		return nil, err
 	}
 
-	return &claims, nil
+	// Unmarshal the claims into a map
+	mappedClaims := make(map[string]interface{})
+	if err := json.Unmarshal(claims, &mappedClaims); err != nil {
+		util.LogErr(err, "Failed to unmarshal id token claims")
+		return nil, err
+	}
+
+	// Map the claims to the final struct
+	var finalClaims IDTokenClaims
+	if val, ok := mappedClaims[claimsMap.Name]; ok {
+		finalClaims.Name = val.(string)
+	}
+	if val, ok := mappedClaims[claimsMap.Username]; ok {
+		finalClaims.Username = val.(string)
+	}
+	if val, ok := mappedClaims[claimsMap.Email]; ok {
+		finalClaims.Email = val.(string)
+	}
+	if val, ok := mappedClaims[claimsMap.Groups]; ok && val != nil {
+		groups, ok := val.([]interface{})
+		if ok {
+			for _, group := range groups {
+				finalClaims.Groups = append(finalClaims.Groups, group.(string))
+			}
+		}
+	}
+	// Flatten groups if needed
+	if flattenGroup {
+		finalClaims.Groups = flattenGroups(finalClaims.Groups, flattenSpliter)
+	}
+	return &finalClaims, nil
 }
 
 // validateOIDCAllowedDomains checks that if AllowedDomains is provided,
@@ -541,7 +573,7 @@ func getUserName(
 	stripEmaildomain bool,
 ) (string, error) {
 	userName, err := util.NormalizeToFQDNRules(
-		claims.Email,
+		claims.Username,
 		stripEmaildomain,
 	)
 	if err != nil {
@@ -652,4 +684,26 @@ func renderOIDCCallbackTemplate(
 	}
 
 	return &content, nil
+}
+
+// flattenGroups takes a list of groups and returns a list of all groups and subgroups.
+// groups format is a list of strings with the groups separated by slashes. e.g.: ["a/b/c", "a/b/d"]
+func flattenGroups(groups []string, spliter string) []string {
+	// A map to keep track of which groups we have seen
+	seen := make(map[string]bool)
+	var result []string
+
+	// Iterate over each group, format is a/b/c
+	for _, group := range groups {
+		// Split the group into segments, e.g. ["a", "b", "c"]
+		segments := strings.Split(group, spliter)
+		for _, segment := range segments {
+			if !seen[segment] && segment != "" {
+				seen[segment] = true
+				result = append(result, segment)
+			}
+		}
+	}
+
+	return result
 }
