@@ -36,8 +36,7 @@ func tailNodes(
 	return tNodes, nil
 }
 
-// tailNode converts a Node into a Tailscale Node. includeRoutes is false for shared nodes
-// as per the expected behaviour in the official SaaS.
+// tailNode converts a Node into a Tailscale Node.
 func tailNode(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,

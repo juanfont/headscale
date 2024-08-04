@@ -37,6 +37,8 @@ jobs:
           - TestNodeRenameCommand
           - TestNodeMoveCommand
           - TestPolicyCommand
+          - TestResolveMagicDNS
+          - TestValidateResolvConf
           - TestDERPServerScenario
           - TestPingAllByIP
           - TestPingAllByIPPublicDERP
@@ -45,7 +47,6 @@ jobs:
           - TestEphemeral2006DeletedTooQuickly
           - TestPingAllByHostname
           - TestTaildrop
-          - TestResolveMagicDNS
           - TestExpireNode
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown
