@@ -22,7 +22,7 @@ build:
 dev: lint test build
 
 test:
-	gotestsum -- -short -coverprofile=coverage.out ./...
+	gotestsum -- -short -race -coverprofile=coverage.out ./...
 
 test_integration:
 	docker run \
@@ -33,7 +33,7 @@ test_integration:
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $$PWD/control_logs:/tmp/control \
 		golang:1 \
-		go run gotest.tools/gotestsum@latest -- -failfast ./... -timeout 120m -parallel 8
+		go run gotest.tools/gotestsum@latest -- -race -failfast ./... -timeout 120m -parallel 8
 
 lint:
 	golangci-lint run --fix --timeout 10m
