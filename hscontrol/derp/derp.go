@@ -125,10 +125,5 @@ func GetDERPMap(cfg types.DERPConfig) *tailcfg.DERPMap {
 
 	log.Trace().Interface("derpMap", derpMap).Msg("DERPMap loaded")
 
-	if len(derpMap.Regions) == 0 {
-		log.Warn().
-			Msg("DERP map is empty, not a single DERP map datasource was loaded correctly or contained a region")
-	}
-
 	return derpMap
 }
