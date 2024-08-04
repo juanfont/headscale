@@ -110,6 +110,12 @@ type DatabaseConfig struct {
 	Type  string
 	Debug bool
 
+	// Type sets the gorm configuration
+	SlowThreshold         time.Duration
+	SkipErrRecordNotFound bool
+	ParameterizedQueries  bool
+	PrepareStmt           bool
+
 	Sqlite   SqliteConfig
 	Postgres PostgresConfig
 }
@@ -450,6 +456,11 @@ func GetDatabaseConfig() DatabaseConfig {
 
 	type_ := viper.GetString("database.type")
 
+	skipErrRecordNotFound := viper.GetBool("database.gorm.skip_err_record_not_found")
+	slowThreshold := viper.GetDuration("database.gorm.slow_threshold") * time.Millisecond
+	parameterizedQueries := viper.GetBool("database.gorm.parameterized_queries")
+	prepareStmt := viper.GetBool("database.gorm.prepare_stmt")
+
 	switch type_ {
 	case DatabaseSqlite, DatabasePostgres:
 		break
@@ -461,8 +472,12 @@ func GetDatabaseConfig() DatabaseConfig {
 	}
 
 	return DatabaseConfig{
-		Type:  type_,
-		Debug: debug,
+		Type:                  type_,
+		Debug:                 debug,
+		SkipErrRecordNotFound: skipErrRecordNotFound,
+		SlowThreshold:         slowThreshold,
+		ParameterizedQueries:  parameterizedQueries,
+		PrepareStmt:           prepareStmt,
 		Sqlite: SqliteConfig{
 			Path: util.AbsolutePathFromConfigPath(
 				viper.GetString("database.sqlite.path"),
