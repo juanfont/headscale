@@ -559,3 +559,9 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 
 	return ret
 }
+
+// RegistrationInfo contains both machine key and verifier information for OIDC validation.
+type RegistrationInfo struct {
+	MachineKey key.MachinePublic
+	Verifier   string
+}
