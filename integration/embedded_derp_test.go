@@ -307,7 +307,7 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 			cert := hsServer.GetCert()
 
 			opts = append(opts,
-				tsic.WithHeadscaleTLS(cert),
+				tsic.WithCACert(cert),
 			)
 
 			user.createWaitGroup.Go(func() error {

@@ -32,7 +32,7 @@ const (
 	defaultPingTimeout   = 300 * time.Millisecond
 	defaultPingCount     = 10
 	dockerContextPath    = "../."
-	headscaleCertPath    = "/usr/local/share/ca-certificates/headscale.crt"
+	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
 )
 
@@ -65,7 +65,7 @@ type TailscaleInContainer struct {
 	fqdn string
 
 	// optional config
-	headscaleCert     []byte
+	caCerts           [][]byte
 	headscaleHostname string
 	withWebsocketDERP bool
 	withSSH           bool
@@ -80,11 +80,10 @@ type TailscaleInContainer struct {
 // Tailscale instance.
 type Option = func(c *TailscaleInContainer)
 
-// WithHeadscaleTLS takes the certificate of the Headscale instance
-// and adds it to the trusted surtificate of the Tailscale container.
-func WithHeadscaleTLS(cert []byte) Option {
+// WithCACert adds it to the trusted surtificate of the Tailscale container.
+func WithCACert(cert []byte) Option {
 	return func(tsic *TailscaleInContainer) {
-		tsic.headscaleCert = cert
+		tsic.caCerts = append(tsic.caCerts, cert)
 	}
 }
 
@@ -113,7 +112,7 @@ func WithOrCreateNetwork(network *dockertest.Network) Option {
 }
 
 // WithHeadscaleName set the name of the headscale instance,
-// mostly useful in combination with TLS and WithHeadscaleTLS.
+// mostly useful in combination with TLS and WithCACert.
 func WithHeadscaleName(hsName string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.headscaleHostname = hsName
@@ -225,12 +224,8 @@ func New(
 		)
 	}
 
-	if tsic.headscaleHostname != "" {
-		tailscaleOptions.ExtraHosts = []string{
-			"host.docker.internal:host-gateway",
-			fmt.Sprintf("%s:host-gateway", tsic.headscaleHostname),
-		}
-	}
+	tailscaleOptions.ExtraHosts = append(tailscaleOptions.ExtraHosts,
+		"host.docker.internal:host-gateway")
 
 	if tsic.workdir != "" {
 		tailscaleOptions.WorkingDir = tsic.workdir
@@ -294,18 +289,14 @@ func New(
 
 	tsic.container = container
 
-	if tsic.hasTLS() {
-		err = tsic.WriteFile(headscaleCertPath, tsic.headscaleCert)
+	for i, cert := range tsic.caCerts {
+		err = tsic.WriteFile(fmt.Sprintf("%s/user-%d.crt", caCertRoot, i), cert)
 		if err != nil {
 			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
 		}
 	}
 
 	return tsic, nil
-}
-
-func (t *TailscaleInContainer) hasTLS() bool {
-	return len(t.headscaleCert) != 0
 }
 
 // Shutdown stops and cleans up the Tailscale container.
@@ -680,6 +671,33 @@ func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error
 
 		return result.notify, nil
 	}
+}
+
+func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error) {
+	if !util.TailscaleVersionNewerOrEqual("1.34", t.version) {
+		panic(fmt.Sprintf("tsic.DebugDERPRegion() called with unsupported version: %s", t.version))
+	}
+
+	command := []string{
+		"tailscale",
+		"debug",
+		"derp",
+		region,
+	}
+
+	result, stderr, err := t.Execute(command)
+	if err != nil {
+		fmt.Printf("stderr: %s\n", stderr)
+		return nil, fmt.Errorf("failed to execute tailscale debug derp command: %w", err)
+	}
+
+	var st ipnstate.DebugDERPRegionReport
+	err = json.Unmarshal([]byte(result), &st)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tailscale derp region report: %w", err)
+	}
+
+	return &st, err
 }
 
 // Netcheck returns the current Netcheck Report (netcheck.Report) of the Tailscale instance.
