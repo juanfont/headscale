@@ -91,6 +91,12 @@
           protoc-gen-grpc-gateway
           buf
           clang-tools # clang-format
+
+          # Docu dependencies
+          python311
+          poetry
+          mkdocs
+          cairo
         ];
 
       # Add entry to build a docker image with headscale
