@@ -269,7 +269,6 @@ dns_config:
   #   - { name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.3" }
 
   # Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
-  # Only works if there is at least a nameserver defined.
   magic_dns: true
 
   # DEPRECATED
