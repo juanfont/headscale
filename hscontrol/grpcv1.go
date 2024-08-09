@@ -692,7 +692,8 @@ func (api headscaleV1APIServer) GetPolicy(
 		}, nil
 	case types.PolicyModeFile:
 		// Read the file and return the contents as-is.
-		f, err := os.Open(api.h.cfg.Policy.Path)
+		absPath := util.AbsolutePathFromConfigPath(api.h.cfg.Policy.Path)
+		f, err := os.Open(absPath)
 		if err != nil {
 			return nil, err
 		}
