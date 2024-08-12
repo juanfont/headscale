@@ -57,7 +57,7 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         env:
           KO_DOCKER_REPO: ghcr.io/${{ github.repository_owner }}/headscale
-          TAG_PR_NAME: pr-${{ fromJson(steps.get_pr_data.outputs.result).number }}
+          # TAG_PR_NAME: pr-${{ fromJson(steps.get_pr_data.outputs.result).number }}
           TAG_SHA: ${{ github.sha }}
         run: |
           echo $TAG_PR_NAME
