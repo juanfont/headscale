@@ -587,7 +587,7 @@ func GetDNSConfig() (*tailcfg.DNSConfig, string) {
 		}
 
 		if !viper.GetBool("dns_config.use_username_in_magic_dns") {
-			dnsConfig.Domains = []string{baseDomain}
+			dnsConfig.Domains = append(dnsConfig.Domains, baseDomain)
 		} else {
 			log.Warn().Msg("DNS: Usernames in DNS has been deprecated, this option will be remove in future versions")
 			log.Warn().Msg("DNS: see 0.23.0 changelog for more information.")
