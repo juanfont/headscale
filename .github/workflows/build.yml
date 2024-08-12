@@ -54,4 +54,5 @@ jobs:
           TAG_PR_NAME: pr-${{ fromJson(steps.get_pr_data.outputs.result).number }}
           TAG_SHA: ${{ github.sha }}
         run: |
-          ko build --tags=$TAG_PR_NAME,$TAG_SHA ./cmd/headscale
+          echo $TAG_PR_NAME
+          ko build --tags=$TAG_SHA ./cmd/headscale
