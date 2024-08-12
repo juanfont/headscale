@@ -25,7 +25,7 @@ configuration (`/etc/headscale/config.yaml`).
     ```shell
     HEADSCALE_VERSION="" # See above URL for latest version, e.g. "X.Y.Z" (NOTE: do not add the "v" prefix!)
     # Or you can use the following bash one liner which intercepts the latest redirect to a specific version number and extracts the version.
-    # HEADSCALE_VERSION="$(curl -v https://github.com/juanfont/headscale/releases/latest 2>&1 |grep location | awk -F'/' '{print $NF}' | sed -e 's/v//' | |tr -d '\r')"
+    # HEADSCALE_VERSION="$(curl -v https://github.com/juanfont/headscale/releases/latest 2>&1 | grep location | awk -F'/' '{print $NF}' | sed -e 's/v//' | tr -d '\r')"
 
     HEADSCALE_ARCH="" # Your system architecture, e.g. "amd64"
     # Or you can use dpkg to figure out the architecture of the box.
