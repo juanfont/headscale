@@ -44,7 +44,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
               })
-            ).data;
+            ).data[0];
 
       - name: Pull Request data
         run: |
@@ -55,7 +55,7 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         env:
           KO_DOCKER_REPO: ghcr.io/${{ github.repository_owner }}/headscale
-          # TAG_PR_NAME: pr-${{ fromJson(steps.get_pr_data.outputs.result).number }}
+          TAG_PR_NAME: pr-${{ fromJson(steps.get_pr_data.outputs.result).number }}
           TAG_SHA: ${{ github.sha }}
         run: |
-          nix develop --command -- ko build --tags=$TAG_SHA ./cmd/headscale
+          nix develop --command -- ko build --tags=$TAG_SHA,$TAG_PR_NAME ./cmd/headscale
