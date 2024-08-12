@@ -1,9 +1,6 @@
-name: Build
+name: Build Docker images for PRs
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
@@ -36,36 +33,22 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
         if: steps.changed-files.outputs.files == 'true'
 
-      - name: Run build
+      - uses: actions/github-script@v6
+        id: get_pr_data
+        with:
+          script: |
+            return (
+              await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                commit_sha: context.sha,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              })
+            ).data[0];
+
+      - name: Run ko build
         id: build
         if: steps.changed-files.outputs.files == 'true'
+        env:
+          KO_DOCKER_REPO: ghcr.io/${{ github.repository_owner }}/headscale
         run: |
-          nix build |& tee build-result
-          BUILD_STATUS="${PIPESTATUS[0]}"
-
-          OLD_HASH=$(cat build-result | grep specified: | awk -F ':' '{print $2}' | sed 's/ //g')
-          NEW_HASH=$(cat build-result | grep got: | awk -F ':' '{print $2}' | sed 's/ //g')
-
-          echo "OLD_HASH=$OLD_HASH" >> $GITHUB_OUTPUT
-          echo "NEW_HASH=$NEW_HASH" >> $GITHUB_OUTPUT
-
-          exit $BUILD_STATUS
-
-      - name: Nix gosum diverging
-        uses: actions/github-script@v6
-        if: failure() && steps.build.outcome == 'failure'
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            github.rest.pulls.createReviewComment({
-              pull_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'Nix build failed with wrong gosum, please update "vendorSha256" (${{ steps.build.outputs.OLD_HASH }}) for the "headscale" package in flake.nix with the new SHA: ${{ steps.build.outputs.NEW_HASH }}'
-            })
-
-      - uses: actions/upload-artifact@v4
-        if: steps.changed-files.outputs.files == 'true'
-        with:
-          name: headscale-linux
-          path: result/bin/headscale
+          ko build --tags=pr-${{ fromJson(steps.get_pr_data.outputs.result).number }},${{ github.sha }} ./cmd/headscale

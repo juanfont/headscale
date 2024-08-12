@@ -27,8 +27,6 @@ builds:
       - -mod=readonly
     ldflags:
       - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
-    tags:
-      - ts2019
 
 archives:
   - id: golang-cross
