@@ -46,7 +46,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
               })
-            ).data[0];
+            ).data;
 
       - name: Pull Request data
         run: |
