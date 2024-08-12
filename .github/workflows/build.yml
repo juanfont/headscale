@@ -28,6 +28,7 @@ jobs:
               - '**/*.go'
               - 'integration_test/'
               - 'config-example.yaml'
+              - '.ko.yaml'
       - uses: DeterminateSystems/nix-installer-action@main
         if: steps.changed-files.outputs.files == 'true'
       - uses: DeterminateSystems/magic-nix-cache-action@main
