@@ -46,6 +46,9 @@ jobs:
               })
             ).data[0];
 
+      - name: Issue number
+        run: echo '${{steps.get_pr_data.outputs.result}}'
+
       - name: Run ko build
         id: build
         if: steps.changed-files.outputs.files == 'true'
