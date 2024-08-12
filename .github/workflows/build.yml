@@ -12,7 +12,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,7 +36,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
         if: steps.changed-files.outputs.files == 'true'
 
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@v7
         id: get_pr_data
         with:
           script: |
@@ -46,8 +48,11 @@ jobs:
               })
             ).data[0];
 
-      - name: Issue number
-        run: echo '${{steps.get_pr_data.outputs.result}}'
+      - name: Pull Request data
+        run: |
+          echo '${{ fromJson(steps.get_pr_data.outputs.result).number }}'
+          echo '${{ fromJson(steps.get_pr_data.outputs.result).title }}'
+          echo '${{steps.get_pr_data.outputs.result}}'
 
       - name: Run ko build
         id: build
