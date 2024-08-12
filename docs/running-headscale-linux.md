@@ -26,9 +26,11 @@ configuration (`/etc/headscale/config.yaml`).
     HEADSCALE_VERSION="" # See above URL for latest version, e.g. "X.Y.Z" (NOTE: do not add the "v" prefix!)
     # Or you can use the following bash one liner
     # HEADSCALE_VERSION="$(curl -v https://github.com/juanfont/headscale/releases/latest 2>&1 |grep location | awk -F'/' '{print $NF}' | sed -e 's/v//' | |tr -d '\r')"
+
     HEADSCALE_ARCH="" # Your system architecture, e.g. "amd64"
     # Or you can use:
     # HEADSCALE_ARCH="$(dpkg --print-architecture)"
+
     wget --output-document=headscale.deb \
       "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_${HEADSCALE_ARCH}.deb"
     ```
@@ -104,7 +106,7 @@ tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 
 A sane config.yml might look like this
 
-```shell
+```yaml
 ---
 
 # Remember to punch a hole in your firewall for this port
