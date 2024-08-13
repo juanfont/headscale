@@ -58,4 +58,4 @@ jobs:
           # TAG_PR_NAME: pr-${{ fromJson(steps.get_pr_data.outputs.result).number }}
           TAG_SHA: ${{ github.sha }}
         run: |
-          nix develop --command -- ko build --tags=$TAG_SHA ./cmd/headscale
+          nix develop --command -- ko build --sbom=none --tags=$TAG_SHA ./cmd/headscale
