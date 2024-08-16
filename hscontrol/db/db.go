@@ -426,7 +426,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 	// TODO(kradalby): Integrate this with zerolog
 	var dbLogger logger.Interface
 	if cfg.Debug {
-		dbLogger = util.NewDBLogWrapper(&log.Logger, cfg.SlowThreshold, cfg.SkipErrRecordNotFound, cfg.ParameterizedQueries)
+		dbLogger = util.NewDBLogWrapper(&log.Logger, cfg.Gorm.SlowThreshold, cfg.Gorm.SkipErrRecordNotFound, cfg.Gorm.ParameterizedQueries)
 	} else {
 		dbLogger = logger.Default.LogMode(logger.Silent)
 	}
@@ -447,7 +447,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		db, err := gorm.Open(
 			sqlite.Open(cfg.Sqlite.Path),
 			&gorm.Config{
-				PrepareStmt: cfg.PrepareStmt,
+				PrepareStmt: cfg.Gorm.PrepareStmt,
 				Logger:      dbLogger,
 			},
 		)
