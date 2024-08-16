@@ -140,7 +140,7 @@ ephemeral_node_inactivity_timeout: 30m
 database:
   type: sqlite
 
-  # Enable debug mode. Set log.level to "debug".
+  # Enable debug mode. This setting requires the log.level to be set to "debug" or "trace".
   debug: false
 
   # GORM configuration settings.
