@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,11 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/derp"
 	"tailscale.com/net/stun"
+	"tailscale.com/net/wsconn"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -132,6 +135,55 @@ func (d *DERPServer) DERPHandler(
 		return
 	}
 
+	if strings.Contains(req.Header.Get("Sec-Websocket-Protocol"), "derp") {
+		d.serveWebsocket(writer, req)
+	} else {
+		d.servePlain(writer, req)
+	}
+}
+
+func (d *DERPServer) serveWebsocket(writer http.ResponseWriter, req *http.Request) {
+	websocketConn, err := websocket.Accept(writer, req, &websocket.AcceptOptions{
+		Subprotocols:   []string{"derp"},
+		OriginPatterns: []string{"*"},
+		// Disable compression because we transmit WireGuard messages that
+		// are not compressible.
+		// Additionally, Safari has a broken implementation of compression
+		// (see https://github.com/nhooyr/websocket/issues/218) that makes
+		// enabling it actively harmful.
+		CompressionMode: websocket.CompressionDisabled,
+	})
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to upgrade websocket request")
+
+		writer.Header().Set("Content-Type", "text/plain")
+		writer.WriteHeader(http.StatusInternalServerError)
+
+		_, err = writer.Write([]byte("Failed to upgrade websocket request"))
+		if err != nil {
+			log.Error().
+				Caller().
+				Err(err).
+				Msg("Failed to write response")
+		}
+
+		return
+	}
+	defer websocketConn.Close(websocket.StatusInternalError, "closing")
+	if websocketConn.Subprotocol() != "derp" {
+		websocketConn.Close(websocket.StatusPolicyViolation, "client must speak the derp subprotocol")
+		return
+	}
+
+	wc := wsconn.NetConn(req.Context(), websocketConn, websocket.MessageBinary, req.RemoteAddr)
+	brw := bufio.NewReadWriter(bufio.NewReader(wc), bufio.NewWriter(wc))
+	d.tailscaleDERP.Accept(req.Context(), wc, brw, req.RemoteAddr)
+}
+
+func (d *DERPServer) servePlain(writer http.ResponseWriter, req *http.Request) {
 	fastStart := req.Header.Get(fastStartHeader) == "1"
 
 	hijacker, ok := writer.(http.Hijacker)
