@@ -15,6 +15,11 @@ import (
 	"github.com/ory/dockertest/v3"
 )
 
+type ClientsSpec struct {
+	Plain         int
+	WebsocketDERP int
+}
+
 type EmbeddedDERPServerScenario struct {
 	*Scenario
 
@@ -34,8 +39,11 @@ func TestDERPServerScenario(t *testing.T) {
 	}
 	defer scenario.Shutdown()
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
+	spec := map[string]ClientsSpec{
+		"user1": ClientsSpec{
+			Plain:         len(MustTestVersions),
+			WebsocketDERP: 2,
+		},
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -117,7 +125,7 @@ func TestDERPServerScenario(t *testing.T) {
 }
 
 func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
-	users map[string]int,
+	users map[string]ClientsSpec,
 	opts ...hsic.Option,
 ) error {
 	hsServer, err := s.Headscale(opts...)
@@ -149,14 +157,31 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 			return err
 		}
 
-		err = s.CreateTailscaleIsolatedNodesInUser(
-			hash,
-			userName,
-			"all",
-			clientCount,
-		)
-		if err != nil {
-			return err
+		{
+			// Containers that use default DERP config
+			err = s.CreateTailscaleIsolatedNodesInUser(
+				hash,
+				userName,
+				"all",
+				clientCount.Plain,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			// Containers that are expected to rely on DERP-over-websocket
+			err = s.CreateTailscaleIsolatedNodesInUser(
+				hash,
+				userName,
+				"all",
+				clientCount.WebsocketDERP,
+				tsic.WithWebsocketDERP(true),
+			)
+			if err != nil {
+				return err
+			}
 		}
 
 		key, err := s.CreatePreAuthKey(userName, true, false)
@@ -172,7 +197,6 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 
 	return nil
 }
-
 func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 	hash string,
 	userStr string,

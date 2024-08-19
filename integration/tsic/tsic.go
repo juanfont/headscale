@@ -67,6 +67,7 @@ type TailscaleInContainer struct {
 	// optional config
 	headscaleCert     []byte
 	headscaleHostname string
+	withWebsocketDERP bool
 	withSSH           bool
 	withTags          []string
 	withEntrypoint    []string
@@ -123,6 +124,14 @@ func WithHeadscaleName(hsName string) Option {
 func WithTags(tags []string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withTags = tags
+	}
+}
+
+// WithWebsocketDERP toggles a development knob to
+// force enable DERP connection through the new websocket protocol
+func WithWebsocketDERP(enabled bool) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withWebsocketDERP = enabled
 	}
 }
 
@@ -206,6 +215,21 @@ func New(
 		// },
 		Entrypoint: tsic.withEntrypoint,
 		ExtraHosts: tsic.withExtraHosts,
+		Env: []string{
+			// FIXME(enoperm):
+			// It is nice that a knob exists to make the native client use websockets,
+			// but ultimately this is an environment variable,
+			// and if the semantics ever change, the fallback behaviour
+			// is to use plain DERP. In which case, the test will not exercise
+			// the websocket path anymore, and yet it will remain green.
+			// As far as I can see clients do not expose whether
+			// they are connected to relays through websockets.
+			// Maybe we could make counter on the server side an assert against that?
+			// Alternatively, introduce a server side option to selectively enable
+			// either, none or both of plain old and websocket-tunneled DERP,
+			// then exercise the builtin DERP scenario against separate server instances.
+			fmt.Sprintf("TS_DEBUG_DERP_WS_CLIENT=%t", tsic.withWebsocketDERP),
+		},
 	}
 
 	if tsic.headscaleHostname != "" {

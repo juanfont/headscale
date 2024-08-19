@@ -13,6 +13,14 @@ import (
 	"strings"
 	"time"
 
+	// TODO(enoperm):
+	// * Currently released (tagged) versions of tailscale use a different package in their APIs
+	//   (wsonn.Netconn, to be specific).
+	// * git HEAD uses this one.
+	// This import thus required me to use a development version of the tailscale package in `go.mod`.
+	// Before merging, either wait for upstream to release these changes as stable,
+	// or revert to the old package (and then apply the same changes anyway once upstream tags a release).
+	// In my opinion, the former makes more sense, but suggestions are welcome.
 	"github.com/coder/websocket"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -146,7 +154,7 @@ func (d *DERPServer) serveWebsocket(writer http.ResponseWriter, req *http.Reques
 	websocketConn, err := websocket.Accept(writer, req, &websocket.AcceptOptions{
 		Subprotocols:   []string{"derp"},
 		OriginPatterns: []string{"*"},
-		// Disable compression because we transmit WireGuard messages that
+		// Disable compression because DERP transmits WireGuard messages that
 		// are not compressible.
 		// Additionally, Safari has a broken implementation of compression
 		// (see https://github.com/nhooyr/websocket/issues/218) that makes
