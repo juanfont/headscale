@@ -140,6 +140,23 @@ ephemeral_node_inactivity_timeout: 30m
 database:
   type: sqlite
 
+  # Enable debug mode. This setting requires the log.level to be set to "debug" or "trace".
+  debug: false
+
+  # GORM configuration settings.
+  gorm:
+    # Enable prepared statements.
+    prepare_stmt: true
+
+    # Enable parameterized queries.
+    parameterized_queries: true
+
+    # Skip logging "record not found" errors.
+    skip_err_record_not_found: true
+
+    # Threshold for slow queries in milliseconds.
+    slow_threshold: 1000
+
   # SQLite config
   sqlite:
     path: /var/lib/headscale/db.sqlite
