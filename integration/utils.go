@@ -1,6 +1,9 @@
 package integration
 
 import (
+	"bufio"
+	"bytes"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -78,6 +81,25 @@ func assertContains(t *testing.T, str, subStr string) {
 	}
 }
 
+func didClientUseWebsocketForDERP(t *testing.T, client TailscaleClient) bool {
+	t.Helper()
+
+	buf := bytes.NewBuffer(make([]byte, 65_536))
+	err := client.WriteLogs(buf, buf)
+	if err != nil {
+		t.Fatalf("failed to fetch client logs: %s: %s", client.Hostname(), err)
+	}
+
+	count, err := countMatchingLines(buf, func(line string) bool {
+		return strings.Contains(line, "websocket: connected to ")
+	})
+	if err != nil {
+		t.Fatalf("failed to process client logs: %s: %s", client.Hostname(), err)
+	}
+
+	return count > 0
+}
+
 func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) int {
 	t.Helper()
 	success := 0
@@ -113,7 +135,7 @@ func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) 
 				tsic.WithPingUntilDirect(false),
 			)
 			if err != nil {
-				t.Fatalf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
+				t.Logf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
 			} else {
 				success++
 			}
@@ -319,6 +341,24 @@ func dockertestMaxWait() time.Duration {
 	}
 
 	return wait
+}
+
+func countMatchingLines(in io.Reader, predicate func(string) bool) (int, error) {
+	count := 0
+	scanner := bufio.NewScanner(in)
+	{
+		buff := make([]byte, 1024*1024)
+		scanner.Buffer(buff, len(buff))
+		scanner.Split(bufio.ScanLines)
+	}
+
+	for scanner.Scan() {
+		if predicate(scanner.Text()) {
+			count += 1
+		}
+	}
+
+	return count, scanner.Err()
 }
 
 // func dockertestCommandTimeout() time.Duration {

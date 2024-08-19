@@ -27,6 +27,60 @@ type EmbeddedDERPServerScenario struct {
 }
 
 func TestDERPServerScenario(t *testing.T) {
+	spec := map[string]ClientsSpec{
+		"user1": {
+			Plain:         len(MustTestVersions),
+			WebsocketDERP: 0,
+		},
+	}
+
+	DERPServerScenario(t, spec, func(scenario *EmbeddedDERPServerScenario) {
+		allClients, err := scenario.ListTailscaleClients()
+		assertNoErrListClients(t, err)
+		t.Logf("checking %d clients for websocket connections", len(allClients))
+
+		for _, client := range allClients {
+			if didClientUseWebsocketForDERP(t, client) {
+				t.Logf(
+					"client %q used websocket a connection, but was not expected to",
+					client.Hostname(),
+				)
+				t.Fail()
+			}
+		}
+	})
+}
+
+func TestDERPServerWebsocketScenario(t *testing.T) {
+	spec := map[string]ClientsSpec{
+		"user1": {
+			Plain:         0,
+			WebsocketDERP: len(MustTestVersions),
+		},
+	}
+
+	DERPServerScenario(t, spec, func(scenario *EmbeddedDERPServerScenario) {
+		allClients, err := scenario.ListTailscaleClients()
+		assertNoErrListClients(t, err)
+		t.Logf("checking %d clients for websocket connections", len(allClients))
+
+		for _, client := range allClients {
+			if !didClientUseWebsocketForDERP(t, client) {
+				t.Logf(
+					"client %q does not seem to have used a websocket connection, even though it was expected to do so",
+					client.Hostname(),
+				)
+				t.Fail()
+			}
+		}
+	})
+}
+
+func DERPServerScenario(
+	t *testing.T,
+	spec map[string]ClientsSpec,
+	furtherAssertions ...func(*EmbeddedDERPServerScenario),
+) {
 	IntegrationSkip(t)
 	// t.Parallel()
 
@@ -39,23 +93,18 @@ func TestDERPServerScenario(t *testing.T) {
 	}
 	defer scenario.Shutdown()
 
-	spec := map[string]ClientsSpec{
-		"user1": ClientsSpec{
-			Plain:         len(MustTestVersions),
-			WebsocketDERP: 2,
-		},
-	}
-
 	err = scenario.CreateHeadscaleEnv(
 		spec,
 		hsic.WithTestName("derpserver"),
 		hsic.WithExtraPorts([]string{"3478/udp"}),
 		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithPort(443),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED": "true",
 			"HEADSCALE_DERP_UPDATE_FREQUENCY":    "10s",
+			"HEADSCALE_LISTEN_ADDR":              "0.0.0.0:443",
 		}),
 	)
 	assertNoErrHeadscaleEnv(t, err)
@@ -84,6 +133,10 @@ func TestDERPServerScenario(t *testing.T) {
 	}
 
 	success := pingDerpAllHelper(t, allClients, allHostnames)
+	if len(allHostnames)*len(allClients) > success {
+		t.FailNow()
+		return
+	}
 
 	for _, client := range allClients {
 		status, err := client.Status()
@@ -106,6 +159,9 @@ func TestDERPServerScenario(t *testing.T) {
 	time.Sleep(30 * time.Second)
 
 	success = pingDerpAllHelper(t, allClients, allHostnames)
+	if len(allHostnames)*len(allClients) > success {
+		t.Fail()
+	}
 
 	for _, client := range allClients {
 		status, err := client.Status()
@@ -122,6 +178,10 @@ func TestDERPServerScenario(t *testing.T) {
 	}
 
 	t.Logf("Run2: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
+
+	for _, check := range furtherAssertions {
+		check(&scenario)
+	}
 }
 
 func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
@@ -145,6 +205,7 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 	if err != nil {
 		return err
 	}
+	log.Printf("headscale server ip address: %s", hsServer.GetIP())
 
 	hash, err := util.GenerateRandomStringDNSSafe(scenarioHashLength)
 	if err != nil {
@@ -157,7 +218,7 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 			return err
 		}
 
-		{
+		if clientCount.Plain > 0 {
 			// Containers that use default DERP config
 			err = s.CreateTailscaleIsolatedNodesInUser(
 				hash,
@@ -170,8 +231,8 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 			}
 		}
 
-		{
-			// Containers that are expected to rely on DERP-over-websocket
+		if clientCount.WebsocketDERP > 0 {
+			// Containers that use DERP-over-WebSocket
 			err = s.CreateTailscaleIsolatedNodesInUser(
 				hash,
 				userName,
@@ -197,6 +258,7 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 
 	return nil
 }
+
 func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 	hash string,
 	userStr string,

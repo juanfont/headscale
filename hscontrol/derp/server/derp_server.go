@@ -13,14 +13,6 @@ import (
 	"strings"
 	"time"
 
-	// TODO(enoperm):
-	// * Currently released (tagged) versions of tailscale use a different package in their APIs
-	//   (wsonn.Netconn, to be specific).
-	// * git HEAD uses this one.
-	// This import thus required me to use a development version of the tailscale package in `go.mod`.
-	// Before merging, either wait for upstream to release these changes as stable,
-	// or revert to the old package (and then apply the same changes anyway once upstream tags a release).
-	// In my opinion, the former makes more sense, but suggestions are welcome.
 	"github.com/coder/websocket"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"

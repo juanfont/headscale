@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"io"
 	"net/netip"
 	"net/url"
 
@@ -41,4 +42,6 @@ type TailscaleClient interface {
 	// FailingPeersAsString returns a formatted-ish multi-line-string of peers in the client
 	// and a bool indicating if the clients online count and peer count is equal.
 	FailingPeersAsString() (string, bool, error)
+
+	WriteLogs(stdout, stderr io.Writer) error
 }

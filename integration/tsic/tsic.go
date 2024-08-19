@@ -128,7 +128,7 @@ func WithTags(tags []string) Option {
 }
 
 // WithWebsocketDERP toggles a development knob to
-// force enable DERP connection through the new websocket protocol
+// force enable DERP connection through the new websocket protocol.
 func WithWebsocketDERP(enabled bool) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withWebsocketDERP = enabled
@@ -215,21 +215,14 @@ func New(
 		// },
 		Entrypoint: tsic.withEntrypoint,
 		ExtraHosts: tsic.withExtraHosts,
-		Env: []string{
-			// FIXME(enoperm):
-			// It is nice that a knob exists to make the native client use websockets,
-			// but ultimately this is an environment variable,
-			// and if the semantics ever change, the fallback behaviour
-			// is to use plain DERP. In which case, the test will not exercise
-			// the websocket path anymore, and yet it will remain green.
-			// As far as I can see clients do not expose whether
-			// they are connected to relays through websockets.
-			// Maybe we could make counter on the server side an assert against that?
-			// Alternatively, introduce a server side option to selectively enable
-			// either, none or both of plain old and websocket-tunneled DERP,
-			// then exercise the builtin DERP scenario against separate server instances.
+		Env:        []string{},
+	}
+
+	if tsic.withWebsocketDERP {
+		tailscaleOptions.Env = append(
+			tailscaleOptions.Env,
 			fmt.Sprintf("TS_DEBUG_DERP_WS_CLIENT=%t", tsic.withWebsocketDERP),
-		},
+		)
 	}
 
 	if tsic.headscaleHostname != "" {
@@ -373,6 +366,15 @@ func (t *TailscaleInContainer) Execute(
 	}
 
 	return stdout, stderr, nil
+}
+
+// Retrieve container logs.
+func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
+	return dockertestutil.WriteLog(
+		t.pool,
+		t.container,
+		stdout, stderr,
+	)
 }
 
 // Up runs the login routine on the given Tailscale instance.
@@ -1023,8 +1025,19 @@ func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 // on the host system.
 func (t *TailscaleInContainer) SaveLog(path string) error {
 	// TODO(kradalby): Assert if tailscale logs contains panics.
+	// NOTE(enoperm): `t.WriteLog | countMatchingLines`
+	// is probably most of what is for that,
+	// but I'd rather not change the behaviour here,
+	// as it may affect all the other tests
+	// I have not otherwise touched.
 	_, _, err := dockertestutil.SaveLog(t.pool, t.container, path)
 	return err
+}
+
+// WriteLogs writes the current stdout/stderr log of the container to
+// the given io.Writers.
+func (t *TailscaleInContainer) WriteLogs(stdout, stderr io.Writer) error {
+	return dockertestutil.WriteLog(t.pool, t.container, stdout, stderr)
 }
 
 // ReadFile reads a file from the Tailscale container.
