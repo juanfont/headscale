@@ -241,8 +241,8 @@ policy:
 # - https://tailscale.com/kb/1081/magicdns/
 # - https://tailscale.com/blog/2021-09-private-dns-with-magicdns/
 #
-# Please not that for the DNS configuration to have any effect,
-# clients must have the `--accept-ds=true` option enabled. This is the
+# Please note that for the DNS configuration to have any effect,
+# clients must have the `--accept-dns=true` option enabled. This is the
 # default for the Tailscale client. This option is enabled by default
 # in the Tailscale client.
 #

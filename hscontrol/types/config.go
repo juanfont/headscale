@@ -303,7 +303,7 @@ func LoadConfig(path string, isFile bool) error {
 	// https://github.com/spf13/viper/issues/560
 
 	// Alias the old ACL Policy path with the new configuration option.
-	depr.warnWithAlias("policy.path", "acl_policy_path")
+	depr.fatalIfNewKeyIsNotUsed("policy.path", "acl_policy_path")
 
 	// Move dns_config -> dns
 	depr.warn("dns_config.override_local_dns")
