@@ -43,8 +43,7 @@ servers.
 Note: Users will be created automatically when users authenticate with the
 Headscale server.
 
-ACLs could be written either on [huJSON](https://github.com/tailscale/hujson)
-or YAML. Check the [test ACLs](../tests/acls) for further information.
+ACLs have to be written in [huJSON](https://github.com/tailscale/hujson). Check the [test ACLs](../tests/acls) for further information.
 
 When registering the servers we will need to add the flag
 `--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user that is
