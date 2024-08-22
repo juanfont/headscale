@@ -227,7 +227,7 @@ func (m *Mapper) FullMapResponse(
 	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
 }
 
-// ReadOnlyResponse returns a MapResponse for the given node.
+// ReadOnlyMapResponse returns a MapResponse for the given node.
 // Lite means that the peers has been omitted, this is intended
 // to be used to answer MapRequests with OmitPeers set to true.
 func (m *Mapper) ReadOnlyMapResponse(
@@ -552,7 +552,7 @@ func appendPeerChanges(
 	}
 
 	// If there are filter rules present, see if there are any nodes that cannot
-	// access eachother at all and remove them from the peers.
+	// access each-other at all and remove them from the peers.
 	if len(packetFilter) > 0 {
 		changed = policy.FilterNodesByACL(node, changed, packetFilter)
 	}
@@ -596,7 +596,7 @@ func appendPeerChanges(
 	} else {
 		// This is a hack to avoid sending an empty list of packet filters.
 		// Since tailcfg.PacketFilter has omitempty, any empty PacketFilter will
-		// be omitted, causing the client to consider it unchange, keeping the
+		// be omitted, causing the client to consider it unchanged, keeping the
 		// previous packet filter. Worst case, this can cause a node that previously
 		// has access to a node to _not_ loose access if an empty (allow none) is sent.
 		reduced := policy.ReduceFilterRules(node, packetFilter)
