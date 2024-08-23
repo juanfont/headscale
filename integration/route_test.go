@@ -17,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"tailscale.com/types/ipproto"
+	"tailscale.com/types/views"
 	"tailscale.com/wgengine/filter"
 )
 
@@ -1146,9 +1147,9 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	wantClientFilter := []filter.Match{
 		{
-			IPProto: []ipproto.Proto{
+			IPProto: views.SliceOf([]ipproto.Proto{
 				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
-			},
+			}),
 			Srcs: []netip.Prefix{
 				netip.MustParsePrefix("100.64.0.1/32"),
 				netip.MustParsePrefix("100.64.0.2/32"),
@@ -1178,9 +1179,9 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	wantSubnetFilter := []filter.Match{
 		{
-			IPProto: []ipproto.Proto{
+			IPProto: views.SliceOf([]ipproto.Proto{
 				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
-			},
+			}),
 			Srcs: []netip.Prefix{
 				netip.MustParsePrefix("100.64.0.1/32"),
 				netip.MustParsePrefix("100.64.0.2/32"),
@@ -1200,9 +1201,9 @@ func TestSubnetRouteACL(t *testing.T) {
 			Caps: []filter.CapMatch{},
 		},
 		{
-			IPProto: []ipproto.Proto{
+			IPProto: views.SliceOf([]ipproto.Proto{
 				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
-			},
+			}),
 			Srcs: []netip.Prefix{
 				netip.MustParsePrefix("100.64.0.1/32"),
 				netip.MustParsePrefix("100.64.0.2/32"),

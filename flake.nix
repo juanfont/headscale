@@ -21,7 +21,7 @@
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
       in rec {
-        headscale = pkgs.buildGo122Module rec {
+        headscale = pkgs.buildGo123Module rec {
           pname = "headscale";
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
@@ -31,7 +31,7 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorHash = "sha256-08N9ZdUM3Lw0ad89Vpy01e/qJQoMRPj8n4Jd7Aecgjw=";
+          vendorHash = "sha256-hmBRtMPqewg4oqu2bc9HtE3wdCdl5v9MoBOOCsjYlE8=";
 
           subPackages = ["cmd/headscale"];
 
@@ -63,7 +63,7 @@
         overlays = [self.overlay];
         inherit system;
       };
-      buildDeps = with pkgs; [git go_1_22 gnumake];
+      buildDeps = with pkgs; [git go_1_23 gnumake];
       devDeps = with pkgs;
         buildDeps
         ++ [
