@@ -599,6 +599,8 @@ func (d *DNSConfig) GlobalResolvers() []*dnstype.Resolver {
 			resolvers = append(resolvers, &dnstype.Resolver{
 				Addr: nsStr,
 			})
+
+			continue
 		} else {
 			warn = fmt.Sprintf("Invalid global nameserver %q. Parsing error: %s ignoring", nsStr, err)
 		}
@@ -635,6 +637,8 @@ func (d *DNSConfig) SplitResolvers() map[string][]*dnstype.Resolver {
 				resolvers = append(resolvers, &dnstype.Resolver{
 					Addr: nsStr,
 				})
+
+				continue
 			} else {
 				warn = fmt.Sprintf("Invalid split dns nameserver %q. Parsing error: %s ignoring", nsStr, err)
 			}
