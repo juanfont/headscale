@@ -246,7 +246,6 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
 	viper.SetDefault("dns.extra_records", []tailcfg.DNSRecord{})
-	viper.SetDefault("dns.use_username_in_magic_dns", false)
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
@@ -600,6 +599,8 @@ func (d *DNSConfig) GlobalResolvers() []*dnstype.Resolver {
 			resolvers = append(resolvers, &dnstype.Resolver{
 				Addr: nsStr,
 			})
+
+			continue
 		} else {
 			warn = fmt.Sprintf("Invalid global nameserver %q. Parsing error: %s ignoring", nsStr, err)
 		}
@@ -636,6 +637,8 @@ func (d *DNSConfig) SplitResolvers() map[string][]*dnstype.Resolver {
 				resolvers = append(resolvers, &dnstype.Resolver{
 					Addr: nsStr,
 				})
+
+				continue
 			} else {
 				warn = fmt.Sprintf("Invalid split dns nameserver %q. Parsing error: %s ignoring", nsStr, err)
 			}
