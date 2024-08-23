@@ -51,8 +51,8 @@ func NewHeadscaleDatabase(
 		dbConn,
 		gormigrate.DefaultOptions,
 		[]*gormigrate.Migration{
-			// New migrations should be added as transactions at the end of this list.
-			// The initial commit here is quite messy, completely out of order and
+			// New migrations must be added as transactions at the end of this list.
+			// The initial migration here is quite messy, completely out of order and
 			// has no versioning and is the tech debt of not having versioned migrations
 			// prior to this point. This first migration is all DB changes to bring a DB
 			// up to 0.23.0.
@@ -123,9 +123,21 @@ func NewHeadscaleDatabase(
 						}
 					}
 
-					err = tx.AutoMigrate(&types.Route{})
-					if err != nil {
-						return err
+					// Only run automigrate Route table if it does not exist. It has only been
+					// changed ones, when machines where renamed to nodes, which is covered
+					// further up. This whole initial integration is a mess and if AutoMigrate
+					// is ran on a 0.22 to 0.23 update, it will wipe all the routes.
+					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) {
+						err := tx.Exec("delete from routes where node_id not in (select id from nodes)").Error
+						if err != nil {
+							return err
+						}
+					}
+					if !tx.Migrator().HasTable(&types.Route{}) {
+						err = tx.AutoMigrate(&types.Route{})
+						if err != nil {
+							return err
+						}
 					}
 
 					err = tx.AutoMigrate(&types.Node{})
