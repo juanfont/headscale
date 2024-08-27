@@ -526,7 +526,17 @@ func (h *Headscale) validateNodeForOIDCCallback(
 			util.LogErr(err, "Failed to write response")
 		}
 
-		ctx := types.NotifyCtx(context.Background(), "oidc-expiry", "na")
+		ctx := types.NotifyCtx(context.Background(), "oidc-expiry-self", node.Hostname)
+		h.nodeNotifier.NotifyByNodeID(
+			ctx,
+			types.StateUpdate{
+				Type:        types.StateSelfUpdate,
+				ChangeNodes: []types.NodeID{node.ID},
+			},
+			node.ID,
+		)
+
+		ctx = types.NotifyCtx(context.Background(), "oidc-expiry-peers", node.Hostname)
 		h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, expiry), node.ID)
 
 		return nil, true, nil
