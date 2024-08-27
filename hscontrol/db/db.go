@@ -124,7 +124,7 @@ func NewHeadscaleDatabase(
 					}
 
 					// Only run automigrate Route table if it does not exist. It has only been
-					// changed ones, when machines where renamed to nodes, which is covered
+					// changed once, when machines where renamed to nodes, which is covered
 					// further up. This whole initial integration is a mess and if AutoMigrate
 					// is ran on a 0.22 to 0.23 update, it will wipe all the routes.
 					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) {
