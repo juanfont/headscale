@@ -1170,7 +1170,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		},
 	}
 
-	if diff := cmp.Diff(wantClientFilter, clientNm.PacketFilter, util.PrefixComparer); diff != "" {
+	if diff := cmp.Diff(wantClientFilter, clientNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
 		t.Errorf("Client (%s) filter, unexpected result (-want +got):\n%s", client.Hostname(), diff)
 	}
 
@@ -1220,7 +1220,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		},
 	}
 
-	if diff := cmp.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.PrefixComparer); diff != "" {
+	if diff := cmp.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
 		t.Errorf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff)
 	}
 }
