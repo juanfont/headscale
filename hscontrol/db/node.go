@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -12,7 +13,6 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
-	"github.com/sasha-s/go-deadlock"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -724,7 +724,7 @@ func ExpireExpiredNodes(tx *gorm.DB,
 // It is used to delete ephemeral nodes that have disconnected and should be
 // cleaned up.
 type EphemeralGarbageCollector struct {
-	mu deadlock.Mutex
+	mu sync.Mutex
 
 	deleteFunc  func(types.NodeID)
 	toBeDeleted map[types.NodeID]*time.Timer
@@ -752,10 +752,9 @@ func (e *EphemeralGarbageCollector) Close() {
 // Schedule schedules a node for deletion after the expiry duration.
 func (e *EphemeralGarbageCollector) Schedule(nodeID types.NodeID, expiry time.Duration) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	timer := time.NewTimer(expiry)
 	e.toBeDeleted[nodeID] = timer
+	e.mu.Unlock()
 
 	go func() {
 		select {

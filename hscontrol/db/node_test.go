@@ -609,12 +609,14 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 	})
 	go e.Start()
 
-	e.Schedule(1, 1*time.Second)
-	e.Schedule(2, 2*time.Second)
-	e.Schedule(3, 3*time.Second)
-	e.Schedule(4, 4*time.Second)
-	e.Cancel(2)
-	e.Cancel(4)
+	go e.Schedule(1, 1*time.Second)
+	go e.Schedule(2, 2*time.Second)
+	go e.Schedule(3, 3*time.Second)
+	go e.Schedule(4, 4*time.Second)
+
+	time.Sleep(time.Second)
+	go e.Cancel(2)
+	go e.Cancel(4)
 
 	time.Sleep(6 * time.Second)
 
