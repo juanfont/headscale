@@ -1683,7 +1683,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	// defer scenario.Shutdown()
+	defer scenario.Shutdown()
 
 	spec := map[string]int{
 		"policy-user": 1,
