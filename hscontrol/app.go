@@ -1001,6 +1001,32 @@ func (h *Headscale) loadACLPolicy() error {
 		if err != nil {
 			return fmt.Errorf("failed to load ACL policy from file: %w", err)
 		}
+
+		// Validate and reject configuration that would error when applied
+		// when creating a map response. This requires nodes, so there is still
+		// a scenario where they might be allowed if the server has no nodes
+		// yet, but it should help for the general case and for hot reloading
+		// configurations.
+		// Note that this check is only done for file-based policies in this function
+		// as the database-based policies are checked in the gRPC API where it is not
+		// allowed to be written to the database.
+		nodes, err := h.db.ListNodes()
+		if err != nil {
+			return fmt.Errorf("loading nodes from database to validate policy: %w", err)
+		}
+
+		_, err = pol.CompileFilterRules(nodes)
+		if err != nil {
+			return fmt.Errorf("verifying policy rules: %w", err)
+		}
+
+		if len(nodes) > 0 {
+			_, err = pol.CompileSSHPolicy(nodes[0], nodes)
+			if err != nil {
+				return fmt.Errorf("verifying SSH rules: %w", err)
+			}
+		}
+
 	case types.PolicyModeDB:
 		p, err := h.db.GetPolicy()
 		if err != nil {
