@@ -1676,3 +1676,77 @@ func TestPolicyCommand(t *testing.T) {
 	assert.Len(t, output.ACLs, 1)
 	assert.Equal(t, output.TagOwners["tag:exists"], []string{"policy-user"})
 }
+
+func TestPolicyBrokenConfigCommand(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		"policy-user": 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		[]tsic.Option{},
+		hsic.WithTestName("clins"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_POLICY_MODE": "database",
+		}),
+	)
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	p := policy.ACLPolicy{
+		ACLs: []policy.ACL{
+			{
+				// This is an unknown action, so it will return an error
+				// and the config will not be applied.
+				Action:       "acccept",
+				Sources:      []string{"*"},
+				Destinations: []string{"*:*"},
+			},
+		},
+		TagOwners: map[string][]string{
+			"tag:exists": {"policy-user"},
+		},
+	}
+
+	pBytes, _ := json.Marshal(p)
+
+	policyFilePath := "/etc/headscale/policy.json"
+
+	err = headscale.WriteFile(policyFilePath, pBytes)
+	assertNoErr(t, err)
+
+	// No policy is present at this time.
+	// Add a new policy from a file.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"set",
+			"-f",
+			policyFilePath,
+		},
+	)
+	assert.ErrorContains(t, err, "verifying policy rules: invalid action")
+
+	// The new policy was invalid, the old one should still be in place, which
+	// is none.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"get",
+			"--output",
+			"json",
+		},
+	)
+	assert.ErrorContains(t, err, "acl policy not found")
+}

@@ -62,7 +62,7 @@ func ExecuteCommand(
 		exitCode, err := resource.Exec(
 			cmd,
 			dockertest.ExecOptions{
-				Env:    append(env, "HEADSCALE_LOG_LEVEL=disabled"),
+				Env:    append(env, "HEADSCALE_LOG_LEVEL=info"),
 				StdOut: &stdout,
 				StdErr: &stderr,
 			},
