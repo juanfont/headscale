@@ -42,36 +42,12 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
         curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
         ```
 
-    - **(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
+    Modify the config file to your preferences before launching Docker container.
+    Here are some settings that you likely want:
 
-        ```shell
-        touch ./config/config.yaml
-        ```
-
-        Modify the config file to your preferences before launching Docker container.
-        Here are some settings that you likely want:
-
-        ```yaml
-        # Change to your hostname or host IP
-        server_url: http://your-host-name:8080
-        # Listen to 0.0.0.0 so it's accessible outside the container
-        metrics_listen_addr: 0.0.0.0:9090
-        # The default /var/lib/headscale path is not writable in the container
-        noise:
-          private_key_path: /etc/headscale/noise_private.key
-        # The default /var/lib/headscale path is not writable in the container
-        derp:
-          private_key_path: /etc/headscale/private.key
-        # The default /var/run/headscale path is not writable  in the container
-        unix_socket: /etc/headscale/headscale.sock
-        # The default /var/lib/headscale path is not writable  in the container
-        database.type: sqlite3
-        database.sqlite.path: /etc/headscale/db.sqlite
-        ```
-
-        Alternatively, you can mount `/var/lib` and `/var/run` from your host system by adding
-        `--volume $(pwd)/lib:/var/lib/headscale` and `--volume $(pwd)/run:/var/run/headscale`
-        in the next step.
+    Alternatively, you can mount `/var/lib` and `/var/run` from your host system by adding
+    `--volume $(pwd)/lib:/var/lib/headscale` and `--volume $(pwd)/run:/var/run/headscale`
+    in the next step.
 
 1. Start the headscale server while working in the host headscale directory:
 
@@ -95,7 +71,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 
       ```yaml
       version: "3.7"
-      
+
       services:
         headscale:
           image: headscale/headscale:0.22.3

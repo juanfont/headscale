@@ -138,6 +138,9 @@ disable_check_updates: false
 ephemeral_node_inactivity_timeout: 30m
 
 database:
+  # Database type. Available options: sqlite, postgres
+  # Please not that using Postgres is highly discouraged as it is only supported for legacy reasons.
+  # All new development, testing and optimisations are done with SQLite in mind.
   type: sqlite
 
   # Enable debug mode. This setting requires the log.level to be set to "debug" or "trace".
@@ -166,6 +169,8 @@ database:
     write_ahead_log: true
 
   # # Postgres config
+  # Please note that using Postgres is highly discouraged as it is only supported for legacy reasons.
+  # See database.type for more information.
   # postgres:
   #   # If using a Unix socket to connect to Postgres, set the socket path in the 'host' field and leave 'port' blank.
   #   host: localhost

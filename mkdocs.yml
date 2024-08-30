@@ -144,4 +144,3 @@ nav:
   - Proposals:
       - ACLs: proposals/001-acls.md
       - Better routing: proposals/002-better-routing.md
-  - Glossary: glossary.md
