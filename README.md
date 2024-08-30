@@ -55,7 +55,6 @@ buttons available in the repo.
 - Taildrop (File Sharing)
 - [Access control lists](https://tailscale.com/kb/1018/acls/)
 - [MagicDNS](https://tailscale.com/kb/1081/magicdns)
-- Support for multiple IP ranges in the tailnet
 - Dual stack (IPv4 and IPv6)
 - Routing advertising (including exit nodes)
 - Ephemeral nodes

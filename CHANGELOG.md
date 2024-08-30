@@ -29,7 +29,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - Adds additional configuration for PostgreSQL for setting max open, idle connection and idle connection lifetime.
 - API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
 - Remove support for older Tailscale clients [#1611](https://github.com/juanfont/headscale/pull/1611)
-  - The latest supported client is 1.42
+  - The oldest supported client is 1.42
 - Headscale checks that _at least_ one DERP is defined at start [#1564](https://github.com/juanfont/headscale/pull/1564)
   - If no DERP is configured, the server will fail to start, this can be because it cannot load the DERPMap from file or url.
 - Embedded DERP server requires a private key [#1611](https://github.com/juanfont/headscale/pull/1611)
