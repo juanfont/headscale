@@ -31,7 +31,7 @@ We are more than happy to exchange emails, or to have dedicated calls before a P
 
 ## When/Why is Feature X going to be implemented?
 
-We don't know. We might be working on it. If you want to help, please send us a PR.
+We don't know. We might be working on it. If you want to help, please post an feature request about it.
 
 Please be aware that there are a number of reasons why we might not accept specific contributions:
 
