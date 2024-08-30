@@ -551,7 +551,7 @@ func (t *HeadscaleInContainer) Execute(
 			log.Printf("command stdout: %s\n", stdout)
 		}
 
-		return "", err
+		return stdout, fmt.Errorf("executing command in docker: %w, stderr: %s", err, stderr)
 	}
 
 	return stdout, nil
