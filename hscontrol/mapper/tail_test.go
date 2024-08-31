@@ -246,7 +246,6 @@ func TestNodeExpiry(t *testing.T) {
 				&policy.ACLPolicy{},
 				&types.Config{},
 			)
-
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)
 			}
@@ -269,7 +268,6 @@ func TestNodeExpiry(t *testing.T) {
 			} else if deseri.KeyExpiry != tt.wantTime {
 				t.Errorf("nodeExpiry() = %v, want %v", deseri.KeyExpiry, tt.wantTime)
 			}
-
 		})
 	}
 }
