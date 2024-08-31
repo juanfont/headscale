@@ -215,6 +215,14 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 }
 
 func TestEphemeral(t *testing.T) {
+	testEphemeralWithOptions(t, hsic.WithTestName("ephemeral"))
+}
+
+func TestEphemeralInAlternateTimezone(t *testing.T) {
+	testEphemeralWithOptions(t, hsic.WithTestName("ephemeral-tz"), hsic.WithTimezone("America/Los_Angeles"))
+}
+
+func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 	IntegrationSkip(t)
 	t.Parallel()
 
@@ -227,7 +235,7 @@ func TestEphemeral(t *testing.T) {
 		"user2": len(MustTestVersions),
 	}
 
-	headscale, err := scenario.Headscale(hsic.WithTestName("ephemeral"))
+	headscale, err := scenario.Headscale(opts...)
 	assertNoErrHeadscaleEnv(t, err)
 
 	for userName, clientCount := range spec {

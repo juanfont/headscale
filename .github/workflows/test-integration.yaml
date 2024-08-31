@@ -45,6 +45,7 @@ jobs:
           - TestPingAllByIPPublicDERP
           - TestAuthKeyLogoutAndRelogin
           - TestEphemeral
+          - TestEphemeralInAlternateTimezone
           - TestEphemeral2006DeletedTooQuickly
           - TestPingAllByHostname
           - TestTaildrop
