@@ -211,6 +211,12 @@ func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 	}
 }
 
+func WithTimezone(timezone string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["TZ"] = timezone
+	}
+}
+
 // New returns a new HeadscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
