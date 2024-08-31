@@ -249,6 +249,10 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 		return headscale, nil
 	}
 
+	if usePostgresForTest {
+		opts = append(opts, hsic.WithPostgres())
+	}
+
 	headscale, err := hsic.New(s.pool, s.network, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create headscale container: %w", err)
@@ -465,10 +469,6 @@ func (s *Scenario) CreateHeadscaleEnv(
 	tsOpts []tsic.Option,
 	opts ...hsic.Option,
 ) error {
-	if usePostgresForTest {
-		opts = append(opts, hsic.WithPostgres())
-	}
-
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
