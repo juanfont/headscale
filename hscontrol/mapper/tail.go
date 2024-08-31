@@ -93,7 +93,7 @@ func tailNode(
 		User: tailcfg.UserID(node.UserID),
 
 		Key:       node.NodeKey,
-		KeyExpiry: keyExpiry,
+		KeyExpiry: keyExpiry.UTC(),
 
 		Machine:    node.MachineKey,
 		DiscoKey:   node.DiscoKey,
@@ -102,7 +102,7 @@ func tailNode(
 		Endpoints:  node.Endpoints,
 		DERP:       derp,
 		Hostinfo:   node.Hostinfo.View(),
-		Created:    node.CreatedAt,
+		Created:    node.CreatedAt.UTC(),
 
 		Online: node.IsOnline,
 
