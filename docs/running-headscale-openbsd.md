@@ -10,7 +10,7 @@
 ## Goal
 
 This documentation has the goal of showing a user how-to install and run `headscale` on OpenBSD.
-In additional to the "get up and running section", there is an optional [rc.d section](#running-headscale-in-the-background-with-rcd)
+In addition to the "get up and running section", there is an optional [rc.d section](#running-headscale-in-the-background-with-rcd)
 describing how to make `headscale` run properly in a server environment.
 
 ## Install `headscale`
@@ -77,7 +77,7 @@ describing how to make `headscale` run properly in a server environment.
 
     mkdir -p /etc/headscale
 
-    # Directory for Database, and other variable data (like certificates)
+    # Directory for database, and other variable data (like certificates)
     mkdir -p /var/lib/headscale
     ```
 
@@ -135,7 +135,7 @@ tailscale up --login-server YOUR_HEADSCALE_URL
 Register the machine:
 
 ```shell
-headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
+headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
