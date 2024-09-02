@@ -13,7 +13,7 @@ This documentation has the goal of showing a user how-to run `headscale` on Seal
 
 ## Running headscale server
 
-1. Click the following prebuilt template(version [0.23.0-alpha2](https://github.com/juanfont/headscale/releases/tag/v0.23.0-alpha2)):
+1. Click the following prebuilt template:
 
    [![](https://cdn.jsdelivr.net/gh/labring-actions/templates@main/Deploy-on-Sealos.svg)](https://cloud.sealos.io/?openapp=system-template%3FtemplateName%3Dheadscale)
 
@@ -41,7 +41,7 @@ tailscale up --login-server YOUR_HEADSCALE_URL
 To register a machine when running headscale in [Sealos](https://sealos.io), click on 'Terminal' button on the right side of the headscale application's detail page to access the Terminal of the headscale application, then take the headscale command:
 
 ```bash
-headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
+headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
