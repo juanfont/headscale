@@ -22,12 +22,6 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
     cd ./headscale
     ```
 
-1. Create an empty SQlite datebase in the headscale directory:
-
-    ```shell
-    touch ./config/db.sqlite
-    ```
-
 1. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
     - Using `wget`:

@@ -45,12 +45,6 @@ describing how to make `headscale` run properly in a server environment.
       headscale
     ```
 
-1. Create an empty SQLite database:
-
-    ```shell
-    touch /var/lib/headscale/db.sqlite
-    ```
-
 1. Create a `headscale` configuration:
 
     ```shell
