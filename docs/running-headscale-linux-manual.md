@@ -1,9 +1,9 @@
 # Running headscale on Linux
 
-## Note: Outdated and "advanced"
+!!! warning "Outdated and advanced"
 
-This documentation is considered the "legacy"/advanced/manual version of the documentation, you most likely do not
-want to use this documentation and rather look at the distro specific documentation (TODO LINK)[].
+    This documentation is considered the "legacy"/advanced/manual version of the documentation, you most likely do not
+    want to use this documentation and rather look at the [distro specific documentation](./running-headscale-linux.md).
 
 ## Goal
 
