@@ -20,8 +20,9 @@
     {
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
+        buildGo = pkgs.buildGo123Module;
       in rec {
-        headscale = pkgs.buildGo123Module rec {
+        headscale = buildGo rec {
           pname = "headscale";
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
@@ -38,7 +39,7 @@
           ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
         };
 
-        protoc-gen-grpc-gateway = pkgs.buildGoModule rec {
+        protoc-gen-grpc-gateway = buildGo rec {
           pname = "grpc-gateway";
           version = "2.22.0";
 
@@ -57,7 +58,23 @@
         };
 
         golangci-lint = prev.golangci-lint.override {
-          buildGoModule = pkgs.buildGo123Module;
+          buildGoModule = buildGo;
+        };
+
+        goreleaser = prev.goreleaser.override {
+          buildGoModule = buildGo;
+        };
+
+        gotestsum = prev.gotestsum.override {
+          buildGoModule = buildGo;
+        };
+
+        gotests = prev.gotests.override {
+          buildGoModule = buildGo;
+        };
+
+        gofumpt = prev.gofumpt.override {
+          buildGoModule = buildGo;
         };
       };
     }
