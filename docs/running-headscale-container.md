@@ -22,12 +22,6 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
     cd ./headscale
     ```
 
-1. Create an empty SQlite datebase in the headscale directory:
-
-    ```shell
-    touch ./config/db.sqlite
-    ```
-
 1. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
     - Using `wget`:
@@ -43,7 +37,6 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
         ```
 
     Modify the config file to your preferences before launching Docker container.
-    Here are some settings that you likely want:
 
     Alternatively, you can mount `/var/lib` and `/var/run` from your host system by adding
     `--volume $(pwd)/lib:/var/lib/headscale` and `--volume $(pwd)/run:/var/run/headscale`
@@ -59,7 +52,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
       --publish 127.0.0.1:8080:8080 \
       --publish 127.0.0.1:9090:9090 \
       headscale/headscale:<VERSION> \
-      headscale serve
+      serve
     ```
 
     Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
@@ -74,16 +67,16 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 
       services:
         headscale:
-          image: headscale/headscale:0.22.3
+          image: headscale/headscale:<VERSION>
           restart: unless-stopped
           container_name: headscale
           ports:
             - "127.0.0.1:8080:8080"
             - "127.0.0.1:9090:9090"
           volumes:
-            # pls change [config_path] to the fullpath of the config folder just created
-            - [config_path]:/etc/headscale
-          command: headscale serve
+            # Please change <CONFIG_PATH> to the fullpath of the config folder just created
+            - <CONFIG_PATH>:/etc/headscale
+          command: serve
       ```
 
 1. Verify `headscale` is running:
@@ -109,7 +102,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 
     ```shell
     docker exec headscale \
-    headscale users create myfirstuser
+      headscale users create myfirstuser
     ```
 
 ### Register a machine (normal login)
@@ -124,7 +117,7 @@ To register a machine when running `headscale` in a container, take the headscal
 
 ```shell
 docker exec headscale \
-  headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
+  headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -152,7 +145,7 @@ To run the debug Docker container, use the exact same commands as above, but rep
 
 ### Executing commands in the debug container
 
-The default command in the debug container is to run `headscale`, which is located at `/bin/headscale` inside the container.
+The default command in the debug container is to run `headscale`, which is located at `/ko-app/headscale` inside the container.
 
 Additionally, the debug container includes a minimalist Busybox shell.
 
@@ -162,10 +155,10 @@ To launch a shell in the container, use:
 docker run -it headscale/headscale:x.x.x-debug sh
 ```
 
-You can also execute commands directly, such as `ls /bin` in this example:
+You can also execute commands directly, such as `ls /ko-app` in this example:
 
 ```
-docker run headscale/headscale:x.x.x-debug ls /bin
+docker run headscale/headscale:x.x.x-debug ls /ko-app
 ```
 
 Using `docker exec` allows you to run commands in an existing container.

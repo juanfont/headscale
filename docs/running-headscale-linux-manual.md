@@ -1,9 +1,9 @@
 # Running headscale on Linux
 
-## Note: Outdated and "advanced"
+!!! warning "Outdated and advanced"
 
-This documentation is considered the "legacy"/advanced/manual version of the documentation, you most likely do not
-want to use this documentation and rather look at the distro specific documentation (TODO LINK)[].
+    This documentation is considered the "legacy"/advanced/manual version of the documentation, you most likely do not
+    want to use this documentation and rather look at the [distro specific documentation](./running-headscale-linux.md).
 
 ## Goal
 
@@ -43,12 +43,6 @@ describing how to make `headscale` run properly in a server environment.
       --user-group \
       --shell /usr/sbin/nologin \
       headscale
-    ```
-
-1. Create an empty SQLite database:
-
-    ```shell
-    touch /var/lib/headscale/db.sqlite
     ```
 
 1. Create a `headscale` configuration:

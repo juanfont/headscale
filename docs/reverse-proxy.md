@@ -11,9 +11,9 @@ Running headscale behind a reverse proxy is useful when running multiple applica
 
 ### WebSockets
 
-The reverse proxy MUST be configured to support WebSockets, as it is needed for clients running Tailscale v1.30+.
+The reverse proxy MUST be configured to support WebSockets to communicate with Tailscale clients.
 
-WebSockets support is required when using the headscale embedded DERP server. In this case, you will also need to expose the UDP port used for STUN (by default, udp/3478). Please check our [config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml).
+WebSockets support is also required when using the headscale embedded DERP server. In this case, you will also need to expose the UDP port used for STUN (by default, udp/3478). Please check our [config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml).
 
 ### Cloudflare
 
@@ -80,7 +80,7 @@ Sending local reply with details upgrade_failed
 
 ### Envoy
 
-You need add a new upgrade_type named `tailscale-control-protocol`. [see detail](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#extensions-filters-network-http-connection-manager-v3-httpconnectionmanager-upgradeconfig)
+You need to add a new upgrade_type named `tailscale-control-protocol`. [see details](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#extensions-filters-network-http-connection-manager-v3-httpconnectionmanager-upgradeconfig)
 
 ### Istio
 
