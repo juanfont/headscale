@@ -55,6 +55,10 @@
 
           subPackages = ["protoc-gen-grpc-gateway" "protoc-gen-openapiv2"];
         };
+
+        golangci-lint = prev.golangci-lint.override {
+          buildGoModule = pkgs.buildGo123Module;
+        };
       };
     }
     // flake-utils.lib.eachDefaultSystem
