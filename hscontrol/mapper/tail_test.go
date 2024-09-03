@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/json"
 	"net/netip"
 	"testing"
 	"time"
@@ -201,6 +202,71 @@ func TestTailNode(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("tailNode() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNodeExpiry(t *testing.T) {
+	tp := func(t time.Time) *time.Time {
+		return &t
+	}
+	tests := []struct {
+		name         string
+		exp          *time.Time
+		wantTime     time.Time
+		wantTimeZero bool
+	}{
+		{
+			name:         "no-expiry",
+			exp:          nil,
+			wantTimeZero: true,
+		},
+		{
+			name:         "zero-expiry",
+			exp:          &time.Time{},
+			wantTimeZero: true,
+		},
+		{
+			name:         "localtime",
+			exp:          tp(time.Time{}.Local()),
+			wantTimeZero: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := &types.Node{
+				GivenName: "test",
+				Expiry:    tt.exp,
+			}
+			tn, err := tailNode(
+				node,
+				0,
+				&policy.ACLPolicy{},
+				&types.Config{},
+			)
+			if err != nil {
+				t.Fatalf("nodeExpiry() error = %v", err)
+			}
+
+			// Round trip the node through JSON to ensure the time is serialized correctly
+			seri, err := json.Marshal(tn)
+			if err != nil {
+				t.Fatalf("nodeExpiry() error = %v", err)
+			}
+			var deseri tailcfg.Node
+			err = json.Unmarshal(seri, &deseri)
+			if err != nil {
+				t.Fatalf("nodeExpiry() error = %v", err)
+			}
+
+			if tt.wantTimeZero {
+				if !deseri.KeyExpiry.IsZero() {
+					t.Errorf("nodeExpiry() = %v, want zero", deseri.KeyExpiry)
+				}
+			} else if deseri.KeyExpiry != tt.wantTime {
+				t.Errorf("nodeExpiry() = %v, want %v", deseri.KeyExpiry, tt.wantTime)
 			}
 		})
 	}
