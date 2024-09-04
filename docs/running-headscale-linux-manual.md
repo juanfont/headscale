@@ -111,40 +111,12 @@ tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 
 ## Running `headscale` in the background with SystemD
 
-:warning: **Deprecated**: This part is very outdated and you should use the [pre-packaged Headscale for this](./running-headscale-linux.md)
-
 This section demonstrates how to run `headscale` as a service in the background with [SystemD](https://www.freedesktop.org/wiki/Software/systemd/).
 This should work on most modern Linux distributions.
 
-1. Create a SystemD service configuration at `/etc/systemd/system/headscale.service` containing:
-
-    ```systemd
-    [Unit]
-    Description=headscale controller
-    After=syslog.target
-    After=network.target
-
-    [Service]
-    Type=simple
-    User=headscale
-    Group=headscale
-    ExecStart=/usr/local/bin/headscale serve
-    Restart=always
-    RestartSec=5
-
-    # Optional security enhancements
-    NoNewPrivileges=yes
-    PrivateTmp=yes
-    ProtectSystem=strict
-    ProtectHome=yes
-    WorkingDirectory=/var/lib/headscale
-    ReadWritePaths=/var/lib/headscale /var/run/headscale
-    AmbientCapabilities=CAP_NET_BIND_SERVICE
-    RuntimeDirectory=headscale
-
-    [Install]
-    WantedBy=multi-user.target
-    ```
+1. Copy [headscale's systemd service file](./packaging/headscale.systemd.service) to
+   `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
+   to be modified: `ExecStart`, `WorkingDirectory`, `ReadWritePaths`.
 
     Note that when running as the headscale user ensure that, either you add your current user to the headscale group:
 
