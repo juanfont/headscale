@@ -117,7 +117,7 @@ To register a machine when running `headscale` in a container, take the headscal
 
 ```shell
 docker exec headscale \
-  headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
+  headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -126,7 +126,7 @@ Generate a key using the command line:
 
 ```shell
 docker exec headscale \
-  headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
+  headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
