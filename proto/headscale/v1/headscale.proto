@@ -209,7 +209,6 @@ service HeadscaleService {
     }
     // --- Policy end ---
 
-
     // Implement Tailscale API
     // rpc GetDevice(GetDeviceRequest) returns(GetDeviceResponse) {
     //     option(google.api.http) = {

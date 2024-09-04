@@ -449,15 +449,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "type": "object",
-              "properties": {
-                "tags": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
+              "$ref": "#/definitions/HeadscaleServiceSetTagsBody"
             }
           }
         ],
@@ -914,6 +906,17 @@
     }
   },
   "definitions": {
+    "HeadscaleServiceSetTagsBody": {
+      "type": "object",
+      "properties": {
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -936,6 +939,7 @@
         "details": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/protobufAny"
           }
         }
@@ -1134,6 +1138,7 @@
         "routes": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/v1Route"
           }
         }
@@ -1157,6 +1162,7 @@
         "routes": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/v1Route"
           }
         }
@@ -1176,6 +1182,7 @@
         "apiKeys": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/v1ApiKey"
           }
         }
@@ -1187,6 +1194,7 @@
         "nodes": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/v1Node"
           }
         }
@@ -1198,6 +1206,7 @@
         "preAuthKeys": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/v1PreAuthKey"
           }
         }
@@ -1209,6 +1218,7 @@
         "users": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/v1User"
           }
         }

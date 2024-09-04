@@ -45,7 +45,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - `use_username_in_magic_dns` can be used to turn this behaviour on again, but note that this option _will be removed_ when tags are fixed.
     - dns.base_domain can no longer be the same as (or part of) server_url.
     - This option brings Headscales behaviour in line with Tailscale.
-- YAML files are no longer supported for headscale policy.  [#1792](https://github.com/juanfont/headscale/pull/1792)
+- YAML files are no longer supported for headscale policy. [#1792](https://github.com/juanfont/headscale/pull/1792)
   - HuJSON is now the only supported format for policy.
 - DNS configuration has been restructured [#2034](https://github.com/juanfont/headscale/pull/2034)
   - Please review the new [config-example.yaml](./config-example.yaml) for the new structure.

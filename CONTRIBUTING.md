@@ -9,7 +9,7 @@ Headscale has a small maintainer team that tries to balance working on the proje
 
 When we work on issues ourselves, we develop first hand knowledge of the code and it makes it possible for us to maintain and own the code as the project develops.
 
-Code contributions are seen as a positive thing. People enjoy and engage with our project, but it also comes with some challenges; we have to understand the code, we have to understand the feature, we might have to become familiar with external libraries or services and we think about security implications. All those steps are required during the reviewing process. After the code has been merged, the feature has to be maintained. Any changes reliant on external services must be updated and expanded accordingly. 
+Code contributions are seen as a positive thing. People enjoy and engage with our project, but it also comes with some challenges; we have to understand the code, we have to understand the feature, we might have to become familiar with external libraries or services and we think about security implications. All those steps are required during the reviewing process. After the code has been merged, the feature has to be maintained. Any changes reliant on external services must be updated and expanded accordingly.
 
 The review and day-1 maintenance adds a significant burden on the maintainers. Often we hope that the contributor will help out, but we found that most of the time, they disappear after their new feature was added.
 
