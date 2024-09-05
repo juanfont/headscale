@@ -8,7 +8,7 @@
 ## Goal
 
 This documentation has the goal of showing a user how-to set up and run `headscale` on Linux.
-In additional to the "get up and running section", there is an optional [SystemD section](#running-headscale-in-the-background-with-systemd)
+In additional to the "get up and running section", there is an optional [systemd section](#running-headscale-in-the-background-with-systemd)
 describing how to make `headscale` run properly in a server environment.
 
 ## Configure and run `headscale`
@@ -66,7 +66,7 @@ describing how to make `headscale` run properly in a server environment.
     To continue the tutorial, open a new terminal and let it run in the background.
     Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux) or [screen](https://www.gnu.org/software/screen/).
 
-    To run `headscale` in the background, please follow the steps in the [SystemD section](#running-headscale-in-the-background-with-systemd) before continuing.
+    To run `headscale` in the background, please follow the steps in the [systemd section](#running-headscale-in-the-background-with-systemd) before continuing.
 
 1. Verify `headscale` is running:
   Verify `headscale` is available:
@@ -109,9 +109,9 @@ This will return a pre-authenticated key that can be used to connect a node to `
 tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 ```
 
-## Running `headscale` in the background with SystemD
+## Running `headscale` in the background with systemd
 
-This section demonstrates how to run `headscale` as a service in the background with [SystemD](https://www.freedesktop.org/wiki/Software/systemd/).
+This section demonstrates how to run `headscale` as a service in the background with [systemd](https://www.freedesktop.org/wiki/Software/systemd/).
 This should work on most modern Linux distributions.
 
 1. Copy [headscale's systemd service file](./packaging/headscale.systemd.service) to
@@ -136,7 +136,7 @@ This should work on most modern Linux distributions.
     unix_socket: /var/run/headscale/headscale.sock
     ```
 
-1. Reload SystemD to load the new configuration file:
+1. Reload systemd to load the new configuration file:
 
     ```shell
     systemctl daemon-reload
