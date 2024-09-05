@@ -1,11 +1,10 @@
 package hscontrol
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"net/http"
 	"strconv"
 	"time"
@@ -134,39 +133,6 @@ func (h *Headscale) HealthHandler(
 	respond(nil)
 }
 
-type registerWebAPITemplateConfig struct {
-	Key string
-}
-
-var registerWebAPITemplate = template.Must(
-	template.New("registerweb").Parse(`
-<html>
-	<head>
-		<title>Registration - Headscale</title>
-		<meta name=viewport content="width=device-width, initial-scale=1">
-		<style>
-			body {
-				font-family: sans;
-			}
-			code {
-				display: block;
-				padding: 20px;
-				border: 1px solid #bbb;
-				background-color: #eee;
-			}
-		</style>
-	</head>
-	<body>
-		<h1>headscale</h1>
-		<h2>Machine registration</h2>
-		<p>
-			Run the command below in the headscale server to add this machine to your network:
-		</p>
-		<code>headscale nodes register --user USERNAME --key {{.Key}}</code>
-	</body>
-</html>
-`))
-
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
 // Listens in /register/:nkey.
 //
@@ -202,10 +168,16 @@ func (h *Headscale) RegisterWebAPI(
 		return
 	}
 
-	var content bytes.Buffer
-	if err := registerWebAPITemplate.Execute(&content, registerWebAPITemplateConfig{
-		Key: machineKey.String(),
-	}); err != nil {
+	tmpl, err := templates.Template{
+		Name: templates.RegisterNodeTemplate,
+		Vars: map[string]interface{}{
+			"Key": machineKey.String(),
+		},
+		UserTemplateDirPath: h.cfg.UserTemplateDirPath,
+		EmbedFS:             htmlTemplatesEmbedFS,
+	}.Render()
+
+	if err != nil {
 		log.Error().
 			Str("func", "RegisterWebAPI").
 			Err(err).
@@ -225,7 +197,7 @@ func (h *Headscale) RegisterWebAPI(
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	_, err = writer.Write(content.Bytes())
+	_, err = writer.Write(tmpl)
 	if err != nil {
 		log.Error().
 			Caller().

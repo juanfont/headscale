@@ -1,14 +1,13 @@
 package hscontrol
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"html/template"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"net/http"
 	"slices"
 	"strings"
@@ -153,18 +152,6 @@ func (h *Headscale) RegisterOIDC(
 	http.Redirect(writer, req, authURL, http.StatusFound)
 }
 
-type oidcCallbackTemplateConfig struct {
-	User string
-	Verb string
-}
-
-//go:embed assets/oidc_callback_template.html
-var oidcCallbackTemplateContent string
-
-var oidcCallbackTemplate = template.Must(
-	template.New("oidccallback").Parse(oidcCallbackTemplateContent),
-)
-
 // OIDCCallback handles the callback from the OIDC endpoint
 // Retrieves the nkey from the state cache and adds the node to the users email user
 // TODO: A confirmation page for new nodes should be added to avoid phishing vulnerabilities
@@ -241,14 +228,18 @@ func (h *Headscale) OIDCCallback(
 		return
 	}
 
-	content, err := renderOIDCCallbackTemplate(writer, claims)
+	tmplVars := map[string]interface{}{
+		"User": claims.Email,
+		"Verb": "Authenticated",
+	}
+	tmpl, err := renderOIDCCallbackTemplate(h, tmplVars, writer)
 	if err != nil {
 		return
 	}
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	if _, err := writer.Write(content.Bytes()); err != nil {
+	if _, err := writer.Write(tmpl); err != nil {
 		util.LogErr(err, "Failed to write response")
 	}
 }
@@ -504,24 +495,18 @@ func (h *Headscale) validateNodeForOIDCCallback(
 			Str("expiresAt", fmt.Sprintf("%v", expiry)).
 			Msg("successfully refreshed node")
 
-		var content bytes.Buffer
-		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-			User: claims.Email,
-			Verb: "Reauthenticated",
-		}); err != nil {
-			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			writer.WriteHeader(http.StatusInternalServerError)
-			_, werr := writer.Write([]byte("Could not render OIDC callback template"))
-			if werr != nil {
-				util.LogErr(err, "Failed to write response")
-			}
-
-			return nil, true, fmt.Errorf("rendering OIDC callback template: %w", err)
+		tmplVars := map[string]interface{}{
+			"User": claims.Email,
+			"Verb": "Reauthenticated",
+		}
+		tmpl, err := renderOIDCCallbackTemplate(h, tmplVars, writer)
+		if err != nil {
+			return nil, false, err
 		}
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
-		_, err = writer.Write(content.Bytes())
+		_, err = writer.Write(tmpl)
 		if err != nil {
 			util.LogErr(err, "Failed to write response")
 		}
@@ -642,15 +627,20 @@ func (h *Headscale) registerNodeForOIDCCallback(
 	return nil
 }
 
+// renderOIDCCallbackTemplate render page content from the template
 func renderOIDCCallbackTemplate(
+	h *Headscale,
+	vars map[string]interface{},
 	writer http.ResponseWriter,
-	claims *IDTokenClaims,
-) (*bytes.Buffer, error) {
-	var content bytes.Buffer
-	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-		User: claims.Email,
-		Verb: "Authenticated",
-	}); err != nil {
+) ([]byte, error) {
+	tmpl, err := templates.Template{
+		Name:                templates.OidcCallbackTemplate,
+		Vars:                vars,
+		UserTemplateDirPath: h.cfg.UserTemplateDirPath,
+		EmbedFS:             htmlTemplatesEmbedFS,
+	}.Render()
+
+	if err != nil {
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
 		_, werr := writer.Write([]byte("Could not render OIDC callback template"))
@@ -661,5 +651,5 @@ func renderOIDCCallbackTemplate(
 		return nil, fmt.Errorf("rendering OIDC callback template: %w", err)
 	}
 
-	return &content, nil
+	return tmpl, nil
 }

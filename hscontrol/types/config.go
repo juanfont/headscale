@@ -61,6 +61,7 @@ type Config struct {
 	BaseDomain                     string
 	Log                            LogConfig
 	DisableUpdateCheck             bool
+	UserTemplateDirPath            string
 
 	Database DatabaseConfig
 
@@ -344,6 +345,16 @@ func LoadConfig(path string, isFile bool) error {
 	if !strings.HasPrefix(viper.GetString("server_url"), "http://") &&
 		!strings.HasPrefix(viper.GetString("server_url"), "https://") {
 		errorText += "Fatal config error: server_url must start with https:// or http://\n"
+	}
+
+	// User template directory exists check
+	userTemplateDirPath := viper.GetString("user_template_dir_path")
+	if userTemplateDirPath != "" {
+		if _, err := os.Stat(userTemplateDirPath); os.IsNotExist(err) {
+			log.Warn().Msgf("Warning: config option user_template_dir_path is set but the directory doesn't exist standard templates will be used\n")
+			// resetting the parameter value - this makes further checks easier
+			viper.Set("user_template_dir_path", "")
+		}
 	}
 
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
@@ -880,6 +891,8 @@ func GetHeadscaleConfig() (*Config, error) {
 		},
 
 		Log: logConfig,
+
+		UserTemplateDirPath: viper.GetString("user_template_dir_path"),
 
 		// TODO(kradalby): Document these settings when more stable
 		Tuning: Tuning{

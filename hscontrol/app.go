@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"context"
 	"crypto/tls"
+	"embed"
 	"errors"
 	"fmt"
 	"io"
@@ -78,6 +79,9 @@ const (
 	registerCacheExpiration = time.Minute * 15
 	registerCacheCleanup    = time.Minute * 20
 )
+
+//go:embed html/*
+var htmlTemplatesEmbedFS embed.FS
 
 // Headscale represents the base app of the service.
 type Headscale struct {
@@ -433,10 +437,11 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/oidc/register/{mkey}", h.RegisterOIDC).Methods(http.MethodGet)
 	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
-	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
+
+	router.HandleFunc("/apple", h.PlatformConfigHelp).Methods(http.MethodGet)
 	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
 		Methods(http.MethodGet)
-	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
+	router.HandleFunc("/windows", h.PlatformConfigHelp).Methods(http.MethodGet)
 	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
 		Methods(http.MethodGet)
 
