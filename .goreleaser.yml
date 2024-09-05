@@ -1,4 +1,5 @@
 ---
+version: 2
 before:
   hooks:
     - go mod tidy -compat=1.22
