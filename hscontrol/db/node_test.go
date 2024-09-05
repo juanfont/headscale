@@ -527,7 +527,28 @@ func TestAutoApproveRoutes(t *testing.T) {
 		want   []netip.Prefix
 	}{
 		{
-			name: "original-test",
+			name: "2068-approve-issue-sub",
+			acl: `
+{
+	"groups": {
+		"group:k8s": ["test"]
+	},
+
+	"acls": [
+		{"action": "accept", "users": ["*"], "ports": ["*:*"]},
+	],
+
+	"autoApprovers": {
+		"routes": {
+			"10.42.0.0/16": ["test"],
+		}
+	}
+}`,
+			routes: []netip.Prefix{netip.MustParsePrefix("10.42.7.0/24")},
+			want:   []netip.Prefix{netip.MustParsePrefix("10.42.7.0/24")},
+		},
+		{
+			name: "2068-approve-issue-sub",
 			acl: `
 {
 	"tagOwners": {
