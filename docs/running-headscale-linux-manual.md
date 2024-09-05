@@ -111,7 +111,7 @@ tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 
 ## Running `headscale` in the background with systemd
 
-This section demonstrates how to run `headscale` as a service in the background with [systemd](https://www.freedesktop.org/wiki/Software/systemd/).
+This section demonstrates how to run `headscale` as a service in the background with [systemd](https://systemd.io/).
 This should work on most modern Linux distributions.
 
 1. Copy [headscale's systemd service file](./packaging/headscale.systemd.service) to
