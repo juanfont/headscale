@@ -8,7 +8,7 @@
 
 Get Headscale up and running.
 
-This includes running Headscale with SystemD.
+This includes running Headscale with systemd.
 
 ## Migrating from manual install
 

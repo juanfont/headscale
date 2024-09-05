@@ -86,7 +86,7 @@ func TestResolveMagicDNS(t *testing.T) {
 // All the containers are based on Alpine, meaning Tailscale
 // will overwrite the resolv.conf file.
 // On other platform, Tailscale will integrate with a dns manager
-// if available (like Systemd-Resolved).
+// if available (like systemd-resolved).
 func TestValidateResolvConf(t *testing.T) {
 	IntegrationSkip(t)
 
