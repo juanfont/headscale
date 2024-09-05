@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/netip"
 	"regexp"
+	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -518,8 +519,16 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 	}
 }
 
-func (s *Suite) TestAutoApproveRoutes(c *check.C) {
-	acl := []byte(`
+func TestAutoApproveRoutes(t *testing.T) {
+	tests := []struct {
+		name   string
+		acl    string
+		routes []netip.Prefix
+		want   []netip.Prefix
+	}{
+		{
+			name: "original-test",
+			acl: `
 {
 	"tagOwners": {
 		"tag:exit": ["test"],
@@ -540,61 +549,83 @@ func (s *Suite) TestAutoApproveRoutes(c *check.C) {
 			"10.11.0.0/16": ["test"],
 		}
 	}
-}
-	`)
-
-	pol, err := policy.LoadACLPolicyFromBytes(acl)
-	c.Assert(err, check.IsNil)
-	c.Assert(pol, check.NotNil)
-
-	user, err := db.CreateUser("test")
-	c.Assert(err, check.IsNil)
-
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	nodeKey := key.NewNode()
-	machineKey := key.NewMachine()
-
-	defaultRouteV4 := netip.MustParsePrefix("0.0.0.0/0")
-	defaultRouteV6 := netip.MustParsePrefix("::/0")
-	route1 := netip.MustParsePrefix("10.10.0.0/16")
-	// Check if a subprefix of an autoapproved route is approved
-	route2 := netip.MustParsePrefix("10.11.0.0/24")
-
-	v4 := netip.MustParseAddr("100.64.0.1")
-	node := types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "test",
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
-		Hostinfo: &tailcfg.Hostinfo{
-			RequestTags: []string{"tag:exit"},
-			RoutableIPs: []netip.Prefix{defaultRouteV4, defaultRouteV6, route1, route2},
+}`,
+			routes: []netip.Prefix{
+				netip.MustParsePrefix("0.0.0.0/0"),
+				netip.MustParsePrefix("::/0"),
+				netip.MustParsePrefix("10.10.0.0/16"),
+				netip.MustParsePrefix("10.11.0.0/24"),
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("::/0"),
+				netip.MustParsePrefix("10.11.0.0/24"),
+				netip.MustParsePrefix("10.10.0.0/16"),
+				netip.MustParsePrefix("0.0.0.0/0"),
+			},
 		},
-		IPv4: &v4,
 	}
 
-	trx := db.DB.Save(&node)
-	c.Assert(trx.Error, check.IsNil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adb, err := newTestDB()
+			assert.NoError(t, err)
+			pol, err := policy.LoadACLPolicyFromBytes([]byte(tt.acl))
 
-	sendUpdate, err := db.SaveNodeRoutes(&node)
-	c.Assert(err, check.IsNil)
-	c.Assert(sendUpdate, check.Equals, false)
+			assert.NoError(t, err)
+			assert.NotNil(t, pol)
 
-	node0ByID, err := db.GetNodeByID(0)
-	c.Assert(err, check.IsNil)
+			user, err := adb.CreateUser("test")
+			assert.NoError(t, err)
 
-	// TODO(kradalby): Check state update
-	err = db.EnableAutoApprovedRoutes(pol, node0ByID)
-	c.Assert(err, check.IsNil)
+			pak, err := adb.CreatePreAuthKey(user.Name, false, false, nil, nil)
+			assert.NoError(t, err)
 
-	enabledRoutes, err := db.GetEnabledRoutes(node0ByID)
-	c.Assert(err, check.IsNil)
-	c.Assert(enabledRoutes, check.HasLen, 4)
+			nodeKey := key.NewNode()
+			machineKey := key.NewMachine()
+
+			v4 := netip.MustParseAddr("100.64.0.1")
+			node := types.Node{
+				ID:             0,
+				MachineKey:     machineKey.Public(),
+				NodeKey:        nodeKey.Public(),
+				Hostname:       "test",
+				UserID:         user.ID,
+				RegisterMethod: util.RegisterMethodAuthKey,
+				AuthKeyID:      ptr.To(pak.ID),
+				Hostinfo: &tailcfg.Hostinfo{
+					RequestTags: []string{"tag:exit"},
+					RoutableIPs: tt.routes,
+				},
+				IPv4: &v4,
+			}
+
+			trx := adb.DB.Save(&node)
+			assert.NoError(t, trx.Error)
+
+			sendUpdate, err := adb.SaveNodeRoutes(&node)
+			assert.NoError(t, err)
+			assert.False(t, sendUpdate)
+
+			node0ByID, err := adb.GetNodeByID(0)
+			assert.NoError(t, err)
+
+			// TODO(kradalby): Check state update
+			err = adb.EnableAutoApprovedRoutes(pol, node0ByID)
+			assert.NoError(t, err)
+
+			enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)
+			assert.NoError(t, err)
+			assert.Len(t, enabledRoutes, len(tt.want))
+
+			sort.Slice(enabledRoutes, func(i, j int) bool {
+				return util.ComparePrefix(enabledRoutes[i], enabledRoutes[j]) > 0
+			})
+
+			if diff := cmp.Diff(tt.want, enabledRoutes, util.Comparers...); diff != "" {
+				t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
+			}
+		})
+	}
 }
 
 func TestEphemeralGarbageCollectorOrder(t *testing.T) {

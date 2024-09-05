@@ -1,12 +1,10 @@
 package hscontrol
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
-	"net/netip"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
@@ -742,10 +741,10 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 	newRoutes := new.RoutableIPs
 
 	sort.Slice(oldRoutes, func(i, j int) bool {
-		return comparePrefix(oldRoutes[i], oldRoutes[j]) > 0
+		return util.ComparePrefix(oldRoutes[i], oldRoutes[j]) > 0
 	})
 	sort.Slice(newRoutes, func(i, j int) bool {
-		return comparePrefix(newRoutes[i], newRoutes[j]) > 0
+		return util.ComparePrefix(newRoutes[i], newRoutes[j]) > 0
 	})
 
 	if !xslices.Equal(oldRoutes, newRoutes) {
@@ -763,20 +762,4 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 	}
 
 	return false, false
-}
-
-// TODO(kradalby): Remove after go 1.23, will be in stdlib.
-// Compare returns an integer comparing two prefixes.
-// The result will be 0 if p == p2, -1 if p < p2, and +1 if p > p2.
-// Prefixes sort first by validity (invalid before valid), then
-// address family (IPv4 before IPv6), then prefix length, then
-// address.
-func comparePrefix(p, p2 netip.Prefix) int {
-	if c := cmp.Compare(p.Addr().BitLen(), p2.Addr().BitLen()); c != 0 {
-		return c
-	}
-	if c := cmp.Compare(p.Bits(), p2.Bits()); c != 0 {
-		return c
-	}
-	return p.Addr().Compare(p2.Addr())
 }
