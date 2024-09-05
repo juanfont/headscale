@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -955,6 +956,95 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 	assert.Equal(t, true, reAdvertisedRoutes[0].GetAdvertised())
 	assert.Equal(t, true, reAdvertisedRoutes[0].GetEnabled())
 	assert.Equal(t, true, reAdvertisedRoutes[0].GetIsPrimary())
+}
+
+func TestAutoApprovedSubRoute2068(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	expectedRoutes := "10.42.7.0/24"
+
+	user := "subroute"
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErrf(t, "failed to create scenario: %s", err)
+	defer scenario.Shutdown()
+
+	spec := map[string]int{
+		user: 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+		&policy.ACLPolicy{
+			ACLs: []policy.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"*"},
+					Destinations: []string{"*:*"},
+				},
+			},
+			TagOwners: map[string][]string{
+				"tag:approve": {user},
+			},
+			AutoApprovers: policy.AutoApprovers{
+				Routes: map[string][]string{
+					"10.42.0.0/16": {"tag:approve"},
+				},
+			},
+		},
+	))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	subRouter1 := allClients[0]
+
+	// Initially advertise route
+	command := []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=" + expectedRoutes,
+	}
+	_, _, err = subRouter1.Execute(command)
+	assertNoErrf(t, "failed to advertise route: %s", err)
+
+	time.Sleep(10 * time.Second)
+
+	var routes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&routes,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, routes, 1)
+
+	want := []*v1.Route{
+		{
+			Id:         1,
+			Prefix:     expectedRoutes,
+			Advertised: true,
+			Enabled:    true,
+			IsPrimary:  true,
+		},
+	}
+
+	if diff := cmp.Diff(want, routes, cmpopts.IgnoreUnexported(v1.Route{}), cmpopts.IgnoreFields(v1.Route{}, "Node", "CreatedAt", "UpdatedAt", "DeletedAt")); diff != "" {
+		t.Errorf("unexpected routes (-want +got):\n%s", diff)
+	}
 }
 
 // TestSubnetRouteACL verifies that Subnet routes are distributed

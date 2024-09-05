@@ -55,6 +55,7 @@ jobs:
           - TestEnablingRoutes
           - TestHASubnetRouterFailover
           - TestEnableDisableAutoApprovedRoute
+          - TestAutoApprovedSubRoute2068
           - TestSubnetRouteACL
           - TestHeadscale
           - TestCreateTailscale
