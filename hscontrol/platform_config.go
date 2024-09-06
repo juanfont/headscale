@@ -2,7 +2,6 @@ package hscontrol
 
 import (
 	"bytes"
-	_ "embed"
 	"github.com/gofrs/uuid/v5"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/templates"

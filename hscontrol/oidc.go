@@ -3,7 +3,6 @@ package hscontrol
 import (
 	"context"
 	"crypto/rand"
-	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
