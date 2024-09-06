@@ -137,6 +137,7 @@ nav:
           - ACLs: acls.md
           - Custom DNS records: dns-records.md
           - Remote CLI: remote-cli.md
+          - Custom templates: custom-templates.md
       - Usage:
           - Android: android-client.md
           - Windows: windows-client.md

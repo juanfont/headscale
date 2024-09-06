@@ -40,6 +40,10 @@ grpc_listen_addr: 127.0.0.1:50443
 # are doing.
 grpc_allow_insecure: false
 
+# Path to directory with user templates
+# Help pages, OIDC callback, etc.
+user_template_dir_path: ""
+
 # The Noise section includes specific configuration for the
 # TS2021 Noise protocol
 noise:
