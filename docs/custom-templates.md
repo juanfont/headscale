@@ -19,8 +19,8 @@ Set the `user_template_dir_path` parameter in your Headscale config file
 user_template_dir_path: "/var/lib/headscale/templates"
 ```
 
-Upload standard templates `hscontrol/html/*` from Headscale repository to your templates directory.
+Upload standard templates `hscontrol/html/*` from the Headscale repository to your templates directory.
 You can upload all templates or just one, for all templates that, are not in your directory, the default templates will be used.
 
-**Caution:** the file names must be identical to the file from standard templates
+**Caution:** the file names must be identical to the files from standard templates.
 
