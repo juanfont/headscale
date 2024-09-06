@@ -54,7 +54,7 @@ var listAPIKeys = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -145,7 +145,7 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 
 		request.Expiration = timestamppb.New(expiration)
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -182,7 +182,7 @@ var expireAPIKeyCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -223,7 +223,7 @@ var deleteAPIKeyCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 

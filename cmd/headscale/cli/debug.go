@@ -68,7 +68,7 @@ var createNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 

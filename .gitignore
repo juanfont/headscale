@@ -22,6 +22,7 @@ dist/
 /headscale
 config.json
 config.yaml
+config*.yaml
 derp.yaml
 *.hujson
 *.key

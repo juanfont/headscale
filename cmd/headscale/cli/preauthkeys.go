@@ -64,7 +64,7 @@ var listPreAuthKeys = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -192,7 +192,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		request.Expiration = timestamppb.New(expiration)
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -231,7 +231,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 

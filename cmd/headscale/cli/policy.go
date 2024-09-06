@@ -30,7 +30,7 @@ var getPolicy = &cobra.Command{
 	Short:   "Print the current ACL Policy",
 	Aliases: []string{"show", "view", "fetch"},
 	Run: func(cmd *cobra.Command, args []string) {
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -75,7 +75,7 @@ var setPolicy = &cobra.Command{
 
 		request := &v1.SetPolicyRequest{Policy: string(policyBytes)}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 

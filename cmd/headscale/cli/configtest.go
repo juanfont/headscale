@@ -14,7 +14,7 @@ var configTestCmd = &cobra.Command{
 	Short: "Test the configuration.",
 	Long:  "Run a test of the configuration and exit.",
 	Run: func(cmd *cobra.Command, args []string) {
-		_, err := getHeadscaleApp()
+		_, err := newHeadscaleServerWithConfig()
 		if err != nil {
 			log.Fatal().Caller().Err(err).Msg("Error initializing")
 		}

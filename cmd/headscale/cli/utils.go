@@ -23,8 +23,8 @@ const (
 	SocketWritePermissions  = 0o666
 )
 
-func getHeadscaleApp() (*hscontrol.Headscale, error) {
-	cfg, err := types.GetHeadscaleConfig()
+func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
+	cfg, err := types.LoadServerConfig()
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to load configuration while creating headscale instance: %w",
@@ -40,8 +40,8 @@ func getHeadscaleApp() (*hscontrol.Headscale, error) {
 	return app, nil
 }
 
-func getHeadscaleCLIClient() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
-	cfg, err := types.GetHeadscaleConfig()
+func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
+	cfg, err := types.LoadCLIConfig()
 	if err != nil {
 		log.Fatal().
 			Err(err).

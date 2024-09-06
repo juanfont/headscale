@@ -1,6 +1,8 @@
 package types
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -22,7 +24,7 @@ func TestReadConfig(t *testing.T) {
 			name:       "unmarshal-dns-full-config",
 			configPath: "testdata/dns_full.yaml",
 			setup: func(t *testing.T) (any, error) {
-				dns, err := DNS()
+				dns, err := dns()
 				if err != nil {
 					return nil, err
 				}
@@ -48,12 +50,12 @@ func TestReadConfig(t *testing.T) {
 			name:       "dns-to-tailcfg.DNSConfig",
 			configPath: "testdata/dns_full.yaml",
 			setup: func(t *testing.T) (any, error) {
-				dns, err := DNS()
+				dns, err := dns()
 				if err != nil {
 					return nil, err
 				}
 
-				return DNSToTailcfgDNS(dns), nil
+				return dnsToTailcfgDNS(dns), nil
 			},
 			want: &tailcfg.DNSConfig{
 				Proxied: true,
@@ -79,7 +81,7 @@ func TestReadConfig(t *testing.T) {
 			name:       "unmarshal-dns-full-no-magic",
 			configPath: "testdata/dns_full_no_magic.yaml",
 			setup: func(t *testing.T) (any, error) {
-				dns, err := DNS()
+				dns, err := dns()
 				if err != nil {
 					return nil, err
 				}
@@ -105,12 +107,12 @@ func TestReadConfig(t *testing.T) {
 			name:       "dns-to-tailcfg.DNSConfig",
 			configPath: "testdata/dns_full_no_magic.yaml",
 			setup: func(t *testing.T) (any, error) {
-				dns, err := DNS()
+				dns, err := dns()
 				if err != nil {
 					return nil, err
 				}
 
-				return DNSToTailcfgDNS(dns), nil
+				return dnsToTailcfgDNS(dns), nil
 			},
 			want: &tailcfg.DNSConfig{
 				Proxied: false,
@@ -136,7 +138,7 @@ func TestReadConfig(t *testing.T) {
 			name:       "base-domain-in-server-url-err",
 			configPath: "testdata/base-domain-in-server-url.yaml",
 			setup: func(t *testing.T) (any, error) {
-				return GetHeadscaleConfig()
+				return LoadServerConfig()
 			},
 			want:    nil,
 			wantErr: "server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.",
@@ -145,7 +147,7 @@ func TestReadConfig(t *testing.T) {
 			name:       "base-domain-not-in-server-url",
 			configPath: "testdata/base-domain-not-in-server-url.yaml",
 			setup: func(t *testing.T) (any, error) {
-				cfg, err := GetHeadscaleConfig()
+				cfg, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
 				}
@@ -165,7 +167,7 @@ func TestReadConfig(t *testing.T) {
 			name:       "policy-path-is-loaded",
 			configPath: "testdata/policy-path-is-loaded.yaml",
 			setup: func(t *testing.T) (any, error) {
-				cfg, err := GetHeadscaleConfig()
+				cfg, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
 				}
@@ -245,7 +247,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 			setup: func(t *testing.T) (any, error) {
 				t.Logf("all settings: %#v", viper.AllSettings())
 
-				dns, err := DNS()
+				dns, err := dns()
 				if err != nil {
 					return nil, err
 				}
@@ -288,4 +290,50 @@ func TestReadConfigFromEnv(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTLSConfigValidation(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "headscale")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// defer os.RemoveAll(tmpDir)
+	configYaml := []byte(`---
+tls_letsencrypt_hostname: example.com
+tls_letsencrypt_challenge_type: ""
+tls_cert_path: abc.pem
+noise:
+  private_key_path: noise_private.key`)
+
+	// Populate a custom config file
+	configFilePath := filepath.Join(tmpDir, "config.yaml")
+	err = os.WriteFile(configFilePath, configYaml, 0o600)
+	if err != nil {
+		t.Fatalf("Couldn't write file %s", configFilePath)
+	}
+
+	// Check configuration validation errors (1)
+	err = LoadConfig(tmpDir, false)
+	assert.NoError(t, err)
+
+	err = validateServerConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both")
+	assert.Contains(t, err.Error(), "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are")
+	assert.Contains(t, err.Error(), "Fatal config error: server_url must start with https:// or http://")
+
+	// Check configuration validation errors (2)
+	configYaml = []byte(`---
+noise:
+  private_key_path: noise_private.key
+server_url: http://127.0.0.1:8080
+tls_letsencrypt_hostname: example.com
+tls_letsencrypt_challenge_type: TLS-ALPN-01
+`)
+	err = os.WriteFile(configFilePath, configYaml, 0o600)
+	if err != nil {
+		t.Fatalf("Couldn't write file %s", configFilePath)
+	}
+	err = LoadConfig(tmpDir, false)
+	assert.NoError(t, err)
 }

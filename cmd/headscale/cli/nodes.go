@@ -120,7 +120,7 @@ var registerNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -179,7 +179,7 @@ var listNodesCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -243,7 +243,7 @@ var expireNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -286,7 +286,7 @@ var renameNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -335,7 +335,7 @@ var deleteNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -435,7 +435,7 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -508,7 +508,7 @@ be assigned to nodes.`,
 			return
 		}
 		if confirm {
-			ctx, client, conn, cancel := getHeadscaleCLIClient()
+			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 			defer cancel()
 			defer conn.Close()
 
@@ -681,7 +681,7 @@ var tagCmd = &cobra.Command{
 	Aliases: []string{"tags", "t"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
