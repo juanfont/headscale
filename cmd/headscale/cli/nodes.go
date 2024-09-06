@@ -116,8 +116,6 @@ var registerNodeCmd = &cobra.Command{
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-
-			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -131,8 +129,6 @@ var registerNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting node key from flag: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		request := &v1.RegisterNodeRequest{
@@ -150,8 +146,6 @@ var registerNodeCmd = &cobra.Command{
 				),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(
@@ -169,14 +163,10 @@ var listNodesCmd = &cobra.Command{
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-
-			return
 		}
 		showTags, err := cmd.Flags().GetBool("tags")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting tags flag: %s", err), output)
-
-			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -194,21 +184,15 @@ var listNodesCmd = &cobra.Command{
 				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
 				output,
 			)
-
-			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.GetNodes(), "", output)
-
-			return
 		}
 
 		tableData, err := nodesToPtables(user, showTags, response.GetNodes())
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
-
-			return
 		}
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
@@ -218,8 +202,6 @@ var listNodesCmd = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
-
-			return
 		}
 	},
 }

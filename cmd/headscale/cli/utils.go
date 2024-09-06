@@ -130,7 +130,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 	return ctx, client, conn, cancel
 }
 
-func SuccessOutput(result interface{}, override string, outputFormat string) {
+func output(result interface{}, override string, outputFormat string) string {
 	var jsonBytes []byte
 	var err error
 	switch outputFormat {
@@ -151,21 +151,26 @@ func SuccessOutput(result interface{}, override string, outputFormat string) {
 		}
 	default:
 		// nolint
-		fmt.Println(override)
-
-		return
+		return override
 	}
 
-	// nolint
-	fmt.Println(string(jsonBytes))
+	return string(jsonBytes)
 }
 
+// SuccessOutput prints the result to stdout and exits with status code 0.
+func SuccessOutput(result interface{}, override string, outputFormat string) {
+	fmt.Println(output(result, override, outputFormat))
+	os.Exit(0)
+}
+
+// ErrorOutput prints an error message to stderr and exits with status code 1.
 func ErrorOutput(errResult error, override string, outputFormat string) {
 	type errOutput struct {
 		Error string `json:"error"`
 	}
 
-	SuccessOutput(errOutput{errResult.Error()}, override, outputFormat)
+	fmt.Fprintf(os.Stderr, "%s\n", output(errOutput{errResult.Error()}, override, outputFormat))
+	os.Exit(1)
 }
 
 func HasMachineOutputFlag() bool {

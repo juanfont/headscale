@@ -63,8 +63,6 @@ var createUserCmd = &cobra.Command{
 				),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(response.GetUser(), "User created", output)
@@ -102,8 +100,6 @@ var destroyUserCmd = &cobra.Command{
 				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
 				output,
 			)
-
-			return
 		}
 
 		confirm := false
@@ -134,8 +130,6 @@ var destroyUserCmd = &cobra.Command{
 					),
 					output,
 				)
-
-				return
 			}
 			SuccessOutput(response, "User destroyed", output)
 		} else {
@@ -164,14 +158,10 @@ var listUsersCmd = &cobra.Command{
 				fmt.Sprintf("Cannot get users: %s", status.Convert(err).Message()),
 				output,
 			)
-
-			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.GetUsers(), "", output)
-
-			return
 		}
 
 		tableData := pterm.TableData{{"ID", "Name", "Created"}}
@@ -192,8 +182,6 @@ var listUsersCmd = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
-
-			return
 		}
 	},
 }
@@ -232,8 +220,6 @@ var renameUserCmd = &cobra.Command{
 				),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(response.GetUser(), "User renamed", output)
