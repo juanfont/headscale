@@ -733,7 +733,8 @@ func prefixV6() (*netip.Prefix, error) {
 // of Headscale to connect to a Headscale server.
 func LoadCLIConfig() (*Config, error) {
 	return &Config{
-		UnixSocket: viper.GetString("unix_socket"),
+		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
+		UnixSocket:         viper.GetString("unix_socket"),
 		CLI: CLIConfig{
 			Address:  viper.GetString("cli.address"),
 			APIKey:   viper.GetString("cli.api_key"),
@@ -821,7 +822,7 @@ func LoadServerConfig() (*Config, error) {
 		MetricsAddr:        viper.GetString("metrics_listen_addr"),
 		GRPCAddr:           viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
-		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
+		DisableUpdateCheck: false,
 
 		PrefixV4:     prefix4,
 		PrefixV6:     prefix6,
