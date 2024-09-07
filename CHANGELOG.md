@@ -72,6 +72,8 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Add APIs for managing headscale policy. [#1792](https://github.com/juanfont/headscale/pull/1792)
 - Fix for registering nodes using preauthkeys when running on a postgres database in a non-UTC timezone. [#764](https://github.com/juanfont/headscale/issues/764)
 - Make sure integration tests cover postgres for all scenarios
+- CLI commands (all except `serve`) only requires minimal configuration, no more errors or warnings from unset settings [#2109](https://github.com/juanfont/headscale/pull/2109)
+- CLI results are now concistently sent to stdout and errors to stderr [#2109](https://github.com/juanfont/headscale/pull/2109)
 
 ## 0.22.3 (2023-05-12)
 

@@ -16,7 +16,7 @@ var serveCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		app, err := getHeadscaleApp()
+		app, err := newHeadscaleServerWithConfig()
 		if err != nil {
 			log.Fatal().Caller().Err(err).Msg("Error initializing")
 		}

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -30,7 +31,8 @@ var getPolicy = &cobra.Command{
 	Short:   "Print the current ACL Policy",
 	Aliases: []string{"show", "view", "fetch"},
 	Run: func(cmd *cobra.Command, args []string) {
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		output, _ := cmd.Flags().GetString("output")
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -38,13 +40,13 @@ var getPolicy = &cobra.Command{
 
 		response, err := client.GetPolicy(ctx, request)
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to get the policy")
-
-			return
+			ErrorOutput(err, fmt.Sprintf("Failed loading ACL Policy: %s", err), output)
 		}
 
 		// TODO(pallabpain): Maybe print this better?
-		SuccessOutput("", response.GetPolicy(), "hujson")
+		// This does not pass output as we dont support yaml, json or json-line
+		// output for this command. It is HuJSON already.
+		SuccessOutput("", response.GetPolicy(), "")
 	},
 }
 
@@ -56,33 +58,28 @@ var setPolicy = &cobra.Command{
 	This command only works when the acl.policy_mode is set to "db", and the policy will be stored in the database.`,
 	Aliases: []string{"put", "update"},
 	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
 		policyPath, _ := cmd.Flags().GetString("file")
 
 		f, err := os.Open(policyPath)
 		if err != nil {
-			log.Fatal().Err(err).Msg("Error opening the policy file")
-
-			return
+			ErrorOutput(err, fmt.Sprintf("Error opening the policy file: %s", err), output)
 		}
 		defer f.Close()
 
 		policyBytes, err := io.ReadAll(f)
 		if err != nil {
-			log.Fatal().Err(err).Msg("Error reading the policy file")
-
-			return
+			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
 		}
 
 		request := &v1.SetPolicyRequest{Policy: string(policyBytes)}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
 		if _, err := client.SetPolicy(ctx, request); err != nil {
-			log.Fatal().Err(err).Msg("Failed to set ACL Policy")
-
-			return
+			ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
 		}
 
 		SuccessOutput(nil, "Policy updated.", "")

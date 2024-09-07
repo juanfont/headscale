@@ -684,7 +684,7 @@ func (api headscaleV1APIServer) GetPolicy(
 	case types.PolicyModeDB:
 		p, err := api.h.db.GetPolicy()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("loading ACL from database: %w", err)
 		}
 
 		return &v1.GetPolicyResponse{
@@ -696,20 +696,20 @@ func (api headscaleV1APIServer) GetPolicy(
 		absPath := util.AbsolutePathFromConfigPath(api.h.cfg.Policy.Path)
 		f, err := os.Open(absPath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading policy from path %q: %w", absPath, err)
 		}
 
 		defer f.Close()
 
 		b, err := io.ReadAll(f)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading policy from file: %w", err)
 		}
 
 		return &v1.GetPolicyResponse{Policy: string(b)}, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("no supported policy mode found in configuration, policy.mode: %q", api.h.cfg.Policy.Mode)
 }
 
 func (api headscaleV1APIServer) SetPolicy(

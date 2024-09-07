@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -735,13 +736,7 @@ func TestNodeTagCommand(t *testing.T) {
 
 	assert.Equal(t, []string{"tag:test"}, node.GetForcedTags())
 
-	// try to set a wrong tag and retrieve the error
-	type errOutput struct {
-		Error string `json:"error"`
-	}
-	var errorOutput errOutput
-	err = executeAndUnmarshal(
-		headscale,
+	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"nodes",
@@ -750,10 +745,8 @@ func TestNodeTagCommand(t *testing.T) {
 			"-t", "wrong-tag",
 			"--output", "json",
 		},
-		&errorOutput,
 	)
-	assert.Nil(t, err)
-	assert.Contains(t, errorOutput.Error, "tag must start with the string 'tag:'")
+	assert.ErrorContains(t, err, "tag must start with the string 'tag:'")
 
 	// Test list all nodes after added seconds
 	resultMachines := make([]*v1.Node, len(machineKeys))
@@ -1398,18 +1391,17 @@ func TestNodeRenameCommand(t *testing.T) {
 	assert.Contains(t, listAllAfterRename[4].GetGivenName(), "node-5")
 
 	// Test failure for too long names
-	result, err := headscale.Execute(
+	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"nodes",
 			"rename",
 			"--identifier",
 			fmt.Sprintf("%d", listAll[4].GetId()),
-			"testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
+			strings.Repeat("t", 64),
 		},
 	)
-	assert.Nil(t, err)
-	assert.Contains(t, result, "not be over 63 chars")
+	assert.ErrorContains(t, err, "not be over 63 chars")
 
 	var listAllAfterRenameAttempt []v1.Node
 	err = executeAndUnmarshal(
@@ -1536,7 +1528,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assert.Equal(t, allNodes[0].GetUser(), node.GetUser())
 	assert.Equal(t, allNodes[0].GetUser().GetName(), "new-user")
 
-	moveToNonExistingNSResult, err := headscale.Execute(
+	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"nodes",
@@ -1549,11 +1541,9 @@ func TestNodeMoveCommand(t *testing.T) {
 			"json",
 		},
 	)
-	assert.Nil(t, err)
-
-	assert.Contains(
+	assert.ErrorContains(
 		t,
-		moveToNonExistingNSResult,
+		err,
 		"user not found",
 	)
 	assert.Equal(t, node.GetUser().GetName(), "new-user")
