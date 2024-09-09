@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"errors"
+	"net/http"
+
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -22,8 +25,8 @@ var serveCmd = &cobra.Command{
 		}
 
 		err = app.Serve()
-		if err != nil {
-			log.Fatal().Caller().Err(err).Msg("Error starting server")
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal().Caller().Err(err).Msg("Headscale ran into an error and had to shut down.")
 		}
 	},
 }
