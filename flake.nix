@@ -57,9 +57,11 @@
           subPackages = ["protoc-gen-grpc-gateway" "protoc-gen-openapiv2"];
         };
 
-        golangci-lint = prev.golangci-lint.override {
-          buildGoModule = buildGo;
-        };
+        # Upstream does not override buildGoModule properly,
+        # importing a specific module, so comment out for now.
+        # golangci-lint = prev.golangci-lint.override {
+        #   buildGoModule = buildGo;
+        # };
 
         goreleaser = prev.goreleaser.override {
           buildGoModule = buildGo;
