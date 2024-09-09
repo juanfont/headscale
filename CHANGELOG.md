@@ -74,6 +74,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Make sure integration tests cover postgres for all scenarios
 - CLI commands (all except `serve`) only requires minimal configuration, no more errors or warnings from unset settings [#2109](https://github.com/juanfont/headscale/pull/2109)
 - CLI results are now concistently sent to stdout and errors to stderr [#2109](https://github.com/juanfont/headscale/pull/2109)
+- Fix issue where shutting down headscale would hang [#2113](https://github.com/juanfont/headscale/pull/2113)
 
 ## 0.22.3 (2023-05-12)
 
