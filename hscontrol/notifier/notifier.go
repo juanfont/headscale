@@ -36,6 +36,7 @@ type Notifier struct {
 	connected *xsync.MapOf[types.NodeID, bool]
 	b         *batcher
 	cfg       *types.Config
+	closed    bool
 }
 
 func NewNotifier(cfg *types.Config) *Notifier {
@@ -43,6 +44,7 @@ func NewNotifier(cfg *types.Config) *Notifier {
 		nodes:     make(map[types.NodeID]chan<- types.StateUpdate),
 		connected: xsync.NewMapOf[types.NodeID, bool](),
 		cfg:       cfg,
+		closed:    false,
 	}
 	b := newBatcher(cfg.Tuning.BatchChangeDelay, n)
 	n.b = b
@@ -51,9 +53,19 @@ func NewNotifier(cfg *types.Config) *Notifier {
 	return n
 }
 
-// Close stops the batcher inside the notifier.
+// Close stops the batcher and closes all channels.
 func (n *Notifier) Close() {
+	notifierWaitersForLock.WithLabelValues("lock", "close").Inc()
+	n.l.Lock()
+	defer n.l.Unlock()
+	notifierWaitersForLock.WithLabelValues("lock", "close").Dec()
+
+	n.closed = true
 	n.b.close()
+
+	for _, c := range n.nodes {
+		close(c)
+	}
 }
 
 func (n *Notifier) tracef(nID types.NodeID, msg string, args ...any) {
@@ -69,6 +81,10 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	defer n.l.Unlock()
 	notifierWaitersForLock.WithLabelValues("lock", "add").Dec()
 	notifierWaitForLock.WithLabelValues("add").Observe(time.Since(start).Seconds())
+
+	if n.closed {
+		return
+	}
 
 	// If a channel exists, it means the node has opened a new
 	// connection. Close the old channel and replace it.
@@ -95,6 +111,10 @@ func (n *Notifier) RemoveNode(nodeID types.NodeID, c chan<- types.StateUpdate) b
 	defer n.l.Unlock()
 	notifierWaitersForLock.WithLabelValues("lock", "remove").Dec()
 	notifierWaitForLock.WithLabelValues("remove").Observe(time.Since(start).Seconds())
+
+	if n.closed {
+		return true
+	}
 
 	if len(n.nodes) == 0 {
 		return true
@@ -154,6 +174,10 @@ func (n *Notifier) NotifyWithIgnore(
 	update types.StateUpdate,
 	ignoreNodeIDs ...types.NodeID,
 ) {
+	if n.closed {
+		return
+	}
+
 	notifierUpdateReceived.WithLabelValues(update.Type.String(), types.NotifyOriginKey.Value(ctx)).Inc()
 	n.b.addOrPassthrough(update)
 }
@@ -169,6 +193,10 @@ func (n *Notifier) NotifyByNodeID(
 	defer n.l.Unlock()
 	notifierWaitersForLock.WithLabelValues("lock", "notify").Dec()
 	notifierWaitForLock.WithLabelValues("notify").Observe(time.Since(start).Seconds())
+
+	if n.closed {
+		return
+	}
 
 	if c, ok := n.nodes[nodeID]; ok {
 		select {
@@ -204,6 +232,10 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 	defer n.l.Unlock()
 	notifierWaitersForLock.WithLabelValues("lock", "send-all").Dec()
 	notifierWaitForLock.WithLabelValues("send-all").Observe(time.Since(start).Seconds())
+
+	if n.closed {
+		return
+	}
 
 	for id, c := range n.nodes {
 		// Whenever an update is sent to all nodes, there is a chance that the node

@@ -780,9 +780,6 @@ func (h *Headscale) Serve() error {
 				expireNodeCancel()
 				h.ephemeralGC.Close()
 
-				trace("waiting for netmap stream to close")
-				h.pollNetMapStreamWG.Wait()
-
 				// Gracefully shut down servers
 				ctx, cancel := context.WithTimeout(
 					context.Background(),
@@ -797,6 +794,12 @@ func (h *Headscale) Serve() error {
 					log.Error().Err(err).Msg("Failed to shutdown http")
 				}
 
+				trace("closing node notifier")
+				h.nodeNotifier.Close()
+
+				trace("waiting for netmap stream to close")
+				h.pollNetMapStreamWG.Wait()
+
 				trace("shutting down grpc server (socket)")
 				grpcSocket.GracefulStop()
 
@@ -810,9 +813,6 @@ func (h *Headscale) Serve() error {
 					trace("shutting down tailsql")
 					tailsqlContext.Done()
 				}
-
-				trace("closing node notifier")
-				h.nodeNotifier.Close()
 
 				// Close network listeners
 				trace("closing network listeners")
