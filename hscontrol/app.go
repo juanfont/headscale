@@ -437,8 +437,6 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
 		Methods(http.MethodGet)
 	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
-	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
-		Methods(http.MethodGet)
 
 	// TODO(kristoffer): move swagger into a package
 	router.HandleFunc("/swagger", headscale.SwaggerUI).Methods(http.MethodGet)
