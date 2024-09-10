@@ -19,7 +19,11 @@ Ensure that the installed version is at least 1.38.1, as that is the first relea
 
 Ensure that the tailscale app is logged out before proceeding.
 
-Go to iOS settings, scroll down past game center and tv provider to the tailscale app and select it. The headscale URL can be entered into the _"ALTERNATE COORDINATION SERVER URL"_ box.
+After the first launch, Tailscale established its VPN profile with the address https://tailscale.com .
+At first - you need to go to Settings —> VPN —> Tailscale (click info icon) —> Delete VPN.
+Then go to Settings —> Tailscale (App settings) —> enter the address in the "Alternate Coordination Server URL" field (https://example.com).
+Next, launch Tailscale, It will prompt you to install the VPN profile. Allow the installation by entering the password.
+Connect.
 
 > **Note**
 >
