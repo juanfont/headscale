@@ -649,7 +649,7 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 func isUnqiueName(tx *gorm.DB, name string) (bool, error) {
 	nodes := types.Nodes{}
 	if err := tx.
-		Where("given_name = ?", name, name).Find(&nodes).Error; err != nil {
+		Where("given_name = ?", name).Find(&nodes).Error; err != nil {
 		return false, err
 	}
 
