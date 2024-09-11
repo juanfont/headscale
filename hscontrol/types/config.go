@@ -732,6 +732,9 @@ func prefixV6() (*netip.Prefix, error) {
 // LoadCLIConfig returns the needed configuration for the CLI client
 // of Headscale to connect to a Headscale server.
 func LoadCLIConfig() (*Config, error) {
+	logConfig := logConfig()
+	zerolog.SetGlobalLevel(logConfig.Level)
+
 	return &Config{
 		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
 		UnixSocket:         viper.GetString("unix_socket"),
@@ -741,6 +744,7 @@ func LoadCLIConfig() (*Config, error) {
 			Timeout:  viper.GetDuration("cli.timeout"),
 			Insecure: viper.GetBool("cli.insecure"),
 		},
+		Log: logConfig,
 	}, nil
 }
 
