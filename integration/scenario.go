@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"testing"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -18,6 +19,7 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
 )
@@ -187,18 +189,24 @@ func NewScenario(maxWait time.Duration) (*Scenario, error) {
 	}, nil
 }
 
-// Shutdown shuts down and cleans up all the containers (ControlServer, TailscaleClient)
-// and networks associated with it.
-// In addition, it will save the logs of the ControlServer to `/tmp/control` in the
-// environment running the tests.
-func (s *Scenario) Shutdown() {
+func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
-		err := control.Shutdown()
+		stdoutPath, stderrPath, err := control.Shutdown()
 		if err != nil {
 			log.Printf(
 				"Failed to shut down control: %s",
 				fmt.Errorf("failed to tear down control: %w", err),
 			)
+		}
+
+		if t != nil {
+			stdout, err := os.ReadFile(stdoutPath)
+			assert.NoError(t, err)
+			assert.NotContains(t, string(stdout), "panic")
+
+			stderr, err := os.ReadFile(stderrPath)
+			assert.NoError(t, err)
+			assert.NotContains(t, string(stderr), "panic")
 		}
 
 		return true
@@ -222,6 +230,14 @@ func (s *Scenario) Shutdown() {
 	// if err := s.network.Close(); err != nil {
 	// 	return fmt.Errorf("failed to tear down network: %w", err)
 	// }
+}
+
+// Shutdown shuts down and cleans up all the containers (ControlServer, TailscaleClient)
+// and networks associated with it.
+// In addition, it will save the logs of the ControlServer to `/tmp/control` in the
+// environment running the tests.
+func (s *Scenario) Shutdown() {
+	s.ShutdownAssertNoPanics(nil)
 }
 
 // Users returns the name of all users associated with the Scenario.

@@ -998,7 +998,9 @@ func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 // SaveLog saves the current stdout log of the container to a path
 // on the host system.
 func (t *TailscaleInContainer) SaveLog(path string) error {
-	return dockertestutil.SaveLog(t.pool, t.container, path)
+	// TODO(kradalby): Assert if tailscale logs contains panics.
+	_, _, err := dockertestutil.SaveLog(t.pool, t.container, path)
+	return err
 }
 
 // ReadFile reads a file from the Tailscale container.
