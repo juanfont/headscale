@@ -19,6 +19,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
@@ -311,51 +312,6 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	c.Assert(nodeFromDB.IsExpired(), check.Equals, true)
-}
-
-func (s *Suite) TestGenerateGivenName(c *check.C) {
-	user1, err := db.CreateUser("user-1")
-	c.Assert(err, check.IsNil)
-
-	pak, err := db.CreatePreAuthKey(user1.Name, false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.getNode("user-1", "testnode")
-	c.Assert(err, check.NotNil)
-
-	nodeKey := key.NewNode()
-	machineKey := key.NewMachine()
-
-	machineKey2 := key.NewMachine()
-
-	node := &types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "hostname-1",
-		GivenName:      "hostname-1",
-		UserID:         user1.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
-	}
-
-	trx := db.DB.Save(node)
-	c.Assert(trx.Error, check.IsNil)
-
-	givenName, err := db.GenerateGivenName(machineKey2.Public(), "hostname-2")
-	comment := check.Commentf("Same user, unique nodes, unique hostnames, no conflict")
-	c.Assert(err, check.IsNil, comment)
-	c.Assert(givenName, check.Equals, "hostname-2", comment)
-
-	givenName, err = db.GenerateGivenName(machineKey.Public(), "hostname-1")
-	comment = check.Commentf("Same user, same node, same hostname, no conflict")
-	c.Assert(err, check.IsNil, comment)
-	c.Assert(givenName, check.Equals, "hostname-1", comment)
-
-	givenName, err = db.GenerateGivenName(machineKey2.Public(), "hostname-1")
-	comment = check.Commentf("Same user, unique nodes, same hostname, conflict")
-	c.Assert(err, check.IsNil, comment)
-	c.Assert(givenName, check.Matches, fmt.Sprintf("^hostname-1-[a-z0-9]{%d}$", NodeGivenNameHashLength), comment)
 }
 
 func (s *Suite) TestSetTags(c *check.C) {
@@ -777,4 +733,101 @@ func TestListEphemeralNodes(t *testing.T) {
 	assert.Equal(t, nodeEph.AuthKeyID, ephemeralNodes[0].AuthKeyID)
 	assert.Equal(t, nodeEph.UserID, ephemeralNodes[0].UserID)
 	assert.Equal(t, nodeEph.Hostname, ephemeralNodes[0].Hostname)
+}
+
+func TestRenameNode(t *testing.T) {
+	db, err := newTestDB()
+	if err != nil {
+		t.Fatalf("creating db: %s", err)
+	}
+
+	user, err := db.CreateUser("test")
+	assert.NoError(t, err)
+
+	user2, err := db.CreateUser("test2")
+	assert.NoError(t, err)
+
+	node := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "test",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+	}
+
+	node2 := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "test",
+		UserID:         user2.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+	}
+
+	err = db.DB.Save(&node).Error
+	assert.NoError(t, err)
+
+	err = db.DB.Save(&node2).Error
+	assert.NoError(t, err)
+
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := RegisterNode(tx, node, nil, nil)
+		if err != nil {
+			return err
+		}
+		_, err = RegisterNode(tx, node2, nil, nil)
+		return err
+	})
+	assert.NoError(t, err)
+
+	nodes, err := db.ListNodes()
+	assert.NoError(t, err)
+
+	assert.Len(t, nodes, 2)
+
+	t.Logf("node1 %s %s", nodes[0].Hostname, nodes[0].GivenName)
+	t.Logf("node2 %s %s", nodes[1].Hostname, nodes[1].GivenName)
+
+	assert.Equal(t, nodes[0].Hostname, nodes[0].GivenName)
+	assert.NotEqual(t, nodes[1].Hostname, nodes[1].GivenName)
+	assert.Equal(t, nodes[0].Hostname, nodes[1].Hostname)
+	assert.NotEqual(t, nodes[0].Hostname, nodes[1].GivenName)
+	assert.Contains(t, nodes[1].GivenName, nodes[0].Hostname)
+	assert.Equal(t, nodes[0].GivenName, nodes[1].Hostname)
+	assert.Len(t, nodes[0].Hostname, 4)
+	assert.Len(t, nodes[1].Hostname, 4)
+	assert.Len(t, nodes[0].GivenName, 4)
+	assert.Len(t, nodes[1].GivenName, 13)
+
+	// Nodes can be renamed to a unique name
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[0].ID, "newname")
+	})
+	assert.NoError(t, err)
+
+	nodes, err = db.ListNodes()
+	assert.NoError(t, err)
+	assert.Len(t, nodes, 2)
+	assert.Equal(t, nodes[0].Hostname, "test")
+	assert.Equal(t, nodes[0].GivenName, "newname")
+
+	// Nodes can reuse name that is no longer used
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[1].ID, "test")
+	})
+	assert.NoError(t, err)
+
+	nodes, err = db.ListNodes()
+	assert.NoError(t, err)
+	assert.Len(t, nodes, 2)
+	assert.Equal(t, nodes[0].Hostname, "test")
+	assert.Equal(t, nodes[0].GivenName, "newname")
+	assert.Equal(t, nodes[1].GivenName, "test")
+
+	// Nodes cannot be renamed to used names
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[0].ID, "test")
+	})
+	assert.ErrorContains(t, err, "name is not unique")
 }

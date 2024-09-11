@@ -66,7 +66,7 @@ func (h *Headscale) handleRegister(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
-	logInfo, logTrace, logErr := logAuthFunc(regReq, machineKey)
+	logInfo, logTrace, _ := logAuthFunc(regReq, machineKey)
 	now := time.Now().UTC()
 	logTrace("handleRegister called, looking up machine in DB")
 	node, err := h.db.GetNodeByAnyKey(machineKey, regReq.NodeKey, regReq.OldNodeKey)
@@ -105,16 +105,6 @@ func (h *Headscale) handleRegister(
 
 		logInfo("Node not found in database, creating new")
 
-		givenName, err := h.db.GenerateGivenName(
-			machineKey,
-			regReq.Hostinfo.Hostname,
-		)
-		if err != nil {
-			logErr(err, "Failed to generate given name for node")
-
-			return
-		}
-
 		// The node did not have a key to authenticate, which means
 		// that we rely on a method that calls back some how (OpenID or CLI)
 		// We create the node and then keep it around until a callback
@@ -122,7 +112,6 @@ func (h *Headscale) handleRegister(
 		newNode := types.Node{
 			MachineKey: machineKey,
 			Hostname:   regReq.Hostinfo.Hostname,
-			GivenName:  givenName,
 			NodeKey:    regReq.NodeKey,
 			LastSeen:   &now,
 			Expiry:     &time.Time{},
@@ -354,21 +343,8 @@ func (h *Headscale) handleAuthKey(
 	} else {
 		now := time.Now().UTC()
 
-		givenName, err := h.db.GenerateGivenName(machineKey, registerRequest.Hostinfo.Hostname)
-		if err != nil {
-			log.Error().
-				Caller().
-				Str("func", "RegistrationHandler").
-				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
-				Err(err).
-				Msg("Failed to generate given name for node")
-
-			return
-		}
-
 		nodeToRegister := types.Node{
 			Hostname:       registerRequest.Hostinfo.Hostname,
-			GivenName:      givenName,
 			UserID:         pak.User.ID,
 			User:           pak.User,
 			MachineKey:     machineKey,

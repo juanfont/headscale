@@ -373,7 +373,7 @@ func (api headscaleV1APIServer) RenameNode(
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		err := db.RenameNode(
 			tx,
-			request.GetNodeId(),
+			types.NodeID(request.GetNodeId()),
 			request.GetNewName(),
 		)
 		if err != nil {
@@ -802,18 +802,12 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		return nil, err
 	}
 
-	givenName, err := api.h.db.GenerateGivenName(mkey, request.GetName())
-	if err != nil {
-		return nil, err
-	}
-
 	nodeKey := key.NewNode()
 
 	newNode := types.Node{
 		MachineKey: mkey,
 		NodeKey:    nodeKey.Public(),
 		Hostname:   request.GetName(),
-		GivenName:  givenName,
 		User:       *user,
 
 		Expiry:   &time.Time{},
