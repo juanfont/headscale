@@ -52,6 +52,7 @@ jobs:
           - TestExpireNode
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown
+          - Test2118DeletingOnlineNodePanics
           - TestEnablingRoutes
           - TestHASubnetRouterFailover
           - TestEnableDisableAutoApprovedRoute

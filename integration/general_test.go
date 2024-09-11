@@ -954,3 +954,102 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 	}
 }
+
+func Test2118DeletingOnlineNodePanics(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// TODO(kradalby): it does not look like the user thing works, only second
+	// get created? maybe only when many?
+	spec := map[string]int{
+		"user1": 1,
+		"user2": 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec,
+		[]tsic.Option{},
+		hsic.WithTestName("deletenocrash"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	// Test list all nodes after added otherUser
+	var nodeList []v1.Node
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&nodeList,
+	)
+	assert.Nil(t, err)
+	assert.Len(t, nodeList, 2)
+	assert.True(t, nodeList[0].Online)
+	assert.True(t, nodeList[1].Online)
+
+	// Delete the first node, which is online
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"nodes",
+			"delete",
+			"--identifier",
+			// Delete the last added machine
+			fmt.Sprintf("%d", nodeList[0].Id),
+			"--output",
+			"json",
+			"--force",
+		},
+	)
+	assert.Nil(t, err)
+
+	time.Sleep(2 * time.Second)
+
+	// Ensure that the node has been deleted, this did not occur due to a panic.
+	var nodeListAfter []v1.Node
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&nodeListAfter,
+	)
+	assert.Nil(t, err)
+	assert.Len(t, nodeListAfter, 1)
+	assert.True(t, nodeListAfter[0].Online)
+	assert.Equal(t, nodeList[1].Id, nodeListAfter[0].Id)
+
+}
