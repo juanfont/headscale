@@ -139,5 +139,5 @@ nav:
           - Remote CLI: remote-cli.md
       - Usage:
           - Android: android-client.md
+          - Apple: apple-client.md
           - Windows: windows-client.md
-          - iOS: iOS-client.md

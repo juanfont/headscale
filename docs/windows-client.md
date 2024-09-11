@@ -4,16 +4,16 @@
 
 This documentation has the goal of showing how a user can use the official Windows [Tailscale](https://tailscale.com) client with `headscale`.
 
+!!! info "Instructions on your headscale instance"
+
+    An endpoint with information on how to connect your Windows device
+    is also available at `/windows` on your running instance.
+
 ## Installation
 
 Download the [Official Windows Client](https://tailscale.com/download/windows) and install it.
 
 ## Configuring the headscale URL
-
-!!! info "Instructions on your headscale instance"
-
-    An endpoint with information on how to connect your Windows device
-    is also available at `/windows` on your running instance.
 
 Open a Command Prompt or Powershell and use Tailscale's login command to connect with your headscale instance (e.g
 `https://headscale.example.com`):
