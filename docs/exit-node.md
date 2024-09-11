@@ -5,7 +5,7 @@
 Register the node and make it advertise itself as an exit node:
 
 ```console
-$ sudo tailscale up --login-server https://my-server.com --advertise-exit-node
+$ sudo tailscale up --login-server https://headscale.example.com --advertise-exit-node
 ```
 
 If the node is already registered, it can advertise exit capabilities like this:
