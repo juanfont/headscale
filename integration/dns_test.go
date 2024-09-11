@@ -17,7 +17,7 @@ func TestResolveMagicDNS(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"magicdns1": len(MustTestVersions),
@@ -208,7 +208,7 @@ func TestValidateResolvConf(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			scenario, err := NewScenario(dockertestMaxWait())
 			assertNoErr(t, err)
-			defer scenario.Shutdown()
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			spec := map[string]int{
 				"resolvconf1": 3,

@@ -32,7 +32,7 @@ func TestEnablingRoutes(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 3,
@@ -254,7 +254,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 3,
@@ -826,7 +826,7 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 1,
@@ -968,7 +968,7 @@ func TestAutoApprovedSubRoute2068(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 1,
@@ -1059,7 +1059,7 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErrf(t, "failed to create scenario: %s", err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 2,

@@ -34,7 +34,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	scenario := AuthWebFlowScenario{
 		Scenario: baseScenario,
 	}
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": len(MustTestVersions),
@@ -73,7 +73,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	scenario := AuthWebFlowScenario{
 		Scenario: baseScenario,
 	}
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": len(MustTestVersions),

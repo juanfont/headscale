@@ -32,7 +32,7 @@ func TestDERPServerScenario(t *testing.T) {
 		Scenario:     baseScenario,
 		tsicNetworks: map[string]*dockertest.Network{},
 	}
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": len(MustTestVersions),
