@@ -6,8 +6,8 @@ import (
 )
 
 type ControlServer interface {
-	Shutdown() error
-	SaveLog(string) error
+	Shutdown() (string, string, error)
+	SaveLog(string) (string, string, error)
 	SaveProfile(string) error
 	Execute(command []string) (string, error)
 	WriteFile(path string, content []byte) error
