@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -270,6 +271,12 @@ func (m *mapSession) serveLongPoll() {
 		case update, ok := <-m.ch:
 			if !ok {
 				m.tracef("update channel closed, streaming session is likely being replaced")
+				return
+			}
+
+			// If the node has been removed from headscale, close the stream
+			if slices.Contains(update.Removed, m.node.ID) {
+				m.tracef("node removed, closing stream")
 				return
 			}
 
