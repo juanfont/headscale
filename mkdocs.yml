@@ -69,6 +69,9 @@ plugins:
   - minify:
       minify_html: true
   - social: {}
+  - redirects:
+      redirect_maps:
+        'iOS-client.md': 'apple-client.md#ios'
 
 # Customization
 extra:
