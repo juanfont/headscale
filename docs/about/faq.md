@@ -1,8 +1,3 @@
----
-hide:
-  - navigation
----
-
 # Frequently Asked Questions
 
 ## What is the design goal of headscale?

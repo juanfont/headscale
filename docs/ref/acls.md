@@ -36,7 +36,7 @@ servers.
 - billing.internal
 - router.internal
 
-![ACL implementation example](images/headscale-acl-network.png)
+![ACL implementation example](../images/headscale-acl-network.png)
 
 ## ACL setup
 
