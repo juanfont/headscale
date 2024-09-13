@@ -191,6 +191,7 @@ func (m *mapSession) serve() {
 //
 //nolint:gocyclo
 func (m *mapSession) serveLongPoll() {
+	start := time.Now()
 	m.beforeServeLongPoll()
 
 	// Clean up the session when the client disconnects
@@ -235,16 +236,6 @@ func (m *mapSession) serveLongPoll() {
 
 	m.pollFailoverRoutes("node connected", m.node)
 
-	// Upgrade the writer to a ResponseController
-	rc := http.NewResponseController(m.w)
-
-	// Longpolling will break if there is a write timeout,
-	// so it needs to be disabled.
-	rc.SetWriteDeadline(time.Time{})
-
-	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
-	defer cancel()
-
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
 	m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
@@ -258,12 +249,12 @@ func (m *mapSession) serveLongPoll() {
 		// consume channels with update, keep alives or "batch" blocking signals
 		select {
 		case <-m.cancelCh:
-			m.tracef("poll cancelled received")
+			m.tracef("poll cancelled received (%s)", time.Since(start).String())
 			mapResponseEnded.WithLabelValues("cancelled").Inc()
 			return
 
-		case <-ctx.Done():
-			m.tracef("poll context done")
+		case <-m.ctx.Done():
+			m.tracef("poll context done (%s): %s", time.Since(start).String(), m.ctx.Err().Error())
 			mapResponseEnded.WithLabelValues("done").Inc()
 			return
 
@@ -354,14 +345,7 @@ func (m *mapSession) serveLongPoll() {
 					m.errf(err, "could not write the map response(%s), for mapSession: %p", update.Type.String(), m)
 					return
 				}
-
-				err = rc.Flush()
-				if err != nil {
-					mapResponseSent.WithLabelValues("error", updateType).Inc()
-					m.errf(err, "flushing the map response to client, for mapSession: %p", m)
-					return
-				}
-
+				m.w.(http.Flusher).Flush()
 				log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
 
 				if debugHighCardinalityMetrics {
@@ -375,22 +359,17 @@ func (m *mapSession) serveLongPoll() {
 		case <-m.keepAliveTicker.C:
 			data, err := m.mapper.KeepAliveResponse(m.req, m.node)
 			if err != nil {
-				m.errf(err, "Error generating the keep alive msg")
+				m.errf(err, "Error generating the keepalive msg")
 				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
 				return
 			}
 			_, err = m.w.Write(data)
 			if err != nil {
-				m.errf(err, "Cannot write keep alive message")
+				m.errf(err, "Cannot write keepalive message")
 				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
 				return
 			}
-			err = rc.Flush()
-			if err != nil {
-				m.errf(err, "flushing keep alive to client, for mapSession: %p", m)
-				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
-				return
-			}
+			m.w.(http.Flusher).Flush()
 
 			if debugHighCardinalityMetrics {
 				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))

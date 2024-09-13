@@ -650,11 +650,25 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 	return nil
 }
 
-// DisconnectContainers disconnects a list of containers from the network.
-func (s *Scenario) DisconnectContainers(containers ...string) error {
+// DisconnectContainersFromScenario disconnects a list of containers from the network.
+func (s *Scenario) DisconnectContainersFromScenario(containers ...string) error {
 	for _, container := range containers {
 		if ctr, ok := s.pool.ContainerByName(container); ok {
 			err := ctr.DisconnectFromNetwork(s.network)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// ConnectContainersToScenario disconnects a list of containers from the network.
+func (s *Scenario) ConnectContainersToScenario(containers ...string) error {
+	for _, container := range containers {
+		if ctr, ok := s.pool.ContainerByName(container); ok {
+			err := ctr.ConnectToNetwork(s.network)
 			if err != nil {
 				return err
 			}

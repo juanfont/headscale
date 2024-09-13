@@ -1492,7 +1492,7 @@ func TestHASubnetRouterFailoverWhenNodeDisconnects2129(t *testing.T) {
 	assert.True(t, nodeList[2].Online)
 
 	// Kill off one of the docker containers to simulate a disconnect
-	err = scenario.DisconnectContainers(subRouter1.Hostname())
+	err = scenario.DisconnectContainersFromScenario(subRouter1.Hostname())
 	assertNoErr(t, err)
 
 	time.Sleep(5 * time.Second)
@@ -1514,4 +1514,53 @@ func TestHASubnetRouterFailoverWhenNodeDisconnects2129(t *testing.T) {
 	assert.False(t, nodeListAfterDisconnect[0].Online)
 	assert.True(t, nodeListAfterDisconnect[1].Online)
 	assert.True(t, nodeListAfterDisconnect[2].Online)
+
+	var routesAfterDisconnect []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&routesAfterDisconnect,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, routesAfterDisconnect, 2)
+
+	// Node 1 is primary
+	assert.Equal(t, true, routesAfterDisconnect[0].GetAdvertised())
+	assert.Equal(t, true, routesAfterDisconnect[0].GetEnabled())
+	assert.Equal(t, false, routesAfterDisconnect[0].GetIsPrimary(), "both subnet routers are up, expected r1 to be non-primary")
+
+	// Node 2 is not primary
+	assert.Equal(t, true, routesAfterDisconnect[1].GetAdvertised())
+	assert.Equal(t, true, routesAfterDisconnect[1].GetEnabled())
+	assert.Equal(t, true, routesAfterDisconnect[1].GetIsPrimary(), "both subnet routers are up, expected r2 to be primary")
+
+	// // Ensure the node can reconncet as expected
+	// err = scenario.ConnectContainersToScenario(subRouter1.Hostname())
+	// assertNoErr(t, err)
+
+	// time.Sleep(5 * time.Second)
+
+	// var nodeListAfterReconnect []v1.Node
+	// err = executeAndUnmarshal(
+	// 	headscale,
+	// 	[]string{
+	// 		"headscale",
+	// 		"nodes",
+	// 		"list",
+	// 		"--output",
+	// 		"json",
+	// 	},
+	// 	&nodeListAfterReconnect,
+	// )
+	// assert.Nil(t, err)
+	// assert.Len(t, nodeListAfterReconnect, 3)
+	// assert.True(t, nodeListAfterReconnect[0].Online)
+	// assert.True(t, nodeListAfterReconnect[1].Online)
+	// assert.True(t, nodeListAfterReconnect[2].Online)
 }
