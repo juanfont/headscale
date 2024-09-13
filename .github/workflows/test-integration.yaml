@@ -58,6 +58,7 @@ jobs:
           - TestEnableDisableAutoApprovedRoute
           - TestAutoApprovedSubRoute2068
           - TestSubnetRouteACL
+          - TestHASubnetRouterFailoverWhenNodeDisconnects2129
           - TestHeadscale
           - TestCreateTailscale
           - TestTailscaleNodesJoiningHeadcale

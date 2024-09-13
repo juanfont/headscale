@@ -13,6 +13,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -1313,4 +1314,204 @@ func TestSubnetRouteACL(t *testing.T) {
 	if diff := cmp.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
 		t.Errorf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff)
 	}
+}
+
+func TestHASubnetRouterFailoverWhenNodeDisconnects2129(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	user := "enable-routing"
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErrf(t, "failed to create scenario: %s", err)
+	// defer scenario.ShutdownAssertNoPanics(t)
+
+	spec := map[string]int{
+		user: 3,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec,
+		[]tsic.Option{},
+		hsic.WithTestName("clientdisc"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	expectedRoutes := map[string]string{
+		"1": "10.0.0.0/24",
+		"2": "10.0.0.0/24",
+	}
+
+	// Sort nodes by ID
+	sort.SliceStable(allClients, func(i, j int) bool {
+		statusI, err := allClients[i].Status()
+		if err != nil {
+			return false
+		}
+
+		statusJ, err := allClients[j].Status()
+		if err != nil {
+			return false
+		}
+
+		return statusI.Self.ID < statusJ.Self.ID
+	})
+
+	subRouter1 := allClients[0]
+	subRouter2 := allClients[1]
+
+	t.Logf("Advertise route from r1 (%s) and r2 (%s), making it HA, n1 is primary", subRouter1.Hostname(), subRouter2.Hostname())
+	// advertise HA route on node 1 and 2
+	// ID 1 will be primary
+	// ID 2 will be secondary
+	for _, client := range allClients[:2] {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		if route, ok := expectedRoutes[string(status.Self.ID)]; ok {
+			command := []string{
+				"tailscale",
+				"set",
+				"--advertise-routes=" + route,
+			}
+			_, _, err = client.Execute(command)
+			assertNoErrf(t, "failed to advertise route: %s", err)
+		} else {
+			t.Fatalf("failed to find route for Node %s (id: %s)", status.Self.HostName, status.Self.ID)
+		}
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	var routes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&routes,
+	)
+
+	assertNoErr(t, err)
+	assert.Len(t, routes, 2)
+
+	t.Logf("initial routes %#v", routes)
+
+	for _, route := range routes {
+		assert.Equal(t, true, route.GetAdvertised())
+		assert.Equal(t, false, route.GetEnabled())
+		assert.Equal(t, false, route.GetIsPrimary())
+	}
+
+	// Verify that no routes has been sent to the client,
+	// they are not yet enabled.
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		for _, peerKey := range status.Peers() {
+			peerStatus := status.Peer[peerKey]
+
+			assert.Nil(t, peerStatus.PrimaryRoutes)
+		}
+	}
+
+	// Enable all routes
+	for _, route := range routes {
+		_, err = headscale.Execute(
+			[]string{
+				"headscale",
+				"routes",
+				"enable",
+				"--route",
+				strconv.Itoa(int(route.GetId())),
+			})
+		assertNoErr(t, err)
+
+		time.Sleep(time.Second)
+	}
+
+	var enablingRoutes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&enablingRoutes,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, enablingRoutes, 2)
+
+	// Node 1 is primary
+	assert.Equal(t, true, enablingRoutes[0].GetAdvertised())
+	assert.Equal(t, true, enablingRoutes[0].GetEnabled())
+	assert.Equal(t, true, enablingRoutes[0].GetIsPrimary(), "both subnet routers are up, expected r1 to be primary")
+
+	// Node 2 is not primary
+	assert.Equal(t, true, enablingRoutes[1].GetAdvertised())
+	assert.Equal(t, true, enablingRoutes[1].GetEnabled())
+	assert.Equal(t, false, enablingRoutes[1].GetIsPrimary(), "both subnet routers are up, expected r2 to be non-primary")
+
+	var nodeList []v1.Node
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&nodeList,
+	)
+	assert.Nil(t, err)
+	assert.Len(t, nodeList, 3)
+	assert.True(t, nodeList[0].Online)
+	assert.True(t, nodeList[1].Online)
+	assert.True(t, nodeList[2].Online)
+
+	// Kill off one of the docker containers to simulate a disconnect
+	err = scenario.DisconnectContainers(subRouter1.Hostname())
+	assertNoErr(t, err)
+
+	time.Sleep(5 * time.Second)
+
+	var nodeListAfterDisconnect []v1.Node
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&nodeListAfterDisconnect,
+	)
+	assert.Nil(t, err)
+	assert.Len(t, nodeListAfterDisconnect, 3)
+	assert.False(t, nodeListAfterDisconnect[0].Online)
+	assert.True(t, nodeListAfterDisconnect[1].Online)
+	assert.True(t, nodeListAfterDisconnect[2].Online)
 }
