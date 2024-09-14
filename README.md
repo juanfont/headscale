@@ -62,15 +62,7 @@ buttons available in the repo.
 
 ## Client OS support
 
-| OS      | Supports headscale                                                                                 |
-| ------- | -------------------------------------------------------------------------------------------------- |
-| Linux   | Yes                                                                                                |
-| OpenBSD | Yes                                                                                                |
-| FreeBSD | Yes                                                                                                |
-| Windows | Yes (see [docs](./docs/windows-client.md) and `/windows` on your headscale for more information)   |
-| Android | Yes (see [docs](./docs/android-client.md))                                                         |
-| macOS   | Yes (see [docs](./docs/apple-client.md#macos) and `/apple` on your headscale for more information) |
-| iOS     | Yes (see [docs](./docs/apple-client.md#ios) and `/apple` on your headscale for more information)   |
+Please see ["Client and operating system support" in the documentation](https://headscale.net/about/clients/).
 
 ## Running headscale
 
