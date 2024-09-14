@@ -15,10 +15,6 @@ describing how to make `headscale` run properly in a server environment.
 
 ## Install `headscale`
 
-1. Install from ports
-
-    You can install headscale from ports by running `pkg_add headscale`.
-
 1. Install from source
 
     ```shell
@@ -102,8 +98,6 @@ describing how to make `headscale` run properly in a server environment.
     To continue the tutorial, open a new terminal and let it run in the background.
     Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux).
 
-    To run `headscale` in the background, please follow the steps in the [rc.d section](#running-headscale-in-the-background-with-rcd) before continuing.
-
 1. Verify `headscale` is running:
 
     Verify `headscale` is available:
@@ -111,58 +105,3 @@ describing how to make `headscale` run properly in a server environment.
     ```shell
     curl http://127.0.0.1:9090/metrics
     ```
-
-## Running `headscale` in the background with rc.d
-
-This section demonstrates how to run `headscale` as a service in the background with [rc.d](https://man.openbsd.org/rc.d).
-
-1. Create a rc.d service at `/etc/rc.d/headscale` containing:
-
-    ```shell
-    #!/bin/ksh
-
-    daemon="/usr/local/sbin/headscale"
-    daemon_logger="daemon.info"
-    daemon_user="root"
-    daemon_flags="serve"
-    daemon_timeout=60
-
-    . /etc/rc.d/rc.subr
-
-    rc_bg=YES
-    rc_reload=NO
-
-    rc_cmd $1
-    ```
-
-1. `/etc/rc.d/headscale` needs execute permission:
-
-    ```shell
-    chmod a+x /etc/rc.d/headscale
-    ```
-
-1. Start `headscale` service:
-
-    ```shell
-    rcctl start headscale
-    ```
-
-1. Make `headscale` service start at boot:
-
-    ```shell
-    rcctl enable headscale
-    ```
-
-1. Verify the headscale service:
-
-    ```shell
-    rcctl check headscale
-    ```
-
-    Verify `headscale` is available:
-
-    ```shell
-    curl http://127.0.0.1:9090/metrics
-    ```
-
-    `headscale` will now run in the background and start at boot.
