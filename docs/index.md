@@ -31,7 +31,7 @@ buttons available in the repo.
 Headscale is "Open Source, acknowledged contribution", this means that any
 contribution will have to be discussed with the Maintainers before being submitted.
 
-Please see [CONTRIBUTING.md](https://github.com/juanfont/headscale/blob/main/CONTRIBUTING.md) for more information.
+Please see [Contributing](about/contributing.md) for more information.
 
 ## About
 

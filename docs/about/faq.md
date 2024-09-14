@@ -14,9 +14,7 @@ open-source organisation.
 Headscale is "Open Source, acknowledged contribution", this means that any
 contribution will have to be discussed with the Maintainers before being submitted.
 
-Headscale is open to code contributions for bug fixes without discussion.
-
-If you find mistakes in the documentation, please also submit a fix to the documentation.
+Please see [Contributing](contributing.md) for more information.
 
 ## Why is 'acknowledged contribution' the chosen model?
 
