@@ -46,19 +46,7 @@ buttons available in the repo.
 
 ## Features
 
-- Full "base" support of Tailscale's features
-- Configurable DNS
-  - [Split DNS](https://tailscale.com/kb/1054/dns/#using-dns-settings-in-the-admin-console)
-- Node registration
-  - Single-Sign-On (via Open ID Connect)
-  - Pre authenticated key
-- Taildrop (File Sharing)
-- [Access control lists](https://tailscale.com/kb/1018/acls/)
-- [MagicDNS](https://tailscale.com/kb/1081/magicdns)
-- Dual stack (IPv4 and IPv6)
-- Routing advertising (including exit nodes)
-- Ephemeral nodes
-- Embedded [DERP server](https://tailscale.com/blog/how-tailscale-works/#encrypted-tcp-relays-derp)
+Please see ["Features" in the documentation](https://headscale.net/about/features/).
 
 ## Client OS support
 
