@@ -147,12 +147,30 @@ nav:
   - Home: index.md
   - About:
       - FAQ: about/faq.md
+      - Features: about/features.md
+      - Clients: about/clients.md
+      - Getting help: about/help.md
+      - Releases: about/releases.md
+      - Contributing: about/contributing.md
+      - Sponsor: about/sponsor.md
+
+  - Setup:
+      - Requirements and Assumptions: setup/requirements.md
+      - Installation:
+          - Official releases: setup/install/official.md
+          - Community packages: setup/install/community.md
+          - Container: setup/install/container.md
+          - Cloud: setup/install/cloud.md
+          - Build from source: setup/install/source.md
+      - Upgrade: setup/upgrade.md
   - Usage:
+      - Getting started: usage/getting-started.md
       - Connect a node:
           - Android: usage/connect/android.md
           - Apple: usage/connect/apple.md
           - Windows: usage/connect/windows.md
   - Reference:
+      - Configuration: ref/configuration.md
       - OIDC authentication: ref/oidc.md
       - Exit node: ref/exit-node.md
       - TLS: ref/tls.md
@@ -162,9 +180,3 @@ nav:
       - Integration:
           - Reverse proxy: ref/integration/reverse-proxy.md
           - Web UI: ref/integration/web-ui.md
-
-  - Getting started:
-      - Installation:
-          - Linux: running-headscale-linux.md
-          - OpenBSD: running-headscale-openbsd.md
-          - Container: running-headscale-container.md
