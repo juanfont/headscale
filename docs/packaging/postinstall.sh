@@ -29,7 +29,7 @@ ensure_headscale_path() {
 
 create_headscale_user() {
 	printf "PostInstall: Adding headscale user %s\n" "$HEADSCALE_USER"
-	useradd -s /bin/sh -c "headscale default user" headscale
+	useradd -s /usr/sbin/nologin -d /var/lib/headscale -c "headscale default user" headscale
 }
 
 create_headscale_group() {
