@@ -23,8 +23,7 @@ open-source organisation.
 
 ## Supporting headscale
 
-If you like `headscale` and find it useful, there is a sponsorship and donation
-buttons available in the repo.
+Please see [Sponsor](about/sponsor.md) for more information.
 
 ## Contributing
 
