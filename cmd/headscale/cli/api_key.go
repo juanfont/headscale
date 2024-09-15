@@ -54,7 +54,7 @@ var listAPIKeys = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -67,14 +67,10 @@ var listAPIKeys = &cobra.Command{
 				fmt.Sprintf("Error getting the list of keys: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.GetApiKeys(), "", output)
-
-			return
 		}
 
 		tableData := pterm.TableData{
@@ -102,8 +98,6 @@ var listAPIKeys = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
-
-			return
 		}
 	},
 }
@@ -119,9 +113,6 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		log.Trace().
-			Msg("Preparing to create ApiKey")
-
 		request := &v1.CreateApiKeyRequest{}
 
 		durationStr, _ := cmd.Flags().GetString("expiration")
@@ -133,19 +124,13 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 				fmt.Sprintf("Could not parse duration: %s\n", err),
 				output,
 			)
-
-			return
 		}
 
 		expiration := time.Now().UTC().Add(time.Duration(duration))
 
-		log.Trace().
-			Dur("expiration", time.Duration(duration)).
-			Msg("expiration has been set")
-
 		request.Expiration = timestamppb.New(expiration)
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -156,8 +141,6 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 				fmt.Sprintf("Cannot create Api Key: %s\n", err),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(response.GetApiKey(), response.GetApiKey(), output)
@@ -178,11 +161,9 @@ var expireAPIKeyCmd = &cobra.Command{
 				fmt.Sprintf("Error getting prefix from CLI flag: %s", err),
 				output,
 			)
-
-			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -197,8 +178,6 @@ var expireAPIKeyCmd = &cobra.Command{
 				fmt.Sprintf("Cannot expire Api Key: %s\n", err),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(response, "Key expired", output)
@@ -219,11 +198,9 @@ var deleteAPIKeyCmd = &cobra.Command{
 				fmt.Sprintf("Error getting prefix from CLI flag: %s", err),
 				output,
 			)
-
-			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -238,8 +215,6 @@ var deleteAPIKeyCmd = &cobra.Command{
 				fmt.Sprintf("Cannot delete Api Key: %s\n", err),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(response, "Key deleted", output)

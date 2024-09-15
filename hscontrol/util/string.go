@@ -56,16 +56,6 @@ func GenerateRandomStringDNSSafe(size int) (string, error) {
 	return str[:size], nil
 }
 
-func IsStringInSlice(slice []string, str string) bool {
-	for _, s := range slice {
-		if s == str {
-			return true
-		}
-	}
-
-	return false
-}
-
 func TailNodesToString(nodes []*tailcfg.Node) string {
 	temp := make([]string, len(nodes))
 

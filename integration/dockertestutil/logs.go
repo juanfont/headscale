@@ -17,10 +17,10 @@ func SaveLog(
 	pool *dockertest.Pool,
 	resource *dockertest.Resource,
 	basePath string,
-) error {
+) (string, string, error) {
 	err := os.MkdirAll(basePath, os.ModePerm)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
 	var stdout bytes.Buffer
@@ -41,28 +41,30 @@ func SaveLog(
 		},
 	)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
 	log.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
 
+	stdoutPath := path.Join(basePath, resource.Container.Name+".stdout.log")
 	err = os.WriteFile(
-		path.Join(basePath, resource.Container.Name+".stdout.log"),
+		stdoutPath,
 		stdout.Bytes(),
 		filePerm,
 	)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
+	stderrPath := path.Join(basePath, resource.Container.Name+".stderr.log")
 	err = os.WriteFile(
-		path.Join(basePath, resource.Container.Name+".stderr.log"),
+		stderrPath,
 		stderr.Bytes(),
 		filePerm,
 	)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
-	return nil
+	return stdoutPath, stderrPath, nil
 }

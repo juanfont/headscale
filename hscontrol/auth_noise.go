@@ -33,7 +33,6 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 			Caller().
 			Err(err).
 			Msg("Cannot parse RegisterRequest")
-		nodeRegistrations.WithLabelValues("unknown", "web", "error", "unknown").Inc()
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 
 		return

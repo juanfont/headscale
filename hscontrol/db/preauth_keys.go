@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
+	"tailscale.com/types/ptr"
 )
 
 var (
@@ -83,17 +84,13 @@ func CreatePreAuthKey(
 			if !seenTags[tag] {
 				if err := tx.Save(&types.PreAuthKeyACLTag{PreAuthKeyID: key.ID, Tag: tag}).Error; err != nil {
 					return nil, fmt.Errorf(
-						"failed to ceate key tag in the database: %w",
+						"failed to create key tag in the database: %w",
 						err,
 					)
 				}
 				seenTags[tag] = true
 			}
 		}
-	}
-
-	if err != nil {
-		return nil, err
 	}
 
 	return &key, nil
@@ -203,7 +200,7 @@ func ValidatePreAuthKey(tx *gorm.DB, k string) (*types.PreAuthKey, error) {
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
-		Where(&types.Node{AuthKeyID: uint(pak.ID)}).
+		Where(&types.Node{AuthKeyID: ptr.To(pak.ID)}).
 		Find(&nodes).Error; err != nil {
 		return nil, err
 	}

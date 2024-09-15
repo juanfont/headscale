@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 func logAuthFunc(
@@ -62,18 +63,18 @@ func logAuthFunc(
 func (h *Headscale) handleRegister(
 	writer http.ResponseWriter,
 	req *http.Request,
-	registerRequest tailcfg.RegisterRequest,
+	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) {
-	logInfo, logTrace, logErr := logAuthFunc(registerRequest, machineKey)
+	logInfo, logTrace, _ := logAuthFunc(regReq, machineKey)
 	now := time.Now().UTC()
 	logTrace("handleRegister called, looking up machine in DB")
-	node, err := h.db.GetNodeByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
+	node, err := h.db.GetNodeByAnyKey(machineKey, regReq.NodeKey, regReq.OldNodeKey)
 	logTrace("handleRegister database lookup has returned")
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the node has AuthKey set, handle registration via PreAuthKeys
-		if registerRequest.Auth.AuthKey != "" {
-			h.handleAuthKey(writer, registerRequest, machineKey)
+		if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
+			h.handleAuthKey(writer, regReq, machineKey)
 
 			return
 		}
@@ -86,7 +87,7 @@ func (h *Headscale) handleRegister(
 		// This is not implemented yet, as it is no strictly required. The only side-effect
 		// is that the client will hammer headscale with requests until it gets a
 		// successful RegisterResponse.
-		if registerRequest.Followup != "" {
+		if regReq.Followup != "" {
 			logTrace("register request is a followup")
 			if _, ok := h.registrationCache.Get(machineKey.String()); ok {
 				logTrace("Node is waiting for interactive login")
@@ -95,7 +96,7 @@ func (h *Headscale) handleRegister(
 				case <-req.Context().Done():
 					return
 				case <-time.After(registrationHoldoff):
-					h.handleNewNode(writer, registerRequest, machineKey)
+					h.handleNewNode(writer, regReq, machineKey)
 
 					return
 				}
@@ -104,32 +105,21 @@ func (h *Headscale) handleRegister(
 
 		logInfo("Node not found in database, creating new")
 
-		givenName, err := h.db.GenerateGivenName(
-			machineKey,
-			registerRequest.Hostinfo.Hostname,
-		)
-		if err != nil {
-			logErr(err, "Failed to generate given name for node")
-
-			return
-		}
-
 		// The node did not have a key to authenticate, which means
 		// that we rely on a method that calls back some how (OpenID or CLI)
 		// We create the node and then keep it around until a callback
 		// happens
 		newNode := types.Node{
 			MachineKey: machineKey,
-			Hostname:   registerRequest.Hostinfo.Hostname,
-			GivenName:  givenName,
-			NodeKey:    registerRequest.NodeKey,
+			Hostname:   regReq.Hostinfo.Hostname,
+			NodeKey:    regReq.NodeKey,
 			LastSeen:   &now,
 			Expiry:     &time.Time{},
 		}
 
-		if !registerRequest.Expiry.IsZero() {
+		if !regReq.Expiry.IsZero() {
 			logTrace("Non-zero expiry time requested")
-			newNode.Expiry = &registerRequest.Expiry
+			newNode.Expiry = &regReq.Expiry
 		}
 
 		h.registrationCache.Set(
@@ -138,7 +128,7 @@ func (h *Headscale) handleRegister(
 			registerCacheExpiration,
 		)
 
-		h.handleNewNode(writer, registerRequest, machineKey)
+		h.handleNewNode(writer, regReq, machineKey)
 
 		return
 	}
@@ -169,11 +159,11 @@ func (h *Headscale) handleRegister(
 		// - Trying to log out (sending a expiry in the past)
 		// - A valid, registered node, looking for /map
 		// - Expired node wanting to reauthenticate
-		if node.NodeKey.String() == registerRequest.NodeKey.String() {
+		if node.NodeKey.String() == regReq.NodeKey.String() {
 			// The client sends an Expiry in the past if the client is requesting to expire the key (aka logout)
 			//   https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go#L648
-			if !registerRequest.Expiry.IsZero() &&
-				registerRequest.Expiry.UTC().Before(now) {
+			if !regReq.Expiry.IsZero() &&
+				regReq.Expiry.UTC().Before(now) {
 				h.handleNodeLogOut(writer, *node, machineKey)
 
 				return
@@ -189,11 +179,11 @@ func (h *Headscale) handleRegister(
 		}
 
 		// The NodeKey we have matches OldNodeKey, which means this is a refresh after a key expiration
-		if node.NodeKey.String() == registerRequest.OldNodeKey.String() &&
+		if node.NodeKey.String() == regReq.OldNodeKey.String() &&
 			!node.IsExpired() {
 			h.handleNodeKeyRefresh(
 				writer,
-				registerRequest,
+				regReq,
 				*node,
 				machineKey,
 			)
@@ -202,11 +192,11 @@ func (h *Headscale) handleRegister(
 		}
 
 		// When logged out and reauthenticating with OIDC, the OldNodeKey is not passed, but the NodeKey has changed
-		if node.NodeKey.String() != registerRequest.NodeKey.String() &&
-			registerRequest.OldNodeKey.IsZero() && !node.IsExpired() {
+		if node.NodeKey.String() != regReq.NodeKey.String() &&
+			regReq.OldNodeKey.IsZero() && !node.IsExpired() {
 			h.handleNodeKeyRefresh(
 				writer,
-				registerRequest,
+				regReq,
 				*node,
 				machineKey,
 			)
@@ -214,7 +204,7 @@ func (h *Headscale) handleRegister(
 			return
 		}
 
-		if registerRequest.Followup != "" {
+		if regReq.Followup != "" {
 			select {
 			case <-req.Context().Done():
 				return
@@ -223,7 +213,7 @@ func (h *Headscale) handleRegister(
 		}
 
 		// The node has expired or it is logged out
-		h.handleNodeExpiredOrLoggedOut(writer, registerRequest, *node, machineKey)
+		h.handleNodeExpiredOrLoggedOut(writer, regReq, *node, machineKey)
 
 		// TODO(juan): RegisterRequest includes an Expiry time, that we could optionally use
 		node.Expiry = &time.Time{}
@@ -232,7 +222,7 @@ func (h *Headscale) handleRegister(
 		// we need to make sure the NodeKey matches the one in the request
 		// TODO(juan): What happens when using fast user switching between two
 		// headscale-managed tailnets?
-		node.NodeKey = registerRequest.NodeKey
+		node.NodeKey = regReq.NodeKey
 		h.registrationCache.Set(
 			machineKey.String(),
 			*node,
@@ -273,8 +263,6 @@ func (h *Headscale) handleAuthKey(
 				Err(err).
 				Msg("Cannot encode message")
 			http.Error(writer, "Internal server error", http.StatusInternalServerError)
-			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-				Inc()
 
 			return
 		}
@@ -293,13 +281,6 @@ func (h *Headscale) handleAuthKey(
 			Caller().
 			Str("node", registerRequest.Hostinfo.Hostname).
 			Msg("Failed authentication via AuthKey")
-
-		if pak != nil {
-			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-				Inc()
-		} else {
-			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", "unknown").Inc()
-		}
 
 		return
 	}
@@ -323,14 +304,20 @@ func (h *Headscale) handleAuthKey(
 			Msg("node was already registered before, refreshing with new auth key")
 
 		node.NodeKey = nodeKey
-		node.AuthKeyID = uint(pak.ID)
-		err := h.db.NodeSetExpiry(node.ID, registerRequest.Expiry)
+		if pak.ID != 0 {
+			node.AuthKeyID = ptr.To(pak.ID)
+		}
+
+		node.Expiry = &registerRequest.Expiry
+		node.User = pak.User
+		node.UserID = pak.UserID
+		err := h.db.DB.Save(node).Error
 		if err != nil {
 			log.Error().
 				Caller().
 				Str("node", node.Hostname).
 				Err(err).
-				Msg("Failed to refresh node")
+				Msg("failed to save node after logging in with auth key")
 
 			return
 		}
@@ -339,7 +326,6 @@ func (h *Headscale) handleAuthKey(
 		if len(aclTags) > 0 {
 			// This conditional preserves the existing behaviour, although SaaS would reset the tags on auth-key login
 			err = h.db.SetTags(node.ID, aclTags)
-
 			if err != nil {
 				log.Error().
 					Caller().
@@ -352,31 +338,13 @@ func (h *Headscale) handleAuthKey(
 			}
 		}
 
-		mkey := node.MachineKey
-		update := types.StateUpdateExpire(node.ID, registerRequest.Expiry)
-
-		if update.Valid() {
-			ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
-			h.nodeNotifier.NotifyWithIgnore(ctx, update, mkey.String())
-		}
+		ctx := types.NotifyCtx(context.Background(), "handle-authkey", "na")
+		h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{Type: types.StatePeerChanged, ChangeNodes: []types.NodeID{node.ID}})
 	} else {
 		now := time.Now().UTC()
 
-		givenName, err := h.db.GenerateGivenName(machineKey, registerRequest.Hostinfo.Hostname)
-		if err != nil {
-			log.Error().
-				Caller().
-				Str("func", "RegistrationHandler").
-				Str("hostinfo.name", registerRequest.Hostinfo.Hostname).
-				Err(err).
-				Msg("Failed to generate given name for node")
-
-			return
-		}
-
 		nodeToRegister := types.Node{
 			Hostname:       registerRequest.Hostinfo.Hostname,
-			GivenName:      givenName,
 			UserID:         pak.User.ID,
 			User:           pak.User,
 			MachineKey:     machineKey,
@@ -384,11 +352,10 @@ func (h *Headscale) handleAuthKey(
 			Expiry:         &registerRequest.Expiry,
 			NodeKey:        nodeKey,
 			LastSeen:       &now,
-			AuthKeyID:      uint(pak.ID),
 			ForcedTags:     pak.Proto().GetAclTags(),
 		}
 
-		addrs, err := h.ipAlloc.Next()
+		ipv4, ipv6, err := h.ipAlloc.Next()
 		if err != nil {
 			log.Error().
 				Caller().
@@ -400,24 +367,26 @@ func (h *Headscale) handleAuthKey(
 			return
 		}
 
+		pakID := uint(pak.ID)
+		if pakID != 0 {
+			nodeToRegister.AuthKeyID = ptr.To(pak.ID)
+		}
 		node, err = h.db.RegisterNode(
 			nodeToRegister,
-			addrs,
+			ipv4, ipv6,
 		)
 		if err != nil {
 			log.Error().
 				Caller().
 				Err(err).
 				Msg("could not register node")
-			nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-				Inc()
 			http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 			return
 		}
 	}
 
-	err = h.db.DB.Transaction(func(tx *gorm.DB) error {
+	h.db.Write(func(tx *gorm.DB) error {
 		return db.UsePreAuthKey(tx, pak)
 	})
 	if err != nil {
@@ -425,8 +394,6 @@ func (h *Headscale) handleAuthKey(
 			Caller().
 			Err(err).
 			Msg("Failed to use pre-auth key")
-		nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-			Inc()
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
@@ -445,14 +412,10 @@ func (h *Headscale) handleAuthKey(
 			Str("node", registerRequest.Hostinfo.Hostname).
 			Err(err).
 			Msg("Cannot encode message")
-		nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "error", pak.User.Name).
-			Inc()
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	nodeRegistrations.WithLabelValues("new", util.RegisterMethodAuthKey, "success", pak.User.Name).
-		Inc()
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 	_, err = writer.Write(respBody)
@@ -466,7 +429,6 @@ func (h *Headscale) handleAuthKey(
 
 	log.Info().
 		Str("node", registerRequest.Hostinfo.Hostname).
-		Str("ips", strings.Join(node.IPAddresses.StringSlice(), ", ")).
 		Msg("Successfully authenticated via AuthKey")
 }
 
@@ -538,11 +500,8 @@ func (h *Headscale) handleNodeLogOut(
 		return
 	}
 
-	stateUpdate := types.StateUpdateExpire(node.ID, now)
-	if stateUpdate.Valid() {
-		ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
-		h.nodeNotifier.NotifyWithIgnore(ctx, stateUpdate, node.MachineKey.String())
-	}
+	ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
+	h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.ID)
 
 	resp.AuthURL = ""
 	resp.MachineAuthorized = false
@@ -572,7 +531,7 @@ func (h *Headscale) handleNodeLogOut(
 	}
 
 	if node.IsEphemeral() {
-		err = h.db.DeleteNode(&node, h.nodeNotifier.ConnectedMap())
+		changedNodes, err := h.db.DeleteNode(&node, h.nodeNotifier.LikelyConnectedMap())
 		if err != nil {
 			log.Error().
 				Err(err).
@@ -580,13 +539,16 @@ func (h *Headscale) handleNodeLogOut(
 				Msg("Cannot delete ephemeral node from the database")
 		}
 
-		stateUpdate := types.StateUpdate{
+		ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
+		h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 			Type:    types.StatePeerRemoved,
-			Removed: []tailcfg.NodeID{tailcfg.NodeID(node.ID)},
-		}
-		if stateUpdate.Valid() {
-			ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
-			h.nodeNotifier.NotifyAll(ctx, stateUpdate)
+			Removed: []types.NodeID{node.ID},
+		})
+		if changedNodes != nil {
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				Type:        types.StatePeerChanged,
+				ChangeNodes: changedNodes,
+			})
 		}
 
 		return
@@ -622,14 +584,10 @@ func (h *Headscale) handleNodeWithValidRegistration(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		nodeRegistrations.WithLabelValues("update", "web", "error", node.User.Name).
-			Inc()
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	nodeRegistrations.WithLabelValues("update", "web", "success", node.User.Name).
-		Inc()
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
@@ -660,7 +618,7 @@ func (h *Headscale) handleNodeKeyRefresh(
 		Str("node", node.Hostname).
 		Msg("We have the OldNodeKey in the database. This is a key refresh")
 
-	err := h.db.DB.Transaction(func(tx *gorm.DB) error {
+	err := h.db.Write(func(tx *gorm.DB) error {
 		return db.NodeSetNodeKey(tx, &node, registerRequest.NodeKey)
 	})
 	if err != nil {
@@ -706,14 +664,14 @@ func (h *Headscale) handleNodeKeyRefresh(
 
 func (h *Headscale) handleNodeExpiredOrLoggedOut(
 	writer http.ResponseWriter,
-	registerRequest tailcfg.RegisterRequest,
+	regReq tailcfg.RegisterRequest,
 	node types.Node,
 	machineKey key.MachinePublic,
 ) {
 	resp := tailcfg.RegisterResponse{}
 
-	if registerRequest.Auth.AuthKey != "" {
-		h.handleAuthKey(writer, registerRequest, machineKey)
+	if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
+		h.handleAuthKey(writer, regReq, machineKey)
 
 		return
 	}
@@ -723,8 +681,8 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 		Caller().
 		Str("node", node.Hostname).
 		Str("machine_key", machineKey.ShortString()).
-		Str("node_key", registerRequest.NodeKey.ShortString()).
-		Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
+		Str("node_key", regReq.NodeKey.ShortString()).
+		Str("node_key_old", regReq.OldNodeKey.ShortString()).
 		Msg("Node registration has expired or logged out. Sending a auth url to register")
 
 	if h.oauth2Config != nil {
@@ -743,14 +701,10 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 			Caller().
 			Err(err).
 			Msg("Cannot encode message")
-		nodeRegistrations.WithLabelValues("reauth", "web", "error", node.User.Name).
-			Inc()
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 
 		return
 	}
-	nodeRegistrations.WithLabelValues("reauth", "web", "success", node.User.Name).
-		Inc()
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
@@ -765,8 +719,8 @@ func (h *Headscale) handleNodeExpiredOrLoggedOut(
 	log.Trace().
 		Caller().
 		Str("machine_key", machineKey.ShortString()).
-		Str("node_key", registerRequest.NodeKey.ShortString()).
-		Str("node_key_old", registerRequest.OldNodeKey.ShortString()).
+		Str("node_key", regReq.NodeKey.ShortString()).
+		Str("node_key_old", regReq.OldNodeKey.ShortString()).
 		Str("node", node.Hostname).
 		Msg("Node logged out. Sent AuthURL for reauthentication")
 }

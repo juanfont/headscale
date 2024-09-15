@@ -17,6 +17,11 @@ import (
 	"tailscale.com/types/key"
 )
 
+var iap = func(ipStr string) *netip.Addr {
+	ip := netip.MustParseAddr(ipStr)
+	return &ip
+}
+
 func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 	mach := func(hostname, username string, userid uint) *types.Node {
 		return &types.Node{
@@ -38,7 +43,6 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 		types.Nodes{
 			nodeInShared2, nodeInShared3, node2InShared1,
 		},
-		"",
 	)
 
 	c.Assert(len(userProfiles), check.Equals, 3)
@@ -122,7 +126,10 @@ func TestDNSConfigMapResponse(t *testing.T) {
 			}
 
 			got := generateDNSConfig(
-				&dnsConfigOrig,
+				&types.Config{
+					DNSConfig:             &dnsConfigOrig,
+					DNSUserNameInMagicDNS: true,
+				},
 				baseDomain,
 				nodeInShared1,
 				peersOfNodeInShared1,
@@ -176,17 +183,16 @@ func Test_fullMapResponse(t *testing.T) {
 		DiscoKey: mustDK(
 			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 		),
-		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
-		Hostname:    "mini",
-		GivenName:   "mini",
-		UserID:      0,
-		User:        types.User{Name: "mini"},
-		ForcedTags:  []string{},
-		AuthKeyID:   0,
-		AuthKey:     &types.PreAuthKey{},
-		LastSeen:    &lastSeen,
-		Expiry:      &expire,
-		Hostinfo:    &tailcfg.Hostinfo{},
+		IPv4:       iap("100.64.0.1"),
+		Hostname:   "mini",
+		GivenName:  "mini",
+		UserID:     0,
+		User:       types.User{Name: "mini"},
+		ForcedTags: []string{},
+		AuthKey:    &types.PreAuthKey{},
+		LastSeen:   &lastSeen,
+		Expiry:     &expire,
+		Hostinfo:   &tailcfg.Hostinfo{},
 		Routes: []types.Route{
 			{
 				Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),
@@ -257,17 +263,17 @@ func Test_fullMapResponse(t *testing.T) {
 		DiscoKey: mustDK(
 			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 		),
-		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
-		Hostname:    "peer1",
-		GivenName:   "peer1",
-		UserID:      0,
-		User:        types.User{Name: "mini"},
-		ForcedTags:  []string{},
-		LastSeen:    &lastSeen,
-		Expiry:      &expire,
-		Hostinfo:    &tailcfg.Hostinfo{},
-		Routes:      []types.Route{},
-		CreatedAt:   created,
+		IPv4:       iap("100.64.0.2"),
+		Hostname:   "peer1",
+		GivenName:  "peer1",
+		UserID:     0,
+		User:       types.User{Name: "mini"},
+		ForcedTags: []string{},
+		LastSeen:   &lastSeen,
+		Expiry:     &expire,
+		Hostinfo:   &tailcfg.Hostinfo{},
+		Routes:     []types.Route{},
+		CreatedAt:  created,
 	}
 
 	tailPeer1 := &tailcfg.Node{
@@ -312,17 +318,17 @@ func Test_fullMapResponse(t *testing.T) {
 		DiscoKey: mustDK(
 			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 		),
-		IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
-		Hostname:    "peer2",
-		GivenName:   "peer2",
-		UserID:      1,
-		User:        types.User{Name: "peer2"},
-		ForcedTags:  []string{},
-		LastSeen:    &lastSeen,
-		Expiry:      &expire,
-		Hostinfo:    &tailcfg.Hostinfo{},
-		Routes:      []types.Route{},
-		CreatedAt:   created,
+		IPv4:       iap("100.64.0.3"),
+		Hostname:   "peer2",
+		GivenName:  "peer2",
+		UserID:     1,
+		User:       types.User{Name: "peer2"},
+		ForcedTags: []string{},
+		LastSeen:   &lastSeen,
+		Expiry:     &expire,
+		Hostinfo:   &tailcfg.Hostinfo{},
+		Routes:     []types.Route{},
+		CreatedAt:  created,
 	}
 
 	tests := []struct {
@@ -331,13 +337,10 @@ func Test_fullMapResponse(t *testing.T) {
 		node  *types.Node
 		peers types.Nodes
 
-		baseDomain       string
-		dnsConfig        *tailcfg.DNSConfig
-		derpMap          *tailcfg.DERPMap
-		logtail          bool
-		randomClientPort bool
-		want             *tailcfg.MapResponse
-		wantErr          bool
+		derpMap *tailcfg.DERPMap
+		cfg     *types.Config
+		want    *tailcfg.MapResponse
+		wantErr bool
 	}{
 		// {
 		// 	name:             "empty-node",
@@ -349,15 +352,17 @@ func Test_fullMapResponse(t *testing.T) {
 		// 	wantErr:          true,
 		// },
 		{
-			name:             "no-pol-no-peers-map-response",
-			pol:              &policy.ACLPolicy{},
-			node:             mini,
-			peers:            types.Nodes{},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			name:    "no-pol-no-peers-map-response",
+			pol:     &policy.ACLPolicy{},
+			node:    mini,
+			peers:   types.Nodes{},
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				Node:            tailMini,
 				KeepAlive:       false,
@@ -383,11 +388,13 @@ func Test_fullMapResponse(t *testing.T) {
 			peers: types.Nodes{
 				peer1,
 			},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				KeepAlive: false,
 				Node:      tailMini,
@@ -424,11 +431,13 @@ func Test_fullMapResponse(t *testing.T) {
 				peer1,
 				peer2,
 			},
-			baseDomain:       "",
-			dnsConfig:        &tailcfg.DNSConfig{},
-			derpMap:          &tailcfg.DERPMap{},
-			logtail:          false,
-			randomClientPort: false,
+			derpMap: &tailcfg.DERPMap{},
+			cfg: &types.Config{
+				BaseDomain:          "",
+				DNSConfig:           &tailcfg.DNSConfig{},
+				LogTail:             types.LogTailConfig{Enabled: false},
+				RandomizeClientPort: false,
+			},
 			want: &tailcfg.MapResponse{
 				KeepAlive: false,
 				Node:      tailMini,
@@ -463,17 +472,15 @@ func Test_fullMapResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mappy := NewMapper(
-				tt.node,
-				tt.peers,
+				nil,
+				tt.cfg,
 				tt.derpMap,
-				tt.baseDomain,
-				tt.dnsConfig,
-				tt.logtail,
-				tt.randomClientPort,
+				nil,
 			)
 
 			got, err := mappy.fullMapResponse(
 				tt.node,
+				tt.peers,
 				tt.pol,
 				0,
 			)

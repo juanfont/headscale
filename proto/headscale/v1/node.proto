@@ -126,3 +126,11 @@ message DebugCreateNodeRequest {
 message DebugCreateNodeResponse {
     Node node = 1;
 }
+
+message BackfillNodeIPsRequest {
+    bool confirmed = 1;
+}
+
+message BackfillNodeIPsResponse {
+    repeated string changes = 1;
+}

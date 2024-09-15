@@ -11,9 +11,13 @@ Running headscale behind a reverse proxy is useful when running multiple applica
 
 ### WebSockets
 
-The reverse proxy MUST be configured to support WebSockets, as it is needed for clients running Tailscale v1.30+.
+The reverse proxy MUST be configured to support WebSockets to communicate with Tailscale clients.
 
-WebSockets support is required when using the headscale embedded DERP server. In this case, you will also need to expose the UDP port used for STUN (by default, udp/3478). Please check our [config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml).
+WebSockets support is also required when using the headscale embedded DERP server. In this case, you will also need to expose the UDP port used for STUN (by default, udp/3478). Please check our [config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml).
+
+### Cloudflare
+
+Running headscale behind a cloudflare proxy or cloudflare tunnel is not supported and will not work as Cloudflare does not support WebSocket POSTs as required by the Tailscale protocol. See [this issue](https://github.com/juanfont/headscale/issues/1468)
 
 ### TLS
 
@@ -33,8 +37,7 @@ The following example configuration can be used in your nginx setup, substitutin
 
 ```Nginx
 map $http_upgrade $connection_upgrade {
-    default      keep-alive;
-    'websocket'  upgrade;
+    default      upgrade;
     ''           close;
 }
 
@@ -61,7 +64,7 @@ server {
         proxy_buffering off;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        proxy_set_header X-Forwarded-Proto $scheme;
         add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
     }
 }
@@ -77,7 +80,7 @@ Sending local reply with details upgrade_failed
 
 ### Envoy
 
-You need add a new upgrade_type named `tailscale-control-protocol`. [see detail](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#extensions-filters-network-http-connection-manager-v3-httpconnectionmanager-upgradeconfig)
+You need to add a new upgrade_type named `tailscale-control-protocol`. [see details](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#extensions-filters-network-http-connection-manager-v3-httpconnectionmanager-upgradeconfig)
 
 ### Istio
 
@@ -116,7 +119,7 @@ The following Caddyfile is all that is necessary to use Caddy as a reverse proxy
 }
 ```
 
-Caddy v2 will [automatically](https://caddyserver.com/docs/automatic-https) provision a certficate for your domain/subdomain, force HTTPS, and proxy websockets - no further configuration is necessary.
+Caddy v2 will [automatically](https://caddyserver.com/docs/automatic-https) provision a certificate for your domain/subdomain, force HTTPS, and proxy websockets - no further configuration is necessary.
 
 For a slightly more complex configuration which utilizes Docker containers to manage Caddy, Headscale, and Headscale-UI, [Guru Computing's guide](https://blog.gurucomputing.com.au/smart-vpns-with-headscale/) is an excellent reference.
 

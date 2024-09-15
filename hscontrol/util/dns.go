@@ -103,33 +103,7 @@ func CheckForFQDNRules(name string) error {
 
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
-func GenerateMagicDNSRootDomains(ipPrefixes []netip.Prefix) []dnsname.FQDN {
-	fqdns := make([]dnsname.FQDN, 0, len(ipPrefixes))
-	for _, ipPrefix := range ipPrefixes {
-		var generateDNSRoot func(netip.Prefix) []dnsname.FQDN
-		switch ipPrefix.Addr().BitLen() {
-		case ipv4AddressLength:
-			generateDNSRoot = generateIPv4DNSRootDomain
-
-		case ipv6AddressLength:
-			generateDNSRoot = generateIPv6DNSRootDomain
-
-		default:
-			panic(
-				fmt.Sprintf(
-					"unsupported IP version with address length %d",
-					ipPrefix.Addr().BitLen(),
-				),
-			)
-		}
-
-		fqdns = append(fqdns, generateDNSRoot(ipPrefix)...)
-	}
-
-	return fqdns
-}
-
-func generateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
+func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// Conversion to the std lib net.IPnet, a bit easier to operate
 	netRange := netipx.PrefixIPNet(ipPrefix)
 	maskBits, _ := netRange.Mask.Size()
@@ -165,7 +139,27 @@ func generateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	return fqdns
 }
 
-func generateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
+// generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
+// This list of reverse DNS entries instructs the OS on what subnets and domains the Tailscale embedded DNS
+// server (listening in 100.100.100.100 udp/53) should be used for.
+//
+// Tailscale.com includes in the list:
+// - the `BaseDomain` of the user
+// - the reverse DNS entry for IPv6 (0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa., see below more on IPv6)
+// - the reverse DNS entries for the IPv4 subnets covered by the user's `IPPrefix`.
+//   In the public SaaS this is [64-127].100.in-addr.arpa.
+//
+// The main purpose of this function is then generating the list of IPv4 entries. For the 100.64.0.0/10, this
+// is clear, and could be hardcoded. But we are allowing any range as `IPPrefix`, so we need to find out the
+// subnets when we have 172.16.0.0/16 (i.e., [0-255].16.172.in-addr.arpa.), or any other subnet.
+//
+// How IN-ADDR.ARPA domains work is defined in RFC1035 (section 3.5). Tailscale.com seems to adhere to this,
+// and do not make use of RFC2317 ("Classless IN-ADDR.ARPA delegation") - hence generating the entries for the next
+// class block only.
+
+// From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
+// This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
+func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	const nibbleLen = 4
 
 	maskBits, _ := netipx.PrefixIPNet(ipPrefix).Mask.Size()

@@ -8,7 +8,7 @@ hide:
 
 `headscale` is an open source, self-hosted implementation of the Tailscale control server.
 
-This page contains the documentation for the latest version of headscale. Please also check our [FAQ](/faq/).
+This page contains the documentation for the latest version of headscale. Please also check our [FAQ](faq.md).
 
 Join our [Discord](https://discord.gg/c84AZQhmpx) server for a chat and community support.
 
@@ -31,12 +31,7 @@ buttons available in the repo.
 Headscale is "Open Source, acknowledged contribution", this means that any
 contribution will have to be discussed with the Maintainers before being submitted.
 
-This model has been chosen to reduce the risk of burnout by limiting the
-maintenance overhead of reviewing and validating third-party code.
-
-Headscale is open to code contributions for bug fixes without discussion.
-
-If you find mistakes in the documentation, please submit a fix to the documentation.
+Please see [CONTRIBUTING.md](https://github.com/juanfont/headscale/blob/main/CONTRIBUTING.md) for more information.
 
 ## About
 

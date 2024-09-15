@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net"
@@ -18,12 +19,14 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -79,7 +82,7 @@ type Option = func(c *HeadscaleInContainer)
 func WithACLPolicy(acl *policy.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		// TODO(kradalby): Move somewhere appropriate
-		hsic.env["HEADSCALE_ACL_POLICY_PATH"] = aclPolicyPath
+		hsic.env["HEADSCALE_POLICY_PATH"] = aclPolicyPath
 
 		hsic.aclPolicy = acl
 	}
@@ -173,6 +176,47 @@ func WithPostgres() Option {
 	}
 }
 
+// WithIPAllocationStrategy sets the tests IP Allocation strategy.
+func WithIPAllocationStrategy(strategy types.IPAllocationStrategy) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_PREFIXES_ALLOCATION"] = string(strategy)
+	}
+}
+
+// WithEmbeddedDERPServerOnly configures Headscale to start
+// and only use the embedded DERP server.
+// It requires WithTLS and WithHostnameAsServerURL to be
+// set.
+func WithEmbeddedDERPServerOnly() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_DERP_URLS"] = ""
+		hsic.env["HEADSCALE_DERP_SERVER_ENABLED"] = "true"
+		hsic.env["HEADSCALE_DERP_SERVER_REGION_ID"] = "999"
+		hsic.env["HEADSCALE_DERP_SERVER_REGION_CODE"] = "headscale"
+		hsic.env["HEADSCALE_DERP_SERVER_REGION_NAME"] = "Headscale Embedded DERP"
+		hsic.env["HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR"] = "0.0.0.0:3478"
+		hsic.env["HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH"] = "/tmp/derp.key"
+
+		// Envknob for enabling DERP debug logs
+		hsic.env["DERP_DEBUG_LOGS"] = "true"
+		hsic.env["DERP_PROBER_DEBUG_LOGS"] = "true"
+	}
+}
+
+// WithTuning allows changing the tuning settings easily.
+func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_TUNING_BATCH_CHANGE_DELAY"] = batchTimeout.String()
+		hsic.env["HEADSCALE_TUNING_NODE_MAPSESSION_BUFFERED_CHAN_SIZE"] = strconv.Itoa(mapSessionChanSize)
+	}
+}
+
+func WithTimezone(timezone string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["TZ"] = timezone
+	}
+}
+
 // New returns a new HeadscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
@@ -248,9 +292,13 @@ func New(
 	}
 
 	env := []string{
-		"HEADSCALE_PROFILING_ENABLED=1",
-		"HEADSCALE_PROFILING_PATH=/tmp/profile",
+		"HEADSCALE_DEBUG_PROFILING_ENABLED=1",
+		"HEADSCALE_DEBUG_PROFILING_PATH=/tmp/profile",
 		"HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH=/tmp/mapresponses",
+		"HEADSCALE_DEBUG_DEADLOCK=1",
+		"HEADSCALE_DEBUG_DEADLOCK_TIMEOUT=5s",
+		"HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS=1",
+		"HEADSCALE_DEBUG_DUMP_CONFIG=1",
 	}
 	for key, value := range hsic.env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
@@ -260,7 +308,7 @@ func New(
 
 	runOptions := &dockertest.RunOptions{
 		Name:         hsic.hostname,
-		ExposedPorts: append([]string{portProto}, hsic.extraPorts...),
+		ExposedPorts: append([]string{portProto, "9090/tcp"}, hsic.extraPorts...),
 		Networks:     []*dockertest.Network{network},
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
@@ -350,12 +398,20 @@ func (t *HeadscaleInContainer) hasTLS() bool {
 }
 
 // Shutdown stops and cleans up the Headscale container.
-func (t *HeadscaleInContainer) Shutdown() error {
-	err := t.SaveLog("/tmp/control")
+func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
+	stdoutPath, stderrPath, err := t.SaveLog("/tmp/control")
 	if err != nil {
 		log.Printf(
 			"Failed to save log from control: %s",
 			fmt.Errorf("failed to save log from control: %w", err),
+		)
+	}
+
+	err = t.SaveMetrics(fmt.Sprintf("/tmp/control/%s_metrics.txt", t.hostname))
+	if err != nil {
+		log.Printf(
+			"Failed to metrics from control: %s",
+			err,
 		)
 	}
 
@@ -402,13 +458,32 @@ func (t *HeadscaleInContainer) Shutdown() error {
 		t.pool.Purge(t.pgContainer)
 	}
 
-	return t.pool.Purge(t.container)
+	return stdoutPath, stderrPath, t.pool.Purge(t.container)
 }
 
 // SaveLog saves the current stdout log of the container to a path
 // on the host system.
-func (t *HeadscaleInContainer) SaveLog(path string) error {
+func (t *HeadscaleInContainer) SaveLog(path string) (string, string, error) {
 	return dockertestutil.SaveLog(t.pool, t.container, path)
+}
+
+func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
+	resp, err := http.Get(fmt.Sprintf("http://%s:9090/metrics", t.hostname))
+	if err != nil {
+		return fmt.Errorf("getting metrics: %w", err)
+	}
+	defer resp.Body.Close()
+	out, err := os.Create(savePath)
+	if err != nil {
+		return fmt.Errorf("creating file for metrics: %w", err)
+	}
+	defer out.Close()
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return fmt.Errorf("copy response to file: %w", err)
+	}
+
+	return nil
 }
 
 func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
@@ -482,7 +557,7 @@ func (t *HeadscaleInContainer) Execute(
 			log.Printf("command stdout: %s\n", stdout)
 		}
 
-		return "", err
+		return stdout, fmt.Errorf("executing command in docker: %w, stderr: %s", err, stderr)
 	}
 
 	return stdout, nil
@@ -682,7 +757,7 @@ func createCertificate(hostname string) ([]byte, []byte, error) {
 			Locality:     []string{"Leiden"},
 		},
 		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(60 * time.Minute),
+		NotAfter:  time.Now().Add(60 * time.Hour),
 		IsCA:      true,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,

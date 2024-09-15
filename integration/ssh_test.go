@@ -44,7 +44,7 @@ var retry = func(times int, sleepInterval time.Duration,
 
 func sshScenario(t *testing.T, policy *policy.ACLPolicy, clientsPerUser int) *Scenario {
 	t.Helper()
-	scenario, err := NewScenario()
+	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
 	spec := map[string]int{

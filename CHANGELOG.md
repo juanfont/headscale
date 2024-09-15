@@ -26,10 +26,10 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Code reorganisation, a lot of code has moved, please review the following PRs accordingly [#1473](https://github.com/juanfont/headscale/pull/1473)
 - Change the structure of database configuration, see [config-example.yaml](./config-example.yaml) for the new structure. [#1700](https://github.com/juanfont/headscale/pull/1700)
   - Old structure has been remove and the configuration _must_ be converted.
-  - Adds additional configuration for PostgreSQL for setting max open, idle conection and idle connection lifetime.
+  - Adds additional configuration for PostgreSQL for setting max open, idle connection and idle connection lifetime.
 - API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
 - Remove support for older Tailscale clients [#1611](https://github.com/juanfont/headscale/pull/1611)
-  - The latest supported client is 1.38
+  - The oldest supported client is 1.42
 - Headscale checks that _at least_ one DERP is defined at start [#1564](https://github.com/juanfont/headscale/pull/1564)
   - If no DERP is configured, the server will fail to start, this can be because it cannot load the DERPMap from file or url.
 - Embedded DERP server requires a private key [#1611](https://github.com/juanfont/headscale/pull/1611)
@@ -39,6 +39,16 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - `/var/lib/headscale` and `/var/run/headscale` is no longer created automatically, see [container docs](./docs/running-headscale-container.md)
 - Prefixes are now defined per v4 and v6 range. [#1756](https://github.com/juanfont/headscale/pull/1756)
   - `ip_prefixes` option is now `prefixes.v4` and `prefixes.v6`
+  - `prefixes.allocation` can be set to assign IPs at `sequential` or `random`. [#1869](https://github.com/juanfont/headscale/pull/1869)
+- MagicDNS domains no longer contain usernames []()
+  - This is in preperation to fix Headscales implementation of tags which currently does not correctly remove the link between a tagged device and a user. As tagged devices will not have a user, this will require a change to the DNS generation, removing the username, see [#1369](https://github.com/juanfont/headscale/issues/1369) for more information.
+  - `use_username_in_magic_dns` can be used to turn this behaviour on again, but note that this option _will be removed_ when tags are fixed.
+    - dns.base_domain can no longer be the same as (or part of) server_url.
+    - This option brings Headscales behaviour in line with Tailscale.
+- YAML files are no longer supported for headscale policy. [#1792](https://github.com/juanfont/headscale/pull/1792)
+  - HuJSON is now the only supported format for policy.
+- DNS configuration has been restructured [#2034](https://github.com/juanfont/headscale/pull/2034)
+  - Please review the new [config-example.yaml](./config-example.yaml) for the new structure.
 
 ### Changes
 
@@ -53,6 +63,18 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Turn off gRPC logging [#1640](https://github.com/juanfont/headscale/pull/1640) fixes [#1259](https://github.com/juanfont/headscale/issues/1259)
 - Added the possibility to manually create a DERP-map entry which can be customized, instead of automatically creating it. [#1565](https://github.com/juanfont/headscale/pull/1565)
 - Add support for deleting api keys [#1702](https://github.com/juanfont/headscale/pull/1702)
+- Add command to backfill IP addresses for nodes missing IPs from configured prefixes. [#1869](https://github.com/juanfont/headscale/pull/1869)
+- Log available update as warning [#1877](https://github.com/juanfont/headscale/pull/1877)
+- Add `autogroup:internet` to Policy [#1917](https://github.com/juanfont/headscale/pull/1917)
+- Restore foreign keys and add constraints [#1562](https://github.com/juanfont/headscale/pull/1562)
+- Make registration page easier to use on mobile devices
+- Make write-ahead-log default on and configurable for SQLite [#1985](https://github.com/juanfont/headscale/pull/1985)
+- Add APIs for managing headscale policy. [#1792](https://github.com/juanfont/headscale/pull/1792)
+- Fix for registering nodes using preauthkeys when running on a postgres database in a non-UTC timezone. [#764](https://github.com/juanfont/headscale/issues/764)
+- Make sure integration tests cover postgres for all scenarios
+- CLI commands (all except `serve`) only requires minimal configuration, no more errors or warnings from unset settings [#2109](https://github.com/juanfont/headscale/pull/2109)
+- CLI results are now concistently sent to stdout and errors to stderr [#2109](https://github.com/juanfont/headscale/pull/2109)
+- Fix issue where shutting down headscale would hang [#2113](https://github.com/juanfont/headscale/pull/2113)
 
 ## 0.22.3 (2023-05-12)
 
@@ -65,7 +87,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 ### Changes
 
 - Add environment flags to enable pprof (profiling) [#1382](https://github.com/juanfont/headscale/pull/1382)
-  - Profiles are continously generated in our integration tests.
+  - Profiles are continuously generated in our integration tests.
 - Fix systemd service file location in `.deb` packages [#1391](https://github.com/juanfont/headscale/pull/1391)
 - Improvements on Noise implementation [#1379](https://github.com/juanfont/headscale/pull/1379)
 - Replace node filter logic, ensuring nodes with access can see eachother [#1381](https://github.com/juanfont/headscale/pull/1381)
@@ -156,7 +178,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - SSH ACLs status:
     - Support `accept` and `check` (SSH can be enabled and used for connecting and authentication)
     - Rejecting connections **are not supported**, meaning that if you enable SSH, then assume that _all_ `ssh` connections **will be allowed**.
-    - If you decied to try this feature, please carefully managed permissions by blocking port `22` with regular ACLs or do _not_ set `--ssh` on your clients.
+    - If you decided to try this feature, please carefully managed permissions by blocking port `22` with regular ACLs or do _not_ set `--ssh` on your clients.
     - We are currently improving our testing of the SSH ACLs, help us get an overview by testing and giving feedback.
   - This feature should be considered dangerous and it is disabled by default. Enable by setting `HEADSCALE_EXPERIMENTAL_FEATURE_SSH=1`.
 
@@ -206,7 +228,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 ### Changes
 
 - Updated dependencies (including the library that lacked armhf support) [#722](https://github.com/juanfont/headscale/pull/722)
-- Fix missing group expansion in function `excludeCorretlyTaggedNodes` [#563](https://github.com/juanfont/headscale/issues/563)
+- Fix missing group expansion in function `excludeCorrectlyTaggedNodes` [#563](https://github.com/juanfont/headscale/issues/563)
 - Improve registration protocol implementation and switch to NodeKey as main identifier [#725](https://github.com/juanfont/headscale/pull/725)
 - Add ability to connect to PostgreSQL via unix socket [#734](https://github.com/juanfont/headscale/pull/734)
 
@@ -226,7 +248,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Fix send on closed channel crash in polling [#542](https://github.com/juanfont/headscale/pull/542)
 - Fixed spurious calls to setLastStateChangeToNow from ephemeral nodes [#566](https://github.com/juanfont/headscale/pull/566)
 - Add command for moving nodes between namespaces [#362](https://github.com/juanfont/headscale/issues/362)
-- Added more configuration parameters for OpenID Connect (scopes, free-form paramters, domain and user allowlist)
+- Added more configuration parameters for OpenID Connect (scopes, free-form parameters, domain and user allowlist)
 - Add command to set tags on a node [#525](https://github.com/juanfont/headscale/issues/525)
 - Add command to view tags of nodes [#356](https://github.com/juanfont/headscale/issues/356)
 - Add --all (-a) flag to enable routes command [#360](https://github.com/juanfont/headscale/issues/360)
@@ -274,10 +296,10 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 
 - Fix a bug were the same IP could be assigned to multiple hosts if joined in quick succession [#346](https://github.com/juanfont/headscale/pull/346)
 - Simplify the code behind registration of machines [#366](https://github.com/juanfont/headscale/pull/366)
-  - Nodes are now only written to database if they are registrated successfully
+  - Nodes are now only written to database if they are registered successfully
 - Fix a limitation in the ACLs that prevented users to write rules with `*` as source [#374](https://github.com/juanfont/headscale/issues/374)
 - Reduce the overhead of marshal/unmarshal for Hostinfo, routes and endpoints by using specific types in Machine [#371](https://github.com/juanfont/headscale/pull/371)
-- Apply normalization function to FQDN on hostnames when hosts registers and retrieve informations [#363](https://github.com/juanfont/headscale/issues/363)
+- Apply normalization function to FQDN on hostnames when hosts registers and retrieve information [#363](https://github.com/juanfont/headscale/issues/363)
 - Fix a bug that prevented the use of `tailscale logout` with OIDC [#508](https://github.com/juanfont/headscale/issues/508)
 - Added Tailscale repo HEAD and unstable releases channel to the integration tests targets [#513](https://github.com/juanfont/headscale/pull/513)
 

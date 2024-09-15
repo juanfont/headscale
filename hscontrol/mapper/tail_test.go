@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/json"
 	"net/netip"
 	"testing"
 	"time"
@@ -55,12 +56,14 @@ func TestTailNode(t *testing.T) {
 		{
 			name: "empty-node",
 			node: &types.Node{
-				Hostinfo: &tailcfg.Hostinfo{},
+				GivenName: "empty",
+				Hostinfo:  &tailcfg.Hostinfo{},
 			},
 			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
+				Name:              "empty",
 				StableID:          "0",
 				Addresses:         []netip.Prefix{},
 				AllowedIPs:        []netip.Prefix{},
@@ -89,9 +92,7 @@ func TestTailNode(t *testing.T) {
 				DiscoKey: mustDK(
 					"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 				),
-				IPAddresses: []netip.Addr{
-					netip.MustParseAddr("100.64.0.1"),
-				},
+				IPv4:      iap("100.64.0.1"),
 				Hostname:  "mini",
 				GivenName: "mini",
 				UserID:    0,
@@ -99,7 +100,6 @@ func TestTailNode(t *testing.T) {
 					Name: "mini",
 				},
 				ForcedTags: []string{},
-				AuthKeyID:  0,
 				AuthKey:    &types.PreAuthKey{},
 				LastSeen:   &lastSeen,
 				Expiry:     &expire,
@@ -182,13 +182,16 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cfg := &types.Config{
+				BaseDomain:          tt.baseDomain,
+				DNSConfig:           tt.dnsConfig,
+				RandomizeClientPort: false,
+			}
 			got, err := tailNode(
 				tt.node,
 				0,
 				tt.pol,
-				tt.dnsConfig,
-				tt.baseDomain,
-				false,
+				cfg,
 			)
 
 			if (err != nil) != tt.wantErr {
@@ -199,6 +202,71 @@ func TestTailNode(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("tailNode() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNodeExpiry(t *testing.T) {
+	tp := func(t time.Time) *time.Time {
+		return &t
+	}
+	tests := []struct {
+		name         string
+		exp          *time.Time
+		wantTime     time.Time
+		wantTimeZero bool
+	}{
+		{
+			name:         "no-expiry",
+			exp:          nil,
+			wantTimeZero: true,
+		},
+		{
+			name:         "zero-expiry",
+			exp:          &time.Time{},
+			wantTimeZero: true,
+		},
+		{
+			name:         "localtime",
+			exp:          tp(time.Time{}.Local()),
+			wantTimeZero: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := &types.Node{
+				GivenName: "test",
+				Expiry:    tt.exp,
+			}
+			tn, err := tailNode(
+				node,
+				0,
+				&policy.ACLPolicy{},
+				&types.Config{},
+			)
+			if err != nil {
+				t.Fatalf("nodeExpiry() error = %v", err)
+			}
+
+			// Round trip the node through JSON to ensure the time is serialized correctly
+			seri, err := json.Marshal(tn)
+			if err != nil {
+				t.Fatalf("nodeExpiry() error = %v", err)
+			}
+			var deseri tailcfg.Node
+			err = json.Unmarshal(seri, &deseri)
+			if err != nil {
+				t.Fatalf("nodeExpiry() error = %v", err)
+			}
+
+			if tt.wantTimeZero {
+				if !deseri.KeyExpiry.IsZero() {
+					t.Errorf("nodeExpiry() = %v, want zero", deseri.KeyExpiry)
+				}
+			} else if deseri.KeyExpiry != tt.wantTime {
+				t.Errorf("nodeExpiry() = %v, want %v", deseri.KeyExpiry, tt.wantTime)
 			}
 		})
 	}

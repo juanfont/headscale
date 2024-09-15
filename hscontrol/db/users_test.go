@@ -5,6 +5,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
+	"tailscale.com/types/ptr"
 )
 
 func (s *Suite) TestCreateAndDestroyUser(c *check.C) {
@@ -51,9 +52,10 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      ptr.To(pak.ID),
 	}
-	db.DB.Save(&node)
+	trx := db.DB.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 
 	err = db.DestroyUser("test")
 	c.Assert(err, check.Equals, ErrUserStillHasNodes)
@@ -103,9 +105,10 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 		Hostname:       "testnode",
 		UserID:         oldUser.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      uint(pak.ID),
+		AuthKeyID:      ptr.To(pak.ID),
 	}
-	db.DB.Save(&node)
+	trx := db.DB.Save(&node)
+	c.Assert(trx.Error, check.IsNil)
 	c.Assert(node.UserID, check.Equals, oldUser.ID)
 
 	err = db.AssignNodeToUser(&node, newUser.Name)

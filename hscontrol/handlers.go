@@ -68,12 +68,6 @@ func (h *Headscale) KeyHandler(
 			Msg("could not get capability version")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
 
 		return
 	}
@@ -82,19 +76,6 @@ func (h *Headscale) KeyHandler(
 		Str("handler", "/key").
 		Int("cap_ver", int(capVer)).
 		Msg("New noise client")
-	if err != nil {
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusBadRequest)
-		_, err := writer.Write([]byte("Wrong params"))
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
-
-		return
-	}
 
 	// TS2021 (Tailscale v2 protocol) requires to have a different key
 	if capVer >= NoiseCapabilityVersion {
@@ -162,6 +143,18 @@ var registerWebAPITemplate = template.Must(
 <html>
 	<head>
 		<title>Registration - Headscale</title>
+		<meta name=viewport content="width=device-width, initial-scale=1">
+		<style>
+			body {
+				font-family: sans;
+			}
+			code {
+				display: block;
+				padding: 20px;
+				border: 1px solid #bbb;
+				background-color: #eee;
+			}
+		</style>
 	</head>
 	<body>
 		<h1>headscale</h1>
@@ -169,7 +162,7 @@ var registerWebAPITemplate = template.Must(
 		<p>
 			Run the command below in the headscale server to add this machine to your network:
 		</p>
-		<pre><code>headscale nodes register --user USERNAME --key {{.Key}}</code></pre>
+		<code>headscale nodes register --user USERNAME --key {{.Key}}</code>
 	</body>
 </html>
 `))

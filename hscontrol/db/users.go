@@ -2,10 +2,10 @@ package db
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
 
@@ -34,12 +34,7 @@ func CreateUser(tx *gorm.DB, name string) (*types.User, error) {
 	}
 	user.Name = name
 	if err := tx.Create(&user).Error; err != nil {
-		log.Error().
-			Str("func", "CreateUser").
-			Err(err).
-			Msg("Could not create row")
-
-		return nil, err
+		return nil, fmt.Errorf("creating user: %w", err)
 	}
 
 	return &user, nil

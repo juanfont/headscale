@@ -15,22 +15,22 @@ jobs:
           fetch-depth: 2
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v34
+        uses: dorny/paths-filter@v3
         with:
-          files: |
-            *.nix
-            go.*
-            **/*.go
-            integration_test/
-            config-example.yaml
-
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration_test/'
+              - 'config-example.yaml'
       - uses: DeterminateSystems/nix-installer-action@main
-        if: steps.changed-files.outputs.any_changed == 'true'
+        if: steps.changed-files.outputs.files == 'true'
       - uses: DeterminateSystems/magic-nix-cache-action@main
-        if: steps.changed-files.outputs.any_changed == 'true'
+        if: steps.changed-files.outputs.files == 'true'
 
       - name: Generate and check integration tests
-        if: steps.changed-files.outputs.any_changed == 'true'
+        if: steps.changed-files.outputs.files == 'true'
         run: |
           nix develop --command bash -c "cd cmd/gh-action-integration-generator/ && go generate"
           git diff --exit-code .github/workflows/test-integration.yaml

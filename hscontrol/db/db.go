@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/netip"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,13 +13,12 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 var errDatabaseNotSupported = errors.New("database type not supported")
@@ -51,8 +51,8 @@ func NewHeadscaleDatabase(
 		dbConn,
 		gormigrate.DefaultOptions,
 		[]*gormigrate.Migration{
-			// New migrations should be added as transactions at the end of this list.
-			// The initial commit here is quite messy, completely out of order and
+			// New migrations must be added as transactions at the end of this list.
+			// The initial migration here is quite messy, completely out of order and
 			// has no versioning and is the tech debt of not having versioned migrations
 			// prior to this point. This first migration is all DB changes to bring a DB
 			// up to 0.23.0.
@@ -90,6 +90,7 @@ func NewHeadscaleDatabase(
 					_ = tx.Migrator().
 						RenameColumn(&types.Node{}, "nickname", "given_name")
 
+					dbConn.Model(&types.Node{}).Where("auth_key_id = ?", 0).Update("auth_key_id", nil)
 					// If the Node table has a column for registered,
 					// find all occourences of "false" and drop them. Then
 					// remove the column.
@@ -122,6 +123,13 @@ func NewHeadscaleDatabase(
 						}
 					}
 
+					// Remove any invalid routes associated with a node that does not exist.
+					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) {
+						err := tx.Exec("delete from routes where node_id not in (select id from nodes)").Error
+						if err != nil {
+							return err
+						}
+					}
 					err = tx.AutoMigrate(&types.Route{})
 					if err != nil {
 						return err
@@ -317,23 +325,98 @@ func NewHeadscaleDatabase(
 				// no longer used.
 				ID: "202402151347",
 				Migrate: func(tx *gorm.DB) error {
-					err := tx.Migrator().DropColumn(&types.Node{}, "last_successful_update")
-					if err != nil && strings.Contains(err.Error(), `of relation "nodes" does not exist`) {
-						return nil
-					} else {
-						return err
-					}
-
-					return err
+					_ = tx.Migrator().DropColumn(&types.Node{}, "last_successful_update")
+					return nil
 				},
 				Rollback: func(tx *gorm.DB) error {
 					return nil
 				},
 			},
+			{
+				// Replace column with IP address list with dedicated
+				// IP v4 and v6 column.
+				// Note that previously, the list _could_ contain more
+				// than two addresses, which should not really happen.
+				// In that case, the first occurrence of each type will
+				// be kept.
+				ID: "2024041121742",
+				Migrate: func(tx *gorm.DB) error {
+					_ = tx.Migrator().AddColumn(&types.Node{}, "ipv4")
+					_ = tx.Migrator().AddColumn(&types.Node{}, "ipv6")
+
+					type node struct {
+						ID        uint64 `gorm:"column:id"`
+						Addresses string `gorm:"column:ip_addresses"`
+					}
+
+					var nodes []node
+
+					_ = tx.Raw("SELECT id, ip_addresses FROM nodes").Scan(&nodes).Error
+
+					for _, node := range nodes {
+						addrs := strings.Split(node.Addresses, ",")
+
+						if len(addrs) == 0 {
+							return fmt.Errorf("no addresses found for node(%d)", node.ID)
+						}
+
+						var v4 *netip.Addr
+						var v6 *netip.Addr
+
+						for _, addrStr := range addrs {
+							addr, err := netip.ParseAddr(addrStr)
+							if err != nil {
+								return fmt.Errorf("parsing IP for node(%d) from database: %w", node.ID, err)
+							}
+
+							if addr.Is4() && v4 == nil {
+								v4 = &addr
+							}
+
+							if addr.Is6() && v6 == nil {
+								v6 = &addr
+							}
+						}
+
+						if v4 != nil {
+							err = tx.Model(&types.Node{}).Where("id = ?", node.ID).Update("ipv4", v4.String()).Error
+							if err != nil {
+								return fmt.Errorf("saving ip addresses to new columns: %w", err)
+							}
+						}
+
+						if v6 != nil {
+							err = tx.Model(&types.Node{}).Where("id = ?", node.ID).Update("ipv6", v6.String()).Error
+							if err != nil {
+								return fmt.Errorf("saving ip addresses to new columns: %w", err)
+							}
+						}
+					}
+
+					_ = tx.Migrator().DropColumn(&types.Node{}, "ip_addresses")
+
+					return nil
+				},
+				Rollback: func(tx *gorm.DB) error {
+					return nil
+				},
+			},
+			{
+				ID: "202406021630",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.Policy{})
+					if err != nil {
+						return err
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
-	if err = migrations.Migrate(); err != nil {
+	if err := runMigrations(cfg, dbConn, migrations); err != nil {
 		log.Fatal().Err(err).Msgf("Migration failed: %v", err)
 	}
 
@@ -350,7 +433,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 	// TODO(kradalby): Integrate this with zerolog
 	var dbLogger logger.Interface
 	if cfg.Debug {
-		dbLogger = logger.Default
+		dbLogger = util.NewDBLogWrapper(&log.Logger, cfg.Gorm.SlowThreshold, cfg.Gorm.SkipErrRecordNotFound, cfg.Gorm.ParameterizedQueries)
 	} else {
 		dbLogger = logger.Default.LogMode(logger.Silent)
 	}
@@ -369,14 +452,30 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 			Msg("Opening database")
 
 		db, err := gorm.Open(
-			sqlite.Open(cfg.Sqlite.Path+"?_synchronous=1&_journal_mode=WAL"),
+			sqlite.Open(cfg.Sqlite.Path),
 			&gorm.Config{
-				DisableForeignKeyConstraintWhenMigrating: true,
-				Logger:                                   dbLogger,
+				PrepareStmt: cfg.Gorm.PrepareStmt,
+				Logger:      dbLogger,
 			},
 		)
 
-		db.Exec("PRAGMA foreign_keys=ON")
+		if err := db.Exec(`
+			PRAGMA foreign_keys=ON;
+			PRAGMA busy_timeout=10000;
+			PRAGMA auto_vacuum=INCREMENTAL;
+			PRAGMA synchronous=NORMAL;
+			`).Error; err != nil {
+			return nil, fmt.Errorf("enabling foreign keys: %w", err)
+		}
+
+		if cfg.Sqlite.WriteAheadLog {
+			if err := db.Exec(`
+				PRAGMA journal_mode=WAL;
+				PRAGMA wal_autocheckpoint=0;
+				`).Error; err != nil {
+				return nil, fmt.Errorf("setting WAL mode: %w", err)
+			}
+		}
 
 		// The pure Go SQLite library does not handle locking in
 		// the same way as the C based one and we cant use the gorm
@@ -418,8 +517,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		}
 
 		db, err := gorm.Open(postgres.Open(dbString), &gorm.Config{
-			DisableForeignKeyConstraintWhenMigrating: true,
-			Logger:                                   dbLogger,
+			Logger: dbLogger,
 		})
 		if err != nil {
 			return nil, err
@@ -440,6 +538,70 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		cfg.Type,
 		errDatabaseNotSupported,
 	)
+}
+
+func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormigrate.Gormigrate) error {
+	// Turn off foreign keys for the duration of the migration if using sqllite to
+	// prevent data loss due to the way the GORM migrator handles certain schema
+	// changes.
+	if cfg.Type == types.DatabaseSqlite {
+		var fkEnabled int
+		if err := dbConn.Raw("PRAGMA foreign_keys").Scan(&fkEnabled).Error; err != nil {
+			return fmt.Errorf("checking foreign key status: %w", err)
+		}
+		if fkEnabled == 1 {
+			if err := dbConn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+				return fmt.Errorf("disabling foreign keys: %w", err)
+			}
+			defer dbConn.Exec("PRAGMA foreign_keys = ON")
+		}
+	}
+
+	if err := migrations.Migrate(); err != nil {
+		return err
+	}
+
+	// Since we disabled foreign keys for the migration, we need to check for
+	// constraint violations manually at the end of the migration.
+	if cfg.Type == types.DatabaseSqlite {
+		type constraintViolation struct {
+			Table           string
+			RowID           int
+			Parent          string
+			ConstraintIndex int
+		}
+
+		var violatedConstraints []constraintViolation
+
+		rows, err := dbConn.Raw("PRAGMA foreign_key_check").Rows()
+		if err != nil {
+			return err
+		}
+
+		for rows.Next() {
+			var violation constraintViolation
+			if err := rows.Scan(&violation.Table, &violation.RowID, &violation.Parent, &violation.ConstraintIndex); err != nil {
+				return err
+			}
+
+			violatedConstraints = append(violatedConstraints, violation)
+		}
+		_ = rows.Close()
+
+		if len(violatedConstraints) > 0 {
+			for _, violation := range violatedConstraints {
+				log.Error().
+					Str("table", violation.Table).
+					Int("row_id", violation.RowID).
+					Str("parent", violation.Parent).
+					Msg("Foreign key constraint violated")
+			}
+
+			return fmt.Errorf("foreign key constraints violated")
+		}
+	}
+
+	return nil
 }
 
 func (hsdb *HSDatabase) PingDB(ctx context.Context) error {

@@ -9,6 +9,7 @@ Type=simple
 User=headscale
 Group=headscale
 ExecStart=/usr/bin/headscale serve
+ExecReload=/usr/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5
 

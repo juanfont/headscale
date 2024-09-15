@@ -1,1 +1,6 @@
 .github/workflows/test-integration-v2*
+docs/dns-records.md
+docs/running-headscale-container.md
+docs/running-headscale-linux-manual.md
+docs/running-headscale-linux.md
+docs/running-headscale-openbsd.md

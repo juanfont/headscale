@@ -16,31 +16,29 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions: write-all
-
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v34
+        uses: dorny/paths-filter@v3
         with:
-          files: |
-            *.nix
-            go.*
-            **/*.go
-            integration_test/
-            config-example.yaml
-
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration_test/'
+              - 'config-example.yaml'
       - uses: DeterminateSystems/nix-installer-action@main
-        if: steps.changed-files.outputs.any_changed == 'true'
+        if: steps.changed-files.outputs.files == 'true'
       - uses: DeterminateSystems/magic-nix-cache-action@main
-        if: steps.changed-files.outputs.any_changed == 'true'
+        if: steps.changed-files.outputs.files == 'true'
 
       - name: Run build
         id: build
-        if: steps.changed-files.outputs.any_changed == 'true'
+        if: steps.changed-files.outputs.files == 'true'
         run: |
           nix build |& tee build-result
           BUILD_STATUS="${PIPESTATUS[0]}"
@@ -66,8 +64,8 @@ jobs:
               body: 'Nix build failed with wrong gosum, please update "vendorSha256" (${{ steps.build.outputs.OLD_HASH }}) for the "headscale" package in flake.nix with the new SHA: ${{ steps.build.outputs.NEW_HASH }}'
             })
 
-      - uses: actions/upload-artifact@v3
-        if: steps.changed-files.outputs.any_changed == 'true'
+      - uses: actions/upload-artifact@v4
+        if: steps.changed-files.outputs.files == 'true'
         with:
           name: headscale-linux
           path: result/bin/headscale

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -97,6 +98,8 @@ func init() {
 	tagCmd.Flags().
 		StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
+
+	nodeCmd.AddCommand(backfillNodeIPsCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -113,11 +116,9 @@ var registerNodeCmd = &cobra.Command{
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-
-			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -128,8 +129,6 @@ var registerNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting node key from flag: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		request := &v1.RegisterNodeRequest{
@@ -147,8 +146,6 @@ var registerNodeCmd = &cobra.Command{
 				),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(
@@ -166,17 +163,13 @@ var listNodesCmd = &cobra.Command{
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-
-			return
 		}
 		showTags, err := cmd.Flags().GetBool("tags")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting tags flag: %s", err), output)
-
-			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -191,21 +184,15 @@ var listNodesCmd = &cobra.Command{
 				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
 				output,
 			)
-
-			return
 		}
 
 		if output != "" {
 			SuccessOutput(response.GetNodes(), "", output)
-
-			return
 		}
 
 		tableData, err := nodesToPtables(user, showTags, response.GetNodes())
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
-
-			return
 		}
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
@@ -215,8 +202,6 @@ var listNodesCmd = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
-
-			return
 		}
 	},
 }
@@ -240,7 +225,7 @@ var expireNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -283,7 +268,7 @@ var renameNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -332,7 +317,7 @@ var deleteNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -432,7 +417,7 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -474,6 +459,57 @@ var moveNodeCmd = &cobra.Command{
 		}
 
 		SuccessOutput(moveResponse.GetNode(), "Node moved to another user", output)
+	},
+}
+
+var backfillNodeIPsCmd = &cobra.Command{
+	Use:   "backfillips",
+	Short: "Backfill IPs missing from nodes",
+	Long: `
+Backfill IPs can be used to add/remove IPs from nodes
+based on the current configuration of Headscale.
+
+If there are nodes that does not have IPv4 or IPv6
+even if prefixes for both are configured in the config,
+this command can be used to assign IPs of the sort to
+all nodes that are missing.
+
+If you remove IPv4 or IPv6 prefixes from the config,
+it can be run to remove the IPs that should no longer
+be assigned to nodes.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		var err error
+		output, _ := cmd.Flags().GetString("output")
+
+		confirm := false
+		prompt := &survey.Confirm{
+			Message: "Are you sure that you want to assign/remove IPs to/from nodes?",
+		}
+		err = survey.AskOne(prompt, &confirm)
+		if err != nil {
+			return
+		}
+		if confirm {
+			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+			defer cancel()
+			defer conn.Close()
+
+			changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: confirm})
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf(
+						"Error backfilling IPs: %s",
+						status.Convert(err).Message(),
+					),
+					output,
+				)
+
+				return
+			}
+
+			SuccessOutput(changes, "Node IPs backfilled successfully", output)
+		}
 	},
 }
 
@@ -564,14 +600,14 @@ func nodesToPtables(
 		forcedTags = strings.TrimLeft(forcedTags, ",")
 		var invalidTags string
 		for _, tag := range node.GetInvalidTags() {
-			if !contains(node.GetForcedTags(), tag) {
+			if !slices.Contains(node.GetForcedTags(), tag) {
 				invalidTags += "," + pterm.LightRed(tag)
 			}
 		}
 		invalidTags = strings.TrimLeft(invalidTags, ",")
 		var validTags string
 		for _, tag := range node.GetValidTags() {
-			if !contains(node.GetForcedTags(), tag) {
+			if !slices.Contains(node.GetForcedTags(), tag) {
 				validTags += "," + pterm.LightGreen(tag)
 			}
 		}
@@ -627,7 +663,7 @@ var tagCmd = &cobra.Command{
 	Aliases: []string{"tags", "t"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 

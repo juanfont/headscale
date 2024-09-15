@@ -6,12 +6,17 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
 func Test_NodeCanAccess(t *testing.T) {
+	iap := func(ipStr string) *netip.Addr {
+		ip := netip.MustParseAddr(ipStr)
+		return &ip
+	}
 	tests := []struct {
 		name  string
 		node1 Node
@@ -22,10 +27,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "no-rules",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
+				IPv4: iap("10.0.0.1"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
+				IPv4: iap("10.0.0.2"),
 			},
 			rules: []tailcfg.FilterRule{},
 			want:  false,
@@ -33,10 +38,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "wildcard",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
+				IPv4: iap("10.0.0.1"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
+				IPv4: iap("10.0.0.2"),
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -54,10 +59,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "other-cant-access-src",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+				IPv4: iap("100.64.0.1"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+				IPv4: iap("100.64.0.3"),
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -72,10 +77,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "dest-cant-access-src",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+				IPv4: iap("100.64.0.3"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+				IPv4: iap("100.64.0.2"),
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -90,10 +95,10 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			name: "src-can-access-dest",
 			node1: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
+				IPv4: iap("100.64.0.2"),
 			},
 			node2: Node{
-				IPAddresses: []netip.Addr{netip.MustParseAddr("100.64.0.3")},
+				IPv4: iap("100.64.0.3"),
 			},
 			rules: []tailcfg.FilterRule{
 				{
@@ -118,41 +123,91 @@ func Test_NodeCanAccess(t *testing.T) {
 	}
 }
 
-func TestNodeAddressesOrder(t *testing.T) {
-	machineAddresses := NodeAddresses{
-		netip.MustParseAddr("2001:db8::2"),
-		netip.MustParseAddr("100.64.0.2"),
-		netip.MustParseAddr("2001:db8::1"),
-		netip.MustParseAddr("100.64.0.1"),
-	}
-
-	strSlice := machineAddresses.StringSlice()
-	expected := []string{
-		"100.64.0.1",
-		"100.64.0.2",
-		"2001:db8::1",
-		"2001:db8::2",
-	}
-
-	if len(strSlice) != len(expected) {
-		t.Fatalf("unexpected slice length: got %v, want %v", len(strSlice), len(expected))
-	}
-	for i, addr := range strSlice {
-		if addr != expected[i] {
-			t.Errorf("unexpected address at index %v: got %v, want %v", i, addr, expected[i])
-		}
-	}
-}
-
 func TestNodeFQDN(t *testing.T) {
 	tests := []struct {
 		name    string
 		node    Node
-		dns     tailcfg.DNSConfig
+		cfg     Config
 		domain  string
 		want    string
 		wantErr string
 	}{
+		{
+			name: "all-set-with-username",
+			node: Node{
+				GivenName: "test",
+				User: User{
+					Name: "user",
+				},
+			},
+			cfg: Config{
+				DNSConfig: &tailcfg.DNSConfig{
+					Proxied: true,
+				},
+				DNSUserNameInMagicDNS: true,
+			},
+			domain: "example.com",
+			want:   "test.user.example.com",
+		},
+		{
+			name: "no-given-name-with-username",
+			node: Node{
+				User: User{
+					Name: "user",
+				},
+			},
+			cfg: Config{
+				DNSConfig: &tailcfg.DNSConfig{
+					Proxied: true,
+				},
+				DNSUserNameInMagicDNS: true,
+			},
+			domain:  "example.com",
+			wantErr: "failed to create valid FQDN: node has no given name",
+		},
+		{
+			name: "no-user-name-with-username",
+			node: Node{
+				GivenName: "test",
+				User:      User{},
+			},
+			cfg: Config{
+				DNSConfig: &tailcfg.DNSConfig{
+					Proxied: true,
+				},
+				DNSUserNameInMagicDNS: true,
+			},
+			domain:  "example.com",
+			wantErr: "failed to create valid FQDN: node user has no name",
+		},
+		{
+			name: "no-magic-dns-with-username",
+			node: Node{
+				GivenName: "test",
+				User: User{
+					Name: "user",
+				},
+			},
+			cfg: Config{
+				DNSConfig: &tailcfg.DNSConfig{
+					Proxied: false,
+				},
+				DNSUserNameInMagicDNS: true,
+			},
+			domain: "example.com",
+			want:   "test.user.example.com",
+		},
+		{
+			name: "no-dnsconfig-with-username",
+			node: Node{
+				GivenName: "test",
+				User: User{
+					Name: "user",
+				},
+			},
+			domain: "example.com",
+			want:   "test.example.com",
+		},
 		{
 			name: "all-set",
 			node: Node{
@@ -161,11 +216,14 @@ func TestNodeFQDN(t *testing.T) {
 					Name: "user",
 				},
 			},
-			dns: tailcfg.DNSConfig{
-				Proxied: true,
+			cfg: Config{
+				DNSConfig: &tailcfg.DNSConfig{
+					Proxied: true,
+				},
+				DNSUserNameInMagicDNS: false,
 			},
 			domain: "example.com",
-			want:   "test.user.example.com",
+			want:   "test.example.com",
 		},
 		{
 			name: "no-given-name",
@@ -174,8 +232,11 @@ func TestNodeFQDN(t *testing.T) {
 					Name: "user",
 				},
 			},
-			dns: tailcfg.DNSConfig{
-				Proxied: true,
+			cfg: Config{
+				DNSConfig: &tailcfg.DNSConfig{
+					Proxied: true,
+				},
+				DNSUserNameInMagicDNS: false,
 			},
 			domain:  "example.com",
 			wantErr: "failed to create valid FQDN: node has no given name",
@@ -186,11 +247,14 @@ func TestNodeFQDN(t *testing.T) {
 				GivenName: "test",
 				User:      User{},
 			},
-			dns: tailcfg.DNSConfig{
-				Proxied: true,
+			cfg: Config{
+				DNSConfig: &tailcfg.DNSConfig{
+					Proxied: true,
+				},
+				DNSUserNameInMagicDNS: false,
 			},
-			domain:  "example.com",
-			wantErr: "failed to create valid FQDN: node user has no name",
+			domain: "example.com",
+			want:   "test.example.com",
 		},
 		{
 			name: "no-magic-dns",
@@ -200,11 +264,14 @@ func TestNodeFQDN(t *testing.T) {
 					Name: "user",
 				},
 			},
-			dns: tailcfg.DNSConfig{
-				Proxied: false,
+			cfg: Config{
+				DNSConfig: &tailcfg.DNSConfig{
+					Proxied: false,
+				},
+				DNSUserNameInMagicDNS: false,
 			},
 			domain: "example.com",
-			want:   "test",
+			want:   "test.example.com",
 		},
 		{
 			name: "no-dnsconfig",
@@ -215,13 +282,13 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test",
+			want:   "test.example.com",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := tc.node.GetFQDN(&tc.dns, tc.domain)
+			got, err := tc.node.GetFQDN(&tc.cfg, tc.domain)
 
 			if (err != nil) && (err.Error() != tc.wantErr) {
 				t.Errorf("GetFQDN() error = %s, wantErr %s", err, tc.wantErr)
@@ -470,6 +537,56 @@ func TestApplyPeerChange(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, tt.nodeBefore, util.Comparers...); diff != "" {
 				t.Errorf("Patch unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNodeRegisterMethodToV1Enum(t *testing.T) {
+	tests := []struct {
+		name string
+		node Node
+		want v1.RegisterMethod
+	}{
+		{
+			name: "authkey",
+			node: Node{
+				ID:             1,
+				RegisterMethod: util.RegisterMethodAuthKey,
+			},
+			want: v1.RegisterMethod_REGISTER_METHOD_AUTH_KEY,
+		},
+		{
+			name: "oidc",
+			node: Node{
+				ID:             1,
+				RegisterMethod: util.RegisterMethodOIDC,
+			},
+			want: v1.RegisterMethod_REGISTER_METHOD_OIDC,
+		},
+		{
+			name: "cli",
+			node: Node{
+				ID:             1,
+				RegisterMethod: util.RegisterMethodCLI,
+			},
+			want: v1.RegisterMethod_REGISTER_METHOD_CLI,
+		},
+		{
+			name: "unknown",
+			node: Node{
+				ID: 0,
+			},
+			want: v1.RegisterMethod_REGISTER_METHOD_UNSPECIFIED,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.node.RegisterMethodToV1Enum()
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("RegisterMethodToV1Enum() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}

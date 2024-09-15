@@ -26,6 +26,7 @@ run_tests() {
 			--volume "$PWD:$PWD" -w "$PWD"/integration \
 			--volume /var/run/docker.sock:/var/run/docker.sock \
 			--volume "$PWD"/control_logs:/tmp/control \
+			-e "HEADSCALE_INTEGRATION_POSTGRES" \
 			golang:1 \
 			go test ./... \
 			-failfast \

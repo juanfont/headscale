@@ -36,9 +36,17 @@ func (s *Suite) ResetDB(c *check.C) {
 	// }
 
 	var err error
-	tmpDir, err = os.MkdirTemp("", "headscale-db-test-*")
+	db, err = newTestDB()
 	if err != nil {
 		c.Fatal(err)
+	}
+}
+
+func newTestDB() (*HSDatabase, error) {
+	var err error
+	tmpDir, err = os.MkdirTemp("", "headscale-db-test-*")
+	if err != nil {
+		return nil, err
 	}
 
 	log.Printf("database path: %s", tmpDir+"/headscale_test.db")
@@ -53,6 +61,8 @@ func (s *Suite) ResetDB(c *check.C) {
 		"",
 	)
 	if err != nil {
-		c.Fatal(err)
+		return nil, err
 	}
+
+	return db, nil
 }

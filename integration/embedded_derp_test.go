@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -23,7 +25,7 @@ func TestDERPServerScenario(t *testing.T) {
 	IntegrationSkip(t)
 	// t.Parallel()
 
-	baseScenario, err := NewScenario()
+	baseScenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
 	scenario := EmbeddedDERPServerScenario{
@@ -33,39 +35,25 @@ func TestDERPServerScenario(t *testing.T) {
 	defer scenario.Shutdown()
 
 	spec := map[string]int{
-		"user1": 10,
-		// "user1": len(MustTestVersions),
-	}
-
-	headscaleConfig := map[string]string{
-		"HEADSCALE_DERP_URLS":                    "",
-		"HEADSCALE_DERP_SERVER_ENABLED":          "true",
-		"HEADSCALE_DERP_SERVER_REGION_ID":        "999",
-		"HEADSCALE_DERP_SERVER_REGION_CODE":      "headscale",
-		"HEADSCALE_DERP_SERVER_REGION_NAME":      "Headscale Embedded DERP",
-		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
-		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",
-
-		// Envknob for enabling DERP debug logs
-		"DERP_DEBUG_LOGS":        "true",
-		"DERP_PROBER_DEBUG_LOGS": "true",
+		"user1": len(MustTestVersions),
 	}
 
 	err = scenario.CreateHeadscaleEnv(
 		spec,
-		hsic.WithConfigEnv(headscaleConfig),
 		hsic.WithTestName("derpserver"),
 		hsic.WithExtraPorts([]string{"3478/udp"}),
+		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED": "true",
+			"HEADSCALE_DERP_UPDATE_FREQUENCY":    "10s",
+		}),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
-
-	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
@@ -73,9 +61,59 @@ func TestDERPServerScenario(t *testing.T) {
 	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
 	assertNoErrListFQDN(t, err)
 
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		for _, health := range status.Health {
+			if strings.Contains(health, "could not connect to any relay server") {
+				t.Errorf("expected to be connected to derp, found: %s", health)
+			}
+			if strings.Contains(health, "could not connect to the 'Headscale Embedded DERP' relay server.") {
+				t.Errorf("expected to be connected to derp, found: %s", health)
+			}
+		}
+	}
+
 	success := pingDerpAllHelper(t, allClients, allHostnames)
 
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		for _, health := range status.Health {
+			if strings.Contains(health, "could not connect to any relay server") {
+				t.Errorf("expected to be connected to derp, found: %s", health)
+			}
+			if strings.Contains(health, "could not connect to the 'Headscale Embedded DERP' relay server.") {
+				t.Errorf("expected to be connected to derp, found: %s", health)
+			}
+		}
+	}
+
+	t.Logf("Run 1: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
+
+	// Let the DERP updater run a couple of times to ensure it does not
+	// break the DERPMap.
+	time.Sleep(30 * time.Second)
+
+	success = pingDerpAllHelper(t, allClients, allHostnames)
+
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		for _, health := range status.Health {
+			if strings.Contains(health, "could not connect to any relay server") {
+				t.Errorf("expected to be connected to derp, found: %s", health)
+			}
+			if strings.Contains(health, "could not connect to the 'Headscale Embedded DERP' relay server.") {
+				t.Errorf("expected to be connected to derp, found: %s", health)
+			}
+		}
+	}
+
+	t.Logf("Run2: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
 }
 
 func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(

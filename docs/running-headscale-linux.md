@@ -8,54 +8,56 @@
 
 Get Headscale up and running.
 
-This includes running Headscale with SystemD.
+This includes running Headscale with systemd.
 
 ## Migrating from manual install
 
 If you are migrating from the old manual install, the best thing would be to remove
 the files installed by following [the guide in reverse](./running-headscale-linux-manual.md).
 
-You should _not_ delete the database (`/var/headscale/db.sqlite`) and the
+You should _not_ delete the database (`/var/lib/headscale/db.sqlite`) and the
 configuration (`/etc/headscale/config.yaml`).
 
 ## Installation
 
-1. Download the lastest Headscale package for your platform (`.deb` for Ubuntu and Debian) from [Headscale's releases page](https://github.com/juanfont/headscale/releases):
+1. Download the [latest Headscale package](https://github.com/juanfont/headscale/releases/latest) for your platform (`.deb` for Ubuntu and Debian).
 
-```shell
-wget --output-document=headscale.deb \
-  https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>.deb
-```
+    ```shell
+    HEADSCALE_VERSION="" # See above URL for latest version, e.g. "X.Y.Z" (NOTE: do not add the "v" prefix!)
+    HEADSCALE_ARCH="" # Your system architecture, e.g. "amd64"
+    wget --output-document=headscale.deb \
+      "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_${HEADSCALE_ARCH}.deb"
+    ```
 
-2. Install Headscale:
+1. Install Headscale:
 
-```shell
-sudo dpkg --install headscale.deb
-```
+    ```shell
+    sudo apt install ./headscale.deb
+    ```
 
-3. Enable Headscale service, this will start Headscale at boot:
+1. Enable Headscale service, this will start Headscale at boot:
 
-```shell
-sudo systemctl enable headscale
-```
+    ```shell
+    sudo systemctl enable headscale
+    ```
 
-4. Configure Headscale by editing the configuration file:
+1. Configure Headscale by editing the configuration file:
 
-```shell
-nano /etc/headscale/config.yaml
-```
+    ```shell
+    nano /etc/headscale/config.yaml
+    ```
 
-5. Start Headscale:
+1. Start Headscale:
 
-```shell
-sudo systemctl start headscale
-```
+    ```shell
+    sudo systemctl start headscale
+    ```
 
-6. Check that Headscale is running as intended:
+1. Check that Headscale is running as intended:
 
-```shell
-systemctl status headscale
-```
+    ```shell
+    systemctl status headscale
+    ```
 
 ## Using Headscale
 
@@ -76,7 +78,7 @@ tailscale up --login-server <YOUR_HEADSCALE_URL>
 Register the machine:
 
 ```shell
-headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
+headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -84,7 +86,7 @@ headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
 Generate a key using the command line:
 
 ```shell
-headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
+headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that is used to

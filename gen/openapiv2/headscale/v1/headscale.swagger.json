@@ -194,6 +194,36 @@
         ]
       }
     },
+    "/api/v1/node/backfillips": {
+      "post": {
+        "operationId": "HeadscaleService_BackfillNodeIPs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BackfillNodeIPsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "confirmed",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/node/register": {
       "post": {
         "operationId": "HeadscaleService_RegisterNode",
@@ -458,6 +488,59 @@
             "in": "query",
             "required": false,
             "type": "string"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
+    "/api/v1/policy": {
+      "get": {
+        "summary": "--- Policy start ---",
+        "operationId": "HeadscaleService_GetPolicy",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetPolicyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "HeadscaleService"
+        ]
+      },
+      "put": {
+        "operationId": "HeadscaleService_SetPolicy",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SetPolicyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SetPolicyRequest"
+            }
           }
         ],
         "tags": [
@@ -886,6 +969,17 @@
         }
       }
     },
+    "v1BackfillNodeIPsResponse": {
+      "type": "object",
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "v1CreateApiKeyRequest": {
       "type": "object",
       "properties": {
@@ -1047,6 +1141,18 @@
             "type": "object",
             "$ref": "#/definitions/v1Route"
           }
+        }
+      }
+    },
+    "v1GetPolicyResponse": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },
@@ -1300,6 +1406,26 @@
           "format": "date-time"
         },
         "deletedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "v1SetPolicyRequest": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "type": "string"
+        }
+      }
+    },
+    "v1SetPolicyResponse": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "type": "string"
+        },
+        "updatedAt": {
           "type": "string",
           "format": "date-time"
         }

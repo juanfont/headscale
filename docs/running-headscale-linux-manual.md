@@ -1,92 +1,85 @@
 # Running headscale on Linux
 
-## Note: Outdated and "advanced"
+!!! warning "Outdated and advanced"
 
-This documentation is considered the "legacy"/advanced/manual version of the documentation, you most likely do not
-want to use this documentation and rather look at the distro specific documentation (TODO LINK)[].
+    This documentation is considered the "legacy"/advanced/manual version of the documentation, you most likely do not
+    want to use this documentation and rather look at the [distro specific documentation](./running-headscale-linux.md).
 
 ## Goal
 
 This documentation has the goal of showing a user how-to set up and run `headscale` on Linux.
-In additional to the "get up and running section", there is an optional [SystemD section](#running-headscale-in-the-background-with-systemd)
+In additional to the "get up and running section", there is an optional [systemd section](#running-headscale-in-the-background-with-systemd)
 describing how to make `headscale` run properly in a server environment.
 
 ## Configure and run `headscale`
 
 1. Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
 
-```shell
-wget --output-document=/usr/local/bin/headscale \
-   https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>
-```
+    ```shell
+    wget --output-document=/usr/local/bin/headscale \
+    https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>
+    ```
 
-2. Make `headscale` executable:
+1. Make `headscale` executable:
 
-```shell
-chmod +x /usr/local/bin/headscale
-```
+    ```shell
+    chmod +x /usr/local/bin/headscale
+    ```
 
-3. Prepare a directory to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
+1. Prepare a directory to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
-```shell
-# Directory for configuration
+    ```shell
+    # Directory for configuration
 
-mkdir -p /etc/headscale
+    mkdir -p /etc/headscale
 
-# Directory for Database, and other variable data (like certificates)
-mkdir -p /var/lib/headscale
-# or if you create a headscale user:
-useradd \
-	--create-home \
-	--home-dir /var/lib/headscale/ \
-	--system \
-	--user-group \
-	--shell /usr/sbin/nologin \
-	headscale
-```
+    # Directory for Database, and other variable data (like certificates)
+    mkdir -p /var/lib/headscale
+    # or if you create a headscale user:
+    useradd \
+      --create-home \
+      --home-dir /var/lib/headscale/ \
+      --system \
+      --user-group \
+      --shell /usr/sbin/nologin \
+      headscale
+    ```
 
-4. Create an empty SQLite database:
+1. Create a `headscale` configuration:
 
-```shell
-touch /var/lib/headscale/db.sqlite
-```
+    ```shell
+    touch /etc/headscale/config.yaml
+    ```
 
-5. Create a `headscale` configuration:
+    **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
-```shell
-touch /etc/headscale/config.yaml
-```
+1. Start the headscale server:
 
-**(Strongly Recommended)** Download a copy of the [example configuration][config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
+    ```shell
+    headscale serve
+    ```
 
-6. Start the headscale server:
+    This command will start `headscale` in the current terminal session.
 
-```shell
-headscale serve
-```
+    ---
 
-This command will start `headscale` in the current terminal session.
+    To continue the tutorial, open a new terminal and let it run in the background.
+    Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux) or [screen](https://www.gnu.org/software/screen/).
 
----
+    To run `headscale` in the background, please follow the steps in the [systemd section](#running-headscale-in-the-background-with-systemd) before continuing.
 
-To continue the tutorial, open a new terminal and let it run in the background.
-Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux) or [screen](https://www.gnu.org/software/screen/).
+1. Verify `headscale` is running:
+  Verify `headscale` is available:
 
-To run `headscale` in the background, please follow the steps in the [SystemD section](#running-headscale-in-the-background-with-systemd) before continuing.
+    ```shell
+    curl http://127.0.0.1:9090/metrics
+    ```
 
-7. Verify `headscale` is running:
+1. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
-Verify `headscale` is available:
-
-```shell
-curl http://127.0.0.1:9090/metrics
-```
-
-8. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
-
-```shell
-headscale users create myfirstuser
-```
+    ```shell
+    headscale users create myfirstuser
+    ```
 
 ### Register a machine (normal login)
 
@@ -99,7 +92,7 @@ tailscale up --login-server YOUR_HEADSCALE_URL
 Register the machine:
 
 ```shell
-headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
+headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -107,7 +100,7 @@ headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
 Generate a key using the command line:
 
 ```shell
-headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
+headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
@@ -116,83 +109,55 @@ This will return a pre-authenticated key that can be used to connect a node to `
 tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 ```
 
-## Running `headscale` in the background with SystemD
+## Running `headscale` in the background with systemd
 
-:warning: **Deprecated**: This part is very outdated and you should use the [pre-packaged Headscale for this](./running-headscale-linux.md
-
-This section demonstrates how to run `headscale` as a service in the background with [SystemD](https://www.freedesktop.org/wiki/Software/systemd/).
+This section demonstrates how to run `headscale` as a service in the background with [systemd](https://systemd.io/).
 This should work on most modern Linux distributions.
 
-1. Create a SystemD service configuration at `/etc/systemd/system/headscale.service` containing:
+1. Copy [headscale's systemd service file](./packaging/headscale.systemd.service) to
+   `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
+   to be modified: `ExecStart`, `WorkingDirectory`, `ReadWritePaths`.
 
-```systemd
-[Unit]
-Description=headscale controller
-After=syslog.target
-After=network.target
+    Note that when running as the headscale user ensure that, either you add your current user to the headscale group:
 
-[Service]
-Type=simple
-User=headscale
-Group=headscale
-ExecStart=/usr/local/bin/headscale serve
-Restart=always
-RestartSec=5
+    ```shell
+    usermod -a -G headscale current_user
+    ```
 
-# Optional security enhancements
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-WorkingDirectory=/var/lib/headscale
-ReadWritePaths=/var/lib/headscale /var/run/headscale
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-RuntimeDirectory=headscale
+    or run all headscale commands as the headscale user:
 
-[Install]
-WantedBy=multi-user.target
-```
+    ```shell
+    su - headscale
+    ```
 
-Note that when running as the headscale user ensure that, either you add your current user to the headscale group:
+1. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with path that is writable by the `headscale` user or group:
 
-```shell
-usermod -a -G headscale current_user
-```
+    ```yaml
+    unix_socket: /var/run/headscale/headscale.sock
+    ```
 
-or run all headscale commands as the headscale user:
+1. Reload systemd to load the new configuration file:
 
-```shell
-su - headscale
-```
+    ```shell
+    systemctl daemon-reload
+    ```
 
-2. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with path that is writable by the `headscale` user or group:
+1. Enable and start the new `headscale` service:
 
-```yaml
-unix_socket: /var/run/headscale/headscale.sock
-```
+    ```shell
+    systemctl enable --now headscale
+    ```
 
-3. Reload SystemD to load the new configuration file:
+1. Verify the headscale service:
 
-```shell
-systemctl daemon-reload
-```
+    ```shell
+    systemctl status headscale
+    ```
 
-4. Enable and start the new `headscale` service:
+    Verify `headscale` is available:
 
-```shell
-systemctl enable --now headscale
-```
-
-5. Verify the headscale service:
-
-```shell
-systemctl status headscale
-```
-
-Verify `headscale` is available:
-
-```shell
-curl http://127.0.0.1:9090/metrics
-```
+    ```shell
+    curl http://127.0.0.1:9090/metrics
+    ```
 
 `headscale` will now run in the background and start at boot.

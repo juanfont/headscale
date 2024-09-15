@@ -17,107 +17,93 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 
 1. Prepare a directory on the host Docker node in your directory of choice, used to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
 
-```shell
-mkdir -p ./headscale/config
-cd ./headscale
-```
+    ```shell
+    mkdir -p ./headscale/config
+    cd ./headscale
+    ```
 
-2. Create an empty SQlite datebase in the headscale directory:
+1. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
 
-```shell
-touch ./config/db.sqlite
-```
+    - Using `wget`:
 
-3. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
+        ```shell
+        wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
+        ```
 
-Using wget:
+    - Using `curl`:
 
-```shell
-wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
-```
+        ```shell
+        curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
+        ```
 
-Using curl:
+    Modify the config file to your preferences before launching Docker container.
 
-```shell
-curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
-```
+    Alternatively, you can mount `/var/lib` and `/var/run` from your host system by adding
+    `--volume $(pwd)/lib:/var/lib/headscale` and `--volume $(pwd)/run:/var/run/headscale`
+    in the next step.
 
-**(Advanced)** If you would like to hand craft a config file **instead** of downloading the example config file, create a blank `headscale` configuration in the headscale directory to edit:
+1. Start the headscale server while working in the host headscale directory:
 
-```shell
-touch ./config/config.yaml
-```
+    ```shell
+    docker run \
+      --name headscale \
+      --detach \
+      --volume $(pwd)/config:/etc/headscale/ \
+      --publish 127.0.0.1:8080:8080 \
+      --publish 127.0.0.1:9090:9090 \
+      headscale/headscale:<VERSION> \
+      serve
+    ```
 
-Modify the config file to your preferences before launching Docker container.
-Here are some settings that you likely want:
+    Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
 
-```yaml
-# Change to your hostname or host IP
-server_url: http://your-host-name:8080
-# Listen to 0.0.0.0 so it's accessible outside the container
-metrics_listen_addr: 0.0.0.0:9090
-# The default /var/lib/headscale path is not writable in the container
-noise:
-  private_key_path: /etc/headscale/noise_private.key
-# The default /var/lib/headscale path is not writable in the container
-derp:
-  private_key_path: /etc/headscale/private.key
-# The default /var/run/headscale path is not writable  in the container
-unix_socket: /etc/headscale/headscale.sock
-# The default /var/lib/headscale path is not writable  in the container
-database.type: sqlite3
-database.sqlite.path: /etc/headscale/db.sqlite
-```
+    This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
+    `headscale` instance becomes available and then detach so headscale runs in the background.
 
-Alternatively, you can mount `/var/lib` and `/var/run` from your host system by adding
-`--volume $(pwd)/lib:/var/lib/headscale` and `--volume $(pwd)/run:/var/run/headscale`
-in the next step.
+    Example `docker-compose.yaml`
 
-4. Start the headscale server while working in the host headscale directory:
+      ```yaml
+      version: "3.7"
 
-```shell
-docker run \
-  --name headscale \
-  --detach \
-  --volume $(pwd)/config:/etc/headscale/ \
-  --publish 127.0.0.1:8080:8080 \
-  --publish 127.0.0.1:9090:9090 \
-  headscale/headscale:<VERSION> \
-  headscale serve
+      services:
+        headscale:
+          image: headscale/headscale:<VERSION>
+          restart: unless-stopped
+          container_name: headscale
+          ports:
+            - "127.0.0.1:8080:8080"
+            - "127.0.0.1:9090:9090"
+          volumes:
+            # Please change <CONFIG_PATH> to the fullpath of the config folder just created
+            - <CONFIG_PATH>:/etc/headscale
+          command: serve
+      ```
 
-```
+1. Verify `headscale` is running:
+   Follow the container logs:
 
-Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
+    ```shell
+    docker logs --follow headscale
+    ```
 
-This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
-`headscale` instance becomes available and then detach so headscale runs in the background.
+    Verify running containers:
 
-5. Verify `headscale` is running:
+    ```shell
+    docker ps
+    ```
 
-Follow the container logs:
+    Verify `headscale` is available:
 
-```shell
-docker logs --follow headscale
-```
+    ```shell
+    curl http://127.0.0.1:9090/metrics
+    ```
 
-Verify running containers:
+1. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
-```shell
-docker ps
-```
-
-Verify `headscale` is available:
-
-```shell
-curl http://127.0.0.1:9090/metrics
-```
-
-6. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
-
-```shell
-docker exec headscale \
-  headscale users create myfirstuser
-```
+    ```shell
+    docker exec headscale \
+      headscale users create myfirstuser
+    ```
 
 ### Register a machine (normal login)
 
@@ -131,7 +117,7 @@ To register a machine when running `headscale` in a container, take the headscal
 
 ```shell
 docker exec headscale \
-  headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
+  headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -140,7 +126,7 @@ Generate a key using the command line:
 
 ```shell
 docker exec headscale \
-  headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
+  headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
@@ -159,7 +145,7 @@ To run the debug Docker container, use the exact same commands as above, but rep
 
 ### Executing commands in the debug container
 
-The default command in the debug container is to run `headscale`, which is located at `/bin/headscale` inside the container.
+The default command in the debug container is to run `headscale`, which is located at `/ko-app/headscale` inside the container.
 
 Additionally, the debug container includes a minimalist Busybox shell.
 
@@ -169,10 +155,10 @@ To launch a shell in the container, use:
 docker run -it headscale/headscale:x.x.x-debug sh
 ```
 
-You can also execute commands directly, such as `ls /bin` in this example:
+You can also execute commands directly, such as `ls /ko-app` in this example:
 
 ```
-docker run headscale/headscale:x.x.x-debug ls /bin
+docker run headscale/headscale:x.x.x-debug ls /ko-app
 ```
 
 Using `docker exec` allows you to run commands in an existing container.

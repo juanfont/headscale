@@ -3,12 +3,10 @@ package mapper
 import (
 	"fmt"
 	"net/netip"
-	"strconv"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/samber/lo"
 	"tailscale.com/tailcfg"
 )
@@ -17,9 +15,7 @@ func tailNodes(
 	nodes types.Nodes,
 	capVer tailcfg.CapabilityVersion,
 	pol *policy.ACLPolicy,
-	dnsConfig *tailcfg.DNSConfig,
-	baseDomain string,
-	randomClientPort bool,
+	cfg *types.Config,
 ) ([]*tailcfg.Node, error) {
 	tNodes := make([]*tailcfg.Node, len(nodes))
 
@@ -28,9 +24,7 @@ func tailNodes(
 			node,
 			capVer,
 			pol,
-			dnsConfig,
-			baseDomain,
-			randomClientPort,
+			cfg,
 		)
 		if err != nil {
 			return nil, err
@@ -42,17 +36,14 @@ func tailNodes(
 	return tNodes, nil
 }
 
-// tailNode converts a Node into a Tailscale Node. includeRoutes is false for shared nodes
-// as per the expected behaviour in the official SaaS.
+// tailNode converts a Node into a Tailscale Node.
 func tailNode(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 	pol *policy.ACLPolicy,
-	dnsConfig *tailcfg.DNSConfig,
-	baseDomain string,
-	randomClientPort bool,
+	cfg *types.Config,
 ) (*tailcfg.Node, error) {
-	addrs := node.IPAddresses.Prefixes()
+	addrs := node.Prefixes()
 
 	allowedIPs := append(
 		[]netip.Prefix{},
@@ -85,7 +76,7 @@ func tailNode(
 		keyExpiry = time.Time{}
 	}
 
-	hostname, err := node.GetFQDN(dnsConfig, baseDomain)
+	hostname, err := node.GetFQDN(cfg, cfg.BaseDomain)
 	if err != nil {
 		return nil, fmt.Errorf("tailNode, failed to create FQDN: %s", err)
 	}
@@ -94,17 +85,15 @@ func tailNode(
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
 	tNode := tailcfg.Node{
-		ID: tailcfg.NodeID(node.ID), // this is the actual ID
-		StableID: tailcfg.StableNodeID(
-			strconv.FormatUint(node.ID, util.Base10),
-		), // in headscale, unlike tailcontrol server, IDs are permanent
-		Name: hostname,
-		Cap:  capVer,
+		ID:       tailcfg.NodeID(node.ID), // this is the actual ID
+		StableID: node.ID.StableID(),
+		Name:     hostname,
+		Cap:      capVer,
 
 		User: tailcfg.UserID(node.UserID),
 
 		Key:       node.NodeKey,
-		KeyExpiry: keyExpiry,
+		KeyExpiry: keyExpiry.UTC(),
 
 		Machine:    node.MachineKey,
 		DiscoKey:   node.DiscoKey,
@@ -113,7 +102,7 @@ func tailNode(
 		Endpoints:  node.Endpoints,
 		DERP:       derp,
 		Hostinfo:   node.Hostinfo.View(),
-		Created:    node.CreatedAt,
+		Created:    node.CreatedAt.UTC(),
 
 		Online: node.IsOnline,
 
@@ -133,7 +122,7 @@ func tailNode(
 			tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 		}
 
-		if randomClientPort {
+		if cfg.RandomizeClientPort {
 			tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
 		}
 	} else {
@@ -143,7 +132,7 @@ func tailNode(
 			tailcfg.CapabilitySSH,
 		}
 
-		if randomClientPort {
+		if cfg.RandomizeClientPort {
 			tNode.Capabilities = append(tNode.Capabilities, tailcfg.NodeAttrRandomizeClientPort)
 		}
 	}

@@ -59,46 +59,6 @@ func (h *Headscale) WindowsConfigMessage(
 	}
 }
 
-// WindowsRegConfig generates and serves a .reg file configured with the Headscale server address.
-func (h *Headscale) WindowsRegConfig(
-	writer http.ResponseWriter,
-	req *http.Request,
-) {
-	config := WindowsRegistryConfig{
-		URL: h.cfg.ServerURL,
-	}
-
-	var content bytes.Buffer
-	if err := windowsRegTemplate.Execute(&content, config); err != nil {
-		log.Error().
-			Str("handler", "WindowsRegConfig").
-			Err(err).
-			Msg("Could not render Apple macOS template")
-
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusInternalServerError)
-		_, err := writer.Write([]byte("Could not render Windows registry template"))
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
-
-		return
-	}
-
-	writer.Header().Set("Content-Type", "text/x-ms-regedit; charset=utf-8")
-	writer.WriteHeader(http.StatusOK)
-	_, err := writer.Write(content.Bytes())
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
-	}
-}
-
 // AppleConfigMessage shows a simple message in the browser to point the user to the iOS/MacOS profile and instructions for how to install it.
 func (h *Headscale) AppleConfigMessage(
 	writer http.ResponseWriter,
@@ -305,10 +265,6 @@ func (h *Headscale) ApplePlatformConfig(
 	}
 }
 
-type WindowsRegistryConfig struct {
-	URL string
-}
-
 type AppleMobileConfig struct {
 	UUID    uuid.UUID
 	URL     string
@@ -319,14 +275,6 @@ type AppleMobilePlatformConfig struct {
 	UUID uuid.UUID
 	URL  string
 }
-
-var windowsRegTemplate = textTemplate.Must(
-	textTemplate.New("windowsconfig").Parse(`Windows Registry Editor Version 5.00
-
-[HKEY_LOCAL_MACHINE\SOFTWARE\Tailscale IPN]
-"UnattendedMode"="always"
-"LoginURL"="{{.URL}}"
-`))
 
 var commonTemplate = textTemplate.Must(
 	textTemplate.New("mobileconfig").Parse(`<?xml version="1.0" encoding="UTF-8"?>
