@@ -55,6 +55,13 @@ theme:
   favicon: assets/favicon.png
   logo: ./logo/headscale3-dots.svg
 
+# Excludes
+exclude_docs: |
+  /packaging/README.md
+  /packaging/postinstall.sh
+  /packaging/postremove.sh
+  /requirements.txt
+
 # Plugins
 plugins:
   - search:
