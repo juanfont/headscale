@@ -175,6 +175,7 @@ func (d *DERPServer) serveWebsocket(writer http.ResponseWriter, req *http.Reques
 	defer websocketConn.Close(websocket.StatusInternalError, "closing")
 	if websocketConn.Subprotocol() != "derp" {
 		websocketConn.Close(websocket.StatusPolicyViolation, "client must speak the derp subprotocol")
+
 		return
 	}
 

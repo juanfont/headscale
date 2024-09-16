@@ -84,7 +84,7 @@ func assertContains(t *testing.T, str, subStr string) {
 func didClientUseWebsocketForDERP(t *testing.T, client TailscaleClient) bool {
 	t.Helper()
 
-	buf := bytes.NewBuffer(make([]byte, 65_536))
+	buf := &bytes.Buffer{}
 	err := client.WriteLogs(buf, buf)
 	if err != nil {
 		t.Fatalf("failed to fetch client logs: %s: %s", client.Hostname(), err)
@@ -347,7 +347,8 @@ func countMatchingLines(in io.Reader, predicate func(string) bool) (int, error) 
 	count := 0
 	scanner := bufio.NewScanner(in)
 	{
-		buff := make([]byte, 1024*1024)
+		const logBufferInitialSize = 1024 << 10 // preallocate 1 MiB
+		buff := make([]byte, logBufferInitialSize)
 		scanner.Buffer(buff, len(buff))
 		scanner.Split(bufio.ScanLines)
 	}
