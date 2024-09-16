@@ -36,8 +36,82 @@ Ubuntu 20.04 or newer, Debian 11 or newer.
     sudo systemctl enable --now headscale
     ```
 
-1. Check that Headscale is running as intended:
+1. Verify that Headscale is running as intended:
 
     ```shell
     sudo systemctl status headscale
+    ```
+
+## Using standalone binaries (advanced)
+
+!!! warning "Advanced"
+
+    This installation method is considered advanced as one needs to take care of the headscale user and the systemd
+    service themselves. If possible, use the [DEB packages](#using-packages-for-debianubuntu-recommended) or a
+    [community package](./community.md) instead.
+
+This section describes the installation of headscale according to the [Requirements and
+assumptions](../requirements.md#assumptions). Headscale is run by a dedicated user and the service itself is managed by
+systemd.
+
+1. Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
+
+    ```shell
+    sudo wget --output-document=/usr/local/bin/headscale \
+    https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>
+    ```
+
+1. Make `headscale` executable:
+
+    ```shell
+    sudo chmod +x /usr/local/bin/headscale
+    ```
+
+1. Add a dedicated user to run headscale:
+
+    ```shell
+    sudo useradd \
+      --create-home \
+      --home-dir /var/lib/headscale/ \
+      --system \
+      --user-group \
+      --shell /usr/sbin/nologin \
+      headscale
+    ```
+
+1. Download the example configuration for your chosen version and save it as: `/etc/headscale/config.yaml`. Adjust the
+   configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
+
+    ```shell
+    sudo mkdir -p /etc/headscale
+    sudo nano /etc/headscale/config.yaml
+    ```
+
+1. Copy [headscale's systemd service file](../../packaging/headscale.systemd.service) to
+   `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
+   to be modified: `ExecStart`, `WorkingDirectory`, `ReadWritePaths`.
+
+1. In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a path that is writable by the
+   `headscale` user or group:
+
+    ```yaml
+    unix_socket: /var/run/headscale/headscale.sock
+    ```
+
+1. Reload systemd to load the new configuration file:
+
+    ```shell
+    systemctl daemon-reload
+    ```
+
+1. Enable and start the new `headscale` service:
+
+    ```shell
+    systemctl enable --now headscale
+    ```
+
+1. Verify that Headscale is running as intended:
+
+    ```shell
+    systemctl status headscale
     ```
