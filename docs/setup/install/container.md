@@ -7,8 +7,6 @@
 
     **It might be outdated and it might miss necessary steps**.
 
-## Goal
-
 This documentation has the goal of showing a user how-to set up and run `headscale` in a container.
 [Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it should
 not work with alternatives like [Podman](https://podman.io). The Docker image can be found on Docker Hub [here](https://hub.docker.com/r/headscale/headscale).
@@ -22,21 +20,13 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
     cd ./headscale
     ```
 
-1. **(Strongly Recommended)** Download a copy of the [example configuration](https://github.com/juanfont/headscale/blob/main/config-example.yaml) from the headscale repository.
+1. Download the example configuration for your chosen version and save it as: `/etc/headscale/config.yaml`. Adjust the
+   configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
 
-    - Using `wget`:
-
-        ```shell
-        wget -O ./config/config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
-        ```
-
-    - Using `curl`:
-
-        ```shell
-        curl https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml -o ./config/config.yaml
-        ```
-
-    Modify the config file to your preferences before launching Docker container.
+    ```shell
+    sudo mkdir -p /etc/headscale
+    sudo nano /etc/headscale/config.yaml
+    ```
 
     Alternatively, you can mount `/var/lib` and `/var/run` from your host system by adding
     `--volume $(pwd)/lib:/var/lib/headscale` and `--volume $(pwd)/run:/var/run/headscale`
