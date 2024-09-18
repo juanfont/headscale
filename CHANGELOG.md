@@ -1,8 +1,9 @@
 # CHANGELOG
 
-## 0.23.0 (2023-XX-XX)
+## 0.23.0 (2023-09-18)
 
-This release is mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
+This release was intended to be mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
+However, as you all have noticed, it turned out to become a much larger, much longer release cycle than anticipated. It has ended up to be a release with a lot of rewrites and changes to the code base and functionality of Headscale, cleaning up a lot of technical debt and introducing a lot of improvements. This does come with some breaking changes,
 
 **Please remember to always back up your database between versions**
 
@@ -16,7 +17,7 @@ The [“poller”, or streaming logic](https://github.com/juanfont/headscale/blo
 
 Headscale now supports sending “delta” updates, thanks to the new mapper and poller logic, allowing us to only inform nodes about new nodes, changed nodes and removed nodes. Previously we sent the entire state of the network every time an update was due.
 
-While we have a pretty good [test harness](https://github.com/search?q=repo%3Ajuanfont%2Fheadscale+path%3A_test.go&type=code) for validating our changes, we have rewritten over [10000 lines of code](https://github.com/juanfont/headscale/compare/b01f1f1867136d9b2d7b1392776eb363b482c525...main) and bugs are expected. We need help testing this release. In addition, while we think the performance should in general be better, there might be regressions in parts of the platform, particularly where we prioritised correctness over speed.
+While we have a pretty good [test harness](https://github.com/search?q=repo%3Ajuanfont%2Fheadscale+path%3A_test.go&type=code) for validating our changes, the changes came down to [284 changed files with 32,316 additions and 24,245 deletions](https://github.com/juanfont/headscale/compare/b01f1f1867136d9b2d7b1392776eb363b482c525...ed78ecd) and bugs are expected. We need help testing this release. In addition, while we think the performance should in general be better, there might be regressions in parts of the platform, particularly where we prioritised correctness over speed.
 
 There are also several bugfixes that has been encountered and fixed as part of implementing these changes, particularly
 after improving the test harness as part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
