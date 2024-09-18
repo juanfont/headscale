@@ -111,7 +111,7 @@ func TestSSHOneUserToAll(t *testing.T) {
 		},
 		len(MustTestVersions),
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
@@ -176,7 +176,7 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 		},
 		len(MustTestVersions),
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	nsOneClients, err := scenario.ListTailscaleClients("user1")
 	assertNoErrListClients(t, err)
@@ -222,7 +222,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 		},
 		len(MustTestVersions),
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
@@ -271,7 +271,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 		},
 		len(MustTestVersions),
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
@@ -327,7 +327,7 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 		},
 		len(MustTestVersions),
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	ssh1Clients, err := scenario.ListTailscaleClients("user1")
 	assertNoErrListClients(t, err)

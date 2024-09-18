@@ -35,7 +35,7 @@ func TestUserCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 0,
@@ -115,7 +115,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 0,
@@ -257,7 +257,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 0,
@@ -320,7 +320,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 0,
@@ -398,7 +398,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user1: 1,
@@ -492,7 +492,7 @@ func TestApiKeyCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 0,
@@ -660,7 +660,7 @@ func TestNodeTagCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 0,
@@ -785,7 +785,7 @@ func TestNodeAdvertiseTagNoACLCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 1,
@@ -835,7 +835,7 @@ func TestNodeAdvertiseTagWithACLCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 1,
@@ -898,7 +898,7 @@ func TestNodeCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"node-user":  0,
@@ -1139,7 +1139,7 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"node-expire-user": 0,
@@ -1266,7 +1266,7 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"node-rename-command": 0,
@@ -1432,7 +1432,7 @@ func TestNodeMoveCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"old-user": 0,
@@ -1593,7 +1593,7 @@ func TestPolicyCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"policy-user": 0,
@@ -1673,7 +1673,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"policy-user": 1,

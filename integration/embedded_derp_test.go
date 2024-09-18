@@ -96,7 +96,7 @@ func DERPServerScenario(
 		Scenario:     baseScenario,
 		tsicNetworks: map[string]*dockertest.Network{},
 	}
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv(
 		spec,

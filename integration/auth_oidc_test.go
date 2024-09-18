@@ -48,7 +48,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	scenario := AuthOIDCScenario{
 		Scenario: baseScenario,
 	}
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": len(MustTestVersions),
@@ -108,7 +108,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	scenario := AuthOIDCScenario{
 		Scenario: baseScenario,
 	}
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 3,
