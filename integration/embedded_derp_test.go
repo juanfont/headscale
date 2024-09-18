@@ -34,7 +34,7 @@ func TestDERPServerScenario(t *testing.T) {
 		},
 	}
 
-	DERPServerScenario(t, spec, func(scenario *EmbeddedDERPServerScenario) {
+	derpServerScenario(t, spec, func(scenario *EmbeddedDERPServerScenario) {
 		allClients, err := scenario.ListTailscaleClients()
 		assertNoErrListClients(t, err)
 		t.Logf("checking %d clients for websocket connections", len(allClients))
@@ -59,7 +59,7 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 		},
 	}
 
-	DERPServerScenario(t, spec, func(scenario *EmbeddedDERPServerScenario) {
+	derpServerScenario(t, spec, func(scenario *EmbeddedDERPServerScenario) {
 		allClients, err := scenario.ListTailscaleClients()
 		assertNoErrListClients(t, err)
 		t.Logf("checking %d clients for websocket connections", len(allClients))
