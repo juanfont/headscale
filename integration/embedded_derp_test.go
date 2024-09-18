@@ -81,7 +81,7 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 // so marking it as a test helper would be counterproductive.
 //
 //nolint:thelper
-func DERPServerScenario(
+func derpServerScenario(
 	t *testing.T,
 	spec map[string]ClientsSpec,
 	furtherAssertions ...func(*EmbeddedDERPServerScenario),
