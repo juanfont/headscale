@@ -46,12 +46,7 @@ func SaveLog(
 		return "", "", err
 	}
 
-	// Wouldn't it be simpler to
-	// open and wrap the destination files in a
-	// bufio.Writer, and pass those in docker.LogsOptions?
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
+	var stdout, stderr bytes.Buffer
 	err = WriteLog(pool, resource, &stdout, &stderr)
 	if err != nil {
 		return "", "", err
