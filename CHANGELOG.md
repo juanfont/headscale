@@ -1,6 +1,10 @@
 # CHANGELOG
 
-## 0.23.0 (2023-09-18)
+## Next
+
+- Improved compatibilty of built-in DERP server with clients connecting over WebSocket.
+
+## 0.23.0 (2024-09-18)
 
 This release was intended to be mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
 However, as you all have noticed, it turned out to become a much larger, much longer release cycle than anticipated. It has ended up to be a release with a lot of rewrites and changes to the code base and functionality of Headscale, cleaning up a lot of technical debt and introducing a lot of improvements. This does come with some breaking changes,

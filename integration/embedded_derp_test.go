@@ -15,6 +15,11 @@ import (
 	"github.com/ory/dockertest/v3"
 )
 
+type ClientsSpec struct {
+	Plain         int
+	WebsocketDERP int
+}
+
 type EmbeddedDERPServerScenario struct {
 	*Scenario
 
@@ -22,6 +27,65 @@ type EmbeddedDERPServerScenario struct {
 }
 
 func TestDERPServerScenario(t *testing.T) {
+	spec := map[string]ClientsSpec{
+		"user1": {
+			Plain:         len(MustTestVersions),
+			WebsocketDERP: 0,
+		},
+	}
+
+	derpServerScenario(t, spec, func(scenario *EmbeddedDERPServerScenario) {
+		allClients, err := scenario.ListTailscaleClients()
+		assertNoErrListClients(t, err)
+		t.Logf("checking %d clients for websocket connections", len(allClients))
+
+		for _, client := range allClients {
+			if didClientUseWebsocketForDERP(t, client) {
+				t.Logf(
+					"client %q used websocket a connection, but was not expected to",
+					client.Hostname(),
+				)
+				t.Fail()
+			}
+		}
+	})
+}
+
+func TestDERPServerWebsocketScenario(t *testing.T) {
+	spec := map[string]ClientsSpec{
+		"user1": {
+			Plain:         0,
+			WebsocketDERP: len(MustTestVersions),
+		},
+	}
+
+	derpServerScenario(t, spec, func(scenario *EmbeddedDERPServerScenario) {
+		allClients, err := scenario.ListTailscaleClients()
+		assertNoErrListClients(t, err)
+		t.Logf("checking %d clients for websocket connections", len(allClients))
+
+		for _, client := range allClients {
+			if !didClientUseWebsocketForDERP(t, client) {
+				t.Logf(
+					"client %q does not seem to have used a websocket connection, even though it was expected to do so",
+					client.Hostname(),
+				)
+				t.Fail()
+			}
+		}
+	})
+}
+
+// This function implements the common parts of a DERP scenario,
+// we *want* it to show up in stacktraces,
+// so marking it as a test helper would be counterproductive.
+//
+//nolint:thelper
+func derpServerScenario(
+	t *testing.T,
+	spec map[string]ClientsSpec,
+	furtherAssertions ...func(*EmbeddedDERPServerScenario),
+) {
 	IntegrationSkip(t)
 	// t.Parallel()
 
@@ -34,20 +98,18 @@ func TestDERPServerScenario(t *testing.T) {
 	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-	}
-
 	err = scenario.CreateHeadscaleEnv(
 		spec,
 		hsic.WithTestName("derpserver"),
 		hsic.WithExtraPorts([]string{"3478/udp"}),
 		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithPort(443),
 		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED": "true",
 			"HEADSCALE_DERP_UPDATE_FREQUENCY":    "10s",
+			"HEADSCALE_LISTEN_ADDR":              "0.0.0.0:443",
 		}),
 	)
 	assertNoErrHeadscaleEnv(t, err)
@@ -76,6 +138,11 @@ func TestDERPServerScenario(t *testing.T) {
 	}
 
 	success := pingDerpAllHelper(t, allClients, allHostnames)
+	if len(allHostnames)*len(allClients) > success {
+		t.FailNow()
+
+		return
+	}
 
 	for _, client := range allClients {
 		status, err := client.Status()
@@ -98,6 +165,9 @@ func TestDERPServerScenario(t *testing.T) {
 	time.Sleep(30 * time.Second)
 
 	success = pingDerpAllHelper(t, allClients, allHostnames)
+	if len(allHostnames)*len(allClients) > success {
+		t.Fail()
+	}
 
 	for _, client := range allClients {
 		status, err := client.Status()
@@ -114,10 +184,14 @@ func TestDERPServerScenario(t *testing.T) {
 	}
 
 	t.Logf("Run2: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
+
+	for _, check := range furtherAssertions {
+		check(&scenario)
+	}
 }
 
 func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
-	users map[string]int,
+	users map[string]ClientsSpec,
 	opts ...hsic.Option,
 ) error {
 	hsServer, err := s.Headscale(opts...)
@@ -137,6 +211,7 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 	if err != nil {
 		return err
 	}
+	log.Printf("headscale server ip address: %s", hsServer.GetIP())
 
 	hash, err := util.GenerateRandomStringDNSSafe(scenarioHashLength)
 	if err != nil {
@@ -149,14 +224,31 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 			return err
 		}
 
-		err = s.CreateTailscaleIsolatedNodesInUser(
-			hash,
-			userName,
-			"all",
-			clientCount,
-		)
-		if err != nil {
-			return err
+		if clientCount.Plain > 0 {
+			// Containers that use default DERP config
+			err = s.CreateTailscaleIsolatedNodesInUser(
+				hash,
+				userName,
+				"all",
+				clientCount.Plain,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		if clientCount.WebsocketDERP > 0 {
+			// Containers that use DERP-over-WebSocket
+			err = s.CreateTailscaleIsolatedNodesInUser(
+				hash,
+				userName,
+				"all",
+				clientCount.WebsocketDERP,
+				tsic.WithWebsocketDERP(true),
+			)
+			if err != nil {
+				return err
+			}
 		}
 
 		key, err := s.CreatePreAuthKey(userName, true, false)

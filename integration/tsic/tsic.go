@@ -67,6 +67,7 @@ type TailscaleInContainer struct {
 	// optional config
 	headscaleCert     []byte
 	headscaleHostname string
+	withWebsocketDERP bool
 	withSSH           bool
 	withTags          []string
 	withEntrypoint    []string
@@ -123,6 +124,14 @@ func WithHeadscaleName(hsName string) Option {
 func WithTags(tags []string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withTags = tags
+	}
+}
+
+// WithWebsocketDERP toggles a development knob to
+// force enable DERP connection through the new websocket protocol.
+func WithWebsocketDERP(enabled bool) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withWebsocketDERP = enabled
 	}
 }
 
@@ -206,6 +215,14 @@ func New(
 		// },
 		Entrypoint: tsic.withEntrypoint,
 		ExtraHosts: tsic.withExtraHosts,
+		Env:        []string{},
+	}
+
+	if tsic.withWebsocketDERP {
+		tailscaleOptions.Env = append(
+			tailscaleOptions.Env,
+			fmt.Sprintf("TS_DEBUG_DERP_WS_CLIENT=%t", tsic.withWebsocketDERP),
+		)
 	}
 
 	if tsic.headscaleHostname != "" {
@@ -349,6 +366,15 @@ func (t *TailscaleInContainer) Execute(
 	}
 
 	return stdout, stderr, nil
+}
+
+// Retrieve container logs.
+func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
+	return dockertestutil.WriteLog(
+		t.pool,
+		t.container,
+		stdout, stderr,
+	)
 }
 
 // Up runs the login routine on the given Tailscale instance.
@@ -999,8 +1025,19 @@ func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 // on the host system.
 func (t *TailscaleInContainer) SaveLog(path string) error {
 	// TODO(kradalby): Assert if tailscale logs contains panics.
+	// NOTE(enoperm): `t.WriteLog | countMatchingLines`
+	// is probably most of what is for that,
+	// but I'd rather not change the behaviour here,
+	// as it may affect all the other tests
+	// I have not otherwise touched.
 	_, _, err := dockertestutil.SaveLog(t.pool, t.container, path)
 	return err
+}
+
+// WriteLogs writes the current stdout/stderr log of the container to
+// the given io.Writers.
+func (t *TailscaleInContainer) WriteLogs(stdout, stderr io.Writer) error {
+	return dockertestutil.WriteLog(t.pool, t.container, stdout, stderr)
 }
 
 // ReadFile reads a file from the Tailscale container.

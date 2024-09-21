@@ -3,6 +3,7 @@ package dockertestutil
 import (
 	"bytes"
 	"context"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -12,6 +13,28 @@ import (
 )
 
 const filePerm = 0o644
+
+func WriteLog(
+	pool *dockertest.Pool,
+	resource *dockertest.Resource,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
+	return pool.Client.Logs(
+		docker.LogsOptions{
+			Context:      context.TODO(),
+			Container:    resource.Container.ID,
+			OutputStream: stdout,
+			ErrorStream:  stderr,
+			Tail:         "all",
+			RawTerminal:  false,
+			Stdout:       true,
+			Stderr:       true,
+			Follow:       false,
+			Timestamps:   false,
+		},
+	)
+}
 
 func SaveLog(
 	pool *dockertest.Pool,
@@ -23,23 +46,8 @@ func SaveLog(
 		return "", "", err
 	}
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	err = pool.Client.Logs(
-		docker.LogsOptions{
-			Context:      context.TODO(),
-			Container:    resource.Container.ID,
-			OutputStream: &stdout,
-			ErrorStream:  &stderr,
-			Tail:         "all",
-			RawTerminal:  false,
-			Stdout:       true,
-			Stderr:       true,
-			Follow:       false,
-			Timestamps:   false,
-		},
-	)
+	var stdout, stderr bytes.Buffer
+	err = WriteLog(pool, resource, &stdout, &stderr)
 	if err != nil {
 		return "", "", err
 	}

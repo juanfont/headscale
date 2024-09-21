@@ -242,5 +242,4 @@ func TestValidateResolvConf(t *testing.T) {
 			}
 		})
 	}
-
 }

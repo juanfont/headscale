@@ -13,7 +13,6 @@ func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
 	return d.DialContext(ctx, "unix", addr)
 }
 
-
 // TODO(kradalby): Remove after go 1.24, will be in stdlib.
 // Compare returns an integer comparing two prefixes.
 // The result will be 0 if p == p2, -1 if p < p2, and +1 if p > p2.

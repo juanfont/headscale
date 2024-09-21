@@ -41,6 +41,7 @@ jobs:
           - TestResolveMagicDNS
           - TestValidateResolvConf
           - TestDERPServerScenario
+          - TestDERPServerWebsocketScenario
           - TestPingAllByIP
           - TestPingAllByIPPublicDERP
           - TestAuthKeyLogoutAndRelogin

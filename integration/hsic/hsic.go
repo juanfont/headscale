@@ -461,6 +461,12 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 	return stdoutPath, stderrPath, t.pool.Purge(t.container)
 }
 
+// WriteLogs writes the current stdout/stderr log of the container to
+// the given io.Writers.
+func (t *HeadscaleInContainer) WriteLogs(stdout, stderr io.Writer) error {
+	return dockertestutil.WriteLog(t.pool, t.container, stdout, stderr)
+}
+
 // SaveLog saves the current stdout log of the container to a path
 // on the host system.
 func (t *HeadscaleInContainer) SaveLog(path string) (string, string, error) {
