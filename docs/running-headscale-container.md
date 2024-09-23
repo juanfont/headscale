@@ -101,7 +101,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 1. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
     ```shell
-    docker exec headscale \
+    docker exec -it headscale \
       headscale users create myfirstuser
     ```
 
@@ -116,7 +116,7 @@ tailscale up --login-server YOUR_HEADSCALE_URL
 To register a machine when running `headscale` in a container, take the headscale command and pass it to the container:
 
 ```shell
-docker exec headscale \
+docker exec -it headscale \
   headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
 ```
 
@@ -125,7 +125,7 @@ docker exec headscale \
 Generate a key using the command line:
 
 ```shell
-docker exec headscale \
+docker exec -it headscale \
   headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
@@ -161,4 +161,4 @@ You can also execute commands directly, such as `ls /ko-app` in this example:
 docker run headscale/headscale:x.x.x-debug ls /ko-app
 ```
 
-Using `docker exec` allows you to run commands in an existing container.
+Using `docker exec -it` allows you to run commands in an existing container.
