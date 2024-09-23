@@ -3323,7 +3323,7 @@ func TestSSHRules(t *testing.T) {
 					SSHUsers: map[string]string{
 						"autogroup:nonroot": "=",
 					},
-					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
+					Action: &tailcfg.SSHAction{Accept: true, AllowAgentForwarding: true, AllowLocalPortForwarding: true},
 				},
 				{
 					SSHUsers: map[string]string{
@@ -3334,7 +3334,7 @@ func TestSSHRules(t *testing.T) {
 							Any: true,
 						},
 					},
-					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
+					Action: &tailcfg.SSHAction{Accept: true, AllowAgentForwarding: true, AllowLocalPortForwarding: true},
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{
@@ -3345,7 +3345,7 @@ func TestSSHRules(t *testing.T) {
 					SSHUsers: map[string]string{
 						"autogroup:nonroot": "=",
 					},
-					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
+					Action: &tailcfg.SSHAction{Accept: true, AllowAgentForwarding: true, AllowLocalPortForwarding: true},
 				},
 				{
 					SSHUsers: map[string]string{
@@ -3356,7 +3356,7 @@ func TestSSHRules(t *testing.T) {
 							Any: true,
 						},
 					},
-					Action: &tailcfg.SSHAction{Accept: true, AllowLocalPortForwarding: true},
+					Action: &tailcfg.SSHAction{Accept: true, AllowAgentForwarding: true, AllowLocalPortForwarding: true},
 				},
 			}},
 		},
