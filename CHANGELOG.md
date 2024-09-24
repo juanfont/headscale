@@ -2,6 +2,8 @@
 
 ## Next
 
+- Remove versions older than 1.56 [#2149](https://github.com/juanfont/headscale/pull/2149)
+  - Clean up old code required by old versions
 - Improved compatibilty of built-in DERP server with clients connecting over WebSocket.
 - Allow nodes to use SSH agent forwarding [#2145](https://github.com/juanfont/headscale/pull/2145)
 
