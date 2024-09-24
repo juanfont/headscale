@@ -244,11 +244,11 @@ func Test_fullMapResponse(t *testing.T) {
 		PrimaryRoutes:     []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
 		LastSeen:          &lastSeen,
 		MachineAuthorized: true,
-		Capabilities: []tailcfg.NodeCapability{
-			tailcfg.CapabilityFileSharing,
-			tailcfg.CapabilityAdmin,
-			tailcfg.CapabilitySSH,
-			tailcfg.NodeAttrDisableUPnP,
+
+		CapMap: tailcfg.NodeCapMap{
+			tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+			tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+			tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 		},
 	}
 
@@ -299,11 +299,11 @@ func Test_fullMapResponse(t *testing.T) {
 		PrimaryRoutes:     []netip.Prefix{},
 		LastSeen:          &lastSeen,
 		MachineAuthorized: true,
-		Capabilities: []tailcfg.NodeCapability{
-			tailcfg.CapabilityFileSharing,
-			tailcfg.CapabilityAdmin,
-			tailcfg.CapabilitySSH,
-			tailcfg.NodeAttrDisableUPnP,
+
+		CapMap: tailcfg.NodeCapMap{
+			tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+			tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+			tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 		},
 	}
 

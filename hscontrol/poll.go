@@ -214,21 +214,6 @@ func (m *mapSession) serveLongPoll() {
 		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
 	}()
 
-	// From version 68, all streaming requests can be treated as read only.
-	// TODO: Remove when we drop support for 1.48
-	if m.capVer < 68 {
-		// Error has been handled/written to client in the func
-		// return
-		err := m.handleSaveNode()
-		if err != nil {
-			mapResponseWriteUpdatesInStream.WithLabelValues("error").Inc()
-
-			m.close()
-			return
-		}
-		mapResponseWriteUpdatesInStream.WithLabelValues("ok").Inc()
-	}
-
 	// Set up the client stream
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
@@ -547,72 +532,6 @@ func (m *mapSession) handleEndpointUpdate() {
 	mapResponseEndpointUpdates.WithLabelValues("ok").Inc()
 
 	return
-}
-
-// handleSaveNode saves node updates in the maprequest _streaming_
-// path and is mostly the same code as in handleEndpointUpdate.
-// It is not attempted to be deduplicated since it will go away
-// when we stop supporting older than 68 which removes updates
-// when the node is streaming.
-func (m *mapSession) handleSaveNode() error {
-	m.tracef("saving node update from stream session")
-
-	change := m.node.PeerChangeFromMapRequest(m.req)
-
-	// A stream is being set up, the node is Online
-	online := true
-	change.Online = &online
-
-	m.node.ApplyPeerChange(&change)
-
-	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
-	m.node.Hostinfo = m.req.Hostinfo
-
-	// If there is no changes and nothing to save,
-	// return early.
-	if peerChangeEmpty(change) || !sendUpdate {
-		return nil
-	}
-
-	// Check if the Hostinfo of the node has changed.
-	// If it has changed, check if there has been a change to
-	// the routable IPs of the host and update update them in
-	// the database. Then send a Changed update
-	// (containing the whole node object) to peers to inform about
-	// the route change.
-	// If the hostinfo has changed, but not the routes, just update
-	// hostinfo and let the function continue.
-	if routesChanged {
-		var err error
-		_, err = m.h.db.SaveNodeRoutes(m.node)
-		if err != nil {
-			return err
-		}
-
-		if m.h.ACLPolicy != nil {
-			// update routes with peer information
-			err := m.h.db.EnableAutoApprovedRoutes(m.h.ACLPolicy, m.node)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	if err := m.h.db.DB.Save(m.node).Error; err != nil {
-		return err
-	}
-
-	ctx := types.NotifyCtx(context.Background(), "pre-68-update-while-stream", m.node.Hostname)
-	m.h.nodeNotifier.NotifyWithIgnore(
-		ctx,
-		types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: []types.NodeID{m.node.ID},
-			Message:     "called from handlePoll -> pre-68-update-while-stream",
-		},
-		m.node.ID)
-
-	return nil
 }
 
 func (m *mapSession) handleReadOnlyRequest() {

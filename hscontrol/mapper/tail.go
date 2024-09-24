@@ -114,32 +114,14 @@ func tailNode(
 		Expired:           node.IsExpired(),
 	}
 
-	//   - 74: 2023-09-18: Client understands NodeCapMap
-	if capVer >= 74 {
-		tNode.CapMap = tailcfg.NodeCapMap{
-			tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
-			tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-			tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
-		}
-
-		if cfg.RandomizeClientPort {
-			tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
-		}
-	} else {
-		tNode.Capabilities = []tailcfg.NodeCapability{
-			tailcfg.CapabilityFileSharing,
-			tailcfg.CapabilityAdmin,
-			tailcfg.CapabilitySSH,
-		}
-
-		if cfg.RandomizeClientPort {
-			tNode.Capabilities = append(tNode.Capabilities, tailcfg.NodeAttrRandomizeClientPort)
-		}
+	tNode.CapMap = tailcfg.NodeCapMap{
+		tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+		tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+		tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 	}
 
-	//   - 72: 2023-08-23: TS-2023-006 UPnP issue fixed; UPnP can now be used again
-	if capVer < 72 {
-		tNode.Capabilities = append(tNode.Capabilities, tailcfg.NodeAttrDisableUPnP)
+	if cfg.RandomizeClientPort {
+		tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
 	}
 
 	if node.IsOnline == nil || !*node.IsOnline {
