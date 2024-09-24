@@ -72,9 +72,11 @@ func TestTailNode(t *testing.T) {
 				Tags:              []string{},
 				PrimaryRoutes:     []netip.Prefix{},
 				MachineAuthorized: true,
-				Capabilities: []tailcfg.NodeCapability{
-					"https://tailscale.com/cap/file-sharing", "https://tailscale.com/cap/is-admin",
-					"https://tailscale.com/cap/ssh", "debug-disable-upnp",
+
+				CapMap: tailcfg.NodeCapMap{
+					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -166,11 +168,10 @@ func TestTailNode(t *testing.T) {
 				LastSeen:          &lastSeen,
 				MachineAuthorized: true,
 
-				Capabilities: []tailcfg.NodeCapability{
-					tailcfg.CapabilityFileSharing,
-					tailcfg.CapabilityAdmin,
-					tailcfg.CapabilitySSH,
-					tailcfg.NodeAttrDisableUPnP,
+				CapMap: tailcfg.NodeCapMap{
+					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
