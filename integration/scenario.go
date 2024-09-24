@@ -53,21 +53,23 @@ var (
 	tailscaleVersions2021 = map[string]bool{
 		"head":     true,
 		"unstable": true,
-		"1.70":     true,  // CapVer: not checked
-		"1.68":     true,  // CapVer: not checked
-		"1.66":     true,  // CapVer: not checked
-		"1.64":     true,  // CapVer: not checked
-		"1.62":     true,  // CapVer: not checked
-		"1.60":     true,  // CapVer: not checked
-		"1.58":     true,  // CapVer: not checked
-		"1.56":     true,  // CapVer: 82
-		"1.54":     true,  // CapVer: 79
-		"1.52":     true,  // CapVer: 79
-		"1.50":     true,  // CapVer: 74
-		"1.48":     true,  // CapVer: 68
-		"1.46":     true,  // CapVer: 65
+		"1.74":     true,  // CapVer: 106
+		"1.72":     true,  // CapVer: 104
+		"1.70":     true,  // CapVer: 102
+		"1.68":     true,  // CapVer: 97
+		"1.66":     true,  // CapVer: 95
+		"1.64":     true,  // CapVer: 90
+		"1.62":     true,  // CapVer: 88
+		"1.60":     true,  // CapVer: 87
+		"1.58":     true,  // CapVer: 85
+		"1.56":     true,  // Oldest supported version, CapVer: 82
+		"1.54":     false, // CapVer: 79
+		"1.52":     false, // CapVer: 79
+		"1.50":     false, // CapVer: 74
+		"1.48":     false, // CapVer: 68
+		"1.46":     false, // CapVer: 65
 		"1.44":     false, // CapVer: 63
-		"1.42":     false, // Oldest supported version, CapVer: 61
+		"1.42":     false, // CapVer: 61
 		"1.40":     false, // CapVer: 61
 		"1.38":     false, // CapVer: 58
 		"1.36":     false, // CapVer: 56
