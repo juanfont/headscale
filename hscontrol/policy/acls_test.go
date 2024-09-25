@@ -3,6 +3,7 @@ package policy
 import (
 	"errors"
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -2549,7 +2550,7 @@ func Test_getTags(t *testing.T) {
 				test.args.node,
 			)
 			for _, valid := range gotValid {
-				if !util.StringOrPrefixListContains(test.wantValid, valid) {
+				if !slices.Contains(test.wantValid, valid) {
 					t.Errorf(
 						"valids: getTags() = %v, want %v",
 						gotValid,
@@ -2560,7 +2561,7 @@ func Test_getTags(t *testing.T) {
 				}
 			}
 			for _, invalid := range gotInvalid {
-				if !util.StringOrPrefixListContains(test.wantInvalid, invalid) {
+				if !slices.Contains(test.wantInvalid, invalid) {
 					t.Errorf(
 						"invalids: getTags() = %v, want %v",
 						gotInvalid,

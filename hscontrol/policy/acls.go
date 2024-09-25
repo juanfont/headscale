@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -604,7 +605,7 @@ func excludeCorrectlyTaggedNodes(
 	for tag := range aclPolicy.TagOwners {
 		owners, _ := expandOwnersFromTag(aclPolicy, user)
 		ns := append(owners, user)
-		if util.StringOrPrefixListContains(ns, user) {
+		if slices.Contains(ns, user) {
 			tags = append(tags, tag)
 		}
 	}
@@ -617,7 +618,7 @@ func excludeCorrectlyTaggedNodes(
 		}
 
 		for _, t := range node.Hostinfo.RequestTags {
-			if util.StringOrPrefixListContains(tags, t) {
+			if slices.Contains(tags, t) {
 				found = true
 
 				break
@@ -780,7 +781,7 @@ func (pol *ACLPolicy) expandIPsFromTag(
 
 	// check for forced tags
 	for _, node := range nodes {
-		if util.StringOrPrefixListContains(node.ForcedTags, alias) {
+		if slices.Contains(node.ForcedTags, alias) {
 			node.AppendToIPSet(&build)
 		}
 	}
@@ -812,7 +813,7 @@ func (pol *ACLPolicy) expandIPsFromTag(
 				continue
 			}
 
-			if util.StringOrPrefixListContains(node.Hostinfo.RequestTags, alias) {
+			if slices.Contains(node.Hostinfo.RequestTags, alias) {
 				node.AppendToIPSet(&build)
 			}
 		}

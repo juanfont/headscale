@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -215,7 +216,7 @@ func SetTags(
 
 	var newTags types.StringList
 	for _, tag := range tags {
-		if !util.StringOrPrefixListContains(newTags, tag) {
+		if !slices.Contains(newTags, tag) {
 			newTags = append(newTags, tag)
 		}
 	}
@@ -555,7 +556,7 @@ func enableRoutes(tx *gorm.DB,
 	}
 
 	for _, newRoute := range newRoutes {
-		if !util.StringOrPrefixListContains(advertisedRoutes, newRoute) {
+		if !slices.Contains(advertisedRoutes, newRoute) {
 			return nil, fmt.Errorf(
 				"route (%s) is not available on node %s: %w",
 				node.Hostname,

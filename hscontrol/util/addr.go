@@ -3,7 +3,6 @@ package util
 import (
 	"fmt"
 	"net/netip"
-	"reflect"
 	"strings"
 
 	"go4.org/netipx"
@@ -111,14 +110,4 @@ func StringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
 	}
 
 	return result, nil
-}
-
-func StringOrPrefixListContains[T string | netip.Prefix](ts []T, t T) bool {
-	for _, v := range ts {
-		if reflect.DeepEqual(v, t) {
-			return true
-		}
-	}
-
-	return false
 }
