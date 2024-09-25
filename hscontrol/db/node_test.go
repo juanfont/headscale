@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"net/netip"
 	"regexp"
-	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -20,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
@@ -528,16 +528,16 @@ func TestAutoApproveRoutes(t *testing.T) {
 	}
 }`,
 			routes: []netip.Prefix{
-				netip.MustParsePrefix("0.0.0.0/0"),
-				netip.MustParsePrefix("::/0"),
+				tsaddr.AllIPv4(),
+				tsaddr.AllIPv6(),
 				netip.MustParsePrefix("10.10.0.0/16"),
 				netip.MustParsePrefix("10.11.0.0/24"),
 			},
 			want: []netip.Prefix{
-				netip.MustParsePrefix("::/0"),
-				netip.MustParsePrefix("10.11.0.0/24"),
+				tsaddr.AllIPv4(),
 				netip.MustParsePrefix("10.10.0.0/16"),
-				netip.MustParsePrefix("0.0.0.0/0"),
+				netip.MustParsePrefix("10.11.0.0/24"),
+				tsaddr.AllIPv6(),
 			},
 		},
 	}
@@ -594,9 +594,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Len(t, enabledRoutes, len(tt.want))
 
-			sort.Slice(enabledRoutes, func(i, j int) bool {
-				return util.ComparePrefix(enabledRoutes[i], enabledRoutes[j]) > 0
-			})
+			tsaddr.SortPrefixes(enabledRoutes)
 
 			if diff := cmp.Diff(tt.want, enabledRoutes, util.Comparers...); diff != "" {
 				t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)

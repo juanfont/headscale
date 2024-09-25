@@ -11,6 +11,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
 )
 
@@ -117,8 +118,8 @@ func EnableRoute(tx *gorm.DB, id uint64) (*types.StateUpdate, error) {
 		return enableRoutes(
 			tx,
 			&route.Node,
-			types.ExitRouteV4.String(),
-			types.ExitRouteV6.String(),
+			tsaddr.AllIPv4().String(),
+			tsaddr.AllIPv6().String(),
 		)
 	}
 

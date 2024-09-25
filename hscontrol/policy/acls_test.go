@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -341,7 +342,7 @@ func TestParsing(t *testing.T) {
 			],
 		},
 	],
-}			
+}
 `,
 			want: []tailcfg.FilterRule{
 				{
@@ -1998,7 +1999,7 @@ func TestReduceFilterRules(t *testing.T) {
 					IPv6: iap("fd7a:115c:a1e0::100"),
 					User: types.User{Name: "user100"},
 					Hostinfo: &tailcfg.Hostinfo{
-						RoutableIPs: []netip.Prefix{types.ExitRouteV4, types.ExitRouteV6},
+						RoutableIPs: tsaddr.ExitRoutes(),
 					},
 				},
 			},
@@ -2036,7 +2037,7 @@ func TestReduceFilterRules(t *testing.T) {
 				IPv6: iap("fd7a:115c:a1e0::100"),
 				User: types.User{Name: "user100"},
 				Hostinfo: &tailcfg.Hostinfo{
-					RoutableIPs: []netip.Prefix{types.ExitRouteV4, types.ExitRouteV6},
+					RoutableIPs: tsaddr.ExitRoutes(),
 				},
 			},
 			peers: types.Nodes{
@@ -2132,7 +2133,7 @@ func TestReduceFilterRules(t *testing.T) {
 				IPv6: iap("fd7a:115c:a1e0::100"),
 				User: types.User{Name: "user100"},
 				Hostinfo: &tailcfg.Hostinfo{
-					RoutableIPs: []netip.Prefix{types.ExitRouteV4, types.ExitRouteV6},
+					RoutableIPs: tsaddr.ExitRoutes(),
 				},
 			},
 			peers: types.Nodes{

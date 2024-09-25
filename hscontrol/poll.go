@@ -6,18 +6,17 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -666,12 +665,8 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 	oldRoutes := old.RoutableIPs
 	newRoutes := new.RoutableIPs
 
-	sort.Slice(oldRoutes, func(i, j int) bool {
-		return util.ComparePrefix(oldRoutes[i], oldRoutes[j]) > 0
-	})
-	sort.Slice(newRoutes, func(i, j int) bool {
-		return util.ComparePrefix(newRoutes[i], newRoutes[j]) > 0
-	})
+	tsaddr.SortPrefixes(oldRoutes)
+	tsaddr.SortPrefixes(newRoutes)
 
 	if !xslices.Equal(oldRoutes, newRoutes) {
 		return true, true
