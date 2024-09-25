@@ -118,12 +118,12 @@ func EnableRoute(tx *gorm.DB, id uint64) (*types.StateUpdate, error) {
 		return enableRoutes(
 			tx,
 			&route.Node,
-			tsaddr.AllIPv4().String(),
-			tsaddr.AllIPv6().String(),
+			tsaddr.AllIPv4(),
+			tsaddr.AllIPv6(),
 		)
 	}
 
-	return enableRoutes(tx, &route.Node, netip.Prefix(route.Prefix).String())
+	return enableRoutes(tx, &route.Node, netip.Prefix(route.Prefix))
 }
 
 func DisableRoute(tx *gorm.DB,

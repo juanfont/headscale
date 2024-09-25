@@ -538,27 +538,17 @@ func IsRoutesEnabled(tx *gorm.DB, node *types.Node, routeStr string) bool {
 
 func (hsdb *HSDatabase) enableRoutes(
 	node *types.Node,
-	routeStrs ...string,
+	newRoutes ...netip.Prefix,
 ) (*types.StateUpdate, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return enableRoutes(tx, node, routeStrs...)
+		return enableRoutes(tx, node, newRoutes...)
 	})
 }
 
 // enableRoutes enables new routes based on a list of new routes.
 func enableRoutes(tx *gorm.DB,
-	node *types.Node, routeStrs ...string,
+	node *types.Node, newRoutes ...netip.Prefix,
 ) (*types.StateUpdate, error) {
-	newRoutes := make([]netip.Prefix, len(routeStrs))
-	for index, routeStr := range routeStrs {
-		route, err := netip.ParsePrefix(routeStr)
-		if err != nil {
-			return nil, err
-		}
-
-		newRoutes[index] = route
-	}
-
 	advertisedRoutes, err := GetAdvertisedRoutes(tx, node)
 	if err != nil {
 		return nil, err
@@ -606,12 +596,6 @@ func enableRoutes(tx *gorm.DB,
 	}
 
 	node.Routes = nRoutes
-
-	log.Trace().
-		Caller().
-		Str("node", node.Hostname).
-		Strs("routes", routeStrs).
-		Msg("enabling routes")
 
 	return &types.StateUpdate{
 		Type:        types.StatePeerChanged,
