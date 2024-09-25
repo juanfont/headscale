@@ -103,7 +103,7 @@ func StringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
 	for index, prefixStr := range prefixes {
 		prefix, err := netip.ParsePrefix(prefixStr)
 		if err != nil {
-			return []netip.Prefix{}, err
+			return nil, err
 		}
 
 		result[index] = prefix
