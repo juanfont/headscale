@@ -112,40 +112,6 @@ describing how to make `headscale` run properly in a server environment.
     curl http://127.0.0.1:9090/metrics
     ```
 
-1. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
-
-    ```shell
-    headscale users create myfirstuser
-    ```
-
-### Register a machine (normal login)
-
-On a client machine, execute the `tailscale` login command:
-
-```shell
-tailscale up --login-server YOUR_HEADSCALE_URL
-```
-
-Register the machine:
-
-```shell
-headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
-```
-
-### Register machine using a pre authenticated key
-
-Generate a key using the command line:
-
-```shell
-headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
-```
-
-This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
-
-```shell
-tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
-```
-
 ## Running `headscale` in the background with rc.d
 
 This section demonstrates how to run `headscale` as a service in the background with [rc.d](https://man.openbsd.org/rc.d).

@@ -23,41 +23,6 @@ This documentation has the goal of showing a user how-to run `headscale` on Seal
 
    ![](./images/headscale-sealos-url.png)
 
-5. Click on 'Terminal' button on the right side of the details to access the Terminal of the headscale application. then create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
-
-   ```bash
-   headscale users create myfirstuser
-   ```
-
-### Register a machine (normal login)
-
-On a client machine, execute the `tailscale` login command:
-
-```bash
-# replace <YOUR_HEADSCALE_URL> with the public domain provided by Sealos
-tailscale up --login-server YOUR_HEADSCALE_URL
-```
-
-To register a machine when running headscale in [Sealos](https://sealos.io), click on 'Terminal' button on the right side of the headscale application's detail page to access the Terminal of the headscale application, then take the headscale command:
-
-```bash
-headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
-```
-
-### Register machine using a pre authenticated key
-
-click on 'Terminal' button on the right side of the headscale application's detail page to access the Terminal of the headscale application, then generate a key using the command line:
-
-```bash
-headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
-```
-
-This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
-
-```bash
-tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
-```
-
 ## Controlling headscale with remote CLI
 
 This documentation has the goal of showing a user how-to set control a headscale instance from a remote machine with the headscale command line binary.
