@@ -1,8 +1,6 @@
 package types
 
 import (
-	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -15,7 +13,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -51,54 +48,16 @@ func (id NodeID) String() string {
 type Node struct {
 	ID NodeID `gorm:"primary_key"`
 
-	// MachineKeyDatabaseField is the string representation of MachineKey
-	// it is _only_ used for reading and writing the key to the
-	// database and should not be used.
-	// Use MachineKey instead.
-	MachineKeyDatabaseField string            `gorm:"column:machine_key;unique_index"`
-	MachineKey              key.MachinePublic `gorm:"-"`
+	MachineKey key.MachinePublic `gorm:"serializer:text"`
+	NodeKey    key.NodePublic    `gorm:"serializer:text"`
+	DiscoKey   key.DiscoPublic   `gorm:"serializer:text"`
 
-	// NodeKeyDatabaseField is the string representation of NodeKey
-	// it is _only_ used for reading and writing the key to the
-	// database and should not be used.
-	// Use NodeKey instead.
-	NodeKeyDatabaseField string         `gorm:"column:node_key"`
-	NodeKey              key.NodePublic `gorm:"-"`
+	Endpoints []netip.AddrPort `gorm:"serializer:json"`
 
-	// DiscoKeyDatabaseField is the string representation of DiscoKey
-	// it is _only_ used for reading and writing the key to the
-	// database and should not be used.
-	// Use DiscoKey instead.
-	DiscoKeyDatabaseField string          `gorm:"column:disco_key"`
-	DiscoKey              key.DiscoPublic `gorm:"-"`
+	Hostinfo *tailcfg.Hostinfo `gorm:"serializer:json"`
 
-	// EndpointsDatabaseField is the string list representation of Endpoints
-	// it is _only_ used for reading and writing the key to the
-	// database and should not be used.
-	// Use Endpoints instead.
-	EndpointsDatabaseField StringList       `gorm:"column:endpoints"`
-	Endpoints              []netip.AddrPort `gorm:"-"`
-
-	// EndpointsDatabaseField is the string list representation of Endpoints
-	// it is _only_ used for reading and writing the key to the
-	// database and should not be used.
-	// Use Endpoints instead.
-	HostinfoDatabaseField string            `gorm:"column:host_info"`
-	Hostinfo              *tailcfg.Hostinfo `gorm:"-"`
-
-	// IPv4DatabaseField is the string representation of v4 address,
-	// it is _only_ used for reading and writing the key to the
-	// database and should not be used.
-	// Use V4 instead.
-	IPv4DatabaseField sql.NullString `gorm:"column:ipv4"`
-	IPv4              *netip.Addr    `gorm:"-"`
-
-	// IPv6DatabaseField is the string representation of v4 address,
-	// it is _only_ used for reading and writing the key to the
-	// database and should not be used.
-	// Use V6 instead.
-	IPv6DatabaseField sql.NullString `gorm:"column:ipv6"`
-	IPv6              *netip.Addr    `gorm:"-"`
+	IPv4 *netip.Addr `gorm:"serializer:text"`
+	IPv6 *netip.Addr `gorm:"serializer:text"`
 
 	// Hostname represents the name given by the Tailscale
 	// client during registration
@@ -116,7 +75,7 @@ type Node struct {
 
 	RegisterMethod string
 
-	ForcedTags StringList
+	ForcedTags []string `gorm:"serializer:json"`
 
 	// TODO(kradalby): This seems like irrelevant information?
 	AuthKeyID *uint64     `sql:"DEFAULT:NULL"`
@@ -216,16 +175,20 @@ func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
 	src := node.IPs()
 	allowedIPs := node2.IPs()
 
+	// TODO(kradalby): Regenerate this everytime the filter change, instead of
+	// every time we use it.
+	matchers := make([]matcher.Match, len(filter))
+	for i, rule := range filter {
+		matchers[i] = matcher.MatchFromFilterRule(rule)
+	}
+
 	for _, route := range node2.Routes {
 		if route.Enabled {
 			allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix).Addr())
 		}
 	}
 
-	for _, rule := range filter {
-		// TODO(kradalby): Cache or pregen this
-		matcher := matcher.MatchFromFilterRule(rule)
-
+	for _, matcher := range matchers {
 		if !matcher.SrcsContainsIPs(src) {
 			continue
 		}
@@ -253,109 +216,6 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 	}
 
 	return found
-}
-
-// BeforeSave is a hook that ensures that some values that
-// cannot be directly marshalled into database values are stored
-// correctly in the database.
-// This currently means storing the keys as strings.
-func (node *Node) BeforeSave(tx *gorm.DB) error {
-	node.MachineKeyDatabaseField = node.MachineKey.String()
-	node.NodeKeyDatabaseField = node.NodeKey.String()
-	node.DiscoKeyDatabaseField = node.DiscoKey.String()
-
-	var endpoints StringList
-	for _, addrPort := range node.Endpoints {
-		endpoints = append(endpoints, addrPort.String())
-	}
-
-	node.EndpointsDatabaseField = endpoints
-
-	hi, err := json.Marshal(node.Hostinfo)
-	if err != nil {
-		return fmt.Errorf("marshalling Hostinfo to store in db: %w", err)
-	}
-	node.HostinfoDatabaseField = string(hi)
-
-	if node.IPv4 != nil {
-		node.IPv4DatabaseField.String, node.IPv4DatabaseField.Valid = node.IPv4.String(), true
-	} else {
-		node.IPv4DatabaseField.String, node.IPv4DatabaseField.Valid = "", false
-	}
-
-	if node.IPv6 != nil {
-		node.IPv6DatabaseField.String, node.IPv6DatabaseField.Valid = node.IPv6.String(), true
-	} else {
-		node.IPv6DatabaseField.String, node.IPv6DatabaseField.Valid = "", false
-	}
-
-	return nil
-}
-
-// AfterFind is a hook that ensures that Node objects fields that
-// has a different type in the database is unwrapped and populated
-// correctly.
-// This currently unmarshals all the keys, stored as strings, into
-// the proper types.
-func (node *Node) AfterFind(tx *gorm.DB) error {
-	var machineKey key.MachinePublic
-	if err := machineKey.UnmarshalText([]byte(node.MachineKeyDatabaseField)); err != nil {
-		return fmt.Errorf("unmarshalling machine key from db: %w", err)
-	}
-	node.MachineKey = machineKey
-
-	var nodeKey key.NodePublic
-	if err := nodeKey.UnmarshalText([]byte(node.NodeKeyDatabaseField)); err != nil {
-		return fmt.Errorf("unmarshalling node key from db: %w", err)
-	}
-	node.NodeKey = nodeKey
-
-	// DiscoKey might be empty if a node has not sent it to headscale.
-	// This means that this might fail if the disco key is empty.
-	if node.DiscoKeyDatabaseField != "" {
-		var discoKey key.DiscoPublic
-		if err := discoKey.UnmarshalText([]byte(node.DiscoKeyDatabaseField)); err != nil {
-			return fmt.Errorf("unmarshalling disco key from db: %w", err)
-		}
-		node.DiscoKey = discoKey
-	}
-
-	endpoints := make([]netip.AddrPort, len(node.EndpointsDatabaseField))
-	for idx, ep := range node.EndpointsDatabaseField {
-		addrPort, err := netip.ParseAddrPort(ep)
-		if err != nil {
-			return fmt.Errorf("parsing endpoint from db: %w", err)
-		}
-
-		endpoints[idx] = addrPort
-	}
-	node.Endpoints = endpoints
-
-	var hi tailcfg.Hostinfo
-	if err := json.Unmarshal([]byte(node.HostinfoDatabaseField), &hi); err != nil {
-		return fmt.Errorf("unmarshalling hostinfo from database: %w", err)
-	}
-	node.Hostinfo = &hi
-
-	if node.IPv4DatabaseField.Valid {
-		ip, err := netip.ParseAddr(node.IPv4DatabaseField.String)
-		if err != nil {
-			return fmt.Errorf("parsing IPv4 from database: %w", err)
-		}
-
-		node.IPv4 = &ip
-	}
-
-	if node.IPv6DatabaseField.Valid {
-		ip, err := netip.ParseAddr(node.IPv6DatabaseField.String)
-		if err != nil {
-			return fmt.Errorf("parsing IPv6 from database: %w", err)
-		}
-
-		node.IPv6 = &ip
-	}
-
-	return nil
 }
 
 func (node *Node) Proto() *v1.Node {

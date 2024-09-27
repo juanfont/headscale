@@ -201,7 +201,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		nodeKey := key.NewNode()
 		machineKey := key.NewMachine()
 
-		v4 := netip.MustParseAddr(fmt.Sprintf("100.64.0.%v", strconv.Itoa(index+1)))
+		v4 := netip.MustParseAddr(fmt.Sprintf("100.64.0.%d", index+1))
 		node := types.Node{
 			ID:             types.NodeID(index),
 			MachineKey:     machineKey.Public(),
@@ -239,6 +239,8 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 
 	adminNode, err := db.GetNodeByID(1)
 	c.Logf("Node(%v), user: %v", adminNode.Hostname, adminNode.User)
+	c.Assert(adminNode.IPv4, check.NotNil)
+	c.Assert(adminNode.IPv6, check.IsNil)
 	c.Assert(err, check.IsNil)
 
 	testNode, err := db.GetNodeByID(2)
@@ -247,9 +249,11 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 
 	adminPeers, err := db.ListPeers(adminNode.ID)
 	c.Assert(err, check.IsNil)
+	c.Assert(len(adminPeers), check.Equals, 9)
 
 	testPeers, err := db.ListPeers(testNode.ID)
 	c.Assert(err, check.IsNil)
+	c.Assert(len(testPeers), check.Equals, 9)
 
 	adminRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers)
 	c.Assert(err, check.IsNil)
@@ -259,14 +263,14 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 
 	peersOfAdminNode := policy.FilterNodesByACL(adminNode, adminPeers, adminRules)
 	peersOfTestNode := policy.FilterNodesByACL(testNode, testPeers, testRules)
-
+	c.Log(peersOfAdminNode)
 	c.Log(peersOfTestNode)
+
 	c.Assert(len(peersOfTestNode), check.Equals, 9)
 	c.Assert(peersOfTestNode[0].Hostname, check.Equals, "testnode1")
 	c.Assert(peersOfTestNode[1].Hostname, check.Equals, "testnode3")
 	c.Assert(peersOfTestNode[3].Hostname, check.Equals, "testnode5")
 
-	c.Log(peersOfAdminNode)
 	c.Assert(len(peersOfAdminNode), check.Equals, 9)
 	c.Assert(peersOfAdminNode[0].Hostname, check.Equals, "testnode2")
 	c.Assert(peersOfAdminNode[2].Hostname, check.Equals, "testnode4")
@@ -346,7 +350,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	c.Assert(err, check.IsNil)
 	node, err = db.getNode("test", "testnode")
 	c.Assert(err, check.IsNil)
-	c.Assert(node.ForcedTags, check.DeepEquals, types.StringList(sTags))
+	c.Assert(node.ForcedTags, check.DeepEquals, sTags)
 
 	// assign duplicate tags, expect no errors but no doubles in DB
 	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
@@ -357,7 +361,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	c.Assert(
 		node.ForcedTags,
 		check.DeepEquals,
-		types.StringList([]string{"tag:bar", "tag:test", "tag:unknown"}),
+		[]string{"tag:bar", "tag:test", "tag:unknown"},
 	)
 
 	// test removing tags
@@ -365,7 +369,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	c.Assert(err, check.IsNil)
 	node, err = db.getNode("test", "testnode")
 	c.Assert(err, check.IsNil)
-	c.Assert(node.ForcedTags, check.DeepEquals, types.StringList([]string{}))
+	c.Assert(node.ForcedTags, check.DeepEquals, []string{})
 }
 
 func TestHeadscale_generateGivenName(t *testing.T) {

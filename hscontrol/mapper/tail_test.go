@@ -109,19 +109,19 @@ func TestTailNode(t *testing.T) {
 				Hostinfo:   &tailcfg.Hostinfo{},
 				Routes: []types.Route{
 					{
-						Prefix:     types.IPPrefix(tsaddr.AllIPv4()),
+						Prefix:     tsaddr.AllIPv4(),
 						Advertised: true,
 						Enabled:    true,
 						IsPrimary:  false,
 					},
 					{
-						Prefix:     types.IPPrefix(netip.MustParsePrefix("192.168.0.0/24")),
+						Prefix:     netip.MustParsePrefix("192.168.0.0/24"),
 						Advertised: true,
 						Enabled:    true,
 						IsPrimary:  true,
 					},
 					{
-						Prefix:     types.IPPrefix(netip.MustParsePrefix("172.0.0.0/10")),
+						Prefix:     netip.MustParsePrefix("172.0.0.0/10"),
 						Advertised: true,
 						Enabled:    false,
 						IsPrimary:  true,

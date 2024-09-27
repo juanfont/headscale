@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -207,21 +208,26 @@ func SetTags(
 ) error {
 	if len(tags) == 0 {
 		// if no tags are provided, we remove all forced tags
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", types.StringList{}).Error; err != nil {
+		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", "[]").Error; err != nil {
 			return fmt.Errorf("failed to remove tags for node in the database: %w", err)
 		}
 
 		return nil
 	}
 
-	var newTags types.StringList
+	var newTags []string
 	for _, tag := range tags {
 		if !slices.Contains(newTags, tag) {
 			newTags = append(newTags, tag)
 		}
 	}
 
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", newTags).Error; err != nil {
+	b, err := json.Marshal(newTags)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", string(b)).Error; err != nil {
 		return fmt.Errorf("failed to update tags for node in the database: %w", err)
 	}
 
@@ -569,7 +575,7 @@ func enableRoutes(tx *gorm.DB,
 	for _, prefix := range newRoutes {
 		route := types.Route{}
 		err := tx.Preload("Node").
-			Where("node_id = ? AND prefix = ?", node.ID, types.IPPrefix(prefix)).
+			Where("node_id = ? AND prefix = ?", node.ID, prefix.String()).
 			First(&route).Error
 		if err == nil {
 			route.Enabled = true

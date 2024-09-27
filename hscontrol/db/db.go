@@ -20,8 +20,13 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 	"tailscale.com/util/set"
 )
+
+func init() {
+	schema.RegisterSerializer("text", TextSerialiser{})
+}
 
 var errDatabaseNotSupported = errors.New("database type not supported")
 
@@ -33,7 +38,8 @@ type KV struct {
 }
 
 type HSDatabase struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	cfg *types.DatabaseConfig
 
 	baseDomain string
 }
@@ -191,7 +197,7 @@ func NewHeadscaleDatabase(
 
 						type NodeAux struct {
 							ID            uint64
-							EnabledRoutes types.IPPrefixes
+							EnabledRoutes []netip.Prefix `gorm:"serializer:json"`
 						}
 
 						nodesAux := []NodeAux{}
@@ -214,7 +220,7 @@ func NewHeadscaleDatabase(
 								}
 
 								err = tx.Preload("Node").
-									Where("node_id = ? AND prefix = ?", node.ID, types.IPPrefix(prefix)).
+									Where("node_id = ? AND prefix = ?", node.ID, prefix).
 									First(&types.Route{}).
 									Error
 								if err == nil {
@@ -229,7 +235,7 @@ func NewHeadscaleDatabase(
 									NodeID:     node.ID,
 									Advertised: true,
 									Enabled:    true,
-									Prefix:     types.IPPrefix(prefix),
+									Prefix:     prefix,
 								}
 								if err := tx.Create(&route).Error; err != nil {
 									log.Error().Err(err).Msg("Error creating route")
@@ -476,7 +482,8 @@ func NewHeadscaleDatabase(
 	}
 
 	db := HSDatabase{
-		DB: dbConn,
+		DB:  dbConn,
+		cfg: &cfg,
 
 		baseDomain: baseDomain,
 	}
@@ -674,6 +681,10 @@ func (hsdb *HSDatabase) Close() error {
 	db, err := hsdb.DB.DB()
 	if err != nil {
 		return err
+	}
+
+	if hsdb.cfg.Type == types.DatabaseSqlite && hsdb.cfg.Sqlite.WriteAheadLog {
+		db.Exec("VACUUM")
 	}
 
 	return db.Close()

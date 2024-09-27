@@ -10,16 +10,11 @@ import (
 )
 
 func TestPrefixMap(t *testing.T) {
-	ipp := func(s string) IPPrefix { return IPPrefix(netip.MustParsePrefix(s)) }
-
-	// TODO(kradalby): Remove when we have gotten rid of IPPrefix type
-	prefixComparer := cmp.Comparer(func(x, y IPPrefix) bool {
-		return x == y
-	})
+	ipp := func(s string) netip.Prefix { return netip.MustParsePrefix(s) }
 
 	tests := []struct {
 		rs   Routes
-		want map[IPPrefix][]Route
+		want map[netip.Prefix][]Route
 	}{
 		{
 			rs: Routes{
@@ -27,7 +22,7 @@ func TestPrefixMap(t *testing.T) {
 					Prefix: ipp("10.0.0.0/24"),
 				},
 			},
-			want: map[IPPrefix][]Route{
+			want: map[netip.Prefix][]Route{
 				ipp("10.0.0.0/24"): Routes{
 					Route{
 						Prefix: ipp("10.0.0.0/24"),
@@ -44,7 +39,7 @@ func TestPrefixMap(t *testing.T) {
 					Prefix: ipp("10.0.1.0/24"),
 				},
 			},
-			want: map[IPPrefix][]Route{
+			want: map[netip.Prefix][]Route{
 				ipp("10.0.0.0/24"): Routes{
 					Route{
 						Prefix: ipp("10.0.0.0/24"),
@@ -68,7 +63,7 @@ func TestPrefixMap(t *testing.T) {
 					Enabled: false,
 				},
 			},
-			want: map[IPPrefix][]Route{
+			want: map[netip.Prefix][]Route{
 				ipp("10.0.0.0/24"): Routes{
 					Route{
 						Prefix:  ipp("10.0.0.0/24"),
@@ -86,7 +81,7 @@ func TestPrefixMap(t *testing.T) {
 	for idx, tt := range tests {
 		t.Run(fmt.Sprintf("test-%d", idx), func(t *testing.T) {
 			got := tt.rs.PrefixMap()
-			if diff := cmp.Diff(tt.want, got, prefixComparer, util.MkeyComparer, util.NkeyComparer, util.DkeyComparer); diff != "" {
+			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 				t.Errorf("PrefixMap() unexpected result (-want +got):\n%s", diff)
 			}
 		})

@@ -77,7 +77,7 @@ func CreatePreAuthKey(
 		Ephemeral:  ephemeral,
 		CreatedAt:  &now,
 		Expiration: expiration,
-		Tags:       types.StringList(aclTags),
+		Tags:       aclTags,
 	}
 
 	if err := tx.Save(&key).Error; err != nil {

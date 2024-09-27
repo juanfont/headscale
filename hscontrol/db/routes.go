@@ -49,7 +49,7 @@ func getRoutesByPrefix(tx *gorm.DB, pref netip.Prefix) (types.Routes, error) {
 	err := tx.
 		Preload("Node").
 		Preload("Node.User").
-		Where("prefix = ?", types.IPPrefix(pref)).
+		Where("prefix = ?", pref.String()).
 		Find(&routes).Error
 	if err != nil {
 		return nil, err
@@ -286,7 +286,7 @@ func isUniquePrefix(tx *gorm.DB, route types.Route) bool {
 	var count int64
 	tx.Model(&types.Route{}).
 		Where("prefix = ? AND node_id != ? AND advertised = ? AND enabled = ?",
-			route.Prefix,
+			route.Prefix.String(),
 			route.NodeID,
 			true, true).Count(&count)
 
@@ -297,7 +297,7 @@ func getPrimaryRoute(tx *gorm.DB, prefix netip.Prefix) (*types.Route, error) {
 	var route types.Route
 	err := tx.
 		Preload("Node").
-		Where("prefix = ? AND advertised = ? AND enabled = ? AND is_primary = ?", types.IPPrefix(prefix), true, true, true).
+		Where("prefix = ? AND advertised = ? AND enabled = ? AND is_primary = ?", prefix.String(), true, true, true).
 		First(&route).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -392,7 +392,7 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 		if !exists {
 			route := types.Route{
 				NodeID:     node.ID.Uint64(),
-				Prefix:     types.IPPrefix(prefix),
+				Prefix:     prefix,
 				Advertised: true,
 				Enabled:    false,
 			}

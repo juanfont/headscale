@@ -595,6 +595,11 @@ func (pol *ACLPolicy) ExpandAlias(
 // excludeCorrectlyTaggedNodes will remove from the list of input nodes the ones
 // that are correctly tagged since they should not be listed as being in the user
 // we assume in this function that we only have nodes from 1 user.
+//
+// TODO(kradalby): It is quite hard to understand what this function is doing,
+// it seems like it trying to ensure that we dont include nodes that are tagged
+// when we look up the nodes owned by a user.
+// This should be refactored to be more clear as part of the Tags work in #1369
 func excludeCorrectlyTaggedNodes(
 	aclPolicy *ACLPolicy,
 	nodes types.Nodes,
@@ -613,17 +618,16 @@ func excludeCorrectlyTaggedNodes(
 	for _, node := range nodes {
 		found := false
 
-		if node.Hostinfo == nil {
-			continue
-		}
+		if node.Hostinfo != nil {
+			for _, t := range node.Hostinfo.RequestTags {
+				if slices.Contains(tags, t) {
+					found = true
 
-		for _, t := range node.Hostinfo.RequestTags {
-			if slices.Contains(tags, t) {
-				found = true
-
-				break
+					break
+				}
 			}
 		}
+
 		if len(node.ForcedTags) > 0 {
 			found = true
 		}
@@ -981,7 +985,10 @@ func FilterNodesByACL(
 			continue
 		}
 
+		log.Printf("Checking if %s can access %s", node.Hostname, peer.Hostname)
+
 		if node.CanAccess(filter, nodes[index]) || peer.CanAccess(filter, node) {
+			log.Printf("CAN ACCESS %s can access %s", node.Hostname, peer.Hostname)
 			result = append(result, peer)
 		}
 	}
