@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -19,6 +20,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"tailscale.com/util/set"
 )
 
 var errDatabaseNotSupported = errors.New("database type not supported")
@@ -291,7 +293,12 @@ func NewHeadscaleDatabase(
 						return err
 					}
 
-					err = tx.AutoMigrate(&types.PreAuthKeyACLTag{})
+					type preAuthKeyACLTag struct {
+						ID           uint64 `gorm:"primary_key"`
+						PreAuthKeyID uint64
+						Tag          string
+					}
+					err = tx.AutoMigrate(&preAuthKeyACLTag{})
 					if err != nil {
 						return err
 					}
@@ -408,6 +415,54 @@ func NewHeadscaleDatabase(
 					if err != nil {
 						return err
 					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// denormalise the ACL tags for preauth keys back onto
+			// the preauth key table. We dont normalise or reuse and
+			// it is just a bunch of work for extra work.
+			{
+				ID: "202409271400",
+				Migrate: func(tx *gorm.DB) error {
+					preauthkeyTags := map[uint64]set.Set[string]{}
+
+					type preAuthKeyACLTag struct {
+						ID           uint64 `gorm:"primary_key"`
+						PreAuthKeyID uint64
+						Tag          string
+					}
+
+					var aclTags []preAuthKeyACLTag
+					if err := tx.Find(&aclTags).Error; err != nil {
+						return err
+					}
+
+					// Store the current tags.
+					for _, tag := range aclTags {
+						if preauthkeyTags[tag.PreAuthKeyID] == nil {
+							preauthkeyTags[tag.PreAuthKeyID] = set.SetOf([]string{tag.Tag})
+						} else {
+							preauthkeyTags[tag.PreAuthKeyID].Add(tag.Tag)
+						}
+					}
+
+					// Add tags column and restore the tags.
+					_ = tx.Migrator().AddColumn(&types.PreAuthKey{}, "tags")
+					for keyID, tags := range preauthkeyTags {
+						s := tags.Slice()
+						j, err := json.Marshal(s)
+						if err != nil {
+							return err
+						}
+						if err := tx.Model(&types.PreAuthKey{}).Where("id = ?", keyID).Update("tags", string(j)).Error; err != nil {
+							return err
+						}
+					}
+
+					// Drop the old table.
+					_ = tx.Migrator().DropTable(&preAuthKeyACLTag{})
 
 					return nil
 				},

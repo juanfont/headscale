@@ -6,6 +6,8 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -105,6 +107,68 @@ func TestMigrations(t *testing.T) {
 					return x == y
 				})); diff != "" {
 					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		// at 14:15:06 ❯ go run ./cmd/headscale preauthkeys list
+		// ID | Key      | Reusable | Ephemeral | Used  | Expiration | Created    | Tags
+		// 1  | 09b28f.. | false    | false     | false | 2024-09-27 | 2024-09-27 | tag:derp
+		// 2  | 3112b9.. | false    | false     | false | 2024-09-27 | 2024-09-27 | tag:derp
+		// 3  | 7c23b9.. | false    | false     | false | 2024-09-27 | 2024-09-27 | tag:derp,tag:merp
+		// 4  | f20155.. | false    | false     | false | 2024-09-27 | 2024-09-27 | tag:test
+		// 5  | b212b9.. | false    | false     | false | 2024-09-27 | 2024-09-27 | tag:test,tag:woop,tag:dedu
+		{
+			dbPath: "testdata/0-23-0-to-0-24-0-preauthkey-tags-table.sqlite",
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				keys, err := Read(h.DB, func(rx *gorm.DB) ([]types.PreAuthKey, error) {
+					kratest, err := ListPreAuthKeys(rx, "kratest")
+					if err != nil {
+						return nil, err
+					}
+
+					testkra, err := ListPreAuthKeys(rx, "testkra")
+					if err != nil {
+						return nil, err
+					}
+
+					return append(kratest, testkra...), nil
+				})
+				assert.NoError(t, err)
+
+				assert.Len(t, keys, 5)
+				want := []types.PreAuthKey{
+					{
+						ID:   1,
+						Tags: []string{"tag:derp"},
+					},
+					{
+						ID:   2,
+						Tags: []string{"tag:derp"},
+					},
+					{
+						ID:   3,
+						Tags: []string{"tag:derp", "tag:merp"},
+					},
+					{
+						ID:   4,
+						Tags: []string{"tag:test"},
+					},
+					{
+						ID:   5,
+						Tags: []string{"tag:test", "tag:woop", "tag:dedu"},
+					},
+				}
+
+				if diff := cmp.Diff(want, keys, cmp.Comparer(func(a, b []string) bool {
+					sort.Sort(sort.StringSlice(a))
+					sort.Sort(sort.StringSlice(b))
+					return slices.Equal(a, b)
+				}), cmpopts.IgnoreFields(types.PreAuthKey{}, "Key", "UserID", "User", "CreatedAt", "Expiration")); diff != "" {
+					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
+				}
+
+				if h.DB.Migrator().HasTable("pre_auth_key_acl_tags") {
+					t.Errorf("TestMigrations() table pre_auth_key_acl_tags should not exist")
 				}
 			},
 		},
