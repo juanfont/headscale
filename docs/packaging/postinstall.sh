@@ -6,7 +6,7 @@
 HEADSCALE_EXE="/usr/bin/headscale"
 BSD_HIER=""
 HEADSCALE_RUN_DIR="/var/run/headscale"
-HEAD_SCALE_HOME_DIR="/var/lib/headscale"
+HEADSCALE_HOME_DIR="/var/lib/headscale"
 HEADSCALE_USER="headscale"
 HEADSCALE_GROUP="headscale"
 HEADSCALE_SHELL="/usr/sbin/nologin"
