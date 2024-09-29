@@ -6,8 +6,10 @@
 HEADSCALE_EXE="/usr/bin/headscale"
 BSD_HIER=""
 HEADSCALE_RUN_DIR="/var/run/headscale"
+HEADSCALE_HOME_DIR="/var/lib/headscale"
 HEADSCALE_USER="headscale"
 HEADSCALE_GROUP="headscale"
+HEADSCALE_SHELL="/usr/sbin/nologin"
 
 ensure_sudo() {
 	if [ "$(id -u)" = "0" ]; then
@@ -29,7 +31,7 @@ ensure_headscale_path() {
 
 create_headscale_user() {
 	printf "PostInstall: Adding headscale user %s\n" "$HEADSCALE_USER"
-	useradd -s /bin/sh -c "headscale default user" headscale
+	useradd -s "$HEADSCALE_SHELL" -d "$HEADSCALE_HOME_DIR" -c "headscale default user" "$HEADSCALE_USER"
 }
 
 create_headscale_group() {
