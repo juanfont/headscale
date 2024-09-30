@@ -4,6 +4,7 @@ go 1.23.1
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
+	github.com/chasefleming/elem-go v0.29.0
 	github.com/coder/websocket v1.8.12
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
