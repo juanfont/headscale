@@ -1,0 +1,41 @@
+name: Check integration tests workflow
+
+on: [pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-$${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Get changed files
+        id: changed-files
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration_test/'
+              - 'config-example.yaml'
+      - uses: DeterminateSystems/nix-installer-action@main
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        if: steps.changed-files.outputs.files == 'true'
+
+      - name: Generate and check integration tests
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          nix develop --command bash -c "cd cmd/gh-action-integration-generator/ && go generate"
+          git diff --exit-code .github/workflows/test-integration.yaml
+
+      - name: Show missing tests
+        if: failure()
+        run: |
+          git diff .github/workflows/test-integration.yaml

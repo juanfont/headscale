@@ -1,0 +1,11 @@
+# Issues must have some content
+blank_issues_enabled: false
+
+# Contact links
+contact_links:
+  - name: "headscale usage documentation"
+    url: "https://github.com/juanfont/headscale/blob/main/docs"
+    about: "Find documentation about how to configure and run headscale."
+  - name: "headscale Discord community"
+    url: "https://discord.gg/xGj2TuqyxY"
+    about: "Please ask and answer questions about usage of headscale here."

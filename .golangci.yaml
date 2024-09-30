@@ -1,0 +1,64 @@
+---
+run:
+  timeout: 10m
+  build-tags:
+    - ts2019
+
+issues:
+  skip-dirs:
+    - gen
+linters:
+  enable-all: true
+  disable:
+    - depguard
+
+    - revive
+    - lll
+    - gofmt
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - funlen
+    - tagliatelle
+    - godox
+    - ireturn
+    - execinquery
+    - exhaustruct
+    - nolintlint
+    - musttag # causes issues with imported libs
+    - depguard
+
+    # We should strive to enable these:
+    - wrapcheck
+    - dupl
+    - makezero
+    - maintidx
+
+    # Limits the methods of an interface to 10. We have more in integration tests
+    - interfacebloat
+
+    # We might want to enable this, but it might be a lot of work
+    - cyclop
+    - nestif
+    - wsl # might be incompatible with gofumpt
+    - testpackage
+    - paralleltest
+
+linters-settings:
+  varnamelen:
+    ignore-type-assert-ok: true
+    ignore-map-index-ok: true
+    ignore-names:
+      - err
+      - db
+      - id
+      - ip
+      - ok
+      - c
+      - tt
+
+  gocritic:
+    disabled-checks:
+      - appendAssign
+      # TODO(kradalby): Remove this
+      - ifElseChain

@@ -1,0 +1,48 @@
+ignored/
+tailscale/
+.vscode/
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+dist/
+/headscale
+config.json
+config.yaml
+config*.yaml
+derp.yaml
+*.hujson
+*.key
+/db.sqlite
+*.sqlite3
+
+# Exclude Jetbrains Editors
+.idea
+
+test_output/
+control_logs/
+
+# Nix build output
+result
+.direnv/
+
+integration_test/etc/config.dump.yaml
+
+# MkDocs
+.cache
+/site
+
+__debug_bin

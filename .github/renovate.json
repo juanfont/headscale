@@ -1,0 +1,34 @@
+{
+  "baseBranches": ["main"],
+  "username": "renovate-release",
+  "gitAuthor": "Renovate Bot <bot@renovateapp.com>",
+  "branchPrefix": "renovateaction/",
+  "onboarding": false,
+  "extends": ["config:base", ":rebaseStalePrs"],
+  "ignorePresets": [":prHourlyLimit2"],
+  "enabledManagers": ["dockerfile", "gomod", "github-actions", "regex"],
+  "includeForks": true,
+  "repositories": ["juanfont/headscale"],
+  "platform": "github",
+  "packageRules": [
+    {
+      "matchDatasources": ["go"],
+      "groupName": "Go modules",
+      "groupSlug": "gomod",
+      "separateMajorMinor": false
+    },
+    {
+      "matchDatasources": ["docker"],
+      "groupName": "Dockerfiles",
+      "groupSlug": "dockerfiles"
+    }
+  ],
+  "regexManagers": [
+    {
+      "fileMatch": [".github/workflows/.*.yml$"],
+      "matchStrings": ["\\s*go-version:\\s*\"?(?<currentValue>.*?)\"?\\n"],
+      "datasourceTemplate": "golang-version",
+      "depNameTemplate": "actions/go-version"
+    }
+  ]
+}
