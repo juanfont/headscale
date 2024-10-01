@@ -297,7 +297,7 @@ dns:
 
   # Extra DNS records
   # so far only A-records are supported (on the tailscale side)
-  # See https://github.com/juanfont/headscale/blob/main/docs/dns-records.md#Limitations
+  # See: docs/ref/dns.md
   extra_records: []
   #   - name: "grafana.myvpn.example.com"
   #     type: "A"
