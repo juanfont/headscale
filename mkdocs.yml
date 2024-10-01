@@ -144,7 +144,7 @@ markdown_extensions:
 
 # Page tree
 nav:
-  - Home: index.md
+  - Welcome: index.md
   - About:
       - FAQ: about/faq.md
       - Features: about/features.md

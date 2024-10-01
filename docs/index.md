@@ -4,7 +4,7 @@ hide:
   - toc
 ---
 
-# Headscale
+# Welcome to headscale
 
 Headscale is an open source, self-hosted implementation of the Tailscale control server.
 
