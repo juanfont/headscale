@@ -1,7 +1,5 @@
 # Connecting a Windows client
 
-## Goal
-
 This documentation has the goal of showing how a user can use the official Windows [Tailscale](https://tailscale.com) client with headscale.
 
 !!! info "Instructions on your headscale instance"

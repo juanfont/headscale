@@ -1,7 +1,5 @@
 # Connecting an Android client
 
-## Goal
-
 This documentation has the goal of showing how a user can use the official Android [Tailscale](https://tailscale.com) client with headscale.
 
 ## Installation

@@ -1,5 +1,8 @@
 # Controlling headscale with remote CLI
 
+This documentation has the goal of showing a user how-to set control a headscale instance
+from a remote machine with the `headscale` command line binary.
+
 ## Prerequisite
 
 - A workstation to run headscale (could be Linux, macOS, other supported platforms)
@@ -8,11 +11,6 @@
 - headscale _must_ be served over TLS/HTTPS
   - Remote access does _not_ support unencrypted traffic.
 - Port `50443` must be open in the firewall (or port overridden by `grpc_listen_addr` option)
-
-## Goal
-
-This documentation has the goal of showing a user how-to set control a headscale instance
-from a remote machine with the `headscale` command line binary.
 
 ## Create an API key
 
