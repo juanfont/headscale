@@ -3,17 +3,17 @@
 !!! warning "Community documentation"
 
     This page is not actively maintained by the headscale authors and is
-    written by community members. It is _not_ verified by `headscale` developers.
+    written by community members. It is _not_ verified by headscale developers.
 
     **It might be outdated and it might miss necessary steps**.
 
-This documentation has the goal of showing a user how-to set up and run `headscale` in a container.
+This documentation has the goal of showing a user how-to set up and run headscale in a container.
 [Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it should
 not work with alternatives like [Podman](https://podman.io). The Docker image can be found on Docker Hub [here](https://hub.docker.com/r/headscale/headscale).
 
-## Configure and run `headscale`
+## Configure and run headscale
 
-1. Prepare a directory on the host Docker node in your directory of choice, used to hold `headscale` configuration and the [SQLite](https://www.sqlite.org/) database:
+1. Prepare a directory on the host Docker node in your directory of choice, used to hold headscale configuration and the [SQLite](https://www.sqlite.org/) database:
 
     ```shell
     mkdir -p ./headscale/config
@@ -48,7 +48,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
     Note: use `0.0.0.0:8080:8080` instead of `127.0.0.1:8080:8080` if you want to expose the container externally.
 
     This command will mount `config/` under `/etc/headscale`, forward port 8080 out of the container so the
-    `headscale` instance becomes available and then detach so headscale runs in the background.
+    headscale instance becomes available and then detach so headscale runs in the background.
 
     Example `docker-compose.yaml`
 
@@ -69,7 +69,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
           command: serve
       ```
 
-1. Verify `headscale` is running:
+1. Verify headscale is running:
    Follow the container logs:
 
     ```shell
@@ -82,7 +82,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
     docker ps
     ```
 
-    Verify `headscale` is available:
+    Verify headscale is available:
 
     ```shell
     curl http://127.0.0.1:9090/metrics
@@ -103,7 +103,7 @@ On a client machine, execute the `tailscale` login command:
 tailscale up --login-server YOUR_HEADSCALE_URL
 ```
 
-To register a machine when running `headscale` in a container, take the headscale command and pass it to the container:
+To register a machine when running headscale in a container, take the headscale command and pass it to the container:
 
 ```shell
 docker exec -it headscale \
@@ -119,7 +119,7 @@ docker exec -it headscale \
   headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
-This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
+This will return a pre-authenticated key that can be used to connect a node to headscale during the `tailscale` command:
 
 ```shell
 tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>

@@ -1,24 +1,24 @@
-# Controlling `headscale` with remote CLI
+# Controlling headscale with remote CLI
 
 ## Prerequisite
 
-- A workstation to run `headscale` (could be Linux, macOS, other supported platforms)
-- A `headscale` server (version `0.13.0` or newer)
-- Access to create API keys (local access to the `headscale` server)
-- `headscale` _must_ be served over TLS/HTTPS
+- A workstation to run headscale (could be Linux, macOS, other supported platforms)
+- A headscale server (version `0.13.0` or newer)
+- Access to create API keys (local access to the headscale server)
+- headscale _must_ be served over TLS/HTTPS
   - Remote access does _not_ support unencrypted traffic.
 - Port `50443` must be open in the firewall (or port overridden by `grpc_listen_addr` option)
 
 ## Goal
 
-This documentation has the goal of showing a user how-to set control a `headscale` instance
+This documentation has the goal of showing a user how-to set control a headscale instance
 from a remote machine with the `headscale` command line binary.
 
 ## Create an API key
 
-We need to create an API key to authenticate our remote `headscale` when using it from our workstation.
+We need to create an API key to authenticate our remote headscale when using it from our workstation.
 
-To create a API key, log into your `headscale` server and generate a key:
+To create a API key, log into your headscale server and generate a key:
 
 ```shell
 headscale apikeys create --expiration 90d
@@ -39,7 +39,7 @@ and to expire a key:
 headscale apikeys expire --prefix "<PREFIX>"
 ```
 
-## Download and configure `headscale`
+## Download and configure headscale
 
 1. Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
 
@@ -80,11 +80,11 @@ headscale apikeys expire --prefix "<PREFIX>"
    ```
 
    You should now be able to see a list of your nodes from your workstation, and you can
-   now control the `headscale` server from your workstation.
+   now control the headscale server from your workstation.
 
 ## Behind a proxy
 
-It is possible to run the gRPC remote endpoint behind a reverse proxy, like Nginx, and have it run on the _same_ port as `headscale`.
+It is possible to run the gRPC remote endpoint behind a reverse proxy, like Nginx, and have it run on the _same_ port as headscale.
 
 While this is _not a supported_ feature, an example on how this can be set up on
 [NixOS is shown here](https://github.com/kradalby/dotfiles/blob/4489cdbb19cddfbfae82cd70448a38fde5a76711/machines/headscale.oracldn/headscale.nix#L61-L91).
@@ -93,7 +93,7 @@ While this is _not a supported_ feature, an example on how this can be set up on
 
 Checklist:
 
-- Make sure you have the _same_ `headscale` version on your server and workstation
+- Make sure you have the _same_ headscale version on your server and workstation
 - Make sure you use version `0.13.0` or newer.
 - Verify that your TLS certificate is valid and trusted
   - If you do not have access to a trusted certificate (e.g. from Let's Encrypt), add your self signed certificate to the trust store of your OS or

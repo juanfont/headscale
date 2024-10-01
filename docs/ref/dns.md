@@ -8,7 +8,7 @@ in the [configuration file](./configuration.md) within the `dns` section.
 !!! warning "Community documentation"
 
     This page is not actively maintained by the headscale authors and is
-    written by community members. It is _not_ verified by `headscale` developers.
+    written by community members. It is _not_ verified by headscale developers.
 
     **It might be outdated and it might miss necessary steps**.
 

@@ -47,7 +47,7 @@ Headscale uses [autocert](https://pkg.go.dev/golang.org/x/crypto/acme/autocert),
 
 If you want to validate that certificate renewal completed successfully, this can be done either manually, or through external monitoring software. Two examples of doing this manually:
 
-1. Open the URL for your Headscale server in your browser of choice, and manually inspecting the expiry date of the certificate you receive.
+1. Open the URL for your headscale server in your browser of choice, and manually inspecting the expiry date of the certificate you receive.
 2. Or, check remotely from CLI using `openssl`:
 
 ```bash

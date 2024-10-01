@@ -2,7 +2,7 @@
 
 ## Goal
 
-This documentation has the goal of showing how a user can use the official Windows [Tailscale](https://tailscale.com) client with `headscale`.
+This documentation has the goal of showing how a user can use the official Windows [Tailscale](https://tailscale.com) client with headscale.
 
 !!! info "Instructions on your headscale instance"
 
@@ -45,7 +45,7 @@ If you are seeing repeated messages like:
 [GIN] 2022/02/10 - 16:39:34 | 200 |    1.105306ms |       127.0.0.1 | POST     "/machine/redacted"
 ```
 
-in your `headscale` output, turn on `DEBUG` logging and look for:
+in your headscale output, turn on `DEBUG` logging and look for:
 
 ```
 2022-02-11T00:59:29Z DBG Machine registration has expired. Sending a authurl to register machine=redacted

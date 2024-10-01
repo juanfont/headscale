@@ -4,9 +4,9 @@ hide:
   - toc
 ---
 
-# headscale
+# Headscale
 
-`headscale` is an open source, self-hosted implementation of the Tailscale control server.
+Headscale is an open source, self-hosted implementation of the Tailscale control server.
 
 This page contains the documentation for the latest version of headscale. Please also check our [FAQ](./about/faq.md).
 
@@ -34,4 +34,4 @@ Please see [Contributing](about/contributing.md) for more information.
 
 ## About
 
-`headscale` is maintained by [Kristoffer Dalby](https://kradalby.no/) and [Juan Font](https://font.eu).
+Headscale is maintained by [Kristoffer Dalby](https://kradalby.no/) and [Juan Font](https://font.eu).

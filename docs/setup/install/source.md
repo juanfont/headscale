@@ -3,11 +3,11 @@
 !!! warning "Community documentation"
 
     This page is not actively maintained by the headscale authors and is
-    written by community members. It is _not_ verified by `headscale` developers.
+    written by community members. It is _not_ verified by headscale developers.
 
     **It might be outdated and it might miss necessary steps**.
 
-headscale can be built from source using the latest version of [Go](https://golang.org) and [Buf](https://buf.build)
+Headscale can be built from source using the latest version of [Go](https://golang.org) and [Buf](https://buf.build)
 (Protobuf generator). See the [Contributing section in the GitHub
 README](https://github.com/juanfont/headscale#contributing) for more information.
 

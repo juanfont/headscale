@@ -2,7 +2,7 @@
 
 ## Goal
 
-This documentation has the goal of showing how a user can use the official iOS and macOS [Tailscale](https://tailscale.com) clients with `headscale`.
+This documentation has the goal of showing how a user can use the official iOS and macOS [Tailscale](https://tailscale.com) clients with headscale.
 
 !!! info "Instructions on your headscale instance"
 
