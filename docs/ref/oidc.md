@@ -162,13 +162,12 @@ However if you don't have a domain, or need to add users outside of your domain,
 8. Click `Save` at the bottom of the form
 9. Take note of the `Client ID` and `Client secret`, you can also download it for reference if you need it.
 10. Edit your headscale config, under `oidc`, filling in your `client_id` and `client_secret`:
-
-```yaml
-oidc:
-  issuer: "https://accounts.google.com"
-  client_id: ""
-  client_secret: ""
-  scope: ["openid", "profile", "email"]
-```
+    ```yaml
+    oidc:
+      issuer: "https://accounts.google.com"
+      client_id: ""
+      client_secret: ""
+      scope: ["openid", "profile", "email"]
+    ```
 
 You can also use `allowed_domains` and `allowed_users` to restrict the users who can authenticate.
