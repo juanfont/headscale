@@ -8,7 +8,7 @@
 
 Get Headscale up and running.
 
-This includes running Headscale with SystemD.
+This includes running Headscale with systemd.
 
 ## Migrating from manual install
 
@@ -78,7 +78,7 @@ tailscale up --login-server <YOUR_HEADSCALE_URL>
 Register the machine:
 
 ```shell
-headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
+headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -86,7 +86,7 @@ headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
 Generate a key using the command line:
 
 ```shell
-headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
+headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that is used to

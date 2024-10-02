@@ -1,6 +1,8 @@
 package tsic
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -65,6 +67,7 @@ type TailscaleInContainer struct {
 	// optional config
 	headscaleCert     []byte
 	headscaleHostname string
+	withWebsocketDERP bool
 	withSSH           bool
 	withTags          []string
 	withEntrypoint    []string
@@ -121,6 +124,14 @@ func WithHeadscaleName(hsName string) Option {
 func WithTags(tags []string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withTags = tags
+	}
+}
+
+// WithWebsocketDERP toggles a development knob to
+// force enable DERP connection through the new websocket protocol.
+func WithWebsocketDERP(enabled bool) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withWebsocketDERP = enabled
 	}
 }
 
@@ -204,6 +215,14 @@ func New(
 		// },
 		Entrypoint: tsic.withEntrypoint,
 		ExtraHosts: tsic.withExtraHosts,
+		Env:        []string{},
+	}
+
+	if tsic.withWebsocketDERP {
+		tailscaleOptions.Env = append(
+			tailscaleOptions.Env,
+			fmt.Sprintf("TS_DEBUG_DERP_WS_CLIENT=%t", tsic.withWebsocketDERP),
+		)
 	}
 
 	if tsic.headscaleHostname != "" {
@@ -347,6 +366,15 @@ func (t *TailscaleInContainer) Execute(
 	}
 
 	return stdout, stderr, nil
+}
+
+// Retrieve container logs.
+func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
+	return dockertestutil.WriteLog(
+		t.pool,
+		t.container,
+		stdout, stderr,
+	)
 }
 
 // Up runs the login routine on the given Tailscale instance.
@@ -996,5 +1024,56 @@ func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 // SaveLog saves the current stdout log of the container to a path
 // on the host system.
 func (t *TailscaleInContainer) SaveLog(path string) error {
-	return dockertestutil.SaveLog(t.pool, t.container, path)
+	// TODO(kradalby): Assert if tailscale logs contains panics.
+	// NOTE(enoperm): `t.WriteLog | countMatchingLines`
+	// is probably most of what is for that,
+	// but I'd rather not change the behaviour here,
+	// as it may affect all the other tests
+	// I have not otherwise touched.
+	_, _, err := dockertestutil.SaveLog(t.pool, t.container, path)
+	return err
+}
+
+// WriteLogs writes the current stdout/stderr log of the container to
+// the given io.Writers.
+func (t *TailscaleInContainer) WriteLogs(stdout, stderr io.Writer) error {
+	return dockertestutil.WriteLog(t.pool, t.container, stdout, stderr)
+}
+
+// ReadFile reads a file from the Tailscale container.
+// It returns the content of the file as a byte slice.
+func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
+	tarBytes, err := integrationutil.FetchPathFromContainer(t.pool, t.container, path)
+	if err != nil {
+		return nil, fmt.Errorf("reading file from container: %w", err)
+	}
+
+	var out bytes.Buffer
+	tr := tar.NewReader(bytes.NewReader(tarBytes))
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break // End of archive
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading tar header: %w", err)
+		}
+
+		if !strings.Contains(path, hdr.Name) {
+			return nil, fmt.Errorf("file not found in tar archive, looking for: %s, header was: %s", path, hdr.Name)
+		}
+
+		if _, err := io.Copy(&out, tr); err != nil {
+			return nil, fmt.Errorf("copying file to buffer: %w", err)
+		}
+
+		// Only support reading the first tile
+		break
+	}
+
+	if out.Len() == 0 {
+		return nil, fmt.Errorf("file is empty")
+	}
+
+	return out.Bytes(), nil
 }

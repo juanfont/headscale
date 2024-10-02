@@ -425,7 +425,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 	router.Use(prometheusMiddleware)
 
-	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost)
+	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost, http.MethodGet)
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
@@ -437,8 +437,6 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
 		Methods(http.MethodGet)
 	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
-	router.HandleFunc("/windows/tailscale.reg", h.WindowsRegConfig).
-		Methods(http.MethodGet)
 
 	// TODO(kristoffer): move swagger into a package
 	router.HandleFunc("/swagger", headscale.SwaggerUI).Methods(http.MethodGet)
@@ -772,7 +770,7 @@ func (h *Headscale) Serve() error {
 					})
 				}
 			default:
-				trace := log.Trace().Msgf
+				info := func(msg string) { log.Info().Msg(msg) }
 				log.Info().
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
@@ -780,55 +778,55 @@ func (h *Headscale) Serve() error {
 				expireNodeCancel()
 				h.ephemeralGC.Close()
 
-				trace("waiting for netmap stream to close")
-				h.pollNetMapStreamWG.Wait()
-
 				// Gracefully shut down servers
 				ctx, cancel := context.WithTimeout(
 					context.Background(),
 					types.HTTPShutdownTimeout,
 				)
-				trace("shutting down debug http server")
+				info("shutting down debug http server")
 				if err := debugHTTPServer.Shutdown(ctx); err != nil {
-					log.Error().Err(err).Msg("Failed to shutdown prometheus http")
+					log.Error().Err(err).Msg("failed to shutdown prometheus http")
 				}
-				trace("shutting down main http server")
+				info("shutting down main http server")
 				if err := httpServer.Shutdown(ctx); err != nil {
-					log.Error().Err(err).Msg("Failed to shutdown http")
+					log.Error().Err(err).Msg("failed to shutdown http")
 				}
 
-				trace("shutting down grpc server (socket)")
+				info("closing node notifier")
+				h.nodeNotifier.Close()
+
+				info("waiting for netmap stream to close")
+				h.pollNetMapStreamWG.Wait()
+
+				info("shutting down grpc server (socket)")
 				grpcSocket.GracefulStop()
 
 				if grpcServer != nil {
-					trace("shutting down grpc server (external)")
+					info("shutting down grpc server (external)")
 					grpcServer.GracefulStop()
 					grpcListener.Close()
 				}
 
 				if tailsqlContext != nil {
-					trace("shutting down tailsql")
+					info("shutting down tailsql")
 					tailsqlContext.Done()
 				}
 
-				trace("closing node notifier")
-				h.nodeNotifier.Close()
-
 				// Close network listeners
-				trace("closing network listeners")
+				info("closing network listeners")
 				debugHTTPListener.Close()
 				httpListener.Close()
 				grpcGatewayConn.Close()
 
 				// Stop listening (and unlink the socket if unix type):
-				trace("closing socket listener")
+				info("closing socket listener")
 				socketListener.Close()
 
 				// Close db connections
-				trace("closing database connection")
+				info("closing database connection")
 				err = h.db.Close()
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to close db")
+					log.Error().Err(err).Msg("failed to close db")
 				}
 
 				log.Info().
@@ -1001,6 +999,32 @@ func (h *Headscale) loadACLPolicy() error {
 		if err != nil {
 			return fmt.Errorf("failed to load ACL policy from file: %w", err)
 		}
+
+		// Validate and reject configuration that would error when applied
+		// when creating a map response. This requires nodes, so there is still
+		// a scenario where they might be allowed if the server has no nodes
+		// yet, but it should help for the general case and for hot reloading
+		// configurations.
+		// Note that this check is only done for file-based policies in this function
+		// as the database-based policies are checked in the gRPC API where it is not
+		// allowed to be written to the database.
+		nodes, err := h.db.ListNodes()
+		if err != nil {
+			return fmt.Errorf("loading nodes from database to validate policy: %w", err)
+		}
+
+		_, err = pol.CompileFilterRules(nodes)
+		if err != nil {
+			return fmt.Errorf("verifying policy rules: %w", err)
+		}
+
+		if len(nodes) > 0 {
+			_, err = pol.CompileSSHPolicy(nodes[0], nodes)
+			if err != nil {
+				return fmt.Errorf("verifying SSH rules: %w", err)
+			}
+		}
+
 	case types.PolicyModeDB:
 		p, err := h.db.GetPolicy()
 		if err != nil {

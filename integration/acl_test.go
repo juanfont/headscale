@@ -276,7 +276,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				hsic.WithACLPolicy(&testCase.policy),
 			)
 			assertNoErr(t, err)
-			defer scenario.Shutdown()
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			allClients, err := scenario.ListTailscaleClients()
 			assertNoErr(t, err)
@@ -316,7 +316,7 @@ func TestACLAllowUser80Dst(t *testing.T) {
 		},
 		1,
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	assertNoErr(t, err)
@@ -373,7 +373,7 @@ func TestACLDenyAllPort80(t *testing.T) {
 		},
 		4,
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErr(t, err)
@@ -417,7 +417,7 @@ func TestACLAllowUserDst(t *testing.T) {
 		},
 		2,
 	)
-	// defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	assertNoErr(t, err)
@@ -473,7 +473,7 @@ func TestACLAllowStarDst(t *testing.T) {
 		},
 		2,
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	assertNoErr(t, err)
@@ -534,7 +534,7 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 		},
 		3,
 	)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	assertNoErr(t, err)
@@ -672,7 +672,7 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 				&testCase.policy,
 				2,
 			)
-			defer scenario.Shutdown()
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			// Since user/users dont matter here, we basically expect that some clients
 			// will be assigned these ips and that we can pick them up for our own use.
@@ -1021,7 +1021,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 1,

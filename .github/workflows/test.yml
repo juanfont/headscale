@@ -34,4 +34,4 @@ jobs:
 
       - name: Run tests
         if: steps.changed-files.outputs.files == 'true'
-        run: nix develop --check
+        run: nix develop --command -- gotestsum

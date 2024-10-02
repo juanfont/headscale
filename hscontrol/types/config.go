@@ -20,6 +20,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/util/set"
 )
 
 const (
@@ -88,6 +89,20 @@ type Config struct {
 	Tuning Tuning
 }
 
+type DNSConfig struct {
+	MagicDNS           bool   `mapstructure:"magic_dns"`
+	BaseDomain         string `mapstructure:"base_domain"`
+	Nameservers        Nameservers
+	SearchDomains      []string            `mapstructure:"search_domains"`
+	ExtraRecords       []tailcfg.DNSRecord `mapstructure:"extra_records"`
+	UserNameInMagicDNS bool                `mapstructure:"use_username_in_magic_dns"`
+}
+
+type Nameservers struct {
+	Global []string
+	Split  map[string][]string
+}
+
 type SqliteConfig struct {
 	Path          string
 	WriteAheadLog bool
@@ -105,10 +120,21 @@ type PostgresConfig struct {
 	ConnMaxIdleTimeSecs int
 }
 
+type GormConfig struct {
+	Debug                 bool
+	SlowThreshold         time.Duration
+	SkipErrRecordNotFound bool
+	ParameterizedQueries  bool
+	PrepareStmt           bool
+}
+
 type DatabaseConfig struct {
 	// Type sets the database type, either "sqlite3" or "postgres"
 	Type  string
 	Debug bool
+
+	// Type sets the gorm configuration
+	Gorm GormConfig
 
 	Sqlite   SqliteConfig
 	Postgres PostgresConfig
@@ -186,6 +212,12 @@ type Tuning struct {
 	NodeMapSessionBufferedChanSize int
 }
 
+// LoadConfig prepares and loads the Headscale configuration into Viper.
+// This means it sets the default values, reads the configuration file and
+// environment variables, and handles deprecated configuration options.
+// It has to be called before LoadServerConfig and LoadCLIConfig.
+// The configuration is not validated and the caller should check for errors
+// using a validation function.
 func LoadConfig(path string, isFile bool) error {
 	if isFile {
 		viper.SetConfigFile(path)
@@ -201,7 +233,8 @@ func LoadConfig(path string, isFile bool) error {
 		}
 	}
 
-	viper.SetEnvPrefix("headscale")
+	envPrefix := "headscale"
+	viper.SetEnvPrefix(envPrefix)
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
@@ -213,9 +246,12 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", TextLogFormat)
 
-	viper.SetDefault("dns_config", nil)
-	viper.SetDefault("dns_config.override_local_dns", true)
-	viper.SetDefault("dns_config.use_username_in_magic_dns", false)
+	viper.SetDefault("dns.magic_dns", true)
+	viper.SetDefault("dns.base_domain", "")
+	viper.SetDefault("dns.nameservers.global", []string{})
+	viper.SetDefault("dns.nameservers.split", map[string]string{})
+	viper.SetDefault("dns.search_domains", []string{})
+	viper.SetDefault("dns.extra_records", []tailcfg.DNSRecord{})
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
@@ -254,14 +290,17 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
-	if IsCLIConfigured() {
-		return nil
+	if err := viper.ReadInConfig(); err != nil {
+		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
 
-	if err := viper.ReadInConfig(); err != nil {
-		log.Warn().Err(err).Msg("Failed to read configuration from disk")
+	return nil
+}
 
-		return fmt.Errorf("fatal error reading config file: %w", err)
+func validateServerConfig() error {
+	depr := deprecator{
+		warns:  make(set.Set[string]),
+		fatals: make(set.Set[string]),
 	}
 
 	// Register aliases for backward compatibility
@@ -269,7 +308,20 @@ func LoadConfig(path string, isFile bool) error {
 	// https://github.com/spf13/viper/issues/560
 
 	// Alias the old ACL Policy path with the new configuration option.
-	registerAliasAndDeprecate("policy.path", "acl_policy_path")
+	depr.fatalIfNewKeyIsNotUsed("policy.path", "acl_policy_path")
+
+	// Move dns_config -> dns
+	depr.warn("dns_config.override_local_dns")
+	depr.fatalIfNewKeyIsNotUsed("dns.magic_dns", "dns_config.magic_dns")
+	depr.fatalIfNewKeyIsNotUsed("dns.base_domain", "dns_config.base_domain")
+	depr.fatalIfNewKeyIsNotUsed("dns.nameservers.global", "dns_config.nameservers")
+	depr.fatalIfNewKeyIsNotUsed("dns.nameservers.split", "dns_config.restricted_nameservers")
+	depr.fatalIfNewKeyIsNotUsed("dns.search_domains", "dns_config.domains")
+	depr.fatalIfNewKeyIsNotUsed("dns.extra_records", "dns_config.extra_records")
+	depr.warn("dns_config.use_username_in_magic_dns")
+	depr.warn("dns.use_username_in_magic_dns")
+
+	depr.Log()
 
 	// Collect any validation errors and return them all at once
 	var errorText string
@@ -314,12 +366,12 @@ func LoadConfig(path string, isFile bool) error {
 	if errorText != "" {
 		// nolint
 		return errors.New(strings.TrimSuffix(errorText, "\n"))
-	} else {
-		return nil
 	}
+
+	return nil
 }
 
-func GetTLSConfig() TLSConfig {
+func tlsConfig() TLSConfig {
 	return TLSConfig{
 		LetsEncrypt: LetsEncryptConfig{
 			Hostname: viper.GetString("tls_letsencrypt_hostname"),
@@ -338,7 +390,7 @@ func GetTLSConfig() TLSConfig {
 	}
 }
 
-func GetDERPConfig() DERPConfig {
+func derpConfig() DERPConfig {
 	serverEnabled := viper.GetBool("derp.server.enabled")
 	serverRegionID := viper.GetInt("derp.server.region_id")
 	serverRegionCode := viper.GetString("derp.server.region_code")
@@ -399,7 +451,7 @@ func GetDERPConfig() DERPConfig {
 	}
 }
 
-func GetLogTailConfig() LogTailConfig {
+func logtailConfig() LogTailConfig {
 	enabled := viper.GetBool("logtail.enabled")
 
 	return LogTailConfig{
@@ -407,7 +459,7 @@ func GetLogTailConfig() LogTailConfig {
 	}
 }
 
-func GetPolicyConfig() PolicyConfig {
+func policyConfig() PolicyConfig {
 	policyPath := viper.GetString("policy.path")
 	policyMode := viper.GetString("policy.mode")
 
@@ -417,7 +469,7 @@ func GetPolicyConfig() PolicyConfig {
 	}
 }
 
-func GetLogConfig() LogConfig {
+func logConfig() LogConfig {
 	logLevelStr := viper.GetString("log.level")
 	logLevel, err := zerolog.ParseLevel(logLevelStr)
 	if err != nil {
@@ -427,9 +479,9 @@ func GetLogConfig() LogConfig {
 	logFormatOpt := viper.GetString("log.format")
 	var logFormat string
 	switch logFormatOpt {
-	case "json":
+	case JSONLogFormat:
 		logFormat = JSONLogFormat
-	case "text":
+	case TextLogFormat:
 		logFormat = TextLogFormat
 	case "":
 		logFormat = TextLogFormat
@@ -445,10 +497,15 @@ func GetLogConfig() LogConfig {
 	}
 }
 
-func GetDatabaseConfig() DatabaseConfig {
+func databaseConfig() DatabaseConfig {
 	debug := viper.GetBool("database.debug")
 
 	type_ := viper.GetString("database.type")
+
+	skipErrRecordNotFound := viper.GetBool("database.gorm.skip_err_record_not_found")
+	slowThreshold := viper.GetDuration("database.gorm.slow_threshold") * time.Millisecond
+	parameterizedQueries := viper.GetBool("database.gorm.parameterized_queries")
+	prepareStmt := viper.GetBool("database.gorm.prepare_stmt")
 
 	switch type_ {
 	case DatabaseSqlite, DatabasePostgres:
@@ -463,6 +520,13 @@ func GetDatabaseConfig() DatabaseConfig {
 	return DatabaseConfig{
 		Type:  type_,
 		Debug: debug,
+		Gorm: GormConfig{
+			Debug:                 debug,
+			SkipErrRecordNotFound: skipErrRecordNotFound,
+			SlowThreshold:         slowThreshold,
+			ParameterizedQueries:  parameterizedQueries,
+			PrepareStmt:           prepareStmt,
+		},
 		Sqlite: SqliteConfig{
 			Path: util.AbsolutePathFromConfigPath(
 				viper.GetString("database.sqlite.path"),
@@ -485,126 +549,138 @@ func GetDatabaseConfig() DatabaseConfig {
 	}
 }
 
-func GetDNSConfig() (*tailcfg.DNSConfig, string) {
-	if viper.IsSet("dns_config") {
-		dnsConfig := &tailcfg.DNSConfig{}
+func dns() (DNSConfig, error) {
+	var dns DNSConfig
 
-		overrideLocalDNS := viper.GetBool("dns_config.override_local_dns")
+	// TODO: Use this instead of manually getting settings when
+	// UnmarshalKey is compatible with Environment Variables.
+	// err := viper.UnmarshalKey("dns", &dns)
+	// if err != nil {
+	// 	return DNSConfig{}, fmt.Errorf("unmarshaling dns config: %w", err)
+	// }
 
-		if viper.IsSet("dns_config.nameservers") {
-			nameserversStr := viper.GetStringSlice("dns_config.nameservers")
+	dns.MagicDNS = viper.GetBool("dns.magic_dns")
+	dns.BaseDomain = viper.GetString("dns.base_domain")
+	dns.Nameservers.Global = viper.GetStringSlice("dns.nameservers.global")
+	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
+	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 
-			nameservers := []netip.Addr{}
-			resolvers := []*dnstype.Resolver{}
+	if viper.IsSet("dns.extra_records") {
+		var extraRecords []tailcfg.DNSRecord
 
-			for _, nameserverStr := range nameserversStr {
-				// Search for explicit DNS-over-HTTPS resolvers
-				if strings.HasPrefix(nameserverStr, "https://") {
-					resolvers = append(resolvers, &dnstype.Resolver{
-						Addr: nameserverStr,
-					})
-
-					// This nameserver can not be parsed as an IP address
-					continue
-				}
-
-				// Parse nameserver as a regular IP
-				nameserver, err := netip.ParseAddr(nameserverStr)
-				if err != nil {
-					log.Error().
-						Str("func", "getDNSConfig").
-						Err(err).
-						Msgf("Could not parse nameserver IP: %s", nameserverStr)
-				}
-
-				nameservers = append(nameservers, nameserver)
-				resolvers = append(resolvers, &dnstype.Resolver{
-					Addr: nameserver.String(),
-				})
-			}
-
-			dnsConfig.Nameservers = nameservers
-
-			if overrideLocalDNS {
-				dnsConfig.Resolvers = resolvers
-			} else {
-				dnsConfig.FallbackResolvers = resolvers
-			}
+		err := viper.UnmarshalKey("dns.extra_records", &extraRecords)
+		if err != nil {
+			return DNSConfig{}, fmt.Errorf("unmarshaling dns extra records: %w", err)
 		}
 
-		if viper.IsSet("dns_config.restricted_nameservers") {
-			dnsConfig.Routes = make(map[string][]*dnstype.Resolver)
-			domains := []string{}
-			restrictedDNS := viper.GetStringMapStringSlice(
-				"dns_config.restricted_nameservers",
-			)
-			for domain, restrictedNameservers := range restrictedDNS {
-				restrictedResolvers := make(
-					[]*dnstype.Resolver,
-					len(restrictedNameservers),
-				)
-				for index, nameserverStr := range restrictedNameservers {
-					nameserver, err := netip.ParseAddr(nameserverStr)
-					if err != nil {
-						log.Error().
-							Str("func", "getDNSConfig").
-							Err(err).
-							Msgf("Could not parse restricted nameserver IP: %s", nameserverStr)
-					}
-					restrictedResolvers[index] = &dnstype.Resolver{
-						Addr: nameserver.String(),
-					}
-				}
-				dnsConfig.Routes[domain] = restrictedResolvers
-				domains = append(domains, domain)
-			}
-			dnsConfig.Domains = domains
-		}
-
-		if viper.IsSet("dns_config.extra_records") {
-			var extraRecords []tailcfg.DNSRecord
-
-			err := viper.UnmarshalKey("dns_config.extra_records", &extraRecords)
-			if err != nil {
-				log.Error().
-					Str("func", "getDNSConfig").
-					Err(err).
-					Msgf("Could not parse dns_config.extra_records")
-			}
-
-			dnsConfig.ExtraRecords = extraRecords
-		}
-
-		if viper.IsSet("dns_config.magic_dns") {
-			dnsConfig.Proxied = viper.GetBool("dns_config.magic_dns")
-		}
-
-		var baseDomain string
-		if viper.IsSet("dns_config.base_domain") {
-			baseDomain = viper.GetString("dns_config.base_domain")
-		} else {
-			baseDomain = "headscale.net" // does not really matter when MagicDNS is not enabled
-		}
-
-		if !viper.GetBool("dns_config.use_username_in_magic_dns") {
-			dnsConfig.Domains = []string{baseDomain}
-		} else {
-			log.Warn().Msg("DNS: Usernames in DNS has been deprecated, this option will be remove in future versions")
-			log.Warn().Msg("DNS: see 0.23.0 changelog for more information.")
-		}
-
-		if domains := viper.GetStringSlice("dns_config.domains"); len(domains) > 0 {
-			dnsConfig.Domains = append(dnsConfig.Domains, domains...)
-		}
-
-		log.Trace().Interface("dns_config", dnsConfig).Msg("DNS configuration loaded")
-		return dnsConfig, baseDomain
+		dns.ExtraRecords = extraRecords
 	}
 
-	return nil, ""
+	dns.UserNameInMagicDNS = viper.GetBool("dns.use_username_in_magic_dns")
+
+	return dns, nil
 }
 
-func PrefixV4() (*netip.Prefix, error) {
+// globalResolvers returns the global DNS resolvers
+// defined in the config file.
+// If a nameserver is a valid IP, it will be used as a regular resolver.
+// If a nameserver is a valid URL, it will be used as a DoH resolver.
+// If a nameserver is neither a valid URL nor a valid IP, it will be ignored.
+func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
+	var resolvers []*dnstype.Resolver
+
+	for _, nsStr := range d.Nameservers.Global {
+		warn := ""
+		if _, err := netip.ParseAddr(nsStr); err == nil {
+			resolvers = append(resolvers, &dnstype.Resolver{
+				Addr: nsStr,
+			})
+
+			continue
+		} else {
+			warn = fmt.Sprintf("Invalid global nameserver %q. Parsing error: %s ignoring", nsStr, err)
+		}
+
+		if _, err := url.Parse(nsStr); err == nil {
+			resolvers = append(resolvers, &dnstype.Resolver{
+				Addr: nsStr,
+			})
+
+			continue
+		} else {
+			warn = fmt.Sprintf("Invalid global nameserver %q. Parsing error: %s ignoring", nsStr, err)
+		}
+
+		if warn != "" {
+			log.Warn().Msg(warn)
+		}
+	}
+
+	return resolvers
+}
+
+// splitResolvers returns a map of domain to DNS resolvers.
+// If a nameserver is a valid IP, it will be used as a regular resolver.
+// If a nameserver is a valid URL, it will be used as a DoH resolver.
+// If a nameserver is neither a valid URL nor a valid IP, it will be ignored.
+func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
+	routes := make(map[string][]*dnstype.Resolver)
+	for domain, nameservers := range d.Nameservers.Split {
+		var resolvers []*dnstype.Resolver
+		for _, nsStr := range nameservers {
+			warn := ""
+			if _, err := netip.ParseAddr(nsStr); err == nil {
+				resolvers = append(resolvers, &dnstype.Resolver{
+					Addr: nsStr,
+				})
+
+				continue
+			} else {
+				warn = fmt.Sprintf("Invalid split dns nameserver %q. Parsing error: %s ignoring", nsStr, err)
+			}
+
+			if _, err := url.Parse(nsStr); err == nil {
+				resolvers = append(resolvers, &dnstype.Resolver{
+					Addr: nsStr,
+				})
+
+				continue
+			} else {
+				warn = fmt.Sprintf("Invalid split dns nameserver %q. Parsing error: %s ignoring", nsStr, err)
+			}
+
+			if warn != "" {
+				log.Warn().Msg(warn)
+			}
+		}
+		routes[domain] = resolvers
+	}
+
+	return routes
+}
+
+func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
+	cfg := tailcfg.DNSConfig{}
+
+	if dns.BaseDomain == "" && dns.MagicDNS {
+		log.Fatal().Msg("dns.base_domain must be set when using MagicDNS (dns.magic_dns)")
+	}
+
+	cfg.Proxied = dns.MagicDNS
+	cfg.ExtraRecords = dns.ExtraRecords
+	cfg.Resolvers = dns.globalResolvers()
+
+	routes := dns.splitResolvers()
+	cfg.Routes = routes
+	if dns.BaseDomain != "" {
+		cfg.Domains = []string{dns.BaseDomain}
+	}
+	cfg.Domains = append(cfg.Domains, dns.SearchDomains...)
+
+	return &cfg
+}
+
+func prefixV4() (*netip.Prefix, error) {
 	prefixV4Str := viper.GetString("prefixes.v4")
 
 	if prefixV4Str == "" {
@@ -628,7 +704,7 @@ func PrefixV4() (*netip.Prefix, error) {
 	return &prefixV4, nil
 }
 
-func PrefixV6() (*netip.Prefix, error) {
+func prefixV6() (*netip.Prefix, error) {
 	prefixV6Str := viper.GetString("prefixes.v6")
 
 	if prefixV6Str == "" {
@@ -653,27 +729,41 @@ func PrefixV6() (*netip.Prefix, error) {
 	return &prefixV6, nil
 }
 
-func GetHeadscaleConfig() (*Config, error) {
-	if IsCLIConfigured() {
-		return &Config{
-			CLI: CLIConfig{
-				Address:  viper.GetString("cli.address"),
-				APIKey:   viper.GetString("cli.api_key"),
-				Timeout:  viper.GetDuration("cli.timeout"),
-				Insecure: viper.GetBool("cli.insecure"),
-			},
-		}, nil
-	}
-
-	logConfig := GetLogConfig()
+// LoadCLIConfig returns the needed configuration for the CLI client
+// of Headscale to connect to a Headscale server.
+func LoadCLIConfig() (*Config, error) {
+	logConfig := logConfig()
 	zerolog.SetGlobalLevel(logConfig.Level)
 
-	prefix4, err := PrefixV4()
+	return &Config{
+		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
+		UnixSocket:         viper.GetString("unix_socket"),
+		CLI: CLIConfig{
+			Address:  viper.GetString("cli.address"),
+			APIKey:   viper.GetString("cli.api_key"),
+			Timeout:  viper.GetDuration("cli.timeout"),
+			Insecure: viper.GetBool("cli.insecure"),
+		},
+		Log: logConfig,
+	}, nil
+}
+
+// LoadServerConfig returns the full Headscale configuration to
+// host a Headscale server. This is called as part of `headscale serve`.
+func LoadServerConfig() (*Config, error) {
+	if err := validateServerConfig(); err != nil {
+		return nil, err
+	}
+
+	logConfig := logConfig()
+	zerolog.SetGlobalLevel(logConfig.Level)
+
+	prefix4, err := prefixV4()
 	if err != nil {
 		return nil, err
 	}
 
-	prefix6, err := PrefixV6()
+	prefix6, err := prefixV6()
 	if err != nil {
 		return nil, err
 	}
@@ -693,9 +783,13 @@ func GetHeadscaleConfig() (*Config, error) {
 		return nil, fmt.Errorf("config error, prefixes.allocation is set to %s, which is not a valid strategy, allowed options: %s, %s", allocStr, IPAllocationStrategySequential, IPAllocationStrategyRandom)
 	}
 
-	dnsConfig, baseDomain := GetDNSConfig()
-	derpConfig := GetDERPConfig()
-	logTailConfig := GetLogTailConfig()
+	dnsConfig, err := dns()
+	if err != nil {
+		return nil, err
+	}
+
+	derpConfig := derpConfig()
+	logTailConfig := logtailConfig()
 	randomizeClientPort := viper.GetBool("randomize_client_port")
 
 	oidcClientSecret := viper.GetString("oidc.client_secret")
@@ -711,13 +805,28 @@ func GetHeadscaleConfig() (*Config, error) {
 		oidcClientSecret = strings.TrimSpace(string(secretBytes))
 	}
 
+	serverURL := viper.GetString("server_url")
+
+	// BaseDomain cannot be the same as the server URL.
+	// This is because Tailscale takes over the domain in BaseDomain,
+	// causing the headscale server and DERP to be unreachable.
+	// For Tailscale upstream, the following is true:
+	// - DERP run on their own domains
+	// - Control plane runs on login.tailscale.com/controlplane.tailscale.com
+	// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
+	//
+	// TODO(kradalby): remove dnsConfig.UserNameInMagicDNS check when removed.
+	if !dnsConfig.UserNameInMagicDNS && dnsConfig.BaseDomain != "" && strings.Contains(serverURL, dnsConfig.BaseDomain) {
+		return nil, errors.New("server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.")
+	}
+
 	return &Config{
-		ServerURL:          viper.GetString("server_url"),
+		ServerURL:          serverURL,
 		Addr:               viper.GetString("listen_addr"),
 		MetricsAddr:        viper.GetString("metrics_listen_addr"),
 		GRPCAddr:           viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
-		DisableUpdateCheck: viper.GetBool("disable_check_updates"),
+		DisableUpdateCheck: false,
 
 		PrefixV4:     prefix4,
 		PrefixV6:     prefix6,
@@ -726,7 +835,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),
 		),
-		BaseDomain: baseDomain,
+		BaseDomain: dnsConfig.BaseDomain,
 
 		DERP: derpConfig,
 
@@ -734,12 +843,12 @@ func GetHeadscaleConfig() (*Config, error) {
 			"ephemeral_node_inactivity_timeout",
 		),
 
-		Database: GetDatabaseConfig(),
+		Database: databaseConfig(),
 
-		TLS: GetTLSConfig(),
+		TLS: tlsConfig(),
 
-		DNSConfig:             dnsConfig,
-		DNSUserNameInMagicDNS: viper.GetBool("dns_config.use_username_in_magic_dns"),
+		DNSConfig:             dnsToTailcfgDNS(dnsConfig),
+		DNSUserNameInMagicDNS: dnsConfig.UserNameInMagicDNS,
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
@@ -781,7 +890,7 @@ func GetHeadscaleConfig() (*Config, error) {
 		LogTail:             logTailConfig,
 		RandomizeClientPort: randomizeClientPort,
 
-		Policy: GetPolicyConfig(),
+		Policy: policyConfig(),
 
 		CLI: CLIConfig{
 			Address:  viper.GetString("cli.address"),
@@ -801,23 +910,70 @@ func GetHeadscaleConfig() (*Config, error) {
 	}, nil
 }
 
-func IsCLIConfigured() bool {
-	return viper.GetString("cli.address") != "" && viper.GetString("cli.api_key") != ""
+type deprecator struct {
+	warns  set.Set[string]
+	fatals set.Set[string]
 }
 
-// registerAliasAndDeprecate will register an alias between the newKey and the oldKey,
+// warnWithAlias will register an alias between the newKey and the oldKey,
 // and log a deprecation warning if the oldKey is set.
-func registerAliasAndDeprecate(newKey, oldKey string) {
+func (d *deprecator) warnWithAlias(newKey, oldKey string) {
 	// NOTE: RegisterAlias is called with NEW KEY -> OLD KEY
 	viper.RegisterAlias(newKey, oldKey)
 	if viper.IsSet(oldKey) {
-		log.Warn().Msgf("The %q configuration key is deprecated. Please use %q instead. %q will be removed in the future.", oldKey, newKey, oldKey)
+		d.warns.Add(fmt.Sprintf("The %q configuration key is deprecated. Please use %q instead. %q will be removed in the future.", oldKey, newKey, oldKey))
 	}
 }
 
-// deprecateAndFatal will log a fatal deprecation warning if the oldKey is set.
-func deprecateAndFatal(newKey, oldKey string) {
+// fatal deprecates and adds an entry to the fatal list of options if the oldKey is set.
+func (d *deprecator) fatal(newKey, oldKey string) {
 	if viper.IsSet(oldKey) {
-		log.Fatal().Msgf("The %q configuration key is deprecated. Please use %q instead. %q has been removed.", oldKey, newKey, oldKey)
+		d.fatals.Add(fmt.Sprintf("The %q configuration key is deprecated. Please use %q instead. %q has been removed.", oldKey, newKey, oldKey))
+	}
+}
+
+// fatalIfNewKeyIsNotUsed deprecates and adds an entry to the fatal list of options if the oldKey is set and the new key is _not_ set.
+// If the new key is set, a warning is emitted instead.
+func (d *deprecator) fatalIfNewKeyIsNotUsed(newKey, oldKey string) {
+	if viper.IsSet(oldKey) && !viper.IsSet(newKey) {
+		d.fatals.Add(fmt.Sprintf("The %q configuration key is deprecated. Please use %q instead. %q has been removed.", oldKey, newKey, oldKey))
+	} else if viper.IsSet(oldKey) {
+		d.warns.Add(fmt.Sprintf("The %q configuration key is deprecated. Please use %q instead. %q has been removed.", oldKey, newKey, oldKey))
+	}
+}
+
+// warn deprecates and adds an option to log a warning if the oldKey is set.
+func (d *deprecator) warnNoAlias(newKey, oldKey string) {
+	if viper.IsSet(oldKey) {
+		d.warns.Add(fmt.Sprintf("The %q configuration key is deprecated. Please use %q instead. %q has been removed.", oldKey, newKey, oldKey))
+	}
+}
+
+// warn deprecates and adds an entry to the warn list of options if the oldKey is set.
+func (d *deprecator) warn(oldKey string) {
+	if viper.IsSet(oldKey) {
+		d.warns.Add(fmt.Sprintf("The %q configuration key is deprecated and has been removed. Please see the changelog for more details.", oldKey))
+	}
+}
+
+func (d *deprecator) String() string {
+	var b strings.Builder
+
+	for _, w := range d.warns.Slice() {
+		fmt.Fprintf(&b, "WARN: %s\n", w)
+	}
+
+	for _, f := range d.fatals.Slice() {
+		fmt.Fprintf(&b, "FATAL: %s\n", f)
+	}
+
+	return b.String()
+}
+
+func (d *deprecator) Log() {
+	if len(d.fatals) > 0 {
+		log.Fatal().Msg("\n" + d.String())
+	} else if len(d.warns) > 0 {
+		log.Warn().Msg("\n" + d.String())
 	}
 }

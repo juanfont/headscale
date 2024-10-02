@@ -1,8 +1,16 @@
 # CHANGELOG
 
-## 0.23.0 (2023-XX-XX)
+## Next
 
-This release is mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
+- Remove versions older than 1.56 [#2149](https://github.com/juanfont/headscale/pull/2149)
+  - Clean up old code required by old versions
+- Improved compatibilty of built-in DERP server with clients connecting over WebSocket.
+- Allow nodes to use SSH agent forwarding [#2145](https://github.com/juanfont/headscale/pull/2145)
+
+## 0.23.0 (2024-09-18)
+
+This release was intended to be mainly a code reorganisation and refactoring, significantly improving the maintainability of the codebase. This should allow us to improve further and make it easier for the maintainers to keep on top of the project.
+However, as you all have noticed, it turned out to become a much larger, much longer release cycle than anticipated. It has ended up to be a release with a lot of rewrites and changes to the code base and functionality of Headscale, cleaning up a lot of technical debt and introducing a lot of improvements. This does come with some breaking changes,
 
 **Please remember to always back up your database between versions**
 
@@ -16,7 +24,7 @@ The [“poller”, or streaming logic](https://github.com/juanfont/headscale/blo
 
 Headscale now supports sending “delta” updates, thanks to the new mapper and poller logic, allowing us to only inform nodes about new nodes, changed nodes and removed nodes. Previously we sent the entire state of the network every time an update was due.
 
-While we have a pretty good [test harness](https://github.com/search?q=repo%3Ajuanfont%2Fheadscale+path%3A_test.go&type=code) for validating our changes, we have rewritten over [10000 lines of code](https://github.com/juanfont/headscale/compare/b01f1f1867136d9b2d7b1392776eb363b482c525...main) and bugs are expected. We need help testing this release. In addition, while we think the performance should in general be better, there might be regressions in parts of the platform, particularly where we prioritised correctness over speed.
+While we have a pretty good [test harness](https://github.com/search?q=repo%3Ajuanfont%2Fheadscale+path%3A_test.go&type=code) for validating our changes, the changes came down to [284 changed files with 32,316 additions and 24,245 deletions](https://github.com/juanfont/headscale/compare/b01f1f1867136d9b2d7b1392776eb363b482c525...ed78ecd) and bugs are expected. We need help testing this release. In addition, while we think the performance should in general be better, there might be regressions in parts of the platform, particularly where we prioritised correctness over speed.
 
 There are also several bugfixes that has been encountered and fixed as part of implementing these changes, particularly
 after improving the test harness as part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
@@ -29,7 +37,7 @@ after improving the test harness as part of adopting [#1460](https://github.com/
   - Adds additional configuration for PostgreSQL for setting max open, idle connection and idle connection lifetime.
 - API: Machine is now Node [#1553](https://github.com/juanfont/headscale/pull/1553)
 - Remove support for older Tailscale clients [#1611](https://github.com/juanfont/headscale/pull/1611)
-  - The latest supported client is 1.38
+  - The oldest supported client is 1.42
 - Headscale checks that _at least_ one DERP is defined at start [#1564](https://github.com/juanfont/headscale/pull/1564)
   - If no DERP is configured, the server will fail to start, this can be because it cannot load the DERPMap from file or url.
 - Embedded DERP server requires a private key [#1611](https://github.com/juanfont/headscale/pull/1611)
@@ -43,9 +51,12 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - MagicDNS domains no longer contain usernames []()
   - This is in preperation to fix Headscales implementation of tags which currently does not correctly remove the link between a tagged device and a user. As tagged devices will not have a user, this will require a change to the DNS generation, removing the username, see [#1369](https://github.com/juanfont/headscale/issues/1369) for more information.
   - `use_username_in_magic_dns` can be used to turn this behaviour on again, but note that this option _will be removed_ when tags are fixed.
-  - This option brings Headscales behaviour in line with Tailscale.
-- YAML files are no longer supported for headscale policy.  [#1792](https://github.com/juanfont/headscale/pull/1792)
+    - dns.base_domain can no longer be the same as (or part of) server_url.
+    - This option brings Headscales behaviour in line with Tailscale.
+- YAML files are no longer supported for headscale policy. [#1792](https://github.com/juanfont/headscale/pull/1792)
   - HuJSON is now the only supported format for policy.
+- DNS configuration has been restructured [#2034](https://github.com/juanfont/headscale/pull/2034)
+  - Please review the new [config-example.yaml](./config-example.yaml) for the new structure.
 
 ### Changes
 
@@ -67,6 +78,11 @@ after improving the test harness as part of adopting [#1460](https://github.com/
 - Make registration page easier to use on mobile devices
 - Make write-ahead-log default on and configurable for SQLite [#1985](https://github.com/juanfont/headscale/pull/1985)
 - Add APIs for managing headscale policy. [#1792](https://github.com/juanfont/headscale/pull/1792)
+- Fix for registering nodes using preauthkeys when running on a postgres database in a non-UTC timezone. [#764](https://github.com/juanfont/headscale/issues/764)
+- Make sure integration tests cover postgres for all scenarios
+- CLI commands (all except `serve`) only requires minimal configuration, no more errors or warnings from unset settings [#2109](https://github.com/juanfont/headscale/pull/2109)
+- CLI results are now concistently sent to stdout and errors to stderr [#2109](https://github.com/juanfont/headscale/pull/2109)
+- Fix issue where shutting down headscale would hang [#2113](https://github.com/juanfont/headscale/pull/2113)
 
 ## 0.22.3 (2023-05-12)
 

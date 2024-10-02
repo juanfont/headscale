@@ -1,12 +1,11 @@
 package hscontrol
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
-	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
@@ -214,21 +214,6 @@ func (m *mapSession) serveLongPoll() {
 		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
 	}()
 
-	// From version 68, all streaming requests can be treated as read only.
-	// TODO: Remove when we drop support for 1.48
-	if m.capVer < 68 {
-		// Error has been handled/written to client in the func
-		// return
-		err := m.handleSaveNode()
-		if err != nil {
-			mapResponseWriteUpdatesInStream.WithLabelValues("error").Inc()
-
-			m.close()
-			return
-		}
-		mapResponseWriteUpdatesInStream.WithLabelValues("ok").Inc()
-	}
-
 	// Set up the client stream
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
@@ -271,6 +256,12 @@ func (m *mapSession) serveLongPoll() {
 		case update, ok := <-m.ch:
 			if !ok {
 				m.tracef("update channel closed, streaming session is likely being replaced")
+				return
+			}
+
+			// If the node has been removed from headscale, close the stream
+			if slices.Contains(update.Removed, m.node.ID) {
+				m.tracef("node removed, closing stream")
 				return
 			}
 
@@ -543,72 +534,6 @@ func (m *mapSession) handleEndpointUpdate() {
 	return
 }
 
-// handleSaveNode saves node updates in the maprequest _streaming_
-// path and is mostly the same code as in handleEndpointUpdate.
-// It is not attempted to be deduplicated since it will go away
-// when we stop supporting older than 68 which removes updates
-// when the node is streaming.
-func (m *mapSession) handleSaveNode() error {
-	m.tracef("saving node update from stream session")
-
-	change := m.node.PeerChangeFromMapRequest(m.req)
-
-	// A stream is being set up, the node is Online
-	online := true
-	change.Online = &online
-
-	m.node.ApplyPeerChange(&change)
-
-	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
-	m.node.Hostinfo = m.req.Hostinfo
-
-	// If there is no changes and nothing to save,
-	// return early.
-	if peerChangeEmpty(change) || !sendUpdate {
-		return nil
-	}
-
-	// Check if the Hostinfo of the node has changed.
-	// If it has changed, check if there has been a change to
-	// the routable IPs of the host and update update them in
-	// the database. Then send a Changed update
-	// (containing the whole node object) to peers to inform about
-	// the route change.
-	// If the hostinfo has changed, but not the routes, just update
-	// hostinfo and let the function continue.
-	if routesChanged {
-		var err error
-		_, err = m.h.db.SaveNodeRoutes(m.node)
-		if err != nil {
-			return err
-		}
-
-		if m.h.ACLPolicy != nil {
-			// update routes with peer information
-			err := m.h.db.EnableAutoApprovedRoutes(m.h.ACLPolicy, m.node)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	if err := m.h.db.DB.Save(m.node).Error; err != nil {
-		return err
-	}
-
-	ctx := types.NotifyCtx(context.Background(), "pre-68-update-while-stream", m.node.Hostname)
-	m.h.nodeNotifier.NotifyWithIgnore(
-		ctx,
-		types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: []types.NodeID{m.node.ID},
-			Message:     "called from handlePoll -> pre-68-update-while-stream",
-		},
-		m.node.ID)
-
-	return nil
-}
-
 func (m *mapSession) handleReadOnlyRequest() {
 	m.tracef("Client asked for a lite update, responding without peers")
 
@@ -742,10 +667,10 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 	newRoutes := new.RoutableIPs
 
 	sort.Slice(oldRoutes, func(i, j int) bool {
-		return comparePrefix(oldRoutes[i], oldRoutes[j]) > 0
+		return util.ComparePrefix(oldRoutes[i], oldRoutes[j]) > 0
 	})
 	sort.Slice(newRoutes, func(i, j int) bool {
-		return comparePrefix(newRoutes[i], newRoutes[j]) > 0
+		return util.ComparePrefix(newRoutes[i], newRoutes[j]) > 0
 	})
 
 	if !xslices.Equal(oldRoutes, newRoutes) {
@@ -763,20 +688,4 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 	}
 
 	return false, false
-}
-
-// TODO(kradalby): Remove after go 1.23, will be in stdlib.
-// Compare returns an integer comparing two prefixes.
-// The result will be 0 if p == p2, -1 if p < p2, and +1 if p > p2.
-// Prefixes sort first by validity (invalid before valid), then
-// address family (IPv4 before IPv6), then prefix length, then
-// address.
-func comparePrefix(p, p2 netip.Prefix) int {
-	if c := cmp.Compare(p.Addr().BitLen(), p2.Addr().BitLen()); c != 0 {
-		return c
-	}
-	if c := cmp.Compare(p.Bits(), p2.Bits()); c != 0 {
-		return c
-	}
-	return p.Addr().Compare(p2.Addr())
 }

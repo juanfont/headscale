@@ -292,7 +292,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 		Reject:                   false,
 		Accept:                   true,
 		SessionDuration:          0,
-		AllowAgentForwarding:     false,
+		AllowAgentForwarding:     true,
 		HoldAndDelegate:          "",
 		AllowLocalPortForwarding: true,
 	}
@@ -401,7 +401,7 @@ func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {
 		Reject:                   false,
 		Accept:                   true,
 		SessionDuration:          sessionLength,
-		AllowAgentForwarding:     false,
+		AllowAgentForwarding:     true,
 		HoldAndDelegate:          "",
 		AllowLocalPortForwarding: true,
 	}, nil

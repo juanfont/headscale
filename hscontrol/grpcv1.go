@@ -4,6 +4,7 @@ package hscontrol
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -372,7 +373,7 @@ func (api headscaleV1APIServer) RenameNode(
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		err := db.RenameNode(
 			tx,
-			request.GetNodeId(),
+			types.NodeID(request.GetNodeId()),
 			request.GetNewName(),
 		)
 		if err != nil {
@@ -683,7 +684,7 @@ func (api headscaleV1APIServer) GetPolicy(
 	case types.PolicyModeDB:
 		p, err := api.h.db.GetPolicy()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("loading ACL from database: %w", err)
 		}
 
 		return &v1.GetPolicyResponse{
@@ -692,22 +693,23 @@ func (api headscaleV1APIServer) GetPolicy(
 		}, nil
 	case types.PolicyModeFile:
 		// Read the file and return the contents as-is.
-		f, err := os.Open(api.h.cfg.Policy.Path)
+		absPath := util.AbsolutePathFromConfigPath(api.h.cfg.Policy.Path)
+		f, err := os.Open(absPath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading policy from path %q: %w", absPath, err)
 		}
 
 		defer f.Close()
 
 		b, err := io.ReadAll(f)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading policy from file: %w", err)
 		}
 
 		return &v1.GetPolicyResponse{Policy: string(b)}, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("no supported policy mode found in configuration, policy.mode: %q", api.h.cfg.Policy.Mode)
 }
 
 func (api headscaleV1APIServer) SetPolicy(
@@ -720,9 +722,31 @@ func (api headscaleV1APIServer) SetPolicy(
 
 	p := request.GetPolicy()
 
-	valid, err := policy.LoadACLPolicyFromBytes([]byte(p))
+	pol, err := policy.LoadACLPolicyFromBytes([]byte(p))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading ACL policy file: %w", err)
+	}
+
+	// Validate and reject configuration that would error when applied
+	// when creating a map response. This requires nodes, so there is still
+	// a scenario where they might be allowed if the server has no nodes
+	// yet, but it should help for the general case and for hot reloading
+	// configurations.
+	nodes, err := api.h.db.ListNodes()
+	if err != nil {
+		return nil, fmt.Errorf("loading nodes from database to validate policy: %w", err)
+	}
+
+	_, err = pol.CompileFilterRules(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("verifying policy rules: %w", err)
+	}
+
+	if len(nodes) > 0 {
+		_, err = pol.CompileSSHPolicy(nodes[0], nodes)
+		if err != nil {
+			return nil, fmt.Errorf("verifying SSH rules: %w", err)
+		}
 	}
 
 	updated, err := api.h.db.SetPolicy(p)
@@ -730,7 +754,7 @@ func (api headscaleV1APIServer) SetPolicy(
 		return nil, err
 	}
 
-	api.h.ACLPolicy = valid
+	api.h.ACLPolicy = pol
 
 	ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
 	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
@@ -778,18 +802,12 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		return nil, err
 	}
 
-	givenName, err := api.h.db.GenerateGivenName(mkey, request.GetName())
-	if err != nil {
-		return nil, err
-	}
-
 	nodeKey := key.NewNode()
 
 	newNode := types.Node{
 		MachineKey: mkey,
 		NodeKey:    nodeKey.Public(),
 		Hostname:   request.GetName(),
-		GivenName:  givenName,
 		User:       *user,
 
 		Expiry:   &time.Time{},

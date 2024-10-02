@@ -19,7 +19,7 @@ type User struct {
 	Name string `gorm:"unique"`
 }
 
-// TODO(kradalby): See if we can fill in Gravatar here
+// TODO(kradalby): See if we can fill in Gravatar here.
 func (u *User) profilePicURL() string {
 	return ""
 }

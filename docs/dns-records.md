@@ -19,7 +19,7 @@ An example use case is to serve apps on the same host via a reverse proxy like N
 1. Change the `config.yaml` to contain the desired records like so:
 
     ```yaml
-    dns_config:
+    dns:
       ...
       extra_records:
         - name: "prometheus.myvpn.example.com"

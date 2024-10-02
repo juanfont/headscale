@@ -10,7 +10,7 @@
 ## Goal
 
 This documentation has the goal of showing a user how-to install and run `headscale` on OpenBSD.
-In additional to the "get up and running section", there is an optional [rc.d section](#running-headscale-in-the-background-with-rcd)
+In addition to the "get up and running section", there is an optional [rc.d section](#running-headscale-in-the-background-with-rcd)
 describing how to make `headscale` run properly in a server environment.
 
 ## Install `headscale`
@@ -77,14 +77,8 @@ describing how to make `headscale` run properly in a server environment.
 
     mkdir -p /etc/headscale
 
-    # Directory for Database, and other variable data (like certificates)
+    # Directory for database, and other variable data (like certificates)
     mkdir -p /var/lib/headscale
-    ```
-
-1. Create an empty SQLite database:
-
-    ```shell
-    touch /var/lib/headscale/db.sqlite
     ```
 
 1. Create a `headscale` configuration:
@@ -135,7 +129,7 @@ tailscale up --login-server YOUR_HEADSCALE_URL
 Register the machine:
 
 ```shell
-headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
+headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -143,7 +137,7 @@ headscale --user myfirstuser nodes register --key <YOU_+MACHINE_KEY>
 Generate a key using the command line:
 
 ```shell
-headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
+headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:

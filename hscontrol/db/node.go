@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -12,7 +13,6 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
-	"github.com/sasha-s/go-deadlock"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -88,20 +88,6 @@ func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 
 		return nodes, nil
 	})
-}
-
-func listNodesByGivenName(tx *gorm.DB, givenName string) (types.Nodes, error) {
-	nodes := types.Nodes{}
-	if err := tx.
-		Preload("AuthKey").
-		Preload("AuthKey.User").
-		Preload("User").
-		Preload("Routes").
-		Where("given_name = ?", givenName).Find(&nodes).Error; err != nil {
-		return nil, err
-	}
-
-	return nodes, nil
 }
 
 func (hsdb *HSDatabase) getNode(user string, name string) (*types.Node, error) {
@@ -242,15 +228,24 @@ func SetTags(
 }
 
 // RenameNode takes a Node struct and a new GivenName for the nodes
-// and renames it.
+// and renames it. If the name is not unique, it will return an error.
 func RenameNode(tx *gorm.DB,
-	nodeID uint64, newName string,
+	nodeID types.NodeID, newName string,
 ) error {
 	err := util.CheckForFQDNRules(
 		newName,
 	)
 	if err != nil {
 		return fmt.Errorf("renaming node: %w", err)
+	}
+
+	uniq, err := isUnqiueName(tx, newName)
+	if err != nil {
+		return fmt.Errorf("checking if name is unique: %w", err)
+	}
+
+	if !uniq {
+		return fmt.Errorf("name is not unique: %s", newName)
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
@@ -414,6 +409,15 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 
 	node.IPv4 = ipv4
 	node.IPv6 = ipv6
+
+	if node.GivenName == "" {
+		givenName, err := ensureUniqueGivenName(tx, node.Hostname)
+		if err != nil {
+			return nil, fmt.Errorf("failed to ensure unique given name: %w", err)
+		}
+
+		node.GivenName = givenName
+	}
 
 	if err := tx.Save(&node).Error; err != nil {
 		return nil, fmt.Errorf("failed register(save) node in the database: %w", err)
@@ -642,40 +646,32 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 	return normalizedHostname, nil
 }
 
-func (hsdb *HSDatabase) GenerateGivenName(
-	mkey key.MachinePublic,
-	suppliedName string,
-) (string, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (string, error) {
-		return GenerateGivenName(rx, mkey, suppliedName)
-	})
+func isUnqiueName(tx *gorm.DB, name string) (bool, error) {
+	nodes := types.Nodes{}
+	if err := tx.
+		Where("given_name = ?", name).Find(&nodes).Error; err != nil {
+		return false, err
+	}
+
+	return len(nodes) == 0, nil
 }
 
-func GenerateGivenName(
+func ensureUniqueGivenName(
 	tx *gorm.DB,
-	mkey key.MachinePublic,
-	suppliedName string,
+	name string,
 ) (string, error) {
-	givenName, err := generateGivenName(suppliedName, false)
+	givenName, err := generateGivenName(name, false)
 	if err != nil {
 		return "", err
 	}
 
-	// Tailscale rules (may differ) https://tailscale.com/kb/1098/machine-names/
-	nodes, err := listNodesByGivenName(tx, givenName)
+	unique, err := isUnqiueName(tx, givenName)
 	if err != nil {
 		return "", err
 	}
 
-	var nodeFound *types.Node
-	for idx, node := range nodes {
-		if node.GivenName == givenName {
-			nodeFound = nodes[idx]
-		}
-	}
-
-	if nodeFound != nil && nodeFound.MachineKey.String() != mkey.String() {
-		postfixedName, err := generateGivenName(suppliedName, true)
+	if !unique {
+		postfixedName, err := generateGivenName(name, true)
 		if err != nil {
 			return "", err
 		}
@@ -724,7 +720,7 @@ func ExpireExpiredNodes(tx *gorm.DB,
 // It is used to delete ephemeral nodes that have disconnected and should be
 // cleaned up.
 type EphemeralGarbageCollector struct {
-	mu deadlock.Mutex
+	mu sync.Mutex
 
 	deleteFunc  func(types.NodeID)
 	toBeDeleted map[types.NodeID]*time.Timer
@@ -752,10 +748,9 @@ func (e *EphemeralGarbageCollector) Close() {
 // Schedule schedules a node for deletion after the expiry duration.
 func (e *EphemeralGarbageCollector) Schedule(nodeID types.NodeID, expiry time.Duration) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	timer := time.NewTimer(expiry)
 	e.toBeDeleted[nodeID] = timer
+	e.mu.Unlock()
 
 	go func() {
 		select {

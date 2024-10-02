@@ -10,7 +10,7 @@ repo_name: juanfont/headscale
 repo_url: https://github.com/juanfont/headscale
 
 # Copyright
-copyright: Copyright &copy; 2023 Headscale authors
+copyright: Copyright &copy; 2024 Headscale authors
 
 # Configuration
 theme:
@@ -54,6 +54,13 @@ theme:
     code: Roboto Mono
   favicon: assets/favicon.png
   logo: ./logo/headscale3-dots.svg
+
+# Excludes
+exclude_docs: |
+  /packaging/README.md
+  /packaging/postinstall.sh
+  /packaging/postremove.sh
+  /requirements.txt
 
 # Plugins
 plugins:
@@ -139,9 +146,5 @@ nav:
           - Remote CLI: remote-cli.md
       - Usage:
           - Android: android-client.md
+          - Apple: apple-client.md
           - Windows: windows-client.md
-          - iOS: iOS-client.md
-  - Proposals:
-      - ACLs: proposals/001-acls.md
-      - Better routing: proposals/002-better-routing.md
-  - Glossary: glossary.md

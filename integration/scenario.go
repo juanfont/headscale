@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"testing"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -18,6 +19,7 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
 )
@@ -51,21 +53,25 @@ var (
 	tailscaleVersions2021 = map[string]bool{
 		"head":     true,
 		"unstable": true,
-		"1.66":     true,  // CapVer: not checked
-		"1.64":     true,  // CapVer: not checked
-		"1.62":     true,  // CapVer: not checked
-		"1.60":     true,  // CapVer: not checked
-		"1.58":     true,  // CapVer: not checked
-		"1.56":     true,  // CapVer: 82
-		"1.54":     true,  // CapVer: 79
-		"1.52":     true,  // CapVer: 79
-		"1.50":     true,  // CapVer: 74
-		"1.48":     true,  // CapVer: 68
-		"1.46":     true,  // CapVer: 65
-		"1.44":     true,  // CapVer: 63
-		"1.42":     true,  // CapVer: 61
-		"1.40":     true,  // CapVer: 61
-		"1.38":     true,  // Oldest supported version, CapVer: 58
+		"1.74":     true,  // CapVer: 106
+		"1.72":     true,  // CapVer: 104
+		"1.70":     true,  // CapVer: 102
+		"1.68":     true,  // CapVer: 97
+		"1.66":     true,  // CapVer: 95
+		"1.64":     true,  // CapVer: 90
+		"1.62":     true,  // CapVer: 88
+		"1.60":     true,  // CapVer: 87
+		"1.58":     true,  // CapVer: 85
+		"1.56":     true,  // Oldest supported version, CapVer: 82
+		"1.54":     false, // CapVer: 79
+		"1.52":     false, // CapVer: 79
+		"1.50":     false, // CapVer: 74
+		"1.48":     false, // CapVer: 68
+		"1.46":     false, // CapVer: 65
+		"1.44":     false, // CapVer: 63
+		"1.42":     false, // CapVer: 61
+		"1.40":     false, // CapVer: 61
+		"1.38":     false, // CapVer: 58
 		"1.36":     false, // CapVer: 56
 		"1.34":     false, // CapVer: 51
 		"1.32":     false, // CapVer: 46
@@ -185,18 +191,24 @@ func NewScenario(maxWait time.Duration) (*Scenario, error) {
 	}, nil
 }
 
-// Shutdown shuts down and cleans up all the containers (ControlServer, TailscaleClient)
-// and networks associated with it.
-// In addition, it will save the logs of the ControlServer to `/tmp/control` in the
-// environment running the tests.
-func (s *Scenario) Shutdown() {
+func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
-		err := control.Shutdown()
+		stdoutPath, stderrPath, err := control.Shutdown()
 		if err != nil {
 			log.Printf(
 				"Failed to shut down control: %s",
 				fmt.Errorf("failed to tear down control: %w", err),
 			)
+		}
+
+		if t != nil {
+			stdout, err := os.ReadFile(stdoutPath)
+			assert.NoError(t, err)
+			assert.NotContains(t, string(stdout), "panic")
+
+			stderr, err := os.ReadFile(stderrPath)
+			assert.NoError(t, err)
+			assert.NotContains(t, string(stderr), "panic")
 		}
 
 		return true
@@ -222,6 +234,14 @@ func (s *Scenario) Shutdown() {
 	// }
 }
 
+// Shutdown shuts down and cleans up all the containers (ControlServer, TailscaleClient)
+// and networks associated with it.
+// In addition, it will save the logs of the ControlServer to `/tmp/control` in the
+// environment running the tests.
+func (s *Scenario) Shutdown() {
+	s.ShutdownAssertNoPanics(nil)
+}
+
 // Users returns the name of all users associated with the Scenario.
 func (s *Scenario) Users() []string {
 	users := make([]string, 0)
@@ -245,6 +265,10 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 
 	if headscale, ok := s.controlServers.Load("headscale"); ok {
 		return headscale, nil
+	}
+
+	if usePostgresForTest {
+		opts = append(opts, hsic.WithPostgres())
 	}
 
 	headscale, err := hsic.New(s.pool, s.network, opts...)
@@ -467,10 +491,6 @@ func (s *Scenario) CreateHeadscaleEnv(
 	tsOpts []tsic.Option,
 	opts ...hsic.Option,
 ) error {
-	if usePostgresForTest {
-		opts = append(opts, hsic.WithPostgres())
-	}
-
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err

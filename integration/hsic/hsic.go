@@ -82,7 +82,7 @@ type Option = func(c *HeadscaleInContainer)
 func WithACLPolicy(acl *policy.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		// TODO(kradalby): Move somewhere appropriate
-		hsic.env["HEADSCALE_ACL_POLICY_PATH"] = aclPolicyPath
+		hsic.env["HEADSCALE_POLICY_PATH"] = aclPolicyPath
 
 		hsic.aclPolicy = acl
 	}
@@ -208,6 +208,12 @@ func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["HEADSCALE_TUNING_BATCH_CHANGE_DELAY"] = batchTimeout.String()
 		hsic.env["HEADSCALE_TUNING_NODE_MAPSESSION_BUFFERED_CHAN_SIZE"] = strconv.Itoa(mapSessionChanSize)
+	}
+}
+
+func WithTimezone(timezone string) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["TZ"] = timezone
 	}
 }
 
@@ -392,8 +398,8 @@ func (t *HeadscaleInContainer) hasTLS() bool {
 }
 
 // Shutdown stops and cleans up the Headscale container.
-func (t *HeadscaleInContainer) Shutdown() error {
-	err := t.SaveLog("/tmp/control")
+func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
+	stdoutPath, stderrPath, err := t.SaveLog("/tmp/control")
 	if err != nil {
 		log.Printf(
 			"Failed to save log from control: %s",
@@ -452,12 +458,18 @@ func (t *HeadscaleInContainer) Shutdown() error {
 		t.pool.Purge(t.pgContainer)
 	}
 
-	return t.pool.Purge(t.container)
+	return stdoutPath, stderrPath, t.pool.Purge(t.container)
+}
+
+// WriteLogs writes the current stdout/stderr log of the container to
+// the given io.Writers.
+func (t *HeadscaleInContainer) WriteLogs(stdout, stderr io.Writer) error {
+	return dockertestutil.WriteLog(t.pool, t.container, stdout, stderr)
 }
 
 // SaveLog saves the current stdout log of the container to a path
 // on the host system.
-func (t *HeadscaleInContainer) SaveLog(path string) error {
+func (t *HeadscaleInContainer) SaveLog(path string) (string, string, error) {
 	return dockertestutil.SaveLog(t.pool, t.container, path)
 }
 
@@ -551,7 +563,7 @@ func (t *HeadscaleInContainer) Execute(
 			log.Printf("command stdout: %s\n", stdout)
 		}
 
-		return "", err
+		return stdout, fmt.Errorf("executing command in docker: %w, stderr: %s", err, stderr)
 	}
 
 	return stdout, nil

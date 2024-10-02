@@ -1,4 +1,5 @@
 ---
+version: 2
 before:
   hooks:
     - go mod tidy -compat=1.22
@@ -184,7 +185,7 @@ kos:
 checksum:
   name_template: "checksums.txt"
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  version_template: "{{ .Tag }}-next"
 changelog:
   sort: asc
   filters:

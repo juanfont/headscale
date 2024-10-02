@@ -38,7 +38,6 @@ func ExecuteCommand(
 ) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	var mu sync.Mutex
 
 	execConfig := ExecuteCommandConfig{
 		timeout: dockerExecuteTimeout,
@@ -60,22 +59,14 @@ func ExecuteCommand(
 	// Run your long running function in it's own goroutine and pass back it's
 	// response into our channel.
 	go func() {
-		var localStdout bytes.Buffer
-		var localStderr bytes.Buffer
-
 		exitCode, err := resource.Exec(
 			cmd,
 			dockertest.ExecOptions{
-				Env:    append(env, "HEADSCALE_LOG_LEVEL=disabled"),
-				StdOut: &localStdout,
-				StdErr: &localStderr,
+				Env:    append(env, "HEADSCALE_LOG_LEVEL=info"),
+				StdOut: &stdout,
+				StdErr: &stderr,
 			},
 		)
-
-		mu.Lock()
-		stdout.Write(localStdout.Bytes())
-		stderr.Write(localStderr.Bytes())
-		mu.Unlock()
 
 		resultChan <- result{exitCode, err}
 	}()

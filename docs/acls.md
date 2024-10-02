@@ -3,7 +3,7 @@ Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-
 For instance, instead of referring to users when defining groups you must
 use users (which are the equivalent to user/logins in Tailscale.com).
 
-Please check https://tailscale.com/kb/1018/acls/, and `./tests/acls/` in this repo for working examples.
+Please check https://tailscale.com/kb/1018/acls/ for further information.
 
 When using ACL's the User borders are no longer applied. All machines
 whichever the User have the ability to communicate with other hosts as
@@ -43,8 +43,7 @@ servers.
 Note: Users will be created automatically when users authenticate with the
 Headscale server.
 
-ACLs could be written either on [huJSON](https://github.com/tailscale/hujson)
-or YAML. Check the [test ACLs](../tests/acls) for further information.
+ACLs have to be written in [huJSON](https://github.com/tailscale/hujson).
 
 When registering the servers we will need to add the flag
 `--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user that is
@@ -53,7 +52,7 @@ a server they can register, the check of the tags is done on headscale server
 and only valid tags are applied. A tag is valid if the user that is
 registering it is allowed to do it.
 
-To use ACLs in headscale, you must edit your config.yaml file. In there you will find a `acl_policy_path: ""` parameter. This will need to point to your ACL file. More info on how these policies are written can be found [here](https://tailscale.com/kb/1018/acls/).
+To use ACLs in headscale, you must edit your `config.yaml` file. In there you will find a `policy.path` parameter. This will need to point to your ACL file. More info on how these policies are written can be found [here](https://tailscale.com/kb/1018/acls/).
 
 Here are the ACL's to implement the same permissions as above:
 

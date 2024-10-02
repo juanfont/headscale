@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/tcnksm/go-latest"
 )
 
@@ -49,11 +50,6 @@ func initConfig() {
 		}
 	}
 
-	cfg, err := types.GetHeadscaleConfig()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to read headscale configuration")
-	}
-
 	machineOutput := HasMachineOutputFlag()
 
 	// If the user has requested a "node" readable format,
@@ -62,11 +58,13 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	if cfg.Log.Format == types.JSONLogFormat {
-		log.Logger = log.Output(os.Stdout)
-	}
+	// logFormat := viper.GetString("log.format")
+	// if logFormat == types.JSONLogFormat {
+	// 	log.Logger = log.Output(os.Stdout)
+	// }
 
-	if !cfg.DisableUpdateCheck && !machineOutput {
+	disableUpdateCheck := viper.GetBool("disable_check_updates")
+	if !disableUpdateCheck && !machineOutput {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			Version != "dev" {
 			githubTag := &latest.GithubTag{

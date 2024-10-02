@@ -25,9 +25,9 @@ body:
       description: Are you willing to contribute to the implementation of this feature?
       options:
         - label: I can write the design doc for this feature
-          required: true
+          required: false
         - label: I can contribute this feature
-          required: true
+          required: false
   - type: textarea
     attributes:
       label: How can it be implemented?

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func TestUserCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 0,
@@ -114,7 +115,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 0,
@@ -256,7 +257,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 0,
@@ -319,7 +320,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user: 0,
@@ -397,7 +398,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		user1: 1,
@@ -491,7 +492,7 @@ func TestApiKeyCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 0,
@@ -659,7 +660,7 @@ func TestNodeTagCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 0,
@@ -735,13 +736,7 @@ func TestNodeTagCommand(t *testing.T) {
 
 	assert.Equal(t, []string{"tag:test"}, node.GetForcedTags())
 
-	// try to set a wrong tag and retrieve the error
-	type errOutput struct {
-		Error string `json:"error"`
-	}
-	var errorOutput errOutput
-	err = executeAndUnmarshal(
-		headscale,
+	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"nodes",
@@ -750,10 +745,8 @@ func TestNodeTagCommand(t *testing.T) {
 			"-t", "wrong-tag",
 			"--output", "json",
 		},
-		&errorOutput,
 	)
-	assert.Nil(t, err)
-	assert.Contains(t, errorOutput.Error, "tag must start with the string 'tag:'")
+	assert.ErrorContains(t, err, "tag must start with the string 'tag:'")
 
 	// Test list all nodes after added seconds
 	resultMachines := make([]*v1.Node, len(machineKeys))
@@ -792,7 +785,7 @@ func TestNodeAdvertiseTagNoACLCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 1,
@@ -842,7 +835,7 @@ func TestNodeAdvertiseTagWithACLCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"user1": 1,
@@ -905,7 +898,7 @@ func TestNodeCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"node-user":  0,
@@ -1146,7 +1139,7 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"node-expire-user": 0,
@@ -1273,7 +1266,7 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"node-rename-command": 0,
@@ -1398,18 +1391,17 @@ func TestNodeRenameCommand(t *testing.T) {
 	assert.Contains(t, listAllAfterRename[4].GetGivenName(), "node-5")
 
 	// Test failure for too long names
-	result, err := headscale.Execute(
+	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"nodes",
 			"rename",
 			"--identifier",
 			fmt.Sprintf("%d", listAll[4].GetId()),
-			"testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine12345678901234567890",
+			strings.Repeat("t", 64),
 		},
 	)
-	assert.Nil(t, err)
-	assert.Contains(t, result, "not be over 63 chars")
+	assert.ErrorContains(t, err, "not be over 63 chars")
 
 	var listAllAfterRenameAttempt []v1.Node
 	err = executeAndUnmarshal(
@@ -1440,7 +1432,7 @@ func TestNodeMoveCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"old-user": 0,
@@ -1536,7 +1528,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assert.Equal(t, allNodes[0].GetUser(), node.GetUser())
 	assert.Equal(t, allNodes[0].GetUser().GetName(), "new-user")
 
-	moveToNonExistingNSResult, err := headscale.Execute(
+	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"nodes",
@@ -1549,11 +1541,9 @@ func TestNodeMoveCommand(t *testing.T) {
 			"json",
 		},
 	)
-	assert.Nil(t, err)
-
-	assert.Contains(
+	assert.ErrorContains(
 		t,
-		moveToNonExistingNSResult,
+		err,
 		"user not found",
 	)
 	assert.Equal(t, node.GetUser().GetName(), "new-user")
@@ -1603,7 +1593,7 @@ func TestPolicyCommand(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
 		"policy-user": 0,
@@ -1675,4 +1665,78 @@ func TestPolicyCommand(t *testing.T) {
 	assert.Len(t, output.TagOwners, 1)
 	assert.Len(t, output.ACLs, 1)
 	assert.Equal(t, output.TagOwners["tag:exists"], []string{"policy-user"})
+}
+
+func TestPolicyBrokenConfigCommand(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	spec := map[string]int{
+		"policy-user": 1,
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		[]tsic.Option{},
+		hsic.WithTestName("clins"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_POLICY_MODE": "database",
+		}),
+	)
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	p := policy.ACLPolicy{
+		ACLs: []policy.ACL{
+			{
+				// This is an unknown action, so it will return an error
+				// and the config will not be applied.
+				Action:       "acccept",
+				Sources:      []string{"*"},
+				Destinations: []string{"*:*"},
+			},
+		},
+		TagOwners: map[string][]string{
+			"tag:exists": {"policy-user"},
+		},
+	}
+
+	pBytes, _ := json.Marshal(p)
+
+	policyFilePath := "/etc/headscale/policy.json"
+
+	err = headscale.WriteFile(policyFilePath, pBytes)
+	assertNoErr(t, err)
+
+	// No policy is present at this time.
+	// Add a new policy from a file.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"set",
+			"-f",
+			policyFilePath,
+		},
+	)
+	assert.ErrorContains(t, err, "verifying policy rules: invalid action")
+
+	// The new policy was invalid, the old one should still be in place, which
+	// is none.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"get",
+			"--output",
+			"json",
+		},
+	)
+	assert.ErrorContains(t, err, "acl policy not found")
 }

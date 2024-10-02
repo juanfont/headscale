@@ -20,8 +20,9 @@
     {
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
+        buildGo = pkgs.buildGo123Module;
       in rec {
-        headscale = pkgs.buildGo122Module rec {
+        headscale = buildGo rec {
           pname = "headscale";
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
@@ -31,29 +32,51 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorHash = "sha256-EorT2AVwA3usly/LcNor6r5UIhLCdj3L4O4ilgTIC2o=";
+          vendorHash = "sha256-+8dOxPG/Q+wuHgRwwWqdphHOuop0W9dVyClyQuh7aRc=";
 
           subPackages = ["cmd/headscale"];
 
           ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
         };
 
-        protoc-gen-grpc-gateway = pkgs.buildGoModule rec {
+        protoc-gen-grpc-gateway = buildGo rec {
           pname = "grpc-gateway";
-          version = "2.19.1";
+          version = "2.22.0";
 
           src = pkgs.fetchFromGitHub {
             owner = "grpc-ecosystem";
             repo = "grpc-gateway";
             rev = "v${version}";
-            sha256 = "sha256-CdGQpQfOSimeio8v1lZ7xzE/oAS2qFyu+uN+H9i7vpo=";
+            sha256 = "sha256-I1w3gfV06J8xG1xJ+XuMIGkV2/Ofszo7SCC+z4Xb6l4=";
           };
 
-          vendorHash = "sha256-no7kZGpf/VOuceC3J+izGFQp5aMS3b+Rn+x4BFZ2zgs=";
+          vendorHash = "sha256-S4hcD5/BSGxM2qdJHMxOkxsJ5+Ks6m4lKHSS9+yZ17c=";
 
           nativeBuildInputs = [pkgs.installShellFiles];
 
           subPackages = ["protoc-gen-grpc-gateway" "protoc-gen-openapiv2"];
+        };
+
+        # Upstream does not override buildGoModule properly,
+        # importing a specific module, so comment out for now.
+        # golangci-lint = prev.golangci-lint.override {
+        #   buildGoModule = buildGo;
+        # };
+
+        goreleaser = prev.goreleaser.override {
+          buildGoModule = buildGo;
+        };
+
+        gotestsum = prev.gotestsum.override {
+          buildGoModule = buildGo;
+        };
+
+        gotests = prev.gotests.override {
+          buildGoModule = buildGo;
+        };
+
+        gofumpt = prev.gofumpt.override {
+          buildGoModule = buildGo;
         };
       };
     }
@@ -63,7 +86,7 @@
         overlays = [self.overlay];
         inherit system;
       };
-      buildDeps = with pkgs; [git go_1_22 gnumake];
+      buildDeps = with pkgs; [git go_1_23 gnumake];
       devDeps = with pkgs;
         buildDeps
         ++ [

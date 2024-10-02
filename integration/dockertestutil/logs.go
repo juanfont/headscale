@@ -3,6 +3,7 @@ package dockertestutil
 import (
 	"bytes"
 	"context"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -13,25 +14,18 @@ import (
 
 const filePerm = 0o644
 
-func SaveLog(
+func WriteLog(
 	pool *dockertest.Pool,
 	resource *dockertest.Resource,
-	basePath string,
+	stdout io.Writer,
+	stderr io.Writer,
 ) error {
-	err := os.MkdirAll(basePath, os.ModePerm)
-	if err != nil {
-		return err
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	err = pool.Client.Logs(
+	return pool.Client.Logs(
 		docker.LogsOptions{
 			Context:      context.TODO(),
 			Container:    resource.Container.ID,
-			OutputStream: &stdout,
-			ErrorStream:  &stderr,
+			OutputStream: stdout,
+			ErrorStream:  stderr,
 			Tail:         "all",
 			RawTerminal:  false,
 			Stdout:       true,
@@ -40,29 +34,45 @@ func SaveLog(
 			Timestamps:   false,
 		},
 	)
+}
+
+func SaveLog(
+	pool *dockertest.Pool,
+	resource *dockertest.Resource,
+	basePath string,
+) (string, string, error) {
+	err := os.MkdirAll(basePath, os.ModePerm)
 	if err != nil {
-		return err
+		return "", "", err
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = WriteLog(pool, resource, &stdout, &stderr)
+	if err != nil {
+		return "", "", err
 	}
 
 	log.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
 
+	stdoutPath := path.Join(basePath, resource.Container.Name+".stdout.log")
 	err = os.WriteFile(
-		path.Join(basePath, resource.Container.Name+".stdout.log"),
+		stdoutPath,
 		stdout.Bytes(),
 		filePerm,
 	)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
+	stderrPath := path.Join(basePath, resource.Container.Name+".stderr.log")
 	err = os.WriteFile(
-		path.Join(basePath, resource.Container.Name+".stderr.log"),
+		stderrPath,
 		stderr.Bytes(),
 		filePerm,
 	)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
-	return nil
+	return stdoutPath, stderrPath, nil
 }

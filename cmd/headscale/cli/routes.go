@@ -64,11 +64,9 @@ var listRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Error getting machine id from flag: %s", err),
 				output,
 			)
-
-			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -82,14 +80,10 @@ var listRoutesCmd = &cobra.Command{
 					fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
 					output,
 				)
-
-				return
 			}
 
 			if output != "" {
 				SuccessOutput(response.GetRoutes(), "", output)
-
-				return
 			}
 
 			routes = response.GetRoutes()
@@ -103,14 +97,10 @@ var listRoutesCmd = &cobra.Command{
 					fmt.Sprintf("Cannot get routes for node %d: %s", machineID, status.Convert(err).Message()),
 					output,
 				)
-
-				return
 			}
 
 			if output != "" {
 				SuccessOutput(response.GetRoutes(), "", output)
-
-				return
 			}
 
 			routes = response.GetRoutes()
@@ -119,8 +109,6 @@ var listRoutesCmd = &cobra.Command{
 		tableData := routesToPtables(routes)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
-
-			return
 		}
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
@@ -130,8 +118,6 @@ var listRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
-
-			return
 		}
 	},
 }
@@ -150,11 +136,9 @@ var enableRouteCmd = &cobra.Command{
 				fmt.Sprintf("Error getting machine id from flag: %s", err),
 				output,
 			)
-
-			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -167,14 +151,10 @@ var enableRouteCmd = &cobra.Command{
 				fmt.Sprintf("Cannot enable route %d: %s", routeID, status.Convert(err).Message()),
 				output,
 			)
-
-			return
 		}
 
 		if output != "" {
 			SuccessOutput(response, "", output)
-
-			return
 		}
 	},
 }
@@ -193,11 +173,9 @@ var disableRouteCmd = &cobra.Command{
 				fmt.Sprintf("Error getting machine id from flag: %s", err),
 				output,
 			)
-
-			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -210,14 +188,10 @@ var disableRouteCmd = &cobra.Command{
 				fmt.Sprintf("Cannot disable route %d: %s", routeID, status.Convert(err).Message()),
 				output,
 			)
-
-			return
 		}
 
 		if output != "" {
 			SuccessOutput(response, "", output)
-
-			return
 		}
 	},
 }
@@ -236,11 +210,9 @@ var deleteRouteCmd = &cobra.Command{
 				fmt.Sprintf("Error getting machine id from flag: %s", err),
 				output,
 			)
-
-			return
 		}
 
-		ctx, client, conn, cancel := getHeadscaleCLIClient()
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
@@ -253,14 +225,10 @@ var deleteRouteCmd = &cobra.Command{
 				fmt.Sprintf("Cannot delete route %d: %s", routeID, status.Convert(err).Message()),
 				output,
 			)
-
-			return
 		}
 
 		if output != "" {
 			SuccessOutput(response, "", output)
-
-			return
 		}
 	},
 }

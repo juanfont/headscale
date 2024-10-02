@@ -7,7 +7,7 @@ import (
 )
 
 // This file is intended to "test the test framework", by proxy it will also test
-// some Headcsale/Tailscale stuff, but mostly in very simple ways.
+// some Headscale/Tailscale stuff, but mostly in very simple ways.
 
 func IntegrationSkip(t *testing.T) {
 	t.Helper()
@@ -35,7 +35,7 @@ func TestHeadscale(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	t.Run("start-headscale", func(t *testing.T) {
 		headscale, err := scenario.Headscale()
@@ -80,7 +80,7 @@ func TestCreateTailscale(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	scenario.users[user] = &User{
 		Clients: make(map[string]TailscaleClient),
@@ -116,7 +116,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	t.Run("start-headscale", func(t *testing.T) {
 		headscale, err := scenario.Headscale()

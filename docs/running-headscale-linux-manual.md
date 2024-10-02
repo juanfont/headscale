@@ -1,14 +1,14 @@
 # Running headscale on Linux
 
-## Note: Outdated and "advanced"
+!!! warning "Outdated and advanced"
 
-This documentation is considered the "legacy"/advanced/manual version of the documentation, you most likely do not
-want to use this documentation and rather look at the distro specific documentation (TODO LINK)[].
+    This documentation is considered the "legacy"/advanced/manual version of the documentation, you most likely do not
+    want to use this documentation and rather look at the [distro specific documentation](./running-headscale-linux.md).
 
 ## Goal
 
 This documentation has the goal of showing a user how-to set up and run `headscale` on Linux.
-In additional to the "get up and running section", there is an optional [SystemD section](#running-headscale-in-the-background-with-systemd)
+In additional to the "get up and running section", there is an optional [systemd section](#running-headscale-in-the-background-with-systemd)
 describing how to make `headscale` run properly in a server environment.
 
 ## Configure and run `headscale`
@@ -45,12 +45,6 @@ describing how to make `headscale` run properly in a server environment.
       headscale
     ```
 
-1. Create an empty SQLite database:
-
-    ```shell
-    touch /var/lib/headscale/db.sqlite
-    ```
-
 1. Create a `headscale` configuration:
 
     ```shell
@@ -72,7 +66,7 @@ describing how to make `headscale` run properly in a server environment.
     To continue the tutorial, open a new terminal and let it run in the background.
     Alternatively use terminal emulators like [tmux](https://github.com/tmux/tmux) or [screen](https://www.gnu.org/software/screen/).
 
-    To run `headscale` in the background, please follow the steps in the [SystemD section](#running-headscale-in-the-background-with-systemd) before continuing.
+    To run `headscale` in the background, please follow the steps in the [systemd section](#running-headscale-in-the-background-with-systemd) before continuing.
 
 1. Verify `headscale` is running:
   Verify `headscale` is available:
@@ -98,7 +92,7 @@ tailscale up --login-server YOUR_HEADSCALE_URL
 Register the machine:
 
 ```shell
-headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
+headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
 ```
 
 ### Register machine using a pre authenticated key
@@ -106,7 +100,7 @@ headscale --user myfirstuser nodes register --key <YOUR_MACHINE_KEY>
 Generate a key using the command line:
 
 ```shell
-headscale --user myfirstuser preauthkeys create --reusable --expiration 24h
+headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that can be used to connect a node to `headscale` during the `tailscale` command:
@@ -115,42 +109,14 @@ This will return a pre-authenticated key that can be used to connect a node to `
 tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 ```
 
-## Running `headscale` in the background with SystemD
+## Running `headscale` in the background with systemd
 
-:warning: **Deprecated**: This part is very outdated and you should use the [pre-packaged Headscale for this](./running-headscale-linux.md)
-
-This section demonstrates how to run `headscale` as a service in the background with [SystemD](https://www.freedesktop.org/wiki/Software/systemd/).
+This section demonstrates how to run `headscale` as a service in the background with [systemd](https://systemd.io/).
 This should work on most modern Linux distributions.
 
-1. Create a SystemD service configuration at `/etc/systemd/system/headscale.service` containing:
-
-    ```systemd
-    [Unit]
-    Description=headscale controller
-    After=syslog.target
-    After=network.target
-
-    [Service]
-    Type=simple
-    User=headscale
-    Group=headscale
-    ExecStart=/usr/local/bin/headscale serve
-    Restart=always
-    RestartSec=5
-
-    # Optional security enhancements
-    NoNewPrivileges=yes
-    PrivateTmp=yes
-    ProtectSystem=strict
-    ProtectHome=yes
-    WorkingDirectory=/var/lib/headscale
-    ReadWritePaths=/var/lib/headscale /var/run/headscale
-    AmbientCapabilities=CAP_NET_BIND_SERVICE
-    RuntimeDirectory=headscale
-
-    [Install]
-    WantedBy=multi-user.target
-    ```
+1. Copy [headscale's systemd service file](./packaging/headscale.systemd.service) to
+   `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
+   to be modified: `ExecStart`, `WorkingDirectory`, `ReadWritePaths`.
 
     Note that when running as the headscale user ensure that, either you add your current user to the headscale group:
 
@@ -170,7 +136,7 @@ This should work on most modern Linux distributions.
     unix_socket: /var/run/headscale/headscale.sock
     ```
 
-1. Reload SystemD to load the new configuration file:
+1. Reload systemd to load the new configuration file:
 
     ```shell
     systemctl daemon-reload

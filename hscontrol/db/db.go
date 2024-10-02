@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -19,6 +20,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"tailscale.com/util/set"
 )
 
 var errDatabaseNotSupported = errors.New("database type not supported")
@@ -51,8 +53,8 @@ func NewHeadscaleDatabase(
 		dbConn,
 		gormigrate.DefaultOptions,
 		[]*gormigrate.Migration{
-			// New migrations should be added as transactions at the end of this list.
-			// The initial commit here is quite messy, completely out of order and
+			// New migrations must be added as transactions at the end of this list.
+			// The initial migration here is quite messy, completely out of order and
 			// has no versioning and is the tech debt of not having versioned migrations
 			// prior to this point. This first migration is all DB changes to bring a DB
 			// up to 0.23.0.
@@ -123,6 +125,13 @@ func NewHeadscaleDatabase(
 						}
 					}
 
+					// Remove any invalid routes associated with a node that does not exist.
+					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) {
+						err := tx.Exec("delete from routes where node_id not in (select id from nodes)").Error
+						if err != nil {
+							return err
+						}
+					}
 					err = tx.AutoMigrate(&types.Route{})
 					if err != nil {
 						return err
@@ -284,7 +293,12 @@ func NewHeadscaleDatabase(
 						return err
 					}
 
-					err = tx.AutoMigrate(&types.PreAuthKeyACLTag{})
+					type preAuthKeyACLTag struct {
+						ID           uint64 `gorm:"primary_key"`
+						PreAuthKeyID uint64
+						Tag          string
+					}
+					err = tx.AutoMigrate(&preAuthKeyACLTag{})
 					if err != nil {
 						return err
 					}
@@ -406,10 +420,58 @@ func NewHeadscaleDatabase(
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// denormalise the ACL tags for preauth keys back onto
+			// the preauth key table. We dont normalise or reuse and
+			// it is just a bunch of work for extra work.
+			{
+				ID: "202409271400",
+				Migrate: func(tx *gorm.DB) error {
+					preauthkeyTags := map[uint64]set.Set[string]{}
+
+					type preAuthKeyACLTag struct {
+						ID           uint64 `gorm:"primary_key"`
+						PreAuthKeyID uint64
+						Tag          string
+					}
+
+					var aclTags []preAuthKeyACLTag
+					if err := tx.Find(&aclTags).Error; err != nil {
+						return err
+					}
+
+					// Store the current tags.
+					for _, tag := range aclTags {
+						if preauthkeyTags[tag.PreAuthKeyID] == nil {
+							preauthkeyTags[tag.PreAuthKeyID] = set.SetOf([]string{tag.Tag})
+						} else {
+							preauthkeyTags[tag.PreAuthKeyID].Add(tag.Tag)
+						}
+					}
+
+					// Add tags column and restore the tags.
+					_ = tx.Migrator().AddColumn(&types.PreAuthKey{}, "tags")
+					for keyID, tags := range preauthkeyTags {
+						s := tags.Slice()
+						j, err := json.Marshal(s)
+						if err != nil {
+							return err
+						}
+						if err := tx.Model(&types.PreAuthKey{}).Where("id = ?", keyID).Update("tags", string(j)).Error; err != nil {
+							return err
+						}
+					}
+
+					// Drop the old table.
+					_ = tx.Migrator().DropTable(&preAuthKeyACLTag{})
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
-	if err = migrations.Migrate(); err != nil {
+	if err := runMigrations(cfg, dbConn, migrations); err != nil {
 		log.Fatal().Err(err).Msgf("Migration failed: %v", err)
 	}
 
@@ -426,7 +488,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 	// TODO(kradalby): Integrate this with zerolog
 	var dbLogger logger.Interface
 	if cfg.Debug {
-		dbLogger = logger.Default
+		dbLogger = util.NewDBLogWrapper(&log.Logger, cfg.Gorm.SlowThreshold, cfg.Gorm.SkipErrRecordNotFound, cfg.Gorm.ParameterizedQueries)
 	} else {
 		dbLogger = logger.Default.LogMode(logger.Silent)
 	}
@@ -447,7 +509,8 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		db, err := gorm.Open(
 			sqlite.Open(cfg.Sqlite.Path),
 			&gorm.Config{
-				Logger: dbLogger,
+				PrepareStmt: cfg.Gorm.PrepareStmt,
+				Logger:      dbLogger,
 			},
 		)
 
@@ -530,6 +593,70 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		cfg.Type,
 		errDatabaseNotSupported,
 	)
+}
+
+func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormigrate.Gormigrate) error {
+	// Turn off foreign keys for the duration of the migration if using sqllite to
+	// prevent data loss due to the way the GORM migrator handles certain schema
+	// changes.
+	if cfg.Type == types.DatabaseSqlite {
+		var fkEnabled int
+		if err := dbConn.Raw("PRAGMA foreign_keys").Scan(&fkEnabled).Error; err != nil {
+			return fmt.Errorf("checking foreign key status: %w", err)
+		}
+		if fkEnabled == 1 {
+			if err := dbConn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+				return fmt.Errorf("disabling foreign keys: %w", err)
+			}
+			defer dbConn.Exec("PRAGMA foreign_keys = ON")
+		}
+	}
+
+	if err := migrations.Migrate(); err != nil {
+		return err
+	}
+
+	// Since we disabled foreign keys for the migration, we need to check for
+	// constraint violations manually at the end of the migration.
+	if cfg.Type == types.DatabaseSqlite {
+		type constraintViolation struct {
+			Table           string
+			RowID           int
+			Parent          string
+			ConstraintIndex int
+		}
+
+		var violatedConstraints []constraintViolation
+
+		rows, err := dbConn.Raw("PRAGMA foreign_key_check").Rows()
+		if err != nil {
+			return err
+		}
+
+		for rows.Next() {
+			var violation constraintViolation
+			if err := rows.Scan(&violation.Table, &violation.RowID, &violation.Parent, &violation.ConstraintIndex); err != nil {
+				return err
+			}
+
+			violatedConstraints = append(violatedConstraints, violation)
+		}
+		_ = rows.Close()
+
+		if len(violatedConstraints) > 0 {
+			for _, violation := range violatedConstraints {
+				log.Error().
+					Str("table", violation.Table).
+					Int("row_id", violation.RowID).
+					Str("parent", violation.Parent).
+					Msg("Foreign key constraint violated")
+			}
+
+			return fmt.Errorf("foreign key constraints violated")
+		}
+	}
+
+	return nil
 }
 
 func (hsdb *HSDatabase) PingDB(ctx context.Context) error {
