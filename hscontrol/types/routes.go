@@ -7,11 +7,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
-)
-
-var (
-	ExitRouteV4 = netip.MustParsePrefix("0.0.0.0/0")
-	ExitRouteV6 = netip.MustParsePrefix("::/0")
+	"tailscale.com/net/tsaddr"
 )
 
 type Route struct {
@@ -35,7 +31,7 @@ func (r *Route) String() string {
 }
 
 func (r *Route) IsExitRoute() bool {
-	return netip.Prefix(r.Prefix) == ExitRouteV4 || netip.Prefix(r.Prefix) == ExitRouteV6
+	return tsaddr.IsExitRoute(netip.Prefix(r.Prefix))
 }
 
 func (r *Route) IsAnnouncable() bool {

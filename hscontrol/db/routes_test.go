@@ -27,6 +27,10 @@ var smap = func(m map[types.NodeID]bool) *xsync.MapOf[types.NodeID, bool] {
 	return s
 }
 
+var mp = func(p string) netip.Prefix {
+	return netip.MustParsePrefix(p)
+}
+
 func (s *Suite) TestGetRoutes(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
@@ -64,10 +68,10 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	c.Assert(len(advertisedRoutes), check.Equals, 1)
 
 	// TODO(kradalby): check state update
-	_, err = db.enableRoutes(&node, "192.168.0.0/24")
+	_, err = db.enableRoutes(&node, mp("192.168.0.0/24"))
 	c.Assert(err, check.NotNil)
 
-	_, err = db.enableRoutes(&node, "10.0.0.0/24")
+	_, err = db.enableRoutes(&node, mp("10.0.0.0/24"))
 	c.Assert(err, check.IsNil)
 }
 
@@ -119,10 +123,10 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(noEnabledRoutes), check.Equals, 0)
 
-	_, err = db.enableRoutes(&node, "192.168.0.0/24")
+	_, err = db.enableRoutes(&node, mp("192.168.0.0/24"))
 	c.Assert(err, check.NotNil)
 
-	_, err = db.enableRoutes(&node, "10.0.0.0/24")
+	_, err = db.enableRoutes(&node, mp("10.0.0.0/24"))
 	c.Assert(err, check.IsNil)
 
 	enabledRoutes, err := db.GetEnabledRoutes(&node)
@@ -130,14 +134,14 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	c.Assert(len(enabledRoutes), check.Equals, 1)
 
 	// Adding it twice will just let it pass through
-	_, err = db.enableRoutes(&node, "10.0.0.0/24")
+	_, err = db.enableRoutes(&node, mp("10.0.0.0/24"))
 	c.Assert(err, check.IsNil)
 
 	enableRoutesAfterDoubleApply, err := db.GetEnabledRoutes(&node)
 	c.Assert(err, check.IsNil)
 	c.Assert(len(enableRoutesAfterDoubleApply), check.Equals, 1)
 
-	_, err = db.enableRoutes(&node, "150.0.10.0/25")
+	_, err = db.enableRoutes(&node, mp("150.0.10.0/25"))
 	c.Assert(err, check.IsNil)
 
 	enabledRoutesWithAdditionalRoute, err := db.GetEnabledRoutes(&node)
@@ -183,10 +187,10 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(sendUpdate, check.Equals, false)
 
-	_, err = db.enableRoutes(&node1, route.String())
+	_, err = db.enableRoutes(&node1, route)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.enableRoutes(&node1, route2.String())
+	_, err = db.enableRoutes(&node1, route2)
 	c.Assert(err, check.IsNil)
 
 	hostInfo2 := tailcfg.Hostinfo{
@@ -206,7 +210,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(sendUpdate, check.Equals, false)
 
-	_, err = db.enableRoutes(&node2, route2.String())
+	_, err = db.enableRoutes(&node2, route2)
 	c.Assert(err, check.IsNil)
 
 	enabledRoutes1, err := db.GetEnabledRoutes(&node1)
@@ -267,10 +271,10 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(sendUpdate, check.Equals, false)
 
-	_, err = db.enableRoutes(&node1, prefix.String())
+	_, err = db.enableRoutes(&node1, prefix)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.enableRoutes(&node1, prefix2.String())
+	_, err = db.enableRoutes(&node1, prefix2)
 	c.Assert(err, check.IsNil)
 
 	routes, err := db.GetNodeRoutes(&node1)

@@ -3,6 +3,7 @@ package policy
 import (
 	"errors"
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -341,7 +343,7 @@ func TestParsing(t *testing.T) {
 			],
 		},
 	],
-}			
+}
 `,
 			want: []tailcfg.FilterRule{
 				{
@@ -1998,7 +2000,7 @@ func TestReduceFilterRules(t *testing.T) {
 					IPv6: iap("fd7a:115c:a1e0::100"),
 					User: types.User{Name: "user100"},
 					Hostinfo: &tailcfg.Hostinfo{
-						RoutableIPs: []netip.Prefix{types.ExitRouteV4, types.ExitRouteV6},
+						RoutableIPs: tsaddr.ExitRoutes(),
 					},
 				},
 			},
@@ -2036,7 +2038,7 @@ func TestReduceFilterRules(t *testing.T) {
 				IPv6: iap("fd7a:115c:a1e0::100"),
 				User: types.User{Name: "user100"},
 				Hostinfo: &tailcfg.Hostinfo{
-					RoutableIPs: []netip.Prefix{types.ExitRouteV4, types.ExitRouteV6},
+					RoutableIPs: tsaddr.ExitRoutes(),
 				},
 			},
 			peers: types.Nodes{
@@ -2132,7 +2134,7 @@ func TestReduceFilterRules(t *testing.T) {
 				IPv6: iap("fd7a:115c:a1e0::100"),
 				User: types.User{Name: "user100"},
 				Hostinfo: &tailcfg.Hostinfo{
-					RoutableIPs: []netip.Prefix{types.ExitRouteV4, types.ExitRouteV6},
+					RoutableIPs: tsaddr.ExitRoutes(),
 				},
 			},
 			peers: types.Nodes{
@@ -2548,7 +2550,7 @@ func Test_getTags(t *testing.T) {
 				test.args.node,
 			)
 			for _, valid := range gotValid {
-				if !util.StringOrPrefixListContains(test.wantValid, valid) {
+				if !slices.Contains(test.wantValid, valid) {
 					t.Errorf(
 						"valids: getTags() = %v, want %v",
 						gotValid,
@@ -2559,7 +2561,7 @@ func Test_getTags(t *testing.T) {
 				}
 			}
 			for _, invalid := range gotInvalid {
-				if !util.StringOrPrefixListContains(test.wantInvalid, invalid) {
+				if !slices.Contains(test.wantInvalid, invalid) {
 					t.Errorf(
 						"invalids: getTags() = %v, want %v",
 						gotInvalid,

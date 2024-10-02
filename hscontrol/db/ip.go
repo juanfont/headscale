@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 )
 
 // IPAllocator is a singleton responsible for allocating
@@ -190,8 +191,9 @@ func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, 
 			return nil, ErrCouldNotAllocateIP
 		}
 
-		// Check if the IP has already been allocated.
-		if set.Contains(ip) {
+		// Check if the IP has already been allocated
+		// or if it is a IP reserved by Tailscale.
+		if set.Contains(ip) || isTailscaleReservedIP(ip) {
 			switch i.strategy {
 			case types.IPAllocationStrategySequential:
 				ip = ip.Next()
@@ -246,6 +248,12 @@ func randomNext(pfx netip.Prefix) (netip.Addr, error) {
 	}
 
 	return ip, nil
+}
+
+func isTailscaleReservedIP(ip netip.Addr) bool {
+	return tsaddr.ChromeOSVMRange().Contains(ip) ||
+		tsaddr.TailscaleServiceIP() == ip ||
+		tsaddr.TailscaleServiceIPv6() == ip
 }
 
 // BackfillNodeIPs will take a database transaction, and

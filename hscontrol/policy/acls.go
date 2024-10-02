@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -45,7 +47,7 @@ func theInternet() *netipx.IPSet {
 
 	var internetBuilder netipx.IPSetBuilder
 	internetBuilder.AddPrefix(netip.MustParsePrefix("2000::/3"))
-	internetBuilder.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+	internetBuilder.AddPrefix(tsaddr.AllIPv4())
 
 	// Delete Private network addresses
 	// https://datatracker.ietf.org/doc/html/rfc1918
@@ -55,8 +57,8 @@ func theInternet() *netipx.IPSet {
 	internetBuilder.RemovePrefix(netip.MustParsePrefix("192.168.0.0/16"))
 
 	// Delete Tailscale networks
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fd7a:115c:a1e0::/48"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("100.64.0.0/10"))
+	internetBuilder.RemovePrefix(tsaddr.TailscaleULARange())
+	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
 
 	// Delete "cant find DHCP networks"
 	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-loca
@@ -603,7 +605,7 @@ func excludeCorrectlyTaggedNodes(
 	for tag := range aclPolicy.TagOwners {
 		owners, _ := expandOwnersFromTag(aclPolicy, user)
 		ns := append(owners, user)
-		if util.StringOrPrefixListContains(ns, user) {
+		if slices.Contains(ns, user) {
 			tags = append(tags, tag)
 		}
 	}
@@ -616,7 +618,7 @@ func excludeCorrectlyTaggedNodes(
 		}
 
 		for _, t := range node.Hostinfo.RequestTags {
-			if util.StringOrPrefixListContains(tags, t) {
+			if slices.Contains(tags, t) {
 				found = true
 
 				break
@@ -779,7 +781,7 @@ func (pol *ACLPolicy) expandIPsFromTag(
 
 	// check for forced tags
 	for _, node := range nodes {
-		if util.StringOrPrefixListContains(node.ForcedTags, alias) {
+		if slices.Contains(node.ForcedTags, alias) {
 			node.AppendToIPSet(&build)
 		}
 	}
@@ -811,7 +813,7 @@ func (pol *ACLPolicy) expandIPsFromTag(
 				continue
 			}
 
-			if util.StringOrPrefixListContains(node.Hostinfo.RequestTags, alias) {
+			if slices.Contains(node.Hostinfo.RequestTags, alias) {
 				node.AppendToIPSet(&build)
 			}
 		}

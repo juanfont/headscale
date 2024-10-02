@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
@@ -195,7 +196,7 @@ func Test_fullMapResponse(t *testing.T) {
 		Hostinfo:   &tailcfg.Hostinfo{},
 		Routes: []types.Route{
 			{
-				Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),
+				Prefix:     types.IPPrefix(tsaddr.AllIPv4()),
 				Advertised: true,
 				Enabled:    true,
 				IsPrimary:  false,
@@ -234,7 +235,7 @@ func Test_fullMapResponse(t *testing.T) {
 		Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 		AllowedIPs: []netip.Prefix{
 			netip.MustParsePrefix("100.64.0.1/32"),
-			netip.MustParsePrefix("0.0.0.0/0"),
+			tsaddr.AllIPv4(),
 			netip.MustParsePrefix("192.168.0.0/24"),
 		},
 		DERP:              "127.3.3.40:0",
