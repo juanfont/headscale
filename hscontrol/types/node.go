@@ -54,10 +54,10 @@ type Node struct {
 
 	Endpoints []netip.AddrPort `gorm:"serializer:json"`
 
-	Hostinfo *tailcfg.Hostinfo `gorm:"serializer:json"`
+	Hostinfo *tailcfg.Hostinfo `gorm:"column:host_info;serializer:json"`
 
-	IPv4 *netip.Addr `gorm:"serializer:text"`
-	IPv6 *netip.Addr `gorm:"serializer:text"`
+	IPv4 *netip.Addr `gorm:"column:ipv4;serializer:text"`
+	IPv6 *netip.Addr `gorm:"column:ipv6;serializer:text"`
 
 	// Hostname represents the name given by the Tailscale
 	// client during registration
