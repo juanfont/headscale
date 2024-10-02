@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -448,13 +449,13 @@ func (m *mapSession) handleEndpointUpdate() {
 	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
 
 	// The node might not set NetInfo if it has not changed and if
-	// the full HostInfo object is overrwritten, the information is lost.
+	// the full HostInfo object is overwritten, the information is lost.
 	// If there is no NetInfo, keep the previous one.
 	// From 1.66 the client only sends it if changed:
 	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
 	// TODO(kradalby): evaulate if we need better comparing of hostinfo
 	// before we take the changes.
-	if m.req.Hostinfo.NetInfo == nil {
+	if m.req.Hostinfo.NetInfo == nil && m.node.Hostinfo != nil {
 		m.req.Hostinfo.NetInfo = m.node.Hostinfo.NetInfo
 	}
 	m.node.Hostinfo = m.req.Hostinfo
@@ -661,8 +662,15 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 		return false, false
 	}
 
+	if old == nil && new != nil {
+		return true, true
+	}
+
 	// Routes
-	oldRoutes := old.RoutableIPs
+	oldRoutes := make([]netip.Prefix, 0)
+	if old != nil {
+		oldRoutes = old.RoutableIPs
+	}
 	newRoutes := new.RoutableIPs
 
 	tsaddr.SortPrefixes(oldRoutes)

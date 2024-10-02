@@ -16,6 +16,8 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_POLICY_PATH":                       "",
 		"HEADSCALE_DATABASE_TYPE":                     "sqlite",
 		"HEADSCALE_DATABASE_SQLITE_PATH":              "/tmp/integration_test_db.sqlite3",
+		"HEADSCALE_DATABASE_DEBUG":                    "1",
+		"HEADSCALE_DATABASE_GORM_SLOW_THRESHOLD":      "1",
 		"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": "30m",
 		"HEADSCALE_PREFIXES_V4":                       "100.64.0.0/10",
 		"HEADSCALE_PREFIXES_V6":                       "fd7a:115c:a1e0::/48",

@@ -1,7 +1,6 @@
 package db
 
 import (
-	"database/sql"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -294,15 +293,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 		v4 := fmt.Sprintf("100.64.0.%d", i)
 		v6 := fmt.Sprintf("fd7a:115c:a1e0::%d", i)
 		return &types.Node{
-			IPv4DatabaseField: sql.NullString{
-				Valid:  true,
-				String: v4,
-			},
 			IPv4: nap(v4),
-			IPv6DatabaseField: sql.NullString{
-				Valid:  true,
-				String: v6,
-			},
 			IPv6: nap(v6),
 		}
 	}
@@ -334,15 +325,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 			want: types.Nodes{
 				&types.Node{
-					IPv4DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "100.64.0.1",
-					},
 					IPv4: nap("100.64.0.1"),
-					IPv6DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "fd7a:115c:a1e0::1",
-					},
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				},
 			},
@@ -367,15 +350,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 			want: types.Nodes{
 				&types.Node{
-					IPv4DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "100.64.0.1",
-					},
 					IPv4: nap("100.64.0.1"),
-					IPv6DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "fd7a:115c:a1e0::1",
-					},
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				},
 			},
@@ -400,10 +375,6 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 			want: types.Nodes{
 				&types.Node{
-					IPv4DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "100.64.0.1",
-					},
 					IPv4: nap("100.64.0.1"),
 				},
 			},
@@ -428,10 +399,6 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 			want: types.Nodes{
 				&types.Node{
-					IPv6DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "fd7a:115c:a1e0::1",
-					},
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				},
 			},
@@ -477,13 +444,9 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 	comps := append(util.Comparers, cmpopts.IgnoreFields(types.Node{},
 		"ID",
-		"MachineKeyDatabaseField",
-		"NodeKeyDatabaseField",
-		"DiscoKeyDatabaseField",
 		"User",
 		"UserID",
 		"Endpoints",
-		"HostinfoDatabaseField",
 		"Hostinfo",
 		"Routes",
 		"CreatedAt",

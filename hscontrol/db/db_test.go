@@ -13,13 +13,14 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
 
 func TestMigrations(t *testing.T) {
-	ipp := func(p string) types.IPPrefix {
-		return types.IPPrefix(netip.MustParsePrefix(p))
+	ipp := func(p string) netip.Prefix {
+		return netip.MustParsePrefix(p)
 	}
 	r := func(id uint64, p string, a, e, i bool) types.Route {
 		return types.Route{
@@ -56,9 +57,7 @@ func TestMigrations(t *testing.T) {
 					r(31, "::/0", true, false, false),
 					r(32, "192.168.0.24/32", true, true, true),
 				}
-				if diff := cmp.Diff(want, routes, cmpopts.IgnoreFields(types.Route{}, "Model", "Node"), cmp.Comparer(func(x, y types.IPPrefix) bool {
-					return x == y
-				})); diff != "" {
+				if diff := cmp.Diff(want, routes, cmpopts.IgnoreFields(types.Route{}, "Model", "Node"), util.PrefixComparer); diff != "" {
 					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
 				}
 			},
@@ -103,9 +102,7 @@ func TestMigrations(t *testing.T) {
 					r(13, "::/0", true, true, false),
 					r(13, "10.18.80.2/32", true, true, true),
 				}
-				if diff := cmp.Diff(want, routes, cmpopts.IgnoreFields(types.Route{}, "Model", "Node"), cmp.Comparer(func(x, y types.IPPrefix) bool {
-					return x == y
-				})); diff != "" {
+				if diff := cmp.Diff(want, routes, cmpopts.IgnoreFields(types.Route{}, "Model", "Node"), util.PrefixComparer); diff != "" {
 					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
 				}
 			},
@@ -169,6 +166,29 @@ func TestMigrations(t *testing.T) {
 
 				if h.DB.Migrator().HasTable("pre_auth_key_acl_tags") {
 					t.Errorf("TestMigrations() table pre_auth_key_acl_tags should not exist")
+				}
+			},
+		},
+		{
+			dbPath: "testdata/0-23-0-to-0-24-0-no-more-special-types.sqlite",
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				assert.NoError(t, err)
+
+				for _, node := range nodes {
+					assert.Falsef(t, node.MachineKey.IsZero(), "expected non zero machinekey")
+					assert.Contains(t, node.MachineKey.String(), "mkey:")
+					assert.Falsef(t, node.NodeKey.IsZero(), "expected non zero nodekey")
+					assert.Contains(t, node.NodeKey.String(), "nodekey:")
+					assert.Falsef(t, node.DiscoKey.IsZero(), "expected non zero discokey")
+					assert.Contains(t, node.DiscoKey.String(), "discokey:")
+					assert.NotNil(t, node.IPv4)
+					assert.NotNil(t, node.IPv4)
+					assert.Len(t, node.Endpoints, 1)
+					assert.NotNil(t, node.Hostinfo)
+					assert.NotNil(t, node.MachineKey)
 				}
 			},
 		},

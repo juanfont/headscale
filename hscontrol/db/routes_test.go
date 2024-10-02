@@ -290,7 +290,7 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 }
 
 var (
-	ipp    = func(s string) types.IPPrefix { return types.IPPrefix(netip.MustParsePrefix(s)) }
+	ipp    = func(s string) netip.Prefix { return netip.MustParsePrefix(s) }
 	mkNode = func(nid types.NodeID) types.Node {
 		return types.Node{ID: nid}
 	}
@@ -301,7 +301,7 @@ var np = func(nid types.NodeID) *types.Node {
 	return &no
 }
 
-var r = func(id uint, nid types.NodeID, prefix types.IPPrefix, enabled, primary bool) types.Route {
+var r = func(id uint, nid types.NodeID, prefix netip.Prefix, enabled, primary bool) types.Route {
 	return types.Route{
 		Model: gorm.Model{
 			ID: id,
@@ -313,7 +313,7 @@ var r = func(id uint, nid types.NodeID, prefix types.IPPrefix, enabled, primary 
 	}
 }
 
-var rp = func(id uint, nid types.NodeID, prefix types.IPPrefix, enabled, primary bool) *types.Route {
+var rp = func(id uint, nid types.NodeID, prefix netip.Prefix, enabled, primary bool) *types.Route {
 	ro := r(id, nid, prefix, enabled, primary)
 	return &ro
 }
@@ -1069,7 +1069,7 @@ func TestFailoverRouteTx(t *testing.T) {
 }
 
 func TestFailoverRoute(t *testing.T) {
-	r := func(id uint, nid types.NodeID, prefix types.IPPrefix, enabled, primary bool) types.Route {
+	r := func(id uint, nid types.NodeID, prefix netip.Prefix, enabled, primary bool) types.Route {
 		return types.Route{
 			Model: gorm.Model{
 				ID: id,
@@ -1082,7 +1082,7 @@ func TestFailoverRoute(t *testing.T) {
 			IsPrimary: primary,
 		}
 	}
-	rp := func(id uint, nid types.NodeID, prefix types.IPPrefix, enabled, primary bool) *types.Route {
+	rp := func(id uint, nid types.NodeID, prefix netip.Prefix, enabled, primary bool) *types.Route {
 		ro := r(id, nid, prefix, enabled, primary)
 		return &ro
 	}
@@ -1205,13 +1205,6 @@ func TestFailoverRoute(t *testing.T) {
 		},
 	}
 
-	cmps := append(
-		util.Comparers,
-		cmp.Comparer(func(x, y types.IPPrefix) bool {
-			return netip.Prefix(x) == netip.Prefix(y)
-		}),
-	)
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			gotf := failoverRoute(smap(tt.isConnected), &tt.failingRoute, tt.routes)
@@ -1235,7 +1228,7 @@ func TestFailoverRoute(t *testing.T) {
 					"old": gotf.old,
 				}
 
-				if diff := cmp.Diff(want, got, cmps...); diff != "" {
+				if diff := cmp.Diff(want, got, util.Comparers...); diff != "" {
 					t.Fatalf("failoverRoute unexpected result (-want +got):\n%s", diff)
 				}
 			}

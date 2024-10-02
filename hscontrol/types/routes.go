@@ -17,7 +17,7 @@ type Route struct {
 	Node   Node
 
 	// TODO(kradalby): change this custom type to netip.Prefix
-	Prefix IPPrefix
+	Prefix netip.Prefix `gorm:"serializer:text"`
 
 	Advertised bool
 	Enabled    bool
@@ -31,7 +31,7 @@ func (r *Route) String() string {
 }
 
 func (r *Route) IsExitRoute() bool {
-	return tsaddr.IsExitRoute(netip.Prefix(r.Prefix))
+	return tsaddr.IsExitRoute(r.Prefix)
 }
 
 func (r *Route) IsAnnouncable() bool {
@@ -59,8 +59,8 @@ func (rs Routes) Primaries() Routes {
 	return res
 }
 
-func (rs Routes) PrefixMap() map[IPPrefix][]Route {
-	res := map[IPPrefix][]Route{}
+func (rs Routes) PrefixMap() map[netip.Prefix][]Route {
+	res := map[netip.Prefix][]Route{}
 
 	for _, route := range rs {
 		if _, ok := res[route.Prefix]; ok {
@@ -80,7 +80,7 @@ func (rs Routes) Proto() []*v1.Route {
 		protoRoute := v1.Route{
 			Id:         uint64(route.ID),
 			Node:       route.Node.Proto(),
-			Prefix:     netip.Prefix(route.Prefix).String(),
+			Prefix:     route.Prefix.String(),
 			Advertised: route.Advertised,
 			Enabled:    route.Enabled,
 			IsPrimary:  route.IsPrimary,

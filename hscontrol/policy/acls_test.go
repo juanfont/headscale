@@ -2385,7 +2385,7 @@ func TestReduceFilterRules(t *testing.T) {
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
-				ForcedTags: types.StringList{"tag:access-servers"},
+				ForcedTags: []string{"tag:access-servers"},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -3182,7 +3182,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						Routes: types.Routes{
 							types.Route{
 								NodeID:    2,
-								Prefix:    types.IPPrefix(netip.MustParsePrefix("10.33.0.0/16")),
+								Prefix:    netip.MustParsePrefix("10.33.0.0/16"),
 								IsPrimary: true,
 								Enabled:   true,
 							},
@@ -3215,7 +3215,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					Routes: types.Routes{
 						types.Route{
 							NodeID:    2,
-							Prefix:    types.IPPrefix(netip.MustParsePrefix("10.33.0.0/16")),
+							Prefix:    netip.MustParsePrefix("10.33.0.0/16"),
 							IsPrimary: true,
 							Enabled:   true,
 						},
@@ -3225,13 +3225,6 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 		},
 	}
 
-	// TODO(kradalby): Remove when we have gotten rid of IPPrefix type
-	prefixComparer := cmp.Comparer(func(x, y types.IPPrefix) bool {
-		return x == y
-	})
-	comparers := append([]cmp.Option{}, util.Comparers...)
-	comparers = append(comparers, prefixComparer)
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := FilterNodesByACL(
@@ -3239,7 +3232,7 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 				tt.args.nodes,
 				tt.args.rules,
 			)
-			if diff := cmp.Diff(tt.want, got, comparers...); diff != "" {
+			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)
 			}
 		})
