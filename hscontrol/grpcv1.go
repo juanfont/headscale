@@ -41,7 +41,7 @@ func (api headscaleV1APIServer) GetUser(
 	ctx context.Context,
 	request *v1.GetUserRequest,
 ) (*v1.GetUserResponse, error) {
-	user, err := api.h.db.GetUser(request.GetName())
+	user, err := api.h.db.GetUserByName(request.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (api headscaleV1APIServer) RenameUser(
 		return nil, err
 	}
 
-	user, err := api.h.db.GetUser(request.GetNewName())
+	user, err := api.h.db.GetUserByName(request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
@@ -205,17 +205,18 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, err
 	}
 
-	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		return db.RegisterNodeFromAuthCallback(
-			tx,
-			api.h.registrationCache,
-			mkey,
-			request.GetUser(),
-			nil,
-			util.RegisterMethodCLI,
-			ipv4, ipv6,
-		)
-	})
+	user, err := api.h.db.GetUserByName(request.GetUser())
+	if err != nil {
+		return nil, fmt.Errorf("looking up user: %w", err)
+	}
+
+	node, err := api.h.db.RegisterNodeFromAuthCallback(
+		mkey,
+		types.UserID(user.ID),
+		nil,
+		util.RegisterMethodCLI,
+		ipv4, ipv6,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -774,7 +775,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	ctx context.Context,
 	request *v1.DebugCreateNodeRequest,
 ) (*v1.DebugCreateNodeResponse, error) {
-	user, err := api.h.db.GetUser(request.GetUser())
+	user, err := api.h.db.GetUserByName(request.GetUser())
 	if err != nil {
 		return nil, err
 	}
@@ -823,7 +824,6 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	api.h.registrationCache.Set(
 		mkey.String(),
 		newNode,
-		registerCacheExpiration,
 	)
 
 	return &v1.DebugCreateNodeResponse{Node: newNode.Proto()}, nil

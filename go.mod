@@ -7,7 +7,6 @@ require (
 	github.com/coder/websocket v1.8.12
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
-	github.com/deckarep/golang-set/v2 v2.6.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-gormigrate/gormigrate/v2 v2.1.2
 	github.com/gofrs/uuid/v5 v5.3.0
@@ -19,7 +18,6 @@ require (
 	github.com/klauspost/compress v1.17.9
 	github.com/oauth2-proxy/mockoidc v0.0.0-20240214162133-caebfff84d25
 	github.com/ory/dockertest/v3 v3.11.0
-	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/philip-bui/grpc-zerolog v1.0.1
 	github.com/pkg/profile v1.7.0
 	github.com/prometheus/client_golang v1.20.2
@@ -49,6 +47,7 @@ require (
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.11
 	tailscale.com v1.75.0-pre.0.20240926101731-7d1160ddaab7
+	zgo.at/zcache/v2 v2.1.0
 )
 
 require (

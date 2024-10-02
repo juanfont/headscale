@@ -49,7 +49,7 @@ func (hsdb *HSDatabase) DestroyUser(name string) error {
 // DestroyUser destroys a User. Returns error if the User does
 // not exist or if there are nodes associated with it.
 func DestroyUser(tx *gorm.DB, name string) error {
-	user, err := GetUser(tx, name)
+	user, err := GetUserByUsername(tx, name)
 	if err != nil {
 		return ErrUserNotFound
 	}
@@ -90,7 +90,7 @@ func (hsdb *HSDatabase) RenameUser(oldName, newName string) error {
 // not exist or if another User exists with the new name.
 func RenameUser(tx *gorm.DB, oldName, newName string) error {
 	var err error
-	oldUser, err := GetUser(tx, oldName)
+	oldUser, err := GetUserByUsername(tx, oldName)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func RenameUser(tx *gorm.DB, oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	_, err = GetUser(tx, newName)
+	_, err = GetUserByUsername(tx, newName)
 	if err == nil {
 		return ErrUserExists
 	}
@@ -115,15 +115,51 @@ func RenameUser(tx *gorm.DB, oldName, newName string) error {
 	return nil
 }
 
-func (hsdb *HSDatabase) GetUser(name string) (*types.User, error) {
+func (hsdb *HSDatabase) GetUserByName(name string) (*types.User, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (*types.User, error) {
-		return GetUser(rx, name)
+		return GetUserByUsername(rx, name)
 	})
 }
 
-func GetUser(tx *gorm.DB, name string) (*types.User, error) {
+func GetUserByUsername(tx *gorm.DB, name string) (*types.User, error) {
 	user := types.User{}
 	if result := tx.First(&user, "name = ?", name); errors.Is(
+		result.Error,
+		gorm.ErrRecordNotFound,
+	) {
+		return nil, ErrUserNotFound
+	}
+
+	return &user, nil
+}
+
+func (hsdb *HSDatabase) GetUserByID(id types.UserID) (*types.User, error) {
+	return Read(hsdb.DB, func(rx *gorm.DB) (*types.User, error) {
+		return GetUserByID(rx, id)
+	})
+}
+
+func GetUserByID(tx *gorm.DB, id types.UserID) (*types.User, error) {
+	user := types.User{}
+	if result := tx.First(&user, "id = ?", id); errors.Is(
+		result.Error,
+		gorm.ErrRecordNotFound,
+	) {
+		return nil, ErrUserNotFound
+	}
+
+	return &user, nil
+}
+
+func (hsdb *HSDatabase) GetUserByOIDCIdentifier(id string) (*types.User, error) {
+	return Read(hsdb.DB, func(rx *gorm.DB) (*types.User, error) {
+		return GetUserByOIDCIdentifier(rx, id)
+	})
+}
+
+func GetUserByOIDCIdentifier(tx *gorm.DB, id string) (*types.User, error) {
+	user := types.User{}
+	if result := tx.First(&user, "provider_identifier = ?", id); errors.Is(
 		result.Error,
 		gorm.ErrRecordNotFound,
 	) {
@@ -155,7 +191,7 @@ func ListNodesByUser(tx *gorm.DB, name string) (types.Nodes, error) {
 	if err != nil {
 		return nil, err
 	}
-	user, err := GetUser(tx, name)
+	user, err := GetUserByUsername(tx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +216,7 @@ func AssignNodeToUser(tx *gorm.DB, node *types.Node, username string) error {
 	if err != nil {
 		return err
 	}
-	user, err := GetUser(tx, username)
+	user, err := GetUserByUsername(tx, username)
 	if err != nil {
 		return err
 	}

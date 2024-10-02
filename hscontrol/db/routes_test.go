@@ -336,6 +336,7 @@ func dbForTest(t *testing.T, testName string) *HSDatabase {
 			},
 		},
 		"",
+		emptyCache(),
 	)
 	if err != nil {
 		t.Fatalf("setting up database: %s", err)

@@ -22,6 +22,7 @@ import (
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 	"tailscale.com/util/set"
+	"zgo.at/zcache/v2"
 )
 
 func init() {
@@ -38,8 +39,9 @@ type KV struct {
 }
 
 type HSDatabase struct {
-	DB  *gorm.DB
-	cfg *types.DatabaseConfig
+	DB       *gorm.DB
+	cfg      *types.DatabaseConfig
+	regCache *zcache.Cache[string, types.Node]
 
 	baseDomain string
 }
@@ -49,6 +51,7 @@ type HSDatabase struct {
 func NewHeadscaleDatabase(
 	cfg types.DatabaseConfig,
 	baseDomain string,
+	regCache *zcache.Cache[string, types.Node],
 ) (*HSDatabase, error) {
 	dbConn, err := openDB(cfg)
 	if err != nil {
@@ -264,9 +267,6 @@ func NewHeadscaleDatabase(
 
 						for item, node := range nodes {
 							if node.GivenName == "" {
-								normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-									node.Hostname,
-								)
 								if err != nil {
 									log.Error().
 										Caller().
@@ -276,7 +276,7 @@ func NewHeadscaleDatabase(
 								}
 
 								err = tx.Model(nodes[item]).Updates(types.Node{
-									GivenName: normalizedHostname,
+									GivenName: node.Hostname,
 								}).Error
 								if err != nil {
 									log.Error().
@@ -469,6 +469,17 @@ func NewHeadscaleDatabase(
 
 					// Drop the old table.
 					_ = tx.Migrator().DropTable(&preAuthKeyACLTag{})
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				ID: "202407191627",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.User{})
+					if err != nil {
+						return err
+					}
 
 					return nil
 				},
@@ -482,8 +493,9 @@ func NewHeadscaleDatabase(
 	}
 
 	db := HSDatabase{
-		DB:  dbConn,
-		cfg: &cfg,
+		DB:       dbConn,
+		cfg:      &cfg,
+		regCache: regCache,
 
 		baseDomain: baseDomain,
 	}

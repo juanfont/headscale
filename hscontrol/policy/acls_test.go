@@ -636,25 +636,6 @@ func Test_expandGroup(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "Expand emails in group strip domains",
-			field: field{
-				pol: ACLPolicy{
-					Groups: Groups{
-						"group:admin": []string{
-							"joe.bar@gmail.com",
-							"john.doe@yahoo.fr",
-						},
-					},
-				},
-			},
-			args: args{
-				group:      "group:admin",
-				stripEmail: true,
-			},
-			want:    []string{"joe.bar", "john.doe"},
-			wantErr: false,
-		},
-		{
 			name: "Expand emails in group",
 			field: field{
 				pol: ACLPolicy{
@@ -669,7 +650,7 @@ func Test_expandGroup(t *testing.T) {
 			args: args{
 				group: "group:admin",
 			},
-			want:    []string{"joe.bar.gmail.com", "john.doe.yahoo.fr"},
+			want:    []string{"joe.bar@gmail.com", "john.doe@yahoo.fr"},
 			wantErr: false,
 		},
 	}

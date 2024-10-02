@@ -743,15 +743,7 @@ func (pol *ACLPolicy) expandUsersFromGroup(
 				ErrInvalidGroup,
 			)
 		}
-		grp, err := util.NormalizeToFQDNRulesConfigFromViper(group)
-		if err != nil {
-			return []string{}, fmt.Errorf(
-				"failed to normalize group %q, err: %w",
-				group,
-				ErrInvalidGroup,
-			)
-		}
-		users = append(users, grp)
+		users = append(users, group)
 	}
 
 	return users, nil
@@ -940,7 +932,7 @@ func (pol *ACLPolicy) TagsOfNode(
 			}
 			var found bool
 			for _, owner := range owners {
-				if node.User.Name == owner {
+				if node.User.Username() == owner {
 					found = true
 				}
 			}
@@ -964,7 +956,7 @@ func (pol *ACLPolicy) TagsOfNode(
 func filterNodesByUser(nodes types.Nodes, user string) types.Nodes {
 	var out types.Nodes
 	for _, node := range nodes {
-		if node.User.Name == user {
+		if node.User.Username() == user {
 			out = append(out, node)
 		}
 	}
