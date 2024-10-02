@@ -39,46 +39,46 @@ headscale apikeys expire --prefix "<PREFIX>"
 
 ## Download and configure headscale
 
-1. Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
+1.  Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
 
-2. Put the binary somewhere in your `PATH`, e.g. `/usr/local/bin/headscale`
+1.  Put the binary somewhere in your `PATH`, e.g. `/usr/local/bin/headscale`
 
-3. Make `headscale` executable:
+1.  Make `headscale` executable:
 
-   ```shell
-   chmod +x /usr/local/bin/headscale
-   ```
+    ```shell
+    chmod +x /usr/local/bin/headscale
+    ```
 
-4. Configure the CLI through environment variables
+1.  Configure the CLI through environment variables
 
-   ```shell
-   export HEADSCALE_CLI_ADDRESS="<HEADSCALE ADDRESS>:<PORT>"
-   export HEADSCALE_CLI_API_KEY="<API KEY FROM PREVIOUS STAGE>"
-   ```
+    ```shell
+    export HEADSCALE_CLI_ADDRESS="<HEADSCALE ADDRESS>:<PORT>"
+    export HEADSCALE_CLI_API_KEY="<API KEY FROM PREVIOUS STAGE>"
+    ```
 
-   for example:
+    for example:
 
-   ```shell
-   export HEADSCALE_CLI_ADDRESS="headscale.example.com:50443"
-   export HEADSCALE_CLI_API_KEY="abcde12345"
-   ```
+    ```shell
+    export HEADSCALE_CLI_ADDRESS="headscale.example.com:50443"
+    export HEADSCALE_CLI_API_KEY="abcde12345"
+    ```
 
-   This will tell the `headscale` binary to connect to a remote instance, instead of looking
-   for a local instance (which is what it does on the server).
+    This will tell the `headscale` binary to connect to a remote instance, instead of looking
+    for a local instance (which is what it does on the server).
 
-   The API key is needed to make sure that you are allowed to access the server. The key is _not_
-   needed when running directly on the server, as the connection is local.
+    The API key is needed to make sure that you are allowed to access the server. The key is _not_
+    needed when running directly on the server, as the connection is local.
 
-5. Test the connection
+1.  Test the connection
 
-   Let us run the headscale command to verify that we can connect by listing our nodes:
+    Let us run the headscale command to verify that we can connect by listing our nodes:
 
-   ```shell
-   headscale nodes list
-   ```
+    ```shell
+    headscale nodes list
+    ```
 
-   You should now be able to see a list of your nodes from your workstation, and you can
-   now control the headscale server from your workstation.
+    You should now be able to see a list of your nodes from your workstation, and you can
+    now control the headscale server from your workstation.
 
 ## Behind a proxy
 

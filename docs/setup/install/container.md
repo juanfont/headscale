@@ -13,15 +13,15 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 
 ## Configure and run headscale
 
-1. Prepare a directory on the host Docker node in your directory of choice, used to hold headscale configuration and the [SQLite](https://www.sqlite.org/) database:
+1.  Prepare a directory on the host Docker node in your directory of choice, used to hold headscale configuration and the [SQLite](https://www.sqlite.org/) database:
 
     ```shell
     mkdir -p ./headscale/config
     cd ./headscale
     ```
 
-1. Download the example configuration for your chosen version and save it as: `/etc/headscale/config.yaml`. Adjust the
-   configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
+1.  Download the example configuration for your chosen version and save it as: `/etc/headscale/config.yaml`. Adjust the
+    configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
 
     ```shell
     sudo mkdir -p /etc/headscale
@@ -32,7 +32,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
     `--volume $(pwd)/lib:/var/lib/headscale` and `--volume $(pwd)/run:/var/run/headscale`
     in the next step.
 
-1. Start the headscale server while working in the host headscale directory:
+1.  Start the headscale server while working in the host headscale directory:
 
     ```shell
     docker run \
@@ -52,25 +52,26 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
 
     Example `docker-compose.yaml`
 
-      ```yaml
-      version: "3.7"
+    ```yaml
+    version: "3.7"
 
-      services:
-        headscale:
-          image: headscale/headscale:<VERSION>
-          restart: unless-stopped
-          container_name: headscale
-          ports:
-            - "127.0.0.1:8080:8080"
-            - "127.0.0.1:9090:9090"
-          volumes:
-            # Please change <CONFIG_PATH> to the fullpath of the config folder just created
-            - <CONFIG_PATH>:/etc/headscale
-          command: serve
-      ```
+    services:
+      headscale:
+        image: headscale/headscale:<VERSION>
+        restart: unless-stopped
+        container_name: headscale
+        ports:
+          - "127.0.0.1:8080:8080"
+          - "127.0.0.1:9090:9090"
+        volumes:
+          # Please change <CONFIG_PATH> to the fullpath of the config folder just created
+          - <CONFIG_PATH>:/etc/headscale
+        command: serve
+    ```
 
-1. Verify headscale is running:
-   Follow the container logs:
+1.  Verify headscale is running:
+
+    Follow the container logs:
 
     ```shell
     docker logs --follow headscale
@@ -88,7 +89,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
     curl http://127.0.0.1:9090/metrics
     ```
 
-1. Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+1.  Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
 
     ```shell
     docker exec -it headscale \
