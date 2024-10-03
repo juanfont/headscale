@@ -107,110 +107,133 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
+	for _, https := range []bool{true, false} {
+		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
+			scenario, err := NewScenario(dockertestMaxWait())
+			assertNoErr(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
-	}
+			spec := map[string]int{
+				"user1": len(MustTestVersions),
+				"user2": len(MustTestVersions),
+			}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyip"))
-	assertNoErrHeadscaleEnv(t, err)
-
-	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
-
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
-
-	// assertClientsState(t, allClients)
-
-	clientIPs := make(map[TailscaleClient][]netip.Addr)
-	for _, client := range allClients {
-		ips, err := client.IPs()
-		if err != nil {
-			t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
-		}
-		clientIPs[client] = ips
-	}
-
-	for _, client := range allClients {
-		err := client.Logout()
-		if err != nil {
-			t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
-		}
-	}
-
-	err = scenario.WaitForTailscaleLogout()
-	assertNoErrLogout(t, err)
-
-	t.Logf("all clients logged out")
-
-	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
-
-	for userName := range spec {
-		key, err := scenario.CreatePreAuthKey(userName, true, false)
-		if err != nil {
-			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
-		}
-
-		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
-		if err != nil {
-			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
-		}
-	}
-
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
-
-	// assertClientsState(t, allClients)
-
-	allClients, err = scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
-
-	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
-
-	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
-		return x.String()
-	})
-
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
-
-	for _, client := range allClients {
-		ips, err := client.IPs()
-		if err != nil {
-			t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
-		}
-
-		// lets check if the IPs are the same
-		if len(ips) != len(clientIPs[client]) {
-			t.Fatalf("IPs changed for client %s", client.Hostname())
-		}
-
-		for _, ip := range ips {
-			found := false
-			for _, oldIP := range clientIPs[client] {
-				if ip == oldIP {
-					found = true
-
-					break
+			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
+			if https {
+				opts = []hsic.Option{
+					hsic.WithTestName("pingallbyip"),
+					hsic.WithEmbeddedDERPServerOnly(),
+					hsic.WithTLS(),
+					hsic.WithHostnameAsServerURL(),
 				}
 			}
 
-			if !found {
-				t.Fatalf(
-					"IPs changed for client %s. Used to be %v now %v",
-					client.Hostname(),
-					clientIPs[client],
-					ips,
-				)
+			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, opts...)
+			assertNoErrHeadscaleEnv(t, err)
+
+			allClients, err := scenario.ListTailscaleClients()
+			assertNoErrListClients(t, err)
+
+			err = scenario.WaitForTailscaleSync()
+			assertNoErrSync(t, err)
+
+			// assertClientsState(t, allClients)
+
+			clientIPs := make(map[TailscaleClient][]netip.Addr)
+			for _, client := range allClients {
+				ips, err := client.IPs()
+				if err != nil {
+					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
+				}
+				clientIPs[client] = ips
 			}
-		}
+
+			for _, client := range allClients {
+				err := client.Logout()
+				if err != nil {
+					t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
+				}
+			}
+
+			err = scenario.WaitForTailscaleLogout()
+			assertNoErrLogout(t, err)
+
+			t.Logf("all clients logged out")
+
+			headscale, err := scenario.Headscale()
+			assertNoErrGetHeadscale(t, err)
+
+			// if the server is not running with HTTPS, we have to wait a bit before
+			// reconnection as the newest Tailscale client has a measure that will only
+			// reconnect over HTTPS if they saw a noise connection previously.
+			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
+			// https://github.com/juanfont/headscale/issues/2164
+			if !https {
+				time.Sleep(3 * time.Minute)
+			}
+
+			for userName := range spec {
+				key, err := scenario.CreatePreAuthKey(userName, true, false)
+				if err != nil {
+					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
+				}
+
+				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+				if err != nil {
+					t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
+				}
+			}
+
+			err = scenario.WaitForTailscaleSync()
+			assertNoErrSync(t, err)
+
+			// assertClientsState(t, allClients)
+
+			allClients, err = scenario.ListTailscaleClients()
+			assertNoErrListClients(t, err)
+
+			allIps, err := scenario.ListTailscaleClientsIPs()
+			assertNoErrListClientIPs(t, err)
+
+			allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+				return x.String()
+			})
+
+			success := pingAllHelper(t, allClients, allAddrs)
+			t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+			for _, client := range allClients {
+				ips, err := client.IPs()
+				if err != nil {
+					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
+				}
+
+				// lets check if the IPs are the same
+				if len(ips) != len(clientIPs[client]) {
+					t.Fatalf("IPs changed for client %s", client.Hostname())
+				}
+
+				for _, ip := range ips {
+					found := false
+					for _, oldIP := range clientIPs[client] {
+						if ip == oldIP {
+							found = true
+
+							break
+						}
+					}
+
+					if !found {
+						t.Fatalf(
+							"IPs changed for client %s. Used to be %v now %v",
+							client.Hostname(),
+							clientIPs[client],
+							ips,
+						)
+					}
+				}
+			}
+		})
 	}
 }
 
