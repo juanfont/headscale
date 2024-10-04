@@ -166,6 +166,7 @@ type OIDCConfig struct {
 	AllowedGroups              []string
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
+	MapLegacyUsers             bool
 }
 
 type DERPConfig struct {
@@ -278,6 +279,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
+	viper.SetDefault("oidc.map_legacy_users", true)
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -900,6 +902,7 @@ func LoadServerConfig() (*Config, error) {
 				}
 			}(),
 			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
+			MapLegacyUsers:     viper.GetBool("oidc.map_legacy_users"),
 		},
 
 		LogTail:             logTailConfig,
