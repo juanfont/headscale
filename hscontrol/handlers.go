@@ -1,17 +1,19 @@
 package hscontrol
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/chasefleming/elem-go"
+	"github.com/chasefleming/elem-go/attrs"
+	"github.com/chasefleming/elem-go/styles"
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -135,38 +137,37 @@ func (h *Headscale) HealthHandler(
 	respond(nil)
 }
 
-type registerWebAPITemplateConfig struct {
-	Key string
+var codeStyleRegisterWebAPI = styles.Props{
+	styles.Display:         "block",
+	styles.Padding:         "20px",
+	styles.Border:          "1px solid #bbb",
+	styles.BackgroundColor: "#eee",
 }
 
-var registerWebAPITemplate = template.Must(
-	template.New("registerweb").Parse(`
-<html>
-	<head>
-		<title>Registration - Headscale</title>
-		<meta name=viewport content="width=device-width, initial-scale=1">
-		<style>
-			body {
-				font-family: sans;
-			}
-			code {
-				display: block;
-				padding: 20px;
-				border: 1px solid #bbb;
-				background-color: #eee;
-			}
-		</style>
-	</head>
-	<body>
-		<h1>headscale</h1>
-		<h2>Machine registration</h2>
-		<p>
-			Run the command below in the headscale server to add this machine to your network:
-		</p>
-		<code>headscale nodes register --user USERNAME --key {{.Key}}</code>
-	</body>
-</html>
-`))
+func registerWebHTML(key string) *elem.Element {
+	return elem.Html(nil,
+		elem.Head(
+			nil,
+			elem.Title(nil, elem.Text("Registration - Headscale")),
+			elem.Meta(attrs.Props{
+				attrs.Name:    "viewport",
+				attrs.Content: "width=device-width, initial-scale=1",
+			}),
+		),
+		elem.Body(attrs.Props{
+			attrs.Style: styles.Props{
+				styles.FontFamily: "sans",
+			}.ToInline(),
+		},
+			elem.H1(nil, elem.Text("headscale")),
+			elem.H2(nil, elem.Text("Machine registration")),
+			elem.P(nil, elem.Text("Run the command below in the headscale server to add this machine to your network:")),
+			elem.Code(attrs.Props{attrs.Style: codeStyleRegisterWebAPI.ToInline()},
+				elem.Text(fmt.Sprintf("headscale nodes register --user USERNAME --key %s", key)),
+			),
+		),
+	)
+}
 
 type AuthProviderWeb struct {
 	serverURL string
@@ -220,34 +221,14 @@ func (a *AuthProviderWeb) RegisterHandler(
 		return
 	}
 
-	var content bytes.Buffer
-	if err := registerWebAPITemplate.Execute(&content, registerWebAPITemplateConfig{
-		Key: machineKey.String(),
-	}); err != nil {
-		log.Error().
-			Str("func", "RegisterWebAPI").
-			Err(err).
-			Msg("Could not render register web API template")
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusInternalServerError)
-		_, err = writer.Write([]byte("Could not render register web API template"))
-		if err != nil {
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+	if _, err := writer.Write([]byte(registerWebHTML(machineKey.String()).Render())); err != nil {
+		if _, err := writer.Write([]byte(templates.RegisterWeb(machineKey.String()).Render())); err != nil {
 			log.Error().
 				Caller().
 				Err(err).
 				Msg("Failed to write response")
 		}
-
-		return
-	}
-
-	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	writer.WriteHeader(http.StatusOK)
-	_, err = writer.Write(content.Bytes())
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
 	}
 }
