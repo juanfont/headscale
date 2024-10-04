@@ -443,7 +443,9 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 
 	// This check is for legacy, if the user cannot be found by the OIDC identifier
 	// look it up by username. This should only be needed once.
-	if user == nil {
+	// This branch will presist for a number of versions after the OIDC migration and
+	// then be removed following a deprecation.
+	if a.cfg.MapLegacyUsers && user == nil {
 		user, err = a.db.GetUserByName(claims.Username)
 		if err != nil && !errors.Is(err, db.ErrUserNotFound) {
 			return nil, fmt.Errorf("creating or updating user: %w", err)
@@ -451,6 +453,15 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 
 		// if the user is still not found, create a new empty user.
 		if user == nil {
+			user = &types.User{}
+		}
+
+		// If the user exists, but it already has a provider identifier (OIDC sub), create a new user.
+		// This is to prevent users that have already been migrated to the new OIDC format
+		// to be updated with the new OIDC identifier inexplicitly which might be the cause of an
+		// account takeover.
+		if user.ProviderIdentifier != "" {
+			log.Info().Str("username", claims.Username).Str("sub", claims.Sub).Msg("user found by username, but has provider identifier, creating new user.")
 			user = &types.User{}
 		}
 	}
