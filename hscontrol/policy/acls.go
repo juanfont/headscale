@@ -178,7 +178,12 @@ func (pol *ACLPolicy) CompileFilterRules(
 		for srcIndex, src := range acl.Sources {
 			srcs, err := pol.expandSource(src, nodes)
 			if err != nil {
-				return nil, fmt.Errorf("parsing policy, acl index: %d->%d: %w", index, srcIndex, err)
+				return nil, fmt.Errorf(
+					"parsing policy, acl index: %d->%d: %w",
+					index,
+					srcIndex,
+					err,
+				)
 			}
 			srcIPs = append(srcIPs, srcs...)
 		}
@@ -335,12 +340,21 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 		case "check":
 			checkAction, err := sshCheckAction(sshACL.CheckPeriod)
 			if err != nil {
-				return nil, fmt.Errorf("parsing SSH policy, parsing check duration, index: %d: %w", index, err)
+				return nil, fmt.Errorf(
+					"parsing SSH policy, parsing check duration, index: %d: %w",
+					index,
+					err,
+				)
 			} else {
 				action = *checkAction
 			}
 		default:
-			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", sshACL.Action, index, err)
+			return nil, fmt.Errorf(
+				"parsing SSH policy, unknown action %q, index: %d: %w",
+				sshACL.Action,
+				index,
+				err,
+			)
 		}
 
 		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
@@ -977,10 +991,7 @@ func FilterNodesByACL(
 			continue
 		}
 
-		log.Printf("Checking if %s can access %s", node.Hostname, peer.Hostname)
-
 		if node.CanAccess(filter, nodes[index]) || peer.CanAccess(filter, node) {
-			log.Printf("CAN ACCESS %s can access %s", node.Hostname, peer.Hostname)
 			result = append(result, peer)
 		}
 	}
