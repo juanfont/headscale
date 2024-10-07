@@ -484,10 +484,12 @@
             "format": "uint64"
           },
           {
-            "name": "user",
-            "in": "query",
-            "required": false,
-            "type": "string"
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/HeadscaleServiceMoveNodeBody"
+            }
           }
         ],
         "tags": [
@@ -906,6 +908,14 @@
     }
   },
   "definitions": {
+    "HeadscaleServiceMoveNodeBody": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "type": "string"
+        }
+      }
+    },
     "HeadscaleServiceSetTagsBody": {
       "type": "object",
       "properties": {
