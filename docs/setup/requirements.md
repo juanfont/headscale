@@ -4,6 +4,7 @@ Headscale should just work as long as the following requirements are met:
 
 - A server with a public IP address for headscale. A dual-stack setup with a public IPv4 and a public IPv6 address is
   recommended.
+- Headscale is served via HTTPS on port 443[^1].
 - A reasonably modern Linux or BSD based operating system.
 - A dedicated user account to run headscale.
 - A little bit of command line knowledge to configure and operate headscale.
@@ -20,3 +21,8 @@ The headscale documentation and the provided examples are written with a few ass
   values such as `headscale.example.com`.
 
 Please adjust to your local environment accordingly.
+
+[^1]:
+    The Tailscale client assumes HTTPS on port 443 in certain situations. Serving headscale either via HTTP or via HTTPS
+    on a port other than 443 is possible but sticking with HTTPS on port 443 is strongly recommended for production
+    setups. See [issue 2164](https://github.com/juanfont/headscale/issues/2164) for more information.
