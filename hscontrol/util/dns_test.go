@@ -53,6 +53,52 @@ func TestCheckForFQDNRules(t *testing.T) {
 	}
 }
 
+func TestConvertWithFQDNRules(t *testing.T) {
+	tests := []struct {
+		name        string
+		hostname    string
+		dnsHostName string
+	}{
+		{
+			name:        "User1.test",
+			hostname:    "User1.Test",
+			dnsHostName: "user1.test",
+		},
+		{
+			name:        "User'1$2.test",
+			hostname:    "User'1$2.Test",
+			dnsHostName: "user12.test",
+		},
+		{
+			name:        "User-^_12.local.test",
+			hostname:    "User-^_12.local.Test",
+			dnsHostName: "user-12.local.test",
+		},
+		{
+			name:        "User-MacBook-Pro",
+			hostname:    "User-MacBook-Pro",
+			dnsHostName: "user-macbook-pro",
+		},
+		{
+			name:        "User-Linux-Ubuntu/Fedora",
+			hostname:    "User-Linux-Ubuntu/Fedora",
+			dnsHostName: "user-linux-ubuntufedora",
+		},
+		{
+			name:        "User-[Space]123",
+			hostname:    "User-[ ]123",
+			dnsHostName: "user-123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fqdnHostName := ConvertWithFQDNRules(tt.hostname)
+			assert.Equal(t, tt.dnsHostName, fqdnHostName)
+		})
+	}
+}
+
 func TestMagicDNSRootDomains100(t *testing.T) {
 	domains := GenerateIPv4DNSRootDomain(netip.MustParsePrefix("100.64.0.0/10"))
 
