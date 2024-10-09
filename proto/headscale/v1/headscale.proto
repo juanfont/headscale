@@ -121,7 +121,8 @@ service HeadscaleService {
 
     rpc MoveNode(MoveNodeRequest) returns (MoveNodeResponse) {
         option (google.api.http) = {
-            post: "/api/v1/node/{node_id}/user"
+            post: "/api/v1/node/{node_id}/user",
+            body: "*"
         };
     }
 
