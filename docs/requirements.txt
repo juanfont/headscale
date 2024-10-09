@@ -1,5 +1,6 @@
 cairosvg~=2.7.1
 mkdocs-include-markdown-plugin~=6.2.2
+mkdocs-macros-plugin~=1.2.0
 mkdocs-material~=9.5.18
 mkdocs-minify-plugin~=0.7.1
 mkdocs-redirects~=1.2.1

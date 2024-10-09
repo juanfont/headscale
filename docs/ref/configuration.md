@@ -16,7 +16,7 @@
     === "View on GitHub"
 
         * Development version: <https://github.com/juanfont/headscale/blob/main/config-example.yaml>
-        * Version 0.23.0: <https://github.com/juanfont/headscale/blob/v0.23.0/config-example.yaml>
+        * Version {{ headscale.version }}: <https://github.com/juanfont/headscale/blob/v{{ headscale.version }}/config-example.yaml>
 
     === "Download with `wget`"
 
@@ -24,8 +24,8 @@
         # Development version
         wget -O config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
 
-        # Version 0.23.0
-        wget -O config.yaml https://raw.githubusercontent.com/juanfont/headscale/v0.23.0/config-example.yaml
+        # Version {{ headscale.version }}
+        wget -O config.yaml https://raw.githubusercontent.com/juanfont/headscale/v{{ headscale.version }}/config-example.yaml
         ```
 
     === "Download with `curl`"
@@ -34,6 +34,6 @@
         # Development version
         curl -o config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
 
-        # Version 0.23.0
-        curl -o config.yaml https://raw.githubusercontent.com/juanfont/headscale/v0.23.0/config-example.yaml
+        # Version {{ headscale.version }}
+        curl -o config.yaml https://raw.githubusercontent.com/juanfont/headscale/v{{ headscale.version }}/config-example.yaml
         ```

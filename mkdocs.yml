@@ -66,6 +66,7 @@ exclude_docs: |
 plugins:
   - search:
       separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - macros:
   - include-markdown:
   - minify:
       minify_html: true
@@ -99,6 +100,8 @@ extra:
       link: https://github.com/juanfont/headscale/pkgs/container/headscale
     - icon: fontawesome/brands/discord
       link: https://discord.gg/c84AZQhmpx
+  headscale:
+    version: 0.23.0
 
 # Extensions
 markdown_extensions:
