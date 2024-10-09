@@ -607,6 +607,7 @@ func enableRoutes(tx *gorm.DB,
 }
 
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
+	suppliedName = util.ConvertWithFQDNRules(suppliedName)
 	if len(suppliedName) > util.LabelHostnameLength {
 		return "", types.ErrHostnameTooLong
 	}
