@@ -6,6 +6,7 @@ on:
 
 jobs:
   close-issues:
+    if: github.repository == 'juanfont/headscale'
     runs-on: ubuntu-latest
     permissions:
       issues: write
