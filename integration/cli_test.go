@@ -405,7 +405,14 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		user2: 0,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipak"))
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		[]tsic.Option{},
+		hsic.WithTestName("clipak"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+	)
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
