@@ -393,6 +393,15 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "UPPERCASE node name generation",
+			args: args{
+				suppliedName: "TestNode",
+				randomSuffix: false,
+			},
+			want:    regexp.MustCompile("^testnode$"),
+			wantErr: false,
+		},
+		{
 			name: "node name with 53 chars",
 			args: args{
 				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",

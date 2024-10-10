@@ -50,6 +50,13 @@ func CheckForFQDNRules(name string) error {
 	return nil
 }
 
+func ConvertWithFQDNRules(name string) string {
+	name = strings.ToLower(name)
+	name = invalidCharsInUserRegex.ReplaceAllString(name, "")
+
+	return name
+}
+
 // generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
 // This list of reverse DNS entries instructs the OS on what subnets and domains the Tailscale embedded DNS
 // server (listening in 100.100.100.100 udp/53) should be used for.
