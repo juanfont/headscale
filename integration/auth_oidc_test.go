@@ -68,6 +68,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		spec,
 		hsic.WithTestName("oidcauthping"),
 		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
 		hsic.WithHostnameAsServerURL(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
 	)
@@ -298,6 +299,10 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 
 				loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetIP())
 				loginURL.Scheme = "http"
+
+				if len(headscale.GetCert()) > 0 {
+					loginURL.Scheme = "https"
+				}
 
 				insecureTransport := &http.Transport{
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
