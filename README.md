@@ -46,31 +46,11 @@ buttons available in the repo.
 
 ## Features
 
-- Full "base" support of Tailscale's features
-- Configurable DNS
-  - [Split DNS](https://tailscale.com/kb/1054/dns/#using-dns-settings-in-the-admin-console)
-- Node registration
-  - Single-Sign-On (via Open ID Connect)
-  - Pre authenticated key
-- Taildrop (File Sharing)
-- [Access control lists](https://tailscale.com/kb/1018/acls/)
-- [MagicDNS](https://tailscale.com/kb/1081/magicdns)
-- Dual stack (IPv4 and IPv6)
-- Routing advertising (including exit nodes)
-- Ephemeral nodes
-- Embedded [DERP server](https://tailscale.com/blog/how-tailscale-works/#encrypted-tcp-relays-derp)
+Please see ["Features" in the documentation](https://headscale.net/about/features/).
 
 ## Client OS support
 
-| OS      | Supports headscale                                                                                 |
-| ------- | -------------------------------------------------------------------------------------------------- |
-| Linux   | Yes                                                                                                |
-| OpenBSD | Yes                                                                                                |
-| FreeBSD | Yes                                                                                                |
-| Windows | Yes (see [docs](./docs/windows-client.md) and `/windows` on your headscale for more information)   |
-| Android | Yes (see [docs](./docs/android-client.md))                                                         |
-| macOS   | Yes (see [docs](./docs/apple-client.md#macos) and `/apple` on your headscale for more information) |
-| iOS     | Yes (see [docs](./docs/apple-client.md#ios) and `/apple` on your headscale for more information)   |
+Please see ["Client and operating system support" in the documentation](https://headscale.net/about/clients/).
 
 ## Running headscale
 
@@ -99,7 +79,7 @@ Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) file.
 ### Requirements
 
 To contribute to headscale you would need the latest version of [Go](https://golang.org)
-and [Buf](https://buf.build)(Protobuf generator).
+and [Buf](https://buf.build) (Protobuf generator).
 
 We recommend using [Nix](https://nixos.org/) to setup a development environment. This can
 be done with `nix develop`, which will install the tools and give you a shell.

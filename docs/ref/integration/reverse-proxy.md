@@ -3,7 +3,7 @@
 !!! warning "Community documentation"
 
     This page is not actively maintained by the headscale authors and is
-    written by community members. It is _not_ verified by `headscale` developers.
+    written by community members. It is _not_ verified by headscale developers.
 
     **It might be outdated and it might miss necessary steps**.
 
@@ -121,11 +121,11 @@ The following Caddyfile is all that is necessary to use Caddy as a reverse proxy
 
 Caddy v2 will [automatically](https://caddyserver.com/docs/automatic-https) provision a certificate for your domain/subdomain, force HTTPS, and proxy websockets - no further configuration is necessary.
 
-For a slightly more complex configuration which utilizes Docker containers to manage Caddy, Headscale, and Headscale-UI, [Guru Computing's guide](https://blog.gurucomputing.com.au/smart-vpns-with-headscale/) is an excellent reference.
+For a slightly more complex configuration which utilizes Docker containers to manage Caddy, headscale, and Headscale-UI, [Guru Computing's guide](https://blog.gurucomputing.com.au/smart-vpns-with-headscale/) is an excellent reference.
 
 ## Apache
 
-The following minimal Apache config will proxy traffic to the Headscale instance on `<IP:PORT>`. Note that `upgrade=any` is required as a parameter for `ProxyPass` so that WebSockets traffic whose `Upgrade` header value is not equal to `WebSocket` (i. e. Tailscale Control Protocol) is forwarded correctly. See the [Apache docs](https://httpd.apache.org/docs/2.4/mod/mod_proxy_wstunnel.html) for more information on this.
+The following minimal Apache config will proxy traffic to the headscale instance on `<IP:PORT>`. Note that `upgrade=any` is required as a parameter for `ProxyPass` so that WebSockets traffic whose `Upgrade` header value is not equal to `WebSocket` (i. e. Tailscale Control Protocol) is forwarded correctly. See the [Apache docs](https://httpd.apache.org/docs/2.4/mod/mod_proxy_wstunnel.html) for more information on this.
 
 ```
 <VirtualHost *:443>

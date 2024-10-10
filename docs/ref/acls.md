@@ -36,12 +36,12 @@ servers.
 - billing.internal
 - router.internal
 
-![ACL implementation example](images/headscale-acl-network.png)
+![ACL implementation example](../images/headscale-acl-network.png)
 
 ## ACL setup
 
 Note: Users will be created automatically when users authenticate with the
-Headscale server.
+headscale server.
 
 ACLs have to be written in [huJSON](https://github.com/tailscale/hujson).
 
@@ -87,7 +87,7 @@ Here are the ACL's to implement the same permissions as above:
   // to define a single host, use a /32 mask. You cannot use DNS entries here,
   // as they're prone to be hijacked by replacing their IP addresses.
   // see https://github.com/tailscale/tailscale/issues/3800 for more information.
-  "Hosts": {
+  "hosts": {
     "postgresql.internal": "10.20.0.2/32",
     "webservers.internal": "10.20.10.1/29"
   },
