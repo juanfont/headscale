@@ -176,6 +176,7 @@ type DERPConfig struct {
 	STUNAddr                           string
 	URLs                               []url.URL
 	Paths                              []string
+	DERPMap                            *tailcfg.DERPMap
 	AutoUpdate                         bool
 	UpdateFrequency                    time.Duration
 	IPv4                               string
