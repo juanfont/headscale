@@ -671,7 +671,7 @@ func (pol *ACLPolicy) ExpandAlias(
 	}
 
 	if isAutoGroup(alias) {
-		return expandAutoGroup(pol, alias, nodes)
+		return pol.expandAutoGroup(alias, nodes)
 	}
 
 	// if alias is a user
@@ -990,7 +990,7 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 	return build.IPSet()
 }
 
-func expandAutoGroup(pol *ACLPolicy, alias string, nodes types.Nodes) (*netipx.IPSet, error) {
+func (pol *ACLPolicy) expandAutoGroup(alias string, nodes types.Nodes) (*netipx.IPSet, error) {
 	switch {
 	case strings.HasPrefix(alias, autogroupInternet):
 		return theInternet(), nil
