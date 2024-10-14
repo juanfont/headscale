@@ -471,7 +471,7 @@ func (m *mapSession) handleEndpointUpdate() {
 
 	// Check if the Hostinfo of the node has changed.
 	// If it has changed, check if there has been a change to
-	// the routable IPs of the host and update update them in
+	// the routable IPs of the host and update them in
 	// the database. Then send a Changed update
 	// (containing the whole node object) to peers to inform about
 	// the route change.
@@ -510,6 +510,12 @@ func (m *mapSession) handleEndpointUpdate() {
 			m.node.ID)
 	}
 
+	// Check if there has been a change to Hostname and update them
+	// in the database. Then send a Changed update
+	// (containing the whole node object) to peers to inform about
+	// the hostname change.
+	m.node.ApplyHostnameFromHostInfo(m.req.Hostinfo)
+
 	if err := m.h.db.DB.Save(m.node).Error; err != nil {
 		m.errf(err, "Failed to persist/update node in the database")
 		http.Error(m.w, "", http.StatusInternalServerError)
@@ -526,7 +532,8 @@ func (m *mapSession) handleEndpointUpdate() {
 			ChangeNodes: []types.NodeID{m.node.ID},
 			Message:     "called from handlePoll -> update",
 		},
-		m.node.ID)
+		m.node.ID,
+	)
 
 	m.w.WriteHeader(http.StatusOK)
 	mapResponseEndpointUpdates.WithLabelValues("ok").Inc()
