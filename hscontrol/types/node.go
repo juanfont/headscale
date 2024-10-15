@@ -99,7 +99,7 @@ type (
 
 // IsAutomaticNameMode returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
 func (node *Node) IsAutomaticNameMode() bool {
-	return node.GivenName == node.Hostname
+	return node.GivenName == util.ConvertWithFQDNRules(node.Hostname)
 }
 
 // IsExpired returns whether the node registration has expired.
@@ -360,8 +360,7 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 
 	if node.Hostname != hostInfo.Hostname {
 		if node.IsAutomaticNameMode() {
-			// TODO(hopleus): Add hostname conversion with FQDN rules applied
-			node.GivenName = hostInfo.Hostname
+			node.GivenName = util.ConvertWithFQDNRules(hostInfo.Hostname)
 		}
 
 		node.Hostname = hostInfo.Hostname
