@@ -20,6 +20,7 @@
 - Improved compatibilty of built-in DERP server with clients connecting over WebSocket.
 - Allow nodes to use SSH agent forwarding [#2145](https://github.com/juanfont/headscale/pull/2145)
 - Fixed processing of fields in post request in MoveNode rpc [#2179](https://github.com/juanfont/headscale/pull/2179)
+- Added conversion of 'Hostname' to 'givenName' in a node with FQDN rules applied [#2198](https://github.com/juanfont/headscale/pull/2198)
 
 ## 0.23.0 (2024-09-18)
 
