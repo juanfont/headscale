@@ -373,14 +373,14 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 		{
 			name: "hostinfo-exists-automatic-givenName",
 			nodeBefore: Node{
-				GivenName: "AutomaticName.Test",
+				GivenName: "automaticname.test",
 				Hostname:  "AutomaticName.Test",
 			},
 			change: &tailcfg.Hostinfo{
 				Hostname: "NewHostName.Local",
 			},
 			want: Node{
-				GivenName: "NewHostName.Local",
+				GivenName: "newhostname.local",
 				Hostname:  "NewHostName.Local",
 			},
 		},
