@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -41,7 +42,13 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 		"user2": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("webauthping"))
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		hsic.WithTestName("webauthping"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -275,7 +282,16 @@ func (s *AuthWebFlowScenario) runHeadscaleRegister(userStr string, loginURL *url
 	loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetIP())
 	loginURL.Scheme = "http"
 
-	httpClient := &http.Client{}
+	if len(headscale.GetCert()) > 0 {
+		loginURL.Scheme = "https"
+	}
+
+	insecureTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
+	}
+	httpClient := &http.Client{
+		Transport: insecureTransport,
+	}
 	ctx := context.Background()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
 	resp, err := httpClient.Do(req)
