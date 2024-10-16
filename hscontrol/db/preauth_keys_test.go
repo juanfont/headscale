@@ -11,14 +11,14 @@ import (
 )
 
 func (*Suite) TestCreatePreAuthKey(c *check.C) {
-	_, err := db.CreatePreAuthKey("bogus", true, false, nil, nil)
+	_, err := db.CreatePreAuthKey("bogus", true, true, false, nil, nil)
 
 	c.Assert(err, check.NotNil)
 
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	key, err := db.CreatePreAuthKey(user.Name, true, false, nil, nil)
+	key, err := db.CreatePreAuthKey(user.Name, true, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	// Did we get a valid key?
@@ -44,12 +44,22 @@ func (*Suite) TestExpiredPreAuthKey(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	now := time.Now().Add(-5 * time.Second)
-	pak, err := db.CreatePreAuthKey(user.Name, true, false, &now, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, true, true, false, &now, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
 	c.Assert(err, check.Equals, ErrPreAuthKeyExpired)
 	c.Assert(key, check.IsNil)
+}
+
+func (*Suite) TestPreApprovedPreAuthKey(c *check.C) {
+	user, err := db.CreateUser("test2")
+	c.Assert(err, check.IsNil)
+
+	now := time.Now().Add(-5 * time.Second)
+	pak, err := db.CreatePreAuthKey(user.Name, true, true, false, &now, nil)
+	c.Assert(err, check.IsNil)
+	c.Assert(pak.PreApproved, check.Equals, true)
 }
 
 func (*Suite) TestPreAuthKeyDoesNotExist(c *check.C) {
@@ -62,7 +72,7 @@ func (*Suite) TestValidateKeyOk(c *check.C) {
 	user, err := db.CreateUser("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, true, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
@@ -74,7 +84,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 	user, err := db.CreateUser("test4")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	node := types.Node{
@@ -96,7 +106,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 	user, err := db.CreateUser("test5")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, true, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	node := types.Node{
@@ -118,7 +128,7 @@ func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
 	user, err := db.CreateUser("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	key, err := db.ValidatePreAuthKey(pak.Key)
@@ -130,7 +140,7 @@ func (*Suite) TestExpirePreauthKey(c *check.C) {
 	user, err := db.CreateUser("test3")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, true, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 	c.Assert(pak.Expiration, check.IsNil)
 
@@ -147,7 +157,7 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 	user, err := db.CreateUser("test6")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 	pak.Used = true
 	db.DB.Save(&pak)
@@ -160,12 +170,12 @@ func (*Suite) TestPreAuthKeyACLTags(c *check.C) {
 	user, err := db.CreateUser("test8")
 	c.Assert(err, check.IsNil)
 
-	_, err = db.CreatePreAuthKey(user.Name, false, false, nil, []string{"badtag"})
+	_, err = db.CreatePreAuthKey(user.Name, false, true, false, nil, []string{"badtag"})
 	c.Assert(err, check.NotNil) // Confirm that malformed tags are rejected
 
 	tags := []string{"tag:test1", "tag:test2"}
 	tagsWithDuplicate := []string{"tag:test1", "tag:test2", "tag:test2"}
-	_, err = db.CreatePreAuthKey(user.Name, false, false, nil, tagsWithDuplicate)
+	_, err = db.CreatePreAuthKey(user.Name, false, true, false, nil, tagsWithDuplicate)
 	c.Assert(err, check.IsNil)
 
 	listedPaks, err := db.ListPreAuthKeys("test8")

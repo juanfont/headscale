@@ -59,6 +59,7 @@ func newTestDB() (*HSDatabase, error) {
 			},
 		},
 		"",
+		types.NodeManagement{},
 		emptyCache(),
 	)
 	if err != nil {

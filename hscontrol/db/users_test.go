@@ -31,7 +31,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.Name, false, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	err = db.DestroyUser("test")
@@ -44,7 +44,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	user, err = db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err = db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err = db.CreatePreAuthKey(user.Name, false, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	node := types.Node{
@@ -97,7 +97,7 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	newUser, err := db.CreateUser("new")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(oldUser.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(oldUser.Name, false, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	node := types.Node{

@@ -111,4 +111,5 @@ func (*Suite) TestConfigLoading(c *check.C) {
 	)
 	c.Assert(viper.GetBool("logtail.enabled"), check.Equals, false)
 	c.Assert(viper.GetBool("randomize_client_port"), check.Equals, false)
+	c.Assert(viper.GetBool("node_management.manual_approve_new_node"), check.Equals, false)
 }
