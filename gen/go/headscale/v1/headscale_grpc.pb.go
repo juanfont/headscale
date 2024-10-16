@@ -32,6 +32,7 @@ const (
 	HeadscaleService_SetTags_FullMethodName          = "/headscale.v1.HeadscaleService/SetTags"
 	HeadscaleService_RegisterNode_FullMethodName     = "/headscale.v1.HeadscaleService/RegisterNode"
 	HeadscaleService_DeleteNode_FullMethodName       = "/headscale.v1.HeadscaleService/DeleteNode"
+	HeadscaleService_ApproveNode_FullMethodName      = "/headscale.v1.HeadscaleService/ApproveNode"
 	HeadscaleService_ExpireNode_FullMethodName       = "/headscale.v1.HeadscaleService/ExpireNode"
 	HeadscaleService_RenameNode_FullMethodName       = "/headscale.v1.HeadscaleService/RenameNode"
 	HeadscaleService_ListNodes_FullMethodName        = "/headscale.v1.HeadscaleService/ListNodes"
@@ -70,6 +71,7 @@ type HeadscaleServiceClient interface {
 	SetTags(ctx context.Context, in *SetTagsRequest, opts ...grpc.CallOption) (*SetTagsResponse, error)
 	RegisterNode(ctx context.Context, in *RegisterNodeRequest, opts ...grpc.CallOption) (*RegisterNodeResponse, error)
 	DeleteNode(ctx context.Context, in *DeleteNodeRequest, opts ...grpc.CallOption) (*DeleteNodeResponse, error)
+	ApproveNode(ctx context.Context, in *ApproveNodeRequest, opts ...grpc.CallOption) (*ApproveNodeResponse, error)
 	ExpireNode(ctx context.Context, in *ExpireNodeRequest, opts ...grpc.CallOption) (*ExpireNodeResponse, error)
 	RenameNode(ctx context.Context, in *RenameNodeRequest, opts ...grpc.CallOption) (*RenameNodeResponse, error)
 	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
@@ -210,6 +212,15 @@ func (c *headscaleServiceClient) RegisterNode(ctx context.Context, in *RegisterN
 func (c *headscaleServiceClient) DeleteNode(ctx context.Context, in *DeleteNodeRequest, opts ...grpc.CallOption) (*DeleteNodeResponse, error) {
 	out := new(DeleteNodeResponse)
 	err := c.cc.Invoke(ctx, HeadscaleService_DeleteNode_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *headscaleServiceClient) ApproveNode(ctx context.Context, in *ApproveNodeRequest, opts ...grpc.CallOption) (*ApproveNodeResponse, error) {
+	out := new(ApproveNodeResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_ApproveNode_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -380,6 +391,7 @@ type HeadscaleServiceServer interface {
 	SetTags(context.Context, *SetTagsRequest) (*SetTagsResponse, error)
 	RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error)
 	DeleteNode(context.Context, *DeleteNodeRequest) (*DeleteNodeResponse, error)
+	ApproveNode(context.Context, *ApproveNodeRequest) (*ApproveNodeResponse, error)
 	ExpireNode(context.Context, *ExpireNodeRequest) (*ExpireNodeResponse, error)
 	RenameNode(context.Context, *RenameNodeRequest) (*RenameNodeResponse, error)
 	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
@@ -444,6 +456,9 @@ func (UnimplementedHeadscaleServiceServer) RegisterNode(context.Context, *Regist
 }
 func (UnimplementedHeadscaleServiceServer) DeleteNode(context.Context, *DeleteNodeRequest) (*DeleteNodeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteNode not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) ApproveNode(context.Context, *ApproveNodeRequest) (*ApproveNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ApproveNode not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) ExpireNode(context.Context, *ExpireNodeRequest) (*ExpireNodeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExpireNode not implemented")
@@ -736,6 +751,24 @@ func _HeadscaleService_DeleteNode_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(HeadscaleServiceServer).DeleteNode(ctx, req.(*DeleteNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HeadscaleService_ApproveNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApproveNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).ApproveNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HeadscaleService_ApproveNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).ApproveNode(ctx, req.(*ApproveNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1086,6 +1119,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteNode",
 			Handler:    _HeadscaleService_DeleteNode_Handler,
+		},
+		{
+			MethodName: "ApproveNode",
+			Handler:    _HeadscaleService_ApproveNode_Handler,
 		},
 		{
 			MethodName: "ExpireNode",
