@@ -2112,20 +2112,27 @@ func TestReduceFilterRules(t *testing.T) {
 		name  string
 		node  *types.Node
 		peers types.Nodes
-		pol   ACLPolicy
+		pol   string
 		want  []tailcfg.FilterRule
 	}{
 		{
 			name: "host1-can-reach-host2-no-rules",
-			pol: ACLPolicy{
-				ACLs: []ACL{
-					{
-						Action:       "accept",
-						Sources:      []string{"100.64.0.1"},
-						Destinations: []string{"100.64.0.2:*"},
-					},
-				},
-			},
+			pol: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "100.64.0.1"
+      ],
+      "dst": [
+        "100.64.0.2:*"
+      ]
+    }
+  ],
+}
+`,
 			node: &types.Node{
 				IPv4: iap("100.64.0.1"),
 				IPv6: iap("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
@@ -2142,23 +2149,37 @@ func TestReduceFilterRules(t *testing.T) {
 		},
 		{
 			name: "1604-subnet-routers-are-preserved",
-			pol: ACLPolicy{
-				Groups: Groups{
-					"group:admins": {"user1"},
-				},
-				ACLs: []ACL{
-					{
-						Action:       "accept",
-						Sources:      []string{"group:admins"},
-						Destinations: []string{"group:admins:*"},
-					},
-					{
-						Action:       "accept",
-						Sources:      []string{"group:admins"},
-						Destinations: []string{"10.33.0.0/16:*"},
-					},
-				},
-			},
+			pol: `
+{
+  "groups": {
+    "group:admins": [
+      "user1"
+    ]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "group:admins:*"
+      ]
+    },
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "10.33.0.0/16:*"
+      ]
+    }
+  ],
+}
+`,
 			node: &types.Node{
 				IPv4: iap("100.64.0.1"),
 				IPv6: iap("fd7a:115c:a1e0::1"),
@@ -2213,31 +2234,42 @@ func TestReduceFilterRules(t *testing.T) {
 		},
 		{
 			name: "1786-reducing-breaks-exit-nodes-the-client",
-			pol: ACLPolicy{
-				Hosts: Hosts{
-					// Exit node
-					"internal": netip.MustParsePrefix("100.64.0.100/32"),
-				},
-				Groups: Groups{
-					"group:team": {"user3", "user2", "user1"},
-				},
-				ACLs: []ACL{
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"internal:*",
-						},
-					},
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"autogroup:internet:*",
-						},
-					},
-				},
-			},
+			pol: `
+{
+  "groups": {
+    "group:team": [
+      "user3",
+      "user2",
+      "user1"
+    ]
+  },
+  "hosts": {
+    "internal": "100.64.0.100/32"
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "internal:*"
+      ]
+    },
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "autogroup:internet:*"
+      ]
+    }
+  ],
+}
+`,
 			node: &types.Node{
 				IPv4: iap("100.64.0.1"),
 				IPv6: iap("fd7a:115c:a1e0::1"),
@@ -2263,31 +2295,42 @@ func TestReduceFilterRules(t *testing.T) {
 		},
 		{
 			name: "1786-reducing-breaks-exit-nodes-the-exit",
-			pol: ACLPolicy{
-				Hosts: Hosts{
-					// Exit node
-					"internal": netip.MustParsePrefix("100.64.0.100/32"),
-				},
-				Groups: Groups{
-					"group:team": {"user3", "user2", "user1"},
-				},
-				ACLs: []ACL{
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"internal:*",
-						},
-					},
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"autogroup:internet:*",
-						},
-					},
-				},
-			},
+			pol: `
+{
+  "groups": {
+    "group:team": [
+      "user3",
+      "user2",
+      "user1"
+    ]
+  },
+  "hosts": {
+    "internal": "100.64.0.100/32"
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "internal:*"
+      ]
+    },
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "autogroup:internet:*"
+      ]
+    }
+  ],
+}
+`,
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
@@ -2340,60 +2383,71 @@ func TestReduceFilterRules(t *testing.T) {
 		},
 		{
 			name: "1786-reducing-breaks-exit-nodes-the-example-from-issue",
-			pol: ACLPolicy{
-				Hosts: Hosts{
-					// Exit node
-					"internal": netip.MustParsePrefix("100.64.0.100/32"),
-				},
-				Groups: Groups{
-					"group:team": {"user3", "user2", "user1"},
-				},
-				ACLs: []ACL{
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"internal:*",
-						},
-					},
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"0.0.0.0/5:*",
-							"8.0.0.0/7:*",
-							"11.0.0.0/8:*",
-							"12.0.0.0/6:*",
-							"16.0.0.0/4:*",
-							"32.0.0.0/3:*",
-							"64.0.0.0/2:*",
-							"128.0.0.0/3:*",
-							"160.0.0.0/5:*",
-							"168.0.0.0/6:*",
-							"172.0.0.0/12:*",
-							"172.32.0.0/11:*",
-							"172.64.0.0/10:*",
-							"172.128.0.0/9:*",
-							"173.0.0.0/8:*",
-							"174.0.0.0/7:*",
-							"176.0.0.0/4:*",
-							"192.0.0.0/9:*",
-							"192.128.0.0/11:*",
-							"192.160.0.0/13:*",
-							"192.169.0.0/16:*",
-							"192.170.0.0/15:*",
-							"192.172.0.0/14:*",
-							"192.176.0.0/12:*",
-							"192.192.0.0/10:*",
-							"193.0.0.0/8:*",
-							"194.0.0.0/7:*",
-							"196.0.0.0/6:*",
-							"200.0.0.0/5:*",
-							"208.0.0.0/4:*",
-						},
-					},
-				},
-			},
+			pol: `
+{
+  "groups": {
+    "group:team": [
+      "user3",
+      "user2",
+      "user1"
+    ]
+  },
+  "hosts": {
+    "internal": "100.64.0.100/32"
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "internal:*"
+      ]
+    },
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "0.0.0.0/5:*",
+        "8.0.0.0/7:*",
+        "11.0.0.0/8:*",
+        "12.0.0.0/6:*",
+        "16.0.0.0/4:*",
+        "32.0.0.0/3:*",
+        "64.0.0.0/2:*",
+        "128.0.0.0/3:*",
+        "160.0.0.0/5:*",
+        "168.0.0.0/6:*",
+        "172.0.0.0/12:*",
+        "172.32.0.0/11:*",
+        "172.64.0.0/10:*",
+        "172.128.0.0/9:*",
+        "173.0.0.0/8:*",
+        "174.0.0.0/7:*",
+        "176.0.0.0/4:*",
+        "192.0.0.0/9:*",
+        "192.128.0.0/11:*",
+        "192.160.0.0/13:*",
+        "192.169.0.0/16:*",
+        "192.170.0.0/15:*",
+        "192.172.0.0/14:*",
+        "192.176.0.0/12:*",
+        "192.192.0.0/10:*",
+        "193.0.0.0/8:*",
+        "194.0.0.0/7:*",
+        "196.0.0.0/6:*",
+        "200.0.0.0/5:*",
+        "208.0.0.0/4:*"
+      ]
+    }
+  ],
+}
+`,
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
@@ -2480,32 +2534,43 @@ func TestReduceFilterRules(t *testing.T) {
 		},
 		{
 			name: "1786-reducing-breaks-exit-nodes-app-connector-like",
-			pol: ACLPolicy{
-				Hosts: Hosts{
-					// Exit node
-					"internal": netip.MustParsePrefix("100.64.0.100/32"),
-				},
-				Groups: Groups{
-					"group:team": {"user3", "user2", "user1"},
-				},
-				ACLs: []ACL{
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"internal:*",
-						},
-					},
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"8.0.0.0/8:*",
-							"16.0.0.0/8:*",
-						},
-					},
-				},
-			},
+			pol: `
+{
+  "groups": {
+    "group:team": [
+      "user3",
+      "user2",
+      "user1"
+    ]
+  },
+  "hosts": {
+    "internal": "100.64.0.100/32"
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "internal:*"
+      ]
+    },
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "8.0.0.0/8:*",
+        "16.0.0.0/8:*"
+      ]
+    }
+  ],
+}
+`,
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
@@ -2570,32 +2635,43 @@ func TestReduceFilterRules(t *testing.T) {
 		},
 		{
 			name: "1786-reducing-breaks-exit-nodes-app-connector-like2",
-			pol: ACLPolicy{
-				Hosts: Hosts{
-					// Exit node
-					"internal": netip.MustParsePrefix("100.64.0.100/32"),
-				},
-				Groups: Groups{
-					"group:team": {"user3", "user2", "user1"},
-				},
-				ACLs: []ACL{
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"internal:*",
-						},
-					},
-					{
-						Action:  "accept",
-						Sources: []string{"group:team"},
-						Destinations: []string{
-							"8.0.0.0/16:*",
-							"16.0.0.0/16:*",
-						},
-					},
-				},
-			},
+			pol: `
+{
+  "groups": {
+    "group:team": [
+      "user3",
+      "user2",
+      "user1"
+    ]
+  },
+  "hosts": {
+    "internal": "100.64.0.100/32"
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "internal:*"
+      ]
+    },
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:team"
+      ],
+      "dst": [
+        "8.0.0.0/16:*",
+        "16.0.0.0/16:*"
+      ]
+    }
+  ],
+}
+`,
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
@@ -2660,25 +2736,32 @@ func TestReduceFilterRules(t *testing.T) {
 		},
 		{
 			name: "1817-reduce-breaks-32-mask",
-			pol: ACLPolicy{
-				Hosts: Hosts{
-					"vlan1": netip.MustParsePrefix("172.16.0.0/24"),
-					"dns1":  netip.MustParsePrefix("172.16.0.21/32"),
-				},
-				Groups: Groups{
-					"group:access": {"user1"},
-				},
-				ACLs: []ACL{
-					{
-						Action:  "accept",
-						Sources: []string{"group:access"},
-						Destinations: []string{
-							"tag:access-servers:*",
-							"dns1:*",
-						},
-					},
-				},
-			},
+			pol: `
+{
+  "groups": {
+    "group:access": [
+      "user1"
+    ]
+  },
+  "hosts": {
+    "dns1": "172.16.0.21/32",
+    "vlan1": "172.16.0.0/24"
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "",
+      "src": [
+        "group:access"
+      ],
+      "dst": [
+        "tag:access-servers:*",
+        "dns1:*"
+      ]
+    }
+  ],
+}
+`,
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
@@ -2719,7 +2802,11 @@ func TestReduceFilterRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := tt.pol.CompileFilterRules(
+			pol, err := LoadACLPolicyFromBytes([]byte(tt.pol))
+			if err != nil {
+				t.Fatalf("parsing policy: %s", err)
+			}
+			got, _ := pol.CompileFilterRules(
 				users,
 				append(tt.peers, tt.node),
 			)
