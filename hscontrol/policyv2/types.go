@@ -9,123 +9,293 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
+	"github.com/tailscale/hujson"
+	"go4.org/netipx"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
+
+var theInternetSet *netipx.IPSet
+
+// theInternet returns the IPSet for the Internet.
+// https://www.youtube.com/watch?v=iDbyYGrswtg
+func theInternet() *netipx.IPSet {
+	if theInternetSet != nil {
+		return theInternetSet
+	}
+
+	var internetBuilder netipx.IPSetBuilder
+	internetBuilder.AddPrefix(netip.MustParsePrefix("2000::/3"))
+	internetBuilder.AddPrefix(tsaddr.AllIPv4())
+
+	// Delete Private network addresses
+	// https://datatracker.ietf.org/doc/html/rfc1918
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("fc00::/7"))
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("10.0.0.0/8"))
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("172.16.0.0/12"))
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("192.168.0.0/16"))
+
+	// Delete Tailscale networks
+	internetBuilder.RemovePrefix(tsaddr.TailscaleULARange())
+	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
+
+	// Delete "cant find DHCP networks"
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-loca
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
+
+	theInternetSet, _ := internetBuilder.IPSet()
+	return theInternetSet
+}
+
+type Asterix string
+
+func (a Asterix) Validate() error {
+	if a == "*" {
+		return nil
+	}
+	return fmt.Errorf(`Asterix can only be "*", got: %s`, a)
+}
+
+func (a *Asterix) String() string {
+	return string(*a)
+}
+
+func (a *Asterix) UnmarshalJSON(b []byte) error {
+	*a = "*"
+	return nil
+}
 
 // Username is a string that represents a username, it must contain an @.
 type Username string
 
-func (u Username) Valid() bool {
-	return strings.Contains(string(u), "@")
+func (u Username) Validate() error {
+	if strings.Contains(string(u), "@") {
+		return nil
+	}
+	return fmt.Errorf("Username has to contain @, got: %q", u)
 }
 
-func (u Username) UnmarshalJSON(b []byte) error {
-	u = Username(strings.Trim(string(b), `"`))
-	if !u.Valid() {
-		return fmt.Errorf("invalid username %q", u)
+func (u *Username) String() string {
+	return string(*u)
+}
+
+func (u *Username) UnmarshalJSON(b []byte) error {
+	*u = Username(strings.Trim(string(b), `"`))
+	if err := u.Validate(); err != nil {
+		return err
 	}
 	return nil
+}
+
+func (u Username) CanBeTagOwner() bool {
+	return true
+}
+
+func (u Username) Resolve(_ *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+	var ips netipx.IPSetBuilder
+
+	for _, node := range nodes {
+		if node.IsTagged() {
+			continue
+		}
+
+		if node.User.Username() == string(u) {
+			node.AppendToIPSet(&ips)
+		}
+	}
+
+	return ips.IPSet()
 }
 
 // Group is a special string which is always prefixed with `group:`
 type Group string
 
-func (g Group) Valid() bool {
-	return strings.HasPrefix(string(g), "group:")
+func (g Group) Validate() error {
+	if strings.HasPrefix(string(g), "group:") {
+		return nil
+	}
+	return fmt.Errorf(`Group has to start with "group:", got: %q`, g)
 }
 
 func (g Group) UnmarshalJSON(b []byte) error {
 	g = Group(strings.Trim(string(b), `"`))
-	if !g.Valid() {
-		return fmt.Errorf("invalid group %q", g)
+	if err := g.Validate(); err != nil {
+		return err
 	}
 	return nil
+}
+
+func (g Group) CanBeTagOwner() bool {
+	return true
+}
+
+func (g Group) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+	var ips netipx.IPSetBuilder
+
+	for _, user := range p.Groups[g] {
+		uips, err := user.Resolve(nil, nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		ips.AddSet(uips)
+	}
+
+	return ips.IPSet()
 }
 
 // Tag is a special string which is always prefixed with `tag:`
 type Tag string
 
-func (t Tag) Valid() bool {
-	return strings.HasPrefix(string(t), "tag:")
+func (t Tag) Validate() error {
+	if strings.HasPrefix(string(t), "tag:") {
+		return nil
+	}
+	return fmt.Errorf(`tag has to start with "tag:", got: %q`, t)
 }
 
 func (t Tag) UnmarshalJSON(b []byte) error {
 	t = Tag(strings.Trim(string(b), `"`))
-	if !t.Valid() {
-		return fmt.Errorf("invalid tag %q", t)
+	if err := t.Validate(); err != nil {
+		return err
 	}
 	return nil
+}
+
+func (t Tag) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+	var ips netipx.IPSetBuilder
+
+	for _, node := range nodes {
+		if node.HasTag(string(t)) {
+			node.AppendToIPSet(&ips)
+		}
+	}
+
+	return ips.IPSet()
 }
 
 // Host is a string that represents a hostname.
 type Host string
 
-func (h Host) Valid() bool {
-	return true
+func (h Host) Validate() error {
+	return nil
 }
 
 func (h Host) UnmarshalJSON(b []byte) error {
 	h = Host(strings.Trim(string(b), `"`))
-	if !h.Valid() {
-		return fmt.Errorf("invalid host %q", h)
-	}
-	return nil
-}
-
-type Addr netip.Addr
-
-func (a Addr) Valid() bool {
-	return netip.Addr(a).IsValid()
-}
-
-func (a Addr) UnmarshalJSON(b []byte) error {
-	a = Addr(netip.Addr{})
-	if err := json.Unmarshal(b, (netip.Addr)(a)); err != nil {
+	if err := h.Validate(); err != nil {
 		return err
 	}
-	if !a.Valid() {
-		return fmt.Errorf("invalid address %v", a)
-	}
 	return nil
+}
+
+func (h Host) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+	var ips netipx.IPSetBuilder
+
+	ips.AddPrefix(netip.Prefix(p.Hosts[h]))
+
+	return ips.IPSet()
 }
 
 type Prefix netip.Prefix
 
-func (p Prefix) Valid() bool {
-	return netip.Prefix(p).IsValid()
+func (p Prefix) Validate() error {
+	if !netip.Prefix(p).IsValid() {
+		return fmt.Errorf("Prefix %q is invalid", p)
+	}
+
+	return nil
 }
 
-func (p Prefix) UnmarshalJSON(b []byte) error {
-	p = Prefix(netip.Prefix{})
-	if err := json.Unmarshal(b, (netip.Prefix)(p)); err != nil {
+func (p Prefix) String() string {
+	return netip.Prefix(p).String()
+}
+
+func (p *Prefix) parseString(addr string) error {
+	if !strings.Contains(addr, "/") {
+		addr, err := netip.ParseAddr(addr)
+		if err != nil {
+			return err
+		}
+		addrPref, err := addr.Prefix(addr.BitLen())
+		if err != nil {
+			return err
+		}
+
+		*p = Prefix(addrPref)
+		return nil
+	}
+
+	pref, err := netip.ParsePrefix(addr)
+	if err != nil {
 		return err
 	}
-	if !p.Valid() {
-		return fmt.Errorf("invalid prefix %v", p)
+	*p = Prefix(pref)
+	return nil
+}
+
+func (p *Prefix) UnmarshalJSON(b []byte) error {
+	err := p.parseString(strings.Trim(string(b), `"`))
+	if err != nil {
+		return err
+	}
+	if err := p.Validate(); err != nil {
+		return err
 	}
 	return nil
+}
+
+func (p Prefix) Resolve(_ *Policy, _ types.Nodes) (*netipx.IPSet, error) {
+	var ips netipx.IPSetBuilder
+
+	ips.AddPrefix(netip.Prefix(p))
+
+	return ips.IPSet()
 }
 
 // AutoGroup is a special string which is always prefixed with `autogroup:`
 type AutoGroup string
 
-func (ag AutoGroup) Valid() bool {
-	return strings.HasPrefix(string(ag), "autogroup:")
+const (
+	AutoGroupInternet = "autogroup:internet"
+)
+
+var autogroups = []string{AutoGroupInternet}
+
+func (ag AutoGroup) Validate() error {
+	for _, valid := range autogroups {
+		if valid == string(ag) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("AutoGroup is invalid, got: %q, must be one of %v", ag, autogroups)
 }
 
 func (ag AutoGroup) UnmarshalJSON(b []byte) error {
 	ag = AutoGroup(strings.Trim(string(b), `"`))
-	if !ag.Valid() {
-		return fmt.Errorf("invalid autogroup %q", ag)
+	if err := ag.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
 
+func (ag AutoGroup) Resolve(_ *Policy, _ types.Nodes) (*netipx.IPSet, error) {
+	switch ag {
+	case AutoGroupInternet:
+		return theInternet(), nil
+	}
+
+	return nil, nil
+}
+
 type Alias interface {
-	Valid() bool
+	Validate() error
 	UnmarshalJSON([]byte) error
+	Resolve(*Policy, types.Nodes) (*netipx.IPSet, error)
 }
 
 type AliasWithPorts struct {
@@ -160,6 +330,9 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 		}
 
 		ve.Alias = parseAlias(vs)
+		if err := ve.Alias.Validate(); err != nil {
+			return err
+		}
 
 	default:
 		return fmt.Errorf("type %T not supported", vs)
@@ -172,19 +345,19 @@ func parseAlias(vs string) Alias {
 	// 	ve.Alias = Addr(val)
 	// case netip.Prefix:
 	// 	ve.Alias = Prefix(val)
-	if addr, err := netip.ParseAddr(vs); err == nil {
-		return Addr(addr)
-	}
-
-	if prefix, err := netip.ParsePrefix(vs); err == nil {
-		return Prefix(prefix)
+	var pref Prefix
+	err := pref.parseString(vs)
+	if err == nil {
+		return &pref
 	}
 
 	switch {
+	case vs == "*":
+		return ptr.To(Asterix("*"))
 	case strings.Contains(vs, "@"):
-		return Username(vs)
+		return ptr.To(Username(vs))
 	case strings.HasPrefix(vs, "group:"):
-		return Group(vs)
+		ptr.To(Group(vs))
 	case strings.HasPrefix(vs, "tag:"):
 		return Tag(vs)
 	case strings.HasPrefix(vs, "autogroup:"):
@@ -206,6 +379,10 @@ func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
 	switch val := v.(type) {
 	case string:
 		ve.Alias = parseAlias(val)
+		ve.Alias = parseAlias(val)
+		if err := ve.Alias.Validate(); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("type %T not supported", val)
 	}
@@ -228,24 +405,78 @@ func (a *Aliases) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// UserEntity is an interface that represents something that can
-// return a list of users:
-// - Username
-// - Group
-// - AutoGroup
-type UserEntity interface {
-	Users() []Username
+func (a Aliases) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+	var ips netipx.IPSetBuilder
+
+	for _, alias := range a {
+		aips, err := alias.Resolve(p, nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		ips.AddSet(aips)
+	}
+
+	return ips.IPSet()
+}
+
+type Owner interface {
+	CanBeTagOwner() bool
 	UnmarshalJSON([]byte) error
 }
 
+// OwnerEnc is used to deserialize a Owner.
+type OwnerEnc struct{ Owner }
+
+func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
+	// TODO(kradalby): use encoding/json/v2 (go-json-experiment)
+	dec := json.NewDecoder(bytes.NewReader(b))
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return err
+	}
+	switch val := v.(type) {
+	case string:
+
+		switch {
+		case strings.Contains(val, "@"):
+			u := Username(val)
+			ve.Owner = &u
+		case strings.HasPrefix(val, "group:"):
+			ve.Owner = Group(val)
+		}
+	default:
+		return fmt.Errorf("type %T not supported", val)
+	}
+	return nil
+}
+
+type Owners []Owner
+
+func (o *Owners) UnmarshalJSON(b []byte) error {
+	var owners []OwnerEnc
+	err := json.Unmarshal(b, &owners)
+	if err != nil {
+		return err
+	}
+
+	*o = make([]Owner, len(owners))
+	for i, owner := range owners {
+		(*o)[i] = owner.Owner
+	}
+	return nil
+}
+
+type Usernames []Username
+
 // Groups are a map of Group to a list of Username.
-type Groups map[Group][]Username
+type Groups map[Group]Usernames
 
 // Hosts are alias for IP addresses or subnets.
-type Hosts map[Host]netip.Prefix
+type Hosts map[Host]Prefix
 
 // TagOwners are a map of Tag to a list of the UserEntities that own the tag.
-type TagOwners map[Tag][]UserEntity
+type TagOwners map[Tag]Owners
 
 type AutoApprovers struct {
 	Routes   map[string][]string `json:"routes"`
@@ -259,14 +490,43 @@ type ACL struct {
 	Destinations []AliasWithPorts `json:"dst"`
 }
 
-// ACLPolicy represents a Tailscale ACL Policy.
-type ACLPolicy struct {
-	Groups Groups `json:"groups"`
-	// Hosts         Hosts         `json:"hosts"`
+// Policy represents a Tailscale Network Policy.
+// TODO(kradalby):
+// Add validation method checking:
+// All users exists
+// All groups and users are valid tag TagOwners
+// Everything referred to in ACLs exists in other
+// entities.
+type Policy struct {
+	// validated is set if the policy has been validated.
+	// It is not safe to use before it is validated, and
+	// callers using it should panic if not
+	validated bool `json:"-"`
+
+	Groups        Groups        `json:"groups"`
+	Hosts         Hosts         `json:"hosts"`
 	TagOwners     TagOwners     `json:"tagOwners"`
 	ACLs          []ACL         `json:"acls"`
 	AutoApprovers AutoApprovers `json:"autoApprovers"`
 	// SSHs          []SSH         `json:"ssh"`
+}
+
+func PolicyFromBytes(b []byte) (*Policy, error) {
+	var policy Policy
+	ast, err := hujson.Parse(b)
+	if err != nil {
+		return nil, fmt.Errorf("parsing HuJSON: %w", err)
+	}
+
+	ast.Standardize()
+	acl := ast.Pack()
+
+	err = json.Unmarshal(acl, &policy)
+	if err != nil {
+		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
+	}
+
+	return &policy, nil
 }
 
 const (
@@ -329,7 +589,6 @@ func parsePorts(portsStr string) ([]tailcfg.PortRange, error) {
 
 	var ports []tailcfg.PortRange
 	for _, portStr := range strings.Split(portsStr, ",") {
-		log.Trace().Msgf("parsing portstring: %s", portStr)
 		rang := strings.Split(portStr, "-")
 		switch len(rang) {
 		case 1:
@@ -362,4 +621,73 @@ func parsePorts(portsStr string) ([]tailcfg.PortRange, error) {
 	}
 
 	return ports, nil
+}
+
+// For some reason golang.org/x/net/internal/iana is an internal package.
+const (
+	protocolICMP     = 1   // Internet Control Message
+	protocolIGMP     = 2   // Internet Group Management
+	protocolIPv4     = 4   // IPv4 encapsulation
+	protocolTCP      = 6   // Transmission Control
+	protocolEGP      = 8   // Exterior Gateway Protocol
+	protocolIGP      = 9   // any private interior gateway (used by Cisco for their IGRP)
+	protocolUDP      = 17  // User Datagram
+	protocolGRE      = 47  // Generic Routing Encapsulation
+	protocolESP      = 50  // Encap Security Payload
+	protocolAH       = 51  // Authentication Header
+	protocolIPv6ICMP = 58  // ICMP for IPv6
+	protocolSCTP     = 132 // Stream Control Transmission Protocol
+	ProtocolFC       = 133 // Fibre Channel
+)
+
+// parseProtocol reads the proto field of the ACL and generates a list of
+// protocols that will be allowed, following the IANA IP protocol number
+// https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+//
+// If the ACL proto field is empty, it allows ICMPv4, ICMPv6, TCP, and UDP,
+// as per Tailscale behaviour (see tailcfg.FilterRule).
+//
+// Also returns a boolean indicating if the protocol
+// requires all the destinations to use wildcard as port number (only TCP,
+// UDP and SCTP support specifying ports).
+func parseProtocol(protocol string) ([]int, bool, error) {
+	switch protocol {
+	case "":
+		return nil, false, nil
+	case "igmp":
+		return []int{protocolIGMP}, true, nil
+	case "ipv4", "ip-in-ip":
+		return []int{protocolIPv4}, true, nil
+	case "tcp":
+		return []int{protocolTCP}, false, nil
+	case "egp":
+		return []int{protocolEGP}, true, nil
+	case "igp":
+		return []int{protocolIGP}, true, nil
+	case "udp":
+		return []int{protocolUDP}, false, nil
+	case "gre":
+		return []int{protocolGRE}, true, nil
+	case "esp":
+		return []int{protocolESP}, true, nil
+	case "ah":
+		return []int{protocolAH}, true, nil
+	case "sctp":
+		return []int{protocolSCTP}, false, nil
+	case "icmp":
+		return []int{protocolICMP, protocolIPv6ICMP}, true, nil
+
+	default:
+		protocolNumber, err := strconv.Atoi(protocol)
+		if err != nil {
+			return nil, false, fmt.Errorf("parsing protocol number: %w", err)
+		}
+
+		// TODO(kradalby): What is this?
+		needsWildcard := protocolNumber != protocolTCP &&
+			protocolNumber != protocolUDP &&
+			protocolNumber != protocolSCTP
+
+		return []int{protocolNumber}, needsWildcard, nil
+	}
 }

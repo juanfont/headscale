@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -135,6 +136,50 @@ func (node *Node) IPs() []netip.Addr {
 	}
 
 	return ret
+}
+
+// IsTagged reports if a device is tagged
+// and therefore should not be treated as a
+// user owned device.
+// Currently, this function only handles tags set
+// via CLI ("forced tags" and preauthkeys)
+func (node *Node) IsTagged() bool {
+	if len(node.ForcedTags) > 0 {
+		return true
+	}
+
+	if node.AuthKey != nil && len(node.AuthKey.Tags) > 0 {
+		return true
+	}
+
+	if node.Hostinfo == nil {
+		return false
+	}
+
+	// TODO(kradalby): Figure out how tagging should work
+	// and hostinfo.requestedtags.
+	// Do this in other work.
+
+	return false
+}
+
+// HasTag reports if a node has a given tag.
+// Currently, this function only handles tags set
+// via CLI ("forced tags" and preauthkeys)
+func (node *Node) HasTag(tag string) bool {
+	if slices.Contains(node.ForcedTags, tag) {
+		return true
+	}
+
+	if node.AuthKey != nil && slices.Contains(node.AuthKey.Tags, tag) {
+		return true
+	}
+
+	// TODO(kradalby): Figure out how tagging should work
+	// and hostinfo.requestedtags.
+	// Do this in other work.
+
+	return false
 }
 
 func (node *Node) Prefixes() []netip.Prefix {
