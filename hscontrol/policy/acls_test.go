@@ -2023,9 +2023,9 @@ var tsExitNodeDest = []tailcfg.NetPortRange{
 	},
 }
 
-// hsExitNodeDest is the list of destination IP ranges that are allowed when
+// hsExitNodeDestForTest is the list of destination IP ranges that are allowed when
 // we use headscale "autogroup:internet".
-var hsExitNodeDest = []tailcfg.NetPortRange{
+var hsExitNodeDestForTest = []tailcfg.NetPortRange{
 	{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
 	{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
 	{IP: "11.0.0.0/8", Ports: tailcfg.PortRangeAny},
@@ -2082,20 +2082,20 @@ func TestTheInternet(t *testing.T) {
 	internetPrefs := internetSet.Prefixes()
 
 	for i := range internetPrefs {
-		if internetPrefs[i].String() != hsExitNodeDest[i].IP {
+		if internetPrefs[i].String() != hsExitNodeDestForTest[i].IP {
 			t.Errorf(
 				"prefix from internet set %q != hsExit list %q",
 				internetPrefs[i].String(),
-				hsExitNodeDest[i].IP,
+				hsExitNodeDestForTest[i].IP,
 			)
 		}
 	}
 
-	if len(internetPrefs) != len(hsExitNodeDest) {
+	if len(internetPrefs) != len(hsExitNodeDestForTest) {
 		t.Fatalf(
 			"expected same length of prefixes, internet: %d, hsExit: %d",
 			len(internetPrefs),
-			len(hsExitNodeDest),
+			len(hsExitNodeDestForTest),
 		)
 	}
 }
@@ -2377,7 +2377,7 @@ func TestReduceFilterRules(t *testing.T) {
 						"fd7a:115c:a1e0::1/128",
 						"fd7a:115c:a1e0::2/128",
 					},
-					DstPorts: hsExitNodeDest,
+					DstPorts: hsExitNodeDestForTest,
 				},
 			},
 		},
