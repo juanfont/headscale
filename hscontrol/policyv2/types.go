@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -50,22 +51,27 @@ func theInternet() *netipx.IPSet {
 	return theInternetSet
 }
 
-type Asterix string
+type Asterix int
 
 func (a Asterix) Validate() error {
-	if a == "*" {
-		return nil
-	}
-	return fmt.Errorf(`Asterix can only be "*", got: %s`, a)
-}
-
-func (a *Asterix) String() string {
-	return string(*a)
-}
-
-func (a *Asterix) UnmarshalJSON(b []byte) error {
-	*a = "*"
 	return nil
+}
+
+func (a Asterix) String() string {
+	return "*"
+}
+
+func (a Asterix) UnmarshalJSON(b []byte) error {
+	return nil
+}
+
+func (a Asterix) Resolve(_ *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+	var ips netipx.IPSetBuilder
+
+	ips.AddPrefix(tsaddr.AllIPv4())
+	ips.AddPrefix(tsaddr.AllIPv6())
+
+	return ips.IPSet()
 }
 
 // Username is a string that represents a username, it must contain an @.
@@ -120,8 +126,8 @@ func (g Group) Validate() error {
 	return fmt.Errorf(`Group has to start with "group:", got: %q`, g)
 }
 
-func (g Group) UnmarshalJSON(b []byte) error {
-	g = Group(strings.Trim(string(b), `"`))
+func (g *Group) UnmarshalJSON(b []byte) error {
+	*g = Group(strings.Trim(string(b), `"`))
 	if err := g.Validate(); err != nil {
 		return err
 	}
@@ -157,8 +163,8 @@ func (t Tag) Validate() error {
 	return fmt.Errorf(`tag has to start with "tag:", got: %q`, t)
 }
 
-func (t Tag) UnmarshalJSON(b []byte) error {
-	t = Tag(strings.Trim(string(b), `"`))
+func (t *Tag) UnmarshalJSON(b []byte) error {
+	*t = Tag(strings.Trim(string(b), `"`))
 	if err := t.Validate(); err != nil {
 		return err
 	}
@@ -184,8 +190,8 @@ func (h Host) Validate() error {
 	return nil
 }
 
-func (h Host) UnmarshalJSON(b []byte) error {
-	h = Host(strings.Trim(string(b), `"`))
+func (h *Host) UnmarshalJSON(b []byte) error {
+	*h = Host(strings.Trim(string(b), `"`))
 	if err := h.Validate(); err != nil {
 		return err
 	}
@@ -195,7 +201,15 @@ func (h Host) UnmarshalJSON(b []byte) error {
 func (h Host) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
-	ips.AddPrefix(netip.Prefix(p.Hosts[h]))
+	pref, ok := p.Hosts[h]
+	if !ok {
+		return nil, fmt.Errorf("unable to resolve host: %q", h)
+	}
+	err := pref.Validate()
+	if err != nil {
+		return nil, err
+	}
+	ips.AddPrefix(netip.Prefix(pref))
 
 	return ips.IPSet()
 }
@@ -275,8 +289,8 @@ func (ag AutoGroup) Validate() error {
 	return fmt.Errorf("AutoGroup is invalid, got: %q, must be one of %v", ag, autogroups)
 }
 
-func (ag AutoGroup) UnmarshalJSON(b []byte) error {
-	ag = AutoGroup(strings.Trim(string(b), `"`))
+func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
+	*ag = AutoGroup(strings.Trim(string(b), `"`))
 	if err := ag.Validate(); err != nil {
 		return err
 	}
@@ -330,6 +344,9 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 		}
 
 		ve.Alias = parseAlias(vs)
+		if ve.Alias == nil {
+			return fmt.Errorf("could not determine the type of %q", vs)
+		}
 		if err := ve.Alias.Validate(); err != nil {
 			return err
 		}
@@ -353,17 +370,22 @@ func parseAlias(vs string) Alias {
 
 	switch {
 	case vs == "*":
-		return ptr.To(Asterix("*"))
+		return Asterix(0)
 	case strings.Contains(vs, "@"):
 		return ptr.To(Username(vs))
 	case strings.HasPrefix(vs, "group:"):
-		ptr.To(Group(vs))
+		return ptr.To(Group(vs))
 	case strings.HasPrefix(vs, "tag:"):
-		return Tag(vs)
+		return ptr.To(Tag(vs))
 	case strings.HasPrefix(vs, "autogroup:"):
-		return AutoGroup(vs)
+		return ptr.To(AutoGroup(vs))
 	}
-	return Host(vs)
+
+	if !strings.Contains(vs, "@") && !strings.Contains(vs, ":") {
+		return ptr.To(Host(vs))
+	}
+
+	return nil
 }
 
 // AliasEnc is used to deserialize a Alias.
@@ -379,10 +401,13 @@ func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
 	switch val := v.(type) {
 	case string:
 		ve.Alias = parseAlias(val)
-		ve.Alias = parseAlias(val)
+		if ve.Alias == nil {
+			return fmt.Errorf("could not determine the type of %q", val)
+		}
 		if err := ve.Alias.Validate(); err != nil {
 			return err
 		}
+		log.Printf("val: %q as type: %T", val, ve.Alias)
 	default:
 		return fmt.Errorf("type %T not supported", val)
 	}
@@ -440,10 +465,9 @@ func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
 
 		switch {
 		case strings.Contains(val, "@"):
-			u := Username(val)
-			ve.Owner = &u
+			ve.Owner = ptr.To(Username(val))
 		case strings.HasPrefix(val, "group:"):
-			ve.Owner = Group(val)
+			ve.Owner = ptr.To(Group(val))
 		}
 	default:
 		return fmt.Errorf("type %T not supported", val)
