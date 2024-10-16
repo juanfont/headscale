@@ -110,7 +110,7 @@ func tailNode(
 
 		PrimaryRoutes: primaryPrefixes,
 
-		MachineAuthorized: !node.IsExpired(),
+		MachineAuthorized: node.IsApproved(),
 		Expired:           node.IsExpired(),
 	}
 

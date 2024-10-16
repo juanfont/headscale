@@ -50,8 +50,9 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
 		Preload("AuthKey.User").
 		Preload("User").
 		Preload("Routes").
-		Where("id <> ?",
-			nodeID).Find(&nodes).Error; err != nil {
+		Where("id <> ?", nodeID).
+		Where("approved = ?", true).
+		Find(&nodes).Error; err != nil {
 		return types.Nodes{}, err
 	}
 
@@ -261,6 +262,19 @@ func RenameNode(tx *gorm.DB,
 	return nil
 }
 
+func (hsdb *HSDatabase) NodeSetApprove(nodeID types.NodeID, approved bool) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return NodeSetApprove(tx, nodeID, approved)
+	})
+}
+
+// NodeSetApprove takes a Node struct and a set approval option
+func NodeSetApprove(tx *gorm.DB,
+	nodeID types.NodeID, approved bool,
+) error {
+	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved", approved).Error
+}
+
 func (hsdb *HSDatabase) NodeSetExpiry(nodeID types.NodeID, expiry time.Time) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		return NodeSetExpiry(tx, nodeID, expiry)
@@ -328,6 +342,8 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 	ipv6 *netip.Addr,
 ) (*types.Node, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
+		manualApprovedNode := hsdb.nodeManagement.ManualApproveNewNode
+
 		if node, ok := hsdb.regCache.Get(mkey.String()); ok {
 			user, err := GetUserByID(tx, userID)
 			if err != nil {
@@ -341,6 +357,7 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 				Str("machine_key", mkey.ShortString()).
 				Str("username", user.Username()).
 				Str("registrationMethod", registrationMethod).
+				Bool("manualApprovedNode", manualApprovedNode).
 				Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
 				Msg("Registering node from API/CLI or auth callback")
 
@@ -353,6 +370,10 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 			node.UserID = user.ID
 			node.User = *user
 			node.RegisterMethod = registrationMethod
+
+			if node.IsApproved() == false && manualApprovedNode == false {
+				node.Approved = true
+			}
 
 			if nodeExpiry != nil {
 				node.Expiry = nodeExpiry
@@ -388,6 +409,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
 		Str("user", node.User.Username()).
+		Bool("approved", node.IsApproved()).
 		Msg("Registering node")
 
 	// If the node exists and it already has IP(s), we just save it
@@ -404,6 +426,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
 			Str("user", node.User.Username()).
+			Bool("approved", node.IsApproved()).
 			Msg("Node authorized again")
 
 		return &node, nil
@@ -428,6 +451,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	log.Trace().
 		Caller().
 		Str("node", node.Hostname).
+		Bool("approved", node.IsApproved()).
 		Msg("Node registered with the database")
 
 	return &node, nil

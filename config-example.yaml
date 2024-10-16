@@ -384,3 +384,9 @@ logtail:
 # default static port 41641. This option is intended as a workaround for some buggy
 # firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
 randomize_client_port: false
+
+# Node management
+# See https://tailscale.com/kb/1099/device-approval for more information.
+node_management:
+  # Require new nodes to be approved by admins before they can access the network.
+  manual_approve_new_node: false
