@@ -25,12 +25,13 @@ var (
 func (hsdb *HSDatabase) CreatePreAuthKey(
 	uid types.UserID,
 	reusable bool,
+	preApproved bool,
 	ephemeral bool,
 	expiration *time.Time,
 	aclTags []string,
 ) (*types.PreAuthKey, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.PreAuthKey, error) {
-		return CreatePreAuthKey(tx, uid, reusable, ephemeral, expiration, aclTags)
+		return CreatePreAuthKey(tx, uid, reusable, preApproved, ephemeral, expiration, aclTags)
 	})
 }
 
@@ -39,6 +40,7 @@ func CreatePreAuthKey(
 	tx *gorm.DB,
 	uid types.UserID,
 	reusable bool,
+	preApproved bool,
 	ephemeral bool,
 	expiration *time.Time,
 	aclTags []string,
@@ -70,14 +72,15 @@ func CreatePreAuthKey(
 	}
 
 	key := types.PreAuthKey{
-		Key:        kstr,
-		UserID:     user.ID,
-		User:       *user,
-		Reusable:   reusable,
-		Ephemeral:  ephemeral,
-		CreatedAt:  &now,
-		Expiration: expiration,
-		Tags:       aclTags,
+		Key:         kstr,
+		UserID:      user.ID,
+		User:        *user,
+		Reusable:    reusable,
+		PreApproved: preApproved,
+		Ephemeral:   ephemeral,
+		CreatedAt:   &now,
+		Expiration:  expiration,
+		Tags:        aclTags,
 	}
 
 	if err := tx.Save(&key).Error; err != nil {

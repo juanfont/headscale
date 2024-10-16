@@ -87,6 +87,8 @@ type Config struct {
 	Policy PolicyConfig
 
 	Tuning Tuning
+
+	NodeManagement NodeManagement
 }
 
 type DNSConfig struct {
@@ -214,6 +216,10 @@ type Tuning struct {
 	NodeMapSessionBufferedChanSize int
 }
 
+type NodeManagement struct {
+	ManualApproveNewNode bool
+}
+
 // LoadConfig prepares and loads the Headscale configuration into Viper.
 // This means it sets the default values, reads the configuration file and
 // environment variables, and handles deprecated configuration options.
@@ -291,6 +297,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
+
+	viper.SetDefault("node_management.manual_approve_new_node", false)
 
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
@@ -749,6 +757,14 @@ func prefixV6() (*netip.Prefix, error) {
 	return &prefixV6, nil
 }
 
+func nodeManagementConfig() NodeManagement {
+	manualApproveNewNode := viper.GetBool("node_management.manual_approve_new_node")
+
+	return NodeManagement{
+		ManualApproveNewNode: manualApproveNewNode,
+	}
+}
+
 // LoadCLIConfig returns the needed configuration for the CLI client
 // of Headscale to connect to a Headscale server.
 func LoadCLIConfig() (*Config, error) {
@@ -845,6 +861,8 @@ func LoadServerConfig() (*Config, error) {
 		}
 	}
 
+	nodeManagement := nodeManagementConfig()
+
 	return &Config{
 		ServerURL:          serverURL,
 		Addr:               viper.GetString("listen_addr"),
@@ -936,6 +954,8 @@ func LoadServerConfig() (*Config, error) {
 				"tuning.node_mapsession_buffered_chan_size",
 			),
 		},
+
+		NodeManagement: nodeManagement,
 	}, nil
 }
 

@@ -158,6 +158,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 	preAuthKey, err := api.h.db.CreatePreAuthKey(
 		types.UserID(user.ID),
 		request.GetReusable(),
+		request.GetPreApproved(),
 		request.GetEphemeral(),
 		&expiration,
 		request.AclTags,
@@ -360,6 +361,54 @@ func (api headscaleV1APIServer) DeleteNode(
 	}
 
 	return &v1.DeleteNodeResponse{}, nil
+}
+
+func (api headscaleV1APIServer) ApproveNode(
+	ctx context.Context,
+	request *v1.ApproveNodeRequest,
+) (*v1.ApproveNodeResponse, error) {
+	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+		if err := db.NodeSetApprove(
+			tx,
+			types.NodeID(request.GetNodeId()),
+			true,
+		); err != nil {
+			return nil, err
+		}
+
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ctx = types.NotifyCtx(ctx, "cli-approved-node-self", node.Hostname)
+	api.h.nodeNotifier.NotifyByNodeID(
+		ctx,
+		types.StateUpdate{
+			Type:        types.StateSelfUpdate,
+			ChangeNodes: []types.NodeID{node.ID},
+		},
+		node.ID)
+
+	ctx = types.NotifyCtx(ctx, "cli-approved-node-peers", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(
+		ctx,
+		types.StateUpdate{
+			Type: types.StatePeerChangedPatch,
+			ChangePatches: []*tailcfg.PeerChange{
+				{
+					NodeID: node.ID.NodeID(),
+				},
+			},
+		},
+		node.ID)
+
+	log.Trace().
+		Str("node", node.Hostname).
+		Msg("node approved")
+
+	return &v1.ApproveNodeResponse{Node: node.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) ExpireNode(

@@ -137,6 +137,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	app.db, err = db.NewHeadscaleDatabase(
 		cfg.Database,
 		cfg.BaseDomain,
+		cfg.NodeManagement,
 		registrationCache,
 	)
 	if err != nil {

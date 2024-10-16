@@ -83,6 +83,7 @@ type Node struct {
 
 	LastSeen *time.Time
 	Expiry   *time.Time
+	Approved bool `sql:"DEFAULT:false"`
 
 	Routes []Route `gorm:"constraint:OnDelete:CASCADE;"`
 
@@ -112,6 +113,11 @@ func (node Node) IsExpired() bool {
 	}
 
 	return time.Since(*node.Expiry) > 0
+}
+
+// IsApproved returns whether the node is approved.
+func (node Node) IsApproved() bool {
+	return node.Approved == true
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.
@@ -249,6 +255,7 @@ func (node *Node) Proto() *v1.Node {
 		ForcedTags:  node.ForcedTags,
 
 		RegisterMethod: node.RegisterMethodToV1Enum(),
+		Approved:       node.Approved,
 
 		CreatedAt: timestamppb.New(node.CreatedAt),
 	}

@@ -292,6 +292,11 @@ func (h *Headscale) handleAuthKey(
 
 	nodeKey := registerRequest.NodeKey
 
+	nodeApproved := true
+	if h.cfg.NodeManagement.ManualApproveNewNode {
+		nodeApproved = pak.PreApproved
+	}
+
 	// retrieve node information if it exist
 	// The error is not important, because if it does not
 	// exist, then this is a new node and we will move
@@ -306,6 +311,10 @@ func (h *Headscale) handleAuthKey(
 		node.NodeKey = nodeKey
 		if pak.ID != 0 {
 			node.AuthKeyID = ptr.To(pak.ID)
+		}
+
+		if node.Approved == false {
+			node.Approved = nodeApproved
 		}
 
 		node.Expiry = &registerRequest.Expiry
@@ -349,6 +358,7 @@ func (h *Headscale) handleAuthKey(
 			User:           pak.User,
 			MachineKey:     machineKey,
 			RegisterMethod: util.RegisterMethodAuthKey,
+			Approved:       nodeApproved,
 			Expiry:         &registerRequest.Expiry,
 			NodeKey:        nodeKey,
 			LastSeen:       &now,
@@ -406,7 +416,7 @@ func (h *Headscale) handleAuthKey(
 		return
 	}
 
-	resp.MachineAuthorized = true
+	resp.MachineAuthorized = node.IsApproved()
 	resp.User = *pak.User.TailscaleUser()
 	// Provide LoginName when registering with pre-auth key
 	// Otherwise it will need to exec `tailscale up` twice to fetch the *LoginName*
@@ -569,7 +579,7 @@ func (h *Headscale) handleNodeWithValidRegistration(
 		Msg("Client is registered and we have the current NodeKey. All clear to /map")
 
 	resp.AuthURL = ""
-	resp.MachineAuthorized = true
+	resp.MachineAuthorized = node.IsApproved()
 	resp.User = *node.User.TailscaleUser()
 	resp.Login = *node.User.TailscaleLogin()
 

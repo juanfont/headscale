@@ -265,10 +265,10 @@ func isTailscaleReservedIP(ip netip.Addr) bool {
 // it will be added.
 // If a prefix type has been removed (IPv4 or IPv6), it
 // will remove the IPs in that family from the node.
-func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
+func (hsdb *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 	var err error
 	var ret []string
-	err = db.Write(func(tx *gorm.DB) error {
+	err = hsdb.Write(func(tx *gorm.DB) error {
 		if i == nil {
 			return errors.New("backfilling IPs: ip allocator was nil")
 		}

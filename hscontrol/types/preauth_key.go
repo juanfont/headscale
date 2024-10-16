@@ -11,14 +11,15 @@ import (
 
 // PreAuthKey describes a pre-authorization key usable in a particular user.
 type PreAuthKey struct {
-	ID        uint64 `gorm:"primary_key"`
-	Key       string
-	UserID    uint
-	User      User `gorm:"constraint:OnDelete:CASCADE;"`
-	Reusable  bool
-	Ephemeral bool     `gorm:"default:false"`
-	Used      bool     `gorm:"default:false"`
-	Tags      []string `gorm:"serializer:json"`
+	ID          uint64 `gorm:"primary_key"`
+	Key         string
+	UserID      uint
+	User        User `gorm:"constraint:OnDelete:CASCADE;"`
+	Reusable    bool
+	PreApproved bool     `gorm:"default:false"`
+	Ephemeral   bool     `gorm:"default:false"`
+	Used        bool     `gorm:"default:false"`
+	Tags        []string `gorm:"serializer:json"`
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
@@ -26,13 +27,14 @@ type PreAuthKey struct {
 
 func (key *PreAuthKey) Proto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
-		User:      key.User.Username(),
-		Id:        strconv.FormatUint(key.ID, util.Base10),
-		Key:       key.Key,
-		Ephemeral: key.Ephemeral,
-		Reusable:  key.Reusable,
-		Used:      key.Used,
-		AclTags:   key.Tags,
+		User:        key.User.Username(),
+		Id:          strconv.FormatUint(key.ID, util.Base10),
+		Key:         key.Key,
+		Ephemeral:   key.Ephemeral,
+		PreApproved: key.PreApproved,
+		Reusable:    key.Reusable,
+		Used:        key.Used,
+		AclTags:     key.Tags,
 	}
 
 	if key.Expiration != nil {
