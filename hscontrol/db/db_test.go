@@ -206,12 +206,17 @@ func TestMigrations(t *testing.T) {
 				t.Fatalf("copying db for test: %s", err)
 			}
 
-			hsdb, err := NewHeadscaleDatabase(types.DatabaseConfig{
-				Type: "sqlite3",
-				Sqlite: types.SqliteConfig{
-					Path: dbPath,
+			hsdb, err := NewHeadscaleDatabase(
+				types.DatabaseConfig{
+					Type: "sqlite3",
+					Sqlite: types.SqliteConfig{
+						Path: dbPath,
+					},
 				},
-			}, "", emptyCache())
+				"",
+				types.NodeManagement{},
+				emptyCache(),
+			)
 			if err != nil && tt.wantErr != err.Error() {
 				t.Errorf("TestMigrations() unexpected error = %v, wantErr %v", err, tt.wantErr)
 			}

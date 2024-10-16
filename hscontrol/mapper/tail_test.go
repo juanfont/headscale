@@ -72,7 +72,7 @@ func TestTailNode(t *testing.T) {
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
 				Tags:              []string{},
 				PrimaryRoutes:     []netip.Prefix{},
-				MachineAuthorized: true,
+				MachineAuthorized: false,
 
 				CapMap: tailcfg.NodeCapMap{
 					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
@@ -105,6 +105,7 @@ func TestTailNode(t *testing.T) {
 				ForcedTags: []string{},
 				AuthKey:    &types.PreAuthKey{},
 				LastSeen:   &lastSeen,
+				Approved:   true,
 				Expiry:     &expire,
 				Hostinfo:   &tailcfg.Hostinfo{},
 				Routes: []types.Route{
