@@ -57,7 +57,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	"tagOwners": {
 		"tag:user": ["testuser@headscale.net"],
 		"tag:group": ["group:other"],
-		"tag:userandgroup": ["testuser@headscale.net" ,"group:other"],
+		"tag:userandgroup": ["testuser@headscale.net", "group:other"],
 	},
 
 	"hosts": {
@@ -132,9 +132,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 					Group("group:other"):   []Username{Username("otheruser@headscale.net")},
 				},
 				TagOwners: TagOwners{
-					Tag("tag:user"):         Owners{ptr.To(Username("testuser@headscale.net"))},
-					Tag("tag:group"):        Owners{Group("group:other")},
-					Tag("tag:userandgroup"): Owners{ptr.To(Username("testuser@headscale.net")), Group("group:other")},
+					Tag("tag:user"):         Owners{up("testuser@headscale.net")},
+					Tag("tag:group"):        Owners{gp("group:other")},
+					Tag("tag:userandgroup"): Owners{up("testuser@headscale.net"), gp("group:other")},
 				},
 				Hosts: Hosts{
 					"host-1":   Prefix(netip.MustParsePrefix("100.100.100.100/32")),
@@ -152,14 +152,14 @@ func TestUnmarshalPolicy(t *testing.T) {
 							// any approved subnets and autogroup:shared.
 							// It does not allow traffic originating from
 							// non-tailscale devices (unless it is an approved route).
-							Host("*"),
+							hp("*"),
 						},
 						Destinations: []AliasWithPorts{
 							{
 								// TODO(kradalby): Should this be host?
 								// It is:
 								// Includes any destination (no restrictions).
-								Alias: Host("*"),
+								Alias: hp("*"),
 								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
 							},
 						},
@@ -181,11 +181,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Action:   "accept",
 						Protocol: "tcp",
 						Sources: Aliases{
-							Group("group:example"),
+							gp("group:example"),
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: Group("group:other"),
+								Alias: gp("group:other"),
 								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 80}},
 							},
 						},
@@ -194,11 +194,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Action:   "accept",
 						Protocol: "tcp",
 						Sources: Aliases{
-							ptr.To(Prefix(netip.MustParsePrefix("100.101.102.103/32"))),
+							pp("100.101.102.103/32"),
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: ptr.To(Prefix(netip.MustParsePrefix("100.101.102.104/32"))),
+								Alias: pp("100.101.102.104/32"),
 								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 80}},
 							},
 						},
@@ -207,11 +207,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Action:   "accept",
 						Protocol: "udp",
 						Sources: Aliases{
-							ptr.To(Prefix(netip.MustParsePrefix("10.0.0.0/8"))),
+							pp("10.0.0.0/8"),
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: ptr.To(Prefix(netip.MustParsePrefix("172.16.0.0/16"))),
+								Alias: pp("172.16.0.0/16"),
 								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 80}},
 							},
 						},
@@ -220,11 +220,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Action:   "accept",
 						Protocol: "tcp",
 						Sources: Aliases{
-							Host("subnet-1"),
+							hp("subnet-1"),
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: Host("host-1"),
+								Alias: hp("host-1"),
 								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 88}},
 							},
 						},
@@ -233,11 +233,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Action:   "accept",
 						Protocol: "tcp",
 						Sources: Aliases{
-							Tag("tag:group"),
+							tp("tag:group"),
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: Tag("tag:user"),
+								Alias: tp("tag:user"),
 								Ports: []tailcfg.PortRange{
 									tailcfg.PortRange{First: 80, Last: 80},
 									tailcfg.PortRange{First: 443, Last: 443},
@@ -249,11 +249,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Action:   "accept",
 						Protocol: "tcp",
 						Sources: Aliases{
-							Tag("tag:group"),
+							tp("tag:group"),
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: AutoGroup("autogroup:internet"),
+								Alias: agp("autogroup:internet"),
 								Ports: []tailcfg.PortRange{
 									tailcfg.PortRange{First: 80, Last: 80},
 								},
@@ -367,6 +367,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 	}
 }
 
+func gp(s string) *Group          { return ptr.To(Group(s)) }
+func up(s string) *Username       { return ptr.To(Username(s)) }
+func hp(s string) *Host           { return ptr.To(Host(s)) }
+func tp(s string) *Tag            { return ptr.To(Tag(s)) }
+func agp(s string) *AutoGroup     { return ptr.To(AutoGroup(s)) }
 func mp(pref string) netip.Prefix { return netip.MustParsePrefix(pref) }
 func ap(addr string) *netip.Addr  { return ptr.To(netip.MustParseAddr(addr)) }
 func pp(pref string) *Prefix      { return ptr.To(Prefix(netip.MustParsePrefix(pref))) }
@@ -392,7 +397,7 @@ func TestResolvePolicy(t *testing.T) {
 					"testhost": p("100.100.101.102/32"),
 				},
 			},
-			toResolve: Host("testhost"),
+			toResolve: hp("testhost"),
 			want:      []netip.Prefix{mp("100.100.101.102/32")},
 		},
 		{
@@ -491,7 +496,7 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "tag",
-			toResolve: Tag("tag:test"),
+			toResolve: tp("tag:test"),
 			nodes: types.Nodes{
 				// Not matching other user
 				{
