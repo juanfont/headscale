@@ -101,6 +101,12 @@ service HeadscaleService {
         };
     }
 
+    rpc ApproveNode(ApproveNodeRequest) returns (ApproveNodeResponse) {
+        option (google.api.http) = {
+            post: "/api/v1/node/{node_id}/approve"
+        };
+    }
+
     rpc ExpireNode(ExpireNodeRequest) returns (ExpireNodeResponse) {
         option (google.api.http) = {
             post: "/api/v1/node/{node_id}/expire"

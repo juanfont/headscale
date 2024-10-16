@@ -48,6 +48,7 @@ message Node {
     repeated string valid_tags   = 20;
     string          given_name   = 21;
     bool            online       = 22;
+    bool            approved     = 23;
 }
 
 message RegisterNodeRequest {
@@ -81,6 +82,14 @@ message DeleteNodeRequest {
 }
 
 message DeleteNodeResponse {}
+
+message ApproveNodeRequest {
+    uint64 node_id = 1;
+}
+
+message ApproveNodeResponse {
+    Node node = 1;
+}
 
 message ExpireNodeRequest {
     uint64 node_id = 1;

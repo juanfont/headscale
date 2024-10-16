@@ -320,6 +320,37 @@
         ]
       }
     },
+    "/api/v1/node/{nodeId}/approve": {
+      "post": {
+        "operationId": "HeadscaleService_ApproveNode",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ApproveNodeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/node/{nodeId}/expire": {
       "post": {
         "operationId": "HeadscaleService_ExpireNode",
@@ -979,6 +1010,14 @@
         }
       }
     },
+    "v1ApproveNodeResponse": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/definitions/v1Node"
+        }
+      }
+    },
     "v1BackfillNodeIPsResponse": {
       "type": "object",
       "properties": {
@@ -1028,6 +1067,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "preApproved": {
+          "type": "boolean"
         }
       }
     },
@@ -1311,6 +1353,9 @@
         },
         "online": {
           "type": "boolean"
+        },
+        "approved": {
+          "type": "boolean"
         }
       }
     },
@@ -1348,6 +1393,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "preApproved": {
+          "type": "boolean"
         }
       }
     },
