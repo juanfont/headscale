@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -407,7 +406,6 @@ func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
 		if err := ve.Alias.Validate(); err != nil {
 			return err
 		}
-		log.Printf("val: %q as type: %T", val, ve.Alias)
 	default:
 		return fmt.Errorf("type %T not supported", val)
 	}
