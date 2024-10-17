@@ -35,7 +35,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "test_get_route_node")
@@ -79,7 +79,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "test_enable_route_node")
@@ -153,7 +153,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "test_enable_route_node")
@@ -234,7 +234,7 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "test_enable_route_node")
