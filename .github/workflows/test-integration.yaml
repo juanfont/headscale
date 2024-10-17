@@ -35,8 +35,8 @@ jobs:
           - TestNodeAdvertiseTagNoACLCommand
           - TestNodeAdvertiseTagWithACLCommand
           - TestNodeCommand
-          - TestNodeExpireCommand
           - TestNodeApproveCommand
+          - TestNodeExpireCommand
           - TestNodeRenameCommand
           - TestNodeMoveCommand
           - TestPolicyCommand
