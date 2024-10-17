@@ -389,6 +389,62 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	assert.Len(t, listedPreAuthKeys, 3)
 }
 
+func TestPreAuthKeyCommandPreApproved(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	user := "pre-auth-key-pre-approved-user"
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	spec := map[string]int{
+		user: 0,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipakresueeph"))
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	var preAuthGeneralKey v1.PreAuthKey
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--user",
+			user,
+			"create",
+			"--output",
+			"json",
+		},
+		&preAuthGeneralKey,
+	)
+	assertNoErr(t, err)
+	assert.False(t, preAuthGeneralKey.GetPreApproved())
+
+	var preAuthPreApprovedKey v1.PreAuthKey
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--user",
+			user,
+			"create",
+			"--pre-approved",
+			"--output",
+			"json",
+		},
+		&preAuthPreApprovedKey,
+	)
+	assertNoErr(t, err)
+	assert.True(t, preAuthPreApprovedKey.GetPreApproved())
+}
+
 func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()

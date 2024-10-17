@@ -16,7 +16,7 @@ type ControlServer interface {
 	GetEndpoint() string
 	WaitForRunning() error
 	CreateUser(user string) error
-	CreateAuthKey(user string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
+	CreateAuthKey(user string, reusable bool, preApproved bool, ephemeral bool) (*v1.PreAuthKey, error)
 	ListNodesInUser(user string) ([]*v1.Node, error)
 	GetCert() []byte
 	GetHostname() string

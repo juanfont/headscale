@@ -32,6 +32,7 @@ type TailscaleClient interface {
 	Netmap() (*netmap.NetworkMap, error)
 	Netcheck() (*netcheck.Report, error)
 	WaitForNeedsLogin() error
+	WaitForNeedsApprove() error
 	WaitForRunning() error
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
