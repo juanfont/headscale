@@ -19,12 +19,12 @@ jobs:
           - TestACLNamedHostsCanReach
           - TestACLDevice1CanAccessDevice2
           - TestPolicyUpdateWhileRunningWithCLIInDatabase
+          - TestAuthNodeApproval
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestOIDC024UserCreation
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
-          - TestAuthNodeApproval
           - TestUserCommand
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry

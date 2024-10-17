@@ -29,7 +29,10 @@ func init() {
 	schema.RegisterSerializer("text", TextSerialiser{})
 }
 
-var errDatabaseNotSupported = errors.New("database type not supported")
+var (
+	errDatabaseNotSupported           = errors.New("database type not supported")
+	errNoNodeApprovedColumnInDatabase = errors.New("no node approved column in database")
+)
 
 // KV is a key-value store in a psql table. For future use...
 // TODO(kradalby): Is this used for anything?
@@ -525,26 +528,26 @@ func NewHeadscaleDatabase(
 			},
 			{
 				ID: "202410071005",
-				Migrate: func(tx *gorm.DB) error {
-					err = tx.AutoMigrate(&types.PreAuthKey{})
+				Migrate: func(db *gorm.DB) error {
+					err = db.AutoMigrate(&types.PreAuthKey{})
 					if err != nil {
 						return err
 					}
 
-					err = tx.AutoMigrate(&types.Node{})
+					err = db.AutoMigrate(&types.Node{})
 					if err != nil {
 						return err
 					}
 
-					if tx.Migrator().HasColumn(&types.Node{}, "approved") {
+					if db.Migrator().HasColumn(&types.Node{}, "approved") {
 						nodes := types.Nodes{}
-						if err := tx.Find(&nodes).Error; err != nil {
+						if err := db.Find(&nodes).Error; err != nil {
 							log.Error().Err(err).Msg("Error accessing db")
 						}
 
 						for item, node := range nodes {
-							if node.IsApproved() == false {
-								err = tx.Model(nodes[item]).Updates(types.Node{
+							if !node.IsApproved() {
+								err = db.Model(nodes[item]).Updates(types.Node{
 									Approved: true,
 								}).Error
 								if err != nil {
@@ -561,7 +564,7 @@ func NewHeadscaleDatabase(
 						return nil
 					}
 
-					return fmt.Errorf("no node approved column in DB")
+					return errNoNodeApprovedColumnInDatabase
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
