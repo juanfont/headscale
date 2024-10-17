@@ -35,8 +35,8 @@ jobs:
           - TestNodeTagCommand
           - TestNodeAdvertiseTagCommand
           - TestNodeCommand
-          - TestNodeExpireCommand
           - TestNodeApproveCommand
+          - TestNodeExpireCommand
           - TestNodeRenameCommand
           - TestNodeMoveCommand
           - TestPolicyCommand
