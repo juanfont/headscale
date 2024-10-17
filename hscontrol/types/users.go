@@ -3,6 +3,7 @@ package types
 import (
 	"cmp"
 	"strconv"
+	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -50,8 +51,14 @@ type User struct {
 // enabled with OIDC, which means that there is a domain involved which
 // should be used throughout headscale, in information returned to the
 // user and the Policy engine.
+// If the username does not contain an '@' it will be added to the end.
 func (u *User) Username() string {
-	return cmp.Or(u.Email, u.Name, u.ProviderIdentifier, strconv.FormatUint(uint64(u.ID), 10))
+	username := cmp.Or(u.Email, u.Name, u.ProviderIdentifier, strconv.FormatUint(uint64(u.ID), 10))
+	if !strings.Contains(username, "@") {
+		username = username + "@"
+	}
+
+	return username
 }
 
 // DisplayNameOrUsername returns the DisplayName if it exists, otherwise
