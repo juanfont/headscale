@@ -24,16 +24,19 @@ jobs:
           - TestOIDC024UserCreation
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
+          - TestAuthNodeApproval
           - TestUserCommand
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry
           - TestPreAuthKeyCommandReusableEphemeral
+          - TestPreAuthKeyCommandPreApproved
           - TestPreAuthKeyCorrectUserLoggedInCommand
           - TestApiKeyCommand
           - TestNodeTagCommand
           - TestNodeAdvertiseTagCommand
           - TestNodeCommand
           - TestNodeExpireCommand
+          - TestNodeApproveCommand
           - TestNodeRenameCommand
           - TestNodeMoveCommand
           - TestPolicyCommand
