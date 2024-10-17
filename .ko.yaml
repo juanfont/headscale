@@ -1,0 +1,16 @@
+defaultBaseImage: gcr.io/distroless/base-debian12:debug
+defaultPlatforms:
+  - linux/arm64
+  - linux/arm/v7
+  - linux/amd64
+  - linux/386
+
+builds:
+  - id: headscale
+    main: ./cmd/headscale
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -mod=readonly
+    ldflags:
+      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Git.ShortCommit}}
