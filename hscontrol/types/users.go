@@ -20,10 +20,14 @@ type UserID uint64
 // that contain our machines.
 type User struct {
 	gorm.Model
+	// The index `idx_name_provider_identifier` is to enforce uniqueness
+	// between Name and ProviderIdentifier. This ensures that
+	// you can have multiple usersnames of the same name in OIDC,
+	// but not if you only run with CLI users.
 
 	// Username for the user, is used if email is empty
 	// Should not be used, please use Username().
-	Name string `gorm:"unique"`
+	Name string `gorm:"index,uniqueIndex:idx_name_provider_identifier"`
 
 	// Typically the full name of the user
 	DisplayName string
@@ -35,7 +39,7 @@ type User struct {
 	// Unique identifier of the user from OIDC,
 	// comes from `sub` claim in the OIDC token
 	// and is used to lookup the user.
-	ProviderIdentifier string `gorm:"index"`
+	ProviderIdentifier string `gorm:"index,uniqueIndex:idx_name_provider_identifier"`
 
 	// Provider is the origin of the user account,
 	// same as RegistrationMethod, without authkey.
@@ -123,6 +127,7 @@ func (u *User) Proto() *v1.User {
 type OIDCClaims struct {
 	// Sub is the user's unique identifier at the provider.
 	Sub string `json:"sub"`
+	Iss string `json:"iss"`
 
 	// Name is the user's full name.
 	Name              string   `json:"name,omitempty"`
@@ -136,9 +141,11 @@ type OIDCClaims struct {
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	u.ProviderIdentifier = claims.Sub
+	u.ProviderIdentifier = claims.Iss + "/" + claims.Sub
 	u.DisplayName = claims.Name
-	u.Email = claims.Email
+	if claims.EmailVerified {
+		u.Email = claims.Email
+	}
 	u.Name = claims.Username
 	u.ProfilePicURL = claims.ProfilePictureURL
 	u.Provider = util.RegisterMethodOIDC
