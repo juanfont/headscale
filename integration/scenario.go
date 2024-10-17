@@ -504,7 +504,7 @@ func (s *Scenario) CreateHeadscaleEnv(
 			return err
 		}
 
-		key, err := s.CreatePreAuthKey(userName, true, true, false)
+		key, err := s.CreatePreAuthKey(userName, true, false, false)
 		if err != nil {
 			return err
 		}

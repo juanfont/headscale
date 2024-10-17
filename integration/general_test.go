@@ -175,7 +175,7 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 			}
 
 			for userName := range spec {
-				key, err := scenario.CreatePreAuthKey(userName, true, true, false)
+				key, err := scenario.CreatePreAuthKey(userName, true, false, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 				}
@@ -274,7 +274,7 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
 		}
 
-		key, err := scenario.CreatePreAuthKey(userName, true, true, true)
+		key, err := scenario.CreatePreAuthKey(userName, true, false, true)
 		if err != nil {
 			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 		}
@@ -364,7 +364,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
 		}
 
-		key, err := scenario.CreatePreAuthKey(userName, true, true, true)
+		key, err := scenario.CreatePreAuthKey(userName, true, false, true)
 		if err != nil {
 			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 		}
