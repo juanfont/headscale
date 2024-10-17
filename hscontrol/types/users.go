@@ -3,6 +3,7 @@ package types
 import (
 	"cmp"
 	"strconv"
+	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -50,8 +51,14 @@ type User struct {
 // enabled with OIDC, which means that there is a domain involved which
 // should be used throughout headscale, in information returned to the
 // user and the Policy engine.
+// If the username does not contain an '@' it will be added to the end.
 func (u *User) Username() string {
-	return cmp.Or(u.Email, u.Name, u.ProviderIdentifier, strconv.FormatUint(uint64(u.ID), 10))
+	username := cmp.Or(u.Email, u.Name, u.ProviderIdentifier, strconv.FormatUint(uint64(u.ID), 10))
+	if !strings.Contains(username, "@") {
+		username = username + "@"
+	}
+
+	return username
 }
 
 // DisplayNameOrUsername returns the DisplayName if it exists, otherwise
@@ -111,6 +118,7 @@ func (n *User) Proto() *v1.User {
 type OIDCClaims struct {
 	// Sub is the user's unique identifier at the provider.
 	Sub string `json:"sub"`
+	Iss string `json:"iss"`
 
 	// Name is the user's full name.
 	Name              string   `json:"name,omitempty"`
@@ -124,9 +132,11 @@ type OIDCClaims struct {
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	u.ProviderIdentifier = claims.Sub
+	u.ProviderIdentifier = claims.Iss + "/" + claims.Sub
 	u.DisplayName = claims.Name
-	u.Email = claims.Email
+	if claims.EmailVerified {
+		u.Email = claims.Email
+	}
 	u.Name = claims.Username
 	u.ProfilePicURL = claims.ProfilePictureURL
 	u.Provider = util.RegisterMethodOIDC
