@@ -254,7 +254,7 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 			}
 		}
 
-		key, err := s.CreatePreAuthKey(userName, true, false)
+		key, err := s.CreatePreAuthKey(userName, true, true, false)
 		if err != nil {
 			return err
 		}

@@ -33,6 +33,7 @@ type TailscaleClient interface {
 	DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error)
 	Netcheck() (*netcheck.Report, error)
 	WaitForNeedsLogin() error
+	WaitForNeedsApprove() error
 	WaitForRunning() error
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error

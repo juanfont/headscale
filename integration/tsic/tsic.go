@@ -848,6 +848,28 @@ func (t *TailscaleInContainer) WaitForNeedsLogin() error {
 	})
 }
 
+// WaitForNeedsApprove blocks until the Tailscale (tailscaled) instance is logged in
+// and gets approved.
+func (t *TailscaleInContainer) WaitForNeedsApprove() error {
+	return t.pool.Retry(func() error {
+		status, err := t.Status()
+		if err != nil {
+			return errTailscaleStatus(t.hostname, err)
+		}
+
+		// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
+		// https://github.com/tailscale/tailscale/pull/3865
+		//
+		// Before that, we can check the BackendState to see if the
+		// tailscaled daemon is connected to the control system.
+		if status.BackendState == "NeedsMachineAuth" {
+			return nil
+		}
+
+		return errTailscaledNotReadyForLogin
+	})
+}
+
 // WaitForRunning blocks until the Tailscale (tailscaled) instance is logged in
 // and ready to be used.
 func (t *TailscaleInContainer) WaitForRunning() error {

@@ -259,6 +259,13 @@ func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 	}
 }
 
+// WithManualApproveNewNode allows devices to access the network only after manual approval
+func WithManualApproveNewNode() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_NODE_MANAGEMENT_MANUAL_APPROVE_NEW_NODE"] = "true"
+	}
+}
+
 func WithTimezone(timezone string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["TZ"] = timezone
@@ -720,6 +727,7 @@ func (t *HeadscaleInContainer) CreateUser(
 func (t *HeadscaleInContainer) CreateAuthKey(
 	user string,
 	reusable bool,
+	preApproved bool,
 	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
 	command := []string{
@@ -736,6 +744,10 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 
 	if reusable {
 		command = append(command, "--reusable")
+	}
+
+	if preApproved {
+		command = append(command, "--pre-approved")
 	}
 
 	if ephemeral {
