@@ -51,7 +51,7 @@ func init() {
 	approveNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = approveNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatalf("%v", err)
 	}
 	nodeCmd.AddCommand(approveNodeCmd)
 
@@ -226,6 +226,7 @@ var approveNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
+
 			return
 		}
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -244,6 +245,7 @@ var approveNodeCmd = &cobra.Command{
 				),
 				output,
 			)
+
 			return
 		}
 		SuccessOutput(response.GetNode(), "Node approved", output)

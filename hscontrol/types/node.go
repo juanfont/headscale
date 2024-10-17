@@ -117,7 +117,7 @@ func (node Node) IsExpired() bool {
 
 // IsApproved returns whether the node is approved.
 func (node Node) IsApproved() bool {
-	return node.Approved == true
+	return node.Approved
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.

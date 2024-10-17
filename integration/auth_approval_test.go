@@ -4,7 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -56,7 +57,7 @@ func TestAuthNodeApproval(t *testing.T) {
 		status, err := client.Status()
 		assertNoErr(t, err)
 		assert.Equal(t, "NeedsMachineAuth", status.BackendState)
-		assert.Len(t, status.Peers(), 0)
+		assert.Empty(t, status.Peers())
 	}
 
 	headscale, err := scenario.Headscale()
@@ -74,11 +75,11 @@ func TestAuthNodeApproval(t *testing.T) {
 		},
 		&allNodes,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, node := range allNodes {
 		_, err = headscale.Execute([]string{
-			"headscale", "nodes", "approve", "--identifier", fmt.Sprintf("%d", node.Id),
+			"headscale", "nodes", "approve", "--identifier", fmt.Sprintf("%d", node.GetId()),
 		})
 		assertNoErr(t, err)
 	}
@@ -113,7 +114,7 @@ func TestAuthNodeApproval(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	//assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -236,11 +237,11 @@ func (s *AuthApprovalScenario) runHeadscaleRegister(userStr string, loginURL *ur
 	}
 
 	log.Printf("loginURL: %s", loginURL)
-	loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetIP())
-	loginURL.Scheme = "http"
+	loginURL.Host = fmt.Sprintf("%s:%d", headscale.GetIP(), 8080)
+	loginURL.Scheme = types.SchemaHttp
 
 	if len(headscale.GetCert()) > 0 {
-		loginURL.Scheme = "https"
+		loginURL.Scheme = types.SchemaHttps
 	}
 
 	insecureTransport := &http.Transport{

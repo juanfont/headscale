@@ -265,17 +265,17 @@ func isTailscaleReservedIP(ip netip.Addr) bool {
 // it will be added.
 // If a prefix type has been removed (IPv4 or IPv6), it
 // will remove the IPs in that family from the node.
-func (hsdb *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
+func (hsdb *HSDatabase) BackfillNodeIPs(ip *IPAllocator) ([]string, error) {
 	var err error
 	var ret []string
-	err = hsdb.Write(func(tx *gorm.DB) error {
-		if i == nil {
+	err = hsdb.Write(func(db *gorm.DB) error {
+		if ip == nil {
 			return errors.New("backfilling IPs: ip allocator was nil")
 		}
 
 		log.Trace().Msgf("starting to backfill IPs")
 
-		nodes, err := ListNodes(tx)
+		nodes, err := ListNodes(db)
 		if err != nil {
 			return fmt.Errorf("listing nodes to backfill IPs: %w", err)
 		}
@@ -285,8 +285,8 @@ func (hsdb *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 
 			changed := false
 			// IPv4 prefix is set, but node ip is missing, alloc
-			if i.prefix4 != nil && node.IPv4 == nil {
-				ret4, err := i.nextLocked(i.prev4, i.prefix4)
+			if ip.prefix4 != nil && node.IPv4 == nil {
+				ret4, err := ip.nextLocked(ip.prev4, ip.prefix4)
 				if err != nil {
 					return fmt.Errorf("failed to allocate ipv4 for node(%d): %w", node.ID, err)
 				}
@@ -297,8 +297,8 @@ func (hsdb *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 			}
 
 			// IPv6 prefix is set, but node ip is missing, alloc
-			if i.prefix6 != nil && node.IPv6 == nil {
-				ret6, err := i.nextLocked(i.prev6, i.prefix6)
+			if ip.prefix6 != nil && node.IPv6 == nil {
+				ret6, err := ip.nextLocked(ip.prev6, ip.prefix6)
 				if err != nil {
 					return fmt.Errorf("failed to allocate ipv6 for node(%d): %w", node.ID, err)
 				}
@@ -309,21 +309,21 @@ func (hsdb *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 			}
 
 			// IPv4 prefix is not set, but node has IP, remove
-			if i.prefix4 == nil && node.IPv4 != nil {
+			if ip.prefix4 == nil && node.IPv4 != nil {
 				ret = append(ret, fmt.Sprintf("removing IPv4 %q from Node(%d) %q", node.IPv4.String(), node.ID, node.Hostname))
 				node.IPv4 = nil
 				changed = true
 			}
 
 			// IPv6 prefix is not set, but node has IP, remove
-			if i.prefix6 == nil && node.IPv6 != nil {
+			if ip.prefix6 == nil && node.IPv6 != nil {
 				ret = append(ret, fmt.Sprintf("removing IPv6 %q from Node(%d) %q", node.IPv6.String(), node.ID, node.Hostname))
 				node.IPv6 = nil
 				changed = true
 			}
 
 			if changed {
-				err := tx.Save(node).Error
+				err := db.Save(node).Error
 				if err != nil {
 					return fmt.Errorf("saving node(%d) after adding IPs: %w", node.ID, err)
 				}

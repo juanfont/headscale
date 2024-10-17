@@ -15,6 +15,11 @@ const (
 	DatabaseSqlite       = "sqlite3"
 )
 
+const (
+	SchemaHttp  = "http"
+	SchemaHttps = "https"
+)
+
 var ErrCannotParsePrefix = errors.New("cannot parse prefix")
 
 type StateUpdateType int

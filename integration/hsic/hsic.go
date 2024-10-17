@@ -211,7 +211,7 @@ func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 	}
 }
 
-// WithManualApproveNewNode allows devices to access the network only after manual approval
+// WithManualApproveNewNode allows devices to access the network only after manual approval.
 func WithManualApproveNewNode() Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["HEADSCALE_NODE_MANAGEMENT_MANUAL_APPROVE_NEW_NODE"] = "true"

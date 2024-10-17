@@ -313,7 +313,7 @@ func (h *Headscale) handleAuthKey(
 			node.AuthKeyID = ptr.To(pak.ID)
 		}
 
-		if node.Approved == false {
+		if !node.Approved {
 			node.Approved = nodeApproved
 		}
 
