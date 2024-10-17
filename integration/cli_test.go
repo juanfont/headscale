@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1245,7 +1246,7 @@ func TestNodeApproveCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.NoError(t, err)
+		assertNoErr(t, err)
 
 		var node v1.Node
 		err = executeAndUnmarshal(
@@ -1263,7 +1264,7 @@ func TestNodeApproveCommand(t *testing.T) {
 			},
 			&node,
 		)
-		assert.NoError(t, err)
+		assertNoErr(t, err)
 
 		nodes[index] = &node
 	}
@@ -1282,7 +1283,7 @@ func TestNodeApproveCommand(t *testing.T) {
 		},
 		&listAll,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	assert.Len(t, listAll, 5)
 
@@ -1292,14 +1293,14 @@ func TestNodeApproveCommand(t *testing.T) {
 	assert.False(t, listAll[3].GetApproved())
 	assert.False(t, listAll[4].GetApproved())
 
-	for idx := 0; idx < 3; idx++ {
+	for idx := range [3]int{} {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
 				"nodes",
 				"approve",
 				"--identifier",
-				fmt.Sprintf("%d", listAll[idx].GetId()),
+				strconv.FormatUint(listAll[idx].GetId(), 10),
 			},
 		)
 		assert.NoError(t, err)
