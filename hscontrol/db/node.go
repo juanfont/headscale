@@ -371,7 +371,7 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 			node.User = *user
 			node.RegisterMethod = registrationMethod
 
-			if !node.IsApproved() && manualApprovedNode == false {
+			if !node.IsApproved() && !manualApprovedNode {
 				node.Approved = true
 			}
 
