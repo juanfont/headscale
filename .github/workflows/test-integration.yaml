@@ -50,6 +50,7 @@ jobs:
           - TestEphemeral2006DeletedTooQuickly
           - TestPingAllByHostname
           - TestTaildrop
+          - TestUpdateHostnameFromClient
           - TestExpireNode
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown

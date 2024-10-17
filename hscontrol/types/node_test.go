@@ -337,6 +337,66 @@ func TestPeerChangeFromMapRequest(t *testing.T) {
 	}
 }
 
+func TestApplyHostnameFromHostInfo(t *testing.T) {
+	tests := []struct {
+		name       string
+		nodeBefore Node
+		change     *tailcfg.Hostinfo
+		want       Node
+	}{
+		{
+			name: "hostinfo-not-exists",
+			nodeBefore: Node{
+				GivenName: "manual-test.local",
+				Hostname:  "TestHost.Local",
+			},
+			change: nil,
+			want: Node{
+				GivenName: "manual-test.local",
+				Hostname:  "TestHost.Local",
+			},
+		},
+		{
+			name: "hostinfo-exists-no-automatic-givenName",
+			nodeBefore: Node{
+				GivenName: "manual-test.local",
+				Hostname:  "TestHost.Local",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "NewHostName.Local",
+			},
+			want: Node{
+				GivenName: "manual-test.local",
+				Hostname:  "NewHostName.Local",
+			},
+		},
+		{
+			name: "hostinfo-exists-automatic-givenName",
+			nodeBefore: Node{
+				GivenName: "automaticname.test",
+				Hostname:  "AutomaticName.Test",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "NewHostName.Local",
+			},
+			want: Node{
+				GivenName: "newhostname.local",
+				Hostname:  "NewHostName.Local",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.nodeBefore.ApplyHostnameFromHostInfo(tt.change)
+
+			if diff := cmp.Diff(tt.want, tt.nodeBefore, util.Comparers...); diff != "" {
+				t.Errorf("Patch unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestApplyPeerChange(t *testing.T) {
 	tests := []struct {
 		name       string

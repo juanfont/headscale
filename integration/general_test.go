@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/rs/zerolog/log"
@@ -651,6 +653,134 @@ func TestTaildrop(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestUpdateHostnameFromClient(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	user := "update-hostname-from-client"
+
+	hostnames := map[string]string{
+		"1": "user1-host",
+		"2": "User2-Host",
+		"3": "user3-host",
+	}
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErrf(t, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	spec := map[string]int{
+		user: 3,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("updatehostname"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	// update hostnames using the up command
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		command := []string{
+			"tailscale",
+			"set",
+			"--hostname=" + hostnames[string(status.Self.ID)],
+		}
+		_, _, err = client.Execute(command)
+		assertNoErrf(t, "failed to set hostname: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	var nodes []*v1.Node
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"node",
+			"list",
+			"--output",
+			"json",
+		},
+		&nodes,
+	)
+
+	assertNoErr(t, err)
+	assert.Len(t, nodes, 3)
+
+	for _, node := range nodes {
+		hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
+		assert.Equal(t, hostname, node.GetName())
+		assert.Equal(t, util.ConvertWithFQDNRules(hostname), node.GetGivenName())
+	}
+
+	// Rename givenName in nodes
+	for _, node := range nodes {
+		givenName := fmt.Sprintf("%d-givenname", node.GetId())
+		_, err = headscale.Execute(
+			[]string{
+				"headscale",
+				"node",
+				"rename",
+				givenName,
+				"--identifier",
+				strconv.FormatUint(node.GetId(), 10),
+			})
+		assertNoErr(t, err)
+	}
+
+	time.Sleep(5 * time.Second)
+
+	// Verify that the clients can see the new hostname, but no givenName
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		command := []string{
+			"tailscale",
+			"set",
+			"--hostname=" + hostnames[string(status.Self.ID)] + "NEW",
+		}
+		_, _, err = client.Execute(command)
+		assertNoErrf(t, "failed to set hostname: %s", err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"node",
+			"list",
+			"--output",
+			"json",
+		},
+		&nodes,
+	)
+
+	assertNoErr(t, err)
+	assert.Len(t, nodes, 3)
+
+	for _, node := range nodes {
+		hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
+		givenName := fmt.Sprintf("%d-givenname", node.GetId())
+		assert.Equal(t, hostname+"NEW", node.GetName())
+		assert.Equal(t, givenName, node.GetGivenName())
 	}
 }
 

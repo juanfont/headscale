@@ -97,6 +97,11 @@ type (
 	Nodes []*Node
 )
 
+// GivenNameHasBeenChanged returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
+func (node *Node) GivenNameHasBeenChanged() bool {
+	return node.GivenName == util.ConvertWithFQDNRules(node.Hostname)
+}
+
 // IsExpired returns whether the node registration has expired.
 func (node Node) IsExpired() bool {
 	// If Expiry is not set, the client has not indicated that
@@ -344,6 +349,21 @@ func (node *Node) RegisterMethodToV1Enum() v1.RegisterMethod {
 		return v1.RegisterMethod_REGISTER_METHOD_CLI
 	default:
 		return v1.RegisterMethod_REGISTER_METHOD_UNSPECIFIED
+	}
+}
+
+// ApplyHostnameFromHostInfo takes a Hostinfo struct and updates the node.
+func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
+	if hostInfo == nil {
+		return
+	}
+
+	if node.Hostname != hostInfo.Hostname {
+		if node.GivenNameHasBeenChanged() {
+			node.GivenName = util.ConvertWithFQDNRules(hostInfo.Hostname)
+		}
+
+		node.Hostname = hostInfo.Hostname
 	}
 }
 
