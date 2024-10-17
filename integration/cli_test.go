@@ -1272,7 +1272,7 @@ func TestNodeApproveCommand(t *testing.T) {
 				strconv.FormatUint(listAll[idx].GetId(), 10),
 			},
 		)
-		assert.NoError(t, err)
+		assertNoErr(t, err)
 	}
 
 	var listAllAfterApprove []v1.Node
@@ -1287,7 +1287,7 @@ func TestNodeApproveCommand(t *testing.T) {
 		},
 		&listAllAfterApprove,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	assert.Len(t, listAllAfterApprove, 5)
 
