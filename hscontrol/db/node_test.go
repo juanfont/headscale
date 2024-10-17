@@ -202,7 +202,7 @@ func (s *Suite) TestListPeersWithoutNonAuthorized(c *check.C) {
 		}
 
 		node := types.Node{
-			ID:             types.NodeID(uint64(index)), // nolint:g115
+			ID:             types.NodeID(uint64(index)), //nolint // disable G115
 			MachineKey:     machineKey.Public(),
 			NodeKey:        nodeKey.Public(),
 			Hostname:       "testnode" + strconv.Itoa(index),
