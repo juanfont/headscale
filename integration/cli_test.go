@@ -1165,6 +1165,138 @@ func TestNodeCommand(t *testing.T) {
 	assert.Len(t, listOnlyMachineUserAfterDelete, 4)
 }
 
+func TestNodeApproveCommand(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	spec := map[string]int{
+		"node-approve-user": 0,
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		[]tsic.Option{},
+		hsic.WithTestName("clins"),
+		hsic.WithManualApproveNewNode(),
+	)
+	assertNoErr(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	// Pregenerated machine keys
+	machineKeys := []string{
+		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
+		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
+		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+	}
+	nodes := make([]*v1.Node, len(machineKeys))
+
+	for index, machineKey := range machineKeys {
+		_, err := headscale.Execute(
+			[]string{
+				"headscale",
+				"debug",
+				"create-node",
+				"--name",
+				fmt.Sprintf("node-%d", index+1),
+				"--user",
+				"node-approve-user",
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+		)
+		assert.NoError(t, err)
+
+		var node v1.Node
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"--user",
+				"node-approve-user",
+				"register",
+				"--key",
+				machineKey,
+				"--output",
+				"json",
+			},
+			&node,
+		)
+		assert.NoError(t, err)
+
+		nodes[index] = &node
+	}
+
+	assert.Len(t, nodes, len(machineKeys))
+
+	var listAll []v1.Node
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&listAll,
+	)
+	assert.NoError(t, err)
+
+	assert.Len(t, listAll, 5)
+
+	assert.False(t, listAll[0].GetApproved())
+	assert.False(t, listAll[1].GetApproved())
+	assert.False(t, listAll[2].GetApproved())
+	assert.False(t, listAll[3].GetApproved())
+	assert.False(t, listAll[4].GetApproved())
+
+	for idx := 0; idx < 3; idx++ {
+		_, err := headscale.Execute(
+			[]string{
+				"headscale",
+				"nodes",
+				"approve",
+				"--identifier",
+				fmt.Sprintf("%d", listAll[idx].GetId()),
+			},
+		)
+		assert.NoError(t, err)
+	}
+
+	var listAllAfterApprove []v1.Node
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&listAllAfterApprove,
+	)
+	assert.NoError(t, err)
+
+	assert.Len(t, listAllAfterApprove, 5)
+
+	assert.True(t, listAllAfterApprove[0].GetApproved())
+	assert.True(t, listAllAfterApprove[1].GetApproved())
+	assert.True(t, listAllAfterApprove[2].GetApproved())
+	assert.False(t, listAllAfterApprove[3].GetApproved())
+	assert.False(t, listAllAfterApprove[4].GetApproved())
+}
+
 func TestNodeExpireCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()

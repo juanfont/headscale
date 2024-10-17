@@ -16,8 +16,8 @@ const (
 )
 
 const (
-	SchemaHttp  = "http"
-	SchemaHttps = "https"
+	SchemaHTTP  = "http"
+	SchemaHTTPS = "https"
 )
 
 var ErrCannotParsePrefix = errors.New("cannot parse prefix")

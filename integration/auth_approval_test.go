@@ -4,18 +4,20 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/integration/hsic"
-	"github.com/samber/lo"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"log"
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
 )
 
 type AuthApprovalScenario struct {
@@ -75,11 +77,11 @@ func TestAuthNodeApproval(t *testing.T) {
 		},
 		&allNodes,
 	)
-	assert.NoError(t, err)
+	assertNoErr(t, err)
 
 	for _, node := range allNodes {
 		_, err = headscale.Execute([]string{
-			"headscale", "nodes", "approve", "--identifier", fmt.Sprintf("%d", node.GetId()),
+			"headscale", "nodes", "approve", "--identifier", strconv.FormatUint(node.GetId(), 10),
 		})
 		assertNoErr(t, err)
 	}
@@ -238,10 +240,10 @@ func (s *AuthApprovalScenario) runHeadscaleRegister(userStr string, loginURL *ur
 
 	log.Printf("loginURL: %s", loginURL)
 	loginURL.Host = fmt.Sprintf("%s:%d", headscale.GetIP(), 8080)
-	loginURL.Scheme = types.SchemaHttp
+	loginURL.Scheme = types.SchemaHTTP
 
 	if len(headscale.GetCert()) > 0 {
-		loginURL.Scheme = types.SchemaHttps
+		loginURL.Scheme = types.SchemaHTTPS
 	}
 
 	insecureTransport := &http.Transport{
