@@ -23,10 +23,12 @@ jobs:
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
+          - TestAuthNodeApproval
           - TestUserCommand
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry
           - TestPreAuthKeyCommandReusableEphemeral
+          - TestPreAuthKeyCommandPreApproved
           - TestPreAuthKeyCorrectUserLoggedInCommand
           - TestApiKeyCommand
           - TestNodeTagCommand
@@ -34,6 +36,7 @@ jobs:
           - TestNodeAdvertiseTagWithACLCommand
           - TestNodeCommand
           - TestNodeExpireCommand
+          - TestNodeApproveCommand
           - TestNodeRenameCommand
           - TestNodeMoveCommand
           - TestPolicyCommand
