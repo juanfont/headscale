@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/rs/zerolog/log"
@@ -723,8 +723,8 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 
 	for _, node := range nodes {
 		hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
-		assert.Equal(t, hostname, node.Name)
-		assert.Equal(t, util.ConvertWithFQDNRules(hostname), node.GivenName)
+		assert.Equal(t, hostname, node.GetName())
+		assert.Equal(t, util.ConvertWithFQDNRules(hostname), node.GetGivenName())
 	}
 
 	// Rename givenName in nodes
@@ -737,7 +737,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 				"rename",
 				givenName,
 				"--identifier",
-				strconv.Itoa(int(node.GetId())),
+				strconv.FormatUint(node.GetId(), 10),
 			})
 		assertNoErr(t, err)
 	}
@@ -779,8 +779,8 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	for _, node := range nodes {
 		hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 		givenName := fmt.Sprintf("%d-givenname", node.GetId())
-		assert.Equal(t, hostname+"NEW", node.Name)
-		assert.Equal(t, givenName, node.GivenName)
+		assert.Equal(t, hostname+"NEW", node.GetName())
+		assert.Equal(t, givenName, node.GetGivenName())
 	}
 }
 

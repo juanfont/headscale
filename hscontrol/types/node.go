@@ -97,8 +97,8 @@ type (
 	Nodes []*Node
 )
 
-// IsAutomaticNameMode returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
-func (node *Node) IsAutomaticNameMode() bool {
+// GivenNameHasBeenChanged returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
+func (node *Node) GivenNameHasBeenChanged() bool {
 	return node.GivenName == util.ConvertWithFQDNRules(node.Hostname)
 }
 
@@ -359,7 +359,7 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 	}
 
 	if node.Hostname != hostInfo.Hostname {
-		if node.IsAutomaticNameMode() {
+		if node.GivenNameHasBeenChanged() {
 			node.GivenName = util.ConvertWithFQDNRules(hostInfo.Hostname)
 		}
 
