@@ -474,7 +474,24 @@ func NewHeadscaleDatabase(
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
 			{
+				// Pick up new user fields used for OIDC and to
+				// populate the user with more interesting information.
 				ID: "202407191627",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.User{})
+					if err != nil {
+						return err
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// The unique constraint of Name has been dropped
+				// in favour of a unique together of name and
+				// provider identity.
+				ID: "202408181235",
 				Migrate: func(tx *gorm.DB) error {
 					err := tx.AutoMigrate(&types.User{})
 					if err != nil {
