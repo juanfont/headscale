@@ -118,6 +118,7 @@ func (n *User) Proto() *v1.User {
 type OIDCClaims struct {
 	// Sub is the user's unique identifier at the provider.
 	Sub string `json:"sub"`
+	Iss string `json:"iss"`
 
 	// Name is the user's full name.
 	Name              string   `json:"name,omitempty"`
@@ -131,9 +132,11 @@ type OIDCClaims struct {
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	u.ProviderIdentifier = claims.Sub
+	u.ProviderIdentifier = claims.Iss + "/" + claims.Sub
 	u.DisplayName = claims.Name
-	u.Email = claims.Email
+	if claims.EmailVerified {
+		u.Email = claims.Email
+	}
 	u.Name = claims.Username
 	u.ProfilePicURL = claims.ProfilePictureURL
 	u.Provider = util.RegisterMethodOIDC
