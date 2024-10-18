@@ -3,7 +3,6 @@ package types
 import (
 	"cmp"
 	"strconv"
-	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -39,7 +38,7 @@ type User struct {
 	// Unique identifier of the user from OIDC,
 	// comes from `sub` claim in the OIDC token
 	// and is used to lookup the user.
-	ProviderIdentifier string `gorm:"index,uniqueIndex:idx_name_provider_identifier"`
+	ProviderIdentifier string `gorm:"unique,index,uniqueIndex:idx_name_provider_identifier"`
 
 	// Provider is the origin of the user account,
 	// same as RegistrationMethod, without authkey.
@@ -58,9 +57,10 @@ type User struct {
 // If the username does not contain an '@' it will be added to the end.
 func (u *User) Username() string {
 	username := cmp.Or(u.Email, u.Name, u.ProviderIdentifier, strconv.FormatUint(uint64(u.ID), 10))
-	if !strings.Contains(username, "@") {
-		username = username + "@"
-	}
+	// TODO(kradalby): Wire up all of this for the future
+	// if !strings.Contains(username, "@") {
+	// 	username = username + "@"
+	// }
 
 	return username
 }
@@ -138,10 +138,14 @@ type OIDCClaims struct {
 	Username          string   `json:"preferred_username,omitempty"`
 }
 
+func (c *OIDCClaims) Identifier() string {
+	return c.Iss + "/" + c.Sub
+}
+
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	u.ProviderIdentifier = claims.Iss + "/" + claims.Sub
+	u.ProviderIdentifier = claims.Identifier()
 	u.DisplayName = claims.Name
 	if claims.EmailVerified {
 		u.Email = claims.Email
