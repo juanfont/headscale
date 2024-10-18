@@ -1,0 +1,71 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-$${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Get changed files
+        id: changed-files
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration_test/'
+              - 'config-example.yaml'
+      - uses: DeterminateSystems/nix-installer-action@main
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        if: steps.changed-files.outputs.files == 'true'
+
+      - name: Run build
+        id: build
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          nix build |& tee build-result
+          BUILD_STATUS="${PIPESTATUS[0]}"
+
+          OLD_HASH=$(cat build-result | grep specified: | awk -F ':' '{print $2}' | sed 's/ //g')
+          NEW_HASH=$(cat build-result | grep got: | awk -F ':' '{print $2}' | sed 's/ //g')
+
+          echo "OLD_HASH=$OLD_HASH" >> $GITHUB_OUTPUT
+          echo "NEW_HASH=$NEW_HASH" >> $GITHUB_OUTPUT
+
+          exit $BUILD_STATUS
+
+      - name: Nix gosum diverging
+        uses: actions/github-script@v6
+        if: failure() && steps.build.outcome == 'failure'
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            github.rest.pulls.createReviewComment({
+              pull_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Nix build failed with wrong gosum, please update "vendorSha256" (${{ steps.build.outputs.OLD_HASH }}) for the "headscale" package in flake.nix with the new SHA: ${{ steps.build.outputs.NEW_HASH }}'
+            })
+
+      - uses: actions/upload-artifact@v4
+        if: steps.changed-files.outputs.files == 'true'
+        with:
+          name: headscale-linux
+          path: result/bin/headscale
