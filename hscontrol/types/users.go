@@ -19,11 +19,14 @@ type UserID uint64
 // that contain our machines.
 type User struct {
 	gorm.Model
+	// The index `idx_name_provider_identifier` is to enforce uniqueness
+	// between Name and ProviderIdentifier. This ensures that
+	// you can have multiple usersnames of the same name in OIDC,
+	// but not if you only run with CLI users.
 
 	// Username for the user, is used if email is empty
 	// Should not be used, please use Username().
-	// TODO(kradalby): Figure out how do deal with uniqueness.
-	Name string `gorm:"index"`
+	Name string `gorm:"index,uniqueIndex:idx_name_provider_identifier"`
 
 	// Typically the full name of the user
 	DisplayName string
@@ -35,7 +38,7 @@ type User struct {
 	// Unique identifier of the user from OIDC,
 	// comes from `sub` claim in the OIDC token
 	// and is used to lookup the user.
-	ProviderIdentifier string `gorm:"index"`
+	ProviderIdentifier string `gorm:"index,uniqueIndex:idx_name_provider_identifier"`
 
 	// Provider is the origin of the user account,
 	// same as RegistrationMethod, without authkey.
