@@ -164,13 +164,15 @@ var listUsersCmd = &cobra.Command{
 			SuccessOutput(response.GetUsers(), "", output)
 		}
 
-		tableData := pterm.TableData{{"ID", "Name", "Created"}}
+		tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
 		for _, user := range response.GetUsers() {
 			tableData = append(
 				tableData,
 				[]string{
 					user.GetId(),
+					user.GetDisplayName(),
 					user.GetName(),
+					user.GetEmail(),
 					user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
 				},
 			)

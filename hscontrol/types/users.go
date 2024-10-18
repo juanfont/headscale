@@ -100,11 +100,16 @@ func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 	}
 }
 
-func (n *User) Proto() *v1.User {
+func (u *User) Proto() *v1.User {
 	return &v1.User{
-		Id:        strconv.FormatUint(uint64(n.ID), util.Base10),
-		Name:      n.Name,
-		CreatedAt: timestamppb.New(n.CreatedAt),
+		Id:            strconv.FormatUint(uint64(u.ID), util.Base10),
+		Name:          u.Name,
+		CreatedAt:     timestamppb.New(u.CreatedAt),
+		DisplayName:   u.DisplayName,
+		Email:         u.Email,
+		ProviderId:    u.ProviderIdentifier,
+		Provider:      u.Provider,
+		ProfilePicUrl: u.ProfilePicURL,
 	}
 }
 

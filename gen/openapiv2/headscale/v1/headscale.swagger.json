@@ -1461,6 +1461,21 @@
         "createdAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "profilePicUrl": {
+          "type": "string"
         }
       }
     }
