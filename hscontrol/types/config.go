@@ -162,8 +162,10 @@ type OIDCConfig struct {
 	AllowedDomains             []string
 	AllowedUsers               []string
 	AllowedGroups              []string
+	StripEmaildomain           bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
+	MapLegacyUsers             bool
 }
 
 type DERPConfig struct {
@@ -272,9 +274,11 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.sqlite.write_ahead_log", true)
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
+	viper.SetDefault("oidc.strip_email_domain", true)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
+	viper.SetDefault("oidc.map_legacy_users", true)
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -318,14 +322,18 @@ func validateServerConfig() error {
 	depr.warn("dns_config.use_username_in_magic_dns")
 	depr.warn("dns.use_username_in_magic_dns")
 
-	depr.fatal("oidc.strip_email_domain")
+	// TODO(kradalby): Reintroduce when strip_email_domain is removed
+	// after #2170 is cleaned up
+	// depr.fatal("oidc.strip_email_domain")
 	depr.fatal("dns.use_username_in_musername_in_magic_dns")
 	depr.fatal("dns_config.use_username_in_musername_in_magic_dns")
 
 	depr.Log()
 
 	for _, removed := range []string{
-		"oidc.strip_email_domain",
+		// TODO(kradalby): Reintroduce when strip_email_domain is removed
+		// after #2170 is cleaned up
+		// "oidc.strip_email_domain",
 		"dns_config.use_username_in_musername_in_magic_dns",
 	} {
 		if viper.IsSet(removed) {
@@ -897,6 +905,10 @@ func LoadServerConfig() (*Config, error) {
 				}
 			}(),
 			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
+			// TODO(kradalby): Remove when strip_email_domain is removed
+			// after #2170 is cleaned up
+			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
+			MapLegacyUsers:   viper.GetBool("oidc.map_legacy_users"),
 		},
 
 		LogTail:             logTailConfig,
