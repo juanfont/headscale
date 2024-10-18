@@ -905,7 +905,10 @@ func LoadServerConfig() (*Config, error) {
 				}
 			}(),
 			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
-			MapLegacyUsers:     viper.GetBool("oidc.map_legacy_users"),
+			// TODO(kradalby): Remove when strip_email_domain is removed
+			// after #2170 is cleaned up
+			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
+			MapLegacyUsers:   viper.GetBool("oidc.map_legacy_users"),
 		},
 
 		LogTail:             logTailConfig,

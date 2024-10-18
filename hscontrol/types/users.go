@@ -3,7 +3,6 @@ package types
 import (
 	"cmp"
 	"strconv"
-	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -23,7 +22,8 @@ type User struct {
 
 	// Username for the user, is used if email is empty
 	// Should not be used, please use Username().
-	Name string `gorm:"unique"`
+	// TODO(kradalby): Figure out how do deal with uniqueness.
+	Name string `gorm:"index"`
 
 	// Typically the full name of the user
 	DisplayName string
@@ -54,9 +54,10 @@ type User struct {
 // If the username does not contain an '@' it will be added to the end.
 func (u *User) Username() string {
 	username := cmp.Or(u.Email, u.Name, u.ProviderIdentifier, strconv.FormatUint(uint64(u.ID), 10))
-	if !strings.Contains(username, "@") {
-		username = username + "@"
-	}
+	// TODO(kradalby): Wire up all of this for the future
+	// if !strings.Contains(username, "@") {
+	// 	username = username + "@"
+	// }
 
 	return username
 }
@@ -134,10 +135,14 @@ type OIDCClaims struct {
 	Username          string   `json:"preferred_username,omitempty"`
 }
 
+func (c *OIDCClaims) Identifier() string {
+	return c.Iss + "/" + c.Sub
+}
+
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	u.ProviderIdentifier = claims.Iss + "/" + claims.Sub
+	u.ProviderIdentifier = claims.Identifier()
 	u.DisplayName = claims.Name
 	if claims.EmailVerified {
 		u.Email = claims.Email

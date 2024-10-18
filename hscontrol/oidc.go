@@ -436,7 +436,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 ) (*types.User, error) {
 	var user *types.User
 	var err error
-	user, err = a.db.GetUserByOIDCIdentifier(claims.Sub)
+	user, err = a.db.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
 		return nil, fmt.Errorf("creating or updating user: %w", err)
 	}
@@ -448,10 +448,12 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	// TODO(kradalby): Remove when strip_email_domain and migration is removed
 	// after #2170 is cleaned up.
 	if a.cfg.MapLegacyUsers && user == nil {
+		log.Trace().Str("username", claims.Username).Str("sub", claims.Sub).Msg("user not found by OIDC identifier, looking up by username")
 		if oldUsername, err := getUserName(claims, a.cfg.StripEmaildomain); err == nil {
+			log.Trace().Str("old_username", oldUsername).Str("sub", claims.Sub).Msg("found username")
 			user, err = a.db.GetUserByName(oldUsername)
 			if err != nil && !errors.Is(err, db.ErrUserNotFound) {
-				return nil, fmt.Errorf("creating or updating user: %w", err)
+				return nil, fmt.Errorf("getting user: %w", err)
 			}
 
 			// If the user exists, but it already has a provider identifier (OIDC sub), create a new user.
@@ -525,6 +527,9 @@ func getUserName(
 	claims *types.OIDCClaims,
 	stripEmaildomain bool,
 ) (string, error) {
+	if !claims.EmailVerified {
+		return "", fmt.Errorf("email not verified")
+	}
 	userName, err := util.NormalizeToFQDNRules(
 		claims.Email,
 		stripEmaildomain,
