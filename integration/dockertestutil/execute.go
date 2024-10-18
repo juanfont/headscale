@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ory/dockertest/v3"
@@ -25,7 +26,6 @@ type ExecuteCommandOption func(*ExecuteCommandConfig) error
 func ExecuteCommandTimeout(timeout time.Duration) ExecuteCommandOption {
 	return ExecuteCommandOption(func(conf *ExecuteCommandConfig) error {
 		conf.timeout = timeout
-
 		return nil
 	})
 }
@@ -67,6 +67,7 @@ func ExecuteCommand(
 				StdErr: &stderr,
 			},
 		)
+
 		resultChan <- result{exitCode, err}
 	}()
 
@@ -88,7 +89,6 @@ func ExecuteCommand(
 
 		return stdout.String(), stderr.String(), nil
 	case <-time.After(execConfig.timeout):
-
 		return stdout.String(), stderr.String(), ErrDockertestCommandTimeout
 	}
 }
