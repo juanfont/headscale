@@ -2,8 +2,10 @@ package policy
 
 import (
 	"errors"
+	"math/rand/v2"
 	"net/netip"
 	"slices"
+	"sort"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -14,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -375,18 +378,24 @@ func TestParsing(t *testing.T) {
 				return
 			}
 
-			rules, err := pol.CompileFilterRules(types.Nodes{
-				&types.Node{
-					IPv4: iap("100.100.100.100"),
+			user := types.User{
+				Model: gorm.Model{ID: 1},
+				Name:  "testuser",
+			}
+			rules, err := pol.CompileFilterRules(
+				[]types.User{
+					user,
 				},
-				&types.Node{
-					IPv4: iap("200.200.200.200"),
-					User: types.User{
-						Name: "testuser",
+				types.Nodes{
+					&types.Node{
+						IPv4: iap("100.100.100.100"),
 					},
-					Hostinfo: &tailcfg.Hostinfo{},
-				},
-			})
+					&types.Node{
+						IPv4:     iap("200.200.200.200"),
+						User:     user,
+						Hostinfo: &tailcfg.Hostinfo{},
+					},
+				})
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
@@ -533,7 +542,7 @@ func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 	c.Assert(pol.ACLs, check.HasLen, 6)
 	c.Assert(err, check.IsNil)
 
-	rules, err := pol.CompileFilterRules(types.Nodes{})
+	rules, err := pol.CompileFilterRules([]types.User{}, types.Nodes{})
 	c.Assert(err, check.NotNil)
 	c.Assert(rules, check.IsNil)
 }
@@ -549,7 +558,12 @@ func (s *Suite) TestInvalidAction(c *check.C) {
 			},
 		},
 	}
-	_, _, err := GenerateFilterAndSSHRulesForTests(pol, &types.Node{}, types.Nodes{})
+	_, _, err := GenerateFilterAndSSHRulesForTests(
+		pol,
+		&types.Node{},
+		types.Nodes{},
+		[]types.User{},
+	)
 	c.Assert(errors.Is(err, ErrInvalidAction), check.Equals, true)
 }
 
@@ -568,7 +582,12 @@ func (s *Suite) TestInvalidGroupInGroup(c *check.C) {
 			},
 		},
 	}
-	_, _, err := GenerateFilterAndSSHRulesForTests(pol, &types.Node{}, types.Nodes{})
+	_, _, err := GenerateFilterAndSSHRulesForTests(
+		pol,
+		&types.Node{},
+		types.Nodes{},
+		[]types.User{},
+	)
 	c.Assert(errors.Is(err, ErrInvalidGroup), check.Equals, true)
 }
 
@@ -584,7 +603,12 @@ func (s *Suite) TestInvalidTagOwners(c *check.C) {
 		},
 	}
 
-	_, _, err := GenerateFilterAndSSHRulesForTests(pol, &types.Node{}, types.Nodes{})
+	_, _, err := GenerateFilterAndSSHRulesForTests(
+		pol,
+		&types.Node{},
+		types.Nodes{},
+		[]types.User{},
+	)
 	c.Assert(errors.Is(err, ErrInvalidTag), check.Equals, true)
 }
 
@@ -861,6 +885,19 @@ func Test_expandPorts(t *testing.T) {
 }
 
 func Test_listNodesInUser(t *testing.T) {
+	users := []types.User{
+		{Model: gorm.Model{ID: 1}, Name: "marc"},
+		{Model: gorm.Model{ID: 2}, Name: "joe", Email: "joe@headscale.net"},
+		{
+			Model:              gorm.Model{ID: 3},
+			Name:               "mikael",
+			Email:              "mikael@headscale.net",
+			ProviderIdentifier: "http://oidc.org/1234",
+		},
+		{Model: gorm.Model{ID: 4}, Name: "mikael2", Email: "mikael@headscale.net"},
+		{Model: gorm.Model{ID: 5}, Name: "mikael", Email: "mikael2@headscale.net"},
+	}
+
 	type args struct {
 		nodes types.Nodes
 		user  string
@@ -874,50 +911,239 @@ func Test_listNodesInUser(t *testing.T) {
 			name: "1 node in user",
 			args: args{
 				nodes: types.Nodes{
-					&types.Node{User: types.User{Name: "joe"}},
+					&types.Node{User: users[1]},
 				},
 				user: "joe",
 			},
 			want: types.Nodes{
-				&types.Node{User: types.User{Name: "joe"}},
+				&types.Node{User: users[1]},
 			},
 		},
 		{
 			name: "3 nodes, 2 in user",
 			args: args{
 				nodes: types.Nodes{
-					&types.Node{ID: 1, User: types.User{Name: "joe"}},
-					&types.Node{ID: 2, User: types.User{Name: "marc"}},
-					&types.Node{ID: 3, User: types.User{Name: "marc"}},
+					&types.Node{ID: 1, User: users[1]},
+					&types.Node{ID: 2, User: users[0]},
+					&types.Node{ID: 3, User: users[0]},
 				},
 				user: "marc",
 			},
 			want: types.Nodes{
-				&types.Node{ID: 2, User: types.User{Name: "marc"}},
-				&types.Node{ID: 3, User: types.User{Name: "marc"}},
+				&types.Node{ID: 2, User: users[0]},
+				&types.Node{ID: 3, User: users[0]},
 			},
 		},
 		{
 			name: "5 nodes, 0 in user",
 			args: args{
 				nodes: types.Nodes{
-					&types.Node{ID: 1, User: types.User{Name: "joe"}},
-					&types.Node{ID: 2, User: types.User{Name: "marc"}},
-					&types.Node{ID: 3, User: types.User{Name: "marc"}},
-					&types.Node{ID: 4, User: types.User{Name: "marc"}},
-					&types.Node{ID: 5, User: types.User{Name: "marc"}},
+					&types.Node{ID: 1, User: users[1]},
+					&types.Node{ID: 2, User: users[0]},
+					&types.Node{ID: 3, User: users[0]},
+					&types.Node{ID: 4, User: users[0]},
+					&types.Node{ID: 5, User: users[0]},
 				},
 				user: "mickael",
+			},
+			want: nil,
+		},
+		{
+			name: "match-by-provider-ident",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[1]},
+					&types.Node{ID: 2, User: users[2]},
+				},
+				user: "http://oidc.org/1234",
+			},
+			want: types.Nodes{
+				&types.Node{ID: 2, User: users[2]},
+			},
+		},
+		{
+			name: "match-by-email",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[1]},
+					&types.Node{ID: 2, User: users[2]},
+				},
+				user: "joe@headscale.net",
+			},
+			want: types.Nodes{
+				&types.Node{ID: 1, User: users[1]},
+			},
+		},
+		{
+			name: "multi-match-is-zero",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[1]},
+					&types.Node{ID: 2, User: users[2]},
+					&types.Node{ID: 3, User: users[3]},
+				},
+				user: "mikael@headscale.net",
+			},
+			want: nil,
+		},
+		{
+			name: "multi-email-first-match-is-zero",
+			args: args{
+				nodes: types.Nodes{
+					// First match email, then provider id
+					&types.Node{ID: 3, User: users[3]},
+					&types.Node{ID: 2, User: users[2]},
+				},
+				user: "mikael@headscale.net",
+			},
+			want: nil,
+		},
+		{
+			name: "multi-username-first-match-is-zero",
+			args: args{
+				nodes: types.Nodes{
+					// First match username, then provider id
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 2, User: users[2]},
+				},
+				user: "mikael",
+			},
+			want: nil,
+		},
+		{
+			name: "all-users-duplicate-username-random-order",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[0]},
+					&types.Node{ID: 2, User: users[1]},
+					&types.Node{ID: 3, User: users[2]},
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 5, User: users[4]},
+				},
+				user: "mikael",
+			},
+			want: nil,
+		},
+		{
+			name: "all-users-unique-username-random-order",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[0]},
+					&types.Node{ID: 2, User: users[1]},
+					&types.Node{ID: 3, User: users[2]},
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 5, User: users[4]},
+				},
+				user: "marc",
+			},
+			want: types.Nodes{
+				&types.Node{ID: 1, User: users[0]},
+			},
+		},
+		{
+			name: "all-users-no-username-random-order",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[0]},
+					&types.Node{ID: 2, User: users[1]},
+					&types.Node{ID: 3, User: users[2]},
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 5, User: users[4]},
+				},
+				user: "not-working",
+			},
+			want: nil,
+		},
+		{
+			name: "all-users-duplicate-email-random-order",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[0]},
+					&types.Node{ID: 2, User: users[1]},
+					&types.Node{ID: 3, User: users[2]},
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 5, User: users[4]},
+				},
+				user: "mikael@headscale.net",
+			},
+			want: nil,
+		},
+		{
+			name: "all-users-duplicate-email-random-order",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[0]},
+					&types.Node{ID: 2, User: users[1]},
+					&types.Node{ID: 3, User: users[2]},
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 5, User: users[4]},
+				},
+				user: "joe@headscale.net",
+			},
+			want: types.Nodes{
+				&types.Node{ID: 2, User: users[1]},
+			},
+		},
+		{
+			name: "all-users-no-email-random-order",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[0]},
+					&types.Node{ID: 2, User: users[1]},
+					&types.Node{ID: 3, User: users[2]},
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 5, User: users[4]},
+				},
+				user: "not-working@headscale.net",
+			},
+			want: nil,
+		},
+		{
+			name: "all-users-provider-id-random-order",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[0]},
+					&types.Node{ID: 2, User: users[1]},
+					&types.Node{ID: 3, User: users[2]},
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 5, User: users[4]},
+				},
+				user: "http://oidc.org/1234",
+			},
+			want: types.Nodes{
+				&types.Node{ID: 3, User: users[2]},
+			},
+		},
+		{
+			name: "all-users-no-provider-id-random-order",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[0]},
+					&types.Node{ID: 2, User: users[1]},
+					&types.Node{ID: 3, User: users[2]},
+					&types.Node{ID: 4, User: users[3]},
+					&types.Node{ID: 5, User: users[4]},
+				},
+				user: "http://oidc.org/4321",
 			},
 			want: nil,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := filterNodesByUser(test.args.nodes, test.args.user)
+			for range 1000 {
+				ns := test.args.nodes
+				rand.Shuffle(len(ns), func(i, j int) {
+					ns[i], ns[j] = ns[j], ns[i]
+				})
+				got := filterNodesByUser(ns, users, test.args.user)
+				sort.Slice(got, func(i, j int) bool {
+					return got[i].ID < got[j].ID
+				})
 
-			if diff := cmp.Diff(test.want, got, util.Comparers...); diff != "" {
-				t.Errorf("listNodesInUser() = (-want +got):\n%s", diff)
+				if diff := cmp.Diff(test.want, got, util.Comparers...); diff != "" {
+					t.Errorf("filterNodesByUser() = (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}
@@ -938,6 +1164,12 @@ func Test_expandAlias(t *testing.T) {
 		s, _ := builder.IPSet()
 
 		return s
+	}
+
+	users := []types.User{
+		{Model: gorm.Model{ID: 1}, Name: "joe"},
+		{Model: gorm.Model{ID: 2}, Name: "marc"},
+		{Model: gorm.Model{ID: 3}, Name: "mickael"},
 	}
 
 	type field struct {
@@ -989,19 +1221,19 @@ func Test_expandAlias(t *testing.T) {
 				nodes: types.Nodes{
 					&types.Node{
 						IPv4: iap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: users[0],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.2"),
-						User: types.User{Name: "joe"},
+						User: users[0],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.3"),
-						User: types.User{Name: "marc"},
+						User: users[1],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.4"),
-						User: types.User{Name: "mickael"},
+						User: users[2],
 					},
 				},
 			},
@@ -1022,19 +1254,19 @@ func Test_expandAlias(t *testing.T) {
 				nodes: types.Nodes{
 					&types.Node{
 						IPv4: iap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: users[0],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.2"),
-						User: types.User{Name: "joe"},
+						User: users[0],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.3"),
-						User: types.User{Name: "marc"},
+						User: users[1],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.4"),
-						User: types.User{Name: "mickael"},
+						User: users[2],
 					},
 				},
 			},
@@ -1185,7 +1417,7 @@ func Test_expandAlias(t *testing.T) {
 				nodes: types.Nodes{
 					&types.Node{
 						IPv4: iap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: users[0],
 						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1194,7 +1426,7 @@ func Test_expandAlias(t *testing.T) {
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.2"),
-						User: types.User{Name: "joe"},
+						User: users[0],
 						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1203,11 +1435,11 @@ func Test_expandAlias(t *testing.T) {
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.3"),
-						User: types.User{Name: "marc"},
+						User: users[1],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.4"),
-						User: types.User{Name: "joe"},
+						User: users[0],
 					},
 				},
 			},
@@ -1260,21 +1492,21 @@ func Test_expandAlias(t *testing.T) {
 				nodes: types.Nodes{
 					&types.Node{
 						IPv4:       iap("100.64.0.1"),
-						User:       types.User{Name: "joe"},
+						User:       users[0],
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					&types.Node{
 						IPv4:       iap("100.64.0.2"),
-						User:       types.User{Name: "joe"},
+						User:       users[0],
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.3"),
-						User: types.User{Name: "marc"},
+						User: users[1],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.4"),
-						User: types.User{Name: "mickael"},
+						User: users[2],
 					},
 				},
 			},
@@ -1295,12 +1527,12 @@ func Test_expandAlias(t *testing.T) {
 				nodes: types.Nodes{
 					&types.Node{
 						IPv4:       iap("100.64.0.1"),
-						User:       types.User{Name: "joe"},
+						User:       users[0],
 						ForcedTags: []string{"tag:hr-webserver"},
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.2"),
-						User: types.User{Name: "joe"},
+						User: users[0],
 						Hostinfo: &tailcfg.Hostinfo{
 							OS:          "centos",
 							Hostname:    "foo",
@@ -1309,11 +1541,11 @@ func Test_expandAlias(t *testing.T) {
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.3"),
-						User: types.User{Name: "marc"},
+						User: users[1],
 					},
 					&types.Node{
 						IPv4: iap("100.64.0.4"),
-						User: types.User{Name: "mickael"},
+						User: users[2],
 					},
 				},
 			},
@@ -1350,12 +1582,12 @@ func Test_expandAlias(t *testing.T) {
 					},
 					&types.Node{
 						IPv4:     iap("100.64.0.3"),
-						User:     types.User{Name: "marc"},
+						User:     users[1],
 						Hostinfo: &tailcfg.Hostinfo{},
 					},
 					&types.Node{
 						IPv4:     iap("100.64.0.4"),
-						User:     types.User{Name: "joe"},
+						User:     users[0],
 						Hostinfo: &tailcfg.Hostinfo{},
 					},
 				},
@@ -1368,6 +1600,7 @@ func Test_expandAlias(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := test.field.pol.ExpandAlias(
 				test.args.nodes,
+				users,
 				test.args.alias,
 			)
 			if (err != nil) != test.wantErr {
@@ -1715,6 +1948,7 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.field.pol.CompileFilterRules(
+				[]types.User{},
 				tt.args.nodes,
 			)
 			if (err != nil) != tt.wantErr {
@@ -1842,6 +2076,13 @@ func TestTheInternet(t *testing.T) {
 }
 
 func TestReduceFilterRules(t *testing.T) {
+	users := []types.User{
+		{Model: gorm.Model{ID: 1}, Name: "mickael"},
+		{Model: gorm.Model{ID: 2}, Name: "user1"},
+		{Model: gorm.Model{ID: 3}, Name: "user2"},
+		{Model: gorm.Model{ID: 4}, Name: "user100"},
+	}
+
 	tests := []struct {
 		name  string
 		node  *types.Node
@@ -1863,13 +2104,13 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: iap("100.64.0.1"),
 				IPv6: iap("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
-				User: types.User{Name: "mickael"},
+				User: users[0],
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: iap("100.64.0.2"),
 					IPv6: iap("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
-					User: types.User{Name: "mickael"},
+					User: users[0],
 				},
 			},
 			want: []tailcfg.FilterRule{},
@@ -1896,7 +2137,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: iap("100.64.0.1"),
 				IPv6: iap("fd7a:115c:a1e0::1"),
-				User: types.User{Name: "user1"},
+				User: users[1],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						netip.MustParsePrefix("10.33.0.0/16"),
@@ -1907,7 +2148,7 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: iap("100.64.0.2"),
 					IPv6: iap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user1"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -1975,19 +2216,19 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: iap("100.64.0.1"),
 				IPv6: iap("fd7a:115c:a1e0::1"),
-				User: types.User{Name: "user1"},
+				User: users[1],
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: iap("100.64.0.2"),
 					IPv6: iap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2"},
+					User: users[2],
 				},
 				// "internal" exit node
 				&types.Node{
 					IPv4: iap("100.64.0.100"),
 					IPv6: iap("fd7a:115c:a1e0::100"),
-					User: types.User{Name: "user100"},
+					User: users[3],
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tsaddr.ExitRoutes(),
 					},
@@ -2034,12 +2275,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: iap("100.64.0.2"),
 					IPv6: iap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2"},
+					User: users[2],
 				},
 				&types.Node{
 					IPv4: iap("100.64.0.1"),
 					IPv6: iap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -2131,7 +2372,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -2140,12 +2381,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: iap("100.64.0.2"),
 					IPv6: iap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2"},
+					User: users[2],
 				},
 				&types.Node{
 					IPv4: iap("100.64.0.1"),
 					IPv6: iap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -2243,7 +2484,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						netip.MustParsePrefix("8.0.0.0/16"),
@@ -2255,12 +2496,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: iap("100.64.0.2"),
 					IPv6: iap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2"},
+					User: users[2],
 				},
 				&types.Node{
 					IPv4: iap("100.64.0.1"),
 					IPv6: iap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -2333,7 +2574,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						netip.MustParsePrefix("8.0.0.0/8"),
@@ -2345,12 +2586,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: iap("100.64.0.2"),
 					IPv6: iap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2"},
+					User: users[2],
 				},
 				&types.Node{
 					IPv4: iap("100.64.0.1"),
 					IPv6: iap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -2416,7 +2657,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: iap("100.64.0.100"),
 				IPv6: iap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
@@ -2426,7 +2667,7 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: iap("100.64.0.1"),
 					IPv6: iap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -2454,6 +2695,7 @@ func TestReduceFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, _ := tt.pol.CompileFilterRules(
+				users,
 				append(tt.peers, tt.node),
 			)
 
@@ -3461,7 +3703,7 @@ func TestSSHRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.pol.CompileSSHPolicy(&tt.node, tt.peers)
+			got, err := tt.pol.CompileSSHPolicy(&tt.node, []types.User{}, tt.peers)
 			require.NoError(t, err)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -3544,14 +3786,17 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 		RequestTags: []string{"tag:test"},
 	}
 
+	user := types.User{
+		Model: gorm.Model{ID: 1},
+		Name:  "user1",
+	}
+
 	node := &types.Node{
-		ID:       0,
-		Hostname: "testnodes",
-		IPv4:     iap("100.64.0.1"),
-		UserID:   0,
-		User: types.User{
-			Name: "user1",
-		},
+		ID:             0,
+		Hostname:       "testnodes",
+		IPv4:           iap("100.64.0.1"),
+		UserID:         0,
+		User:           user,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &hostInfo,
 	}
@@ -3568,7 +3813,7 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{}, []types.User{user})
 	require.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3602,7 +3847,8 @@ func TestInvalidTagValidUser(t *testing.T) {
 		IPv4:     iap("100.64.0.1"),
 		UserID:   1,
 		User: types.User{
-			Name: "user1",
+			Model: gorm.Model{ID: 1},
+			Name:  "user1",
 		},
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &hostInfo,
@@ -3619,7 +3865,12 @@ func TestInvalidTagValidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRulesForTests(
+		pol,
+		node,
+		types.Nodes{},
+		[]types.User{node.User},
+	)
 	require.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3653,7 +3904,8 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 		IPv4:     iap("100.64.0.1"),
 		UserID:   1,
 		User: types.User{
-			Name: "user1",
+			Model: gorm.Model{ID: 1},
+			Name:  "user1",
 		},
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &hostInfo,
@@ -3678,7 +3930,12 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 	// c.Assert(rules[0].DstPorts, check.HasLen, 1)
 	// c.Assert(rules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 
-	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
+	got, _, err := GenerateFilterAndSSHRulesForTests(
+		pol,
+		node,
+		types.Nodes{},
+		[]types.User{node.User},
+	)
 	require.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
@@ -3707,15 +3964,17 @@ func TestValidTagInvalidUser(t *testing.T) {
 		Hostname:    "webserver",
 		RequestTags: []string{"tag:webapp"},
 	}
+	user := types.User{
+		Model: gorm.Model{ID: 1},
+		Name:  "user1",
+	}
 
 	node := &types.Node{
-		ID:       1,
-		Hostname: "webserver",
-		IPv4:     iap("100.64.0.1"),
-		UserID:   1,
-		User: types.User{
-			Name: "user1",
-		},
+		ID:             1,
+		Hostname:       "webserver",
+		IPv4:           iap("100.64.0.1"),
+		UserID:         1,
+		User:           user,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &hostInfo,
 	}
@@ -3726,13 +3985,11 @@ func TestValidTagInvalidUser(t *testing.T) {
 	}
 
 	nodes2 := &types.Node{
-		ID:       2,
-		Hostname: "user",
-		IPv4:     iap("100.64.0.2"),
-		UserID:   1,
-		User: types.User{
-			Name: "user1",
-		},
+		ID:             2,
+		Hostname:       "user",
+		IPv4:           iap("100.64.0.2"),
+		UserID:         1,
+		User:           user,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &hostInfo2,
 	}
@@ -3748,7 +4005,12 @@ func TestValidTagInvalidUser(t *testing.T) {
 		},
 	}
 
-	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{nodes2})
+	got, _, err := GenerateFilterAndSSHRulesForTests(
+		pol,
+		node,
+		types.Nodes{nodes2},
+		[]types.User{user},
+	)
 	require.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
