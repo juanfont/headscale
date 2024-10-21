@@ -153,6 +153,7 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 func (m *Mapper) fullMapResponse(
 	node *types.Node,
 	peers types.Nodes,
+	users []types.User,
 	pol *policy.ACLPolicy,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
@@ -167,6 +168,7 @@ func (m *Mapper) fullMapResponse(
 		pol,
 		node,
 		capVer,
+		users,
 		peers,
 		peers,
 		m.cfg,
@@ -189,8 +191,12 @@ func (m *Mapper) FullMapResponse(
 	if err != nil {
 		return nil, err
 	}
+	users, err := m.db.ListUsers()
+	if err != nil {
+		return nil, err
+	}
 
-	resp, err := m.fullMapResponse(node, peers, pol, mapRequest.Version)
+	resp, err := m.fullMapResponse(node, peers, users, pol, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +259,11 @@ func (m *Mapper) PeerChangedResponse(
 		return nil, err
 	}
 
+	users, err := m.db.ListUsers()
+	if err != nil {
+		return nil, fmt.Errorf("listing users for map response: %w", err)
+	}
+
 	var removedIDs []tailcfg.NodeID
 	var changedIDs []types.NodeID
 	for nodeID, nodeChanged := range changed {
@@ -276,6 +287,7 @@ func (m *Mapper) PeerChangedResponse(
 		pol,
 		node,
 		mapRequest.Version,
+		users,
 		peers,
 		changedNodes,
 		m.cfg,
@@ -508,16 +520,17 @@ func appendPeerChanges(
 	pol *policy.ACLPolicy,
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
+	users []types.User,
 	peers types.Nodes,
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
-	packetFilter, err := pol.CompileFilterRules(append(peers, node))
+	packetFilter, err := pol.CompileFilterRules(users, append(peers, node))
 	if err != nil {
 		return err
 	}
 
-	sshPolicy, err := pol.CompileSSHPolicy(node, peers)
+	sshPolicy, err := pol.CompileSSHPolicy(node, users, peers)
 	if err != nil {
 		return err
 	}

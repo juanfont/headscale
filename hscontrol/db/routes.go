@@ -648,8 +648,13 @@ func EnableAutoApprovedRoutes(
 			if approvedAlias == node.User.Username() {
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
+				users, err := ListUsers(tx)
+				if err != nil {
+					return fmt.Errorf("looking up users to expand route alias: %w", err)
+				}
+
 				// TODO(kradalby): figure out how to get this to depend on less stuff
-				approvedIps, err := aclPolicy.ExpandAlias(types.Nodes{node}, approvedAlias)
+				approvedIps, err := aclPolicy.ExpandAlias(types.Nodes{node}, users, approvedAlias)
 				if err != nil {
 					return fmt.Errorf("expanding alias %q for autoApprovers: %w", approvedAlias, err)
 				}
