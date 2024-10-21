@@ -111,9 +111,7 @@ func generateUserProfiles(
 
 func generateDNSConfig(
 	cfg *types.Config,
-	baseDomain string,
 	node *types.Node,
-	peers types.Nodes,
 ) *tailcfg.DNSConfig {
 	if cfg.DNSConfig == nil {
 		return nil
@@ -532,12 +530,7 @@ func appendPeerChanges(
 
 	profiles := generateUserProfiles(node, changed)
 
-	dnsConfig := generateDNSConfig(
-		cfg,
-		cfg.BaseDomain,
-		node,
-		peers,
-	)
+	dnsConfig := generateDNSConfig(cfg, node)
 
 	tailPeers, err := tailNodes(changed, capVer, pol, cfg)
 	if err != nil {
