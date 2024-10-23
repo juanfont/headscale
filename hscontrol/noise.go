@@ -10,7 +10,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"tailscale.com/control/controlbase"
 	"tailscale.com/control/controlhttp"
 	"tailscale.com/tailcfg"
@@ -101,17 +100,11 @@ func (h *Headscale) NoiseUpgradeHandler(
 		Methods(http.MethodPost)
 	router.HandleFunc("/machine/map", noiseServer.NoisePollNetMapHandler)
 
-	server := http.Server{
-		ReadTimeout: types.HTTPTimeout,
-	}
-
 	noiseServer.httpBaseConfig = &http.Server{
 		Handler:           router,
 		ReadHeaderTimeout: types.HTTPTimeout,
 	}
 	noiseServer.http2Server = &http2.Server{}
-
-	server.Handler = h2c.NewHandler(router, noiseServer.http2Server)
 
 	noiseServer.http2Server.ServeConn(
 		noiseConn,

@@ -114,24 +114,12 @@ func TestDNSConfigMapResponse(t *testing.T) {
 			}
 
 			nodeInShared1 := mach("test_get_shared_nodes_1", "shared1", 1)
-			nodeInShared2 := mach("test_get_shared_nodes_2", "shared2", 2)
-			nodeInShared3 := mach("test_get_shared_nodes_3", "shared3", 3)
-			node2InShared1 := mach("test_get_shared_nodes_4", "shared1", 1)
-
-			peersOfNodeInShared1 := types.Nodes{
-				nodeInShared1,
-				nodeInShared2,
-				nodeInShared3,
-				node2InShared1,
-			}
 
 			got := generateDNSConfig(
 				&types.Config{
 					DNSConfig: &dnsConfigOrig,
 				},
-				baseDomain,
 				nodeInShared1,
-				peersOfNodeInShared1,
 			)
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
