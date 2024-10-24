@@ -57,9 +57,14 @@ linters-settings:
       - ok
       - c
       - tt
+      - tx
+      - rx
 
   gocritic:
     disabled-checks:
       - appendAssign
       # TODO(kradalby): Remove this
       - ifElseChain
+
+  nlreturn:
+    block-size: 4
