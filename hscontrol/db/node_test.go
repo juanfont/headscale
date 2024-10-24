@@ -17,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -558,17 +559,17 @@ func TestAutoApproveRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			adb, err := newTestDB()
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			pol, err := policy.LoadACLPolicyFromBytes([]byte(tt.acl))
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotNil(t, pol)
 
 			user, err := adb.CreateUser("test")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			pak, err := adb.CreatePreAuthKey(user.Name, false, false, nil, nil)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			nodeKey := key.NewNode()
 			machineKey := key.NewMachine()
@@ -590,21 +591,21 @@ func TestAutoApproveRoutes(t *testing.T) {
 			}
 
 			trx := adb.DB.Save(&node)
-			assert.NoError(t, trx.Error)
+			require.NoError(t, trx.Error)
 
 			sendUpdate, err := adb.SaveNodeRoutes(&node)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.False(t, sendUpdate)
 
 			node0ByID, err := adb.GetNodeByID(0)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			// TODO(kradalby): Check state update
 			err = adb.EnableAutoApprovedRoutes(pol, node0ByID)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Len(t, enabledRoutes, len(tt.want))
 
 			tsaddr.SortPrefixes(enabledRoutes)
@@ -697,13 +698,13 @@ func TestListEphemeralNodes(t *testing.T) {
 	}
 
 	user, err := db.CreateUser("test")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	pakEph, err := db.CreatePreAuthKey(user.Name, false, true, nil, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	node := types.Node{
 		ID:             0,
@@ -726,16 +727,16 @@ func TestListEphemeralNodes(t *testing.T) {
 	}
 
 	err = db.DB.Save(&node).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = db.DB.Save(&nodeEph).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	nodes, err := db.ListNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ephemeralNodes, err := db.ListEphemeralNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Len(t, nodes, 2)
 	assert.Len(t, ephemeralNodes, 1)
@@ -753,10 +754,10 @@ func TestRenameNode(t *testing.T) {
 	}
 
 	user, err := db.CreateUser("test")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	user2, err := db.CreateUser("test2")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	node := types.Node{
 		ID:             0,
@@ -777,10 +778,10 @@ func TestRenameNode(t *testing.T) {
 	}
 
 	err = db.DB.Save(&node).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = db.DB.Save(&node2).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
 		_, err := RegisterNode(tx, node, nil, nil)
@@ -790,10 +791,10 @@ func TestRenameNode(t *testing.T) {
 		_, err = RegisterNode(tx, node2, nil, nil)
 		return err
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	nodes, err := db.ListNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Len(t, nodes, 2)
 
@@ -815,26 +816,26 @@ func TestRenameNode(t *testing.T) {
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[0].ID, "newname")
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	nodes, err = db.ListNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assert.Equal(t, nodes[0].Hostname, "test")
-	assert.Equal(t, nodes[0].GivenName, "newname")
+	assert.Equal(t, "test", nodes[0].Hostname)
+	assert.Equal(t, "newname", nodes[0].GivenName)
 
 	// Nodes can reuse name that is no longer used
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[1].ID, "test")
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	nodes, err = db.ListNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assert.Equal(t, nodes[0].Hostname, "test")
-	assert.Equal(t, nodes[0].GivenName, "newname")
-	assert.Equal(t, nodes[1].GivenName, "test")
+	assert.Equal(t, "test", nodes[0].Hostname)
+	assert.Equal(t, "newname", nodes[0].GivenName)
+	assert.Equal(t, "test", nodes[1].GivenName)
 
 	// Nodes cannot be renamed to used names
 	err = db.Write(func(tx *gorm.DB) error {

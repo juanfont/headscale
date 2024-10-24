@@ -488,7 +488,7 @@ func (a *AuthProviderOIDC) registerNode(
 }
 
 // TODO(kradalby):
-// Rewrite in elem-go
+// Rewrite in elem-go.
 func renderOIDCCallbackTemplate(
 	user *types.User,
 ) (*bytes.Buffer, error) {

@@ -27,6 +27,7 @@ linters:
     - nolintlint
     - musttag # causes issues with imported libs
     - depguard
+    - exportloopref
 
     # We should strive to enable these:
     - wrapcheck

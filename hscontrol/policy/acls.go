@@ -599,7 +599,7 @@ func (pol *ACLPolicy) ExpandAlias(
 // TODO(kradalby): It is quite hard to understand what this function is doing,
 // it seems like it trying to ensure that we dont include nodes that are tagged
 // when we look up the nodes owned by a user.
-// This should be refactored to be more clear as part of the Tags work in #1369
+// This should be refactored to be more clear as part of the Tags work in #1369.
 func excludeCorrectlyTaggedNodes(
 	aclPolicy *ACLPolicy,
 	nodes types.Nodes,

@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/ptr"
 )
@@ -457,7 +458,12 @@ func TestBackfillIPAddresses(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := tt.dbFunc()
 
-			alloc, err := NewIPAllocator(db, tt.prefix4, tt.prefix6, types.IPAllocationStrategySequential)
+			alloc, err := NewIPAllocator(
+				db,
+				tt.prefix4,
+				tt.prefix6,
+				types.IPAllocationStrategySequential,
+			)
 			if err != nil {
 				t.Fatalf("failed to set up ip alloc: %s", err)
 			}
@@ -482,24 +488,29 @@ func TestBackfillIPAddresses(t *testing.T) {
 }
 
 func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
-	alloc, err := NewIPAllocator(db, ptr.To(tsaddr.CGNATRange()), ptr.To(tsaddr.TailscaleULARange()), types.IPAllocationStrategySequential)
+	alloc, err := NewIPAllocator(
+		db,
+		ptr.To(tsaddr.CGNATRange()),
+		ptr.To(tsaddr.TailscaleULARange()),
+		types.IPAllocationStrategySequential,
+	)
 	if err != nil {
 		t.Fatalf("failed to set up ip alloc: %s", err)
 	}
 
 	// Validate that we do not give out 100.100.100.100
 	nextQuad100, err := alloc.next(na("100.100.100.99"), ptr.To(tsaddr.CGNATRange()))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, na("100.100.100.101"), *nextQuad100)
 
 	// Validate that we do not give out fd7a:115c:a1e0::53
 	nextQuad100v6, err := alloc.next(na("fd7a:115c:a1e0::52"), ptr.To(tsaddr.TailscaleULARange()))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, na("fd7a:115c:a1e0::54"), *nextQuad100v6)
 
 	// Validate that we do not give out fd7a:115c:a1e0::53
 	nextChrome, err := alloc.next(na("100.115.91.255"), ptr.To(tsaddr.CGNATRange()))
 	t.Logf("chrome: %s", nextChrome.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, na("100.115.94.0"), *nextChrome)
 }

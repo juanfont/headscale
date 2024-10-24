@@ -20,6 +20,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
 )
@@ -203,11 +204,11 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 
 		if t != nil {
 			stdout, err := os.ReadFile(stdoutPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotContains(t, string(stdout), "panic")
 
 			stderr, err := os.ReadFile(stderrPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotContains(t, string(stderr), "panic")
 		}
 
