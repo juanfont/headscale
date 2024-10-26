@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -53,6 +54,7 @@ type AuthProviderOIDC struct {
 	registrationCache *zcache.Cache[string, key.MachinePublic]
 	notifier          *notifier.Notifier
 	ipAlloc           *db.IPAllocator
+	polMan            policy.PolicyManager
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -65,6 +67,7 @@ func NewAuthProviderOIDC(
 	db *db.HSDatabase,
 	notif *notifier.Notifier,
 	ipAlloc *db.IPAllocator,
+	polMan policy.PolicyManager,
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
@@ -96,6 +99,7 @@ func NewAuthProviderOIDC(
 		registrationCache: registrationCache,
 		notifier:          notif,
 		ipAlloc:           ipAlloc,
+		polMan:            polMan,
 
 		oidcProvider: oidcProvider,
 		oauth2Config: oauth2Config,
@@ -461,6 +465,11 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 		return nil, fmt.Errorf("creating or updating user: %w", err)
 	}
 
+	err = usersChangedHook(a.db, a.polMan, a.notifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using user: %w", err)
+	}
+
 	return user, nil
 }
 
@@ -482,6 +491,11 @@ func (a *AuthProviderOIDC) registerNode(
 		ipv4, ipv6,
 	); err != nil {
 		return fmt.Errorf("could not register node: %w", err)
+	}
+
+	err = nodesChangedHook(a.db, a.polMan, a.notifier)
+	if err != nil {
+		return fmt.Errorf("updating resources using node: %w", err)
 	}
 
 	return nil

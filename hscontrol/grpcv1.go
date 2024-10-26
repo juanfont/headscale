@@ -57,6 +57,11 @@ func (api headscaleV1APIServer) CreateUser(
 		return nil, err
 	}
 
+	err = usersChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using user: %w", err)
+	}
+
 	return &v1.CreateUserResponse{User: user.Proto()}, nil
 }
 
@@ -84,6 +89,11 @@ func (api headscaleV1APIServer) DeleteUser(
 	err := api.h.db.DestroyUser(request.GetName())
 	if err != nil {
 		return nil, err
+	}
+
+	err = usersChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using user: %w", err)
 	}
 
 	return &v1.DeleteUserResponse{}, nil
@@ -218,6 +228,11 @@ func (api headscaleV1APIServer) RegisterNode(
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	err = nodesChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using node: %w", err)
 	}
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil

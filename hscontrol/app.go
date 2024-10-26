@@ -165,6 +165,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			app.db,
 			app.nodeNotifier,
 			app.ipAlloc,
+			app.polMan,
 		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
@@ -472,6 +473,48 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	return router
 }
 
+func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+	users, err := db.ListUsers()
+	if err != nil {
+		return err
+	}
+
+	changed, err := polMan.SetUsers(users)
+	if err != nil {
+		return err
+	}
+
+	if changed {
+		ctx := types.NotifyCtx(context.Background(), "acl-users-change", "all")
+		notif.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
+
+	return nil
+}
+
+func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+	nodes, err := db.ListNodes()
+	if err != nil {
+		return err
+	}
+
+	changed, err := polMan.SetNodes(nodes)
+	if err != nil {
+		return err
+	}
+
+	if changed {
+		ctx := types.NotifyCtx(context.Background(), "acl-nodes-change", "all")
+		notif.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
+
+	return nil
+}
+
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
 	if profilingEnabled {
@@ -770,6 +813,7 @@ func (h *Headscale) Serve() error {
 					Msg("Received SIGHUP, reloading ACL and Config")
 
 				// TODO(kradalby): Reload config on SIGHUP
+				// TODO(kradalby): Only update if we set a new policy
 				if err := h.loadACLPolicy(); err != nil {
 					log.Error().Err(err).Msg("failed to reload ACL policy")
 				}
