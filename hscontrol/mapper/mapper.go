@@ -170,8 +170,6 @@ func (m *Mapper) fullMapResponse(
 		m.polMan,
 		node,
 		capVer,
-		users,
-		peers,
 		peers,
 		m.cfg,
 	)
@@ -258,11 +256,6 @@ func (m *Mapper) PeerChangedResponse(
 		return nil, err
 	}
 
-	users, err := m.db.ListUsers()
-	if err != nil {
-		return nil, fmt.Errorf("listing users for map response: %w", err)
-	}
-
 	var removedIDs []tailcfg.NodeID
 	var changedIDs []types.NodeID
 	for nodeID, nodeChanged := range changed {
@@ -286,8 +279,6 @@ func (m *Mapper) PeerChangedResponse(
 		m.polMan,
 		node,
 		mapRequest.Version,
-		users,
-		peers,
 		changedNodes,
 		m.cfg,
 	)
@@ -517,8 +508,6 @@ func appendPeerChanges(
 	polMan policy.PolicyManager,
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
-	users []types.User,
-	peers types.Nodes,
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
