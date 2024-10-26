@@ -79,6 +79,10 @@ type Option = func(c *HeadscaleInContainer)
 // HeadscaleInContainer instance.
 func WithACLPolicy(acl *policy.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
+		if acl == nil {
+			return
+		}
+
 		// TODO(kradalby): Move somewhere appropriate
 		hsic.env["HEADSCALE_POLICY_PATH"] = aclPolicyPath
 

@@ -31,8 +31,7 @@ jobs:
           - TestPreAuthKeyCorrectUserLoggedInCommand
           - TestApiKeyCommand
           - TestNodeTagCommand
-          - TestNodeAdvertiseTagNoACLCommand
-          - TestNodeAdvertiseTagWithACLCommand
+          - TestNodeAdvertiseTagCommand
           - TestNodeCommand
           - TestNodeExpireCommand
           - TestNodeRenameCommand

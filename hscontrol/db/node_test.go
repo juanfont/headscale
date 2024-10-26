@@ -563,7 +563,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 			pol, err := policy.LoadACLPolicyFromBytes([]byte(tt.acl))
 
 			require.NoError(t, err)
-			assert.NotNil(t, pol)
+			require.NotNil(t, pol)
 
 			user, err := adb.CreateUser("test")
 			require.NoError(t, err)
@@ -600,8 +600,17 @@ func TestAutoApproveRoutes(t *testing.T) {
 			node0ByID, err := adb.GetNodeByID(0)
 			require.NoError(t, err)
 
+			users, err := adb.ListUsers()
+			assert.NoError(t, err)
+
+			nodes, err := adb.ListNodes()
+			assert.NoError(t, err)
+
+			pm, err := policy.NewPolicyManager([]byte(tt.acl), users, nodes)
+			assert.NoError(t, err)
+
 			// TODO(kradalby): Check state update
-			err = adb.EnableAutoApprovedRoutes(pol, node0ByID)
+			err = adb.EnableAutoApprovedRoutes(pm, node0ByID)
 			require.NoError(t, err)
 
 			enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)

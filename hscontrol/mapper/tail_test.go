@@ -184,6 +184,7 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{}, types.Nodes{tt.node})
 			cfg := &types.Config{
 				BaseDomain:          tt.baseDomain,
 				DNSConfig:           tt.dnsConfig,
@@ -192,7 +193,7 @@ func TestTailNode(t *testing.T) {
 			got, err := tailNode(
 				tt.node,
 				0,
-				tt.pol,
+				polMan,
 				cfg,
 			)
 
@@ -245,7 +246,7 @@ func TestNodeExpiry(t *testing.T) {
 			tn, err := tailNode(
 				node,
 				0,
-				&policy.ACLPolicy{},
+				&policy.PolicyManagerV1{},
 				&types.Config{},
 			)
 			if err != nil {

@@ -55,6 +55,7 @@ type Mapper struct {
 	cfg     *types.Config
 	derpMap *tailcfg.DERPMap
 	notif   *notifier.Notifier
+	polMan  policy.PolicyManager
 
 	uid     string
 	created time.Time
@@ -71,6 +72,7 @@ func NewMapper(
 	cfg *types.Config,
 	derpMap *tailcfg.DERPMap,
 	notif *notifier.Notifier,
+	polMan policy.PolicyManager,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
@@ -79,6 +81,7 @@ func NewMapper(
 		cfg:     cfg,
 		derpMap: derpMap,
 		notif:   notif,
+		polMan:  polMan,
 
 		uid:     uid,
 		created: time.Now(),
@@ -153,11 +156,9 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 func (m *Mapper) fullMapResponse(
 	node *types.Node,
 	peers types.Nodes,
-	users []types.User,
-	pol *policy.ACLPolicy,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
-	resp, err := m.baseWithConfigMapResponse(node, pol, capVer)
+	resp, err := m.baseWithConfigMapResponse(node, capVer)
 	if err != nil {
 		return nil, err
 	}
@@ -165,11 +166,9 @@ func (m *Mapper) fullMapResponse(
 	err = appendPeerChanges(
 		resp,
 		true, // full change
-		pol,
+		m.polMan,
 		node,
 		capVer,
-		users,
-		peers,
 		peers,
 		m.cfg,
 	)
@@ -184,19 +183,14 @@ func (m *Mapper) fullMapResponse(
 func (m *Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
 	peers, err := m.ListPeers(node.ID)
 	if err != nil {
 		return nil, err
 	}
-	users, err := m.db.ListUsers()
-	if err != nil {
-		return nil, err
-	}
 
-	resp, err := m.fullMapResponse(node, peers, users, pol, mapRequest.Version)
+	resp, err := m.fullMapResponse(node, peers, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -210,10 +204,9 @@ func (m *Mapper) FullMapResponse(
 func (m *Mapper) ReadOnlyMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
-	resp, err := m.baseWithConfigMapResponse(node, pol, mapRequest.Version)
+	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +242,6 @@ func (m *Mapper) PeerChangedResponse(
 	node *types.Node,
 	changed map[types.NodeID]bool,
 	patches []*tailcfg.PeerChange,
-	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
@@ -257,11 +249,6 @@ func (m *Mapper) PeerChangedResponse(
 	peers, err := m.ListPeers(node.ID)
 	if err != nil {
 		return nil, err
-	}
-
-	users, err := m.db.ListUsers()
-	if err != nil {
-		return nil, fmt.Errorf("listing users for map response: %w", err)
 	}
 
 	var removedIDs []tailcfg.NodeID
@@ -284,11 +271,9 @@ func (m *Mapper) PeerChangedResponse(
 	err = appendPeerChanges(
 		&resp,
 		false, // partial change
-		pol,
+		m.polMan,
 		node,
 		mapRequest.Version,
-		users,
-		peers,
 		changedNodes,
 		m.cfg,
 	)
@@ -315,7 +300,7 @@ func (m *Mapper) PeerChangedResponse(
 
 	// Add the node itself, it might have changed, and particularly
 	// if there are no patches or changes, this is a self update.
-	tailnode, err := tailNode(node, mapRequest.Version, pol, m.cfg)
+	tailnode, err := tailNode(node, mapRequest.Version, m.polMan, m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +315,6 @@ func (m *Mapper) PeerChangedPatchResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	changed []*tailcfg.PeerChange,
-	pol *policy.ACLPolicy,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 	resp.PeersChangedPatch = changed
@@ -459,12 +443,11 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 // incremental.
 func (m *Mapper) baseWithConfigMapResponse(
 	node *types.Node,
-	pol *policy.ACLPolicy,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, capVer, pol, m.cfg)
+	tailnode, err := tailNode(node, capVer, m.polMan, m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -517,35 +500,30 @@ func appendPeerChanges(
 	resp *tailcfg.MapResponse,
 
 	fullChange bool,
-	pol *policy.ACLPolicy,
+	polMan policy.PolicyManager,
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
-	users []types.User,
-	peers types.Nodes,
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
-	packetFilter, err := pol.CompileFilterRules(users, append(peers, node))
-	if err != nil {
-		return err
-	}
+	filter := polMan.Filter()
 
-	sshPolicy, err := pol.CompileSSHPolicy(node, users, peers)
+	sshPolicy, err := polMan.SSHPolicy(node)
 	if err != nil {
 		return err
 	}
 
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access each-other at all and remove them from the peers.
-	if len(packetFilter) > 0 {
-		changed = policy.FilterNodesByACL(node, changed, packetFilter)
+	if len(filter) > 0 {
+		changed = policy.FilterNodesByACL(node, changed, filter)
 	}
 
 	profiles := generateUserProfiles(node, changed)
 
 	dnsConfig := generateDNSConfig(cfg, node)
 
-	tailPeers, err := tailNodes(changed, capVer, pol, cfg)
+	tailPeers, err := tailNodes(changed, capVer, polMan, cfg)
 	if err != nil {
 		return err
 	}
@@ -570,7 +548,7 @@ func appendPeerChanges(
 		// new PacketFilters field and "base" allows us to send a full update when we
 		// have to send an empty list, avoiding the hack in the else block.
 		resp.PacketFilters = map[string][]tailcfg.FilterRule{
-			"base": policy.ReduceFilterRules(node, packetFilter),
+			"base": policy.ReduceFilterRules(node, filter),
 		}
 	} else {
 		// This is a hack to avoid sending an empty list of packet filters.
@@ -578,11 +556,11 @@ func appendPeerChanges(
 		// be omitted, causing the client to consider it unchanged, keeping the
 		// previous packet filter. Worst case, this can cause a node that previously
 		// has access to a node to _not_ loose access if an empty (allow none) is sent.
-		reduced := policy.ReduceFilterRules(node, packetFilter)
+		reduced := policy.ReduceFilterRules(node, filter)
 		if len(reduced) > 0 {
 			resp.PacketFilter = reduced
 		} else {
-			resp.PacketFilter = packetFilter
+			resp.PacketFilter = filter
 		}
 	}
 
