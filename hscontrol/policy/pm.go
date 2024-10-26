@@ -40,9 +40,13 @@ func NewPolicyManagerFromPath(path string, users []types.User, nodes types.Nodes
 }
 
 func NewPolicyManager(polB []byte, users []types.User, nodes types.Nodes) (PolicyManager, error) {
-	pol, err := LoadACLPolicyFromBytes(polB)
-	if err != nil {
-		return nil, fmt.Errorf("parsing policy: %w", err)
+	var pol *ACLPolicy
+	var err error
+	if polB != nil && len(polB) > 0 {
+		pol, err = LoadACLPolicyFromBytes(polB)
+		if err != nil {
+			return nil, fmt.Errorf("parsing policy: %w", err)
+		}
 	}
 
 	pm := PolicyManagerV1{

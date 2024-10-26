@@ -88,7 +88,8 @@ type Headscale struct {
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *derpServer.DERPServer
 
-	polMan policy.PolicyManager
+	polManOnce sync.Once
+	polMan     policy.PolicyManager
 
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
@@ -531,8 +532,7 @@ func (h *Headscale) Serve() error {
 	}
 
 	var err error
-
-	if err = h.loadACLPolicy(); err != nil {
+	if err = h.loadPolicyManager(); err != nil {
 		return fmt.Errorf("failed to load ACL policy: %w", err)
 	}
 
@@ -814,7 +814,7 @@ func (h *Headscale) Serve() error {
 
 				// TODO(kradalby): Reload config on SIGHUP
 				// TODO(kradalby): Only update if we set a new policy
-				if err := h.loadACLPolicy(); err != nil {
+				if err := h.loadPolicyManager(); err != nil {
 					log.Error().Err(err).Msg("failed to reload ACL policy")
 				}
 
@@ -1037,22 +1037,9 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	return &machineKey, nil
 }
 
-func (h *Headscale) loadACLPolicy() error {
-	var (
-		pm policy.PolicyManager
-	)
-
-	switch h.cfg.Policy.Mode {
-	case types.PolicyModeFile:
-		path := h.cfg.Policy.Path
-
-		// It is fine to start headscale without a policy file.
-		if len(path) == 0 {
-			return nil
-		}
-
-		absPath := util.AbsolutePathFromConfigPath(path)
-
+func (h *Headscale) loadPolicyManager() error {
+	var errOut error
+	h.polManOnce.Do(func() {
 		// Validate and reject configuration that would error when applied
 		// when creating a map response. This requires nodes, so there is still
 		// a scenario where they might be allowed if the server has no nodes
@@ -1063,54 +1050,67 @@ func (h *Headscale) loadACLPolicy() error {
 		// allowed to be written to the database.
 		nodes, err := h.db.ListNodes()
 		if err != nil {
-			return fmt.Errorf("loading nodes from database to validate policy: %w", err)
+			errOut = fmt.Errorf("loading nodes from database to validate policy: %w", err)
+			return
 		}
 		users, err := h.db.ListUsers()
 		if err != nil {
-			return fmt.Errorf("loading users from database to validate policy: %w", err)
+			errOut = fmt.Errorf("loading users from database to validate policy: %w", err)
+			return
 		}
 
-		pm, err = policy.NewPolicyManagerFromPath(absPath, users, nodes)
-		if err != nil {
-			return fmt.Errorf("loading policy from file: %w", err)
-		}
+		switch h.cfg.Policy.Mode {
+		case types.PolicyModeFile:
+			path := h.cfg.Policy.Path
 
-		if len(nodes) > 0 {
-			_, err = pm.SSHPolicy(nodes[0])
+			// It is fine to start headscale without a policy file.
+			if len(path) == 0 {
+				h.polMan, err = policy.NewPolicyManager(nil, users, nodes)
+				if err != nil {
+					errOut = fmt.Errorf("policy manager with no policy: %w", err)
+				}
+
+				return
+			}
+
+			absPath := util.AbsolutePathFromConfigPath(path)
+
+			h.polMan, err = policy.NewPolicyManagerFromPath(absPath, users, nodes)
 			if err != nil {
-				return fmt.Errorf("verifying SSH rules: %w", err)
-			}
-		}
-
-	case types.PolicyModeDB:
-		p, err := h.db.GetPolicy()
-		if err != nil {
-			if errors.Is(err, types.ErrPolicyNotFound) {
-				return nil
+				errOut = fmt.Errorf("loading policy from file (%s): %w", absPath, err)
+				return
 			}
 
-			return fmt.Errorf("failed to get policy from database: %w", err)
-		}
+			if len(nodes) > 0 {
+				_, err = h.polMan.SSHPolicy(nodes[0])
+				if err != nil {
+					errOut = fmt.Errorf("verifying SSH rules: %w", err)
+					return
+				}
+			}
 
-		nodes, err := h.db.ListNodes()
-		if err != nil {
-			return fmt.Errorf("loading nodes from database to validate policy: %w", err)
-		}
-		users, err := h.db.ListUsers()
-		if err != nil {
-			return fmt.Errorf("loading users from database to validate policy: %w", err)
-		}
-		pm, err = policy.NewPolicyManager([]byte(p.Data), users, nodes)
-		if err != nil {
-			return fmt.Errorf("loading policy from database: %w", err)
-		}
-	default:
-		log.Fatal().
-			Str("mode", string(h.cfg.Policy.Mode)).
-			Msg("Unknown ACL policy mode")
-	}
+		case types.PolicyModeDB:
+			p, err := h.db.GetPolicy()
+			if err != nil {
+				if errors.Is(err, types.ErrPolicyNotFound) {
+					return
+				}
 
-	h.polMan = pm
+				errOut = fmt.Errorf("failed to get policy from database: %w", err)
+				return
+			}
 
-	return nil
+			h.polMan, err = policy.NewPolicyManager([]byte(p.Data), users, nodes)
+			if err != nil {
+				errOut = fmt.Errorf("loading policy from database: %w", err)
+				return
+			}
+		default:
+			log.Fatal().
+				Str("mode", string(h.cfg.Policy.Mode)).
+				Msg("Unknown ACL policy mode")
+		}
+	})
+
+	return errOut
 }
