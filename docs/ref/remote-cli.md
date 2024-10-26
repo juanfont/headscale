@@ -1,22 +1,21 @@
 # Controlling headscale with remote CLI
 
-This documentation has the goal of showing a user how-to set control a headscale instance
+This documentation has the goal of showing a user how-to control a headscale instance
 from a remote machine with the `headscale` command line binary.
 
 ## Prerequisite
 
-- A workstation to run headscale (could be Linux, macOS, other supported platforms)
-- A headscale server (version `0.13.0` or newer)
-- Access to create API keys (local access to the headscale server)
-- headscale _must_ be served over TLS/HTTPS
-  - Remote access does _not_ support unencrypted traffic.
-- Port `50443` must be open in the firewall (or port overridden by `grpc_listen_addr` option)
+- A workstation to run `headscale` (any supported platform, e.g. Linux).
+- A headscale server with gRPC enabled.
+- Connections to the gRPC port (default: `50443`) are allowed.
+- Remote access requires an encrypted connection via TLS.
+- An API key to authenticate with the headscale server.
 
 ## Create an API key
 
-We need to create an API key to authenticate our remote headscale when using it from our workstation.
+We need to create an API key to authenticate with the remote headscale server when using it from our workstation.
 
-To create a API key, log into your headscale server and generate a key:
+To create an API key, log into your headscale server and generate a key:
 
 ```shell
 headscale apikeys create --expiration 90d
@@ -25,7 +24,7 @@ headscale apikeys create --expiration 90d
 Copy the output of the command and save it for later. Please note that you can not retrieve a key again,
 if the key is lost, expire the old one, and create a new key.
 
-To list the keys currently assosicated with the server:
+To list the keys currently associated with the server:
 
 ```shell
 headscale apikeys list
@@ -39,7 +38,8 @@ headscale apikeys expire --prefix "<PREFIX>"
 
 ## Download and configure headscale
 
-1.  Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
+1.  Download the [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases). Make
+    sure to use the same version as on the server.
 
 1.  Put the binary somewhere in your `PATH`, e.g. `/usr/local/bin/headscale`
 
@@ -49,25 +49,32 @@ headscale apikeys expire --prefix "<PREFIX>"
     chmod +x /usr/local/bin/headscale
     ```
 
-1.  Configure the CLI through environment variables
+1.  Provide the connection parameters for the remote headscale server either via a minimal YAML configuration file or via
+    environment variables:
 
-    ```shell
-    export HEADSCALE_CLI_ADDRESS="<HEADSCALE ADDRESS>:<PORT>"
-    export HEADSCALE_CLI_API_KEY="<API KEY FROM PREVIOUS STAGE>"
-    ```
+    === "Minimal YAML configuration file"
 
-    for example:
+        ```yaml
+        cli:
+            address: <HEADSCALE_ADDRESS>:<PORT>
+            api_key: <API_KEY_FROM_PREVIOUS_STEP>
+        ```
 
-    ```shell
-    export HEADSCALE_CLI_ADDRESS="headscale.example.com:50443"
-    export HEADSCALE_CLI_API_KEY="abcde12345"
-    ```
+    === "Environment variables"
 
-    This will tell the `headscale` binary to connect to a remote instance, instead of looking
-    for a local instance (which is what it does on the server).
+        ```shell
+        export HEADSCALE_CLI_ADDRESS="<HEADSCALE_ADDRESS>:<PORT>"
+        export HEADSCALE_CLI_API_KEY="<API_KEY_FROM_PREVIOUS_STEP>"
+        ```
 
-    The API key is needed to make sure that you are allowed to access the server. The key is _not_
-    needed when running directly on the server, as the connection is local.
+        !!! bug
+
+            Headscale 0.23.0 requires at least an empty configuration file when environment variables are used to
+            specify connection details. See [issue 2193](https://github.com/juanfont/headscale/issues/2193) for more
+            information.
+
+    This instructs the `headscale` binary to connect to a remote instance at `<HEADSCALE_ADDRESS>:<PORT>`, instead of
+    connecting to the local instance.
 
 1.  Test the connection
 
@@ -89,10 +96,10 @@ While this is _not a supported_ feature, an example on how this can be set up on
 
 ## Troubleshooting
 
-Checklist:
-
-- Make sure you have the _same_ headscale version on your server and workstation
-- Make sure you use version `0.13.0` or newer.
-- Verify that your TLS certificate is valid and trusted
-  - If you do not have access to a trusted certificate (e.g. from Let's Encrypt), add your self signed certificate to the trust store of your OS or
-  - Set `HEADSCALE_CLI_INSECURE` to 0 in your environment
+- Make sure you have the _same_ headscale version on your server and workstation.
+- Ensure that connections to the gRPC port are allowed.
+- Verify that your TLS certificate is valid and trusted.
+- If you don't have access to a trusted certificate (e.g. from Let's Encrypt), either:
+    - Add your self-signed certificate to the trust store of your OS _or_
+    - Disable certificate verification by either setting `cli.insecure: true` in the configuration file or by setting
+      `HEADSCALE_CLI_INSECURE=1` via an environment variable. We do **not** recommend to disable certificate validation.
