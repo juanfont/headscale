@@ -461,18 +461,20 @@ func Test_fullMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+
 			mappy := NewMapper(
 				nil,
 				tt.cfg,
 				tt.derpMap,
 				nil,
+				polMan,
 			)
 
 			got, err := mappy.fullMapResponse(
 				tt.node,
 				tt.peers,
 				[]types.User{user1, user2},
-				tt.pol,
 				0,
 			)
 

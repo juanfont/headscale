@@ -286,7 +286,7 @@ func (m *mapSession) serveLongPoll() {
 			switch update.Type {
 			case types.StateFullUpdate:
 				m.tracef("Sending Full MapResponse")
-				data, err = m.mapper.FullMapResponse(m.req, m.node, m.h.ACLPolicy, fmt.Sprintf("from mapSession: %p, stream: %t", m, m.isStreaming()))
+				data, err = m.mapper.FullMapResponse(m.req, m.node, fmt.Sprintf("from mapSession: %p, stream: %t", m, m.isStreaming()))
 			case types.StatePeerChanged:
 				changed := make(map[types.NodeID]bool, len(update.ChangeNodes))
 
@@ -296,12 +296,12 @@ func (m *mapSession) serveLongPoll() {
 
 				lastMessage = update.Message
 				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, update.ChangePatches, m.h.ACLPolicy, lastMessage)
+				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, update.ChangePatches, lastMessage)
 				updateType = "change"
 
 			case types.StatePeerChangedPatch:
 				m.tracef(fmt.Sprintf("Sending Changed Patch MapResponse: %v", lastMessage))
-				data, err = m.mapper.PeerChangedPatchResponse(m.req, m.node, update.ChangePatches, m.h.ACLPolicy)
+				data, err = m.mapper.PeerChangedPatchResponse(m.req, m.node, update.ChangePatches)
 				updateType = "patch"
 			case types.StatePeerRemoved:
 				changed := make(map[types.NodeID]bool, len(update.Removed))
@@ -310,13 +310,13 @@ func (m *mapSession) serveLongPoll() {
 					changed[nodeID] = false
 				}
 				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, update.ChangePatches, m.h.ACLPolicy, lastMessage)
+				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, update.ChangePatches, lastMessage)
 				updateType = "remove"
 			case types.StateSelfUpdate:
 				lastMessage = update.Message
 				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
 				// create the map so an empty (self) update is sent
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, make(map[types.NodeID]bool), update.ChangePatches, m.h.ACLPolicy, lastMessage)
+				data, err = m.mapper.PeerChangedResponse(m.req, m.node, make(map[types.NodeID]bool), update.ChangePatches, lastMessage)
 				updateType = "remove"
 			case types.StateDERPUpdated:
 				m.tracef("Sending DERPUpdate MapResponse")
@@ -488,9 +488,9 @@ func (m *mapSession) handleEndpointUpdate() {
 			return
 		}
 
-		if m.h.ACLPolicy != nil {
+		if m.h.polMan != nil {
 			// update routes with peer information
-			err := m.h.db.EnableAutoApprovedRoutes(m.h.ACLPolicy, m.node)
+			err := m.h.db.EnableAutoApprovedRoutes(m.h.polMan, m.node)
 			if err != nil {
 				m.errf(err, "Error running auto approved routes")
 				mapResponseEndpointUpdates.WithLabelValues("error").Inc()
@@ -544,7 +544,7 @@ func (m *mapSession) handleEndpointUpdate() {
 func (m *mapSession) handleReadOnlyRequest() {
 	m.tracef("Client asked for a lite update, responding without peers")
 
-	mapResp, err := m.mapper.ReadOnlyMapResponse(m.req, m.node, m.h.ACLPolicy)
+	mapResp, err := m.mapper.ReadOnlyMapResponse(m.req, m.node)
 	if err != nil {
 		m.errf(err, "Failed to create MapResponse")
 		http.Error(m.w, "", http.StatusInternalServerError)

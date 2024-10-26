@@ -88,7 +88,7 @@ type Headscale struct {
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *derpServer.DERPServer
 
-	ACLPolicy *policy.ACLPolicy
+	polMan policy.PolicyManager
 
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
@@ -499,7 +499,7 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier)
+	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier, h.polMan)
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
@@ -774,7 +774,7 @@ func (h *Headscale) Serve() error {
 					log.Error().Err(err).Msg("failed to reload ACL policy")
 				}
 
-				if h.ACLPolicy != nil {
+				if h.polMan != nil {
 					log.Info().
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
@@ -995,8 +995,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 
 func (h *Headscale) loadACLPolicy() error {
 	var (
-		pol *policy.ACLPolicy
-		err error
+		pm policy.PolicyManager
 	)
 
 	switch h.cfg.Policy.Mode {
@@ -1009,10 +1008,6 @@ func (h *Headscale) loadACLPolicy() error {
 		}
 
 		absPath := util.AbsolutePathFromConfigPath(path)
-		pol, err = policy.LoadACLPolicyFromPath(absPath)
-		if err != nil {
-			return fmt.Errorf("failed to load ACL policy from file: %w", err)
-		}
 
 		// Validate and reject configuration that would error when applied
 		// when creating a map response. This requires nodes, so there is still
@@ -1031,13 +1026,13 @@ func (h *Headscale) loadACLPolicy() error {
 			return fmt.Errorf("loading users from database to validate policy: %w", err)
 		}
 
-		_, err = pol.CompileFilterRules(users, nodes)
+		pm, err = policy.NewPolicyManagerFromPath(absPath, users, nodes)
 		if err != nil {
-			return fmt.Errorf("verifying policy rules: %w", err)
+			return fmt.Errorf("loading policy from file: %w", err)
 		}
 
 		if len(nodes) > 0 {
-			_, err = pol.CompileSSHPolicy(nodes[0], users, nodes)
+			_, err = pm.SSHPolicy(nodes[0])
 			if err != nil {
 				return fmt.Errorf("verifying SSH rules: %w", err)
 			}
@@ -1053,9 +1048,17 @@ func (h *Headscale) loadACLPolicy() error {
 			return fmt.Errorf("failed to get policy from database: %w", err)
 		}
 
-		pol, err = policy.LoadACLPolicyFromBytes([]byte(p.Data))
+		nodes, err := h.db.ListNodes()
 		if err != nil {
-			return fmt.Errorf("failed to parse policy: %w", err)
+			return fmt.Errorf("loading nodes from database to validate policy: %w", err)
+		}
+		users, err := h.db.ListUsers()
+		if err != nil {
+			return fmt.Errorf("loading users from database to validate policy: %w", err)
+		}
+		pm, err = policy.NewPolicyManager([]byte(p.Data), users, nodes)
+		if err != nil {
+			return fmt.Errorf("loading policy from database: %w", err)
 		}
 	default:
 		log.Fatal().
@@ -1063,7 +1066,7 @@ func (h *Headscale) loadACLPolicy() error {
 			Msg("Unknown ACL policy mode")
 	}
 
-	h.ACLPolicy = pol
+	h.polMan = pm
 
 	return nil
 }

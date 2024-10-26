@@ -21,7 +21,6 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -450,10 +449,7 @@ func (api headscaleV1APIServer) ListNodes(
 			resp.Online = true
 		}
 
-		validTags, invalidTags := api.h.ACLPolicy.TagsOfNode(
-			node,
-		)
-		resp.InvalidTags = invalidTags
+		validTags := api.h.polMan.Tags(node)
 		resp.ValidTags = validTags
 		response[index] = resp
 	}
@@ -723,11 +719,6 @@ func (api headscaleV1APIServer) SetPolicy(
 
 	p := request.GetPolicy()
 
-	pol, err := policy.LoadACLPolicyFromBytes([]byte(p))
-	if err != nil {
-		return nil, fmt.Errorf("loading ACL policy file: %w", err)
-	}
-
 	// Validate and reject configuration that would error when applied
 	// when creating a map response. This requires nodes, so there is still
 	// a scenario where they might be allowed if the server has no nodes
@@ -742,13 +733,21 @@ func (api headscaleV1APIServer) SetPolicy(
 		return nil, fmt.Errorf("loading users from database to validate policy: %w", err)
 	}
 
-	_, err = pol.CompileFilterRules(users, nodes)
+	err = api.h.polMan.SetNodes(nodes)
 	if err != nil {
-		return nil, fmt.Errorf("verifying policy rules: %w", err)
+		return nil, fmt.Errorf("setting nodes: %w", err)
+	}
+	err = api.h.polMan.SetUsers(users)
+	if err != nil {
+		return nil, fmt.Errorf("setting users: %w", err)
+	}
+	err = api.h.polMan.SetPolicy([]byte(p))
+	if err != nil {
+		return nil, fmt.Errorf("setting policy: %w", err)
 	}
 
 	if len(nodes) > 0 {
-		_, err = pol.CompileSSHPolicy(nodes[0], users, nodes)
+		_, err = api.h.polMan.SSHPolicy(nodes[0])
 		if err != nil {
 			return nil, fmt.Errorf("verifying SSH rules: %w", err)
 		}
@@ -758,8 +757,6 @@ func (api headscaleV1APIServer) SetPolicy(
 	if err != nil {
 		return nil, err
 	}
-
-	api.h.ACLPolicy = pol
 
 	ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
 	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{

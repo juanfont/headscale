@@ -559,10 +559,6 @@ func TestAutoApproveRoutes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			adb, err := newTestDB()
 			assert.NoError(t, err)
-			pol, err := policy.LoadACLPolicyFromBytes([]byte(tt.acl))
-
-			assert.NoError(t, err)
-			assert.NotNil(t, pol)
 
 			user, err := adb.CreateUser("test")
 			assert.NoError(t, err)
@@ -599,8 +595,17 @@ func TestAutoApproveRoutes(t *testing.T) {
 			node0ByID, err := adb.GetNodeByID(0)
 			assert.NoError(t, err)
 
+			users, err := adb.ListUsers()
+			assert.NoError(t, err)
+
+			nodes, err := adb.ListNodes()
+			assert.NoError(t, err)
+
+			pm, err := policy.NewPolicyManager([]byte(tt.acl), users, nodes)
+			assert.NoError(t, err)
+
 			// TODO(kradalby): Check state update
-			err = adb.EnableAutoApprovedRoutes(pol, node0ByID)
+			err = adb.EnableAutoApprovedRoutes(pm, node0ByID)
 			assert.NoError(t, err)
 
 			enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)
