@@ -812,13 +812,21 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received SIGHUP, reloading ACL and Config")
 
-				// TODO(kradalby): Reload config on SIGHUP
-				// TODO(kradalby): Only update if we set a new policy
 				if err := h.loadPolicyManager(); err != nil {
-					log.Error().Err(err).Msg("failed to reload ACL policy")
+					log.Error().Err(err).Msg("failed to reload Policy")
 				}
 
-				if h.polMan != nil {
+				pol, err := h.policyBytes()
+				if err != nil {
+					log.Error().Err(err).Msg("failed to get policy blob")
+				}
+
+				changed, err := h.polMan.SetPolicy(pol)
+				if err != nil {
+					log.Error().Err(err).Msg("failed to set new policy")
+				}
+
+				if changed {
 					log.Info().
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
@@ -1037,6 +1045,43 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	return &machineKey, nil
 }
 
+// policyBytes returns the appropriate policy for the
+// current configuration as a []byte array.
+func (h *Headscale) policyBytes() ([]byte, error) {
+	switch h.cfg.Policy.Mode {
+	case types.PolicyModeFile:
+		path := h.cfg.Policy.Path
+
+		// It is fine to start headscale without a policy file.
+		if len(path) == 0 {
+			return nil, nil
+		}
+
+		absPath := util.AbsolutePathFromConfigPath(path)
+		policyFile, err := os.Open(absPath)
+		if err != nil {
+			return nil, err
+		}
+		defer policyFile.Close()
+
+		return io.ReadAll(policyFile)
+
+	case types.PolicyModeDB:
+		p, err := h.db.GetPolicy()
+		if err != nil {
+			if errors.Is(err, types.ErrPolicyNotFound) {
+				return nil, nil
+			}
+
+			return nil, err
+		}
+
+		return []byte(p.Data), err
+	}
+
+	return nil, fmt.Errorf("unsupported policy mode: %s", h.cfg.Policy.Mode)
+}
+
 func (h *Headscale) loadPolicyManager() error {
 	var errOut error
 	h.polManOnce.Do(func() {
@@ -1059,56 +1104,24 @@ func (h *Headscale) loadPolicyManager() error {
 			return
 		}
 
-		switch h.cfg.Policy.Mode {
-		case types.PolicyModeFile:
-			path := h.cfg.Policy.Path
+		pol, err := h.policyBytes()
+		if err != nil {
+			errOut = fmt.Errorf("loading policy bytes: %w", err)
+			return
+		}
 
-			// It is fine to start headscale without a policy file.
-			if len(path) == 0 {
-				h.polMan, err = policy.NewPolicyManager(nil, users, nodes)
-				if err != nil {
-					errOut = fmt.Errorf("policy manager with no policy: %w", err)
-				}
+		h.polMan, err = policy.NewPolicyManager(pol, users, nodes)
+		if err != nil {
+			errOut = fmt.Errorf("creating policy manager: %w", err)
+			return
+		}
 
-				return
-			}
-
-			absPath := util.AbsolutePathFromConfigPath(path)
-
-			h.polMan, err = policy.NewPolicyManagerFromPath(absPath, users, nodes)
+		if len(nodes) > 0 {
+			_, err = h.polMan.SSHPolicy(nodes[0])
 			if err != nil {
-				errOut = fmt.Errorf("loading policy from file (%s): %w", absPath, err)
+				errOut = fmt.Errorf("verifying SSH rules: %w", err)
 				return
 			}
-
-			if len(nodes) > 0 {
-				_, err = h.polMan.SSHPolicy(nodes[0])
-				if err != nil {
-					errOut = fmt.Errorf("verifying SSH rules: %w", err)
-					return
-				}
-			}
-
-		case types.PolicyModeDB:
-			p, err := h.db.GetPolicy()
-			if err != nil {
-				if errors.Is(err, types.ErrPolicyNotFound) {
-					return
-				}
-
-				errOut = fmt.Errorf("failed to get policy from database: %w", err)
-				return
-			}
-
-			h.polMan, err = policy.NewPolicyManager([]byte(p.Data), users, nodes)
-			if err != nil {
-				errOut = fmt.Errorf("loading policy from database: %w", err)
-				return
-			}
-		default:
-			log.Fatal().
-				Str("mode", string(h.cfg.Policy.Mode)).
-				Msg("Unknown ACL policy mode")
 		}
 	})
 
