@@ -728,20 +728,7 @@ func (api headscaleV1APIServer) SetPolicy(
 	if err != nil {
 		return nil, fmt.Errorf("loading nodes from database to validate policy: %w", err)
 	}
-	users, err := api.h.db.ListUsers()
-	if err != nil {
-		return nil, fmt.Errorf("loading users from database to validate policy: %w", err)
-	}
-
-	err = api.h.polMan.SetNodes(nodes)
-	if err != nil {
-		return nil, fmt.Errorf("setting nodes: %w", err)
-	}
-	err = api.h.polMan.SetUsers(users)
-	if err != nil {
-		return nil, fmt.Errorf("setting users: %w", err)
-	}
-	err = api.h.polMan.SetPolicy([]byte(p))
+	changed, err := api.h.polMan.SetPolicy([]byte(p))
 	if err != nil {
 		return nil, fmt.Errorf("setting policy: %w", err)
 	}
@@ -758,10 +745,13 @@ func (api headscaleV1APIServer) SetPolicy(
 		return nil, err
 	}
 
-	ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
-	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-		Type: types.StateFullUpdate,
-	})
+	// Only send update if the packet filter has changed.
+	if changed {
+		ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
 
 	response := &v1.SetPolicyResponse{
 		Policy:    updated.Data,

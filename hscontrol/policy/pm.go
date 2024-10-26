@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
+	"tailscale.com/util/deephash"
 )
 
 type PolicyManager interface {
@@ -18,9 +19,9 @@ type PolicyManager interface {
 	Tags(*types.Node) []string
 	ApproversForRoute(netip.Prefix) []string
 	IPsForUser(string) (*netipx.IPSet, error)
-	SetPolicy([]byte) error
-	SetUsers(users []types.User) error
-	SetNodes(nodes types.Nodes) error
+	SetPolicy([]byte) (bool, error)
+	SetUsers(users []types.User) (bool, error)
+	SetNodes(nodes types.Nodes) (bool, error)
 }
 
 func NewPolicyManagerFromPath(path string, users []types.User, nodes types.Nodes) (PolicyManager, error) {
@@ -50,7 +51,7 @@ func NewPolicyManager(polB []byte, users []types.User, nodes types.Nodes) (Polic
 		nodes: nodes,
 	}
 
-	err = pm.updateLocked()
+	_, err = pm.updateLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +66,7 @@ func NewPolicyManagerForTest(pol *ACLPolicy, users []types.User, nodes types.Nod
 		nodes: nodes,
 	}
 
-	err := pm.updateLocked()
+	_, err := pm.updateLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -74,24 +75,33 @@ func NewPolicyManagerForTest(pol *ACLPolicy, users []types.User, nodes types.Nod
 }
 
 type PolicyManagerV1 struct {
-	mu     sync.Mutex
-	pol    *ACLPolicy
-	users  []types.User
-	nodes  types.Nodes
-	filter []tailcfg.FilterRule
+	mu  sync.Mutex
+	pol *ACLPolicy
+
+	users []types.User
+	nodes types.Nodes
+
+	filterHash deephash.Sum
+	filter     []tailcfg.FilterRule
 }
 
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
-func (pm *PolicyManagerV1) updateLocked() error {
+func (pm *PolicyManagerV1) updateLocked() (bool, error) {
 	filter, err := pm.pol.CompileFilterRules(pm.users, pm.nodes)
 	if err != nil {
-		return fmt.Errorf("compiling filter rules: %w", err)
+		return false, fmt.Errorf("compiling filter rules: %w", err)
+	}
+
+	filterHash := deephash.Hash(&filter)
+	if filterHash == pm.filterHash {
+		return false, nil
 	}
 
 	pm.filter = filter
+	pm.filterHash = filterHash
 
-	return nil
+	return true, nil
 }
 
 func (pm *PolicyManagerV1) Filter() []tailcfg.FilterRule {
@@ -107,10 +117,10 @@ func (pm *PolicyManagerV1) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, erro
 	return pm.pol.CompileSSHPolicy(node, pm.users, pm.nodes)
 }
 
-func (pm *PolicyManagerV1) SetPolicy(polB []byte) error {
+func (pm *PolicyManagerV1) SetPolicy(polB []byte) (bool, error) {
 	pol, err := LoadACLPolicyFromBytes(polB)
 	if err != nil {
-		return fmt.Errorf("parsing policy: %w", err)
+		return false, fmt.Errorf("parsing policy: %w", err)
 	}
 
 	pm.mu.Lock()
@@ -122,7 +132,7 @@ func (pm *PolicyManagerV1) SetPolicy(polB []byte) error {
 }
 
 // SetUsers updates the users in the policy manager and updates the filter rules.
-func (pm *PolicyManagerV1) SetUsers(users []types.User) error {
+func (pm *PolicyManagerV1) SetUsers(users []types.User) (bool, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -131,7 +141,7 @@ func (pm *PolicyManagerV1) SetUsers(users []types.User) error {
 }
 
 // SetNodes updates the nodes in the policy manager and updates the filter rules.
-func (pm *PolicyManagerV1) SetNodes(nodes types.Nodes) error {
+func (pm *PolicyManagerV1) SetNodes(nodes types.Nodes) (bool, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.nodes = nodes

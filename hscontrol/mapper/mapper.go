@@ -156,7 +156,6 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 func (m *Mapper) fullMapResponse(
 	node *types.Node,
 	peers types.Nodes,
-	users []types.User,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	resp, err := m.baseWithConfigMapResponse(node, capVer)
@@ -190,12 +189,8 @@ func (m *Mapper) FullMapResponse(
 	if err != nil {
 		return nil, err
 	}
-	users, err := m.db.ListUsers()
-	if err != nil {
-		return nil, err
-	}
 
-	resp, err := m.fullMapResponse(node, peers, users, mapRequest.Version)
+	resp, err := m.fullMapResponse(node, peers, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}

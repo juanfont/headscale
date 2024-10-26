@@ -474,7 +474,6 @@ func Test_fullMapResponse(t *testing.T) {
 			got, err := mappy.fullMapResponse(
 				tt.node,
 				tt.peers,
-				[]types.User{user1, user2},
 				0,
 			)
 
