@@ -165,6 +165,9 @@ func (pm *PolicyManagerV1) ApproversForRoute(route netip.Prefix) []string {
 	// TODO(kradalby): This can be a parse error of the address in the policy,
 	// in the new policy this will be typed and not a problem, in this policy
 	// we will just return empty list
+	if pm.pol == nil {
+		return nil
+	}
 	approvers, _ := pm.pol.AutoApprovers.GetRouteApprovers(route)
 	return approvers
 }
