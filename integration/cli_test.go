@@ -13,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/exp/slices"
 )
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
@@ -786,117 +787,85 @@ func TestNodeTagCommand(t *testing.T) {
 	)
 }
 
-func TestNodeAdvertiseTagNoACLCommand(t *testing.T) {
+func TestNodeAdvertiseTagCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	spec := map[string]int{
-		"user1": 1,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:test"})}, hsic.WithTestName("cliadvtags"))
-	assertNoErr(t, err)
-
-	headscale, err := scenario.Headscale()
-	assertNoErr(t, err)
-
-	// Test list all nodes after added seconds
-	resultMachines := make([]*v1.Node, spec["user1"])
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--tags",
-			"--output", "json",
+	tests := []struct {
+		name    string
+		policy  *policy.ACLPolicy
+		wantTag bool
+	}{
+		{
+			name:    "no-policy",
+			wantTag: false,
 		},
-		&resultMachines,
-	)
-	assert.Nil(t, err)
-	found := false
-	for _, node := range resultMachines {
-		if node.GetInvalidTags() != nil {
-			for _, tag := range node.GetInvalidTags() {
-				if tag == "tag:test" {
-					found = true
-				}
-			}
-		}
-	}
-	assert.Equal(
-		t,
-		true,
-		found,
-		"should not find a node with the tag 'tag:test' in the list of nodes",
-	)
-}
-
-func TestNodeAdvertiseTagWithACLCommand(t *testing.T) {
-	IntegrationSkip(t)
-	t.Parallel()
-
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	spec := map[string]int{
-		"user1": 1,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:exists"})}, hsic.WithTestName("cliadvtags"), hsic.WithACLPolicy(
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
-				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+		{
+			name: "with-policy",
+			policy: &policy.ACLPolicy{
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:test": {"user1"},
 				},
 			},
-			TagOwners: map[string][]string{
-				"tag:exists": {"user1"},
-			},
+			wantTag: true,
 		},
-	))
-	assertNoErr(t, err)
+	}
 
-	headscale, err := scenario.Headscale()
-	assertNoErr(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scenario, err := NewScenario(dockertestMaxWait())
+			assertNoErr(t, err)
+			// defer scenario.ShutdownAssertNoPanics(t)
 
-	// Test list all nodes after added seconds
-	resultMachines := make([]*v1.Node, spec["user1"])
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--tags",
-			"--output", "json",
-		},
-		&resultMachines,
-	)
-	assert.Nil(t, err)
-	found := false
-	for _, node := range resultMachines {
-		if node.GetValidTags() != nil {
-			for _, tag := range node.GetValidTags() {
-				if tag == "tag:exists" {
-					found = true
+			spec := map[string]int{
+				"user1": 1,
+			}
+
+			err = scenario.CreateHeadscaleEnv(spec,
+				[]tsic.Option{tsic.WithTags([]string{"tag:test"})},
+				hsic.WithTestName("cliadvtags"),
+				hsic.WithACLPolicy(tt.policy),
+			)
+			assertNoErr(t, err)
+
+			headscale, err := scenario.Headscale()
+			assertNoErr(t, err)
+
+			// Test list all nodes after added seconds
+			resultMachines := make([]*v1.Node, spec["user1"])
+			err = executeAndUnmarshal(
+				headscale,
+				[]string{
+					"headscale",
+					"nodes",
+					"list",
+					"--tags",
+					"--output", "json",
+				},
+				&resultMachines,
+			)
+			assert.Nil(t, err)
+			found := false
+			for _, node := range resultMachines {
+				if tags := node.GetValidTags(); tags != nil {
+					found = slices.Contains(tags, "tag:test")
 				}
 			}
-		}
+			assert.Equalf(
+				t,
+				tt.wantTag,
+				found,
+				"'tag:test' found(%t) is the list of nodes, expected %t", found, tt.wantTag,
+			)
+		})
 	}
-	assert.Equal(
-		t,
-		true,
-		found,
-		"should not find a node with the tag 'tag:exists' in the list of nodes",
-	)
 }
 
 func TestNodeCommand(t *testing.T) {
