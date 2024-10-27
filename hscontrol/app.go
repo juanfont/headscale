@@ -154,6 +154,10 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 	})
 
+	if err = app.loadPolicyManager(); err != nil {
+		return nil, fmt.Errorf("failed to load ACL policy: %w", err)
+	}
+
 	var authProvider AuthProvider
 	authProvider = NewAuthProviderWeb(cfg.ServerURL)
 	if cfg.OIDC.Issuer != "" {
@@ -529,11 +533,6 @@ func (h *Headscale) Serve() error {
 		} else {
 			defer profile.Start().Stop()
 		}
-	}
-
-	var err error
-	if err = h.loadPolicyManager(); err != nil {
-		return fmt.Errorf("failed to load ACL policy: %w", err)
 	}
 
 	if dumpConfig {
