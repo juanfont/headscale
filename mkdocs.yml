@@ -179,6 +179,7 @@ nav:
       - Exit node: ref/exit-node.md
       - TLS: ref/tls.md
       - ACLs: ref/acls.md
+      - Node management: ref/node-management.md
       - DNS: ref/dns.md
       - Remote CLI: ref/remote-cli.md
       - Integration:
