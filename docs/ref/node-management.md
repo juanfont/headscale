@@ -15,6 +15,9 @@ See https://tailscale.com/kb/1099/device-approval for more information.
 
 2. Restart your headscale instance.
 
+### Warning
+Enabling the `node_management.manual_approve_new_node: true` option will allow manual approval of nodes in both **cli mode** and **oidc mode**.
+
 ## Usage
 
 ### Pre-approve a node using preauthkeys
