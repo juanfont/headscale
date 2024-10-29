@@ -478,6 +478,8 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	return router
 }
 
+// TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
+// Maybe we should attempt a new in memory state and not go via the DB?
 func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
 	users, err := db.ListUsers()
 	if err != nil {
@@ -499,6 +501,8 @@ func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *not
 	return nil
 }
 
+// TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
+// Maybe we should attempt a new in memory state and not go via the DB?
 func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
 	nodes, err := db.ListNodes()
 	if err != nil {

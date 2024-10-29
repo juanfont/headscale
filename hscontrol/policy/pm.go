@@ -18,7 +18,7 @@ type PolicyManager interface {
 	SSHPolicy(*types.Node) (*tailcfg.SSHPolicy, error)
 	Tags(*types.Node) []string
 	ApproversForRoute(netip.Prefix) []string
-	IPsForUser(string) (*netipx.IPSet, error)
+	ExpandAlias(string) (*netipx.IPSet, error)
 	SetPolicy([]byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)
 	SetNodes(nodes types.Nodes) (bool, error)
@@ -172,8 +172,8 @@ func (pm *PolicyManagerV1) ApproversForRoute(route netip.Prefix) []string {
 	return approvers
 }
 
-func (pm *PolicyManagerV1) IPsForUser(user string) (*netipx.IPSet, error) {
-	ips, err := pm.pol.ExpandAlias(pm.nodes, pm.users, user)
+func (pm *PolicyManagerV1) ExpandAlias(alias string) (*netipx.IPSet, error) {
+	ips, err := pm.pol.ExpandAlias(pm.nodes, pm.users, alias)
 	if err != nil {
 		return nil, err
 	}

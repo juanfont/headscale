@@ -488,6 +488,9 @@ func (m *mapSession) handleEndpointUpdate() {
 			return
 		}
 
+		// TODO(kradalby): Only update the node that has actually changed
+		nodesChangedHook(m.h.db, m.h.polMan, m.h.nodeNotifier)
+
 		if m.h.polMan != nil {
 			// update routes with peer information
 			err := m.h.db.EnableAutoApprovedRoutes(m.h.polMan, m.node)

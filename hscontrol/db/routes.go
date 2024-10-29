@@ -644,7 +644,7 @@ func EnableAutoApprovedRoutes(
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
 				// TODO(kradalby): figure out how to get this to depend on less stuff
-				approvedIps, err := polMan.IPsForUser(approvedAlias)
+				approvedIps, err := polMan.ExpandAlias(approvedAlias)
 				if err != nil {
 					return fmt.Errorf("expanding alias %q for autoApprovers: %w", approvedAlias, err)
 				}
