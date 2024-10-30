@@ -28,7 +28,7 @@ development version.
 
 ## Fedora, RHEL, CentOS
 
-A 3rd-party repository for various RPM based distributions is available at:
+A third-party repository for various RPM based distributions is available at:
 <https://copr.fedorainfracloud.org/coprs/jonathanspw/headscale/>. The site provides detailed setup and installation
 instructions.
 
