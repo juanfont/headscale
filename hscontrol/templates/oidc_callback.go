@@ -2,6 +2,7 @@ package templates
 
 import (
 	"fmt"
+
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
 	"github.com/chasefleming/elem-go/styles"
@@ -11,7 +12,7 @@ import (
 func OidcCallback(node *types.Node, user *types.User, verb string) string {
 	styleMgr := styles.NewStyleManager()
 	styleBody := styleMgr.AddStyle(styles.Props{
-		styles.FontSize:   styles.Pixels(14),
+		styles.FontSize:   styles.Pixels(14), //nolint
 		styles.FontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Roboto\", \"Oxygen\", \"Ubuntu\", \"Cantarell\", \"Fira Sans\", \"Droid Sans\", \"Helvetica Neue\", sans-serif",
 	})
 	styleHr := styleMgr.AddStyle(styles.Props{
@@ -22,12 +23,12 @@ func OidcCallback(node *types.Node, user *types.User, verb string) string {
 		styles.Display:        "flex",
 		styles.JustifyContent: "center",
 		styles.AlignItems:     "center",
-		styles.Height:         styles.ViewportHeight(70),
+		styles.Height:         styles.ViewportHeight(70), //nolint
 	})
 	classLogo := styleMgr.AddStyle(styles.Props{
 		styles.Display:      "block",
-		styles.MarginLeft:   styles.Pixels(-20),
-		styles.MarginBottom: styles.Pixels(16),
+		styles.MarginLeft:   styles.Pixels(-20), //nolint
+		styles.MarginBottom: styles.Pixels(16),  //nolint
 	})
 
 	colorMessageSuccess := styles.Props{
@@ -40,12 +41,12 @@ func OidcCallback(node *types.Node, user *types.User, verb string) string {
 	}
 	styleMessage := styles.Props{
 		styles.Display:      "flex",
-		styles.MinWidth:     styles.ViewportWidth(40),
-		styles.MarginBottom: styles.Pixels(12),
+		styles.MinWidth:     styles.ViewportWidth(40), //nolint
+		styles.MarginBottom: styles.Pixels(12),        //nolint
 		styles.Padding:      "12px 16px 16px 12px",
 		styles.Position:     "relative",
-		styles.BorderRadius: styles.Pixels(2),
-		styles.FontSize:     styles.Pixels(14),
+		styles.BorderRadius: styles.Pixels(2),  //nolint
+		styles.FontSize:     styles.Pixels(14), //nolint
 	}
 
 	var classMessage string
@@ -56,7 +57,7 @@ func OidcCallback(node *types.Node, user *types.User, verb string) string {
 	}
 
 	classMessageContent := styleMgr.AddStyle(styles.Props{
-		styles.MarginLeft: styles.Pixels(4),
+		styles.MarginLeft: styles.Pixels(4), //nolint
 	})
 	classIconSuccess := styleMgr.AddStyle(styles.Props{
 		"fill": "#2eb039",
@@ -69,9 +70,9 @@ func OidcCallback(node *types.Node, user *types.User, verb string) string {
 		styles.Color: "#d58525",
 	}
 	styleMessageTitle := styles.Props{
-		styles.FontSize:   styles.Pixels(16),
-		styles.FontWeight: styles.Int(700),
-		styles.LineHeight: styles.Float(1.25),
+		styles.FontSize:   styles.Pixels(16),  //nolint
+		styles.FontWeight: styles.Int(700),    //nolint
+		styles.LineHeight: styles.Float(1.25), //nolint
 	}
 
 	var classMessageTitle string
@@ -88,11 +89,11 @@ func OidcCallback(node *types.Node, user *types.User, verb string) string {
 		styles.Color: "#824c0b",
 	}
 	styleMessageBody := styles.Props{
-		styles.FontSize:  styles.Pixels(12),
-		styles.Margin:    styles.Int(0),
-		styles.Padding:   styles.Int(0),
-		styles.Border:    styles.Int(0),
-		styles.MarginTop: styles.Pixels(4),
+		styles.FontSize:  styles.Pixels(12), //nolint
+		styles.Margin:    styles.Int(0),     //nolint
+		styles.Padding:   styles.Int(0),     //nolint
+		styles.Border:    styles.Int(0),     //nolint
+		styles.MarginTop: styles.Pixels(4),  //nolint
 	}
 
 	var classMessageBody string
@@ -108,7 +109,7 @@ func OidcCallback(node *types.Node, user *types.User, verb string) string {
 			styles.Margin:         "8px 0",
 			styles.Color:          "#1563ff",
 			styles.TextDecoration: "none",
-			styles.FontWeight:     styles.Int(600),
+			styles.FontWeight:     styles.Int(600), //nolint
 		},
 		PseudoClasses: map[string]styles.Props{
 			styles.PseudoHover: {styles.Color: "black"},
@@ -118,14 +119,14 @@ func OidcCallback(node *types.Node, user *types.User, verb string) string {
 		styles.AlignItems:     "center",
 		styles.Display:        "inline-flex",
 		styles.JustifyContent: "center",
-		styles.Width:          styles.Pixels(21),
-		styles.Height:         styles.Pixels(21),
+		styles.Width:          styles.Pixels(21), //nolint
+		styles.Height:         styles.Pixels(21), //nolint
 		styles.VerticalAlign:  "middle",
 	})
 	styleH1 := styleMgr.AddStyle(styles.Props{
 		styles.FontSize:     "17.5px",
-		styles.FontWeight:   styles.Pixels(700),
-		styles.MarginBottom: styles.Pixels(0),
+		styles.FontWeight:   styles.Pixels(700), //nolint
+		styles.MarginBottom: styles.Pixels(0),   //nolint
 	})
 	styleH1P := styleMgr.AddStyle(styles.Props{
 		styles.Margin: "8px 0 16px 0",

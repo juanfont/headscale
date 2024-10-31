@@ -33,7 +33,7 @@ func logo(class string) *elem.Element {
 				styles.Var("fill-rule"):         "evenodd",
 				styles.Var("clip-rule"):         "evenodd",
 				styles.Var("stroke-linejoin"):   "round",
-				styles.Var("stroke-miterlimit"): styles.Int(2),
+				styles.Var("stroke-miterlimit"): styles.Int(2), //nolint
 			}.ToInline(),
 			"viewBox": "0 0 1280 640",
 		},

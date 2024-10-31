@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/juanfont/headscale/hscontrol/templates"
 	"net/http"
 	"slices"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -116,7 +116,7 @@ func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) time
 	return time.Now().Add(a.cfg.Expiry)
 }
 
-// RegisterOIDC redirects to the OIDC provider for authentication
+// RegisterHandler redirects to the OIDC provider for authentication
 // Puts NodeKey in cache so the callback can retrieve it using the oidc state param
 // Listens in /register/:mKey.
 func (a *AuthProviderOIDC) RegisterHandler(
@@ -169,11 +169,6 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
 
 	http.Redirect(writer, req, authURL, http.StatusFound)
-}
-
-type oidcCallbackTemplateConfig struct {
-	User string
-	Verb string
 }
 
 // OIDCCallbackHandler handles the callback from the OIDC endpoint
