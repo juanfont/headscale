@@ -1,14 +1,13 @@
 package hscontrol
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"html/template"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"net/http"
 	"slices"
 	"strings"
@@ -181,13 +180,6 @@ type oidcCallbackTemplateConfig struct {
 	Verb string
 }
 
-//go:embed assets/oidc_callback_template.html
-var oidcCallbackTemplateContent string
-
-var oidcCallbackTemplate = template.Must(
-	template.New("oidccallback").Parse(oidcCallbackTemplateContent),
-)
-
 // OIDCCallbackHandler handles the callback from the OIDC endpoint
 // Retrieves the nkey from the state cache and adds the node to the users email user
 // TODO: A confirmation page for new nodes should be added to avoid phishing vulnerabilities
@@ -252,19 +244,11 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 			return
 		}
 
-		// TODO(kradalby): replace with go-elem
-		var content bytes.Buffer
-		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-			User: user.DisplayNameOrUsername(),
-			Verb: "Reauthenticated",
-		}); err != nil {
-			http.Error(writer, fmt.Errorf("rendering OIDC callback template: %w", err).Error(), http.StatusInternalServerError)
-			return
-		}
+		content := templates.OidcCallback(node, user, "Reauthenticated")
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
-		_, err = writer.Write(content.Bytes())
+		_, err = writer.Write([]byte(content))
 		if err != nil {
 			util.LogErr(err, "Failed to write response")
 		}
@@ -279,15 +263,11 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 			return
 		}
 
-		content, err := renderOIDCCallbackTemplate(user)
-		if err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		content := templates.OidcCallback(node, user, "Authenticated")
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
-		if _, err := writer.Write(content.Bytes()); err != nil {
+		if _, err := writer.Write([]byte(content)); err != nil {
 			util.LogErr(err, "Failed to write response")
 		}
 
@@ -519,7 +499,7 @@ func (a *AuthProviderOIDC) registerNode(
 }
 
 // TODO(kradalby):
-// Rewrite in elem-go.
+// Rewrite in elem-go
 func renderOIDCCallbackTemplate(
 	user *types.User,
 ) (*bytes.Buffer, error) {
