@@ -258,7 +258,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	// Register the node if it does not exist.
 	if mKey != nil {
-		if err := a.registerNode(user, mKey, nodeExpiry); err != nil {
+		node, err = a.registerNode(user, mKey, nodeExpiry)
+		if err != nil {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -474,44 +475,29 @@ func (a *AuthProviderOIDC) registerNode(
 	user *types.User,
 	machineKey *key.MachinePublic,
 	expiry time.Time,
-) error {
+) (*types.Node, error) {
 	ipv4, ipv6, err := a.ipAlloc.Next()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if _, err := a.db.RegisterNodeFromAuthCallback(
+	node, err := a.db.RegisterNodeFromAuthCallback(
 		*machineKey,
 		types.UserID(user.ID),
 		&expiry,
 		util.RegisterMethodOIDC,
 		ipv4, ipv6,
-	); err != nil {
-		return fmt.Errorf("could not register node: %w", err)
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not register node: %w", err)
 	}
 
 	err = nodesChangedHook(a.db, a.polMan, a.notifier)
 	if err != nil {
-		return fmt.Errorf("updating resources using node: %w", err)
+		return nil, fmt.Errorf("updating resources using node: %w", err)
 	}
 
-	return nil
-}
-
-// TODO(kradalby):
-// Rewrite in elem-go
-func renderOIDCCallbackTemplate(
-	user *types.User,
-) (*bytes.Buffer, error) {
-	var content bytes.Buffer
-	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-		User: user.DisplayNameOrUsername(),
-		Verb: "Authenticated",
-	}); err != nil {
-		return nil, fmt.Errorf("rendering OIDC callback template: %w", err)
-	}
-
-	return &content, nil
+	return node, nil
 }
 
 // TODO(kradalby): Reintroduce when strip_email_domain is removed
