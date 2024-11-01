@@ -2,6 +2,9 @@
 
 ## Next
 
+- Rebase community supported docker image on Alpine and remove build layer.
+  - The community docker image is now slightly smaller than the official one, removing over 2.3 gigabytes of overhead.
+
 ### BREAKING
 
 - Remove `dns.use_username_in_magic_dns` configuration option [#2020](https://github.com/juanfont/headscale/pull/2020)
