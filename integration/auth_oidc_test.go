@@ -223,7 +223,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration) (*types.OIDCConf
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile.debug",
+		Dockerfile: hsic.IntegrationTestDockerFileName,
 		ContextDir: dockerContextPath,
 	}
 

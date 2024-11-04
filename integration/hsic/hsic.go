@@ -35,12 +35,13 @@ import (
 )
 
 const (
-	hsicHashLength       = 6
-	dockerContextPath    = "../."
-	aclPolicyPath        = "/etc/headscale/acl.hujson"
-	tlsCertPath          = "/etc/headscale/tls.cert"
-	tlsKeyPath           = "/etc/headscale/tls.key"
-	headscaleDefaultPort = 8080
+	hsicHashLength                = 6
+	dockerContextPath             = "../."
+	aclPolicyPath                 = "/etc/headscale/acl.hujson"
+	tlsCertPath                   = "/etc/headscale/tls.cert"
+	tlsKeyPath                    = "/etc/headscale/tls.key"
+	headscaleDefaultPort          = 8080
+	IntegrationTestDockerFileName = "Dockerfile.integration"
 )
 
 var errHeadscaleStatusCodeNotOk = errors.New("headscale status code not ok")
@@ -260,7 +261,7 @@ func New(
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile.debug",
+		Dockerfile: IntegrationTestDockerFileName,
 		ContextDir: dockerContextPath,
 	}
 
