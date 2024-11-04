@@ -54,8 +54,8 @@ tailscale login --login-server <YOUR_HEADSCALE_URL>
 
 Install the official Tailscale tvOS client from the [App Store](https://apps.apple.com/app/tailscale/id1470499037).
 
-> [!CAUTION]
-> __DON't__ open the Tailscale App after installation!.
+> [!CAUTION]  
+> **DON't** open the Tailscale App after installation!.
 
 ### Configuring the headscale URL
 
