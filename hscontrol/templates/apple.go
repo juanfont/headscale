@@ -144,6 +144,40 @@ func Apple(url string) *elem.Element {
 					),
 				),
 			),
+			headerOne("headscale: tvOS configuration"),
+			headerTwo("GUI"),
+			elem.Ol(nil,
+				elem.Li(nil,
+					elem.Text("Install the official Tailscale iOS client from the "),
+					elem.A(attrs.Props{attrs.Href: "https://apps.apple.com/app/tailscale/id1470499037"},
+						elem.Text("App store"),
+					),
+				),
+				elem.Li(nil,
+					elem.Text("Go Settings (the apple tvOS settings) > Apps > Tailscale")
+				),
+				elem.Li(nil,
+					elem.Text(fmt.Sprintf(`Enter "%s" under "ALTERNATE COORDINATION SERVER URL"`,url)),
+				),
+				elem.Li(nil,
+					elem.Text("Return to the tvOS Home screen")
+				),
+				elem.Li(nil,
+					elem.Text("Open Tailscale")
+				),
+				elem.Li(nil,
+					elem.Text("Select \"Install VPN configuration\"")
+				),
+				elem.Li(nil,
+					elem.Text("Select \"Allow\"")
+				),
+				elem.Li(nil,
+					elem.Text("Scan the QR code and follow the login procedure")
+				),
+				elem.Li(nil,
+					elem.Text("Headscale should now be working on your tvOS device"),
+				),
+			),
 		),
 	)
 }
