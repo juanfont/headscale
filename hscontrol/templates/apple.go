@@ -226,7 +226,7 @@ func Apple(url string) *elem.Element {
 				elem.Li(
 					nil,
 					elem.Text(
-						"Go Settings (the apple tvOS settings) > Apps > Tailscale",
+						"Open Settings (the Apple tvOS settings) > Apps > Tailscale",
 					),
 				),
 				elem.Li(

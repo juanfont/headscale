@@ -56,7 +56,7 @@ Install the official Tailscale tvOS client from the [App Store](https://apps.app
 
 !!! danger
 
-    **DON'T** open the Tailscale App after installation!.
+    **Don't** open the Tailscale App after installation!
 
 ### Configuring the headscale URL
 
@@ -65,6 +65,5 @@ Install the official Tailscale tvOS client from the [App Store](https://apps.app
 - Enter the URL of your headscale instance (e.g `https://headscale.example.com`) and press `OK`
 - Return to the tvOS Home screen
 - Open Tailscale
-- `Install VPN configuration`
-- `Allow`
+- Click the button `Install VPN configuration` and confirm the appearing popup by clicking the `Allow` button
 - Scan the QR code and follow the login procedure
