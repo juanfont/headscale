@@ -248,7 +248,7 @@ func Apple(url string) *elem.Element {
 					elem.Text(`Select "Install VPN configuration"`),
 				),
 				elem.Li(nil,
-					elem.Text("Select \"Allow\""),
+					elem.Text(`Select "Allow"`),
 				),
 				elem.Li(nil,
 					elem.Text("Scan the QR code and follow the login procedure"),
