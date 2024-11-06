@@ -460,6 +460,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	if h.cfg.DERP.ServerEnabled {
 		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
+		router.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
 		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.DERPMap))
 	}
 
