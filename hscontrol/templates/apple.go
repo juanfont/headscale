@@ -245,7 +245,7 @@ func Apple(url string) *elem.Element {
 					elem.Text("Open Tailscale"),
 				),
 				elem.Li(nil,
-					elem.Text("Select \"Install VPN configuration\""),
+					elem.Text(`Select "Install VPN configuration"`),
 				),
 				elem.Li(nil,
 					elem.Text("Select \"Allow\""),
