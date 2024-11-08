@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -1594,6 +1595,40 @@ func Test_excludeCorrectlyTaggedNodes(t *testing.T) {
 }
 
 func TestACLPolicy_generateFilterRules(t *testing.T) {
+	user1Node := &types.Node{
+		IPv4: iap("100.100.100.100"),
+		User: types.User{
+			Model: gorm.Model{
+				ID: 1,
+			},
+		},
+	}
+
+	user2Node := &types.Node{
+		IPv4: iap("100.100.101.100"),
+		User: types.User{
+			Model: gorm.Model{
+				ID: 2,
+			},
+		},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	user1Node2 := &types.Node{
+		IPv4: iap("100.100.102.100"),
+		User: types.User{
+			Model: gorm.Model{
+				ID: 1,
+			},
+		},
+	}
+
+	serverNode := &types.Node{
+		IPv4:       iap("100.100.103.100"),
+		ForcedTags: []string{"tag:server"},
+		Hostinfo:   &tailcfg.Hostinfo{},
+	}
+
 	type field struct {
 		pol ACLPolicy
 	}
@@ -1710,6 +1745,175 @@ func TestACLPolicy_generateFilterRules(t *testing.T) {
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name: "autogroup-member-to-internet",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"autogroup:member"},
+							Destinations: []string{"autogroup:internet:*"},
+						},
+					},
+				},
+			},
+			args: args{
+				nodes: types.Nodes{user2Node, serverNode, user1Node2, user1Node},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs:   []string{"100.100.100.100/32", "100.100.101.100/32", "100.100.102.100/32"},
+					DstPorts: hsExitNodeDest,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "autogroup-member-to-self",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"autogroup:member"},
+							Destinations: []string{"autogroup:self:*"},
+						},
+					},
+				},
+			},
+			args: args{
+				nodes: types.Nodes{user2Node, serverNode, user1Node2, user1Node},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.100.100.100/32", "100.100.102.100/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+						{IP: "100.100.102.100/32", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "autogroup-member-to-member",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"autogroup:member"},
+							Destinations: []string{"autogroup:member:*"},
+						},
+					},
+				},
+			},
+			args: args{
+				nodes: types.Nodes{user2Node, serverNode, user1Node2, user1Node},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.100.100.100/32", "100.100.101.100/32", "100.100.102.100/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
+						{IP: "100.100.101.100/32", Ports: tailcfg.PortRangeAny},
+						{IP: "100.100.102.100/32", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "autogroup-member-to-tagged",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"autogroup:member"},
+							Destinations: []string{"autogroup:tagged:*"},
+						},
+					},
+				},
+			},
+			args: args{
+				nodes: types.Nodes{user2Node, serverNode, user1Node2, user1Node},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.100.100.100/32", "100.100.101.100/32", "100.100.102.100/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP:    "100.100.103.100/32",
+							Ports: tailcfg.PortRangeAny,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "autogroup-member-to-all",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"autogroup:member"},
+							Destinations: []string{"autogroup:danger-all:*"},
+						},
+					},
+				},
+			},
+			args: args{
+				nodes: types.Nodes{user2Node, serverNode, user1Node2, user1Node},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.100.100.100/32", "100.100.101.100/32", "100.100.102.100/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "0.0.0.0/0", Ports: tailcfg.PortRangeAny},
+						{IP: "::/0", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "autogroup-unknown",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"autogroup:member"},
+							Destinations: []string{"autogroup:fake:*"},
+						},
+					},
+				},
+			},
+			args:    args{},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "autogroup-multiple-to-self",
+			field: field{
+				pol: ACLPolicy{
+					ACLs: []ACL{
+						{
+							Action:       "accept",
+							Sources:      []string{"autogroup:member", "autogroup:tagged"},
+							Destinations: []string{"autogroup:self"},
+						},
+					},
+				},
+			},
+			args:    args{},
+			want:    nil,
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
@@ -3338,6 +3542,57 @@ func TestSSHRules(t *testing.T) {
 		},
 		{
 			name: "peers-cannot-connect",
+			node: types.Node{
+				Hostname: "testnodes",
+				IPv4:     iap("100.64.0.1"),
+				UserID:   0,
+				User: types.User{
+					Name: "user1",
+				},
+			},
+			peers: types.Nodes{
+				&types.Node{
+					Hostname: "testnodes2",
+					IPv4:     iap("100.64.99.42"),
+					UserID:   0,
+					User: types.User{
+						Name: "user1",
+					},
+				},
+			},
+			pol: ACLPolicy{
+				Groups: Groups{
+					"group:test": []string{"user1"},
+				},
+				Hosts: Hosts{
+					"client": netip.PrefixFrom(netip.MustParseAddr("100.64.99.42"), 32),
+				},
+				ACLs: []ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      []string{"group:test"},
+						Destinations: []string{"100.64.99.42"},
+						Users:        []string{"autogroup:nonroot"},
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"100.64.99.42"},
+						Users:        []string{"autogroup:nonroot"},
+					},
+				},
+			},
+			want: &tailcfg.SSHPolicy{Rules: nil},
+		},
+		{
+			name: "autogroup-member-to-tagged",
 			node: types.Node{
 				Hostname: "testnodes",
 				IPv4:     iap("100.64.0.1"),

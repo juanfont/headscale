@@ -28,12 +28,22 @@ var (
 	ErrInvalidTag        = errors.New("invalid tag")
 	ErrInvalidPortFormat = errors.New("invalid port format")
 	ErrWildcardIsNeeded  = errors.New("wildcard as port is required for the protocol")
+	ErrUnknownAutogroup  = errors.New("unknown autogroup")
+	ErrAutogroupSelf     = errors.New(`dst "autogroup:self" only works with one src "autogroup:member" or "autogroup:self"`)
 )
 
 const (
 	portRangeBegin     = 0
 	portRangeEnd       = 65535
 	expectedTokenItems = 2
+
+	autogroupPrefix    = "autogroup:"
+	autogroupInternet  = "autogroup:internet"
+	autogroupSelf      = "autogroup:self"
+	autogroupMember    = "autogroup:member"
+	autogroupTagged    = "autogroup:tagged"
+	autogroupNonRoot   = "autogroup:nonroot"
+	autogroupDangerAll = "autogroup:danger-all"
 )
 
 var theInternetSet *netipx.IPSet
@@ -66,6 +76,22 @@ func theInternet() *netipx.IPSet {
 
 	theInternetSet, _ := internetBuilder.IPSet()
 	return theInternetSet
+}
+
+var allIPSet *netipx.IPSet
+
+func allIPs() *netipx.IPSet {
+	if allIPSet != nil {
+		return allIPSet
+	}
+
+	var build netipx.IPSetBuilder
+	build.AddPrefix(netip.MustParsePrefix("::/0"))
+	build.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+
+	allTheIps, _ := build.IPSet()
+
+	return allTheIps
 }
 
 // For some reason golang.org/x/net/internal/iana is an internal package.
@@ -169,13 +195,48 @@ func (pol *ACLPolicy) CompileFilterRules(
 
 	var rules []tailcfg.FilterRule
 
-	for index, acl := range pol.ACLs {
+	acls := pol.ACLs
+	for index := 0; index < len(acls); index++ {
+		acl := acls[index]
+		destinations := acl.Destinations
+
 		if acl.Action != "accept" {
 			return nil, ErrInvalidAction
 		}
 
 		var srcIPs []string
 		for srcIndex, src := range acl.Sources {
+			if strings.HasPrefix(src, autogroupMember) {
+				// split all autogroup:self and others
+				var oldDst []string
+				var newDst []string
+
+				for _, dst := range destinations {
+					if strings.HasPrefix(dst, autogroupSelf) {
+						newDst = append(newDst, dst)
+					} else {
+						oldDst = append(oldDst, dst)
+					}
+				}
+
+				switch {
+				case len(oldDst) == 0:
+					// all moved to new, only need to change source
+					src = autogroupSelf
+				case len(newDst) != 0:
+					// apart moved to new
+
+					destinations = oldDst
+
+					splitACL := ACL{
+						Action:       acl.Action,
+						Sources:      []string{autogroupSelf},
+						Destinations: newDst,
+					}
+					acls = append(acls, splitACL)
+				}
+			}
+
 			srcs, err := pol.expandSource(src, nodes)
 			if err != nil {
 				return nil, fmt.Errorf("parsing policy, acl index: %d->%d: %w", index, srcIndex, err)
@@ -189,10 +250,16 @@ func (pol *ACLPolicy) CompileFilterRules(
 		}
 
 		destPorts := []tailcfg.NetPortRange{}
-		for _, dest := range acl.Destinations {
+		for _, dest := range destinations {
 			alias, port, err := parseDestination(dest)
 			if err != nil {
 				return nil, err
+			}
+
+			if strings.HasPrefix(alias, autogroupSelf) {
+				if len(acl.Sources) != 1 || acl.Sources[0] != autogroupSelf && acl.Sources[0] != autogroupMember {
+					return nil, ErrAutogroupSelf
+				}
 			}
 
 			expanded, err := pol.ExpandAlias(
@@ -309,9 +376,19 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 		AllowLocalPortForwarding: false,
 	}
 
-	for index, sshACL := range pol.SSHs {
+	sshs := pol.SSHs
+	for index := 0; index < len(sshs); index++ {
+		sshACL := sshs[index]
+		destinations := sshACL.Destinations
+
 		var dest netipx.IPSetBuilder
-		for _, src := range sshACL.Destinations {
+		for _, src := range destinations {
+			if strings.HasPrefix(src, autogroupSelf) {
+				if len(sshACL.Sources) != 1 || sshACL.Sources[0] != autogroupSelf && sshACL.Sources[0] != autogroupMember {
+					return nil, ErrAutogroupSelf
+				}
+			}
+
 			expanded, err := pol.ExpandAlias(append(peers, node), src)
 			if err != nil {
 				return nil, err
@@ -361,6 +438,39 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 					})
 				}
 			} else {
+				if strings.HasPrefix(rawSrc, autogroupMember) {
+					// split all autogroup:self and others
+					var oldDst []string
+					var newDst []string
+
+					for _, dst := range destinations {
+						if strings.HasPrefix(dst, autogroupSelf) {
+							newDst = append(newDst, dst)
+						} else {
+							oldDst = append(oldDst, dst)
+						}
+					}
+
+					switch {
+					case len(oldDst) == 0:
+						// all moved to new, only need to change source
+						rawSrc = autogroupSelf
+					case len(newDst) != 0:
+						// apart moved to new
+
+						destinations = oldDst
+
+						splitACL := SSH{
+							Action:       sshACL.Action,
+							Sources:      []string{autogroupSelf},
+							Destinations: newDst,
+							Users:        sshACL.Users,
+							CheckPeriod:  sshACL.CheckPeriod,
+						}
+						sshs = append(sshs, splitACL)
+					}
+				}
+
 				expandedSrcs, err := pol.ExpandAlias(
 					peers,
 					rawSrc,
@@ -561,7 +671,7 @@ func (pol *ACLPolicy) ExpandAlias(
 	}
 
 	if isAutoGroup(alias) {
-		return expandAutoGroup(alias)
+		return pol.expandAutoGroup(alias, nodes)
 	}
 
 	// if alias is a user
@@ -880,13 +990,60 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 	return build.IPSet()
 }
 
-func expandAutoGroup(alias string) (*netipx.IPSet, error) {
+func (pol *ACLPolicy) expandAutoGroup(alias string, nodes types.Nodes) (*netipx.IPSet, error) {
 	switch {
-	case strings.HasPrefix(alias, "autogroup:internet"):
+	case strings.HasPrefix(alias, autogroupInternet):
 		return theInternet(), nil
 
+	case strings.HasPrefix(alias, autogroupSelf):
+		// all user's devices, not tagged devices
+		var build netipx.IPSetBuilder
+		if len(nodes) != 0 {
+			currentNode := nodes[len(nodes)-1]
+			for _, node := range nodes {
+				if node.User.ID == currentNode.User.ID {
+					node.AppendToIPSet(&build)
+				}
+			}
+		}
+
+		return build.IPSet()
+
+	case strings.HasPrefix(alias, autogroupMember):
+		// all users (not tagged devices)
+		var build netipx.IPSetBuilder
+
+		for _, node := range nodes {
+			if len(node.ForcedTags) != 0 { // auto tag
+				continue
+			}
+			if tags, _ := pol.TagsOfNode(node); len(tags) != 0 { // valid tag manual add by user (tagOwner)
+				continue
+			}
+			node.AppendToIPSet(&build)
+		}
+
+		return build.IPSet()
+
+	case strings.HasPrefix(alias, autogroupTagged):
+		// all tagged devices
+		var build netipx.IPSetBuilder
+
+		for _, node := range nodes {
+			if len(node.ForcedTags) != 0 { // auto tag
+				node.AppendToIPSet(&build)
+			} else if tags, _ := pol.TagsOfNode(node); len(tags) != 0 { // valid tag manual add by user (tagOwner)
+				node.AppendToIPSet(&build)
+			}
+		}
+
+		return build.IPSet()
+
+	case strings.HasPrefix(alias, autogroupDangerAll):
+		return allIPs(), nil
+
 	default:
-		return nil, fmt.Errorf("unknown autogroup %q", alias)
+		return nil, fmt.Errorf("%w: %q", ErrUnknownAutogroup, alias)
 	}
 }
 
@@ -903,7 +1060,7 @@ func isTag(str string) bool {
 }
 
 func isAutoGroup(str string) bool {
-	return strings.HasPrefix(str, "autogroup:")
+	return strings.HasPrefix(str, autogroupPrefix)
 }
 
 // TagsOfNode will return the tags of the current node.
