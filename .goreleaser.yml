@@ -154,7 +154,7 @@ kos:
       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug{{ end }}"
       - "{{ if not .Prerelease }}v{{ .Major }}-debug{{ end }}"
-      - "{{ if not .Prerelease }}stable{{ else }}unstable-debug{{ end }}"
+      - "{{ if not .Prerelease }}stable-debug{{ else }}unstable-debug{{ end }}"
       - "{{ .Tag }}-debug"
       - '{{ trimprefix .Tag "v" }}-debug'
       - "sha-{{ .ShortCommit }}-debug"
@@ -177,7 +177,7 @@ kos:
       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug{{ end }}"
       - "{{ if not .Prerelease }}v{{ .Major }}-debug{{ end }}"
-      - "{{ if not .Prerelease }}stable{{ else }}unstable-debug{{ end }}"
+      - "{{ if not .Prerelease }}stable-debug{{ else }}unstable-debug{{ end }}"
       - "{{ .Tag }}-debug"
       - '{{ trimprefix .Tag "v" }}-debug'
       - "sha-{{ .ShortCommit }}-debug"
