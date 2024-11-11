@@ -22,6 +22,7 @@
 - Fixed processing of fields in post request in MoveNode rpc [#2179](https://github.com/juanfont/headscale/pull/2179)
 - Added conversion of 'Hostname' to 'givenName' in a node with FQDN rules applied [#2198](https://github.com/juanfont/headscale/pull/2198)
 - Fixed updating of hostname and givenName when it is updated in HostInfo [#2199](https://github.com/juanfont/headscale/pull/2199)
+- Fixed missing `stable-debug` container tag [#2232](https://github.com/juanfont/headscale/pr/2232)
 
 ## 0.23.0 (2024-09-18)
 
