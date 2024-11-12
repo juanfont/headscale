@@ -184,3 +184,4 @@ nav:
       - Integration:
           - Reverse proxy: ref/integration/reverse-proxy.md
           - Web UI: ref/integration/web-ui.md
+          - Tools: ref/integration/tools.md
