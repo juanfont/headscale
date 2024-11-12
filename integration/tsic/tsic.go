@@ -589,7 +589,7 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 		return nil, fmt.Errorf("saving netmap to /tmp/control: %w", err)
 	}
 
-	return &nm, err
+	return &nm, nil
 }
 
 // Netmap returns the current Netmap (netmap.NetworkMap) of the Tailscale instance.
