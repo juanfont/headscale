@@ -1,2 +1,3 @@
 .github/workflows/test-integration-v2*
 docs/about/features.md
+docs/ref/remote-cli.md
