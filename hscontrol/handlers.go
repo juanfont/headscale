@@ -71,36 +71,33 @@ func (h *Headscale) VerifyHandler(
 		Str("handler", "/verify").
 		Msg("verify client")
 
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
-		log.Error().
-			Str("handler", "/verify").
-			Err(err).
-			Msg("Cannot read request body")
-		http.Error(writer, "Internal error", http.StatusInternalServerError)
-		return
+	doVerify := func() (bool, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return false, fmt.Errorf("cannot read request body: %w", err)
+		}
+
+		var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
+		if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
+			return false, fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
+		}
+
+		nodes, err := h.db.ListNodes()
+		if err != nil {
+			return false, fmt.Errorf("cannot list nodes: %w", err)
+		}
+
+		return nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic), nil
 	}
 
-	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
-	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
+	allow, err := doVerify()
+	if err != nil {
 		log.Error().
 			Caller().
 			Err(err).
-			Msg("Cannot parse derpAdmitClientRequest")
-		http.Error(writer, "Internal error", http.StatusInternalServerError)
-		return
-	}
-
-	nodes, err := h.db.ListNodes()
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot list nodes")
+			Msg("Failed to verify client")
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 	}
-
-	allow := nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic)
 
 	resp := tailcfg.DERPAdmitClientResponse{
 		Allow: allow,
