@@ -16,4 +16,4 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
 | headscale-admin | [Github](https://github.com/GoodiesHQ/headscale-admin)  | Headscale-Admin is meant to be a simple, modern web interface for headscale         |
 | ouroboros       | [Github](https://github.com/yellowsink/ouroboros)       | Ouroboros is designed for users to manage their own devices, rather than for admins |
 
-You can ask for support on our dedicated [Discord channel](https://discord.com/channels/896711691637780480/1105842846386356294).
+You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the "web-interfaces" channel.
