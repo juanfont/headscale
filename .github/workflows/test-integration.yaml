@@ -37,8 +37,8 @@ jobs:
           - TestNodeRenameCommand
           - TestNodeMoveCommand
           - TestPolicyCommand
-          - TestDERPVerifyEndpoint
           - TestPolicyBrokenConfigCommand
+          - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
           - TestValidateResolvConf
           - TestDERPServerScenario
