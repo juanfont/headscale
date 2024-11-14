@@ -267,18 +267,18 @@ func (t *DERPServerInContainer) GetHostname() string {
 }
 
 // GetSTUNPort returns the STUN port of the DERPer instance.
-func (t *DERPServerInContainer) GetSTUNPort() string {
-	return strconv.Itoa(t.stunPort)
+func (t *DERPServerInContainer) GetSTUNPort() int {
+	return t.stunPort
 }
 
 // GetDERPPort returns the DERP port of the DERPer instance.
-func (t *DERPServerInContainer) GetDERPPort() string {
-	return strconv.Itoa(t.derpPort)
+func (t *DERPServerInContainer) GetDERPPort() int {
+	return t.derpPort
 }
 
 // WaitForRunning blocks until the DERPer instance is ready to be used.
 func (t *DERPServerInContainer) WaitForRunning() error {
-	url := "https://" + net.JoinHostPort(t.GetHostname(), t.GetDERPPort()) + "/"
+	url := "https://" + net.JoinHostPort(t.GetHostname(), strconv.Itoa(t.GetDERPPort())) + "/"
 	log.Printf("waiting for DERPer to be ready at %s", url)
 
 	insecureTransport := http.DefaultTransport.(*http.Transport).Clone()      //nolint

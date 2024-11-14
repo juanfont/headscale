@@ -13,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
+	"tailscale.com/tailcfg"
 )
 
 func TestDERPVerifyEndpoint(t *testing.T) {
@@ -44,25 +45,32 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	derpConfig := "regions:\n"
-	derpConfig += "  900:\n"
-	derpConfig += "    regionid: 900\n"
-	derpConfig += "    regioncode: test-derpverify\n"
-	derpConfig += "    regionname: TestDerpVerify\n"
-	derpConfig += "    nodes:\n"
-	derpConfig += "      - name: TestDerpVerify\n"
-	derpConfig += "        regionid: 900\n"
-	derpConfig += "        hostname: " + derper.GetHostname() + "\n"
-	derpConfig += "        stunport: " + derper.GetSTUNPort() + "\n"
-	derpConfig += "        stunonly: false\n"
-	derpConfig += "        derpport: " + derper.GetDERPPort() + "\n"
+	derpMap := tailcfg.DERPMap{
+		Regions: map[int]*tailcfg.DERPRegion{
+			900: {
+				RegionID:   900,
+				RegionCode: "test-derpverify",
+				RegionName: "TestDerpVerify",
+				Nodes: []*tailcfg.DERPNode{
+					{
+						Name:     "TestDerpVerify",
+						RegionID: 900,
+						HostName: derper.GetHostname(),
+						STUNPort: derper.GetSTUNPort(),
+						STUNOnly: false,
+						DERPPort: derper.GetDERPPort(),
+					},
+				},
+			},
+		},
+	}
 
 	headscale, err := scenario.Headscale(
 		hsic.WithHostname(hostname),
 		hsic.WithPort(headscalePort),
 		hsic.WithCustomTLS(certHeadscale, keyHeadscale),
 		hsic.WithHostnameAsServerURL(),
-		hsic.WithCustomDERPServerOnly([]byte(derpConfig)),
+		hsic.WithDERPConfig(derpMap),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 

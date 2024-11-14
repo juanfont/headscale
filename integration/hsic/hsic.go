@@ -25,6 +25,7 @@ import (
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"tailscale.com/tailcfg"
 )
 
 const (
@@ -216,10 +217,17 @@ func WithEmbeddedDERPServerOnly() Option {
 	}
 }
 
-// WithCustomDERPServerOnly configures Headscale use a custom
+// WithDERPConfig configures Headscale use a custom
 // DERP server only.
-func WithCustomDERPServerOnly(contents []byte) Option {
+func WithDERPConfig(derpMap tailcfg.DERPMap) Option {
 	return func(hsic *HeadscaleInContainer) {
+		contents, err := json.Marshal(derpMap)
+		if err != nil {
+			log.Fatalf("failed to marshal DERP map: %s", err)
+
+			return
+		}
+
 		hsic.env["HEADSCALE_DERP_PATHS"] = "/etc/headscale/derp.yml"
 		hsic.filesInContainer = append(hsic.filesInContainer,
 			fileInContainer{
