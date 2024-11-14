@@ -135,14 +135,15 @@ func New(
 		opt(dsic)
 	}
 
-	cmdArgs := "--hostname=" + hostname
-	cmdArgs += " --certmode=manual"
-	cmdArgs += " --certdir=" + DERPerCertRoot
-	cmdArgs += " --a=:" + strconv.Itoa(dsic.derpPort)
-	cmdArgs += " --stun=true"
-	cmdArgs += " --stun-port=" + strconv.Itoa(dsic.stunPort)
+	var cmdArgs strings.Builder
+	fmt.Fprintf(&cmdArgs, "--hostname=%s", hostname)
+	fmt.Fprintf(&cmdArgs, " --certmode=manual")
+	fmt.Fprintf(&cmdArgs, " --certdir=%s", DERPerCertRoot)
+	fmt.Fprintf(&cmdArgs, " --a=:%d", dsic.derpPort)
+	fmt.Fprintf(&cmdArgs, " --stun=true")
+	fmt.Fprintf(&cmdArgs, " --stun-port=%d", dsic.stunPort)
 	if dsic.withVerifyClientURL != "" {
-		cmdArgs += " --verify-client-url=" + dsic.withVerifyClientURL
+		fmt.Fprintf(&cmdArgs, " --verify-client-url=%s", dsic.withVerifyClientURL)
 	}
 
 	runOptions := &dockertest.RunOptions{
@@ -150,7 +151,7 @@ func New(
 		Networks:   []*dockertest.Network{dsic.network},
 		ExtraHosts: dsic.withExtraHosts,
 		// we currently need to give us some time to inject the certificate further down.
-		Entrypoint: []string{"/bin/sh", "-c", "/bin/sleep 3 ; update-ca-certificates ; derper " + cmdArgs},
+		Entrypoint: []string{"/bin/sh", "-c", "/bin/sleep 3 ; update-ca-certificates ; derper " + cmdArgs.String()},
 		ExposedPorts: []string{
 			"80/tcp",
 			fmt.Sprintf("%d/tcp", dsic.derpPort),
