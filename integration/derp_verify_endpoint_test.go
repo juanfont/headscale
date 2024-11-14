@@ -65,36 +65,13 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		},
 	}
 
-	headscale, err := scenario.Headscale(
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithCACert(derper.GetCert())},
 		hsic.WithHostname(hostname),
 		hsic.WithPort(headscalePort),
 		hsic.WithCustomTLS(certHeadscale, keyHeadscale),
 		hsic.WithHostnameAsServerURL(),
-		hsic.WithDERPConfig(derpMap),
-	)
+		hsic.WithDERPConfig(derpMap))
 	assertNoErrHeadscaleEnv(t, err)
-
-	for userName, clientCount := range spec {
-		err = scenario.CreateUser(userName)
-		if err != nil {
-			t.Fatalf("failed to create user %s: %s", userName, err)
-		}
-
-		err = scenario.CreateTailscaleNodesInUser(userName, "all", clientCount, tsic.WithCACert(derper.GetCert()))
-		if err != nil {
-			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
-		}
-
-		key, err := scenario.CreatePreAuthKey(userName, true, true)
-		if err != nil {
-			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
-		}
-
-		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
-		if err != nil {
-			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
-		}
-	}
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
