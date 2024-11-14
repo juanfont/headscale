@@ -675,7 +675,7 @@ func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error
 
 func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error) {
 	if !util.TailscaleVersionNewerOrEqual("1.34", t.version) {
-		panic(fmt.Sprintf("tsic.DebugDERPRegion() called with unsupported version: %s", t.version))
+		panic("tsic.DebugDERPRegion() called with unsupported version: " + t.version)
 	}
 
 	command := []string{
@@ -687,17 +687,18 @@ func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDE
 
 	result, stderr, err := t.Execute(command)
 	if err != nil {
-		fmt.Printf("stderr: %s\n", stderr)
+		fmt.Printf("stderr: %s\n", stderr) // nolint
+
 		return nil, fmt.Errorf("failed to execute tailscale debug derp command: %w", err)
 	}
 
-	var st ipnstate.DebugDERPRegionReport
-	err = json.Unmarshal([]byte(result), &st)
+	var report ipnstate.DebugDERPRegionReport
+	err = json.Unmarshal([]byte(result), &report)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tailscale derp region report: %w", err)
 	}
 
-	return &st, err
+	return &report, err
 }
 
 // Netcheck returns the current Netcheck Report (netcheck.Report) of the Tailscale instance.

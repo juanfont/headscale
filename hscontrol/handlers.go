@@ -64,6 +64,7 @@ func (h *Headscale) VerifyHandler(
 ) {
 	if req.Method != http.MethodPost {
 		http.Error(writer, "Wrong method", http.StatusMethodNotAllowed)
+
 		return
 	}
 	log.Debug().

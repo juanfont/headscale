@@ -72,7 +72,7 @@ func WithOrCreateNetwork(network *dockertest.Network) Option {
 
 		network, err := dockertestutil.GetFirstOrCreateNetwork(
 			tsic.pool,
-			fmt.Sprintf("%s-network", tsic.hostname),
+			tsic.hostname+"-network",
 		)
 		if err != nil {
 			log.Fatalf("failed to create network: %s", err)
@@ -226,6 +226,7 @@ func New(
 			return nil, fmt.Errorf("failed to write TLS key to container: %w", err)
 		}
 	}
+
 	return dsic, nil
 }
 
@@ -239,6 +240,7 @@ func (t *DERPServerInContainer) Shutdown() error {
 			fmt.Errorf("failed to save log: %w", err),
 		)
 	}
+
 	return t.pool.Purge(t.container)
 }
 
