@@ -223,6 +223,16 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 	return found
 }
 
+func (nodes Nodes) ContainsNodeKey(nodeKey key.NodePublic) bool {
+	for _, node := range nodes {
+		if node.NodeKey == nodeKey {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (node *Node) Proto() *v1.Node {
 	nodeProto := &v1.Node{
 		Id:         uint64(node.ID),

@@ -99,18 +99,7 @@ func (h *Headscale) VerifyHandler(
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 	}
 
-	for _, node := range nodes {
-		log.Debug().Str("node", node.NodeKey.String()).Msg("Node")
-	}
-
-	allow := false
-	// Check if the node is in the list of nodes
-	for _, node := range nodes {
-		if node.NodeKey == derpAdmitClientRequest.NodePublic {
-			allow = true
-			break
-		}
-	}
+	allow := nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic)
 
 	resp := tailcfg.DERPAdmitClientResponse{
 		Allow: allow,
