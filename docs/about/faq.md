@@ -41,13 +41,15 @@ In addition to that, you may use packages provided by the community or from dist
 [installation guide using community packages](../setup/install/community.md).
 
 For convenience, we also [build Docker images with headscale](../setup/install/container.md). But **please be aware that
-we don't officially support deploying headscale using Docker**. We have a [Discord
-channel](https://discord.com/channels/896711691637780480/1070619770942148618) where you can ask for Docker-specific help
-to the community.
+we don't officially support deploying headscale using Docker**. On our [Discord server](https://discord.gg/c84AZQhmpx)
+we have a "docker-issues" channel where you can ask for Docker-specific help to the community.
 
 ## Why is my reverse proxy not working with headscale?
 
-We don't know. We don't use reverse proxies with headscale ourselves, so we don't have any experience with them. We have [community documentation](../ref/integration/reverse-proxy.md) on how to configure various reverse proxies, and a dedicated [Discord channel](https://discord.com/channels/896711691637780480/1070619818346164324) where you can ask for help to the community.
+We don't know. We don't use reverse proxies with headscale ourselves, so we don't have any experience with them. We have
+[community documentation](../ref/integration/reverse-proxy.md) on how to configure various reverse proxies, and a
+dedicated "reverse-proxy-issues" channel on our [Discord server](https://discord.gg/c84AZQhmpx) where you can ask for
+help to the community.
 
 ## Can I use headscale and tailscale on the same machine?
 
