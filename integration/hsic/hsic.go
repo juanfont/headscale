@@ -25,6 +25,7 @@ import (
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
 )
 
@@ -221,7 +222,7 @@ func WithEmbeddedDERPServerOnly() Option {
 // DERP server only.
 func WithDERPConfig(derpMap tailcfg.DERPMap) Option {
 	return func(hsic *HeadscaleInContainer) {
-		contents, err := json.Marshal(derpMap)
+		contents, err := yaml.Marshal(derpMap)
 		if err != nil {
 			log.Fatalf("failed to marshal DERP map: %s", err)
 

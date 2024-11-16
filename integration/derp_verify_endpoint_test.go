@@ -33,10 +33,10 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
-	defer scenario.Shutdown()
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
-		"user1": 10,
+		"user1": len(MustTestVersions),
 	}
 
 	derper, err := scenario.CreateDERPServer("head",
