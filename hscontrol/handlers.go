@@ -57,6 +57,27 @@ func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error)
 	return tailcfg.CapabilityVersion(clientCapabilityVersion), nil
 }
 
+func (h *Headscale) handleVerifyRequest(
+	req *http.Request,
+) (bool, error) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return false, fmt.Errorf("cannot read request body: %w", err)
+	}
+
+	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
+	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
+		return false, fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
+	}
+
+	nodes, err := h.db.ListNodes()
+	if err != nil {
+		return false, fmt.Errorf("cannot list nodes: %w", err)
+	}
+
+	return nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic), nil
+}
+
 // see https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159, Derp use verifyClientsURL to verify whether a client is allowed to connect to the DERP server.
 func (h *Headscale) VerifyHandler(
 	writer http.ResponseWriter,
@@ -71,26 +92,7 @@ func (h *Headscale) VerifyHandler(
 		Str("handler", "/verify").
 		Msg("verify client")
 
-	doVerify := func() (bool, error) {
-		body, err := io.ReadAll(req.Body)
-		if err != nil {
-			return false, fmt.Errorf("cannot read request body: %w", err)
-		}
-
-		var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
-		if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
-			return false, fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
-		}
-
-		nodes, err := h.db.ListNodes()
-		if err != nil {
-			return false, fmt.Errorf("cannot list nodes: %w", err)
-		}
-
-		return nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic), nil
-	}
-
-	allow, err := doVerify()
+	allow, err := h.handleVerifyRequest(req)
 	if err != nil {
 		log.Error().
 			Caller().
