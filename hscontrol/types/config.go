@@ -102,8 +102,9 @@ type Nameservers struct {
 }
 
 type SqliteConfig struct {
-	Path          string
-	WriteAheadLog bool
+	Path              string
+	WriteAheadLog     bool
+	WALAutoCheckPoint int
 }
 
 type PostgresConfig struct {
@@ -270,6 +271,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.postgres.conn_max_idle_time_secs", 3600)
 
 	viper.SetDefault("database.sqlite.write_ahead_log", true)
+	viper.SetDefault("database.sqlite.wal_autocheckpoint", 1000) // SQLite default
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
@@ -542,7 +544,8 @@ func databaseConfig() DatabaseConfig {
 			Path: util.AbsolutePathFromConfigPath(
 				viper.GetString("database.sqlite.path"),
 			),
-			WriteAheadLog: viper.GetBool("database.sqlite.write_ahead_log"),
+			WriteAheadLog:     viper.GetBool("database.sqlite.write_ahead_log"),
+			WALAutoCheckPoint: viper.GetInt("database.sqlite.wal_autocheckpoint"),
 		},
 		Postgres: PostgresConfig{
 			Host:               viper.GetString("database.postgres.host"),
