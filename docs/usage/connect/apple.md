@@ -60,7 +60,7 @@ Install the official Tailscale tvOS client from the [App Store](https://apps.app
 
 ### Configuring the headscale URL
 
-- Go Settings (the apple tvOS settings) > Apps > Tailscale
+- Open Settings (the Apple tvOS settings) > Apps > Tailscale
 - Under `ALTERNATE COORDINATION SERVER URL`, select `URL`
 - Enter the URL of your headscale instance (e.g `https://headscale.example.com`) and press `OK`
 - Return to the tvOS Home screen
