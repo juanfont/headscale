@@ -9,6 +9,8 @@ tls_cert_path: ""
 tls_key_path: ""
 ```
 
+The certificate should contain the full chain, else some clients, like the Tailscale Android client, will reject it.
+
 ## Let's Encrypt / ACME
 
 To get a certificate automatically via [Let's Encrypt](https://letsencrypt.org/), set `tls_letsencrypt_hostname` to the desired certificate hostname. This name must resolve to the IP address(es) headscale is reachable on (i.e., it must correspond to the `server_url` configuration parameter). The certificate and Let's Encrypt account credentials will be stored in the directory configured in `tls_letsencrypt_cache_dir`. If the path is relative, it will be interpreted as relative to the directory the configuration file was read from.
