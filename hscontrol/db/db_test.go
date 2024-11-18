@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"net/netip"
@@ -256,4 +257,111 @@ func testCopyOfDatabase(src string) (string, error) {
 
 func emptyCache() *zcache.Cache[string, types.Node] {
 	return zcache.New[string, types.Node](time.Minute, time.Hour)
+}
+
+func TestConstraints(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*testing.T, *gorm.DB)
+	}{
+		{
+			name: "no-duplicate-username-if-no-oidc",
+			run: func(t *testing.T, db *gorm.DB) {
+				_, err := CreateUser(db, "user1")
+				require.NoError(t, err)
+				_, err = CreateUser(db, "user1")
+				require.Error(t, err)
+				// assert.Contains(t, err.Error(), "UNIQUE constraint failed: users.username")
+				require.Contains(t, err.Error(), "user already exists")
+			},
+		},
+		{
+			name: "no-oidc-duplicate-username-and-id",
+			run: func(t *testing.T, db *gorm.DB) {
+				user := types.User{
+					Model: gorm.Model{ID: 1},
+					Name:  "user1",
+				}
+				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
+
+				err := db.Save(&user).Error
+				require.NoError(t, err)
+
+				user = types.User{
+					Model: gorm.Model{ID: 2},
+					Name:  "user1",
+				}
+				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
+
+				err = db.Save(&user).Error
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "UNIQUE constraint failed: users.provider_identifier")
+			},
+		},
+		{
+			name: "no-oidc-duplicate-id",
+			run: func(t *testing.T, db *gorm.DB) {
+				user := types.User{
+					Model: gorm.Model{ID: 1},
+					Name:  "user1",
+				}
+				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
+
+				err := db.Save(&user).Error
+				require.NoError(t, err)
+
+				user = types.User{
+					Model: gorm.Model{ID: 2},
+					Name:  "user1.1",
+				}
+				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
+
+				err = db.Save(&user).Error
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "UNIQUE constraint failed: users.provider_identifier")
+			},
+		},
+		{
+			name: "allow-duplicate-username-cli-then-oidc",
+			run: func(t *testing.T, db *gorm.DB) {
+				_, err := CreateUser(db, "user1") // Create CLI username
+				require.NoError(t, err)
+
+				user := types.User{
+					Name: "user1",
+				}
+				user.ProviderIdentifier.String = "http://test.com/user1"
+
+				err = db.Save(&user).Error
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "allow-duplicate-username-oidc-then-cli",
+			run: func(t *testing.T, db *gorm.DB) {
+				user := types.User{
+					Name: "user1",
+				}
+				user.ProviderIdentifier.String = "http://test.com/user1"
+
+				err := db.Save(&user).Error
+				require.NoError(t, err)
+
+				_, err = CreateUser(db, "user1") // Create CLI username
+				require.NoError(t, err)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := newTestDB()
+			if err != nil {
+				t.Fatalf("creating database: %s", err)
+			}
+
+			tt.run(t, db.DB)
+		})
+
+	}
 }
