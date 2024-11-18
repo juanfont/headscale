@@ -884,7 +884,7 @@ func Test_expandPorts(t *testing.T) {
 	}
 }
 
-func Test_listNodesInUser(t *testing.T) {
+func Test_filterNodesByUser(t *testing.T) {
 	users := []types.User{
 		{Model: gorm.Model{ID: 1}, Name: "marc"},
 		{Model: gorm.Model{ID: 2}, Name: "joe", Email: "joe@headscale.net"},
@@ -896,6 +896,11 @@ func Test_listNodesInUser(t *testing.T) {
 		},
 		{Model: gorm.Model{ID: 4}, Name: "mikael2", Email: "mikael@headscale.net"},
 		{Model: gorm.Model{ID: 5}, Name: "mikael", Email: "mikael2@headscale.net"},
+		{Model: gorm.Model{ID: 6}, Name: "http://oidc.org/1234", Email: "mikael@headscale.net"},
+		{Model: gorm.Model{ID: 7}, Name: "1"},
+		{Model: gorm.Model{ID: 8}, Name: "alex", Email: "alex@headscale.net"},
+		{Model: gorm.Model{ID: 9}, Name: "alex@headscale.net"},
+		{Model: gorm.Model{ID: 10}, Email: "http://oidc.org/1234"},
 	}
 
 	type args struct {
@@ -967,6 +972,7 @@ func Test_listNodesInUser(t *testing.T) {
 				nodes: types.Nodes{
 					&types.Node{ID: 1, User: users[1]},
 					&types.Node{ID: 2, User: users[2]},
+					&types.Node{ID: 8, User: users[7]},
 				},
 				user: "joe@headscale.net",
 			},
@@ -1077,12 +1083,24 @@ func Test_listNodesInUser(t *testing.T) {
 					&types.Node{ID: 3, User: users[2]},
 					&types.Node{ID: 4, User: users[3]},
 					&types.Node{ID: 5, User: users[4]},
+					&types.Node{ID: 8, User: users[7]},
 				},
 				user: "joe@headscale.net",
 			},
 			want: types.Nodes{
 				&types.Node{ID: 2, User: users[1]},
 			},
+		},
+		{
+			name: "email-as-username-duplicate",
+			args: args{
+				nodes: types.Nodes{
+					&types.Node{ID: 1, User: users[7]},
+					&types.Node{ID: 2, User: users[8]},
+				},
+				user: "alex@headscale.net",
+			},
+			want: nil,
 		},
 		{
 			name: "all-users-no-email-random-order",
@@ -1107,6 +1125,7 @@ func Test_listNodesInUser(t *testing.T) {
 					&types.Node{ID: 3, User: users[2]},
 					&types.Node{ID: 4, User: users[3]},
 					&types.Node{ID: 5, User: users[4]},
+					&types.Node{ID: 6, User: users[5]},
 				},
 				user: "http://oidc.org/1234",
 			},
@@ -1123,6 +1142,7 @@ func Test_listNodesInUser(t *testing.T) {
 					&types.Node{ID: 3, User: users[2]},
 					&types.Node{ID: 4, User: users[3]},
 					&types.Node{ID: 5, User: users[4]},
+					&types.Node{ID: 6, User: users[5]},
 				},
 				user: "http://oidc.org/4321",
 			},
@@ -1136,7 +1156,11 @@ func Test_listNodesInUser(t *testing.T) {
 				rand.Shuffle(len(ns), func(i, j int) {
 					ns[i], ns[j] = ns[j], ns[i]
 				})
-				got := filterNodesByUser(ns, users, test.args.user)
+				us := users
+				rand.Shuffle(len(us), func(i, j int) {
+					us[i], us[j] = us[j], us[i]
+				})
+				got := filterNodesByUser(ns, us, test.args.user)
 				sort.Slice(got, func(i, j int) bool {
 					return got[i].ID < got[j].ID
 				})
