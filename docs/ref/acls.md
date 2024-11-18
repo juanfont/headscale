@@ -45,11 +45,11 @@ headscale server.
 
 ACLs have to be written in [huJSON](https://github.com/tailscale/hujson).
 
-When registering the servers we will need to add the flag
-`--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user that is
-registering the server should be allowed to do it. Since anyone can add tags to
-a server they can register, the check of the tags is done on headscale server
-and only valid tags are applied. A tag is valid if the user that is
+When [registering the servers](../usage/getting-started.md#register-a-node) we
+will need to add the flag `--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user
+that is registering the server should be allowed to do it. Since anyone can add
+tags to a server they can register, the check of the tags is done on headscale
+server and only valid tags are applied. A tag is valid if the user that is
 registering it is allowed to do it.
 
 To use ACLs in headscale, you must edit your `config.yaml` file. In there you will find a `policy.path` parameter. This will need to point to your ACL file. More info on how these policies are written can be found [here](https://tailscale.com/kb/1018/acls/).
