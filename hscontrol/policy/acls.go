@@ -990,7 +990,7 @@ func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) 
 
 	var potentialUsers []types.User
 	for _, user := range users {
-		if user.ProviderIdentifier == userToken {
+		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == userToken {
 			// If a user is matching with a known unique field,
 			// disgard all other users and only keep the current
 			// user.

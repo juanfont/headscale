@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"database/sql"
 	"errors"
 	"math/rand/v2"
 	"net/netip"
@@ -892,7 +893,7 @@ func Test_filterNodesByUser(t *testing.T) {
 			Model:              gorm.Model{ID: 3},
 			Name:               "mikael",
 			Email:              "mikael@headscale.net",
-			ProviderIdentifier: "http://oidc.org/1234",
+			ProviderIdentifier: sql.NullString{String: "http://oidc.org/1234", Valid: true},
 		},
 		{Model: gorm.Model{ID: 4}, Name: "mikael2", Email: "mikael@headscale.net"},
 		{Model: gorm.Model{ID: 5}, Name: "mikael", Email: "mikael2@headscale.net"},
