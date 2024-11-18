@@ -639,7 +639,7 @@ func EnableAutoApprovedRoutes(
 
 		log.Trace().
 			Str("node", node.Hostname).
-			Str("user", node.User.Name).
+			Uint("user.id", node.User.ID).
 			Strs("routeApprovers", routeApprovers).
 			Str("prefix", netip.Prefix(advertisedRoute.Prefix).String()).
 			Msg("looking up route for autoapproving")

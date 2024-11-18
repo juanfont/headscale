@@ -21,7 +21,7 @@ type User struct {
 	gorm.Model
 	// The index `idx_name_provider_identifier` is to enforce uniqueness
 	// between Name and ProviderIdentifier. This ensures that
-	// you can have multiple usersnames of the same name in OIDC,
+	// you can have multiple users with the same name in OIDC,
 	// but not if you only run with CLI users.
 
 	// Username for the user, is used if email is empty
@@ -54,9 +54,9 @@ type User struct {
 // enabled with OIDC, which means that there is a domain involved which
 // should be used throughout headscale, in information returned to the
 // user and the Policy engine.
-// If the username does not contain an '@' it will be added to the end.
 func (u *User) Username() string {
 	username := cmp.Or(u.Email, u.Name, u.ProviderIdentifier, strconv.FormatUint(uint64(u.ID), 10))
+
 	// TODO(kradalby): Wire up all of this for the future
 	// if !strings.Contains(username, "@") {
 	// 	username = username + "@"
