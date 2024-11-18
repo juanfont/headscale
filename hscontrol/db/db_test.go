@@ -121,12 +121,12 @@ func TestMigrations(t *testing.T) {
 			dbPath: "testdata/0-23-0-to-0-24-0-preauthkey-tags-table.sqlite",
 			wantFunc: func(t *testing.T, h *HSDatabase) {
 				keys, err := Read(h.DB, func(rx *gorm.DB) ([]types.PreAuthKey, error) {
-					kratest, err := ListPreAuthKeys(rx, "kratest")
+					kratest, err := ListPreAuthKeysByUser(rx, 1) // kratest
 					if err != nil {
 						return nil, err
 					}
 
-					testkra, err := ListPreAuthKeys(rx, "testkra")
+					testkra, err := ListPreAuthKeysByUser(rx, 2) // testkra
 					if err != nil {
 						return nil, err
 					}

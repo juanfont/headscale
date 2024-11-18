@@ -1,6 +1,8 @@
 package db
 
 import (
+	"strings"
+
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gopkg.in/check.v1"
@@ -17,24 +19,24 @@ func (s *Suite) TestCreateAndDestroyUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(users), check.Equals, 1)
 
-	err = db.DestroyUser("test")
+	err = db.DestroyUser(types.UserID(user.ID))
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetUserByName("test")
+	_, err = db.GetUserByID(types.UserID(user.ID))
 	c.Assert(err, check.NotNil)
 }
 
 func (s *Suite) TestDestroyUserErrors(c *check.C) {
-	err := db.DestroyUser("test")
+	err := db.DestroyUser(9998)
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	err = db.DestroyUser("test")
+	err = db.DestroyUser(types.UserID(user.ID))
 	c.Assert(err, check.IsNil)
 
 	result := db.DB.Preload("User").First(&pak, "key = ?", pak.Key)
@@ -44,7 +46,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	user, err = db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err = db.CreatePreAuthKey(user.Name, false, false, nil, nil)
+	pak, err = db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	node := types.Node{
@@ -57,7 +59,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	trx := db.DB.Save(&node)
 	c.Assert(trx.Error, check.IsNil)
 
-	err = db.DestroyUser("test")
+	err = db.DestroyUser(types.UserID(user.ID))
 	c.Assert(err, check.Equals, ErrUserStillHasNodes)
 }
 
@@ -70,24 +72,28 @@ func (s *Suite) TestRenameUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(users), check.Equals, 1)
 
-	err = db.RenameUser("test", "test-renamed")
+	err = db.RenameUser(types.UserID(userTest.ID), "test-renamed")
 	c.Assert(err, check.IsNil)
 
-	_, err = db.GetUserByName("test")
-	c.Assert(err, check.Equals, ErrUserNotFound)
+	users, err = db.ListUsers(&types.User{Name: "test"})
+	c.Assert(err, check.Equals, nil)
+	c.Assert(len(users), check.Equals, 0)
 
-	_, err = db.GetUserByName("test-renamed")
+	users, err = db.ListUsers(&types.User{Name: "test-renamed"})
 	c.Assert(err, check.IsNil)
+	c.Assert(len(users), check.Equals, 1)
 
-	err = db.RenameUser("test-does-not-exit", "test")
+	err = db.RenameUser(99988, "test")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
 	userTest2, err := db.CreateUser("test2")
 	c.Assert(err, check.IsNil)
 	c.Assert(userTest2.Name, check.Equals, "test2")
 
-	err = db.RenameUser("test2", "test-renamed")
-	c.Assert(err, check.Equals, ErrUserExists)
+	err = db.RenameUser(types.UserID(userTest2.ID), "test-renamed")
+	if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		c.Fatalf("expected failure with unique constraint, got: %s", err.Error())
+	}
 }
 
 func (s *Suite) TestSetMachineUser(c *check.C) {
@@ -97,7 +103,7 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	newUser, err := db.CreateUser("new")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(oldUser.Name, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(oldUser.ID), false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	node := types.Node{
@@ -111,15 +117,15 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	c.Assert(trx.Error, check.IsNil)
 	c.Assert(node.UserID, check.Equals, oldUser.ID)
 
-	err = db.AssignNodeToUser(&node, newUser.Name)
+	err = db.AssignNodeToUser(&node, types.UserID(newUser.ID))
 	c.Assert(err, check.IsNil)
 	c.Assert(node.UserID, check.Equals, newUser.ID)
 	c.Assert(node.User.Name, check.Equals, newUser.Name)
 
-	err = db.AssignNodeToUser(&node, "non-existing-user")
+	err = db.AssignNodeToUser(&node, 9584849)
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	err = db.AssignNodeToUser(&node, newUser.Name)
+	err = db.AssignNodeToUser(&node, types.UserID(newUser.ID))
 	c.Assert(err, check.IsNil)
 	c.Assert(node.UserID, check.Equals, newUser.ID)
 	c.Assert(node.User.Name, check.Equals, newUser.Name)

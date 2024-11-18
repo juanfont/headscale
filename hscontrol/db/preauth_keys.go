@@ -23,29 +23,27 @@ var (
 )
 
 func (hsdb *HSDatabase) CreatePreAuthKey(
-	// TODO(kradalby): Should be ID, not name
-	userName string,
+	uid types.UserID,
 	reusable bool,
 	ephemeral bool,
 	expiration *time.Time,
 	aclTags []string,
 ) (*types.PreAuthKey, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.PreAuthKey, error) {
-		return CreatePreAuthKey(tx, userName, reusable, ephemeral, expiration, aclTags)
+		return CreatePreAuthKey(tx, uid, reusable, ephemeral, expiration, aclTags)
 	})
 }
 
 // CreatePreAuthKey creates a new PreAuthKey in a user, and returns it.
 func CreatePreAuthKey(
 	tx *gorm.DB,
-	// TODO(kradalby): Should be ID, not name
-	userName string,
+	uid types.UserID,
 	reusable bool,
 	ephemeral bool,
 	expiration *time.Time,
 	aclTags []string,
 ) (*types.PreAuthKey, error) {
-	user, err := GetUserByUsername(tx, userName)
+	user, err := GetUserByID(tx, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -89,15 +87,15 @@ func CreatePreAuthKey(
 	return &key, nil
 }
 
-func (hsdb *HSDatabase) ListPreAuthKeys(userName string) ([]types.PreAuthKey, error) {
+func (hsdb *HSDatabase) ListPreAuthKeys(uid types.UserID) ([]types.PreAuthKey, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) ([]types.PreAuthKey, error) {
-		return ListPreAuthKeys(rx, userName)
+		return ListPreAuthKeysByUser(rx, uid)
 	})
 }
 
-// ListPreAuthKeys returns the list of PreAuthKeys for a user.
-func ListPreAuthKeys(tx *gorm.DB, userName string) ([]types.PreAuthKey, error) {
-	user, err := GetUserByUsername(tx, userName)
+// ListPreAuthKeysByUser returns the list of PreAuthKeys for a user.
+func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, error) {
+	user, err := GetUserByID(tx, uid)
 	if err != nil {
 		return nil, err
 	}

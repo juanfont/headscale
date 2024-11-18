@@ -26,7 +26,7 @@ type User struct {
 
 	// Username for the user, is used if email is empty
 	// Should not be used, please use Username().
-	Name string `gorm:"index,uniqueIndex:idx_name_provider_identifier"`
+	Name string `gorm:"uniqueIndex:idx_name_provider_identifier,index"`
 
 	// Typically the full name of the user
 	DisplayName string
