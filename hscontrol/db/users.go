@@ -28,11 +28,9 @@ func CreateUser(tx *gorm.DB, name string) (*types.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	user := types.User{}
-	if err := tx.Where("name = ?", name).First(&user).Error; err == nil {
-		return nil, ErrUserExists
+	user := types.User{
+		Name: name,
 	}
-	user.Name = name
 	if err := tx.Create(&user).Error; err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
 	}
@@ -175,6 +173,10 @@ func (hsdb *HSDatabase) GetUserByName(name string) (*types.User, error) {
 	users, err := hsdb.ListUsers(&types.User{Name: name})
 	if err != nil {
 		return nil, err
+	}
+
+	if len(users) == 0 {
+		return nil, ErrUserNotFound
 	}
 
 	if len(users) != 1 {

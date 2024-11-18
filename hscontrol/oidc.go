@@ -460,7 +460,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 			// This is to prevent users that have already been migrated to the new OIDC format
 			// to be updated with the new OIDC identifier inexplicitly which might be the cause of an
 			// account takeover.
-			if user != nil && user.ProviderIdentifier != "" {
+			if user != nil && user.ProviderIdentifier.Valid {
 				log.Info().Str("username", claims.Username).Str("sub", claims.Sub).Msg("user found by username, but has provider identifier, creating new user.")
 				user = &types.User{}
 			}
