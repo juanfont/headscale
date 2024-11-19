@@ -48,6 +48,10 @@ var (
 	errInvalidClientConfig             = errors.New("verifiably invalid client config requested")
 )
 
+const (
+	VersionHead = "head"
+)
+
 func errTailscaleStatus(hostname string, err error) error {
 	return fmt.Errorf("%s failed to fetch tailscale status: %w", hostname, err)
 }
@@ -240,7 +244,7 @@ func New(
 	}
 
 	if tsic.withWebsocketDERP {
-		if version != "head" {
+		if version != VersionHead {
 			return nil, errInvalidClientConfig
 		}
 
@@ -273,7 +277,7 @@ func New(
 
 	var container *dockertest.Resource
 
-	if version != "head" {
+	if version != VersionHead {
 		// build options are not meaningful with pre-existing images,
 		// let's not lead anyone astray by pretending otherwise.
 		defaultBuildConfig := TailscaleInContainerBuildConfig{}
@@ -284,7 +288,7 @@ func New(
 	}
 
 	switch version {
-	case "head":
+	case VersionHead:
 		buildOptions := &dockertest.BuildOptions{
 			Dockerfile: "Dockerfile.tailscale-HEAD",
 			ContextDir: dockerContextPath,
