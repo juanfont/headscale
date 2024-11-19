@@ -281,7 +281,7 @@ func New(
 		// build options are not meaningful with pre-existing images,
 		// let's not lead anyone astray by pretending otherwise.
 		defaultBuildConfig := TailscaleInContainerBuildConfig{}
-		hasBuildConfig := reflect.DeepEqual(defaultBuildConfig, tsic.buildConfig)
+		hasBuildConfig := !reflect.DeepEqual(defaultBuildConfig, tsic.buildConfig)
 		if hasBuildConfig {
 			return tsic, errInvalidClientConfig
 		}
