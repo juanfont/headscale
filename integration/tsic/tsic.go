@@ -245,7 +245,7 @@ func New(
 
 	if tsic.withWebsocketDERP {
 		if version != VersionHead {
-			return nil, errInvalidClientConfig
+			return tsic, errInvalidClientConfig
 		}
 
 		WithBuildTag("ts_debug_websockets")(tsic)
@@ -283,7 +283,7 @@ func New(
 		defaultBuildConfig := TailscaleInContainerBuildConfig{}
 		hasBuildConfig := reflect.DeepEqual(defaultBuildConfig, tsic.buildConfig)
 		if hasBuildConfig {
-			return nil, errInvalidClientConfig
+			return tsic, errInvalidClientConfig
 		}
 	}
 
