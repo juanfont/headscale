@@ -194,6 +194,10 @@ func WithNetfilter(state string) Option {
 // Attempts to use it with any other version is a bug in the calling code.
 func WithBuildTag(tag string) Option {
 	return func(tsic *TailscaleInContainer) {
+		if tsic.version != VersionHead {
+			panic(errInvalidClientConfig)
+		}
+
 		tsic.buildConfig.tags = append(
 			tsic.buildConfig.tags, tag,
 		)

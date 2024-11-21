@@ -245,7 +245,7 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 			err = s.CreateTailscaleIsolatedNodesInUser(
 				hash,
 				userName,
-				"head",
+				tsic.VersionHead,
 				clientCount.WebsocketDERP,
 				tsic.WithWebsocketDERP(true),
 			)
