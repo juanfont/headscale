@@ -946,7 +946,7 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 
 	s := len(serverDomainParts)
 	b := len(baseDomainParts)
-	for i := range 0..len(baseDomainParts) {
+	for i := range len(baseDomainParts) {
 		if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {
 			return nil
 		}
