@@ -140,7 +140,7 @@ func TestReadConfig(t *testing.T) {
 				return LoadServerConfig()
 			},
 			want:    nil,
-			wantErr: "server_url cannot be a suffix of the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.",
+			wantErr: errServerURLSuffix.Error(),
 		},
 		{
 			name:       "base-domain-not-in-server-url",
@@ -361,6 +361,10 @@ func TestSafeServerURL(t *testing.T) {
 		{
 			serverURL:  "https://headscale.com",
 			baseDomain: "clients.subdomain.headscale.com",
+		},
+		{
+			serverURL:  "https://headscale.kristoffer.com",
+			baseDomain: "mybase",
 		},
 		{
 			serverURL:  "https://server.headscale.com",

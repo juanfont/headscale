@@ -30,7 +30,7 @@ const (
 
 var (
 	errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
-	errServerURLSuffix       = errors.New("server_url cannot be a suffix of the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.")
+	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable.")
 )
 
 type IPAllocationStrategy string
@@ -946,8 +946,8 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 
 	s := len(serverDomainParts)
 	b := len(baseDomainParts)
-	for i := 1; i < len(baseDomainParts)-1; i++ {
-		if serverDomainParts[s-i] != baseDomainParts[b-i] {
+	for i := 0; i < len(baseDomainParts); i++ {
+		if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {
 			return nil
 		}
 	}
