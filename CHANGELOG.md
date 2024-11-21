@@ -23,6 +23,7 @@
 - Added conversion of 'Hostname' to 'givenName' in a node with FQDN rules applied [#2198](https://github.com/juanfont/headscale/pull/2198)
 - Fixed updating of hostname and givenName when it is updated in HostInfo [#2199](https://github.com/juanfont/headscale/pull/2199)
 - Fixed missing `stable-debug` container tag [#2232](https://github.com/juanfont/headscale/pr/2232)
+- Loosened up `server_url` and `base_domain` check. It was overly strict in some cases.
 
 ## 0.23.0 (2024-09-18)
 
