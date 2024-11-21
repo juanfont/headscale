@@ -30,7 +30,7 @@ const (
 
 var (
 	errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
-	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable.")
+	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
 )
 
 type IPAllocationStrategy string
@@ -928,9 +928,9 @@ func LoadServerConfig() (*Config, error) {
 // This is because Tailscale takes over the domain in BaseDomain,
 // causing the headscale server and DERP to be unreachable.
 // For Tailscale upstream, the following is true:
-// - DERP run on their own domains
-// - Control plane runs on login.tailscale.com/controlplane.tailscale.com
-// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
+// - DERP run on their own domains.
+// - Control plane runs on login.tailscale.com/controlplane.tailscale.com.
+// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net).
 func isSafeServerURL(serverURL, baseDomain string) error {
 	server, err := url.Parse(serverURL)
 	if err != nil {
@@ -946,7 +946,7 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 
 	s := len(serverDomainParts)
 	b := len(baseDomainParts)
-	for i := 0; i < len(baseDomainParts); i++ {
+	for i := range 0..len(baseDomainParts) {
 		if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {
 			return nil
 		}

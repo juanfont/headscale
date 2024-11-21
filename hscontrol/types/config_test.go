@@ -340,7 +340,7 @@ tls_letsencrypt_challenge_type: TLS-ALPN-01
 // server_url: headscale.com, base: headscale.net
 //
 // NOT OK
-// server_url: server.headscale.com, base: headscale.com
+// server_url: server.headscale.com, base: headscale.com.
 func TestSafeServerURL(t *testing.T) {
 	tests := []struct {
 		serverURL, baseDomain,
@@ -388,6 +388,7 @@ func TestSafeServerURL(t *testing.T) {
 			err := isSafeServerURL(tt.serverURL, tt.baseDomain)
 			if tt.wantErr != "" {
 				assert.EqualError(t, err, tt.wantErr)
+
 				return
 			}
 			assert.NoError(t, err)
