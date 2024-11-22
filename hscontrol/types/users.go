@@ -27,7 +27,7 @@ type User struct {
 
 	// Username for the user, is used if email is empty
 	// Should not be used, please use Username().
-	Name string `gorm:"uniqueIndex:idx_name_provider_identifier;index"`
+	Name string
 
 	// Typically the full name of the user
 	DisplayName string
@@ -39,7 +39,7 @@ type User struct {
 	// Unique identifier of the user from OIDC,
 	// comes from `sub` claim in the OIDC token
 	// and is used to lookup the user.
-	ProviderIdentifier sql.NullString `gorm:"uniqueIndex:idx_name_provider_identifier;uniqueIndex:idx_provider_identifier"`
+	ProviderIdentifier sql.NullString
 
 	// Provider is the origin of the user account,
 	// same as RegistrationMethod, without authkey.
