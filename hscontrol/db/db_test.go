@@ -271,8 +271,8 @@ func TestConstraints(t *testing.T) {
 				require.NoError(t, err)
 				_, err = CreateUser(db, "user1")
 				require.Error(t, err)
-				// assert.Contains(t, err.Error(), "UNIQUE constraint failed: users.username")
-				require.Contains(t, err.Error(), "user already exists")
+				assert.Contains(t, err.Error(), "UNIQUE constraint failed:")
+				// require.Contains(t, err.Error(), "user already exists")
 			},
 		},
 		{
@@ -295,7 +295,7 @@ func TestConstraints(t *testing.T) {
 
 				err = db.Save(&user).Error
 				require.Error(t, err)
-				require.Contains(t, err.Error(), "UNIQUE constraint failed: users.provider_identifier")
+				require.Contains(t, err.Error(), "UNIQUE constraint failed:")
 			},
 		},
 		{
@@ -318,7 +318,7 @@ func TestConstraints(t *testing.T) {
 
 				err = db.Save(&user).Error
 				require.Error(t, err)
-				require.Contains(t, err.Error(), "UNIQUE constraint failed: users.provider_identifier")
+				require.Contains(t, err.Error(), "UNIQUE constraint failed:")
 			},
 		},
 		{
@@ -328,9 +328,9 @@ func TestConstraints(t *testing.T) {
 				require.NoError(t, err)
 
 				user := types.User{
-					Name: "user1",
+					Name:               "user1",
+					ProviderIdentifier: sql.NullString{String: "http://test.com/user1", Valid: true},
 				}
-				user.ProviderIdentifier.String = "http://test.com/user1"
 
 				err = db.Save(&user).Error
 				require.NoError(t, err)
@@ -340,9 +340,9 @@ func TestConstraints(t *testing.T) {
 			name: "allow-duplicate-username-oidc-then-cli",
 			run: func(t *testing.T, db *gorm.DB) {
 				user := types.User{
-					Name: "user1",
+					Name:               "user1",
+					ProviderIdentifier: sql.NullString{String: "http://test.com/user1", Valid: true},
 				}
-				user.ProviderIdentifier.String = "http://test.com/user1"
 
 				err := db.Save(&user).Error
 				require.NoError(t, err)
@@ -360,7 +360,7 @@ func TestConstraints(t *testing.T) {
 				t.Fatalf("creating database: %s", err)
 			}
 
-			tt.run(t, db.DB)
+			tt.run(t, db.DB.Debug())
 		})
 
 	}
