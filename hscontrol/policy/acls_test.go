@@ -11,7 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
 	"tailscale.com/net/tsaddr"
@@ -1824,12 +1824,20 @@ func TestTheInternet(t *testing.T) {
 
 	for i := range internetPrefs {
 		if internetPrefs[i].String() != hsExitNodeDest[i].IP {
-			t.Errorf("prefix from internet set %q != hsExit list %q", internetPrefs[i].String(), hsExitNodeDest[i].IP)
+			t.Errorf(
+				"prefix from internet set %q != hsExit list %q",
+				internetPrefs[i].String(),
+				hsExitNodeDest[i].IP,
+			)
 		}
 	}
 
 	if len(internetPrefs) != len(hsExitNodeDest) {
-		t.Fatalf("expected same length of prefixes, internet: %d, hsExit: %d", len(internetPrefs), len(hsExitNodeDest))
+		t.Fatalf(
+			"expected same length of prefixes, internet: %d, hsExit: %d",
+			len(internetPrefs),
+			len(hsExitNodeDest),
+		)
 	}
 }
 
@@ -2036,7 +2044,12 @@ func TestReduceFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100/32",
@@ -2049,7 +2062,12 @@ func TestReduceFilterRules(t *testing.T) {
 					},
 				},
 				{
-					SrcIPs:   []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
 					DstPorts: hsExitNodeDest,
 				},
 			},
@@ -2132,7 +2150,12 @@ func TestReduceFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100/32",
@@ -2145,7 +2168,12 @@ func TestReduceFilterRules(t *testing.T) {
 					},
 				},
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
 						{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
@@ -2217,7 +2245,10 @@ func TestReduceFilterRules(t *testing.T) {
 				IPv6: iap("fd7a:115c:a1e0::100"),
 				User: types.User{Name: "user100"},
 				Hostinfo: &tailcfg.Hostinfo{
-					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("8.0.0.0/16"),
+						netip.MustParsePrefix("16.0.0.0/16"),
+					},
 				},
 			},
 			peers: types.Nodes{
@@ -2234,7 +2265,12 @@ func TestReduceFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100/32",
@@ -2247,7 +2283,12 @@ func TestReduceFilterRules(t *testing.T) {
 					},
 				},
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "8.0.0.0/8",
@@ -2294,7 +2335,10 @@ func TestReduceFilterRules(t *testing.T) {
 				IPv6: iap("fd7a:115c:a1e0::100"),
 				User: types.User{Name: "user100"},
 				Hostinfo: &tailcfg.Hostinfo{
-					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("8.0.0.0/8"),
+						netip.MustParsePrefix("16.0.0.0/8"),
+					},
 				},
 			},
 			peers: types.Nodes{
@@ -2311,7 +2355,12 @@ func TestReduceFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100/32",
@@ -2324,7 +2373,12 @@ func TestReduceFilterRules(t *testing.T) {
 					},
 				},
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1/32",
+						"100.64.0.2/32",
+						"fd7a:115c:a1e0::1/128",
+						"fd7a:115c:a1e0::2/128",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "8.0.0.0/16",
@@ -3299,7 +3353,11 @@ func TestSSHRules(t *testing.T) {
 					SSHUsers: map[string]string{
 						"autogroup:nonroot": "=",
 					},
-					Action: &tailcfg.SSHAction{Accept: true, AllowAgentForwarding: true, AllowLocalPortForwarding: true},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
 				},
 				{
 					SSHUsers: map[string]string{
@@ -3310,7 +3368,11 @@ func TestSSHRules(t *testing.T) {
 							Any: true,
 						},
 					},
-					Action: &tailcfg.SSHAction{Accept: true, AllowAgentForwarding: true, AllowLocalPortForwarding: true},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{
@@ -3321,7 +3383,11 @@ func TestSSHRules(t *testing.T) {
 					SSHUsers: map[string]string{
 						"autogroup:nonroot": "=",
 					},
-					Action: &tailcfg.SSHAction{Accept: true, AllowAgentForwarding: true, AllowLocalPortForwarding: true},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
 				},
 				{
 					SSHUsers: map[string]string{
@@ -3332,7 +3398,11 @@ func TestSSHRules(t *testing.T) {
 							Any: true,
 						},
 					},
-					Action: &tailcfg.SSHAction{Accept: true, AllowAgentForwarding: true, AllowLocalPortForwarding: true},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
 				},
 			}},
 		},
@@ -3392,7 +3462,7 @@ func TestSSHRules(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.pol.CompileSSHPolicy(&tt.node, tt.peers)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("TestSSHRules() unexpected result (-want +got):\n%s", diff)
@@ -3499,7 +3569,7 @@ func TestValidExpandTagOwnersInSources(t *testing.T) {
 	}
 
 	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
 		{
@@ -3550,7 +3620,7 @@ func TestInvalidTagValidUser(t *testing.T) {
 	}
 
 	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
 		{
@@ -3609,7 +3679,7 @@ func TestValidExpandTagOwnersInDestinations(t *testing.T) {
 	// c.Assert(rules[0].DstPorts[0].IP, check.Equals, "100.64.0.1/32")
 
 	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
 		{
@@ -3679,7 +3749,7 @@ func TestValidTagInvalidUser(t *testing.T) {
 	}
 
 	got, _, err := GenerateFilterAndSSHRulesForTests(pol, node, types.Nodes{nodes2})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	want := []tailcfg.FilterRule{
 		{

@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 )
@@ -36,8 +37,17 @@ func TestReadConfig(t *testing.T) {
 				MagicDNS:   true,
 				BaseDomain: "example.com",
 				Nameservers: Nameservers{
-					Global: []string{"1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001", "https://dns.nextdns.io/abc123"},
-					Split:  map[string][]string{"darp.headscale.net": {"1.1.1.1", "8.8.8.8"}, "foo.bar.com": {"1.1.1.1"}},
+					Global: []string{
+						"1.1.1.1",
+						"1.0.0.1",
+						"2606:4700:4700::1111",
+						"2606:4700:4700::1001",
+						"https://dns.nextdns.io/abc123",
+					},
+					Split: map[string][]string{
+						"darp.headscale.net": {"1.1.1.1", "8.8.8.8"},
+						"foo.bar.com":        {"1.1.1.1"},
+					},
 				},
 				ExtraRecords: []tailcfg.DNSRecord{
 					{Name: "grafana.myvpn.example.com", Type: "A", Value: "100.64.0.3"},
@@ -92,8 +102,17 @@ func TestReadConfig(t *testing.T) {
 				MagicDNS:   false,
 				BaseDomain: "example.com",
 				Nameservers: Nameservers{
-					Global: []string{"1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001", "https://dns.nextdns.io/abc123"},
-					Split:  map[string][]string{"darp.headscale.net": {"1.1.1.1", "8.8.8.8"}, "foo.bar.com": {"1.1.1.1"}},
+					Global: []string{
+						"1.1.1.1",
+						"1.0.0.1",
+						"2606:4700:4700::1111",
+						"2606:4700:4700::1001",
+						"https://dns.nextdns.io/abc123",
+					},
+					Split: map[string][]string{
+						"darp.headscale.net": {"1.1.1.1", "8.8.8.8"},
+						"foo.bar.com":        {"1.1.1.1"},
+					},
 				},
 				ExtraRecords: []tailcfg.DNSRecord{
 					{Name: "grafana.myvpn.example.com", Type: "A", Value: "100.64.0.3"},
@@ -187,7 +206,7 @@ func TestReadConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			viper.Reset()
 			err := LoadConfig(tt.configPath, true)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			conf, err := tt.setup(t)
 
@@ -197,7 +216,7 @@ func TestReadConfig(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			if diff := cmp.Diff(tt.want, conf); diff != "" {
 				t.Errorf("ReadConfig() mismatch (-want +got):\n%s", diff)
@@ -277,10 +296,10 @@ func TestReadConfigFromEnv(t *testing.T) {
 
 			viper.Reset()
 			err := LoadConfig("testdata/minimal.yaml", true)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			conf, err := tt.setup(t)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			if diff := cmp.Diff(tt.want, conf); diff != "" {
 				t.Errorf("ReadConfig() mismatch (-want +got):\n%s", diff)
@@ -311,13 +330,25 @@ noise:
 
 	// Check configuration validation errors (1)
 	err = LoadConfig(tmpDir, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = validateServerConfig()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both")
-	assert.Contains(t, err.Error(), "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are")
-	assert.Contains(t, err.Error(), "Fatal config error: server_url must start with https:// or http://")
+	require.Error(t, err)
+	assert.Contains(
+		t,
+		err.Error(),
+		"Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both",
+	)
+	assert.Contains(
+		t,
+		err.Error(),
+		"Fatal config error: the only supported values for tls_letsencrypt_challenge_type are",
+	)
+	assert.Contains(
+		t,
+		err.Error(),
+		"Fatal config error: server_url must start with https:// or http://",
+	)
 
 	// Check configuration validation errors (2)
 	configYaml = []byte(`---
@@ -332,7 +363,7 @@ tls_letsencrypt_challenge_type: TLS-ALPN-01
 		t.Fatalf("Couldn't write file %s", configFilePath)
 	}
 	err = LoadConfig(tmpDir, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 // OK

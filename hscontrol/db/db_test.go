@@ -16,6 +16,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"zgo.at/zcache/v2"
 )
@@ -44,7 +45,7 @@ func TestMigrations(t *testing.T) {
 				routes, err := Read(h.DB, func(rx *gorm.DB) (types.Routes, error) {
 					return GetRoutes(rx)
 				})
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				assert.Len(t, routes, 10)
 				want := types.Routes{
@@ -70,7 +71,7 @@ func TestMigrations(t *testing.T) {
 				routes, err := Read(h.DB, func(rx *gorm.DB) (types.Routes, error) {
 					return GetRoutes(rx)
 				})
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				assert.Len(t, routes, 4)
 				want := types.Routes{
@@ -132,7 +133,7 @@ func TestMigrations(t *testing.T) {
 
 					return append(kratest, testkra...), nil
 				})
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				assert.Len(t, keys, 5)
 				want := []types.PreAuthKey{
@@ -177,7 +178,7 @@ func TestMigrations(t *testing.T) {
 				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
 					return ListNodes(rx)
 				})
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				for _, node := range nodes {
 					assert.Falsef(t, node.MachineKey.IsZero(), "expected non zero machinekey")
