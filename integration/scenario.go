@@ -14,6 +14,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/dsic"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
@@ -140,6 +141,7 @@ type Scenario struct {
 	// TODO(kradalby): support multiple headcales for later, currently only
 	// use one.
 	controlServers *xsync.MapOf[string, ControlServer]
+	derpServers    []*dsic.DERPServerInContainer
 
 	users map[string]*User
 
@@ -221,6 +223,13 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 			if err != nil {
 				log.Printf("failed to tear down client: %s", err)
 			}
+		}
+	}
+
+	for _, derp := range s.derpServers {
+		err := derp.Shutdown()
+		if err != nil {
+			log.Printf("failed to tear down derp server: %s", err)
 		}
 	}
 
@@ -352,7 +361,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 			hostname := headscale.GetHostname()
 
 			opts = append(opts,
-				tsic.WithHeadscaleTLS(cert),
+				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
 			)
 
@@ -650,4 +659,21 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 	}
 
 	return nil
+}
+
+// CreateDERPServer creates a new DERP server in a container.
+func (s *Scenario) CreateDERPServer(version string, opts ...dsic.Option) (*dsic.DERPServerInContainer, error) {
+	derp, err := dsic.New(s.pool, version, s.network, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DERP server: %w", err)
+	}
+
+	err = derp.WaitForRunning()
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach DERP server: %w", err)
+	}
+
+	s.derpServers = append(s.derpServers, derp)
+
+	return derp, nil
 }
