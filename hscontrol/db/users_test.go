@@ -90,9 +90,10 @@ func (s *Suite) TestRenameUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(userTest2.Name, check.Equals, "test2")
 
+	want := "UNIQUE constraint failed"
 	err = db.RenameUser(types.UserID(userTest2.ID), "test-renamed")
-	if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
-		c.Fatalf("expected failure with unique constraint, got: %s", err.Error())
+	if err == nil || !strings.Contains(err.Error(), want) {
+		c.Fatalf("expected failure with unique constraint, want: %q got: %q", want, err)
 	}
 }
 
