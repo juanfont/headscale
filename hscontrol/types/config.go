@@ -28,8 +28,9 @@ const (
 	maxDuration           time.Duration = 1<<63 - 1
 )
 
-var errOidcMutuallyExclusive = errors.New(
-	"oidc_client_secret and oidc_client_secret_path are mutually exclusive",
+var (
+	errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
+	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
 )
 
 type IPAllocationStrategy string
@@ -827,11 +828,10 @@ func LoadServerConfig() (*Config, error) {
 	// - DERP run on their own domains
 	// - Control plane runs on login.tailscale.com/controlplane.tailscale.com
 	// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
-	if dnsConfig.BaseDomain != "" &&
-		strings.Contains(serverURL, dnsConfig.BaseDomain) {
-		return nil, errors.New(
-			"server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.",
-		)
+	if dnsConfig.BaseDomain != "" {
+		if err := isSafeServerURL(serverURL, dnsConfig.BaseDomain); err != nil {
+			return nil, err
+		}
 	}
 
 	return &Config{
@@ -922,6 +922,37 @@ func LoadServerConfig() (*Config, error) {
 			),
 		},
 	}, nil
+}
+
+// BaseDomain cannot be a suffix of the server URL.
+// This is because Tailscale takes over the domain in BaseDomain,
+// causing the headscale server and DERP to be unreachable.
+// For Tailscale upstream, the following is true:
+// - DERP run on their own domains.
+// - Control plane runs on login.tailscale.com/controlplane.tailscale.com.
+// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net).
+func isSafeServerURL(serverURL, baseDomain string) error {
+	server, err := url.Parse(serverURL)
+	if err != nil {
+		return err
+	}
+
+	serverDomainParts := strings.Split(server.Host, ".")
+	baseDomainParts := strings.Split(baseDomain, ".")
+
+	if len(serverDomainParts) <= len(baseDomainParts) {
+		return nil
+	}
+
+	s := len(serverDomainParts)
+	b := len(baseDomainParts)
+	for i := range len(baseDomainParts) {
+		if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {
+			return nil
+		}
+	}
+
+	return errServerURLSuffix
 }
 
 type deprecator struct {

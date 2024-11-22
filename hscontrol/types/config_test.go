@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -139,7 +140,7 @@ func TestReadConfig(t *testing.T) {
 				return LoadServerConfig()
 			},
 			want:    nil,
-			wantErr: "server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.",
+			wantErr: errServerURLSuffix.Error(),
 		},
 		{
 			name:       "base-domain-not-in-server-url",
@@ -332,4 +333,65 @@ tls_letsencrypt_challenge_type: TLS-ALPN-01
 	}
 	err = LoadConfig(tmpDir, false)
 	assert.NoError(t, err)
+}
+
+// OK
+// server_url: headscale.com, base: clients.headscale.com
+// server_url: headscale.com, base: headscale.net
+//
+// NOT OK
+// server_url: server.headscale.com, base: headscale.com.
+func TestSafeServerURL(t *testing.T) {
+	tests := []struct {
+		serverURL, baseDomain,
+		wantErr string
+	}{
+		{
+			serverURL:  "https://example.com",
+			baseDomain: "example.org",
+		},
+		{
+			serverURL:  "https://headscale.com",
+			baseDomain: "headscale.com",
+		},
+		{
+			serverURL:  "https://headscale.com",
+			baseDomain: "clients.headscale.com",
+		},
+		{
+			serverURL:  "https://headscale.com",
+			baseDomain: "clients.subdomain.headscale.com",
+		},
+		{
+			serverURL:  "https://headscale.kristoffer.com",
+			baseDomain: "mybase",
+		},
+		{
+			serverURL:  "https://server.headscale.com",
+			baseDomain: "headscale.com",
+			wantErr:    errServerURLSuffix.Error(),
+		},
+		{
+			serverURL:  "https://server.subdomain.headscale.com",
+			baseDomain: "headscale.com",
+			wantErr:    errServerURLSuffix.Error(),
+		},
+		{
+			serverURL: "http://foo\x00",
+			wantErr:   `parse "http://foo\x00": net/url: invalid control character in URL`,
+		},
+	}
+
+	for _, tt := range tests {
+		testName := fmt.Sprintf("server=%s domain=%s", tt.serverURL, tt.baseDomain)
+		t.Run(testName, func(t *testing.T) {
+			err := isSafeServerURL(tt.serverURL, tt.baseDomain)
+			if tt.wantErr != "" {
+				assert.EqualError(t, err, tt.wantErr)
+
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
 }
