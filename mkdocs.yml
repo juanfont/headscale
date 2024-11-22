@@ -71,6 +71,7 @@ plugins:
   - include-markdown:
   - minify:
       minify_html: true
+  - mike:
   - social: {}
   - redirects:
       redirect_maps:
@@ -90,6 +91,9 @@ plugins:
 
 # Customization
 extra:
+  version:
+    alias: true
+    provider: mike
   annotate:
     json: [.s2]
   social:
