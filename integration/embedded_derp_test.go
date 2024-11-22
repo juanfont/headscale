@@ -55,7 +55,7 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 	spec := map[string]ClientsSpec{
 		"user1": {
 			Plain:         0,
-			WebsocketDERP: len(MustTestVersions),
+			WebsocketDERP: 2,
 		},
 	}
 
@@ -239,10 +239,13 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 
 		if clientCount.WebsocketDERP > 0 {
 			// Containers that use DERP-over-WebSocket
+			// Note that these clients *must* be built
+			// from source, which is currently
+			// only done for HEAD.
 			err = s.CreateTailscaleIsolatedNodesInUser(
 				hash,
 				userName,
-				"all",
+				tsic.VersionHead,
 				clientCount.WebsocketDERP,
 				tsic.WithWebsocketDERP(true),
 			)

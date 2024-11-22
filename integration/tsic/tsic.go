@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,11 @@ var (
 	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
 	errTailscaleNotConnected           = errors.New("tailscale not connected")
 	errTailscaledNotReadyForLogin      = errors.New("tailscaled not ready for login")
+	errInvalidClientConfig             = errors.New("verifiably invalid client config requested")
+)
+
+const (
+	VersionHead = "head"
 )
 
 func errTailscaleStatus(hostname string, err error) error {
@@ -74,6 +80,13 @@ type TailscaleInContainer struct {
 	withExtraHosts    []string
 	workdir           string
 	netfilter         string
+
+	// build options, solely for HEAD
+	buildConfig TailscaleInContainerBuildConfig
+}
+
+type TailscaleInContainerBuildConfig struct {
+	tags []string
 }
 
 // Option represent optional settings that can be given to a
@@ -175,6 +188,22 @@ func WithNetfilter(state string) Option {
 	}
 }
 
+// WithBuildTag adds an additional value to the `-tags=` parameter
+// of the Go compiler, allowing callers to customize the Tailscale client build.
+// This option is only meaningful when invoked on **HEAD** versions of the client.
+// Attempts to use it with any other version is a bug in the calling code.
+func WithBuildTag(tag string) Option {
+	return func(tsic *TailscaleInContainer) {
+		if tsic.version != VersionHead {
+			panic(errInvalidClientConfig)
+		}
+
+		tsic.buildConfig.tags = append(
+			tsic.buildConfig.tags, tag,
+		)
+	}
+}
+
 // New returns a new TailscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
@@ -219,6 +248,12 @@ func New(
 	}
 
 	if tsic.withWebsocketDERP {
+		if version != VersionHead {
+			return tsic, errInvalidClientConfig
+		}
+
+		WithBuildTag("ts_debug_websockets")(tsic)
+
 		tailscaleOptions.Env = append(
 			tailscaleOptions.Env,
 			fmt.Sprintf("TS_DEBUG_DERP_WS_CLIENT=%t", tsic.withWebsocketDERP),
@@ -245,12 +280,34 @@ func New(
 	}
 
 	var container *dockertest.Resource
+
+	if version != VersionHead {
+		// build options are not meaningful with pre-existing images,
+		// let's not lead anyone astray by pretending otherwise.
+		defaultBuildConfig := TailscaleInContainerBuildConfig{}
+		hasBuildConfig := !reflect.DeepEqual(defaultBuildConfig, tsic.buildConfig)
+		if hasBuildConfig {
+			return tsic, errInvalidClientConfig
+		}
+	}
+
 	switch version {
-	case "head":
+	case VersionHead:
 		buildOptions := &dockertest.BuildOptions{
 			Dockerfile: "Dockerfile.tailscale-HEAD",
 			ContextDir: dockerContextPath,
 			BuildArgs:  []docker.BuildArg{},
+		}
+
+		buildTags := strings.Join(tsic.buildConfig.tags, ",")
+		if len(buildTags) > 0 {
+			buildOptions.BuildArgs = append(
+				buildOptions.BuildArgs,
+				docker.BuildArg{
+					Name:  "BUILD_TAGS",
+					Value: buildTags,
+				},
+			)
 		}
 
 		container, err = pool.BuildAndRunWithBuildOptions(
