@@ -1034,10 +1034,7 @@ func FilterNodesByACL(
 			continue
 		}
 
-		log.Printf("Checking if %s can access %s", node.Hostname, peer.Hostname)
-
 		if node.CanAccess(filter, nodes[index]) || peer.CanAccess(filter, node) {
-			log.Printf("CAN ACCESS %s can access %s", node.Hostname, peer.Hostname)
 			result = append(result, peer)
 		}
 	}

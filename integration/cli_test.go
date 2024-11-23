@@ -213,7 +213,9 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			continue
 		}
 
-		assert.Equal(t, []string{"tag:test1", "tag:test2"}, listedPreAuthKeys[index].GetAclTags())
+		tags := listedPreAuthKeys[index].GetAclTags()
+		sort.Strings(tags)
+		assert.Equal(t, []string{"tag:test1", "tag:test2"}, tags)
 	}
 
 	// Test key expiry
