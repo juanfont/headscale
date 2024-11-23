@@ -543,10 +543,10 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		}
 
 		if cfg.Sqlite.WriteAheadLog {
-			if err := db.Exec(`
+			if err := db.Exec(fmt.Sprintf(`
 				PRAGMA journal_mode=WAL;
-				PRAGMA wal_autocheckpoint=0;
-				`).Error; err != nil {
+				PRAGMA wal_autocheckpoint=%d;
+				`, cfg.Sqlite.WALAutoCheckPoint)).Error; err != nil {
 				return nil, fmt.Errorf("setting WAL mode: %w", err)
 			}
 		}
