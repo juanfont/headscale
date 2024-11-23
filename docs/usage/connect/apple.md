@@ -47,3 +47,23 @@ tailscale login --login-server <YOUR_HEADSCALE_URL>
 - Under `Custom Login Server`, select `Add Account...`
 - Enter the URL of your headscale instance (e.g `https://headscale.example.com`) and press `Add Account`
 - Follow the login procedure in the browser
+
+## tvOS
+
+### Installation
+
+Install the official Tailscale tvOS client from the [App Store](https://apps.apple.com/app/tailscale/id1470499037).
+
+!!! danger
+
+    **Don't** open the Tailscale App after installation!
+
+### Configuring the headscale URL
+
+- Open Settings (the Apple tvOS settings) > Apps > Tailscale
+- Under `ALTERNATE COORDINATION SERVER URL`, select `URL`
+- Enter the URL of your headscale instance (e.g `https://headscale.example.com`) and press `OK`
+- Return to the tvOS Home screen
+- Open Tailscale
+- Click the button `Install VPN configuration` and confirm the appearing popup by clicking the `Allow` button
+- Scan the QR code and follow the login procedure

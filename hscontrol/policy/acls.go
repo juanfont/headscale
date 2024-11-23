@@ -178,7 +178,12 @@ func (pol *ACLPolicy) CompileFilterRules(
 		for srcIndex, src := range acl.Sources {
 			srcs, err := pol.expandSource(src, nodes)
 			if err != nil {
-				return nil, fmt.Errorf("parsing policy, acl index: %d->%d: %w", index, srcIndex, err)
+				return nil, fmt.Errorf(
+					"parsing policy, acl index: %d->%d: %w",
+					index,
+					srcIndex,
+					err,
+				)
 			}
 			srcIPs = append(srcIPs, srcs...)
 		}
@@ -335,12 +340,21 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 		case "check":
 			checkAction, err := sshCheckAction(sshACL.CheckPeriod)
 			if err != nil {
-				return nil, fmt.Errorf("parsing SSH policy, parsing check duration, index: %d: %w", index, err)
+				return nil, fmt.Errorf(
+					"parsing SSH policy, parsing check duration, index: %d: %w",
+					index,
+					err,
+				)
 			} else {
 				action = *checkAction
 			}
 		default:
-			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", sshACL.Action, index, err)
+			return nil, fmt.Errorf(
+				"parsing SSH policy, unknown action %q, index: %d: %w",
+				sshACL.Action,
+				index,
+				err,
+			)
 		}
 
 		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
@@ -599,7 +613,7 @@ func (pol *ACLPolicy) ExpandAlias(
 // TODO(kradalby): It is quite hard to understand what this function is doing,
 // it seems like it trying to ensure that we dont include nodes that are tagged
 // when we look up the nodes owned by a user.
-// This should be refactored to be more clear as part of the Tags work in #1369
+// This should be refactored to be more clear as part of the Tags work in #1369.
 func excludeCorrectlyTaggedNodes(
 	aclPolicy *ACLPolicy,
 	nodes types.Nodes,
@@ -977,10 +991,7 @@ func FilterNodesByACL(
 			continue
 		}
 
-		log.Printf("Checking if %s can access %s", node.Hostname, peer.Hostname)
-
 		if node.CanAccess(filter, nodes[index]) || peer.CanAccess(filter, node) {
-			log.Printf("CAN ACCESS %s can access %s", node.Hostname, peer.Hostname)
 			result = append(result, peer)
 		}
 	}

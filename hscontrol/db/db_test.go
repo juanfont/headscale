@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"net/netip"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"zgo.at/zcache/v2"
 )
@@ -44,7 +47,7 @@ func TestMigrations(t *testing.T) {
 				routes, err := Read(h.DB, func(rx *gorm.DB) (types.Routes, error) {
 					return GetRoutes(rx)
 				})
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				assert.Len(t, routes, 10)
 				want := types.Routes{
@@ -70,7 +73,7 @@ func TestMigrations(t *testing.T) {
 				routes, err := Read(h.DB, func(rx *gorm.DB) (types.Routes, error) {
 					return GetRoutes(rx)
 				})
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				assert.Len(t, routes, 4)
 				want := types.Routes{
@@ -120,19 +123,19 @@ func TestMigrations(t *testing.T) {
 			dbPath: "testdata/0-23-0-to-0-24-0-preauthkey-tags-table.sqlite",
 			wantFunc: func(t *testing.T, h *HSDatabase) {
 				keys, err := Read(h.DB, func(rx *gorm.DB) ([]types.PreAuthKey, error) {
-					kratest, err := ListPreAuthKeys(rx, "kratest")
+					kratest, err := ListPreAuthKeysByUser(rx, 1) // kratest
 					if err != nil {
 						return nil, err
 					}
 
-					testkra, err := ListPreAuthKeys(rx, "testkra")
+					testkra, err := ListPreAuthKeysByUser(rx, 2) // testkra
 					if err != nil {
 						return nil, err
 					}
 
 					return append(kratest, testkra...), nil
 				})
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				assert.Len(t, keys, 5)
 				want := []types.PreAuthKey{
@@ -177,7 +180,7 @@ func TestMigrations(t *testing.T) {
 				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
 					return ListNodes(rx)
 				})
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				for _, node := range nodes {
 					assert.Falsef(t, node.MachineKey.IsZero(), "expected non zero machinekey")
@@ -255,4 +258,121 @@ func testCopyOfDatabase(src string) (string, error) {
 
 func emptyCache() *zcache.Cache[string, types.Node] {
 	return zcache.New[string, types.Node](time.Minute, time.Hour)
+}
+
+// requireConstraintFailed checks if the error is a constraint failure with
+// either SQLite and PostgreSQL error messages.
+func requireConstraintFailed(t *testing.T, err error) {
+	t.Helper()
+	require.Error(t, err)
+	if !strings.Contains(err.Error(), "UNIQUE constraint failed:") && !strings.Contains(err.Error(), "violates unique constraint") {
+		require.Failf(t, "expected error to contain a constraint failure, got: %s", err.Error())
+	}
+}
+
+func TestConstraints(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*testing.T, *gorm.DB)
+	}{
+		{
+			name: "no-duplicate-username-if-no-oidc",
+			run: func(t *testing.T, db *gorm.DB) {
+				_, err := CreateUser(db, "user1")
+				require.NoError(t, err)
+				_, err = CreateUser(db, "user1")
+				requireConstraintFailed(t, err)
+			},
+		},
+		{
+			name: "no-oidc-duplicate-username-and-id",
+			run: func(t *testing.T, db *gorm.DB) {
+				user := types.User{
+					Model: gorm.Model{ID: 1},
+					Name:  "user1",
+				}
+				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
+
+				err := db.Save(&user).Error
+				require.NoError(t, err)
+
+				user = types.User{
+					Model: gorm.Model{ID: 2},
+					Name:  "user1",
+				}
+				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
+
+				err = db.Save(&user).Error
+				requireConstraintFailed(t, err)
+			},
+		},
+		{
+			name: "no-oidc-duplicate-id",
+			run: func(t *testing.T, db *gorm.DB) {
+				user := types.User{
+					Model: gorm.Model{ID: 1},
+					Name:  "user1",
+				}
+				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
+
+				err := db.Save(&user).Error
+				require.NoError(t, err)
+
+				user = types.User{
+					Model: gorm.Model{ID: 2},
+					Name:  "user1.1",
+				}
+				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
+
+				err = db.Save(&user).Error
+				requireConstraintFailed(t, err)
+			},
+		},
+		{
+			name: "allow-duplicate-username-cli-then-oidc",
+			run: func(t *testing.T, db *gorm.DB) {
+				_, err := CreateUser(db, "user1") // Create CLI username
+				require.NoError(t, err)
+
+				user := types.User{
+					Name:               "user1",
+					ProviderIdentifier: sql.NullString{String: "http://test.com/user1", Valid: true},
+				}
+
+				err = db.Save(&user).Error
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "allow-duplicate-username-oidc-then-cli",
+			run: func(t *testing.T, db *gorm.DB) {
+				user := types.User{
+					Name:               "user1",
+					ProviderIdentifier: sql.NullString{String: "http://test.com/user1", Valid: true},
+				}
+
+				err := db.Save(&user).Error
+				require.NoError(t, err)
+
+				_, err = CreateUser(db, "user1") // Create CLI username
+				require.NoError(t, err)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+"-postgres", func(t *testing.T) {
+			db := newPostgresTestDB(t)
+			tt.run(t, db.DB.Debug())
+		})
+		t.Run(tt.name+"-sqlite", func(t *testing.T) {
+			db, err := newSQLiteTestDB()
+			if err != nil {
+				t.Fatalf("creating database: %s", err)
+			}
+
+			tt.run(t, db.DB.Debug())
+		})
+
+	}
 }

@@ -457,9 +457,12 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router.HandleFunc("/swagger/v1/openapiv2.json", headscale.SwaggerAPIv1).
 		Methods(http.MethodGet)
 
+	router.HandleFunc("/verify", h.VerifyHandler).Methods(http.MethodPost)
+
 	if h.cfg.DERP.ServerEnabled {
 		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
+		router.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
 		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.DERPMap))
 	}
 

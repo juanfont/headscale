@@ -65,24 +65,34 @@ func (api headscaleV1APIServer) RenameUser(
 	ctx context.Context,
 	request *v1.RenameUserRequest,
 ) (*v1.RenameUserResponse, error) {
-	err := api.h.db.RenameUser(request.GetOldName(), request.GetNewName())
+	oldUser, err := api.h.db.GetUserByName(request.GetOldName())
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := api.h.db.GetUserByName(request.GetNewName())
+	err = api.h.db.RenameUser(types.UserID(oldUser.ID), request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.RenameUserResponse{User: user.Proto()}, nil
+	newUser, err := api.h.db.GetUserByName(request.GetNewName())
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.RenameUserResponse{User: newUser.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) DeleteUser(
 	ctx context.Context,
 	request *v1.DeleteUserRequest,
 ) (*v1.DeleteUserResponse, error) {
-	err := api.h.db.DestroyUser(request.GetName())
+	user, err := api.h.db.GetUserByName(request.GetName())
+	if err != nil {
+		return nil, err
+	}
+
+	err = api.h.db.DestroyUser(types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -131,8 +141,13 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		}
 	}
 
+	user, err := api.h.db.GetUserByName(request.GetUser())
+	if err != nil {
+		return nil, err
+	}
+
 	preAuthKey, err := api.h.db.CreatePreAuthKey(
-		request.GetUser(),
+		types.UserID(user.ID),
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
@@ -168,7 +183,12 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
 ) (*v1.ListPreAuthKeysResponse, error) {
-	preAuthKeys, err := api.h.db.ListPreAuthKeys(request.GetUser())
+	user, err := api.h.db.GetUserByName(request.GetUser())
+	if err != nil {
+		return nil, err
+	}
+
+	preAuthKeys, err := api.h.db.ListPreAuthKeys(types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -406,10 +426,20 @@ func (api headscaleV1APIServer) ListNodes(
 	ctx context.Context,
 	request *v1.ListNodesRequest,
 ) (*v1.ListNodesResponse, error) {
+	// TODO(kradalby): it looks like this can be simplified a lot,
+	// the filtering of nodes by user, vs nodes as a whole can
+	// probably be done once.
+	// TODO(kradalby): This should be done in one tx.
+
 	isLikelyConnected := api.h.nodeNotifier.LikelyConnectedMap()
 	if request.GetUser() != "" {
+		user, err := api.h.db.GetUserByName(request.GetUser())
+		if err != nil {
+			return nil, err
+		}
+
 		nodes, err := db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
-			return db.ListNodesByUser(rx, request.GetUser())
+			return db.ListNodesByUser(rx, types.UserID(user.ID))
 		})
 		if err != nil {
 			return nil, err
@@ -465,12 +495,18 @@ func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
 	request *v1.MoveNodeRequest,
 ) (*v1.MoveNodeResponse, error) {
+	// TODO(kradalby): This should be done in one tx.
 	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.db.AssignNodeToUser(node, request.GetUser())
+	user, err := api.h.db.GetUserByName(request.GetUser())
+	if err != nil {
+		return nil, err
+	}
+
+	err = api.h.db.AssignNodeToUser(node, types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}

@@ -91,15 +91,15 @@ func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 	})
 }
 
-func (hsdb *HSDatabase) getNode(user string, name string) (*types.Node, error) {
+func (hsdb *HSDatabase) getNode(uid types.UserID, name string) (*types.Node, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
-		return getNode(rx, user, name)
+		return getNode(rx, uid, name)
 	})
 }
 
 // getNode finds a Node by name and user and returns the Node struct.
-func getNode(tx *gorm.DB, user string, name string) (*types.Node, error) {
-	nodes, err := ListNodesByUser(tx, user)
+func getNode(tx *gorm.DB, uid types.UserID, name string) (*types.Node, error) {
+	nodes, err := ListNodesByUser(tx, uid)
 	if err != nil {
 		return nil, err
 	}

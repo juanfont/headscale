@@ -8,7 +8,7 @@ prefixes:
 database:
   type: sqlite3
 
-server_url: "https://derp.no"
+server_url: "https://server.derp.no"
 
 dns:
   magic_dns: true

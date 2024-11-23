@@ -6,5 +6,4 @@ code archives. Container images are available on [Docker Hub](https://hub.docker
 
 An Atom/RSS feed of headscale releases is available [here](https://github.com/juanfont/headscale/releases.atom).
 
-Join the ["announcements" channel on Discord](https://discord.com/channels/896711691637780480/896711692120129538) for
-news about headscale.
+See the "announcements" channel on our [Discord server](https://discord.gg/c84AZQhmpx) for news about headscale.

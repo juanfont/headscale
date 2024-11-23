@@ -2,6 +2,7 @@ package types
 
 import (
 	"cmp"
+	"database/sql"
 	"strconv"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -19,10 +20,14 @@ type UserID uint64
 // that contain our machines.
 type User struct {
 	gorm.Model
+	// The index `idx_name_provider_identifier` is to enforce uniqueness
+	// between Name and ProviderIdentifier. This ensures that
+	// you can have multiple users with the same name in OIDC,
+	// but not if you only run with CLI users.
 
 	// Username for the user, is used if email is empty
 	// Should not be used, please use Username().
-	Name string `gorm:"unique"`
+	Name string
 
 	// Typically the full name of the user
 	DisplayName string
@@ -34,7 +39,7 @@ type User struct {
 	// Unique identifier of the user from OIDC,
 	// comes from `sub` claim in the OIDC token
 	// and is used to lookup the user.
-	ProviderIdentifier string `gorm:"index"`
+	ProviderIdentifier sql.NullString
 
 	// Provider is the origin of the user account,
 	// same as RegistrationMethod, without authkey.
@@ -51,7 +56,14 @@ type User struct {
 // should be used throughout headscale, in information returned to the
 // user and the Policy engine.
 func (u *User) Username() string {
-	return cmp.Or(u.Email, u.Name, u.ProviderIdentifier, strconv.FormatUint(uint64(u.ID), 10))
+	username := cmp.Or(u.Email, u.Name, u.ProviderIdentifier.String, strconv.FormatUint(uint64(u.ID), 10))
+
+	// TODO(kradalby): Wire up all of this for the future
+	// if !strings.Contains(username, "@") {
+	// 	username = username + "@"
+	// }
+
+	return username
 }
 
 // DisplayNameOrUsername returns the DisplayName if it exists, otherwise
@@ -107,7 +119,7 @@ func (u *User) Proto() *v1.User {
 		CreatedAt:     timestamppb.New(u.CreatedAt),
 		DisplayName:   u.DisplayName,
 		Email:         u.Email,
-		ProviderId:    u.ProviderIdentifier,
+		ProviderId:    u.ProviderIdentifier.String,
 		Provider:      u.Provider,
 		ProfilePicUrl: u.ProfilePicURL,
 	}
@@ -116,6 +128,7 @@ func (u *User) Proto() *v1.User {
 type OIDCClaims struct {
 	// Sub is the user's unique identifier at the provider.
 	Sub string `json:"sub"`
+	Iss string `json:"iss"`
 
 	// Name is the user's full name.
 	Name              string   `json:"name,omitempty"`
@@ -126,12 +139,18 @@ type OIDCClaims struct {
 	Username          string   `json:"preferred_username,omitempty"`
 }
 
+func (c *OIDCClaims) Identifier() string {
+	return c.Iss + "/" + c.Sub
+}
+
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	u.ProviderIdentifier = claims.Sub
+	u.ProviderIdentifier = sql.NullString{String: claims.Identifier(), Valid: true}
 	u.DisplayName = claims.Name
-	u.Email = claims.Email
+	if claims.EmailVerified {
+		u.Email = claims.Email
+	}
 	u.Name = claims.Username
 	u.ProfilePicURL = claims.ProfilePictureURL
 	u.Provider = util.RegisterMethodOIDC

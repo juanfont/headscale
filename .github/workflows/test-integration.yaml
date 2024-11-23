@@ -21,6 +21,7 @@ jobs:
           - TestPolicyUpdateWhileRunningWithCLIInDatabase
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
+          - TestOIDC024UserCreation
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
           - TestUserCommand
@@ -38,6 +39,7 @@ jobs:
           - TestNodeMoveCommand
           - TestPolicyCommand
           - TestPolicyBrokenConfigCommand
+          - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
           - TestValidateResolvConf
           - TestDERPServerScenario
