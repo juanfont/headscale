@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -259,6 +260,16 @@ func emptyCache() *zcache.Cache[string, types.Node] {
 	return zcache.New[string, types.Node](time.Minute, time.Hour)
 }
 
+// requireConstraintFailed checks if the error is a constraint failure with
+// either SQLite and PostgreSQL error messages.
+func requireConstraintFailed(t *testing.T, err error) {
+	t.Helper()
+	require.Error(t, err)
+	if !strings.Contains(err.Error(), "UNIQUE constraint failed:") && !strings.Contains(err.Error(), "violates unique constraint") {
+		require.Failf(t, "expected error to contain a constraint failure, got: %s", err.Error())
+	}
+}
+
 func TestConstraints(t *testing.T) {
 	tests := []struct {
 		name string
@@ -270,9 +281,7 @@ func TestConstraints(t *testing.T) {
 				_, err := CreateUser(db, "user1")
 				require.NoError(t, err)
 				_, err = CreateUser(db, "user1")
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "UNIQUE constraint failed:")
-				// require.Contains(t, err.Error(), "user already exists")
+				requireConstraintFailed(t, err)
 			},
 		},
 		{
@@ -294,8 +303,7 @@ func TestConstraints(t *testing.T) {
 				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
 
 				err = db.Save(&user).Error
-				require.Error(t, err)
-				require.Contains(t, err.Error(), "UNIQUE constraint failed:")
+				requireConstraintFailed(t, err)
 			},
 		},
 		{
@@ -317,8 +325,7 @@ func TestConstraints(t *testing.T) {
 				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
 
 				err = db.Save(&user).Error
-				require.Error(t, err)
-				require.Contains(t, err.Error(), "UNIQUE constraint failed:")
+				requireConstraintFailed(t, err)
 			},
 		},
 		{
@@ -354,8 +361,12 @@ func TestConstraints(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db, err := newTestDB()
+		t.Run(tt.name+"-postgres", func(t *testing.T) {
+			db := newPostgresTestDB(t)
+			tt.run(t, db.DB.Debug())
+		})
+		t.Run(tt.name+"-sqlite", func(t *testing.T) {
+			db, err := newSQLiteTestDB()
 			if err != nil {
 				t.Fatalf("creating database: %s", err)
 			}
