@@ -558,7 +558,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adb, err := newTestDB()
+			adb, err := newSQLiteTestDB()
 			require.NoError(t, err)
 			pol, err := policy.LoadACLPolicyFromBytes([]byte(tt.acl))
 
@@ -692,7 +692,7 @@ func generateRandomNumber(t *testing.T, max int64) int64 {
 }
 
 func TestListEphemeralNodes(t *testing.T) {
-	db, err := newTestDB()
+	db, err := newSQLiteTestDB()
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
 	}
@@ -748,7 +748,7 @@ func TestListEphemeralNodes(t *testing.T) {
 }
 
 func TestRenameNode(t *testing.T) {
-	db, err := newTestDB()
+	db, err := newSQLiteTestDB()
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
 	}

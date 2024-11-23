@@ -505,11 +505,11 @@ func NewHeadscaleDatabase(
 					// - A provider_identifier is unique
 					// - A user name is unique if there is no provider_identifier is not set
 					for _, idx := range []string{
-						"DROP INDEX IF EXISTS `idx_provider_identifier`",
-						"DROP INDEX IF EXISTS `idx_name_provider_identifier`",
-						"CREATE UNIQUE INDEX IF NOT EXISTS `idx_provider_identifier` ON `users` (`provider_identifier`) WHERE provider_identifier IS NOT NULL;",
-						"CREATE UNIQUE INDEX IF NOT EXISTS `idx_name_provider_identifier` ON `users` (`name`,`provider_identifier`);",
-						"CREATE UNIQUE INDEX IF NOT EXISTS `idx_name_no_provider_identifier` ON `users` (`name`) WHERE provider_identifier IS NULL;",
+						"DROP INDEX IF EXISTS idx_provider_identifier",
+						"DROP INDEX IF EXISTS idx_name_provider_identifier",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_identifier ON users (provider_identifier) WHERE provider_identifier IS NOT NULL;",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_name_provider_identifier ON users (name,provider_identifier);",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_name_no_provider_identifier ON users (name) WHERE provider_identifier IS NULL;",
 					} {
 						err = tx.Exec(idx).Error
 						if err != nil {
