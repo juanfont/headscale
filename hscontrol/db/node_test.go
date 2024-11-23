@@ -256,10 +256,10 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(testPeers), check.Equals, 9)
 
-	adminRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers)
+	adminRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers, []types.User{*stor[0].user, *stor[1].user})
 	c.Assert(err, check.IsNil)
 
-	testRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers)
+	testRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers, []types.User{*stor[0].user, *stor[1].user})
 	c.Assert(err, check.IsNil)
 
 	peersOfAdminNode := policy.FilterNodesByACL(adminNode, adminPeers, adminRules)

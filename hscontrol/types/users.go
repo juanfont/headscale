@@ -3,6 +3,7 @@ package types
 import (
 	"cmp"
 	"database/sql"
+	"net/mail"
 	"strconv"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -56,14 +57,7 @@ type User struct {
 // should be used throughout headscale, in information returned to the
 // user and the Policy engine.
 func (u *User) Username() string {
-	username := cmp.Or(u.Email, u.Name, u.ProviderIdentifier.String, strconv.FormatUint(uint64(u.ID), 10))
-
-	// TODO(kradalby): Wire up all of this for the future
-	// if !strings.Contains(username, "@") {
-	// 	username = username + "@"
-	// }
-
-	return username
+	return cmp.Or(u.Email, u.Name, u.ProviderIdentifier.String, strconv.FormatUint(uint64(u.ID), 10))
 }
 
 // DisplayNameOrUsername returns the DisplayName if it exists, otherwise
@@ -146,12 +140,20 @@ func (c *OIDCClaims) Identifier() string {
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
+	err := util.CheckForFQDNRules(claims.Username)
+	if err == nil {
+		u.Name = claims.Username
+	}
+
+	if claims.EmailVerified {
+		_, err = mail.ParseAddress(claims.Email)
+		if err == nil {
+			u.Email = claims.Email
+		}
+	}
+
 	u.ProviderIdentifier = sql.NullString{String: claims.Identifier(), Valid: true}
 	u.DisplayName = claims.Name
-	if claims.EmailVerified {
-		u.Email = claims.Email
-	}
-	u.Name = claims.Username
 	u.ProfilePicURL = claims.ProfilePictureURL
 	u.Provider = util.RegisterMethodOIDC
 }

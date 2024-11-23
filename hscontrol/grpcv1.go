@@ -773,14 +773,18 @@ func (api headscaleV1APIServer) SetPolicy(
 	if err != nil {
 		return nil, fmt.Errorf("loading nodes from database to validate policy: %w", err)
 	}
+	users, err := api.h.db.ListUsers()
+	if err != nil {
+		return nil, fmt.Errorf("loading users from database to validate policy: %w", err)
+	}
 
-	_, err = pol.CompileFilterRules(nodes)
+	_, err = pol.CompileFilterRules(users, nodes)
 	if err != nil {
 		return nil, fmt.Errorf("verifying policy rules: %w", err)
 	}
 
 	if len(nodes) > 0 {
-		_, err = pol.CompileSSHPolicy(nodes[0], nodes)
+		_, err = pol.CompileSSHPolicy(nodes[0], users, nodes)
 		if err != nil {
 			return nil, fmt.Errorf("verifying SSH rules: %w", err)
 		}
