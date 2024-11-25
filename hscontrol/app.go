@@ -30,6 +30,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/policyv2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	zerolog "github.com/philip-bui/grpc-zerolog"
@@ -88,7 +89,8 @@ type Headscale struct {
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *derpServer.DERPServer
 
-	ACLPolicy *policy.ACLPolicy
+	ACLPolicy     *policy.ACLPolicy
+	PolicyManager *policyv2.PolicyManager
 
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
