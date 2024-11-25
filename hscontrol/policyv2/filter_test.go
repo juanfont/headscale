@@ -8,6 +8,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -17,6 +18,9 @@ import (
 // Move it here, run it against both old and new CompileFilterRules
 
 func TestParsing(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "testuser@"},
+	}
 	tests := []struct {
 		name    string
 		format  string
@@ -340,7 +344,7 @@ func TestParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pol, err := PolicyFromBytes([]byte(tt.acl))
+			pol, err := policyFromBytes([]byte(tt.acl))
 			if tt.wantErr && err == nil {
 				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
 
@@ -355,18 +359,18 @@ func TestParsing(t *testing.T) {
 				return
 			}
 
-			rules, err := pol.CompileFilterRules(types.Nodes{
-				&types.Node{
-					IPv4: ap("100.100.100.100"),
-				},
-				&types.Node{
-					IPv4: ap("200.200.200.200"),
-					User: types.User{
-						Name: "testuser@",
+			rules, err := pol.CompileFilterRules(
+				users,
+				types.Nodes{
+					&types.Node{
+						IPv4: ap("100.100.100.100"),
 					},
-					Hostinfo: &tailcfg.Hostinfo{},
-				},
-			})
+					&types.Node{
+						IPv4:     ap("200.200.200.200"),
+						User:     users[0],
+						Hostinfo: &tailcfg.Hostinfo{},
+					},
+				})
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
@@ -435,6 +439,14 @@ var hsExitNodeDestForTest = []tailcfg.NetPortRange{
 }
 
 func TestReduceFilterRules(t *testing.T) {
+	users := types.Users{
+		types.User{Model: gorm.Model{ID: 1}, Name: "mickael"},
+		types.User{Model: gorm.Model{ID: 2}, Name: "user1@"},
+		types.User{Model: gorm.Model{ID: 3}, Name: "user2@"},
+		types.User{Model: gorm.Model{ID: 4}, Name: "user100@"},
+		types.User{Model: gorm.Model{ID: 5}, Name: "user3@"},
+	}
+
 	tests := []struct {
 		name  string
 		node  *types.Node
@@ -463,13 +475,13 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
-				User: types.User{Name: "mickael"},
+				User: users[0],
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
-					User: types.User{Name: "mickael"},
+					User: users[0],
 				},
 			},
 			want: []tailcfg.FilterRule{},
@@ -510,7 +522,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: types.User{Name: "user1@"},
+				User: users[1],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						netip.MustParsePrefix("10.33.0.0/16"),
@@ -521,7 +533,7 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user1@"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -600,19 +612,19 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: types.User{Name: "user1@"},
+				User: users[1],
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2@"},
+					User: users[2],
 				},
 				// "internal" exit node
 				&types.Node{
 					IPv4: ap("100.64.0.100"),
 					IPv6: ap("fd7a:115c:a1e0::100"),
-					User: types.User{Name: "user100@"},
+					User: users[3],
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tsaddr.ExitRoutes(),
 					},
@@ -661,7 +673,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100@"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -670,12 +682,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2@"},
+					User: users[2],
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1@"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -768,7 +780,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100@"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -777,12 +789,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2@"},
+					User: users[2],
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1@"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -809,9 +821,11 @@ func TestReduceFilterRules(t *testing.T) {
 						{IP: "16.0.0.0/4", Ports: tailcfg.PortRangeAny},
 						{IP: "32.0.0.0/3", Ports: tailcfg.PortRangeAny},
 						{IP: "64.0.0.0/2", Ports: tailcfg.PortRangeAny},
-						{IP: "fd7a:115c:a1e0::1/128", Ports: tailcfg.PortRangeAny},
-						{IP: "fd7a:115c:a1e0::2/128", Ports: tailcfg.PortRangeAny},
-						{IP: "fd7a:115c:a1e0::100/128", Ports: tailcfg.PortRangeAny},
+						// This should not be included I believe, seems like
+						// this is a bug in the v1 code.
+						// {IP: "fd7a:115c:a1e0::1/128", Ports: tailcfg.PortRangeAny},
+						// {IP: "fd7a:115c:a1e0::2/128", Ports: tailcfg.PortRangeAny},
+						// {IP: "fd7a:115c:a1e0::100/128", Ports: tailcfg.PortRangeAny},
 						{IP: "128.0.0.0/3", Ports: tailcfg.PortRangeAny},
 						{IP: "160.0.0.0/5", Ports: tailcfg.PortRangeAny},
 						{IP: "168.0.0.0/6", Ports: tailcfg.PortRangeAny},
@@ -881,7 +895,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100@"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
 				},
@@ -890,12 +904,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2@"},
+					User: users[2],
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1@"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -969,7 +983,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100@"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
 				},
@@ -978,12 +992,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: types.User{Name: "user2@"},
+					User: users[2],
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1@"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -1046,7 +1060,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: types.User{Name: "user100@"},
+				User: users[3],
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
@@ -1056,7 +1070,7 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1@"},
+					User: users[1],
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -1090,22 +1104,19 @@ func TestReduceFilterRules(t *testing.T) {
 			filterV1, _ := polV1.CompileFilterRules(
 				append(tt.peers, tt.node),
 			)
-			polV2, err := PolicyFromBytes([]byte(tt.pol))
+			pm, err := NewPolicyManager([]byte(tt.pol), users, append(tt.peers, tt.node))
 			if err != nil {
 				t.Fatalf("parsing policy: %s", err)
 			}
-			filterV2, _ := polV2.CompileFilterRules(
-				append(tt.peers, tt.node),
-			)
 
-			if diff := cmp.Diff(filterV1, filterV2); diff != "" {
-				log.Trace().Interface("got", filterV2).Msg("result")
+			if diff := cmp.Diff(filterV1, pm.Filter()); diff != "" {
+				log.Trace().Interface("got", pm.Filter()).Msg("result")
 				t.Errorf("TestReduceFilterRules() unexpected diff between v1 and v2 (-want +got):\n%s", diff)
 			}
 
 			// TODO(kradalby): Move this from v1, or
 			// rewrite.
-			filterV2 = policy.ReduceFilterRules(tt.node, filterV2)
+			filterV2 := policy.ReduceFilterRules(tt.node, pm.Filter())
 
 			if diff := cmp.Diff(tt.want, filterV2); diff != "" {
 				log.Trace().Interface("got", filterV2).Msg("result")

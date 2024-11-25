@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -64,7 +65,7 @@ func (a Asterix) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a Asterix) Resolve(_ *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	ips.AddPrefix(tsaddr.AllIPv4())
@@ -99,15 +100,47 @@ func (u Username) CanBeTagOwner() bool {
 	return true
 }
 
-func (u Username) Resolve(_ *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+func (u Username) resolveUser(users types.Users) (*types.User, error) {
+	var potentialUsers types.Users
+	for _, user := range users {
+		if user.ProviderIdentifier == string(u) {
+			potentialUsers = append(potentialUsers, user)
+
+			break
+		}
+		if user.Email == string(u) {
+			potentialUsers = append(potentialUsers, user)
+		}
+		if user.Name == string(u) {
+			potentialUsers = append(potentialUsers, user)
+		}
+	}
+
+	if len(potentialUsers) > 1 {
+		return nil, fmt.Errorf("unable to resolve user identifier to distinct: %s matched multiple %s", u, potentialUsers)
+	} else if len(potentialUsers) == 0 {
+		return nil, fmt.Errorf("unable to resolve user identifier, no user found: %s not in %s", u, users)
+	}
+
+	user := potentialUsers[0]
+
+	return &user, nil
+}
+
+func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
+
+	user, err := u.resolveUser(users)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, node := range nodes {
 		if node.IsTagged() {
 			continue
 		}
 
-		if node.User.Username() == string(u) {
+		if node.User.ID == user.ID {
 			node.AppendToIPSet(&ips)
 		}
 	}
@@ -137,11 +170,11 @@ func (g Group) CanBeTagOwner() bool {
 	return true
 }
 
-func (g Group) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	for _, user := range p.Groups[g] {
-		uips, err := user.Resolve(nil, nodes)
+		uips, err := user.Resolve(nil, users, nodes)
 		if err != nil {
 			return nil, err
 		}
@@ -170,7 +203,7 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (t Tag) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+func (t Tag) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	for _, node := range nodes {
@@ -197,7 +230,7 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (h Host) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	pref, ok := p.Hosts[h]
@@ -208,9 +241,24 @@ func (h Host) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// If the IP is a single host, look for a node to ensure we add all the IPs of
+	// the node to the IPSet.
+	appendIfNodeHasIP(nodes, &ips, pref)
 	ips.AddPrefix(netip.Prefix(pref))
 
 	return ips.IPSet()
+}
+
+func appendIfNodeHasIP(nodes types.Nodes, ips *netipx.IPSetBuilder, pref Prefix) {
+	if netip.Prefix(pref).IsSingleIP() {
+		addr := netip.Prefix(pref).Addr()
+		for _, node := range nodes {
+			if node.HasIP(addr) {
+				node.AppendToIPSet(ips)
+			}
+		}
+	}
 }
 
 type Prefix netip.Prefix
@@ -261,9 +309,10 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (p Prefix) Resolve(_ *Policy, _ types.Nodes) (*netipx.IPSet, error) {
+func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
+	appendIfNodeHasIP(nodes, &ips, p)
 	ips.AddPrefix(netip.Prefix(p))
 
 	return ips.IPSet()
@@ -296,7 +345,7 @@ func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (ag AutoGroup) Resolve(_ *Policy, _ types.Nodes) (*netipx.IPSet, error) {
+func (ag AutoGroup) Resolve(_ *Policy, _ types.Users, _ types.Nodes) (*netipx.IPSet, error) {
 	switch ag {
 	case AutoGroupInternet:
 		return theInternet(), nil
@@ -308,7 +357,7 @@ func (ag AutoGroup) Resolve(_ *Policy, _ types.Nodes) (*netipx.IPSet, error) {
 type Alias interface {
 	Validate() error
 	UnmarshalJSON([]byte) error
-	Resolve(*Policy, types.Nodes) (*netipx.IPSet, error)
+	Resolve(*Policy, types.Users, types.Nodes) (*netipx.IPSet, error)
 }
 
 type AliasWithPorts struct {
@@ -428,11 +477,11 @@ func (a *Aliases) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a Aliases) Resolve(p *Policy, nodes types.Nodes) (*netipx.IPSet, error) {
+func (a Aliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	for _, alias := range a {
-		aips, err := alias.Resolve(p, nodes)
+		aips, err := alias.Resolve(p, users, nodes)
 		if err != nil {
 			return nil, err
 		}
@@ -530,10 +579,67 @@ type Policy struct {
 	TagOwners     TagOwners     `json:"tagOwners"`
 	ACLs          []ACL         `json:"acls"`
 	AutoApprovers AutoApprovers `json:"autoApprovers"`
-	// SSHs          []SSH         `json:"ssh"`
+	SSHs          []SSH         `json:"ssh"`
 }
 
-func PolicyFromBytes(b []byte) (*Policy, error) {
+// SSH controls who can ssh into which machines.
+type SSH struct {
+	Action       string        `json:"action"`
+	Sources      SSHSrcAliases `json:"src"`
+	Destinations SSHDstAliases `json:"dst"`
+	Users        []SSHUser     `json:"users"`
+	CheckPeriod  time.Duration `json:"checkPeriod,omitempty"`
+}
+
+// SSHSrcAliases is a list of aliases that can be used as sources in an SSH rule.
+// It can be a list of usernames, groups, tags or autogroups.
+type SSHSrcAliases []Alias
+
+func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
+	var aliases []AliasEnc
+	err := json.Unmarshal(b, &aliases)
+	if err != nil {
+		return err
+	}
+
+	*a = make([]Alias, len(aliases))
+	for i, alias := range aliases {
+		switch alias.Alias.(type) {
+		case *Username, *Group, *Tag, *AutoGroup:
+			(*a)[i] = alias.Alias
+		default:
+			return fmt.Errorf("type %T not supported", alias.Alias)
+		}
+	}
+	return nil
+}
+
+// SSHDstAliases is a list of aliases that can be used as destinations in an SSH rule.
+// It can be a list of usernames, tags or autogroups.
+type SSHDstAliases []Alias
+
+func (a *SSHDstAliases) UnmarshalJSON(b []byte) error {
+	var aliases []AliasEnc
+	err := json.Unmarshal(b, &aliases)
+	if err != nil {
+		return err
+	}
+
+	*a = make([]Alias, len(aliases))
+	for i, alias := range aliases {
+		switch alias.Alias.(type) {
+		case *Username, *Tag, *AutoGroup:
+			(*a)[i] = alias.Alias
+		default:
+			return fmt.Errorf("type %T not supported", alias.Alias)
+		}
+	}
+	return nil
+}
+
+type SSHUser string
+
+func policyFromBytes(b []byte) (*Policy, error) {
 	var policy Policy
 	ast, err := hujson.Parse(b)
 	if err != nil {
