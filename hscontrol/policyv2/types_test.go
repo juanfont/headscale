@@ -173,7 +173,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Destinations: []AliasWithPorts{
 							{
 								Alias: ptr.To(Username("otheruser@headscale.net")),
-								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 80}},
+								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
 							},
 						},
 					},
@@ -186,7 +186,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Destinations: []AliasWithPorts{
 							{
 								Alias: gp("group:other"),
-								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 80}},
+								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
 							},
 						},
 					},
@@ -199,7 +199,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Destinations: []AliasWithPorts{
 							{
 								Alias: pp("100.101.102.104/32"),
-								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 80}},
+								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
 							},
 						},
 					},
@@ -212,7 +212,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Destinations: []AliasWithPorts{
 							{
 								Alias: pp("172.16.0.0/16"),
-								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 80}},
+								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
 							},
 						},
 					},
@@ -225,7 +225,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Destinations: []AliasWithPorts{
 							{
 								Alias: hp("host-1"),
-								Ports: []tailcfg.PortRange{tailcfg.PortRange{First: 80, Last: 88}},
+								Ports: []tailcfg.PortRange{{First: 80, Last: 88}},
 							},
 						},
 					},
@@ -239,8 +239,8 @@ func TestUnmarshalPolicy(t *testing.T) {
 							{
 								Alias: tp("tag:user"),
 								Ports: []tailcfg.PortRange{
-									tailcfg.PortRange{First: 80, Last: 80},
-									tailcfg.PortRange{First: 443, Last: 443},
+									{First: 80, Last: 80},
+									{First: 443, Last: 443},
 								},
 							},
 						},
@@ -255,7 +255,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 							{
 								Alias: agp("autogroup:internet"),
 								Ports: []tailcfg.PortRange{
-									tailcfg.PortRange{First: 80, Last: 80},
+									{First: 80, Last: 80},
 								},
 							},
 						},
@@ -341,7 +341,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			policy, err := PolicyFromBytes([]byte(tt.input))
+			policy, err := policyFromBytes([]byte(tt.input))
 			// TODO(kradalby): This error checking is broken,
 			// but so is my brain, #longflight
 			if err == nil {
@@ -538,7 +538,9 @@ func TestResolvePolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ips, err := tt.toResolve.Resolve(tt.pol, tt.nodes)
+			ips, err := tt.toResolve.Resolve(tt.pol,
+				types.Users{},
+				tt.nodes)
 			if err != nil {
 				t.Fatalf("failed to resolve: %s", err)
 			}
