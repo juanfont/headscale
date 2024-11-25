@@ -135,6 +135,16 @@ func (node *Node) IPs() []netip.Addr {
 	return ret
 }
 
+// HasIP reports if a node has a given IP address.
+func (node *Node) HasIP(i netip.Addr) bool {
+	for _, ip := range node.IPs() {
+		if ip.Compare(i) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // IsTagged reports if a device is tagged
 // and therefore should not be treated as a
 // user owned device.
