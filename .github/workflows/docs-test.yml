@@ -13,11 +13,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: 3.x
       - name: Setup cache
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           key: ${{ github.ref }}
           path: .cache
