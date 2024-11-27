@@ -44,6 +44,10 @@ func NewDERPServer(
 ) (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
 	server := derp.NewServer(derpKey, util.TSLogfWrapper()) // nolint // zerolinter complains
+	if cfg.ServerVerifyClientURL != "" {
+		server.SetVerifyClientURL(cfg.ServerVerifyClientURL)
+		server.SetVerifyClientURLFailOpen(cfg.ServerVerifyFailOpen)
+	}
 
 	return &DERPServer{
 		serverURL:     serverURL,

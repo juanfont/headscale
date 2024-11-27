@@ -185,6 +185,8 @@ type DERPConfig struct {
 	ServerRegionCode                   string
 	ServerRegionName                   string
 	ServerPrivateKeyPath               string
+	ServerVerifyClientURL              string
+	ServerVerifyFailOpen               bool
 	STUNAddr                           string
 	URLs                               []url.URL
 	Paths                              []string
@@ -431,6 +433,8 @@ func derpConfig() DERPConfig {
 	serverRegionID := viper.GetInt("derp.server.region_id")
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
+	serverVerifyClientURL := viper.GetString("derp.server.verify_client_url")
+	serverVerifyFailOpen := viper.GetBool("derp.server.verify_client_url_fail_open")
 	stunAddr := viper.GetString("derp.server.stun_listen_addr")
 	privateKeyPath := util.AbsolutePathFromConfigPath(
 		viper.GetString("derp.server.private_key_path"),
@@ -475,6 +479,8 @@ func derpConfig() DERPConfig {
 		ServerRegionID:                     serverRegionID,
 		ServerRegionCode:                   serverRegionCode,
 		ServerRegionName:                   serverRegionName,
+		ServerVerifyClientURL:              serverVerifyClientURL,
+		ServerVerifyFailOpen:               serverVerifyFailOpen,
 		ServerPrivateKeyPath:               privateKeyPath,
 		STUNAddr:                           stunAddr,
 		URLs:                               urls,
