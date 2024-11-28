@@ -221,6 +221,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 		embeddedDERPServer, err := derpServer.NewDERPServer(
 			cfg.ServerURL,
+			app.VerifyHandler,
 			key.NodePrivate(*derpServerKey),
 			&cfg.DERP,
 		)

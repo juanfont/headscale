@@ -87,11 +87,8 @@ derp:
     region_code: "headscale"
     region_name: "Headscale Embedded DERP"
 
-    # If non-empty, an admission controller URL for permitting client connections
-    verify_client_url: "http://127.0.0.1:8080/verify"
-
-    # Whether derp fail open if verify_client_url is unreachable
-    verify_client_url_fail_open: false
+    # Verify clients to this DERP server using the Headscale node list
+    verify_clients: true
 
     # Listens over UDP at the configured address for STUN connections - to help with NAT traversal.
     # When the embedded DERP server is enabled stun_listen_addr MUST be defined.

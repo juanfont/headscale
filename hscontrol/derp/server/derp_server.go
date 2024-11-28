@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"net/url"
 	"strconv"
@@ -39,14 +40,20 @@ type DERPServer struct {
 
 func NewDERPServer(
 	serverURL string,
+	verifyHandler func(writer http.ResponseWriter, req *http.Request),
 	derpKey key.NodePrivate,
 	cfg *types.DERPConfig,
 ) (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
 	server := derp.NewServer(derpKey, util.TSLogfWrapper()) // nolint // zerolinter complains
-	if cfg.ServerVerifyClientURL != "" {
-		server.SetVerifyClientURL(cfg.ServerVerifyClientURL)
-		server.SetVerifyClientURLFailOpen(cfg.ServerVerifyFailOpen)
+
+	if cfg.ServerVerifyClients {
+		t := http.DefaultTransport.(*http.Transport)
+		t.RegisterProtocol("headscale", &HeadscaleTransport{
+			verifyHandler: verifyHandler,
+		})
+		server.SetVerifyClientURL("headscale://verify")
+		server.SetVerifyClientURLFailOpen(false)
 	}
 
 	return &DERPServer{
@@ -363,4 +370,15 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 			continue
 		}
 	}
+}
+
+type HeadscaleTransport struct {
+	verifyHandler func(writer http.ResponseWriter, req *http.Request)
+}
+
+func (t *HeadscaleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	t.verifyHandler(recorder, req)
+	resp := recorder.Result()
+	return resp, nil
 }
