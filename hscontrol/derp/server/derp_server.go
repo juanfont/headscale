@@ -40,7 +40,7 @@ type DERPServer struct {
 
 func NewDERPServer(
 	serverURL string,
-	verifyHandler func(writer http.ResponseWriter, req *http.Request),
+	verifyHandler http.HandlerFunc,
 	derpKey key.NodePrivate,
 	cfg *types.DERPConfig,
 ) (*DERPServer, error) {
@@ -373,7 +373,7 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 }
 
 type HeadscaleTransport struct {
-	verifyHandler func(writer http.ResponseWriter, req *http.Request)
+	verifyHandler http.HandlerFunc
 }
 
 func (t *HeadscaleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
