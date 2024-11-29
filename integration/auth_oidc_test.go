@@ -524,6 +524,114 @@ func TestOIDC024UserCreation(t *testing.T) {
 	}
 }
 
+func TestOIDCAuthenticationWithPKCE(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	baseScenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+
+	scenario := AuthOIDCScenario{
+		Scenario: baseScenario,
+	}
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Single user with one node for testing PKCE flow
+	spec := map[string]int{
+		"user1": 1,
+	}
+
+	mockusers := []mockoidc.MockUser{
+		oidcMockUser("user1", true),
+	}
+
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
+	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
+	defer scenario.mockOIDC.Close()
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
+		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"CREDENTIALS_DIRECTORY_TEST":         "/tmp",
+		"HEADSCALE_OIDC_ENABLE_PKCE":        "1", // Enable PKCE
+		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		hsic.WithTestName("oidcauthpkce"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	// Get all clients and verify they can connect
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Verify PKCE was used in authentication
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	var listUsers []v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listUsers,
+	)
+	assertNoErr(t, err)
+
+	want := []v1.User{
+		{
+			Id:         "1",
+			Name:       "user1",
+			Email:      "user1@headscale.net",
+			Provider:   "oidc",
+			ProviderId: oidcConfig.Issuer + "/user1",
+		},
+	}
+
+	sort.Slice(listUsers, func(i, j int) bool {
+		return listUsers[i].Id < listUsers[j].Id
+	})
+
+	if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Fatalf("unexpected users: %s", diff)
+	}
+
+	// Test that PKCE verifier was properly used in authentication
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	// Verify all clients are connected and authenticated
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+		if status.BackendState != "Running" {
+			t.Errorf("client %s is not running: %s", client.Hostname(), status.BackendState)
+		}
+	}
+}
+
 func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 	users map[string]int,
 	opts ...hsic.Option,
