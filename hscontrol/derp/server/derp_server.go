@@ -2,12 +2,13 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"net/netip"
 	"net/url"
 	"strconv"
@@ -30,6 +31,7 @@ import (
 // headers and it will begin writing & reading the DERP protocol immediately
 // following its HTTP request.
 const fastStartHeader = "Derp-Fast-Start"
+const DerpVerifyScheme = "derp-verify"
 
 type DERPServer struct {
 	serverURL     string
@@ -40,7 +42,6 @@ type DERPServer struct {
 
 func NewDERPServer(
 	serverURL string,
-	verifyHandler http.HandlerFunc,
 	derpKey key.NodePrivate,
 	cfg *types.DERPConfig,
 ) (*DERPServer, error) {
@@ -48,11 +49,7 @@ func NewDERPServer(
 	server := derp.NewServer(derpKey, util.TSLogfWrapper()) // nolint // zerolinter complains
 
 	if cfg.ServerVerifyClients {
-		t := http.DefaultTransport.(*http.Transport)
-		t.RegisterProtocol("headscale", &HeadscaleTransport{
-			verifyHandler: verifyHandler,
-		})
-		server.SetVerifyClientURL("headscale://verify")
+		server.SetVerifyClientURL(DerpVerifyScheme + "://verify")
 		server.SetVerifyClientURLFailOpen(false)
 	}
 
@@ -372,13 +369,31 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 	}
 }
 
-type HeadscaleTransport struct {
-	verifyHandler http.HandlerFunc
+func NewDERPVerifyTransport(handleVerifyRequest func(*http.Request, io.Writer) error) *DERPVerifyTransport {
+	return &DERPVerifyTransport{
+		handleVerifyRequest: handleVerifyRequest,
+	}
 }
 
-func (t *HeadscaleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	recorder := httptest.NewRecorder()
-	t.verifyHandler(recorder, req)
-	resp := recorder.Result()
+type DERPVerifyTransport struct {
+	handleVerifyRequest func(*http.Request, io.Writer) error
+}
+
+func (t *DERPVerifyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	buf := new(bytes.Buffer)
+	if err := t.handleVerifyRequest(req, buf); err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to handle verify request")
+
+		return nil, err
+	}
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(buf),
+	}
+
 	return resp, nil
 }

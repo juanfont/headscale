@@ -59,26 +59,35 @@ func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error)
 
 func (h *Headscale) handleVerifyRequest(
 	req *http.Request,
-) (bool, error) {
+	writer io.Writer,
+) error {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		return false, fmt.Errorf("cannot read request body: %w", err)
+		return fmt.Errorf("cannot read request body: %w", err)
 	}
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
 	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
-		return false, fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
+		return fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
 	}
 
 	nodes, err := h.db.ListNodes()
 	if err != nil {
-		return false, fmt.Errorf("cannot list nodes: %w", err)
+		return fmt.Errorf("cannot list nodes: %w", err)
 	}
 
-	return nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic), nil
+	resp := &tailcfg.DERPAdmitClientResponse{
+		Allow: nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic),
+	}
+	if err = json.NewEncoder(writer).Encode(resp); err != nil {
+		return fmt.Errorf("cannot encode response: %w", err)
+	}
+
+	return nil
 }
 
-// see https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159, Derp use verifyClientsURL to verify whether a client is allowed to connect to the DERP server.
+// VerifyHandler see https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159,
+// DERP use verifyClientsURL to verify whether a client is allowed to connect to the DERP server.
 func (h *Headscale) VerifyHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
@@ -92,28 +101,18 @@ func (h *Headscale) VerifyHandler(
 		Str("handler", "/verify").
 		Msg("verify client")
 
-	allow, err := h.handleVerifyRequest(req)
-	if err != nil {
+	if err := h.handleVerifyRequest(req, writer); err != nil {
 		log.Error().
 			Caller().
 			Err(err).
 			Msg("Failed to verify client")
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
-	}
 
-	resp := tailcfg.DERPAdmitClientResponse{
-		Allow: allow,
+		return
 	}
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(writer).Encode(resp)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
-	}
 }
 
 // KeyHandler provides the Headscale pub key
