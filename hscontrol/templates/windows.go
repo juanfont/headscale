@@ -13,7 +13,7 @@ func Windows(url string) *elem.Element {
 			elem.Text("headscale - Windows"),
 		),
 		elem.Body(attrs.Props{
-			attrs.Style : bodyStyle.ToInline(),
+			attrs.Style: bodyStyle.ToInline(),
 		},
 			headerOne("headscale: Windows configuration"),
 			elem.P(nil,
@@ -21,7 +21,8 @@ func Windows(url string) *elem.Element {
 				elem.A(attrs.Props{
 					attrs.Href:   "https://tailscale.com/download/windows",
 					attrs.Rel:    "noreferrer noopener",
-					attrs.Target: "_blank"},
+					attrs.Target: "_blank",
+				},
 					elem.Text("Tailscale for Windows ")),
 				elem.Text("and install it."),
 			),

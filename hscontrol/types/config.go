@@ -28,8 +28,9 @@ const (
 	maxDuration           time.Duration = 1<<63 - 1
 )
 
-var errOidcMutuallyExclusive = errors.New(
-	"oidc_client_secret and oidc_client_secret_path are mutually exclusive",
+var (
+	errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
+	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
 )
 
 type IPAllocationStrategy string
@@ -104,8 +105,9 @@ type Nameservers struct {
 }
 
 type SqliteConfig struct {
-	Path          string
-	WriteAheadLog bool
+	Path              string
+	WriteAheadLog     bool
+	WALAutoCheckPoint int
 }
 
 type PostgresConfig struct {
@@ -164,8 +166,10 @@ type OIDCConfig struct {
 	AllowedDomains             []string
 	AllowedUsers               []string
 	AllowedGroups              []string
+	StripEmaildomain           bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
+	MapLegacyUsers             bool
 }
 
 type DERPConfig struct {
@@ -276,11 +280,14 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.postgres.conn_max_idle_time_secs", 3600)
 
 	viper.SetDefault("database.sqlite.write_ahead_log", true)
+	viper.SetDefault("database.sqlite.wal_autocheckpoint", 1000) // SQLite default
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
+	viper.SetDefault("oidc.strip_email_domain", true)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
+	viper.SetDefault("oidc.map_legacy_users", true)
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -326,14 +333,18 @@ func validateServerConfig() error {
 	depr.warn("dns_config.use_username_in_magic_dns")
 	depr.warn("dns.use_username_in_magic_dns")
 
-	depr.fatal("oidc.strip_email_domain")
+	// TODO(kradalby): Reintroduce when strip_email_domain is removed
+	// after #2170 is cleaned up
+	// depr.fatal("oidc.strip_email_domain")
 	depr.fatal("dns.use_username_in_musername_in_magic_dns")
 	depr.fatal("dns_config.use_username_in_musername_in_magic_dns")
 
 	depr.Log()
 
 	for _, removed := range []string{
-		"oidc.strip_email_domain",
+		// TODO(kradalby): Reintroduce when strip_email_domain is removed
+		// after #2170 is cleaned up
+		// "oidc.strip_email_domain",
 		"dns_config.use_username_in_musername_in_magic_dns",
 	} {
 		if viper.IsSet(removed) {
@@ -550,7 +561,8 @@ func databaseConfig() DatabaseConfig {
 			Path: util.AbsolutePathFromConfigPath(
 				viper.GetString("database.sqlite.path"),
 			),
-			WriteAheadLog: viper.GetBool("database.sqlite.write_ahead_log"),
+			WriteAheadLog:     viper.GetBool("database.sqlite.write_ahead_log"),
+			WALAutoCheckPoint: viper.GetInt("database.sqlite.wal_autocheckpoint"),
 		},
 		Postgres: PostgresConfig{
 			Host:               viper.GetString("database.postgres.host"),
@@ -843,11 +855,10 @@ func LoadServerConfig() (*Config, error) {
 	// - DERP run on their own domains
 	// - Control plane runs on login.tailscale.com/controlplane.tailscale.com
 	// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
-	if dnsConfig.BaseDomain != "" &&
-		strings.Contains(serverURL, dnsConfig.BaseDomain) {
-		return nil, errors.New(
-			"server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.",
-		)
+	if dnsConfig.BaseDomain != "" {
+		if err := isSafeServerURL(serverURL, dnsConfig.BaseDomain); err != nil {
+			return nil, err
+		}
 	}
 
 	nodeManagement := nodeManagementConfig()
@@ -915,6 +926,10 @@ func LoadServerConfig() (*Config, error) {
 				}
 			}(),
 			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
+			// TODO(kradalby): Remove when strip_email_domain is removed
+			// after #2170 is cleaned up
+			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
+			MapLegacyUsers:   viper.GetBool("oidc.map_legacy_users"),
 		},
 
 		LogTail:             logTailConfig,
@@ -942,6 +957,37 @@ func LoadServerConfig() (*Config, error) {
 
 		NodeManagement: nodeManagement,
 	}, nil
+}
+
+// BaseDomain cannot be a suffix of the server URL.
+// This is because Tailscale takes over the domain in BaseDomain,
+// causing the headscale server and DERP to be unreachable.
+// For Tailscale upstream, the following is true:
+// - DERP run on their own domains.
+// - Control plane runs on login.tailscale.com/controlplane.tailscale.com.
+// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net).
+func isSafeServerURL(serverURL, baseDomain string) error {
+	server, err := url.Parse(serverURL)
+	if err != nil {
+		return err
+	}
+
+	serverDomainParts := strings.Split(server.Host, ".")
+	baseDomainParts := strings.Split(baseDomain, ".")
+
+	if len(serverDomainParts) <= len(baseDomainParts) {
+		return nil
+	}
+
+	s := len(serverDomainParts)
+	b := len(baseDomainParts)
+	for i := range len(baseDomainParts) {
+		if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {
+			return nil
+		}
+	}
+
+	return errServerURLSuffix
 }
 
 type deprecator struct {

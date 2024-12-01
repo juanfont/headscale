@@ -49,6 +49,7 @@ require (
 	gorm.io/gorm v1.25.11
 	tailscale.com v1.75.0-pre.0.20240926101731-7d1160ddaab7
 	zgo.at/zcache/v2 v2.1.0
+	zombiezen.com/go/postgrestest v1.0.1
 )
 
 require (
@@ -134,6 +135,7 @@ require (
 	github.com/kortschak/wol v0.0.0-20200729010619-da482cc4850a // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/lib/pq v1.10.9 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

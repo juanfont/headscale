@@ -394,6 +394,13 @@ func (h *Headscale) handleAuthKey(
 
 			return
 		}
+
+		err = nodesChangedHook(h.db, h.polMan, h.nodeNotifier)
+		if err != nil {
+			http.Error(writer, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
 	}
 
 	err = h.db.Write(func(tx *gorm.DB) error {

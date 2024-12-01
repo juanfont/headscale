@@ -1,19 +1,12 @@
 package hsic
 
 import (
-	"bytes"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -32,15 +25,19 @@ import (
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"gopkg.in/yaml.v3"
+	"tailscale.com/tailcfg"
 )
 
 const (
-	hsicHashLength       = 6
-	dockerContextPath    = "../."
-	aclPolicyPath        = "/etc/headscale/acl.hujson"
-	tlsCertPath          = "/etc/headscale/tls.cert"
-	tlsKeyPath           = "/etc/headscale/tls.key"
-	headscaleDefaultPort = 8080
+	hsicHashLength                = 6
+	dockerContextPath             = "../."
+  caCertRoot                    = "/usr/local/share/ca-certificates"
+	aclPolicyPath                 = "/etc/headscale/acl.hujson"
+	tlsCertPath                   = "/etc/headscale/tls.cert"
+	tlsKeyPath                    = "/etc/headscale/tls.key"
+	headscaleDefaultPort          = 8080
+	IntegrationTestDockerFileName = "Dockerfile.integration"
 )
 
 var errHeadscaleStatusCodeNotOk = errors.New("headscale status code not ok")
@@ -64,6 +61,7 @@ type HeadscaleInContainer struct {
 	// optional config
 	port             int
 	extraPorts       []string
+	caCerts          [][]byte
 	hostPortBindings map[string][]string
 	aclPolicy        *policy.ACLPolicy
 	env              map[string]string
@@ -81,6 +79,10 @@ type Option = func(c *HeadscaleInContainer)
 // HeadscaleInContainer instance.
 func WithACLPolicy(acl *policy.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
+		if acl == nil {
+			return
+		}
+
 		// TODO(kradalby): Move somewhere appropriate
 		hsic.env["HEADSCALE_POLICY_PATH"] = aclPolicyPath
 
@@ -88,18 +90,29 @@ func WithACLPolicy(acl *policy.ACLPolicy) Option {
 	}
 }
 
+// WithCACert adds it to the trusted surtificate of the container.
+func WithCACert(cert []byte) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.caCerts = append(hsic.caCerts, cert)
+	}
+}
+
 // WithTLS creates certificates and enables HTTPS.
 func WithTLS() Option {
 	return func(hsic *HeadscaleInContainer) {
-		cert, key, err := createCertificate(hsic.hostname)
+		cert, key, err := integrationutil.CreateCertificate(hsic.hostname)
 		if err != nil {
 			log.Fatalf("failed to create certificates for headscale test: %s", err)
 		}
 
-		// TODO(kradalby): Move somewhere appropriate
-		hsic.env["HEADSCALE_TLS_CERT_PATH"] = tlsCertPath
-		hsic.env["HEADSCALE_TLS_KEY_PATH"] = tlsKeyPath
+		hsic.tlsCert = cert
+		hsic.tlsKey = key
+	}
+}
 
+// WithCustomTLS uses the given certificates for the Headscale instance.
+func WithCustomTLS(cert, key []byte) Option {
+	return func(hsic *HeadscaleInContainer) {
 		hsic.tlsCert = cert
 		hsic.tlsKey = key
 	}
@@ -142,6 +155,13 @@ func WithTestName(testName string) Option {
 		hash, _ := util.GenerateRandomStringDNSSafe(hsicHashLength)
 
 		hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
+		hsic.hostname = hostname
+	}
+}
+
+// WithHostname sets the hostname of the Headscale instance.
+func WithHostname(hostname string) Option {
+	return func(hsic *HeadscaleInContainer) {
 		hsic.hostname = hostname
 	}
 }
@@ -196,6 +216,34 @@ func WithEmbeddedDERPServerOnly() Option {
 		hsic.env["HEADSCALE_DERP_SERVER_REGION_NAME"] = "Headscale Embedded DERP"
 		hsic.env["HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR"] = "0.0.0.0:3478"
 		hsic.env["HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH"] = "/tmp/derp.key"
+
+		// Envknob for enabling DERP debug logs
+		hsic.env["DERP_DEBUG_LOGS"] = "true"
+		hsic.env["DERP_PROBER_DEBUG_LOGS"] = "true"
+	}
+}
+
+// WithDERPConfig configures Headscale use a custom
+// DERP server only.
+func WithDERPConfig(derpMap tailcfg.DERPMap) Option {
+	return func(hsic *HeadscaleInContainer) {
+		contents, err := yaml.Marshal(derpMap)
+		if err != nil {
+			log.Fatalf("failed to marshal DERP map: %s", err)
+
+			return
+		}
+
+		hsic.env["HEADSCALE_DERP_PATHS"] = "/etc/headscale/derp.yml"
+		hsic.filesInContainer = append(hsic.filesInContainer,
+			fileInContainer{
+				path:     "/etc/headscale/derp.yml",
+				contents: contents,
+			})
+
+		// Disable global DERP server and embedded DERP server
+		hsic.env["HEADSCALE_DERP_URLS"] = ""
+		hsic.env["HEADSCALE_DERP_SERVER_ENABLED"] = "false"
 
 		// Envknob for enabling DERP debug logs
 		hsic.env["DERP_DEBUG_LOGS"] = "true"
@@ -267,7 +315,7 @@ func New(
 	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile.debug",
+		Dockerfile: IntegrationTestDockerFileName,
 		ContextDir: dockerContextPath,
 	}
 
@@ -307,6 +355,10 @@ func New(
 		"HEADSCALE_DEBUG_HIGH_CARDINALITY_METRICS=1",
 		"HEADSCALE_DEBUG_DUMP_CONFIG=1",
 	}
+	if hsic.hasTLS() {
+		hsic.env["HEADSCALE_TLS_CERT_PATH"] = tlsCertPath
+		hsic.env["HEADSCALE_TLS_KEY_PATH"] = tlsKeyPath
+	}
 	for key, value := range hsic.env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
@@ -320,7 +372,7 @@ func New(
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
-		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; headscale serve ; /bin/sleep 30"},
+		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; update-ca-certificates ; headscale serve ; /bin/sleep 30"},
 		Env:        env,
 	}
 
@@ -357,6 +409,14 @@ func New(
 	log.Printf("Created %s container\n", hsic.hostname)
 
 	hsic.container = container
+
+	// Write the CA certificates to the container
+	for i, cert := range hsic.caCerts {
+		err = hsic.WriteFile(fmt.Sprintf("%s/user-%d.crt", caCertRoot, i), cert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+		}
+	}
 
 	err = hsic.WriteFile("/etc/headscale/config.yaml", []byte(MinimumConfigYAML()))
 	if err != nil {
@@ -760,87 +820,4 @@ func (t *HeadscaleInContainer) SendInterrupt() error {
 	}
 
 	return nil
-}
-
-// nolint
-func createCertificate(hostname string) ([]byte, []byte, error) {
-	// From:
-	// https://shaneutt.com/blog/golang-ca-and-signed-cert-go/
-
-	ca := &x509.Certificate{
-		SerialNumber: big.NewInt(2019),
-		Subject: pkix.Name{
-			Organization: []string{"Headscale testing INC"},
-			Country:      []string{"NL"},
-			Locality:     []string{"Leiden"},
-		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(60 * time.Hour),
-		IsCA:      true,
-		ExtKeyUsage: []x509.ExtKeyUsage{
-			x509.ExtKeyUsageClientAuth,
-			x509.ExtKeyUsageServerAuth,
-		},
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-	}
-
-	caPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	cert := &x509.Certificate{
-		SerialNumber: big.NewInt(1658),
-		Subject: pkix.Name{
-			CommonName:   hostname,
-			Organization: []string{"Headscale testing INC"},
-			Country:      []string{"NL"},
-			Locality:     []string{"Leiden"},
-		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(60 * time.Minute),
-		SubjectKeyId: []byte{1, 2, 3, 4, 6},
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		DNSNames:     []string{hostname},
-	}
-
-	certPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	certBytes, err := x509.CreateCertificate(
-		rand.Reader,
-		cert,
-		ca,
-		&certPrivKey.PublicKey,
-		caPrivKey,
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	certPEM := new(bytes.Buffer)
-
-	err = pem.Encode(certPEM, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: certBytes,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	certPrivKeyPEM := new(bytes.Buffer)
-
-	err = pem.Encode(certPrivKeyPEM, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return certPEM.Bytes(), certPrivKeyPEM.Bytes(), nil
 }

@@ -479,6 +479,8 @@ func NewHeadscaleDatabase(
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
 			{
+				// Pick up new user fields used for OIDC and to
+				// populate the user with more interesting information.
 				ID: "202407191627",
 				Migrate: func(tx *gorm.DB) error {
 					err := tx.AutoMigrate(&types.User{})
@@ -494,11 +496,11 @@ func NewHeadscaleDatabase(
 				ID: "202410071005",
 				Migrate: func(db *gorm.DB) error {
 					err = db.AutoMigrate(&types.PreAuthKey{})
-					if err != nil {
+          if err != nil {
 						return err
 					}
 
-					err = db.AutoMigrate(&types.Node{})
+          err = db.AutoMigrate(&types.Node{})
 					if err != nil {
 						return err
 					}
@@ -529,6 +531,40 @@ func NewHeadscaleDatabase(
 					}
 
 					return errNoNodeApprovedColumnInDatabase
+        },
+        Rollback: func(db *gorm.DB) error { return nil },
+      },
+      {
+				// The unique constraint of Name has been dropped
+				// in favour of a unique together of name and
+				// provider identity.
+				ID: "202408181235",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.User{})
+					if err != nil {
+						return err
+					}
+
+					// Set up indexes and unique constraints outside of GORM, it does not support
+					// conditional unique constraints.
+					// This ensures the following:
+					// - A user name and provider_identifier is unique
+					// - A provider_identifier is unique
+					// - A user name is unique if there is no provider_identifier is not set
+					for _, idx := range []string{
+						"DROP INDEX IF EXISTS idx_provider_identifier",
+						"DROP INDEX IF EXISTS idx_name_provider_identifier",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_identifier ON users (provider_identifier) WHERE provider_identifier IS NOT NULL;",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_name_provider_identifier ON users (name,provider_identifier);",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_name_no_provider_identifier ON users (name) WHERE provider_identifier IS NULL;",
+					} {
+						err = tx.Exec(idx).Error
+						if err != nil {
+							return fmt.Errorf("creating username index: %w", err)
+						}
+					}
+
+					return nil
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
@@ -591,10 +627,10 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		}
 
 		if cfg.Sqlite.WriteAheadLog {
-			if err := db.Exec(`
+			if err := db.Exec(fmt.Sprintf(`
 				PRAGMA journal_mode=WAL;
-				PRAGMA wal_autocheckpoint=0;
-				`).Error; err != nil {
+				PRAGMA wal_autocheckpoint=%d;
+				`, cfg.Sqlite.WALAutoCheckPoint)).Error; err != nil {
 				return nil, fmt.Errorf("setting WAL mode: %w", err)
 			}
 		}

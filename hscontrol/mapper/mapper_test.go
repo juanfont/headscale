@@ -159,6 +159,9 @@ func Test_fullMapResponse(t *testing.T) {
 	lastSeen := time.Date(2009, time.November, 10, 23, 9, 0, 0, time.UTC)
 	expire := time.Date(2500, time.November, 11, 23, 0, 0, 0, time.UTC)
 
+	user1 := types.User{Model: gorm.Model{ID: 0}, Name: "mini"}
+	user2 := types.User{Model: gorm.Model{ID: 1}, Name: "peer2"}
+
 	mini := &types.Node{
 		ID: 0,
 		MachineKey: mustMK(
@@ -173,8 +176,8 @@ func Test_fullMapResponse(t *testing.T) {
 		IPv4:       iap("100.64.0.1"),
 		Hostname:   "mini",
 		GivenName:  "mini",
-		UserID:     0,
-		User:       types.User{Name: "mini"},
+		UserID:     user1.ID,
+		User:       user1,
 		ForcedTags: []string{},
 		AuthKey:    &types.PreAuthKey{},
 		LastSeen:   &lastSeen,
@@ -254,8 +257,8 @@ func Test_fullMapResponse(t *testing.T) {
 		IPv4:       iap("100.64.0.2"),
 		Hostname:   "peer1",
 		GivenName:  "peer1",
-		UserID:     0,
-		User:       types.User{Name: "mini"},
+		UserID:     user1.ID,
+		User:       user1,
 		ForcedTags: []string{},
 		LastSeen:   &lastSeen,
 		Approved:   true,
@@ -310,8 +313,8 @@ func Test_fullMapResponse(t *testing.T) {
 		IPv4:       iap("100.64.0.3"),
 		Hostname:   "peer2",
 		GivenName:  "peer2",
-		UserID:     1,
-		User:       types.User{Name: "peer2"},
+		UserID:     user2.ID,
+		User:       user2,
 		ForcedTags: []string{},
 		LastSeen:   &lastSeen,
 		Expiry:     &expire,
@@ -461,17 +464,19 @@ func Test_fullMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+
 			mappy := NewMapper(
 				nil,
 				tt.cfg,
 				tt.derpMap,
 				nil,
+				polMan,
 			)
 
 			got, err := mappy.fullMapResponse(
 				tt.node,
 				tt.peers,
-				tt.pol,
 				0,
 			)
 

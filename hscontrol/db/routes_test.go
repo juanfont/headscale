@@ -35,10 +35,10 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.getNode("test", "test_get_route_node")
+	_, err = db.getNode(types.UserID(user.ID), "test_get_route_node")
 	c.Assert(err, check.NotNil)
 
 	route, err := netip.ParsePrefix("10.0.0.0/24")
@@ -79,10 +79,10 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.getNode("test", "test_enable_route_node")
+	_, err = db.getNode(types.UserID(user.ID), "test_enable_route_node")
 	c.Assert(err, check.NotNil)
 
 	route, err := netip.ParsePrefix(
@@ -153,10 +153,10 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.getNode("test", "test_enable_route_node")
+	_, err = db.getNode(types.UserID(user.ID), "test_enable_route_node")
 	c.Assert(err, check.NotNil)
 
 	route, err := netip.ParsePrefix(
@@ -234,10 +234,10 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.getNode("test", "test_enable_route_node")
+	_, err = db.getNode(types.UserID(user.ID), "test_enable_route_node")
 	c.Assert(err, check.NotNil)
 
 	prefix, err := netip.ParsePrefix(

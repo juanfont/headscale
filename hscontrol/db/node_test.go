@@ -17,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -29,10 +30,10 @@ func (s *Suite) TestGetNode(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.getNode("test", "testnode")
+	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -50,7 +51,7 @@ func (s *Suite) TestGetNode(c *check.C) {
 	trx := db.DB.Save(node)
 	c.Assert(trx.Error, check.IsNil)
 
-	_, err = db.getNode("test", "testnode")
+	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
 }
 
@@ -58,7 +59,7 @@ func (s *Suite) TestGetNodeByID(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, true, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, true, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.GetNodeByID(0)
@@ -87,7 +88,7 @@ func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.GetNodeByID(0)
@@ -135,7 +136,7 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 	_, err = db.DeleteNode(&node, xsync.NewMapOf[types.NodeID, bool]())
 	c.Assert(err, check.IsNil)
 
-	_, err = db.getNode(user.Name, "testnode3")
+	_, err = db.getNode(types.UserID(user.ID), "testnode3")
 	c.Assert(err, check.NotNil)
 }
 
@@ -143,7 +144,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.GetNodeByID(0)
@@ -237,7 +238,8 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	for _, name := range []string{"test", "admin"} {
 		user, err := db.CreateUser(name)
 		c.Assert(err, check.IsNil)
-		pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+
+		pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 		c.Assert(err, check.IsNil)
 		stor = append(stor, base{user, pak})
 	}
@@ -304,10 +306,10 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(testPeers), check.Equals, 9)
 
-	adminRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers)
+	adminRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers, []types.User{*stor[0].user, *stor[1].user})
 	c.Assert(err, check.IsNil)
 
-	testRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers)
+	testRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers, []types.User{*stor[0].user, *stor[1].user})
 	c.Assert(err, check.IsNil)
 
 	peersOfAdminNode := policy.FilterNodesByACL(adminNode, adminPeers, adminRules)
@@ -370,10 +372,10 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.getNode("test", "testnode")
+	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -391,7 +393,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	}
 	db.DB.Save(node)
 
-	nodeFromDB, err := db.getNode("test", "testnode")
+	nodeFromDB, err := db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(nodeFromDB, check.NotNil)
 
@@ -401,7 +403,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	err = db.NodeSetExpiry(nodeFromDB.ID, now)
 	c.Assert(err, check.IsNil)
 
-	nodeFromDB, err = db.getNode("test", "testnode")
+	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
 
 	c.Assert(nodeFromDB.IsExpired(), check.Equals, true)
@@ -411,10 +413,10 @@ func (s *Suite) TestSetTags(c *check.C) {
 	user, err := db.CreateUser("test")
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
-	_, err = db.getNode("test", "testnode")
+	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.NotNil)
 
 	nodeKey := key.NewNode()
@@ -437,7 +439,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	sTags := []string{"tag:test", "tag:foo"}
 	err = db.SetTags(node.ID, sTags)
 	c.Assert(err, check.IsNil)
-	node, err = db.getNode("test", "testnode")
+	node, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(node.ForcedTags, check.DeepEquals, sTags)
 
@@ -445,7 +447,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
 	err = db.SetTags(node.ID, eTags)
 	c.Assert(err, check.IsNil)
-	node, err = db.getNode("test", "testnode")
+	node, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(
 		node.ForcedTags,
@@ -456,7 +458,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	// test removing tags
 	err = db.SetTags(node.ID, []string{})
 	c.Assert(err, check.IsNil)
-	node, err = db.getNode("test", "testnode")
+	node, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(node.ForcedTags, check.DeepEquals, []string{})
 }
@@ -646,18 +648,18 @@ func TestAutoApproveRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adb, err := newTestDB()
-			assert.NoError(t, err)
+			adb, err := newSQLiteTestDB()
+			require.NoError(t, err)
 			pol, err := policy.LoadACLPolicyFromBytes([]byte(tt.acl))
 
-			assert.NoError(t, err)
-			assert.NotNil(t, pol)
+			require.NoError(t, err)
+			require.NotNil(t, pol)
 
 			user, err := adb.CreateUser("test")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
-			pak, err := adb.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
-			assert.NoError(t, err)
+			pak, err := adb.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
+			require.NoError(t, err)
 
 			nodeKey := key.NewNode()
 			machineKey := key.NewMachine()
@@ -679,21 +681,30 @@ func TestAutoApproveRoutes(t *testing.T) {
 			}
 
 			trx := adb.DB.Save(&node)
-			assert.NoError(t, trx.Error)
+			require.NoError(t, trx.Error)
 
 			sendUpdate, err := adb.SaveNodeRoutes(&node)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.False(t, sendUpdate)
 
 			node0ByID, err := adb.GetNodeByID(0)
+			require.NoError(t, err)
+
+			users, err := adb.ListUsers()
+			assert.NoError(t, err)
+
+			nodes, err := adb.ListNodes()
+			assert.NoError(t, err)
+
+			pm, err := policy.NewPolicyManager([]byte(tt.acl), users, nodes)
 			assert.NoError(t, err)
 
 			// TODO(kradalby): Check state update
-			err = adb.EnableAutoApprovedRoutes(pol, node0ByID)
-			assert.NoError(t, err)
+			err = adb.EnableAutoApprovedRoutes(pm, node0ByID)
+			require.NoError(t, err)
 
 			enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Len(t, enabledRoutes, len(tt.want))
 
 			tsaddr.SortPrefixes(enabledRoutes)
@@ -780,19 +791,19 @@ func generateRandomNumber(t *testing.T, max int64) int64 {
 }
 
 func TestListEphemeralNodes(t *testing.T) {
-	db, err := newTestDB()
+	db, err := newSQLiteTestDB()
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
 	}
 
 	user, err := db.CreateUser("test")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	pak, err := db.CreatePreAuthKey(user.Name, false, false, false, nil, nil)
-	assert.NoError(t, err)
+	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, false, nil, nil)
+	require.NoError(t, err)
 
-	pakEph, err := db.CreatePreAuthKey(user.Name, false, false, true, nil, nil)
-	assert.NoError(t, err)
+	pakEph, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, true, nil, nil)
+	require.NoError(t, err)
 
 	node := types.Node{
 		ID:             0,
@@ -815,16 +826,16 @@ func TestListEphemeralNodes(t *testing.T) {
 	}
 
 	err = db.DB.Save(&node).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = db.DB.Save(&nodeEph).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	nodes, err := db.ListNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ephemeralNodes, err := db.ListEphemeralNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Len(t, nodes, 2)
 	assert.Len(t, ephemeralNodes, 1)
@@ -836,16 +847,16 @@ func TestListEphemeralNodes(t *testing.T) {
 }
 
 func TestRenameNode(t *testing.T) {
-	db, err := newTestDB()
+	db, err := newSQLiteTestDB()
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
 	}
 
 	user, err := db.CreateUser("test")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	user2, err := db.CreateUser("test2")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	node := types.Node{
 		ID:             0,
@@ -866,10 +877,10 @@ func TestRenameNode(t *testing.T) {
 	}
 
 	err = db.DB.Save(&node).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = db.DB.Save(&node2).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
 		_, err := RegisterNode(tx, node, nil, nil)
@@ -879,10 +890,10 @@ func TestRenameNode(t *testing.T) {
 		_, err = RegisterNode(tx, node2, nil, nil)
 		return err
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	nodes, err := db.ListNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Len(t, nodes, 2)
 
@@ -904,26 +915,26 @@ func TestRenameNode(t *testing.T) {
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[0].ID, "newname")
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	nodes, err = db.ListNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assert.Equal(t, nodes[0].Hostname, "test")
-	assert.Equal(t, nodes[0].GivenName, "newname")
+	assert.Equal(t, "test", nodes[0].Hostname)
+	assert.Equal(t, "newname", nodes[0].GivenName)
 
 	// Nodes can reuse name that is no longer used
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[1].ID, "test")
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	nodes, err = db.ListNodes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assert.Equal(t, nodes[0].Hostname, "test")
-	assert.Equal(t, nodes[0].GivenName, "newname")
-	assert.Equal(t, nodes[1].GivenName, "test")
+	assert.Equal(t, "test", nodes[0].Hostname)
+	assert.Equal(t, "newname", nodes[0].GivenName)
+	assert.Equal(t, "test", nodes[1].GivenName)
 
 	// Nodes cannot be renamed to used names
 	err = db.Write(func(tx *gorm.DB) error {

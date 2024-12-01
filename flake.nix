@@ -32,7 +32,7 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to thos files.
-          vendorHash = "sha256-CMkYTRjmhvTTrB7JbLj0cj9VEyzpG0iUWXkaOagwYTk=";
+          vendorHash = "sha256-4VNiHUblvtcl9UetwiL6ZeVYb0h2e9zhYVsirhAkvOg=";
 
           subPackages = ["cmd/headscale"];
 
@@ -102,6 +102,7 @@
           ko
           yq-go
           ripgrep
+          postgresql
 
           # 'dot' is needed for pprof graphs
           # go tool pprof -http=: <source>

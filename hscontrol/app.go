@@ -88,7 +88,8 @@ type Headscale struct {
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *derpServer.DERPServer
 
-	ACLPolicy *policy.ACLPolicy
+	polManOnce sync.Once
+	polMan     policy.PolicyManager
 
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
@@ -154,6 +155,10 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 	})
 
+	if err = app.loadPolicyManager(); err != nil {
+		return nil, fmt.Errorf("failed to load ACL policy: %w", err)
+	}
+
 	var authProvider AuthProvider
 	authProvider = NewAuthProviderWeb(cfg.ServerURL)
 	if cfg.OIDC.Issuer != "" {
@@ -166,6 +171,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			app.db,
 			app.nodeNotifier,
 			app.ipAlloc,
+			app.polMan,
 		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
@@ -458,6 +464,8 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router.HandleFunc("/swagger/v1/openapiv2.json", headscale.SwaggerAPIv1).
 		Methods(http.MethodGet)
 
+	router.HandleFunc("/verify", h.VerifyHandler).Methods(http.MethodPost)
+
 	if h.cfg.DERP.ServerEnabled {
 		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
@@ -472,6 +480,52 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router.PathPrefix("/").HandlerFunc(notFoundHandler)
 
 	return router
+}
+
+// TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
+// Maybe we should attempt a new in memory state and not go via the DB?
+func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+	users, err := db.ListUsers()
+	if err != nil {
+		return err
+	}
+
+	changed, err := polMan.SetUsers(users)
+	if err != nil {
+		return err
+	}
+
+	if changed {
+		ctx := types.NotifyCtx(context.Background(), "acl-users-change", "all")
+		notif.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
+
+	return nil
+}
+
+// TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
+// Maybe we should attempt a new in memory state and not go via the DB?
+func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+	nodes, err := db.ListNodes()
+	if err != nil {
+		return err
+	}
+
+	changed, err := polMan.SetNodes(nodes)
+	if err != nil {
+		return err
+	}
+
+	if changed {
+		ctx := types.NotifyCtx(context.Background(), "acl-nodes-change", "all")
+		notif.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
+
+	return nil
 }
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
@@ -489,19 +543,13 @@ func (h *Headscale) Serve() error {
 		}
 	}
 
-	var err error
-
-	if err = h.loadACLPolicy(); err != nil {
-		return fmt.Errorf("failed to load ACL policy: %w", err)
-	}
-
 	if dumpConfig {
 		spew.Dump(h.cfg)
 	}
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier)
+	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier, h.polMan)
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
@@ -771,12 +819,21 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received SIGHUP, reloading ACL and Config")
 
-				// TODO(kradalby): Reload config on SIGHUP
-				if err := h.loadACLPolicy(); err != nil {
-					log.Error().Err(err).Msg("failed to reload ACL policy")
+				if err := h.loadPolicyManager(); err != nil {
+					log.Error().Err(err).Msg("failed to reload Policy")
 				}
 
-				if h.ACLPolicy != nil {
+				pol, err := h.policyBytes()
+				if err != nil {
+					log.Error().Err(err).Msg("failed to get policy blob")
+				}
+
+				changed, err := h.polMan.SetPolicy(pol)
+				if err != nil {
+					log.Error().Err(err).Msg("failed to set new policy")
+				}
+
+				if changed {
 					log.Info().
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
@@ -995,27 +1052,46 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	return &machineKey, nil
 }
 
-func (h *Headscale) loadACLPolicy() error {
-	var (
-		pol *policy.ACLPolicy
-		err error
-	)
-
+// policyBytes returns the appropriate policy for the
+// current configuration as a []byte array.
+func (h *Headscale) policyBytes() ([]byte, error) {
 	switch h.cfg.Policy.Mode {
 	case types.PolicyModeFile:
 		path := h.cfg.Policy.Path
 
 		// It is fine to start headscale without a policy file.
 		if len(path) == 0 {
-			return nil
+			return nil, nil
 		}
 
 		absPath := util.AbsolutePathFromConfigPath(path)
-		pol, err = policy.LoadACLPolicyFromPath(absPath)
+		policyFile, err := os.Open(absPath)
 		if err != nil {
-			return fmt.Errorf("failed to load ACL policy from file: %w", err)
+			return nil, err
+		}
+		defer policyFile.Close()
+
+		return io.ReadAll(policyFile)
+
+	case types.PolicyModeDB:
+		p, err := h.db.GetPolicy()
+		if err != nil {
+			if errors.Is(err, types.ErrPolicyNotFound) {
+				return nil, nil
+			}
+
+			return nil, err
 		}
 
+		return []byte(p.Data), err
+	}
+
+	return nil, fmt.Errorf("unsupported policy mode: %s", h.cfg.Policy.Mode)
+}
+
+func (h *Headscale) loadPolicyManager() error {
+	var errOut error
+	h.polManOnce.Do(func() {
 		// Validate and reject configuration that would error when applied
 		// when creating a map response. This requires nodes, so there is still
 		// a scenario where they might be allowed if the server has no nodes
@@ -1026,42 +1102,35 @@ func (h *Headscale) loadACLPolicy() error {
 		// allowed to be written to the database.
 		nodes, err := h.db.ListNodes()
 		if err != nil {
-			return fmt.Errorf("loading nodes from database to validate policy: %w", err)
+			errOut = fmt.Errorf("loading nodes from database to validate policy: %w", err)
+			return
+		}
+		users, err := h.db.ListUsers()
+		if err != nil {
+			errOut = fmt.Errorf("loading users from database to validate policy: %w", err)
+			return
 		}
 
-		_, err = pol.CompileFilterRules(nodes)
+		pol, err := h.policyBytes()
 		if err != nil {
-			return fmt.Errorf("verifying policy rules: %w", err)
+			errOut = fmt.Errorf("loading policy bytes: %w", err)
+			return
+		}
+
+		h.polMan, err = policy.NewPolicyManager(pol, users, nodes)
+		if err != nil {
+			errOut = fmt.Errorf("creating policy manager: %w", err)
+			return
 		}
 
 		if len(nodes) > 0 {
-			_, err = pol.CompileSSHPolicy(nodes[0], nodes)
+			_, err = h.polMan.SSHPolicy(nodes[0])
 			if err != nil {
-				return fmt.Errorf("verifying SSH rules: %w", err)
+				errOut = fmt.Errorf("verifying SSH rules: %w", err)
+				return
 			}
 		}
+	})
 
-	case types.PolicyModeDB:
-		p, err := h.db.GetPolicy()
-		if err != nil {
-			if errors.Is(err, types.ErrPolicyNotFound) {
-				return nil
-			}
-
-			return fmt.Errorf("failed to get policy from database: %w", err)
-		}
-
-		pol, err = policy.LoadACLPolicyFromBytes([]byte(p.Data))
-		if err != nil {
-			return fmt.Errorf("failed to parse policy: %w", err)
-		}
-	default:
-		log.Fatal().
-			Str("mode", string(h.cfg.Policy.Mode)).
-			Msg("Unknown ACL policy mode")
-	}
-
-	h.ACLPolicy = pol
-
-	return nil
+	return errOut
 }

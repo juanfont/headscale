@@ -598,18 +598,18 @@ func failoverRoute(
 }
 
 func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
-	aclPolicy *policy.ACLPolicy,
+	polMan policy.PolicyManager,
 	node *types.Node,
 ) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
-		return EnableAutoApprovedRoutes(tx, aclPolicy, node)
+		return EnableAutoApprovedRoutes(tx, polMan, node)
 	})
 }
 
 // EnableAutoApprovedRoutes enables any routes advertised by a node that match the ACL autoApprovers policy.
 func EnableAutoApprovedRoutes(
 	tx *gorm.DB,
-	aclPolicy *policy.ACLPolicy,
+	polMan policy.PolicyManager,
 	node *types.Node,
 ) error {
 	if node.IPv4 == nil && node.IPv6 == nil {
@@ -630,16 +630,11 @@ func EnableAutoApprovedRoutes(
 			continue
 		}
 
-		routeApprovers, err := aclPolicy.AutoApprovers.GetRouteApprovers(
-			netip.Prefix(advertisedRoute.Prefix),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to resolve autoApprovers for route(%d) for node(%s %d): %w", advertisedRoute.ID, node.Hostname, node.ID, err)
-		}
+		routeApprovers := polMan.ApproversForRoute(netip.Prefix(advertisedRoute.Prefix))
 
 		log.Trace().
 			Str("node", node.Hostname).
-			Str("user", node.User.Name).
+			Uint("user.id", node.User.ID).
 			Strs("routeApprovers", routeApprovers).
 			Str("prefix", netip.Prefix(advertisedRoute.Prefix).String()).
 			Msg("looking up route for autoapproving")
@@ -649,7 +644,7 @@ func EnableAutoApprovedRoutes(
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
 				// TODO(kradalby): figure out how to get this to depend on less stuff
-				approvedIps, err := aclPolicy.ExpandAlias(types.Nodes{node}, approvedAlias)
+				approvedIps, err := polMan.ExpandAlias(approvedAlias)
 				if err != nil {
 					return fmt.Errorf("expanding alias %q for autoApprovers: %w", approvedAlias, err)
 				}

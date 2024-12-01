@@ -2,16 +2,82 @@
 
 ## Next
 
+### Security fix: OIDC changes in Headscale 0.24.0
+
+_Headscale v0.23.0 and earlier_ identified OIDC users by the "username" part of their email address (when `strip_email_domain: true`, the default) or whole email address (when `strip_email_domain: false`).
+
+Depending on how Headscale and your Identity Provider (IdP) were configured, only using the `email` claim could allow a malicious user with an IdP account to take over another Headscale user's account, even when `strip_email_domain: false`.
+
+This would also cause a user to lose access to their Headscale account if they changed their email address.
+
+_Headscale v0.24.0_ now identifies OIDC users by the `iss` and `sub` claims. [These are guaranteed by the OIDC specification to be stable and unique](https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability), even if a user changes email address. A well-designed IdP will typically set `sub` to an opaque identifier like a UUID or numeric ID, which has no relation to the user's name or email address.
+
+This issue _only_ affects Headscale installations which authenticate with OIDC.
+
+Headscale v0.24.0 and later will also automatically update profile fields with OIDC data on login. This means that users can change those details in your IdP, and have it populate to Headscale automatically the next time they log in. However, this may affect the way you reference users in policies.
+
+#### Migrating existing installations
+
+Headscale v0.23.0 and earlier never recorded the `iss` and `sub` fields, so all legacy (existing) OIDC accounts from _need to be migrated_ to be properly secured.
+
+Headscale v0.24.0 has an automatic migration feature, which is enabled by default (`map_legacy_users: true`). **This will be disabled by default in a future version of Headscale – any unmigrated users will get new accounts.**
+
+Headscale v0.24.0 will ignore any `email` claim if the IdP does not provide an `email_verified` claim set to `true`. [What "verified" actually means is contextually dependent](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims) – Headscale uses it as a signal that the contents of the `email` claim is reasonably trustworthy.
+
+Headscale v0.23.0 and earlier never checked the `email_verified` claim. This means even if an IdP explicitly indicated to Headscale that its `email` claim was untrustworthy, Headscale would have still accepted it.
+
+##### What does automatic migration do?
+
+When automatic migration is enabled (`map_legacy_users: true`), Headscale will first match an OIDC account to a Headscale account by `iss` and `sub`, and then fall back to matching OIDC users similarly to how Headscale v0.23.0 did:
+
+- If `strip_email_domain: true` (the default): the Headscale username matches the "username" part of their email address.
+- If `strip_email_domain: false`: the Headscale username matches the _whole_ email address.
+
+On migration, Headscale will change the account's username to their `preferred_username`. **This could break any ACLs or policies which are configured to match by username.**
+
+Like with Headscale v0.23.0 and earlier, this migration only works for users who haven't changed their email address since their last Headscale login.
+
+A _successful_ automated migration should otherwise be transparent to users.
+
+Once a Headscale account has been migrated, it will be _unavailable_ to be matched by the legacy process. An OIDC login with a matching username, but _non-matching_ `iss` and `sub` will instead get a _new_ Headscale account.
+
+Because of the way OIDC works, Headscale's automated migration process can _only_ work when a user tries to log in after the update. Mass updates would require Headscale implement a protocol like SCIM, which is **extremely** complicated and not available in all identity providers.
+
+Administrators could also attempt to migrate users manually by editing the database, using their own mapping rules with known-good data sources.
+
+Legacy account migration should have no effect on new installations where all users have a recorded `sub` and `iss`.
+
+##### What happens when automatic migration is disabled?
+
+When automatic migration is disabled (`map_legacy_users: false`), Headscale will only try to match an OIDC account to a Headscale account by `iss` and `sub`.
+
+If there is no match, it will get a _new_ Headscale account – even if there was a legacy account which _could_ have matched and migrated.
+
+We recommend new Headscale users explicitly disable automatic migration – but it should otherwise have no effect if every account has a recorded `iss` and `sub`.
+
+When automatic migration is disabled, the `strip_email_domain` setting will have no effect.
+
+Special thanks to @micolous for reviewing, proposing and working with us on these changes.
+
+#### Other OIDC changes
+
+Headscale now uses [the standard OIDC claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims) to populate and update user information every time they log in:
+
+| Headscale profile field | OIDC claim           | Notes / examples                                                                                          |
+| ----------------------- | -------------------- | --------------------------------------------------------------------------------------------------------- |
+| email address           | `email`              | Only used when `"email_verified": true`                                                                   |
+| display name            | `name`               | eg: `Sam Smith`                                                                                           |
+| username                | `preferred_username` | Varies depending on IdP and configuration, eg: `ssmith`, `ssmith@idp.example.com`, `\\example.com\ssmith` |
+| profile picture         | `picture`            | URL to a profile picture or avatar                                                                        |
+
+These should show up nicely in the Tailscale client.
+
+This will also affect the way you [reference users in policies](https://github.com/juanfont/headscale/pull/2205).
+
 ### BREAKING
 
 - Remove `dns.use_username_in_magic_dns` configuration option [#2020](https://github.com/juanfont/headscale/pull/2020)
   - Having usernames in magic DNS is no longer possible.
-- Redo OpenID Connect configuration [#2020](https://github.com/juanfont/headscale/pull/2020)
-  - `strip_email_domain` has been removed, domain is _always_ part of the username for OIDC.
-  - Users are now identified by `sub` claim in the ID token instead of username, allowing the username, name and email to be updated.
-  - User has been extended to store username, display name, profile picture url and email.
-    - These fields are forwarded to the client, and shows up nicely in the user switcher.
-    - These fields can be made available via the API/CLI for non-OIDC users in the future.
 - Remove versions older than 1.56 [#2149](https://github.com/juanfont/headscale/pull/2149)
   - Clean up old code required by old versions
 
@@ -23,6 +89,7 @@
 - Added conversion of 'Hostname' to 'givenName' in a node with FQDN rules applied [#2198](https://github.com/juanfont/headscale/pull/2198)
 - Fixed updating of hostname and givenName when it is updated in HostInfo [#2199](https://github.com/juanfont/headscale/pull/2199)
 - Fixed missing `stable-debug` container tag [#2232](https://github.com/juanfont/headscale/pr/2232)
+- Loosened up `server_url` and `base_domain` check. It was overly strict in some cases.
 - Added manual approval of nodes in the network [#2245](https://github.com/juanfont/headscale/pr/2245)
 
 ## 0.23.0 (2024-09-18)

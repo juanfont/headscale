@@ -22,6 +22,7 @@ jobs:
           - TestAuthNodeApproval
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
+          - TestOIDC024UserCreation
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
           - TestUserCommand
@@ -32,8 +33,7 @@ jobs:
           - TestPreAuthKeyCorrectUserLoggedInCommand
           - TestApiKeyCommand
           - TestNodeTagCommand
-          - TestNodeAdvertiseTagNoACLCommand
-          - TestNodeAdvertiseTagWithACLCommand
+          - TestNodeAdvertiseTagCommand
           - TestNodeCommand
           - TestNodeApproveCommand
           - TestNodeExpireCommand
@@ -41,6 +41,7 @@ jobs:
           - TestNodeMoveCommand
           - TestPolicyCommand
           - TestPolicyBrokenConfigCommand
+          - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
           - TestValidateResolvConf
           - TestDERPServerScenario

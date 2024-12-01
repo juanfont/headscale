@@ -17,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/templates"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -52,6 +53,7 @@ type AuthProviderOIDC struct {
 	registrationCache *zcache.Cache[string, key.MachinePublic]
 	notifier          *notifier.Notifier
 	ipAlloc           *db.IPAllocator
+	polMan            policy.PolicyManager
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -64,6 +66,7 @@ func NewAuthProviderOIDC(
 	db *db.HSDatabase,
 	notif *notifier.Notifier,
 	ipAlloc *db.IPAllocator,
+	polMan policy.PolicyManager,
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
@@ -95,6 +98,7 @@ func NewAuthProviderOIDC(
 		registrationCache: registrationCache,
 		notifier:          notif,
 		ipAlloc:           ipAlloc,
+		polMan:            polMan,
 
 		oidcProvider: oidcProvider,
 		oauth2Config: oauth2Config,
@@ -412,29 +416,51 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 ) (*types.User, error) {
 	var user *types.User
 	var err error
-	user, err = a.db.GetUserByOIDCIdentifier(claims.Sub)
+	user, err = a.db.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
 		return nil, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// This check is for legacy, if the user cannot be found by the OIDC identifier
 	// look it up by username. This should only be needed once.
-	if user == nil {
-		user, err = a.db.GetUserByName(claims.Username)
-		if err != nil && !errors.Is(err, db.ErrUserNotFound) {
-			return nil, fmt.Errorf("creating or updating user: %w", err)
-		}
+	// This branch will presist for a number of versions after the OIDC migration and
+	// then be removed following a deprecation.
+	// TODO(kradalby): Remove when strip_email_domain and migration is removed
+	// after #2170 is cleaned up.
+	if a.cfg.MapLegacyUsers && user == nil {
+		log.Trace().Str("username", claims.Username).Str("sub", claims.Sub).Msg("user not found by OIDC identifier, looking up by username")
+		if oldUsername, err := getUserName(claims, a.cfg.StripEmaildomain); err == nil {
+			log.Trace().Str("old_username", oldUsername).Str("sub", claims.Sub).Msg("found username")
+			user, err = a.db.GetUserByName(oldUsername)
+			if err != nil && !errors.Is(err, db.ErrUserNotFound) {
+				return nil, fmt.Errorf("getting user: %w", err)
+			}
 
-		// if the user is still not found, create a new empty user.
-		if user == nil {
-			user = &types.User{}
+			// If the user exists, but it already has a provider identifier (OIDC sub), create a new user.
+			// This is to prevent users that have already been migrated to the new OIDC format
+			// to be updated with the new OIDC identifier inexplicitly which might be the cause of an
+			// account takeover.
+			if user != nil && user.ProviderIdentifier.Valid {
+				log.Info().Str("username", claims.Username).Str("sub", claims.Sub).Msg("user found by username, but has provider identifier, creating new user.")
+				user = &types.User{}
+			}
 		}
+	}
+
+	// if the user is still not found, create a new empty user.
+	if user == nil {
+		user = &types.User{}
 	}
 
 	user.FromClaim(claims)
 	err = a.db.DB.Save(user).Error
 	if err != nil {
 		return nil, fmt.Errorf("creating or updating user: %w", err)
+	}
+
+	err = usersChangedHook(a.db, a.polMan, a.notifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using user: %w", err)
 	}
 
 	return user, nil
@@ -459,7 +485,33 @@ func (a *AuthProviderOIDC) registerNode(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("could not register node: %w", err)
+  }
+
+	err = nodesChangedHook(a.db, a.polMan, a.notifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using node: %w", err)
 	}
 
 	return node, nil
+}
+
+// TODO(kradalby): Reintroduce when strip_email_domain is removed
+// after #2170 is cleaned up
+// DEPRECATED: DO NOT USE
+func getUserName(
+	claims *types.OIDCClaims,
+	stripEmaildomain bool,
+) (string, error) {
+	if !claims.EmailVerified {
+		return "", fmt.Errorf("email not verified")
+	}
+	userName, err := util.NormalizeToFQDNRules(
+		claims.Email,
+		stripEmaildomain,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return userName, nil
 }
