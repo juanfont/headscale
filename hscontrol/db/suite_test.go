@@ -117,6 +117,7 @@ func newPostgresTestDB(t *testing.T) *HSDatabase {
 			},
 		},
 		"",
+		types.NodeManagement{},
 		emptyCache(),
 	)
 	if err != nil {
