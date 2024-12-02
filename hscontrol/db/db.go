@@ -493,48 +493,6 @@ func NewHeadscaleDatabase(
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
 			{
-				ID: "202410071005",
-				Migrate: func(db *gorm.DB) error {
-					err = db.AutoMigrate(&types.PreAuthKey{})
-					if err != nil {
-						return err
-					}
-
-					err = db.AutoMigrate(&types.Node{})
-					if err != nil {
-						return err
-					}
-
-					if db.Migrator().HasColumn(&types.Node{}, "approved") {
-						nodes := types.Nodes{}
-						if err := db.Find(&nodes).Error; err != nil {
-							log.Error().Err(err).Msg("Error accessing db")
-						}
-
-						for item, node := range nodes {
-							if !node.IsApproved() {
-								err = db.Model(nodes[item]).Updates(types.Node{
-									Approved: true,
-								}).Error
-								if err != nil {
-									log.Error().
-										Caller().
-										Str("hostname", node.Hostname).
-										Bool("approved", node.IsApproved()).
-										Err(err).
-										Msg("Failed to add approval option to existing nodes during database migration")
-								}
-							}
-						}
-
-						return nil
-					}
-
-					return errNoNodeApprovedColumnInDatabase
-				},
-				Rollback: func(db *gorm.DB) error { return nil },
-			},
-			{
 				// The unique constraint of Name has been dropped
 				// in favour of a unique together of name and
 				// provider identity.
