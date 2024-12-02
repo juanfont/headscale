@@ -45,11 +45,16 @@ oidc:
   allowed_users:
     - alice@example.com
 
-  # Optional: Enable PKCE (Proof Key for Code Exchange) support for enhanced security and prevent CSRF attacks
+  # Optional: PKCE (Proof Key for Code Exchange) configuration
   # PKCE adds an additional layer of security to the OAuth 2.0 authorization code flow
   # by preventing authorization code interception attacks
-  # See https://datatracker.ietf.org/doc/html/rfc7636
-  enable_pkce: false
+  pkce:
+    # Enable or disable PKCE support (default: false)
+    enabled: false
+    # PKCE method to use:
+    # - plain: Use plain code verifier
+    # - S256: Use SHA256 hashed code verifier (default, recommended)
+    method: S256
 
   # If `strip_email_domain` is set to `true`, the domain part of the username email address will be removed.
   # This will transform `first-name.last-name@example.com` to the user `first-name.last-name`

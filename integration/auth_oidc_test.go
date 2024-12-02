@@ -553,8 +553,8 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
 		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
-		"CREDENTIALS_DIRECTORY_TEST":         "/tmp",
-		"HEADSCALE_OIDC_ENABLE_PKCE":        "1", // Enable PKCE
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_PKCE_ENABLED":       "1", // Enable PKCE
 		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
 		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
 	}
@@ -614,7 +614,6 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 		t.Fatalf("unexpected users: %s", diff)
 	}
 
-	// Test that PKCE verifier was properly used in authentication
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
 	})

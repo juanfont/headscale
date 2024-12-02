@@ -169,30 +169,30 @@ func (a *AuthProviderOIDC) RegisterHandler(
 		MachineKey: machineKey,
 	}
 
-	// Pre-allocate extras slice with known capacity
-	extrasCapacity := len(a.cfg.ExtraParams)
-	if a.cfg.EnablePKCE {
-		extrasCapacity += 2 // For AccessTypeOffline and S256ChallengeOption
-	}
-	extras := make([]oauth2.AuthCodeOption, 0, extrasCapacity)
-
+	extras := make([]oauth2.AuthCodeOption, 0, len(a.cfg.ExtraParams)+3)
 	// Add PKCE verification if enabled
-	if a.cfg.EnablePKCE {
+	if a.cfg.PKCE.Enabled {
 		verifier := oauth2.GenerateVerifier()
 		registrationInfo.Verifier = &verifier
-		extras = append(extras,
-			oauth2.AccessTypeOffline,
-			oauth2.S256ChallengeOption(verifier),
-		)
-	}
 
-	// Cache the registration info
-	a.registrationCache.Set(stateStr, registrationInfo)
+		extras = append(extras, oauth2.AccessTypeOffline)
+
+		switch a.cfg.PKCE.Method {
+		case types.PKCEMethodS256:
+			extras = append(extras, oauth2.S256ChallengeOption(verifier))
+		case types.PKCEMethodPlain:
+			// oauth2 does not have a plain challenge option, so we add it manually
+			extras = append(extras, oauth2.SetAuthURLParam("code_challenge_method", "plain"), oauth2.SetAuthURLParam("code_challenge", verifier))
+		}
+	}
 
 	// Add any extra parameters from configuration
 	for k, v := range a.cfg.ExtraParams {
 		extras = append(extras, oauth2.SetAuthURLParam(k, v))
 	}
+
+	// Cache the registration info
+	a.registrationCache.Set(stateStr, registrationInfo)
 
 	authURL := a.oauth2Config.AuthCodeURL(stateStr, extras...)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
@@ -227,7 +227,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	idToken, err := a.extractIDToken(req.Context(), code)
+	idToken, err := a.extractIDToken(req.Context(), code, state)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
@@ -342,11 +342,12 @@ func extractCodeAndStateParamFromRequest(
 func (a *AuthProviderOIDC) extractIDToken(
 	ctx context.Context,
 	code string,
+	state string,
 ) (*oidc.IDToken, error) {
 	var exchangeOpts []oauth2.AuthCodeOption
 
-	if a.cfg.EnablePKCE {
-		regInfo, ok := a.registrationCache.Get(code)
+	if a.cfg.PKCE.Enabled {
+		regInfo, ok := a.registrationCache.Get(state)
 		if !ok {
 			return nil, errNoOIDCRegistrationInfo
 		}
@@ -485,8 +486,8 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	// look it up by username. This should only be needed once.
 	// This branch will presist for a number of versions after the OIDC migration and
 	// then be removed following a deprecation.
-	// TODO(kradalby): Remove when strip_email_domain is removed
-	// after #2170 is cleaned up
+	// TODO(kradalby): Remove when strip_email_domain and migration is removed
+	// after #2170 is cleaned up.
 	if a.cfg.MapLegacyUsers && user == nil {
 		log.Trace().Str("username", claims.Username).Str("sub", claims.Sub).Msg("user not found by OIDC identifier, looking up by username")
 		if oldUsername, err := getUserName(claims, a.cfg.StripEmaildomain); err == nil {
