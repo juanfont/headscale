@@ -2,9 +2,9 @@
 
 - Headscale loads its configuration from a YAML file
 - It searches for `config.yaml` in the following paths:
-  - `/etc/headscale`
-  - `$HOME/.headscale`
-  - the current working directory
+    - `/etc/headscale`
+    - `$HOME/.headscale`
+    - the current working directory
 - Use the command line flag `-c`, `--config` to load the configuration from a different path
 - Validate the configuration file with: `headscale configtest`
 
