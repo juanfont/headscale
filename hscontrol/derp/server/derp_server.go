@@ -30,8 +30,10 @@ import (
 // server that the DERP HTTP client does not want the HTTP 101 response
 // headers and it will begin writing & reading the DERP protocol immediately
 // following its HTTP request.
-const fastStartHeader = "Derp-Fast-Start"
-const DerpVerifyScheme = "derp-verify"
+const (
+	fastStartHeader  = "Derp-Fast-Start"
+	DerpVerifyScheme = "headscale-derp-verify"
+)
 
 type DERPServer struct {
 	serverURL     string
