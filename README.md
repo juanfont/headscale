@@ -46,18 +46,18 @@ buttons available in the repo.
 
 ## Features
 
-Please see ["Features" in the documentation](https://headscale.net/about/features/).
+Please see ["Features" in the documentation](https://headscale.net/stable/about/features/).
 
 ## Client OS support
 
-Please see ["Client and operating system support" in the documentation](https://headscale.net/about/clients/).
+Please see ["Client and operating system support" in the documentation](https://headscale.net/stable/about/clients/).
 
 ## Running headscale
 
 **Please note that we do not support nor encourage the use of reverse proxies
 and container to run Headscale.**
 
-Please have a look at the [`documentation`](https://headscale.net/).
+Please have a look at the [`documentation`](https://headscale.net/stable/).
 
 ## Talks
 
