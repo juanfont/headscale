@@ -24,7 +24,10 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/ipn/store/mem"
 	"tailscale.com/net/netcheck"
+	"tailscale.com/paths"
+	"tailscale.com/types/key"
 	"tailscale.com/types/netmap"
 )
 
@@ -1152,4 +1155,30 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 	}
 
 	return out.Bytes(), nil
+}
+
+func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
+	state, err := t.ReadFile(paths.DefaultTailscaledStateFile())
+	if err != nil {
+		return nil, fmt.Errorf("failed to read state file: %w", err)
+	}
+	store := &mem.Store{}
+	if err = store.LoadFromJSON(state); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal state file: %w", err)
+	}
+
+	currentProfileKey, err := store.ReadState(ipn.CurrentProfileStateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read current profile state key: %w", err)
+	}
+	currentProfile, err := store.ReadState(ipn.StateKey(currentProfileKey))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read current profile state: %w", err)
+	}
+
+	p := &ipn.Prefs{}
+	if err = json.Unmarshal(currentProfile, &p); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal current profile state: %w", err)
+	}
+	return &p.Persist.PrivateNodeKey, nil
 }
