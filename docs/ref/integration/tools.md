@@ -7,6 +7,7 @@
 
 This page collects third-party tools and scripts related to headscale.
 
-| Name              | Repository Link                                                 | Description                                       |
-| ----------------- | --------------------------------------------------------------- | ------------------------------------------------- |
-| tailscale-manager | [Github](https://github.com/singlestore-labs/tailscale-manager) | Dynamically manage Tailscale route advertisements |
+| Name                  | Repository Link                                                 | Description                                       |
+| --------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
+| tailscale-manager     | [Github](https://github.com/singlestore-labs/tailscale-manager) | Dynamically manage Tailscale route advertisements |
+| headscalebacktosqlite | [Github](https://github.com/bigbozza/headscalebacktosqlite)     | Migrate headscale from PostgreSQL back to SQLite  |

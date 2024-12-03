@@ -44,6 +44,18 @@ For convenience, we also [build Docker images with headscale](../setup/install/c
 we don't officially support deploying headscale using Docker**. On our [Discord server](https://discord.gg/c84AZQhmpx)
 we have a "docker-issues" channel where you can ask for Docker-specific help to the community.
 
+## Which database should I use?
+
+We recommend the use of SQLite as database for headscale:
+
+- SQLite is simple to setup and easy to use
+- It scales well for all of headscale's usecases
+- Development and testing happens primarily on SQLite
+- PostgreSQL is still supported, but is considered to be in "maintenance mode"
+
+The headscale project itself does not provide a tool to migrate from PostgreSQL to SQLite. Please have a look at [the
+related tools documentation](../ref/integration/tools.md) for migration tooling provided by the community.
+
 ## Why is my reverse proxy not working with headscale?
 
 We don't know. We don't use reverse proxies with headscale ourselves, so we don't have any experience with them. We have
