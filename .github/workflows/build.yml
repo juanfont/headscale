@@ -88,4 +88,4 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Run go cross compile
-        run: env "${{ matrix.env }}" nix develop --command -- go build ./cmd/headscale -o "headscale_$GOOS_$GOARCH"
+        run: env ${{ matrix.env }} nix develop --command -- go build -o "headscale_$GOOS_$GOARCH" ./cmd/headscale
