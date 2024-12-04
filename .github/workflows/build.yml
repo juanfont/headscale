@@ -73,15 +73,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: ["arm", "arm64", "amd64"]
-        os: ["windows", "darwin", "linux"]
+        env:
+          - "GOOS=amd64 GOARCH=linux"
+          - "GOOS=arm64 GOARCH=linux"
+          - "GOOS=arm GOARCH=linux GOARM=5"
+          - "GOOS=arm GOARCH=linux GOARM=6"
+          - "GOOS=arm GOARCH=linux GOARM=7"
+          - "GOOS=amd64 GOARCH=darwin"
+          - "GOOS=arm64 GOARCH=darwin"
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Run go cross compile
-        env:
-          GOOS: "${{ matrix.os }}"
-          GOARCH: "${{ matrix.arch }}"
-        run: nix develop --command -- go build ./cmd/headscale -o "headscale_$GOOS_$GOARCH"
+        run: env "${{ matrix.env }}" nix develop --command -- go build ./cmd/headscale -o "headscale_$GOOS_$GOARCH"
