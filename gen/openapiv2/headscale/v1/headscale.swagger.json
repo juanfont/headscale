@@ -776,11 +776,33 @@
             }
           }
         },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
         "tags": [
           "HeadscaleService"
         ]
       },
       "post": {
+        "summary": "--- User start ---",
         "operationId": "HeadscaleService_CreateUser",
         "responses": {
           "200": {
@@ -811,36 +833,7 @@
         ]
       }
     },
-    "/api/v1/user/{name}": {
-      "get": {
-        "summary": "--- User start ---",
-        "operationId": "HeadscaleService_GetUser",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetUserResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      },
+    "/api/v1/user/{id}": {
       "delete": {
         "operationId": "HeadscaleService_DeleteUser",
         "responses": {
@@ -859,10 +852,11 @@
         },
         "parameters": [
           {
-            "name": "name",
+            "name": "id",
             "in": "path",
             "required": true,
-            "type": "string"
+            "type": "string",
+            "format": "uint64"
           }
         ],
         "tags": [
@@ -870,7 +864,7 @@
         ]
       }
     },
-    "/api/v1/user/{oldName}/rename/{newName}": {
+    "/api/v1/user/{oldId}/rename/{newName}": {
       "post": {
         "operationId": "HeadscaleService_RenameUser",
         "responses": {
@@ -889,10 +883,11 @@
         },
         "parameters": [
           {
-            "name": "oldName",
+            "name": "oldId",
             "in": "path",
             "required": true,
-            "type": "string"
+            "type": "string",
+            "format": "uint64"
           },
           {
             "name": "newName",
@@ -1178,14 +1173,6 @@
         }
       }
     },
-    "v1GetUserResponse": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "$ref": "#/definitions/v1User"
-        }
-      }
-    },
     "v1ListApiKeysResponse": {
       "type": "object",
       "properties": {
@@ -1453,7 +1440,8 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "format": "uint64"
         },
         "name": {
           "type": "string"
