@@ -90,6 +90,7 @@ This will also affect the way you [reference users in policies](https://github.c
 - Fixed updating of hostname and givenName when it is updated in HostInfo [#2199](https://github.com/juanfont/headscale/pull/2199)
 - Fixed missing `stable-debug` container tag [#2232](https://github.com/juanfont/headscale/pr/2232)
 - Loosened up `server_url` and `base_domain` check. It was overly strict in some cases.
+- Add `dns.extra_records_path` configuration option [#2262](https://github.com/juanfont/headscale/issues/2262)
 
 ## 0.23.0 (2024-09-18)
 
