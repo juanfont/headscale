@@ -27,6 +27,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
 	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
+	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
@@ -88,8 +89,9 @@ type Headscale struct {
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *derpServer.DERPServer
 
-	polManOnce sync.Once
-	polMan     policy.PolicyManager
+	polManOnce     sync.Once
+	polMan         policy.PolicyManager
+	extraRecordMan *dns.ExtraRecordsMan
 
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
@@ -245,10 +247,16 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 	derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
 	defer derpTicker.Stop()
-
 	// If we dont want auto update, just stop the ticker
 	if !h.cfg.DERP.AutoUpdate {
 		derpTicker.Stop()
+	}
+
+	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
+	if h.extraRecordMan != nil {
+		extraRecordsUpdate = h.extraRecordMan.Updates()
+	} else {
+		extraRecordsUpdate = make(chan []tailcfg.DNSRecord)
 	}
 
 	for {
@@ -288,6 +296,19 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 				Type:    types.StateDERPUpdated,
 				DERPMap: h.DERPMap,
+			})
+
+		case records, ok := <-extraRecordsUpdate:
+			if !ok {
+				continue
+			}
+			h.cfg.TailcfgDNSConfig.ExtraRecords = records
+
+			ctx := types.NotifyCtx(context.Background(), "acl-users-change", "all")
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				// TODO(kradalby): We can probably do better than sending a full update here,
+				// but for now this will ensure that all of the nodes get the new records.
+				Type: types.StateFullUpdate,
 			})
 		}
 	}
@@ -575,6 +596,13 @@ func (h *Headscale) Serve() error {
 	}
 	for _, node := range ephmNodes {
 		h.ephemeralGC.Schedule(node.ID, h.cfg.EphemeralNodeInactivityTimeout)
+	}
+
+	if h.cfg.DNSConfig.ExtraRecordsPath != "" {
+		h.extraRecordMan, err = dns.NewExtraRecordsMan(h.cfg.DNSConfig.ExtraRecordsPath)
+		if err != nil {
+			return fmt.Errorf("setting up : %w", err)
+		}
 	}
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
