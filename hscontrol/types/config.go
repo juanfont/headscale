@@ -97,11 +97,12 @@ type Config struct {
 }
 
 type DNSConfig struct {
-	MagicDNS      bool   `mapstructure:"magic_dns"`
-	BaseDomain    string `mapstructure:"base_domain"`
-	Nameservers   Nameservers
-	SearchDomains []string            `mapstructure:"search_domains"`
-	ExtraRecords  []tailcfg.DNSRecord `mapstructure:"extra_records"`
+	MagicDNS         bool   `mapstructure:"magic_dns"`
+	BaseDomain       string `mapstructure:"base_domain"`
+	Nameservers      Nameservers
+	SearchDomains    []string            `mapstructure:"search_domains"`
+	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
+	ExtraRecordsPath string              `mapstructure:"extra_records_path"`
 }
 
 type Nameservers struct {
@@ -260,7 +261,6 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
-	viper.SetDefault("dns.extra_records", []tailcfg.DNSRecord{})
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.stun.enabled", true)
@@ -349,6 +349,10 @@ func validateServerConfig() error {
 			log.Fatal().
 				Msgf("Fatal config error: %s has been removed. Please remove it from your config file", removed)
 		}
+	}
+
+	if viper.IsSet("dns.extra_records") && viper.IsSet("dns.extra_records_path") {
+		log.Fatal().Msg("Fatal config error: dns.extra_records and dns.extra_records_path are mutually exclusive. Please remove one of them from your config file")
 	}
 
 	// Collect any validation errors and return them all at once
@@ -593,6 +597,7 @@ func dns() (DNSConfig, error) {
 	dns.Nameservers.Global = viper.GetStringSlice("dns.nameservers.global")
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
+	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
 
 	if viper.IsSet("dns.extra_records") {
 		var extraRecords []tailcfg.DNSRecord
