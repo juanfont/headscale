@@ -237,23 +237,31 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
-// expireExpiredNodes expires nodes that have an explicit expiry set
-// after that expiry time has passed.
-func (h *Headscale) expireExpiredNodes(ctx context.Context, every time.Duration) {
-	ticker := time.NewTicker(every)
+func (h *Headscale) scheduledTasks(ctx context.Context) {
+	expireTicker := time.NewTicker(updateInterval)
+	defer expireTicker.Stop()
 
-	lastCheck := time.Unix(0, 0)
-	var update types.StateUpdate
-	var changed bool
+	lastExpiryCheck := time.Unix(0, 0)
+
+	derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
+	defer derpTicker.Stop()
+
+	// If we dont want auto update, just stop the ticker
+	if !h.cfg.DERP.AutoUpdate {
+		derpTicker.Stop()
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			ticker.Stop()
 			return
-		case <-ticker.C:
+
+		case <-expireTicker.C:
+			var update types.StateUpdate
+			var changed bool
+
 			if err := h.db.Write(func(tx *gorm.DB) error {
-				lastCheck, update, changed = db.ExpireExpiredNodes(tx, lastCheck)
+				lastExpiryCheck, update, changed = db.ExpireExpiredNodes(tx, lastExpiryCheck)
 
 				return nil
 			}); err != nil {
@@ -267,24 +275,8 @@ func (h *Headscale) expireExpiredNodes(ctx context.Context, every time.Duration)
 				ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
 				h.nodeNotifier.NotifyAll(ctx, update)
 			}
-		}
-	}
-}
 
-// scheduledDERPMapUpdateWorker refreshes the DERPMap stored on the global object
-// at a set interval.
-func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
-	log.Info().
-		Dur("frequency", h.cfg.DERP.UpdateFrequency).
-		Msg("Setting up a DERPMap update worker")
-	ticker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
-
-	for {
-		select {
-		case <-cancelChan:
-			return
-
-		case <-ticker.C:
+		case <-derpTicker.C:
 			log.Info().Msg("Fetching DERPMap updates")
 			h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
 			if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
@@ -568,12 +560,6 @@ func (h *Headscale) Serve() error {
 		go h.DERPServer.ServeSTUN()
 	}
 
-	if h.cfg.DERP.AutoUpdate {
-		derpMapCancelChannel := make(chan struct{})
-		defer func() { derpMapCancelChannel <- struct{}{} }()
-		go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
-	}
-
 	if len(h.DERPMap.Regions) == 0 {
 		return errEmptyInitialDERPMap
 	}
@@ -591,9 +577,11 @@ func (h *Headscale) Serve() error {
 		h.ephemeralGC.Schedule(node.ID, h.cfg.EphemeralNodeInactivityTimeout)
 	}
 
-	expireNodeCtx, expireNodeCancel := context.WithCancel(context.Background())
-	defer expireNodeCancel()
-	go h.expireExpiredNodes(expireNodeCtx, updateInterval)
+	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
+	// records updates
+	scheduleCtx, scheduleCancel := context.WithCancel(context.Background())
+	defer scheduleCancel()
+	go h.scheduledTasks(scheduleCtx)
 
 	if zl.GlobalLevel() == zl.TraceLevel {
 		zerolog.RespLog = true
@@ -847,7 +835,7 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
 
-				expireNodeCancel()
+				scheduleCancel()
 				h.ephemeralGC.Close()
 
 				// Gracefully shut down servers
