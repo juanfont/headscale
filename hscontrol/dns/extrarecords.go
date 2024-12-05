@@ -31,6 +31,15 @@ func NewExtraRecordsMan(path string) (*ExtraRecordsMan, error) {
 	}
 	defer watcher.Close()
 
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("getting file info: %w", err)
+	}
+
+	if fi.IsDir() {
+		return nil, fmt.Errorf("path is a directory, only file is supported: %s", path)
+	}
+
 	err = watcher.Add(path)
 	if err != nil {
 		return nil, fmt.Errorf("adding path to watcher: %w", err)
