@@ -80,16 +80,21 @@ This will also affect the way you [reference users in policies](https://github.c
   - Having usernames in magic DNS is no longer possible.
 - Remove versions older than 1.56 [#2149](https://github.com/juanfont/headscale/pull/2149)
   - Clean up old code required by old versions
+- User gRPC/API [#2261](https://github.com/juanfont/headscale/pull/2261):
+  - If you depend on a Headscale Web UI, you should wait with this update until the UI have been updated to match the new API.
+  - `GET /api/v1/user/{name}` and `GetUser` have been removed in favour of `ListUsers` with and ID parameter
+  - `RenameUser` and `DeleteUser` now requires and ID instead of a name.
 
 ### Changes
 
-- Improved compatibilty of built-in DERP server with clients connecting over WebSocket.
+- Improved compatibilty of built-in DERP server with clients connecting over WebSocket [#2132](https://github.com/juanfont/headscale/pull/2132)
 - Allow nodes to use SSH agent forwarding [#2145](https://github.com/juanfont/headscale/pull/2145)
 - Fixed processing of fields in post request in MoveNode rpc [#2179](https://github.com/juanfont/headscale/pull/2179)
 - Added conversion of 'Hostname' to 'givenName' in a node with FQDN rules applied [#2198](https://github.com/juanfont/headscale/pull/2198)
 - Fixed updating of hostname and givenName when it is updated in HostInfo [#2199](https://github.com/juanfont/headscale/pull/2199)
 - Fixed missing `stable-debug` container tag [#2232](https://github.com/juanfont/headscale/pr/2232)
-- Loosened up `server_url` and `base_domain` check. It was overly strict in some cases.
+- Loosened up `server_url` and `base_domain` check. It was overly strict in some cases. [#2248](https://github.com/juanfont/headscale/pull/2248)
+- CLI for managing users now accepts `--identifier` in addition to `--name`, usage of `--identifier` is recommended [#2261](https://github.com/juanfont/headscale/pull/2261)
 
 ## 0.23.0 (2024-09-18)
 
