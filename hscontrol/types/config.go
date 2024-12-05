@@ -72,7 +72,14 @@ type Config struct {
 	ACMEURL   string
 	ACMEEmail string
 
-	DNSConfig *tailcfg.DNSConfig
+	// DNSConfig is the headscale representation of the DNS configuration.
+	// It is kept in the config update for some settings that are
+	// not directly converted into a tailcfg.DNSConfig.
+	DNSConfig DNSConfig
+
+	// TailcfgDNSConfig is the tailcfg representation of the DNS configuration,
+	// it can be used directly when sending Netmaps to clients.
+	TailcfgDNSConfig *tailcfg.DNSConfig
 
 	UnixSocket           string
 	UnixSocketPermission fs.FileMode
@@ -871,7 +878,8 @@ func LoadServerConfig() (*Config, error) {
 
 		TLS: tlsConfig(),
 
-		DNSConfig: dnsToTailcfgDNS(dnsConfig),
+		DNSConfig:        dnsConfig,
+		TailcfgDNSConfig: dnsToTailcfgDNS(dnsConfig),
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),

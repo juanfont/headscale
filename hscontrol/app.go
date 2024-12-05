@@ -184,7 +184,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 	app.authProvider = authProvider
 
-	if app.cfg.DNSConfig != nil && app.cfg.DNSConfig.Proxied { // if MagicDNS
+	if app.cfg.TailcfgDNSConfig != nil && app.cfg.TailcfgDNSConfig.Proxied { // if MagicDNS
 		// TODO(kradalby): revisit why this takes a list.
 
 		var magicDNSDomains []dnsname.FQDN
@@ -196,11 +196,11 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 
 		// we might have routes already from Split DNS
-		if app.cfg.DNSConfig.Routes == nil {
-			app.cfg.DNSConfig.Routes = make(map[string][]*dnstype.Resolver)
+		if app.cfg.TailcfgDNSConfig.Routes == nil {
+			app.cfg.TailcfgDNSConfig.Routes = make(map[string][]*dnstype.Resolver)
 		}
 		for _, d := range magicDNSDomains {
-			app.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
+			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
 	}
 

@@ -117,7 +117,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 
 			got := generateDNSConfig(
 				&types.Config{
-					DNSConfig: &dnsConfigOrig,
+					TailcfgDNSConfig: &dnsConfigOrig,
 				},
 				nodeInShared1,
 			)
@@ -349,7 +349,7 @@ func Test_fullMapResponse(t *testing.T) {
 			derpMap: &tailcfg.DERPMap{},
 			cfg: &types.Config{
 				BaseDomain:          "",
-				DNSConfig:           &tailcfg.DNSConfig{},
+				TailcfgDNSConfig:    &tailcfg.DNSConfig{},
 				LogTail:             types.LogTailConfig{Enabled: false},
 				RandomizeClientPort: false,
 			},
@@ -381,7 +381,7 @@ func Test_fullMapResponse(t *testing.T) {
 			derpMap: &tailcfg.DERPMap{},
 			cfg: &types.Config{
 				BaseDomain:          "",
-				DNSConfig:           &tailcfg.DNSConfig{},
+				TailcfgDNSConfig:    &tailcfg.DNSConfig{},
 				LogTail:             types.LogTailConfig{Enabled: false},
 				RandomizeClientPort: false,
 			},
@@ -424,7 +424,7 @@ func Test_fullMapResponse(t *testing.T) {
 			derpMap: &tailcfg.DERPMap{},
 			cfg: &types.Config{
 				BaseDomain:          "",
-				DNSConfig:           &tailcfg.DNSConfig{},
+				TailcfgDNSConfig:    &tailcfg.DNSConfig{},
 				LogTail:             types.LogTailConfig{Enabled: false},
 				RandomizeClientPort: false,
 			},
