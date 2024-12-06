@@ -45,11 +45,20 @@ func NewExtraRecordsMan(path string) (*ExtraRecordsMan, error) {
 		return nil, fmt.Errorf("adding path to watcher: %w", err)
 	}
 
+	records, hash, err := readExtraRecordsFromPath(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading extra records from path: %w", err)
+	}
+
+	log.Trace().Caller().Strs("watching", watcher.WatchList()).Msg("started filewatcher")
+
 	return &ExtraRecordsMan{
 		watcher: watcher,
 		path:    path,
-		records: set.Set[tailcfg.DNSRecord]{},
-		hashes:  map[string][32]byte{},
+		records: set.SetOf(records),
+		hashes: map[string][32]byte{
+			path: hash,
+		},
 		closeCh: make(chan struct{}),
 	}, nil
 }
@@ -70,19 +79,23 @@ func (e *ExtraRecordsMan) Run() {
 		select {
 		case <-e.closeCh:
 			return
-		case _, ok := <-e.watcher.Events:
+		case event, ok := <-e.watcher.Events:
+			log.Trace().Caller().Str("path", event.Name).Str("op", event.Op.String()).Msg("extra records received filewatch event")
 			if !ok {
-				log.Error().Msgf("error reading file watcher event of channel, records watcher closing")
+				log.Error().Caller().Msgf("error reading file watcher event of channel, records watcher closing")
 				return
+			}
+			if event.Name != e.path {
+				continue
 			}
 			e.updateRecords()
 
-		case err, ok := <-e.watcher.Errors:
-			if !ok {
-				log.Error().Msgf("error reading file watcher event of channel, records watcher closing")
-				return
-			}
-			log.Error().Err(err).Msgf("extra records filewatcher returned error")
+			// case err, ok := <-e.watcher.Errors:
+			// 	if !ok {
+			// 		log.Error().Caller().Msgf("error reading file watcher error of channel, records watcher closing")
+			// 		return
+			// 	}
+			// 	log.Error().Caller().Err(err).Msgf("extra records filewatcher returned error: %q", err)
 		}
 	}
 }
@@ -94,7 +107,7 @@ func (e *ExtraRecordsMan) Close() {
 func (e *ExtraRecordsMan) updateRecords() {
 	records, newHash, err := readExtraRecordsFromPath(e.path)
 	if err != nil {
-		log.Error().Err(err).Msgf("reading extra records from path: %s", e.path)
+		log.Error().Caller().Err(err).Msgf("reading extra records from path: %s", e.path)
 		return
 	}
 

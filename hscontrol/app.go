@@ -603,6 +603,9 @@ func (h *Headscale) Serve() error {
 		if err != nil {
 			return fmt.Errorf("setting up : %w", err)
 		}
+		h.cfg.TailcfgDNSConfig.ExtraRecords = h.extraRecordMan.Records()
+		go h.extraRecordMan.Run()
+		defer h.extraRecordMan.Close()
 	}
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and

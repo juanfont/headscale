@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/tailcfg"
 )
 
 func TestResolveMagicDNS(t *testing.T) {
@@ -78,6 +80,95 @@ func TestResolveMagicDNS(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+	// defer scenario.ShutdownAssertNoPanics(t)
+
+	spec := map[string]int{
+		"magicdns1": 1,
+		"magicdns2": 1,
+	}
+
+	const erPath = "/tmp/extra_records.json"
+
+	extraRecords := []tailcfg.DNSRecord{
+		{
+			Name:  "test.myvpn.example.com",
+			Type:  "A",
+			Value: "6.6.6.6",
+		},
+	}
+	b, _ := json.Marshal(extraRecords)
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{
+		tsic.WithDockerEntrypoint([]string{
+			"/bin/sh",
+			"-c",
+			"/bin/sleep 3 ; apk add python3 curl bind-tools ; update-ca-certificates ; tailscaled --tun=tsdev",
+		}),
+	},
+		hsic.WithTestName("extrarecords"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_DNS_EXTRA_RECORDS_PATH": erPath,
+		}),
+		hsic.WithFileInContainer(erPath, b),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// assertClientsState(t, allClients)
+
+	// Poor mans cache
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	assertNoErrListFQDN(t, err)
+
+	_, err = scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	for _, client := range allClients {
+		stdout, stderr, err := client.Execute([]string{"dig", "test.myvpn.example.com"})
+		if err != nil {
+			t.Errorf("stderr: %s", stderr)
+			t.Errorf("executing dig command: %s", err)
+		}
+
+		assert.Contains(t, stdout, "6.6.6.6")
+	}
+
+	extraRecords = append(extraRecords, tailcfg.DNSRecord{
+		Name:  "otherrecord.myvpn.example.com",
+		Type:  "A",
+		Value: "7.7.7.7",
+	})
+	b2, _ := json.Marshal(extraRecords)
+
+	hs, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	err = hs.WriteFile(erPath, b2)
+	assertNoErr(t, err)
+
+	time.Sleep(5 * time.Second)
+	for _, client := range allClients {
+		stdout, stderr, err := client.Execute([]string{"dig", "test.myvpn.example.com"})
+		assert.Errorf(t, err, "stderr: %s", stderr)
+		assert.Contains(t, stdout, "6.6.6.6")
+
+		stdout, stderr, err = client.Execute([]string{"dig", "otherrecord.myvpn.example.com"})
+		assert.Errorf(t, err, "stderr: %s", stderr)
+		assert.Contains(t, stdout, "7.7.7.7")
 	}
 }
 

@@ -311,6 +311,11 @@ dns:
   #   # you can also put it in one line
   #   - { name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.3" }
 
+  # Path to a JSON file containing a list of extra DNS records, on the format of the `extra_records` field.
+  # Updates to the file will automatically be picked up by headscale and propagated to the nodes
+  # This option is mutual exclusive with the `extra_records` field.
+  # extra_records_path: ""
+
   # DEPRECATED
   # Use the username as part of the DNS name for nodes, with this option enabled:
   # node1.username.example.com
