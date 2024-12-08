@@ -108,7 +108,7 @@ func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 
 func (u *User) Proto() *v1.User {
 	return &v1.User{
-		Id:            strconv.FormatUint(uint64(u.ID), util.Base10),
+		Id:            uint64(u.ID),
 		Name:          u.Name,
 		CreatedAt:     timestamppb.New(u.CreatedAt),
 		DisplayName:   u.DisplayName,

@@ -1,18 +1,21 @@
 package integration
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	tcmp "github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 )
 
@@ -28,6 +31,16 @@ func executeAndUnmarshal[T any](headscale ControlServer, command []string, resul
 	}
 
 	return nil
+}
+
+// Interface ensuring that we can sort structs from gRPC that
+// have an ID field.
+type GRPCSortable interface {
+	GetId() uint64
+}
+
+func sortWithID[T GRPCSortable](a, b T) int {
+	return cmp.Compare(a.GetId(), b.GetId())
 }
 
 func TestUserCommand(t *testing.T) {
@@ -49,7 +62,7 @@ func TestUserCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	var listUsers []v1.User
+	var listUsers []*v1.User
 	err = executeAndUnmarshal(headscale,
 		[]string{
 			"headscale",
@@ -62,8 +75,8 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
+	slices.SortFunc(listUsers, sortWithID)
 	result := []string{listUsers[0].GetName(), listUsers[1].GetName()}
-	sort.Strings(result)
 
 	assert.Equal(
 		t,
@@ -76,15 +89,14 @@ func TestUserCommand(t *testing.T) {
 			"headscale",
 			"users",
 			"rename",
-			"--output",
-			"json",
-			"user2",
-			"newname",
+			"--output=json",
+			fmt.Sprintf("--identifier=%d", listUsers[1].GetId()),
+			"--new-name=newname",
 		},
 	)
 	assertNoErr(t, err)
 
-	var listAfterRenameUsers []v1.User
+	var listAfterRenameUsers []*v1.User
 	err = executeAndUnmarshal(headscale,
 		[]string{
 			"headscale",
@@ -97,14 +109,131 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
+	slices.SortFunc(listUsers, sortWithID)
 	result = []string{listAfterRenameUsers[0].GetName(), listAfterRenameUsers[1].GetName()}
-	sort.Strings(result)
 
 	assert.Equal(
 		t,
-		[]string{"newname", "user1"},
+		[]string{"user1", "newname"},
 		result,
 	)
+
+	var listByUsername []*v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+			"--name=user1",
+		},
+		&listByUsername,
+	)
+	assertNoErr(t, err)
+
+	slices.SortFunc(listByUsername, sortWithID)
+	want := []*v1.User{
+		{
+			Id:   1,
+			Name: "user1",
+		},
+	}
+
+	if diff := tcmp.Diff(want, listByUsername, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Errorf("unexpected users (-want +got):\n%s", diff)
+	}
+
+	var listByID []*v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+			"--identifier=1",
+		},
+		&listByID,
+	)
+	assertNoErr(t, err)
+
+	slices.SortFunc(listByID, sortWithID)
+	want = []*v1.User{
+		{
+			Id:   1,
+			Name: "user1",
+		},
+	}
+
+	if diff := tcmp.Diff(want, listByID, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Errorf("unexpected users (-want +got):\n%s", diff)
+	}
+
+	deleteResult, err := headscale.Execute(
+		[]string{
+			"headscale",
+			"users",
+			"destroy",
+			"--force",
+			// Delete "user1"
+			"--identifier=1",
+		},
+	)
+	assert.Nil(t, err)
+	assert.Contains(t, deleteResult, "User destroyed")
+
+	var listAfterIDDelete []*v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listAfterIDDelete,
+	)
+	assertNoErr(t, err)
+
+	slices.SortFunc(listAfterIDDelete, sortWithID)
+	want = []*v1.User{
+		{
+			Id:   2,
+			Name: "newname",
+		},
+	}
+
+	if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Errorf("unexpected users (-want +got):\n%s", diff)
+	}
+
+	deleteResult, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"users",
+			"destroy",
+			"--force",
+			"--name=newname",
+		},
+	)
+	assert.Nil(t, err)
+	assert.Contains(t, deleteResult, "User destroyed")
+
+	var listAfterNameDelete []v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listAfterNameDelete,
+	)
+	assertNoErr(t, err)
+
+	require.Len(t, listAfterNameDelete, 0)
 }
 
 func TestPreAuthKeyCommand(t *testing.T) {
@@ -1716,4 +1845,3 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 	)
 	assert.ErrorContains(t, err, "acl policy not found")
 }
-

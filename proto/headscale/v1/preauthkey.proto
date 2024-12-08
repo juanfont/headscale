@@ -1,45 +1,38 @@
 syntax = "proto3";
 package headscale.v1;
-option  go_package = "github.com/juanfont/headscale/gen/go/v1";
+option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 import "google/protobuf/timestamp.proto";
 
 message PreAuthKey {
-    string                    user       = 1;
-    string                    id         = 2;
-    string                    key        = 3;
-    bool                      reusable   = 4;
-    bool                      ephemeral  = 5;
-    bool                      used       = 6;
-    google.protobuf.Timestamp expiration = 7;
-    google.protobuf.Timestamp created_at = 8;
-    repeated string           acl_tags   = 9;
+  string user = 1;
+  string id = 2;
+  string key = 3;
+  bool reusable = 4;
+  bool ephemeral = 5;
+  bool used = 6;
+  google.protobuf.Timestamp expiration = 7;
+  google.protobuf.Timestamp created_at = 8;
+  repeated string acl_tags = 9;
 }
 
 message CreatePreAuthKeyRequest {
-    string                    user       = 1;
-    bool                      reusable   = 2;
-    bool                      ephemeral  = 3;
-    google.protobuf.Timestamp expiration = 4;
-    repeated string           acl_tags   = 5;
+  string user = 1;
+  bool reusable = 2;
+  bool ephemeral = 3;
+  google.protobuf.Timestamp expiration = 4;
+  repeated string acl_tags = 5;
 }
 
-message CreatePreAuthKeyResponse {
-    PreAuthKey pre_auth_key = 1;
-}
+message CreatePreAuthKeyResponse { PreAuthKey pre_auth_key = 1; }
 
 message ExpirePreAuthKeyRequest {
-    string user = 1;
-    string key  = 2;
+  string user = 1;
+  string key = 2;
 }
 
-message ExpirePreAuthKeyResponse {
-}
+message ExpirePreAuthKeyResponse {}
 
-message ListPreAuthKeysRequest {
-    string user = 1;
-}
+message ListPreAuthKeysRequest { string user = 1; }
 
-message ListPreAuthKeysResponse {
-    repeated PreAuthKey pre_auth_keys = 1;
-}
+message ListPreAuthKeysResponse { repeated PreAuthKey pre_auth_keys = 1; }
