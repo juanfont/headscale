@@ -236,11 +236,8 @@ func New(
 	}
 
 	tailscaleOptions := &dockertest.RunOptions{
-		Name:     hostname,
-		Networks: []*dockertest.Network{tsic.network},
-		// Cmd: []string{
-		// 	"tailscaled", "--tun=tsdev",
-		// },
+		Name:       hostname,
+		Networks:   []*dockertest.Network{tsic.network},
 		Entrypoint: tsic.withEntrypoint,
 		ExtraHosts: tsic.withExtraHosts,
 		Env:        []string{},
@@ -357,8 +354,8 @@ func New(
 }
 
 // Shutdown stops and cleans up the Tailscale container.
-func (t *TailscaleInContainer) Shutdown() error {
-	err := t.SaveLog("/tmp/control")
+func (t *TailscaleInContainer) Shutdown() (string, string, error) {
+	stdoutPath, stderrPath, err := t.SaveLog("/tmp/control")
 	if err != nil {
 		log.Printf(
 			"Failed to save log from %s: %s",
@@ -367,7 +364,7 @@ func (t *TailscaleInContainer) Shutdown() error {
 		)
 	}
 
-	return t.pool.Purge(t.container)
+	return stdoutPath, stderrPath, t.pool.Purge(t.container)
 }
 
 // Hostname returns the hostname of the Tailscale instance.
@@ -1099,15 +1096,14 @@ func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 
 // SaveLog saves the current stdout log of the container to a path
 // on the host system.
-func (t *TailscaleInContainer) SaveLog(path string) error {
+func (t *TailscaleInContainer) SaveLog(path string) (string, string, error) {
 	// TODO(kradalby): Assert if tailscale logs contains panics.
 	// NOTE(enoperm): `t.WriteLog | countMatchingLines`
 	// is probably most of what is for that,
 	// but I'd rather not change the behaviour here,
 	// as it may affect all the other tests
 	// I have not otherwise touched.
-	_, _, err := dockertestutil.SaveLog(t.pool, t.container, path)
-	return err
+	return dockertestutil.SaveLog(t.pool, t.container, path)
 }
 
 // WriteLogs writes the current stdout/stderr log of the container to

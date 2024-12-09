@@ -220,9 +220,19 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	for userName, user := range s.users {
 		for _, client := range user.Clients {
 			log.Printf("removing client %s in user %s", client.Hostname(), userName)
-			err := client.Shutdown()
+			stdoutPath, stderrPath, err := client.Shutdown()
 			if err != nil {
 				log.Printf("failed to tear down client: %s", err)
+			}
+
+			if t != nil {
+				stdout, err := os.ReadFile(stdoutPath)
+				require.NoError(t, err)
+				assert.NotContains(t, string(stdout), "panic")
+
+				stderr, err := os.ReadFile(stderrPath)
+				require.NoError(t, err)
+				assert.NotContains(t, string(stderr), "panic")
 			}
 		}
 	}
