@@ -32,7 +32,7 @@ import (
 const (
 	hsicHashLength                = 6
 	dockerContextPath             = "../."
-  caCertRoot                    = "/usr/local/share/ca-certificates"
+	caCertRoot                    = "/usr/local/share/ca-certificates"
 	aclPolicyPath                 = "/etc/headscale/acl.hujson"
 	tlsCertPath                   = "/etc/headscale/tls.cert"
 	tlsKeyPath                    = "/etc/headscale/tls.key"
@@ -617,6 +617,7 @@ func (t *HeadscaleInContainer) Execute(
 		[]string{},
 	)
 	if err != nil {
+		log.Printf("command: %v", command)
 		log.Printf("command stderr: %s\n", stderr)
 
 		if stdout != "" {

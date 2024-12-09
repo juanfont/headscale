@@ -130,22 +130,22 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 
 	want := []v1.User{
 		{
-			Id:   "1",
+			Id:   1,
 			Name: "user1",
 		},
 		{
-			Id:         "2",
+			Id:         2,
 			Name:       "user1",
 			Email:      "user1@headscale.net",
 			Provider:   "oidc",
 			ProviderId: oidcConfig.Issuer + "/user1",
 		},
 		{
-			Id:   "3",
+			Id:   3,
 			Name: "user2",
 		},
 		{
-			Id:         "4",
+			Id:         4,
 			Name:       "user2",
 			Email:      "", // Unverified
 			Provider:   "oidc",
@@ -260,22 +260,22 @@ func TestOIDC024UserCreation(t *testing.T) {
 			want: func(iss string) []v1.User {
 				return []v1.User{
 					{
-						Id:   "1",
+						Id:   1,
 						Name: "user1",
 					},
 					{
-						Id:         "2",
+						Id:         2,
 						Name:       "user1",
 						Email:      "user1@headscale.net",
 						Provider:   "oidc",
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:   "3",
+						Id:   3,
 						Name: "user2",
 					},
 					{
-						Id:         "4",
+						Id:         4,
 						Name:       "user2",
 						Email:      "user2@headscale.net",
 						Provider:   "oidc",
@@ -295,21 +295,21 @@ func TestOIDC024UserCreation(t *testing.T) {
 			want: func(iss string) []v1.User {
 				return []v1.User{
 					{
-						Id:   "1",
+						Id:   1,
 						Name: "user1",
 					},
 					{
-						Id:         "2",
+						Id:         2,
 						Name:       "user1",
 						Provider:   "oidc",
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:   "3",
+						Id:   3,
 						Name: "user2",
 					},
 					{
-						Id:         "4",
+						Id:         4,
 						Name:       "user2",
 						Provider:   "oidc",
 						ProviderId: iss + "/user2",
@@ -329,14 +329,14 @@ func TestOIDC024UserCreation(t *testing.T) {
 			want: func(iss string) []v1.User {
 				return []v1.User{
 					{
-						Id:         "1",
+						Id:         1,
 						Name:       "user1",
 						Email:      "user1@headscale.net",
 						Provider:   "oidc",
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:         "2",
+						Id:         2,
 						Name:       "user2",
 						Email:      "user2@headscale.net",
 						Provider:   "oidc",
@@ -357,21 +357,21 @@ func TestOIDC024UserCreation(t *testing.T) {
 			want: func(iss string) []v1.User {
 				return []v1.User{
 					{
-						Id:   "1",
+						Id:   1,
 						Name: "user1",
 					},
 					{
-						Id:         "2",
+						Id:         2,
 						Name:       "user1",
 						Provider:   "oidc",
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:   "3",
+						Id:   3,
 						Name: "user2",
 					},
 					{
-						Id:         "4",
+						Id:         4,
 						Name:       "user2",
 						Provider:   "oidc",
 						ProviderId: iss + "/user2",
@@ -393,14 +393,14 @@ func TestOIDC024UserCreation(t *testing.T) {
 					// Hmm I think we will have to overwrite the initial name here
 					// createuser with "user1.headscale.net", but oidc with "user1"
 					{
-						Id:         "1",
+						Id:         1,
 						Name:       "user1",
 						Email:      "user1@headscale.net",
 						Provider:   "oidc",
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:         "2",
+						Id:         2,
 						Name:       "user2",
 						Email:      "user2@headscale.net",
 						Provider:   "oidc",
@@ -421,21 +421,21 @@ func TestOIDC024UserCreation(t *testing.T) {
 			want: func(iss string) []v1.User {
 				return []v1.User{
 					{
-						Id:   "1",
+						Id:   1,
 						Name: "user1.headscale.net",
 					},
 					{
-						Id:         "2",
+						Id:         2,
 						Name:       "user1",
 						Provider:   "oidc",
 						ProviderId: iss + "/user1",
 					},
 					{
-						Id:   "3",
+						Id:   3,
 						Name: "user2.headscale.net",
 					},
 					{
-						Id:         "4",
+						Id:         4,
 						Name:       "user2",
 						Provider:   "oidc",
 						ProviderId: iss + "/user2",
