@@ -15,7 +15,7 @@ import (
 // nolint
 type TailscaleClient interface {
 	Hostname() string
-	Shutdown() error
+	Shutdown() (string, string, error)
 	Version() string
 	Execute(
 		command []string,

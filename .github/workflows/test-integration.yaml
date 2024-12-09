@@ -1,4 +1,7 @@
 name: Integration Tests
+# To debug locally on a branch, and when needing secrets
+# change this to include `push` so the build is ran on
+# the main repository.
 on: [pull_request]
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -70,6 +73,16 @@ jobs:
           - TestSSHIsBlockedInACL
           - TestSSHUserOnlyIsolation
         database: [postgres, sqlite]
+    env:
+      # Github does not allow us to access secrets in pull requests,
+      # so this env var is used to check if we have the secret or not.
+      # If we have the secrets, meaning we are running on push in a fork,
+      # there might be secrets available for more debugging.
+      # If TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET is set, then the job
+      # will join a debug tailscale network, set up SSH and a tmux session.
+      # The SSH will be configured to use the SSH key of the Github user
+      # that triggered the build.
+      HAS_TAILSCALE_SECRET: ${{ secrets.TS_OAUTH_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,6 +98,16 @@ jobs:
               - '**/*.go'
               - 'integration_test/'
               - 'config-example.yaml'
+      - name: Tailscale
+        if: ${{ env.HAS_TAILSCALE_SECRET }}
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:gh
+      - name: Setup SSH server for Actor
+        if: ${{ env.HAS_TAILSCALE_SECRET }}
+        uses: alexellis/setup-sshd-actor@master
       - uses: DeterminateSystems/nix-installer-action@main
         if: steps.changed-files.outputs.files == 'true'
       - uses: DeterminateSystems/magic-nix-cache-action@main
@@ -124,3 +147,6 @@ jobs:
         with:
           name: ${{ matrix.test }}-${{matrix.database}}-pprof
           path: "control_logs/*.pprof.tar"
+      - name: Setup a blocking tmux session
+        if: ${{ env.HAS_TAILSCALE_SECRET }}
+        uses: alexellis/block-with-tmux-action@master
