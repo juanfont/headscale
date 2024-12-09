@@ -43,6 +43,7 @@ jobs:
           - TestPolicyBrokenConfigCommand
           - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
+          - TestResolveMagicDNSExtraRecordsPath
           - TestValidateResolvConf
           - TestDERPServerScenario
           - TestDERPServerWebsocketScenario
