@@ -280,9 +280,9 @@ func TestReadConfigFromEnv(t *testing.T) {
 						// "foo.bar.com": {"1.1.1.1"},
 					},
 				},
-				ExtraRecords: []tailcfg.DNSRecord{
-					// {Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
-				},
+				// ExtraRecords: []tailcfg.DNSRecord{
+				// 	{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
+				// },
 				SearchDomains: []string{"test.com", "bar.com"},
 			},
 		},
