@@ -36,18 +36,6 @@ func newHeadscaleV1APIServer(h *Headscale) v1.HeadscaleServiceServer {
 	}
 }
 
-func (api headscaleV1APIServer) GetUser(
-	ctx context.Context,
-	request *v1.GetUserRequest,
-) (*v1.GetUserResponse, error) {
-	user, err := api.h.db.GetUserByName(request.GetName())
-	if err != nil {
-		return nil, err
-	}
-
-	return &v1.GetUserResponse{User: user.Proto()}, nil
-}
-
 func (api headscaleV1APIServer) CreateUser(
 	ctx context.Context,
 	request *v1.CreateUserRequest,
@@ -69,7 +57,7 @@ func (api headscaleV1APIServer) RenameUser(
 	ctx context.Context,
 	request *v1.RenameUserRequest,
 ) (*v1.RenameUserResponse, error) {
-	oldUser, err := api.h.db.GetUserByName(request.GetOldName())
+	oldUser, err := api.h.db.GetUserByID(types.UserID(request.GetOldId()))
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +79,7 @@ func (api headscaleV1APIServer) DeleteUser(
 	ctx context.Context,
 	request *v1.DeleteUserRequest,
 ) (*v1.DeleteUserResponse, error) {
-	user, err := api.h.db.GetUserByName(request.GetName())
+	user, err := api.h.db.GetUserByID(types.UserID(request.GetId()))
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +101,19 @@ func (api headscaleV1APIServer) ListUsers(
 	ctx context.Context,
 	request *v1.ListUsersRequest,
 ) (*v1.ListUsersResponse, error) {
-	users, err := api.h.db.ListUsers()
+	var err error
+	var users []types.User
+
+	switch {
+	case request.GetName() != "":
+		users, err = api.h.db.ListUsers(&types.User{Name: request.GetName()})
+	case request.GetEmail() != "":
+		users, err = api.h.db.ListUsers(&types.User{Email: request.GetEmail()})
+	case request.GetId() != 0:
+		users, err = api.h.db.ListUsers(&types.User{Model: gorm.Model{ID: uint(request.GetId())}})
+	default:
+		users, err = api.h.db.ListUsers()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -126,8 +126,6 @@ func (api headscaleV1APIServer) ListUsers(
 	sort.Slice(response, func(i, j int) bool {
 		return response[i].Id < response[j].Id
 	})
-
-	log.Trace().Caller().Interface("users", response).Msg("")
 
 	return &v1.ListUsersResponse{Users: response}, nil
 }

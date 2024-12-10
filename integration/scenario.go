@@ -22,6 +22,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	xmaps "golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
 )
@@ -512,23 +513,26 @@ func (s *Scenario) CreateHeadscaleEnv(
 		return err
 	}
 
-	for userName, clientCount := range users {
-		err = s.CreateUser(userName)
+	usernames := xmaps.Keys(users)
+	sort.Strings(usernames)
+	for _, username := range usernames {
+		clientCount := users[username]
+		err = s.CreateUser(username)
 		if err != nil {
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount, tsOpts...)
+		err = s.CreateTailscaleNodesInUser(username, "all", clientCount, tsOpts...)
 		if err != nil {
 			return err
 		}
 
-		key, err := s.CreatePreAuthKey(userName, true, false)
+		key, err := s.CreatePreAuthKey(username, true, false)
 		if err != nil {
 			return err
 		}
 
-		err = s.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+		err = s.RunTailscaleUp(username, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
 			return err
 		}
