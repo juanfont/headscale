@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-nix:
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
@@ -36,7 +36,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
         if: steps.changed-files.outputs.files == 'true'
 
-      - name: Run build
+      - name: Run nix build
         id: build
         if: steps.changed-files.outputs.files == 'true'
         run: |
@@ -69,3 +69,27 @@ jobs:
         with:
           name: headscale-linux
           path: result/bin/headscale
+  build-cross:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env:
+          - "GOARCH=arm   GOOS=linux GOARM=5"
+          - "GOARCH=arm   GOOS=linux GOARM=6"
+          - "GOARCH=arm   GOOS=linux GOARM=7"
+          - "GOARCH=arm64 GOOS=linux"
+          - "GOARCH=386   GOOS=linux"
+          - "GOARCH=amd64 GOOS=linux"
+          - "GOARCH=arm64 GOOS=darwin"
+          - "GOARCH=amd64 GOOS=darwin"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Run go cross compile
+        run: env ${{ matrix.env }} nix develop --command -- go build -o "headscale" ./cmd/headscale
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "headscale-${{ matrix.env }}"
+          path: "headscale"

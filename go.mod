@@ -52,6 +52,30 @@ require (
 	zombiezen.com/go/postgrestest v1.0.1
 )
 
+// NOTE: modernc sqlite has a fragile dependency
+// chain and it is important that they are updated
+// in lockstep to ensure that they do not break
+// some architectures and similar at runtime:
+// https://github.com/juanfont/headscale/issues/2188
+//
+// Fragile libc dependency:
+// https://pkg.go.dev/modernc.org/sqlite#hdr-Fragile_modernc_org_libc_dependency
+// https://gitlab.com/cznic/sqlite/-/issues/177
+//
+// To upgrade, determine the new SQLite version to
+// be used, and consult the `go.mod` file:
+// https://gitlab.com/cznic/sqlite/-/blob/master/go.mod
+// to find
+// the appropriate `libc` version, then upgrade them
+// together, e.g:
+// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
+require (
+	modernc.org/libc v1.55.3 // indirect
+	modernc.org/mathutil v1.6.0 // indirect
+	modernc.org/memory v1.8.0 // indirect
+	modernc.org/sqlite v1.33.1 // indirect
+)
+
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect
 	atomicgo.dev/keyboard v0.2.9 // indirect
@@ -205,8 +229,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gvisor.dev/gvisor v0.0.0-20240722211153-64c016c92987 // indirect
-	modernc.org/libc v1.60.1 // indirect
-	modernc.org/mathutil v1.6.0 // indirect
-	modernc.org/memory v1.8.0 // indirect
-	modernc.org/sqlite v1.32.0 // indirect
 )
