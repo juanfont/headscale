@@ -13,4 +13,3 @@ server_url: "https://derp.no"
 dns:
   magic_dns: true
   base_domain: clients.derp.no
-  use_username_in_magic_dns: false

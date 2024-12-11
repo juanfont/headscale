@@ -33,5 +33,3 @@ dns:
 
     # you can also put it in one line
     - { name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.4" }
-
-  use_username_in_magic_dns: true
