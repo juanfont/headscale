@@ -95,6 +95,7 @@ This will also affect the way you [reference users in policies](https://github.c
 - Fixed missing `stable-debug` container tag [#2232](https://github.com/juanfont/headscale/pr/2232)
 - Loosened up `server_url` and `base_domain` check. It was overly strict in some cases. [#2248](https://github.com/juanfont/headscale/pull/2248)
 - CLI for managing users now accepts `--identifier` in addition to `--name`, usage of `--identifier` is recommended [#2261](https://github.com/juanfont/headscale/pull/2261)
+- Added option to set Node registration expiration/cleanup options via config [#2280](https://github.com/juanfont/headscale/pull/2280)
 
 ## 0.23.0 (2024-09-18)
 

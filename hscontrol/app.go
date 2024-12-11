@@ -72,9 +72,6 @@ const (
 	updateInterval     = 5 * time.Second
 	privateKeyFileMode = 0o600
 	headscaleDirPerm   = 0o700
-
-	registerCacheExpiration = time.Minute * 15
-	registerCacheCleanup    = time.Minute * 20
 )
 
 // Headscale represents the base app of the service.
@@ -122,8 +119,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	registrationCache := zcache.New[string, types.Node](
-		registerCacheExpiration,
-		registerCacheCleanup,
+		cfg.Tuning.NodeRegistrationCacheExpiration,
+		cfg.Tuning.NodeRegistrationCacheCleanup,
 	)
 
 	app := Headscale{
@@ -171,6 +168,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			app.nodeNotifier,
 			app.ipAlloc,
 			app.polMan,
+			&cfg.Tuning,
 		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {

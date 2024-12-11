@@ -68,6 +68,7 @@ func NewAuthProviderOIDC(
 	notif *notifier.Notifier,
 	ipAlloc *db.IPAllocator,
 	polMan policy.PolicyManager,
+	tuningCfg *types.Tuning,
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
@@ -88,8 +89,8 @@ func NewAuthProviderOIDC(
 	}
 
 	registrationCache := zcache.New[string, key.MachinePublic](
-		registerCacheExpiration,
-		registerCacheCleanup,
+		tuningCfg.NodeRegistrationCacheExpiration,
+		tuningCfg.NodeRegistrationCacheCleanup,
 	)
 
 	return &AuthProviderOIDC{

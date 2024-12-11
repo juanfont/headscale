@@ -212,6 +212,10 @@ type Tuning struct {
 	NotifierSendTimeout            time.Duration
 	BatchChangeDelay               time.Duration
 	NodeMapSessionBufferedChanSize int
+
+	// Node registration cache expiration
+	NodeRegistrationCacheExpiration time.Duration
+	NodeRegistrationCacheCleanup    time.Duration
 }
 
 // LoadConfig prepares and loads the Headscale configuration into Viper.
@@ -291,6 +295,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
+	viper.SetDefault("tuning.node_registration_cache_expiration", "15m")
+	viper.SetDefault("tuning.node_registration_cache_cleanup", "20m")
 
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
@@ -935,6 +941,8 @@ func LoadServerConfig() (*Config, error) {
 			NodeMapSessionBufferedChanSize: viper.GetInt(
 				"tuning.node_mapsession_buffered_chan_size",
 			),
+			NodeRegistrationCacheExpiration: viper.GetDuration("tuning.node_registration_cache_expiration"),
+			NodeRegistrationCacheCleanup:    viper.GetDuration("tuning.node_registration_cache_cleanup"),
 		},
 	}, nil
 }
