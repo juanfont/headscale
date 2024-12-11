@@ -76,7 +76,7 @@ This will also affect the way you [reference users in policies](https://github.c
 
 ### BREAKING
 
-- Remove `dns.use_username_in_magic_dns` configuration option [#2020](https://github.com/juanfont/headscale/pull/2020)
+- Remove `dns.use_username_in_magic_dns` configuration option [#2020](https://github.com/juanfont/headscale/pull/2020), [#2279](https://github.com/juanfont/headscale/pull/2279)
   - Having usernames in magic DNS is no longer possible.
 - Remove versions older than 1.56 [#2149](https://github.com/juanfont/headscale/pull/2149)
   - Clean up old code required by old versions
