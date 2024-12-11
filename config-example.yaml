@@ -366,7 +366,7 @@ unix_socket_permission: "0770"
 #   # to force them using the unique identifier from the OIDC and to give them a
 #   # proper display name and picture if available.
 #   # Note that this will only work if the username from the legacy user is the same
-#   # and ther is a posibility for account takeover should a username have changed
+#   # and there is a possibility for account takeover should a username have changed
 #   # with the provider.
 #   # Disabling this feature will cause all new logins to be created as new users.
 #   # Note this option will be removed in the future and should be set to false

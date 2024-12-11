@@ -18,7 +18,7 @@ Headscale v0.24.0 and later will also automatically update profile fields with O
 
 #### Migrating existing installations
 
-Headscale v0.23.0 and earlier never recorded the `iss` and `sub` fields, so all legacy (existing) OIDC accounts from _need to be migrated_ to be properly secured.
+Headscale v0.23.0 and earlier never recorded the `iss` and `sub` fields, so all legacy (existing) OIDC accounts _need to be migrated_ to be properly secured.
 
 Headscale v0.24.0 has an automatic migration feature, which is enabled by default (`map_legacy_users: true`). **This will be disabled by default in a future version of Headscale – any unmigrated users will get new accounts.**
 
@@ -82,8 +82,8 @@ This will also affect the way you [reference users in policies](https://github.c
   - Clean up old code required by old versions
 - User gRPC/API [#2261](https://github.com/juanfont/headscale/pull/2261):
   - If you depend on a Headscale Web UI, you should wait with this update until the UI have been updated to match the new API.
-  - `GET /api/v1/user/{name}` and `GetUser` have been removed in favour of `ListUsers` with and ID parameter
-  - `RenameUser` and `DeleteUser` now requires and ID instead of a name.
+  - `GET /api/v1/user/{name}` and `GetUser` have been removed in favour of `ListUsers` with an ID parameter
+  - `RenameUser` and `DeleteUser` now require an ID instead of a name.
 
 ### Changes
 
