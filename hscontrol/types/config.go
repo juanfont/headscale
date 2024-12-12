@@ -66,6 +66,8 @@ type Config struct {
 	Log                            LogConfig
 	DisableUpdateCheck             bool
 
+	AccessControlAllowOrigins string
+
 	Database DatabaseConfig
 
 	DERP DERPConfig
@@ -331,6 +333,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
+
+	viper.SetDefault("access_control_allow_origin", "")
 
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
@@ -902,6 +906,8 @@ func LoadServerConfig() (*Config, error) {
 		GRPCAddr:           viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: false,
+
+		AccessControlAllowOrigins: viper.GetString("access_control_allow_origin"),
 
 		PrefixV4:     prefix4,
 		PrefixV6:     prefix6,

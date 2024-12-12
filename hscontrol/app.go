@@ -455,9 +455,20 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
+func (h *Headscale) corsHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", h.cfg.AccessControlAllowOrigins)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 	router.Use(prometheusMiddleware)
+
+	if h.cfg.AccessControlAllowOrigins != "" {
+		router.Use(h.corsHeadersMiddleware)
+	}
 
 	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost, http.MethodGet)
 
