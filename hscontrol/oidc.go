@@ -447,7 +447,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 
 	// This check is for legacy, if the user cannot be found by the OIDC identifier
 	// look it up by username. This should only be needed once.
-	// This branch will presist for a number of versions after the OIDC migration and
+	// This branch will persist for a number of versions after the OIDC migration and
 	// then be removed following a deprecation.
 	// TODO(kradalby): Remove when strip_email_domain and migration is removed
 	// after #2170 is cleaned up.
@@ -536,7 +536,7 @@ func renderOIDCCallbackTemplate(
 
 // TODO(kradalby): Reintroduce when strip_email_domain is removed
 // after #2170 is cleaned up
-// DEPRECATED: DO NOT USE
+// DEPRECATED: DO NOT USE.
 func getUserName(
 	claims *types.OIDCClaims,
 	stripEmaildomain bool,

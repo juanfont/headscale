@@ -189,7 +189,6 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 // NormalizeToFQDNRules will replace forbidden chars in user
 // it can also return an error if the user doesn't respect RFC 952 and 1123.
 func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
-
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, "'", "")
 	atIdx := strings.Index(name, "@")
