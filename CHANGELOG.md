@@ -33,19 +33,19 @@ When automatic migration is enabled (`map_legacy_users: true`), Headscale will f
 - If `strip_email_domain: true` (the default): the Headscale username matches the "username" part of their email address.
 - If `strip_email_domain: false`: the Headscale username matches the _whole_ email address.
 
-    On migration, Headscale will change the account's username to their `preferred_username`. **This could break any ACLs or policies which are configured to match by username.**
+  On migration, Headscale will change the account's username to their `preferred_username`. **This could break any ACLs or policies which are configured to match by username.**
 
-    Like with Headscale v0.23.0 and earlier, this migration only works for users who haven't changed their email address since their last Headscale login.
+  Like with Headscale v0.23.0 and earlier, this migration only works for users who haven't changed their email address since their last Headscale login.
 
-    A _successful_ automated migration should otherwise be transparent to users.
+  A _successful_ automated migration should otherwise be transparent to users.
 
-    Once a Headscale account has been migrated, it will be _unavailable_ to be matched by the legacy process. An OIDC login with a matching username, but _non-matching_ `iss` and `sub` will instead get a _new_ Headscale account.
+  Once a Headscale account has been migrated, it will be _unavailable_ to be matched by the legacy process. An OIDC login with a matching username, but _non-matching_ `iss` and `sub` will instead get a _new_ Headscale account.
 
-    Because of the way OIDC works, Headscale's automated migration process can _only_ work when a user tries to log in after the update. Mass updates would require Headscale implement a protocol like SCIM, which is **extremely** complicated and not available in all identity providers.
+  Because of the way OIDC works, Headscale's automated migration process can _only_ work when a user tries to log in after the update. Mass updates would require Headscale implement a protocol like SCIM, which is **extremely** complicated and not available in all identity providers.
 
-    Administrators could also attempt to migrate users manually by editing the database, using their own mapping rules with known-good data sources.
+  Administrators could also attempt to migrate users manually by editing the database, using their own mapping rules with known-good data sources.
 
-    Legacy account migration should have no effect on new installations where all users have a recorded `sub` and `iss`.
+  Legacy account migration should have no effect on new installations where all users have a recorded `sub` and `iss`.
 
 ##### What happens when automatic migration is disabled?
 
