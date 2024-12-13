@@ -117,13 +117,13 @@ func EnableRoute(tx *gorm.DB, id uint64) (*types.StateUpdate, error) {
 	if route.IsExitRoute() {
 		return enableRoutes(
 			tx,
-			&route.Node,
+			route.Node,
 			tsaddr.AllIPv4(),
 			tsaddr.AllIPv6(),
 		)
 	}
 
-	return enableRoutes(tx, &route.Node, netip.Prefix(route.Prefix))
+	return enableRoutes(tx, route.Node, netip.Prefix(route.Prefix))
 }
 
 func DisableRoute(tx *gorm.DB,
@@ -154,7 +154,7 @@ func DisableRoute(tx *gorm.DB,
 			return nil, err
 		}
 	} else {
-		routes, err = GetNodeRoutes(tx, &node)
+		routes, err = GetNodeRoutes(tx, node)
 		if err != nil {
 			return nil, err
 		}
@@ -201,24 +201,26 @@ func DeleteRoute(
 		return nil, err
 	}
 
+	if route.Node == nil {
+		// If the route is not assigned to a node, just delete it,
+		// there are no updates to be sent as no nodes are
+		// dependent on it
+		if err := tx.Unscoped().Delete(&route).Error; err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
 	var routes types.Routes
 	node := route.Node
 
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
+	// This means that if we delete a route which is an exit route, delete both.
 	var update []types.NodeID
-	if !route.IsExitRoute() {
-		update, err = failoverRouteTx(tx, isLikelyConnected, route)
-		if err != nil {
-			return nil, nil
-		}
-
-		if err := tx.Unscoped().Delete(&route).Error; err != nil {
-			return nil, err
-		}
-	} else {
-		routes, err = GetNodeRoutes(tx, &node)
+	if route.IsExitRoute() {
+		routes, err = GetNodeRoutes(tx, node)
 		if err != nil {
 			return nil, err
 		}
@@ -233,13 +235,22 @@ func DeleteRoute(
 		if err := tx.Unscoped().Delete(&routesToDelete).Error; err != nil {
 			return nil, err
 		}
+	} else {
+		update, err = failoverRouteTx(tx, isLikelyConnected, route)
+		if err != nil {
+			return nil, nil
+		}
+
+		if err := tx.Unscoped().Delete(&route).Error; err != nil {
+			return nil, err
+		}
 	}
 
 	// If update is empty, it means that one was not created
 	// by failover (as a failover was not necessary), create
 	// one and return to the caller.
 	if routes == nil {
-		routes, err = GetNodeRoutes(tx, &node)
+		routes, err = GetNodeRoutes(tx, node)
 		if err != nil {
 			return nil, err
 		}
