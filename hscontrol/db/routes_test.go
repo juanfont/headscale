@@ -290,23 +290,18 @@ func (s *Suite) TestDeleteRoutes(c *check.C) {
 }
 
 var (
-	ipp    = func(s string) netip.Prefix { return netip.MustParsePrefix(s) }
-	mkNode = func(nid types.NodeID) types.Node {
-		return types.Node{ID: nid}
+	ipp = func(s string) netip.Prefix { return netip.MustParsePrefix(s) }
+	np  = func(nid types.NodeID) *types.Node {
+		return &types.Node{ID: nid}
 	}
 )
-
-var np = func(nid types.NodeID) *types.Node {
-	no := mkNode(nid)
-	return &no
-}
 
 var r = func(id uint, nid types.NodeID, prefix netip.Prefix, enabled, primary bool) types.Route {
 	return types.Route{
 		Model: gorm.Model{
 			ID: id,
 		},
-		Node:      mkNode(nid),
+		Node:      np(nid),
 		Prefix:    prefix,
 		Enabled:   enabled,
 		IsPrimary: primary,
@@ -693,7 +688,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 1,
 				},
 				Prefix:    ipp("10.0.0.0/24"),
-				Node:      types.Node{},
+				Node:      &types.Node{},
 				IsPrimary: false,
 			},
 			routes:  types.Routes{},
@@ -707,7 +702,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 1,
 				},
 				Prefix:    ipp("0.0.0.0/0"),
-				Node:      types.Node{},
+				Node:      &types.Node{},
 				IsPrimary: true,
 			},
 			routes:  types.Routes{},
@@ -721,7 +716,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 1,
 				},
 				Prefix: ipp("10.0.0.0/24"),
-				Node: types.Node{
+				Node: &types.Node{
 					ID: 1,
 				},
 				IsPrimary: true,
@@ -732,7 +727,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 1,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 1,
 					},
 					IsPrimary: true,
@@ -748,7 +743,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 1,
 				},
 				Prefix: ipp("10.0.0.0/24"),
-				Node: types.Node{
+				Node: &types.Node{
 					ID: 1,
 				},
 				IsPrimary: true,
@@ -760,7 +755,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 1,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 1,
 					},
 					IsPrimary: true,
@@ -771,7 +766,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 2,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 2,
 					},
 					IsPrimary: false,
@@ -795,7 +790,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 1,
 				},
 				Prefix: ipp("10.0.0.0/24"),
-				Node: types.Node{
+				Node: &types.Node{
 					ID: 1,
 				},
 				IsPrimary: false,
@@ -807,7 +802,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 1,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 1,
 					},
 					IsPrimary: true,
@@ -818,7 +813,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 2,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 2,
 					},
 					IsPrimary: false,
@@ -835,7 +830,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 2,
 				},
 				Prefix: ipp("10.0.0.0/24"),
-				Node: types.Node{
+				Node: &types.Node{
 					ID: 2,
 				},
 				IsPrimary: true,
@@ -847,7 +842,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 1,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 1,
 					},
 					IsPrimary: false,
@@ -858,7 +853,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 2,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 2,
 					},
 					IsPrimary: true,
@@ -869,7 +864,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 3,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 3,
 					},
 					IsPrimary: false,
@@ -893,7 +888,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 1,
 				},
 				Prefix: ipp("10.0.0.0/24"),
-				Node: types.Node{
+				Node: &types.Node{
 					ID: 1,
 				},
 				IsPrimary: true,
@@ -905,7 +900,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 1,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 1,
 					},
 					IsPrimary: true,
@@ -917,7 +912,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 2,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 4,
 					},
 					IsPrimary: false,
@@ -938,7 +933,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 1,
 				},
 				Prefix: ipp("10.0.0.0/24"),
-				Node: types.Node{
+				Node: &types.Node{
 					ID: 1,
 				},
 				IsPrimary: true,
@@ -950,7 +945,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 1,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 1,
 					},
 					IsPrimary: true,
@@ -962,7 +957,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 2,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 4,
 					},
 					IsPrimary: false,
@@ -973,7 +968,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 3,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 2,
 					},
 					IsPrimary: true,
@@ -998,7 +993,7 @@ func TestFailoverRouteTx(t *testing.T) {
 					ID: 1,
 				},
 				Prefix: ipp("10.0.0.0/24"),
-				Node: types.Node{
+				Node: &types.Node{
 					ID: 1,
 				},
 				IsPrimary: true,
@@ -1010,7 +1005,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 1,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 1,
 					},
 					IsPrimary: true,
@@ -1022,7 +1017,7 @@ func TestFailoverRouteTx(t *testing.T) {
 						ID: 2,
 					},
 					Prefix: ipp("10.0.0.0/24"),
-					Node: types.Node{
+					Node: &types.Node{
 						ID: 2,
 					},
 					IsPrimary: false,
@@ -1075,7 +1070,7 @@ func TestFailoverRoute(t *testing.T) {
 			Model: gorm.Model{
 				ID: id,
 			},
-			Node: types.Node{
+			Node: &types.Node{
 				ID: nid,
 			},
 			Prefix:    prefix,

@@ -14,7 +14,7 @@ type Route struct {
 	gorm.Model
 
 	NodeID uint64
-	Node   Node
+	Node   *Node
 
 	// TODO(kradalby): change this custom type to netip.Prefix
 	Prefix netip.Prefix `gorm:"serializer:text"`
