@@ -154,7 +154,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	}
 
 	sort.Slice(listUsers, func(i, j int) bool {
-		return listUsers[i].Id < listUsers[j].Id
+		return listUsers[i].GetId() < listUsers[j].GetId()
 	})
 
 	if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
@@ -514,7 +514,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 			assertNoErr(t, err)
 
 			sort.Slice(listUsers, func(i, j int) bool {
-				return listUsers[i].Id < listUsers[j].Id
+				return listUsers[i].GetId() < listUsers[j].GetId()
 			})
 
 			if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {

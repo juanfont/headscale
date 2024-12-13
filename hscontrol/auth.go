@@ -390,7 +390,6 @@ func (h *Headscale) handleAuthKey(
 			http.Error(writer, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-
 	}
 
 	err = h.db.Write(func(tx *gorm.DB) error {

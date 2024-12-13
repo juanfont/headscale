@@ -187,7 +187,7 @@ func TestTailNode(t *testing.T) {
 			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{}, types.Nodes{tt.node})
 			cfg := &types.Config{
 				BaseDomain:          tt.baseDomain,
-				DNSConfig:           tt.dnsConfig,
+				TailcfgDNSConfig:    tt.dnsConfig,
 				RandomizeClientPort: false,
 			}
 			got, err := tailNode(

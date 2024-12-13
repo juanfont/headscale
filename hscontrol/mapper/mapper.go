@@ -116,11 +116,11 @@ func generateDNSConfig(
 	cfg *types.Config,
 	node *types.Node,
 ) *tailcfg.DNSConfig {
-	if cfg.DNSConfig == nil {
+	if cfg.TailcfgDNSConfig == nil {
 		return nil
 	}
 
-	dnsConfig := cfg.DNSConfig.Clone()
+	dnsConfig := cfg.TailcfgDNSConfig.Clone()
 
 	addNextDNSMetadata(dnsConfig.Resolvers, node)
 

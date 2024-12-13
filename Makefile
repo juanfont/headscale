@@ -44,7 +44,10 @@ fmt-prettier:
 	prettier --write '**/**.{ts,js,md,yaml,yml,sass,css,scss,html}'
 
 fmt-go:
-	golines --max-len=88 --base-formatter=gofumpt -w $(GO_SOURCES)
+	# TODO(kradalby): Reeval if we want to use 88 in the future.
+	# golines --max-len=88 --base-formatter=gofumpt -w $(GO_SOURCES)
+	gofumpt -l -w .
+	golangci-lint run --fix
 
 fmt-proto:
 	clang-format -i $(PROTO_SOURCES)

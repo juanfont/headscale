@@ -3,6 +3,7 @@ package integration
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -300,6 +302,30 @@ func assertValidNetcheck(t *testing.T, client TailscaleClient) {
 	}
 
 	assert.NotEqualf(t, 0, report.PreferredDERP, "%q does not have a DERP relay", client.Hostname())
+}
+
+// assertCommandOutputContains executes a command for a set time and asserts that the output
+// reaches a desired state.
+// It should be used instead of sleeping before executing.
+func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []string, contains string) {
+	t.Helper()
+
+	err := backoff.Retry(func() error {
+		stdout, stderr, err := c.Execute(command)
+		if err != nil {
+			return fmt.Errorf("executing command, stdout: %q stderr: %q, err: %w", stdout, stderr, err)
+		}
+
+		if !strings.Contains(stdout, contains) {
+			return fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout)
+		}
+
+		return nil
+	}, backoff.NewExponentialBackOff(
+		backoff.WithMaxElapsedTime(10*time.Second)),
+	)
+
+	assert.NoError(t, err)
 }
 
 func isSelfClient(client TailscaleClient, addr string) bool {

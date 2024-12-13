@@ -373,6 +373,5 @@ func TestConstraints(t *testing.T) {
 
 			tt.run(t, db.DB.Debug())
 		})
-
 	}
 }
