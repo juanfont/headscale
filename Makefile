@@ -42,6 +42,7 @@ fmt: fmt-go fmt-prettier fmt-proto
 
 fmt-prettier:
 	prettier --write '**/**.{ts,js,md,yaml,yml,sass,css,scss,html}'
+	prettier --write --print-width 80 --prose-wrap always CHANGELOG.md
 
 fmt-go:
 	# TODO(kradalby): Reeval if we want to use 88 in the future.
