@@ -148,9 +148,8 @@ This will also affect the way you
 - User gRPC/API [#2261](https://github.com/juanfont/headscale/pull/2261):
   - If you depend on a Headscale Web UI, you should wait with this update until
     the UI have been updated to match the new API.
-  - `GET /api/v1/user/{name}` and `GetUser` have been removed in favour of
-    `ListUsers` with and ID parameter
-  - `RenameUser` and `DeleteUser` now requires and ID instead of a name.
+  - `GET /api/v1/user/{name}` and `GetUser` have been removed in favour of `ListUsers` with an ID parameter
+  - `RenameUser` and `DeleteUser` now require an ID instead of a name.
 
 ### Changes
 
