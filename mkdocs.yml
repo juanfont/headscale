@@ -168,7 +168,6 @@ nav:
           - Official releases: setup/install/official.md
           - Community packages: setup/install/community.md
           - Container: setup/install/container.md
-          - Cloud: setup/install/cloud.md
           - Build from source: setup/install/source.md
       - Upgrade: setup/upgrade.md
   - Usage:
