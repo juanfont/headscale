@@ -122,6 +122,10 @@ func (pm *PolicyManagerV1) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, erro
 }
 
 func (pm *PolicyManagerV1) SetPolicy(polB []byte) (bool, error) {
+	if len(polB) == 0 {
+		return false, nil
+	}
+
 	pol, err := LoadACLPolicyFromBytes(polB)
 	if err != nil {
 		return false, fmt.Errorf("parsing policy: %w", err)

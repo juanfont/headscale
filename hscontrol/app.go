@@ -838,6 +838,10 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received SIGHUP, reloading ACL and Config")
 
+				if h.cfg.Policy.IsEmpty() {
+					continue
+				}
+
 				if err := h.loadPolicyManager(); err != nil {
 					log.Error().Err(err).Msg("failed to reload Policy")
 				}
@@ -1100,6 +1104,10 @@ func (h *Headscale) policyBytes() ([]byte, error) {
 			}
 
 			return nil, err
+		}
+
+		if p.Data == "" {
+			return nil, nil
 		}
 
 		return []byte(p.Data), err
