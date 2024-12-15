@@ -116,6 +116,11 @@ func (e *ExtraRecordsMan) updateRecords() {
 		return
 	}
 
+	// If there are no records, ignore the update.
+	if records == nil {
+		return
+	}
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -141,6 +146,12 @@ func readExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("reading path: %s, err: %w", path, err)
+	}
+
+	// If the read was triggered too fast, and the file is not complete, ignore the update
+	// if the file is empty. A consecutive update will be triggered when the file is complete.
+	if len(b) == 0 {
+		return nil, [32]byte{}, nil
 	}
 
 	var records []tailcfg.DNSRecord
