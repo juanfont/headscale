@@ -164,13 +164,14 @@ This will also affect the way you
 - Fixed updating of hostname and givenName when it is updated in HostInfo
   [#2199](https://github.com/juanfont/headscale/pull/2199)
 - Fixed missing `stable-debug` container tag
-  [#2232](https://github.com/juanfont/headscale/pr/2232)
+  [#2232](https://github.com/juanfont/headscale/pull/2232)
 - Loosened up `server_url` and `base_domain` check. It was overly strict in some
   cases. [#2248](https://github.com/juanfont/headscale/pull/2248)
 - CLI for managing users now accepts `--identifier` in addition to `--name`,
   usage of `--identifier` is recommended
   [#2261](https://github.com/juanfont/headscale/pull/2261)
 - Add `dns.extra_records_path` configuration option [#2262](https://github.com/juanfont/headscale/issues/2262)
+- Support client verify for DERP [#2046](https://github.com/juanfont/headscale/pull/2046)
 
 ## 0.23.0 (2024-09-18)
 
@@ -253,7 +254,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
   - Entrypoint of container image has changed from shell to headscale, require
     change from `headscale serve` to `serve`
   - `/var/lib/headscale` and `/var/run/headscale` is no longer created
-    automatically, see [container docs](./docs/running-headscale-container.md)
+    automatically, see [container docs](./docs/setup/install/container.md)
 - Prefixes are now defined per v4 and v6 range.
   [#1756](https://github.com/juanfont/headscale/pull/1756)
   - `ip_prefixes` option is now `prefixes.v4` and `prefixes.v6`
@@ -643,7 +644,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
 
 - Boundaries between Namespaces has been removed and all nodes can communicate
   by default [#357](https://github.com/juanfont/headscale/pull/357)
-  - To limit access between nodes, use [ACLs](./docs/acls.md).
+  - To limit access between nodes, use [ACLs](./docs/ref/acls.md).
 - `/metrics` is now a configurable host:port endpoint:
   [#344](https://github.com/juanfont/headscale/pull/344). You must update your
   `config.yaml` file to include:
@@ -701,13 +702,12 @@ behaviour.
   - All machines can communicate with all machines by default
   - Tags should now work correctly and adding a host to Headscale should now
     reload the rules.
-  - The documentation have a [fictional example](docs/acls.md) that should cover
+  - The documentation have a [fictional example](./docs/ref/acls.md) that should cover
     some use cases of the ACLs features
 
 ### Features
 
-- Add support for configurable mTLS
-  [docs](docs/tls.md#configuring-mutual-tls-authentication-mtls)
+- Add support for configurable mTLS [docs](./docs/ref/tls.md)
   [#297](https://github.com/juanfont/headscale/pull/297)
 
 ### Changes
@@ -721,7 +721,7 @@ behaviour.
 
 - Add IPv6 support to the prefix assigned to namespaces
 - Add API Key support
-  - Enable remote control of `headscale` via CLI [docs](docs/remote-cli.md)
+  - Enable remote control of `headscale` via CLI [docs](./docs/ref/remote-cli.md)
   - Enable HTTP API (beta, subject to change)
 - OpenID Connect users will be mapped per namespaces
   - Each user will get its own namespace, created if it does not exist
