@@ -3,6 +3,8 @@ package types
 import (
 	"cmp"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"net/mail"
 	"strconv"
 
@@ -119,18 +121,49 @@ func (u *User) Proto() *v1.User {
 	}
 }
 
+// JumpCloud returns a JSON where email_verified is returned as a
+// string "true" or "false" instead of a boolean.
+// This maps bool to a specific type with a custom unmarshaler to
+// ensure we can decode it from a string.
+// https://github.com/juanfont/headscale/issues/2293
+type FlexibleBoolean bool
+
+func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
+	var val interface{}
+	err := json.Unmarshal(data, &val)
+	if err != nil {
+		return fmt.Errorf("could not unmarshal data: %w", err)
+	}
+
+	switch v := val.(type) {
+	case bool:
+		*bit = FlexibleBoolean(v)
+	case string:
+		pv, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("could not parse %s as boolean: %w", v, err)
+		}
+		*bit = FlexibleBoolean(pv)
+
+	default:
+		return fmt.Errorf("could not parse %v as boolean", v)
+	}
+
+	return nil
+}
+
 type OIDCClaims struct {
 	// Sub is the user's unique identifier at the provider.
 	Sub string `json:"sub"`
 	Iss string `json:"iss"`
 
 	// Name is the user's full name.
-	Name              string   `json:"name,omitempty"`
-	Groups            []string `json:"groups,omitempty"`
-	Email             string   `json:"email,omitempty"`
-	EmailVerified     bool     `json:"email_verified,omitempty"`
-	ProfilePictureURL string   `json:"picture,omitempty"`
-	Username          string   `json:"preferred_username,omitempty"`
+	Name              string          `json:"name,omitempty"`
+	Groups            []string        `json:"groups,omitempty"`
+	Email             string          `json:"email,omitempty"`
+	EmailVerified     FlexibleBoolean `json:"email_verified,omitempty"`
+	ProfilePictureURL string          `json:"picture,omitempty"`
+	Username          string          `json:"preferred_username,omitempty"`
 }
 
 func (c *OIDCClaims) Identifier() string {
