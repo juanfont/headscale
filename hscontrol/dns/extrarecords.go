@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
@@ -83,12 +84,39 @@ func (e *ExtraRecordsMan) Run() {
 				log.Error().Caller().Msgf("file watcher event channel closing")
 				return
 			}
+			switch event.Op {
+			case fsnotify.Create, fsnotify.Write, fsnotify.Chmod:
+				log.Trace().Caller().Str("path", event.Name).Str("op", event.Op.String()).Msg("extra records received filewatch event")
+				if event.Name != e.path {
+					continue
+				}
+				e.updateRecords()
 
-			log.Trace().Caller().Str("path", event.Name).Str("op", event.Op.String()).Msg("extra records received filewatch event")
-			if event.Name != e.path {
-				continue
+				// If a file is removed or renamed, fsnotify will loose track of it
+				// and not watch it. We will therefore attempt to re-add it with a backoff.
+			case fsnotify.Remove, fsnotify.Rename:
+				err := backoff.Retry(func() error {
+					if _, err := os.Stat(e.path); err != nil {
+						return err
+					}
+
+					return nil
+				}, backoff.NewExponentialBackOff())
+
+				if err != nil {
+					log.Error().Caller().Err(err).Msgf("extra records filewatcher retrying to find file after delete")
+					continue
+				}
+
+				err = e.watcher.Add(e.path)
+				if err != nil {
+					log.Error().Caller().Err(err).Msgf("extra records filewatcher re-adding file after delete failed, giving up.")
+					return
+				} else {
+					log.Trace().Caller().Str("path", e.path).Msg("extra records file re-added after delete")
+					e.updateRecords()
+				}
 			}
-			e.updateRecords()
 
 		case err, ok := <-e.watcher.Errors:
 			if !ok {
