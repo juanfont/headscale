@@ -15,7 +15,7 @@ Install the official Tailscale iOS client from the [App Store](https://apps.appl
 
 ### Configuring the headscale URL
 
-- Open Tailscale and make sure you are _not_ logged in to any account
+- Open Tailscale
 - Tap the user profile icon in the top right corner of the Tailscale app to open the `Settings` menu
 - If you are not signed into any other tailnets, tap the `Log in` menu item. Otherwise, tap the signed-in user
 - Tap the `⋯` icon menu in the top right corner, then select `Use a custom coordination server`
