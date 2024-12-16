@@ -12,7 +12,7 @@ provides on overview of headscale's feature and compatibility with the Tailscale
     - [x] [MagicDNS](https://tailscale.com/kb/1081/magicdns)
     - [x] [Global and restricted nameservers (split DNS)](https://tailscale.com/kb/1054/dns#nameservers)
     - [x] [search domains](https://tailscale.com/kb/1054/dns#search-domains)
-    - [x] [Extra DNS records (headscale only)](../ref/dns.md#setting-custom-dns-records)
+    - [x] [Extra DNS records (headscale only)](../ref/dns.md#setting-extra-dns-records)
 - [x] [Taildrop (File Sharing)](https://tailscale.com/kb/1106/taildrop)
 - [x] Routing advertising (including exit nodes)
 - [x] Dual stack (IPv4 and IPv6)
