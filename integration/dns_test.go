@@ -146,6 +146,27 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 		assertCommandOutputContains(t, client, []string{"dig", "test.myvpn.example.com"}, "6.6.6.6")
 	}
 
+	hs, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	// Write the file directly into place from the docker API.
+	b0, _ := json.Marshal([]tailcfg.DNSRecord{
+		{
+			Name:  "docker.myvpn.example.com",
+			Type:  "A",
+			Value: "2.2.2.2",
+		},
+	})
+
+	err = hs.WriteFile(erPath, b0)
+	assertNoErr(t, err)
+
+	for _, client := range allClients {
+		assertCommandOutputContains(t, client, []string{"dig", "docker.myvpn.example.com"}, "2.2.2.2")
+	}
+
+	// Write a new file and move it to the path to ensure the reload
+	// works when a file is moved atomically into place.
 	extraRecords = append(extraRecords, tailcfg.DNSRecord{
 		Name:  "otherrecord.myvpn.example.com",
 		Type:  "A",
@@ -153,12 +174,6 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	})
 	b2, _ := json.Marshal(extraRecords)
 
-	hs, err := scenario.Headscale()
-	assertNoErr(t, err)
-
-	// Write it to a separate file to ensure Docker's API doesnt
-	// do anything unexpected and rather move it into place to trigger
-	// a reload.
 	err = hs.WriteFile(erPath+"2", b2)
 	assertNoErr(t, err)
 	_, err = hs.Execute([]string{"mv", erPath + "2", erPath})
@@ -167,6 +182,61 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	for _, client := range allClients {
 		assertCommandOutputContains(t, client, []string{"dig", "test.myvpn.example.com"}, "6.6.6.6")
 		assertCommandOutputContains(t, client, []string{"dig", "otherrecord.myvpn.example.com"}, "7.7.7.7")
+	}
+
+	// Write a new file and copy it to the path to ensure the reload
+	// works when a file is copied into place.
+	b3, _ := json.Marshal([]tailcfg.DNSRecord{
+		{
+			Name:  "copy.myvpn.example.com",
+			Type:  "A",
+			Value: "8.8.8.8",
+		},
+	})
+
+	err = hs.WriteFile(erPath+"3", b3)
+	assertNoErr(t, err)
+	_, err = hs.Execute([]string{"cp", erPath + "3", erPath})
+	assertNoErr(t, err)
+
+	for _, client := range allClients {
+		assertCommandOutputContains(t, client, []string{"dig", "copy.myvpn.example.com"}, "8.8.8.8")
+	}
+
+	// Write in place to ensure pipe like behaviour works
+	b4, _ := json.Marshal([]tailcfg.DNSRecord{
+		{
+			Name:  "docker.myvpn.example.com",
+			Type:  "A",
+			Value: "9.9.9.9",
+		},
+	})
+	command := []string{"echo", fmt.Sprintf("'%s'", string(b4)), ">", erPath}
+	_, err = hs.Execute([]string{"bash", "-c", strings.Join(command, " ")})
+	assertNoErr(t, err)
+
+	for _, client := range allClients {
+		assertCommandOutputContains(t, client, []string{"dig", "docker.myvpn.example.com"}, "9.9.9.9")
+	}
+
+	// Delete the file and create a new one to ensure it is picked up again.
+	_, err = hs.Execute([]string{"rm", erPath})
+	assertNoErr(t, err)
+
+	time.Sleep(2 * time.Second)
+
+	// The same paths should still be available as it is not cleared on delete.
+	for _, client := range allClients {
+		assertCommandOutputContains(t, client, []string{"dig", "docker.myvpn.example.com"}, "9.9.9.9")
+	}
+
+	// Write a new file, the backoff mechanism should make the filewatcher pick it up
+	// again.
+	err = hs.WriteFile(erPath, b3)
+	assertNoErr(t, err)
+
+	for _, client := range allClients {
+		assertCommandOutputContains(t, client, []string{"dig", "copy.myvpn.example.com"}, "8.8.8.8")
 	}
 }
 
