@@ -40,9 +40,6 @@ servers.
 
 ## ACL setup
 
-Note: Users will be created automatically when users authenticate with the
-headscale server.
-
 ACLs have to be written in [huJSON](https://github.com/tailscale/hujson).
 
 When [registering the servers](../usage/getting-started.md#register-a-node) we

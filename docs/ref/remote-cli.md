@@ -69,7 +69,7 @@ headscale apikeys expire --prefix "<PREFIX>"
 
         !!! bug
 
-            Headscale 0.23.0 requires at least an empty configuration file when environment variables are used to
+            Headscale currently requires at least an empty configuration file when environment variables are used to
             specify connection details. See [issue 2193](https://github.com/juanfont/headscale/issues/2193) for more
             information.
 

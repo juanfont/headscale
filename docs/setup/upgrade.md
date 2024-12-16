@@ -1,6 +1,6 @@
 # Upgrade an existing installation
 
-An existing headscale installation can be updated to a new version:
+Update an existing headscale installation to a new version:
 
 - Read the announcement on the [GitHub releases](https://github.com/juanfont/headscale/releases) page for the new
   version. It lists the changes of the release along with possible breaking changes.
