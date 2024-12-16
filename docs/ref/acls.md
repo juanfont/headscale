@@ -52,7 +52,13 @@ tags to a server they can register, the check of the tags is done on headscale
 server and only valid tags are applied. A tag is valid if the user that is
 registering it is allowed to do it.
 
-To use ACLs in headscale, you must edit your `config.yaml` file. In there you will find a `policy.path` parameter. This will need to point to your ACL file. More info on how these policies are written can be found [here](https://tailscale.com/kb/1018/acls/).
+To use ACLs in headscale, you must edit your `config.yaml` file. In there you will find a `policy.path` parameter. This
+will need to point to your ACL file. More info on how these policies are written can be found
+[here](https://tailscale.com/kb/1018/acls/).
+
+Please reload or restart Headscale after updating the ACL file. Headscale may be reloaded either via its systemd service
+(`sudo systemctl reload headscale`) or by sending a SIGHUP signal (`sudo kill -HUP $(pidof headscale)`) to the main
+process. Headscale logs the result of ACL policy processing after each reload.
 
 Here are the ACL's to implement the same permissions as above:
 
