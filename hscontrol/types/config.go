@@ -211,6 +211,10 @@ type PolicyConfig struct {
 	Mode PolicyMode
 }
 
+func (p *PolicyConfig) IsEmpty() bool {
+	return p.Mode == PolicyModeFile && p.Path == ""
+}
+
 type LogConfig struct {
 	Format string
 	Level  zerolog.Level
