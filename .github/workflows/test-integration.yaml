@@ -26,6 +26,7 @@ jobs:
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestOIDC024UserCreation
           - TestOIDCAuthenticationWithPKCE
+          - TestOIDCAuthenticationWithPKCEVerifierTampering
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
           - TestUserCommand
