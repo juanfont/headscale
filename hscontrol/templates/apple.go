@@ -93,7 +93,7 @@ func Apple(url string) *elem.Element {
 				elem.Li(
 					nil,
 					elem.Text(
-						"ALT + Click the Tailscale icon in the menu and hover over the Debug menu",
+						"Option + Click the Tailscale icon in the menu and hover over the Debug menu",
 					),
 				),
 				elem.Li(nil,
