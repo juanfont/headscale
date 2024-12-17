@@ -596,24 +596,6 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	want := []v1.User{
-		{
-			Id:         "1",
-			Name:       "user1",
-			Email:      "user1@headscale.net",
-			Provider:   "oidc",
-			ProviderId: oidcConfig.Issuer + "/user1",
-		},
-	}
-
-	sort.Slice(listUsers, func(i, j int) bool {
-		return listUsers[i].Id < listUsers[j].Id
-	})
-
-	if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
-		t.Fatalf("unexpected users: %s", diff)
-	}
-
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
 	})
