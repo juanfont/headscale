@@ -372,18 +372,22 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 			cert := headscale.GetCert()
 			hostname := headscale.GetHostname()
 
+			s.mu.Lock()
 			opts = append(opts,
 				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
 			)
+			s.mu.Unlock()
 
 			user.createWaitGroup.Go(func() error {
+				s.mu.Lock()
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
 					s.network,
 					opts...,
 				)
+				s.mu.Unlock()
 				if err != nil {
 					return fmt.Errorf(
 						"failed to create tailscale (%s) node: %w",

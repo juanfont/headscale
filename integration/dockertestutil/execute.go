@@ -25,7 +25,6 @@ type ExecuteCommandOption func(*ExecuteCommandConfig) error
 func ExecuteCommandTimeout(timeout time.Duration) ExecuteCommandOption {
 	return ExecuteCommandOption(func(conf *ExecuteCommandConfig) error {
 		conf.timeout = timeout
-
 		return nil
 	})
 }
@@ -67,6 +66,7 @@ func ExecuteCommand(
 				StdErr: &stderr,
 			},
 		)
+
 		resultChan <- result{exitCode, err}
 	}()
 
@@ -88,7 +88,6 @@ func ExecuteCommand(
 
 		return stdout.String(), stderr.String(), nil
 	case <-time.After(execConfig.timeout):
-
 		return stdout.String(), stderr.String(), fmt.Errorf("command failed, stderr: %s: %w", stderr.String(), ErrDockertestCommandTimeout)
 	}
 }
