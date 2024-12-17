@@ -43,7 +43,7 @@ tailscale login --login-server <YOUR_HEADSCALE_URL>
 
 #### GUI
 
-- ALT + Click the Tailscale icon in the menu and hover over the Debug menu
+- Option + Click the Tailscale icon in the menu and hover over the Debug menu
 - Under `Custom Login Server`, select `Add Account...`
 - Enter the URL of your headscale instance (e.g `https://headscale.example.com`) and press `Add Account`
 - Follow the login procedure in the browser
