@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -45,7 +47,7 @@ func theInternet() *netipx.IPSet {
 
 	var internetBuilder netipx.IPSetBuilder
 	internetBuilder.AddPrefix(netip.MustParsePrefix("2000::/3"))
-	internetBuilder.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+	internetBuilder.AddPrefix(tsaddr.AllIPv4())
 
 	// Delete Private network addresses
 	// https://datatracker.ietf.org/doc/html/rfc1918
@@ -55,8 +57,8 @@ func theInternet() *netipx.IPSet {
 	internetBuilder.RemovePrefix(netip.MustParsePrefix("192.168.0.0/16"))
 
 	// Delete Tailscale networks
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fd7a:115c:a1e0::/48"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("100.64.0.0/10"))
+	internetBuilder.RemovePrefix(tsaddr.TailscaleULARange())
+	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
 
 	// Delete "cant find DHCP networks"
 	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-loca
@@ -135,20 +137,21 @@ func GenerateFilterAndSSHRulesForTests(
 	policy *ACLPolicy,
 	node *types.Node,
 	peers types.Nodes,
+	users []types.User,
 ) ([]tailcfg.FilterRule, *tailcfg.SSHPolicy, error) {
 	// If there is no policy defined, we default to allow all
 	if policy == nil {
 		return tailcfg.FilterAllowAll, &tailcfg.SSHPolicy{}, nil
 	}
 
-	rules, err := policy.CompileFilterRules(append(peers, node))
+	rules, err := policy.CompileFilterRules(users, append(peers, node))
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
 
 	log.Trace().Interface("ACL", rules).Str("node", node.GivenName).Msg("ACL rules")
 
-	sshPolicy, err := policy.CompileSSHPolicy(node, peers)
+	sshPolicy, err := policy.CompileSSHPolicy(node, users, peers)
 	if err != nil {
 		return []tailcfg.FilterRule{}, &tailcfg.SSHPolicy{}, err
 	}
@@ -159,6 +162,7 @@ func GenerateFilterAndSSHRulesForTests(
 // CompileFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
 func (pol *ACLPolicy) CompileFilterRules(
+	users []types.User,
 	nodes types.Nodes,
 ) ([]tailcfg.FilterRule, error) {
 	if pol == nil {
@@ -174,9 +178,14 @@ func (pol *ACLPolicy) CompileFilterRules(
 
 		var srcIPs []string
 		for srcIndex, src := range acl.Sources {
-			srcs, err := pol.expandSource(src, nodes)
+			srcs, err := pol.expandSource(src, users, nodes)
 			if err != nil {
-				return nil, fmt.Errorf("parsing policy, acl index: %d->%d: %w", index, srcIndex, err)
+				return nil, fmt.Errorf(
+					"parsing policy, acl index: %d->%d: %w",
+					index,
+					srcIndex,
+					err,
+				)
 			}
 			srcIPs = append(srcIPs, srcs...)
 		}
@@ -195,6 +204,7 @@ func (pol *ACLPolicy) CompileFilterRules(
 
 			expanded, err := pol.ExpandAlias(
 				nodes,
+				users,
 				alias,
 			)
 			if err != nil {
@@ -279,6 +289,7 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 
 func (pol *ACLPolicy) CompileSSHPolicy(
 	node *types.Node,
+	users []types.User,
 	peers types.Nodes,
 ) (*tailcfg.SSHPolicy, error) {
 	if pol == nil {
@@ -310,7 +321,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 	for index, sshACL := range pol.SSHs {
 		var dest netipx.IPSetBuilder
 		for _, src := range sshACL.Destinations {
-			expanded, err := pol.ExpandAlias(append(peers, node), src)
+			expanded, err := pol.ExpandAlias(append(peers, node), users, src)
 			if err != nil {
 				return nil, err
 			}
@@ -333,12 +344,21 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 		case "check":
 			checkAction, err := sshCheckAction(sshACL.CheckPeriod)
 			if err != nil {
-				return nil, fmt.Errorf("parsing SSH policy, parsing check duration, index: %d: %w", index, err)
+				return nil, fmt.Errorf(
+					"parsing SSH policy, parsing check duration, index: %d: %w",
+					index,
+					err,
+				)
 			} else {
 				action = *checkAction
 			}
 		default:
-			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", sshACL.Action, index, err)
+			return nil, fmt.Errorf(
+				"parsing SSH policy, unknown action %q, index: %d: %w",
+				sshACL.Action,
+				index,
+				err,
+			)
 		}
 
 		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
@@ -361,6 +381,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			} else {
 				expandedSrcs, err := pol.ExpandAlias(
 					peers,
+					users,
 					rawSrc,
 				)
 				if err != nil {
@@ -510,9 +531,10 @@ func parseProtocol(protocol string) ([]int, bool, error) {
 // with the given src alias.
 func (pol *ACLPolicy) expandSource(
 	src string,
+	users []types.User,
 	nodes types.Nodes,
 ) ([]string, error) {
-	ipSet, err := pol.ExpandAlias(nodes, src)
+	ipSet, err := pol.ExpandAlias(nodes, users, src)
 	if err != nil {
 		return []string{}, err
 	}
@@ -536,6 +558,7 @@ func (pol *ACLPolicy) expandSource(
 // and transform these in IPAddresses.
 func (pol *ACLPolicy) ExpandAlias(
 	nodes types.Nodes,
+	users []types.User,
 	alias string,
 ) (*netipx.IPSet, error) {
 	if isWildcard(alias) {
@@ -550,12 +573,12 @@ func (pol *ACLPolicy) ExpandAlias(
 
 	// if alias is a group
 	if isGroup(alias) {
-		return pol.expandIPsFromGroup(alias, nodes)
+		return pol.expandIPsFromGroup(alias, users, nodes)
 	}
 
 	// if alias is a tag
 	if isTag(alias) {
-		return pol.expandIPsFromTag(alias, nodes)
+		return pol.expandIPsFromTag(alias, users, nodes)
 	}
 
 	if isAutoGroup(alias) {
@@ -563,7 +586,7 @@ func (pol *ACLPolicy) ExpandAlias(
 	}
 
 	// if alias is a user
-	if ips, err := pol.expandIPsFromUser(alias, nodes); ips != nil {
+	if ips, err := pol.expandIPsFromUser(alias, users, nodes); ips != nil {
 		return ips, err
 	}
 
@@ -572,7 +595,7 @@ func (pol *ACLPolicy) ExpandAlias(
 	if h, ok := pol.Hosts[alias]; ok {
 		log.Trace().Str("host", h.String()).Msg("ExpandAlias got hosts entry")
 
-		return pol.ExpandAlias(nodes, h.String())
+		return pol.ExpandAlias(nodes, users, h.String())
 	}
 
 	// if alias is an IP
@@ -593,6 +616,11 @@ func (pol *ACLPolicy) ExpandAlias(
 // excludeCorrectlyTaggedNodes will remove from the list of input nodes the ones
 // that are correctly tagged since they should not be listed as being in the user
 // we assume in this function that we only have nodes from 1 user.
+//
+// TODO(kradalby): It is quite hard to understand what this function is doing,
+// it seems like it trying to ensure that we dont include nodes that are tagged
+// when we look up the nodes owned by a user.
+// This should be refactored to be more clear as part of the Tags work in #1369.
 func excludeCorrectlyTaggedNodes(
 	aclPolicy *ACLPolicy,
 	nodes types.Nodes,
@@ -603,7 +631,7 @@ func excludeCorrectlyTaggedNodes(
 	for tag := range aclPolicy.TagOwners {
 		owners, _ := expandOwnersFromTag(aclPolicy, user)
 		ns := append(owners, user)
-		if util.StringOrPrefixListContains(ns, user) {
+		if slices.Contains(ns, user) {
 			tags = append(tags, tag)
 		}
 	}
@@ -611,17 +639,16 @@ func excludeCorrectlyTaggedNodes(
 	for _, node := range nodes {
 		found := false
 
-		if node.Hostinfo == nil {
-			continue
-		}
+		if node.Hostinfo != nil {
+			for _, t := range node.Hostinfo.RequestTags {
+				if slices.Contains(tags, t) {
+					found = true
 
-		for _, t := range node.Hostinfo.RequestTags {
-			if util.StringOrPrefixListContains(tags, t) {
-				found = true
-
-				break
+					break
+				}
 			}
 		}
+
 		if len(node.ForcedTags) > 0 {
 			found = true
 		}
@@ -737,15 +764,7 @@ func (pol *ACLPolicy) expandUsersFromGroup(
 				ErrInvalidGroup,
 			)
 		}
-		grp, err := util.NormalizeToFQDNRulesConfigFromViper(group)
-		if err != nil {
-			return []string{}, fmt.Errorf(
-				"failed to normalize group %q, err: %w",
-				group,
-				ErrInvalidGroup,
-			)
-		}
-		users = append(users, grp)
+		users = append(users, group)
 	}
 
 	return users, nil
@@ -753,16 +772,17 @@ func (pol *ACLPolicy) expandUsersFromGroup(
 
 func (pol *ACLPolicy) expandIPsFromGroup(
 	group string,
+	users []types.User,
 	nodes types.Nodes,
 ) (*netipx.IPSet, error) {
 	var build netipx.IPSetBuilder
 
-	users, err := pol.expandUsersFromGroup(group)
+	userTokens, err := pol.expandUsersFromGroup(group)
 	if err != nil {
 		return &netipx.IPSet{}, err
 	}
-	for _, user := range users {
-		filteredNodes := filterNodesByUser(nodes, user)
+	for _, user := range userTokens {
+		filteredNodes := filterNodesByUser(nodes, users, user)
 		for _, node := range filteredNodes {
 			node.AppendToIPSet(&build)
 		}
@@ -773,13 +793,14 @@ func (pol *ACLPolicy) expandIPsFromGroup(
 
 func (pol *ACLPolicy) expandIPsFromTag(
 	alias string,
+	users []types.User,
 	nodes types.Nodes,
 ) (*netipx.IPSet, error) {
 	var build netipx.IPSetBuilder
 
 	// check for forced tags
 	for _, node := range nodes {
-		if util.StringOrPrefixListContains(node.ForcedTags, alias) {
+		if slices.Contains(node.ForcedTags, alias) {
 			node.AppendToIPSet(&build)
 		}
 	}
@@ -805,13 +826,13 @@ func (pol *ACLPolicy) expandIPsFromTag(
 
 	// filter out nodes per tag owner
 	for _, user := range owners {
-		nodes := filterNodesByUser(nodes, user)
+		nodes := filterNodesByUser(nodes, users, user)
 		for _, node := range nodes {
 			if node.Hostinfo == nil {
 				continue
 			}
 
-			if util.StringOrPrefixListContains(node.Hostinfo.RequestTags, alias) {
+			if slices.Contains(node.Hostinfo.RequestTags, alias) {
 				node.AppendToIPSet(&build)
 			}
 		}
@@ -822,11 +843,12 @@ func (pol *ACLPolicy) expandIPsFromTag(
 
 func (pol *ACLPolicy) expandIPsFromUser(
 	user string,
+	users []types.User,
 	nodes types.Nodes,
 ) (*netipx.IPSet, error) {
 	var build netipx.IPSetBuilder
 
-	filteredNodes := filterNodesByUser(nodes, user)
+	filteredNodes := filterNodesByUser(nodes, users, user)
 	filteredNodes = excludeCorrectlyTaggedNodes(pol, filteredNodes, user)
 
 	// shortcurcuit if we have no nodes to get ips from.
@@ -934,7 +956,7 @@ func (pol *ACLPolicy) TagsOfNode(
 			}
 			var found bool
 			for _, owner := range owners {
-				if node.User.Name == owner {
+				if node.User.Username() == owner {
 					found = true
 				}
 			}
@@ -955,10 +977,43 @@ func (pol *ACLPolicy) TagsOfNode(
 	return validTags, invalidTags
 }
 
-func filterNodesByUser(nodes types.Nodes, user string) types.Nodes {
+// filterNodesByUser returns a list of nodes that match the given userToken from a
+// policy.
+// Matching nodes are determined by first matching the user token to a user by checking:
+// - If it is an ID that mactches the user database ID
+// - It is the Provider Identifier from OIDC
+// - It matches the username or email of a user
+//
+// If the token matches more than one user, zero nodes will returned.
+func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) types.Nodes {
 	var out types.Nodes
+
+	var potentialUsers []types.User
+	for _, user := range users {
+		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == userToken {
+			// If a user is matching with a known unique field,
+			// disgard all other users and only keep the current
+			// user.
+			potentialUsers = []types.User{user}
+
+			break
+		}
+		if user.Email == userToken {
+			potentialUsers = append(potentialUsers, user)
+		}
+		if user.Name == userToken {
+			potentialUsers = append(potentialUsers, user)
+		}
+	}
+
+	if len(potentialUsers) != 1 {
+		return nil
+	}
+
+	user := potentialUsers[0]
+
 	for _, node := range nodes {
-		if node.User.Name == user {
+		if node.User.ID == user.ID {
 			out = append(out, node)
 		}
 	}

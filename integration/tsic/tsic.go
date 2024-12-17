@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -32,7 +33,7 @@ const (
 	defaultPingTimeout   = 300 * time.Millisecond
 	defaultPingCount     = 10
 	dockerContextPath    = "../."
-	headscaleCertPath    = "/usr/local/share/ca-certificates/headscale.crt"
+	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
 )
 
@@ -44,6 +45,11 @@ var (
 	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
 	errTailscaleNotConnected           = errors.New("tailscale not connected")
 	errTailscaledNotReadyForLogin      = errors.New("tailscaled not ready for login")
+	errInvalidClientConfig             = errors.New("verifiably invalid client config requested")
+)
+
+const (
+	VersionHead = "head"
 )
 
 func errTailscaleStatus(hostname string, err error) error {
@@ -65,7 +71,7 @@ type TailscaleInContainer struct {
 	fqdn string
 
 	// optional config
-	headscaleCert     []byte
+	caCerts           [][]byte
 	headscaleHostname string
 	withWebsocketDERP bool
 	withSSH           bool
@@ -74,17 +80,23 @@ type TailscaleInContainer struct {
 	withExtraHosts    []string
 	workdir           string
 	netfilter         string
+
+	// build options, solely for HEAD
+	buildConfig TailscaleInContainerBuildConfig
+}
+
+type TailscaleInContainerBuildConfig struct {
+	tags []string
 }
 
 // Option represent optional settings that can be given to a
 // Tailscale instance.
 type Option = func(c *TailscaleInContainer)
 
-// WithHeadscaleTLS takes the certificate of the Headscale instance
-// and adds it to the trusted surtificate of the Tailscale container.
-func WithHeadscaleTLS(cert []byte) Option {
+// WithCACert adds it to the trusted surtificate of the Tailscale container.
+func WithCACert(cert []byte) Option {
 	return func(tsic *TailscaleInContainer) {
-		tsic.headscaleCert = cert
+		tsic.caCerts = append(tsic.caCerts, cert)
 	}
 }
 
@@ -113,7 +125,7 @@ func WithOrCreateNetwork(network *dockertest.Network) Option {
 }
 
 // WithHeadscaleName set the name of the headscale instance,
-// mostly useful in combination with TLS and WithHeadscaleTLS.
+// mostly useful in combination with TLS and WithCACert.
 func WithHeadscaleName(hsName string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.headscaleHostname = hsName
@@ -175,6 +187,22 @@ func WithNetfilter(state string) Option {
 	}
 }
 
+// WithBuildTag adds an additional value to the `-tags=` parameter
+// of the Go compiler, allowing callers to customize the Tailscale client build.
+// This option is only meaningful when invoked on **HEAD** versions of the client.
+// Attempts to use it with any other version is a bug in the calling code.
+func WithBuildTag(tag string) Option {
+	return func(tsic *TailscaleInContainer) {
+		if tsic.version != VersionHead {
+			panic(errInvalidClientConfig)
+		}
+
+		tsic.buildConfig.tags = append(
+			tsic.buildConfig.tags, tag,
+		)
+	}
+}
+
 // New returns a new TailscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
@@ -208,29 +236,28 @@ func New(
 	}
 
 	tailscaleOptions := &dockertest.RunOptions{
-		Name:     hostname,
-		Networks: []*dockertest.Network{tsic.network},
-		// Cmd: []string{
-		// 	"tailscaled", "--tun=tsdev",
-		// },
+		Name:       hostname,
+		Networks:   []*dockertest.Network{tsic.network},
 		Entrypoint: tsic.withEntrypoint,
 		ExtraHosts: tsic.withExtraHosts,
 		Env:        []string{},
 	}
 
 	if tsic.withWebsocketDERP {
+		if version != VersionHead {
+			return tsic, errInvalidClientConfig
+		}
+
+		WithBuildTag("ts_debug_websockets")(tsic)
+
 		tailscaleOptions.Env = append(
 			tailscaleOptions.Env,
 			fmt.Sprintf("TS_DEBUG_DERP_WS_CLIENT=%t", tsic.withWebsocketDERP),
 		)
 	}
 
-	if tsic.headscaleHostname != "" {
-		tailscaleOptions.ExtraHosts = []string{
-			"host.docker.internal:host-gateway",
-			fmt.Sprintf("%s:host-gateway", tsic.headscaleHostname),
-		}
-	}
+	tailscaleOptions.ExtraHosts = append(tailscaleOptions.ExtraHosts,
+		"host.docker.internal:host-gateway")
 
 	if tsic.workdir != "" {
 		tailscaleOptions.WorkingDir = tsic.workdir
@@ -245,12 +272,34 @@ func New(
 	}
 
 	var container *dockertest.Resource
+
+	if version != VersionHead {
+		// build options are not meaningful with pre-existing images,
+		// let's not lead anyone astray by pretending otherwise.
+		defaultBuildConfig := TailscaleInContainerBuildConfig{}
+		hasBuildConfig := !reflect.DeepEqual(defaultBuildConfig, tsic.buildConfig)
+		if hasBuildConfig {
+			return tsic, errInvalidClientConfig
+		}
+	}
+
 	switch version {
-	case "head":
+	case VersionHead:
 		buildOptions := &dockertest.BuildOptions{
 			Dockerfile: "Dockerfile.tailscale-HEAD",
 			ContextDir: dockerContextPath,
 			BuildArgs:  []docker.BuildArg{},
+		}
+
+		buildTags := strings.Join(tsic.buildConfig.tags, ",")
+		if len(buildTags) > 0 {
+			buildOptions.BuildArgs = append(
+				buildOptions.BuildArgs,
+				docker.BuildArg{
+					Name:  "BUILD_TAGS",
+					Value: buildTags,
+				},
+			)
 		}
 
 		container, err = pool.BuildAndRunWithBuildOptions(
@@ -294,8 +343,8 @@ func New(
 
 	tsic.container = container
 
-	if tsic.hasTLS() {
-		err = tsic.WriteFile(headscaleCertPath, tsic.headscaleCert)
+	for i, cert := range tsic.caCerts {
+		err = tsic.WriteFile(fmt.Sprintf("%s/user-%d.crt", caCertRoot, i), cert)
 		if err != nil {
 			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
 		}
@@ -304,13 +353,9 @@ func New(
 	return tsic, nil
 }
 
-func (t *TailscaleInContainer) hasTLS() bool {
-	return len(t.headscaleCert) != 0
-}
-
 // Shutdown stops and cleans up the Tailscale container.
-func (t *TailscaleInContainer) Shutdown() error {
-	err := t.SaveLog("/tmp/control")
+func (t *TailscaleInContainer) Shutdown() (string, string, error) {
+	stdoutPath, stderrPath, err := t.SaveLog("/tmp/control")
 	if err != nil {
 		log.Printf(
 			"Failed to save log from %s: %s",
@@ -319,7 +364,7 @@ func (t *TailscaleInContainer) Shutdown() error {
 		)
 	}
 
-	return t.pool.Purge(t.container)
+	return stdoutPath, stderrPath, t.pool.Purge(t.container)
 }
 
 // Hostname returns the hostname of the Tailscale instance.
@@ -682,6 +727,34 @@ func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error
 	}
 }
 
+func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error) {
+	if !util.TailscaleVersionNewerOrEqual("1.34", t.version) {
+		panic("tsic.DebugDERPRegion() called with unsupported version: " + t.version)
+	}
+
+	command := []string{
+		"tailscale",
+		"debug",
+		"derp",
+		region,
+	}
+
+	result, stderr, err := t.Execute(command)
+	if err != nil {
+		fmt.Printf("stderr: %s\n", stderr) // nolint
+
+		return nil, fmt.Errorf("failed to execute tailscale debug derp command: %w", err)
+	}
+
+	var report ipnstate.DebugDERPRegionReport
+	err = json.Unmarshal([]byte(result), &report)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tailscale derp region report: %w", err)
+	}
+
+	return &report, err
+}
+
 // Netcheck returns the current Netcheck Report (netcheck.Report) of the Tailscale instance.
 func (t *TailscaleInContainer) Netcheck() (*netcheck.Report, error) {
 	command := []string{
@@ -1023,15 +1096,14 @@ func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 
 // SaveLog saves the current stdout log of the container to a path
 // on the host system.
-func (t *TailscaleInContainer) SaveLog(path string) error {
+func (t *TailscaleInContainer) SaveLog(path string) (string, string, error) {
 	// TODO(kradalby): Assert if tailscale logs contains panics.
 	// NOTE(enoperm): `t.WriteLog | countMatchingLines`
 	// is probably most of what is for that,
 	// but I'd rather not change the behaviour here,
 	// as it may affect all the other tests
 	// I have not otherwise touched.
-	_, _, err := dockertestutil.SaveLog(t.pool, t.container, path)
-	return err
+	return dockertestutil.SaveLog(t.pool, t.container, path)
 }
 
 // WriteLogs writes the current stdout/stderr log of the container to

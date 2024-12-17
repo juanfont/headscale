@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -64,6 +66,19 @@ func mockOIDC() error {
 		accessTTL = newTTL
 	}
 
+	userStr := os.Getenv("MOCKOIDC_USERS")
+	if userStr == "" {
+		return fmt.Errorf("MOCKOIDC_USERS not defined")
+	}
+
+	var users []mockoidc.MockUser
+	err := json.Unmarshal([]byte(userStr), &users)
+	if err != nil {
+		return fmt.Errorf("unmarshalling users: %w", err)
+	}
+
+	log.Info().Interface("users", users).Msg("loading users from JSON")
+
 	log.Info().Msgf("Access token TTL: %s", accessTTL)
 
 	port, err := strconv.Atoi(portStr)
@@ -71,7 +86,7 @@ func mockOIDC() error {
 		return err
 	}
 
-	mock, err := getMockOIDC(clientID, clientSecret)
+	mock, err := getMockOIDC(clientID, clientSecret, users)
 	if err != nil {
 		return err
 	}
@@ -93,10 +108,16 @@ func mockOIDC() error {
 	return nil
 }
 
-func getMockOIDC(clientID string, clientSecret string) (*mockoidc.MockOIDC, error) {
+func getMockOIDC(clientID string, clientSecret string, users []mockoidc.MockUser) (*mockoidc.MockOIDC, error) {
 	keypair, err := mockoidc.NewKeypair(nil)
 	if err != nil {
 		return nil, err
+	}
+
+	userQueue := mockoidc.UserQueue{}
+
+	for _, user := range users {
+		userQueue.Push(&user)
 	}
 
 	mock := mockoidc.MockOIDC{
@@ -107,9 +128,19 @@ func getMockOIDC(clientID string, clientSecret string) (*mockoidc.MockOIDC, erro
 		CodeChallengeMethodsSupported: []string{"plain", "S256"},
 		Keypair:                       keypair,
 		SessionStore:                  mockoidc.NewSessionStore(),
-		UserQueue:                     &mockoidc.UserQueue{},
+		UserQueue:                     &userQueue,
 		ErrorQueue:                    &mockoidc.ErrorQueue{},
 	}
+
+	mock.AddMiddleware(func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Info().Msgf("Request: %+v", r)
+			h.ServeHTTP(w, r)
+			if r.Response != nil {
+				log.Info().Msgf("Response: %+v", r.Response)
+			}
+		})
+	})
 
 	return &mock, nil
 }

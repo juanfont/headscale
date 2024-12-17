@@ -20,8 +20,14 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 	"tailscale.com/util/set"
+	"zgo.at/zcache/v2"
 )
+
+func init() {
+	schema.RegisterSerializer("text", TextSerialiser{})
+}
 
 var errDatabaseNotSupported = errors.New("database type not supported")
 
@@ -33,7 +39,9 @@ type KV struct {
 }
 
 type HSDatabase struct {
-	DB *gorm.DB
+	DB       *gorm.DB
+	cfg      *types.DatabaseConfig
+	regCache *zcache.Cache[string, types.Node]
 
 	baseDomain string
 }
@@ -43,6 +51,7 @@ type HSDatabase struct {
 func NewHeadscaleDatabase(
 	cfg types.DatabaseConfig,
 	baseDomain string,
+	regCache *zcache.Cache[string, types.Node],
 ) (*HSDatabase, error) {
 	dbConn, err := openDB(cfg)
 	if err != nil {
@@ -191,7 +200,7 @@ func NewHeadscaleDatabase(
 
 						type NodeAux struct {
 							ID            uint64
-							EnabledRoutes types.IPPrefixes
+							EnabledRoutes []netip.Prefix `gorm:"serializer:json"`
 						}
 
 						nodesAux := []NodeAux{}
@@ -214,7 +223,7 @@ func NewHeadscaleDatabase(
 								}
 
 								err = tx.Preload("Node").
-									Where("node_id = ? AND prefix = ?", node.ID, types.IPPrefix(prefix)).
+									Where("node_id = ? AND prefix = ?", node.ID, prefix).
 									First(&types.Route{}).
 									Error
 								if err == nil {
@@ -229,7 +238,7 @@ func NewHeadscaleDatabase(
 									NodeID:     node.ID,
 									Advertised: true,
 									Enabled:    true,
-									Prefix:     types.IPPrefix(prefix),
+									Prefix:     prefix,
 								}
 								if err := tx.Create(&route).Error; err != nil {
 									log.Error().Err(err).Msg("Error creating route")
@@ -258,9 +267,6 @@ func NewHeadscaleDatabase(
 
 						for item, node := range nodes {
 							if node.GivenName == "" {
-								normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-									node.Hostname,
-								)
 								if err != nil {
 									log.Error().
 										Caller().
@@ -270,7 +276,7 @@ func NewHeadscaleDatabase(
 								}
 
 								err = tx.Model(nodes[item]).Updates(types.Node{
-									GivenName: normalizedHostname,
+									GivenName: node.Hostname,
 								}).Error
 								if err != nil {
 									log.Error().
@@ -463,6 +469,53 @@ func NewHeadscaleDatabase(
 
 					// Drop the old table.
 					_ = tx.Migrator().DropTable(&preAuthKeyACLTag{})
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Pick up new user fields used for OIDC and to
+				// populate the user with more interesting information.
+				ID: "202407191627",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.User{})
+					if err != nil {
+						return err
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// The unique constraint of Name has been dropped
+				// in favour of a unique together of name and
+				// provider identity.
+				ID: "202408181235",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.User{})
+					if err != nil {
+						return err
+					}
+
+					// Set up indexes and unique constraints outside of GORM, it does not support
+					// conditional unique constraints.
+					// This ensures the following:
+					// - A user name and provider_identifier is unique
+					// - A provider_identifier is unique
+					// - A user name is unique if there is no provider_identifier is not set
+					for _, idx := range []string{
+						"DROP INDEX IF EXISTS idx_provider_identifier",
+						"DROP INDEX IF EXISTS idx_name_provider_identifier",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_identifier ON users (provider_identifier) WHERE provider_identifier IS NOT NULL;",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_name_provider_identifier ON users (name,provider_identifier);",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_name_no_provider_identifier ON users (name) WHERE provider_identifier IS NULL;",
+					} {
+						err = tx.Exec(idx).Error
+						if err != nil {
+							return fmt.Errorf("creating username index: %w", err)
+						}
+					}
 
 					return nil
 				},
@@ -476,7 +529,9 @@ func NewHeadscaleDatabase(
 	}
 
 	db := HSDatabase{
-		DB: dbConn,
+		DB:       dbConn,
+		cfg:      &cfg,
+		regCache: regCache,
 
 		baseDomain: baseDomain,
 	}
@@ -524,10 +579,10 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		}
 
 		if cfg.Sqlite.WriteAheadLog {
-			if err := db.Exec(`
+			if err := db.Exec(fmt.Sprintf(`
 				PRAGMA journal_mode=WAL;
-				PRAGMA wal_autocheckpoint=0;
-				`).Error; err != nil {
+				PRAGMA wal_autocheckpoint=%d;
+				`, cfg.Sqlite.WALAutoCheckPoint)).Error; err != nil {
 				return nil, fmt.Errorf("setting WAL mode: %w", err)
 			}
 		}
@@ -674,6 +729,10 @@ func (hsdb *HSDatabase) Close() error {
 	db, err := hsdb.DB.DB()
 	if err != nil {
 		return err
+	}
+
+	if hsdb.cfg.Type == types.DatabaseSqlite && hsdb.cfg.Sqlite.WriteAheadLog {
+		db.Exec("VACUUM")
 	}
 
 	return db.Close()

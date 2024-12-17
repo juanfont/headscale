@@ -1,7 +1,6 @@
 package db
 
 import (
-	"database/sql"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -12,6 +11,10 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"tailscale.com/net/tsaddr"
+	"tailscale.com/types/ptr"
 )
 
 var mpp = func(pref string) *netip.Prefix {
@@ -291,15 +294,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 		v4 := fmt.Sprintf("100.64.0.%d", i)
 		v6 := fmt.Sprintf("fd7a:115c:a1e0::%d", i)
 		return &types.Node{
-			IPv4DatabaseField: sql.NullString{
-				Valid:  true,
-				String: v4,
-			},
 			IPv4: nap(v4),
-			IPv6DatabaseField: sql.NullString{
-				Valid:  true,
-				String: v6,
-			},
 			IPv6: nap(v6),
 		}
 	}
@@ -331,15 +326,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 			want: types.Nodes{
 				&types.Node{
-					IPv4DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "100.64.0.1",
-					},
 					IPv4: nap("100.64.0.1"),
-					IPv6DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "fd7a:115c:a1e0::1",
-					},
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				},
 			},
@@ -364,15 +351,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 			want: types.Nodes{
 				&types.Node{
-					IPv4DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "100.64.0.1",
-					},
 					IPv4: nap("100.64.0.1"),
-					IPv6DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "fd7a:115c:a1e0::1",
-					},
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				},
 			},
@@ -397,10 +376,6 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 			want: types.Nodes{
 				&types.Node{
-					IPv4DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "100.64.0.1",
-					},
 					IPv4: nap("100.64.0.1"),
 				},
 			},
@@ -425,10 +400,6 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 			want: types.Nodes{
 				&types.Node{
-					IPv6DatabaseField: sql.NullString{
-						Valid:  true,
-						String: "fd7a:115c:a1e0::1",
-					},
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				},
 			},
@@ -474,13 +445,9 @@ func TestBackfillIPAddresses(t *testing.T) {
 
 	comps := append(util.Comparers, cmpopts.IgnoreFields(types.Node{},
 		"ID",
-		"MachineKeyDatabaseField",
-		"NodeKeyDatabaseField",
-		"DiscoKeyDatabaseField",
 		"User",
 		"UserID",
 		"Endpoints",
-		"HostinfoDatabaseField",
 		"Hostinfo",
 		"Routes",
 		"CreatedAt",
@@ -491,7 +458,12 @@ func TestBackfillIPAddresses(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := tt.dbFunc()
 
-			alloc, err := NewIPAllocator(db, tt.prefix4, tt.prefix6, types.IPAllocationStrategySequential)
+			alloc, err := NewIPAllocator(
+				db,
+				tt.prefix4,
+				tt.prefix6,
+				types.IPAllocationStrategySequential,
+			)
 			if err != nil {
 				t.Fatalf("failed to set up ip alloc: %s", err)
 			}
@@ -513,4 +485,32 @@ func TestBackfillIPAddresses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
+	alloc, err := NewIPAllocator(
+		db,
+		ptr.To(tsaddr.CGNATRange()),
+		ptr.To(tsaddr.TailscaleULARange()),
+		types.IPAllocationStrategySequential,
+	)
+	if err != nil {
+		t.Fatalf("failed to set up ip alloc: %s", err)
+	}
+
+	// Validate that we do not give out 100.100.100.100
+	nextQuad100, err := alloc.next(na("100.100.100.99"), ptr.To(tsaddr.CGNATRange()))
+	require.NoError(t, err)
+	assert.Equal(t, na("100.100.100.101"), *nextQuad100)
+
+	// Validate that we do not give out fd7a:115c:a1e0::53
+	nextQuad100v6, err := alloc.next(na("fd7a:115c:a1e0::52"), ptr.To(tsaddr.TailscaleULARange()))
+	require.NoError(t, err)
+	assert.Equal(t, na("fd7a:115c:a1e0::54"), *nextQuad100v6)
+
+	// Validate that we do not give out fd7a:115c:a1e0::53
+	nextChrome, err := alloc.next(na("100.115.91.255"), ptr.To(tsaddr.CGNATRange()))
+	t.Logf("chrome: %s", nextChrome.String())
+	require.NoError(t, err)
+	assert.Equal(t, na("100.115.94.0"), *nextChrome)
 }

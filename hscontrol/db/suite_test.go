@@ -1,12 +1,17 @@
 package db
 
 import (
+	"context"
 	"log"
+	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
+	"zombiezen.com/go/postgrestest"
 )
 
 func Test(t *testing.T) {
@@ -36,13 +41,15 @@ func (s *Suite) ResetDB(c *check.C) {
 	// }
 
 	var err error
-	db, err = newTestDB()
+	db, err = newSQLiteTestDB()
 	if err != nil {
 		c.Fatal(err)
 	}
 }
 
-func newTestDB() (*HSDatabase, error) {
+// TODO(kradalby): make this a t.Helper when we dont depend
+// on check test framework.
+func newSQLiteTestDB() (*HSDatabase, error) {
 	var err error
 	tmpDir, err = os.MkdirTemp("", "headscale-db-test-*")
 	if err != nil {
@@ -53,16 +60,67 @@ func newTestDB() (*HSDatabase, error) {
 
 	db, err = NewHeadscaleDatabase(
 		types.DatabaseConfig{
-			Type: "sqlite3",
+			Type: types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{
 				Path: tmpDir + "/headscale_test.db",
 			},
 		},
 		"",
+		emptyCache(),
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	return db, nil
+}
+
+func newPostgresTestDB(t *testing.T) *HSDatabase {
+	t.Helper()
+
+	var err error
+	tmpDir, err = os.MkdirTemp("", "headscale-db-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log.Printf("database path: %s", tmpDir+"/headscale_test.db")
+
+	ctx := context.Background()
+	srv, err := postgrestest.Start(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.Cleanup)
+
+	u, err := srv.CreateDatabase(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("created local postgres: %s", u)
+	pu, _ := url.Parse(u)
+
+	pass, _ := pu.User.Password()
+	port, _ := strconv.Atoi(pu.Port())
+
+	db, err = NewHeadscaleDatabase(
+		types.DatabaseConfig{
+			Type: types.DatabasePostgres,
+			Postgres: types.PostgresConfig{
+				Host: pu.Hostname(),
+				User: pu.User.Username(),
+				Name: strings.TrimLeft(pu.Path, "/"),
+				Pass: pass,
+				Port: port,
+				Ssl:  "disable",
+			},
+		},
+		"",
+		emptyCache(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return db
 }

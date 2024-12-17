@@ -7,10 +7,10 @@ import (
 	"strconv"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
+	"tailscale.com/net/tsaddr"
 )
 
 const (
@@ -245,7 +245,7 @@ func routesToPtables(routes []*v1.Route) pterm.TableData {
 
 			continue
 		}
-		if prefix == types.ExitRouteV4 || prefix == types.ExitRouteV6 {
+		if tsaddr.IsExitRoute(prefix) {
 			isPrimaryStr = "-"
 		} else {
 			isPrimaryStr = strconv.FormatBool(route.GetIsPrimary())

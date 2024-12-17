@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	HeadscaleService_GetUser_FullMethodName          = "/headscale.v1.HeadscaleService/GetUser"
 	HeadscaleService_CreateUser_FullMethodName       = "/headscale.v1.HeadscaleService/CreateUser"
 	HeadscaleService_RenameUser_FullMethodName       = "/headscale.v1.HeadscaleService/RenameUser"
 	HeadscaleService_DeleteUser_FullMethodName       = "/headscale.v1.HeadscaleService/DeleteUser"
@@ -55,7 +54,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type HeadscaleServiceClient interface {
 	// --- User start ---
-	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error)
 	CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*CreateUserResponse, error)
 	RenameUser(ctx context.Context, in *RenameUserRequest, opts ...grpc.CallOption) (*RenameUserResponse, error)
 	DeleteUser(ctx context.Context, in *DeleteUserRequest, opts ...grpc.CallOption) (*DeleteUserResponse, error)
@@ -97,15 +95,6 @@ type headscaleServiceClient struct {
 
 func NewHeadscaleServiceClient(cc grpc.ClientConnInterface) HeadscaleServiceClient {
 	return &headscaleServiceClient{cc}
-}
-
-func (c *headscaleServiceClient) GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error) {
-	out := new(GetUserResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_GetUser_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *headscaleServiceClient) CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*CreateUserResponse, error) {
@@ -365,7 +354,6 @@ func (c *headscaleServiceClient) SetPolicy(ctx context.Context, in *SetPolicyReq
 // for forward compatibility
 type HeadscaleServiceServer interface {
 	// --- User start ---
-	GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error)
 	CreateUser(context.Context, *CreateUserRequest) (*CreateUserResponse, error)
 	RenameUser(context.Context, *RenameUserRequest) (*RenameUserResponse, error)
 	DeleteUser(context.Context, *DeleteUserRequest) (*DeleteUserResponse, error)
@@ -406,9 +394,6 @@ type HeadscaleServiceServer interface {
 type UnimplementedHeadscaleServiceServer struct {
 }
 
-func (UnimplementedHeadscaleServiceServer) GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetUser not implemented")
-}
 func (UnimplementedHeadscaleServiceServer) CreateUser(context.Context, *CreateUserRequest) (*CreateUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateUser not implemented")
 }
@@ -504,24 +489,6 @@ type UnsafeHeadscaleServiceServer interface {
 
 func RegisterHeadscaleServiceServer(s grpc.ServiceRegistrar, srv HeadscaleServiceServer) {
 	s.RegisterService(&HeadscaleService_ServiceDesc, srv)
-}
-
-func _HeadscaleService_GetUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetUserRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).GetUser(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: HeadscaleService_GetUser_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).GetUser(ctx, req.(*GetUserRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _HeadscaleService_CreateUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1035,10 +1002,6 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "headscale.v1.HeadscaleService",
 	HandlerType: (*HeadscaleServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetUser",
-			Handler:    _HeadscaleService_GetUser_Handler,
-		},
 		{
 			MethodName: "CreateUser",
 			Handler:    _HeadscaleService_CreateUser_Handler,

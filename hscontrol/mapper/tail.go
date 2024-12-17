@@ -14,7 +14,7 @@ import (
 func tailNodes(
 	nodes types.Nodes,
 	capVer tailcfg.CapabilityVersion,
-	pol *policy.ACLPolicy,
+	polMan policy.PolicyManager,
 	cfg *types.Config,
 ) ([]*tailcfg.Node, error) {
 	tNodes := make([]*tailcfg.Node, len(nodes))
@@ -23,7 +23,7 @@ func tailNodes(
 		node, err := tailNode(
 			node,
 			capVer,
-			pol,
+			polMan,
 			cfg,
 		)
 		if err != nil {
@@ -40,7 +40,7 @@ func tailNodes(
 func tailNode(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
-	pol *policy.ACLPolicy,
+	polMan policy.PolicyManager,
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
@@ -76,12 +76,12 @@ func tailNode(
 		keyExpiry = time.Time{}
 	}
 
-	hostname, err := node.GetFQDN(cfg, cfg.BaseDomain)
+	hostname, err := node.GetFQDN(cfg.BaseDomain)
 	if err != nil {
 		return nil, fmt.Errorf("tailNode, failed to create FQDN: %s", err)
 	}
 
-	tags, _ := pol.TagsOfNode(node)
+	tags := polMan.Tags(node)
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
 	tNode := tailcfg.Node{

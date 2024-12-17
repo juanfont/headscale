@@ -1,18 +1,22 @@
 package integration
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	tcmp "github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
@@ -27,6 +31,16 @@ func executeAndUnmarshal[T any](headscale ControlServer, command []string, resul
 	}
 
 	return nil
+}
+
+// Interface ensuring that we can sort structs from gRPC that
+// have an ID field.
+type GRPCSortable interface {
+	GetId() uint64
+}
+
+func sortWithID[T GRPCSortable](a, b T) int {
+	return cmp.Compare(a.GetId(), b.GetId())
 }
 
 func TestUserCommand(t *testing.T) {
@@ -48,7 +62,7 @@ func TestUserCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	var listUsers []v1.User
+	var listUsers []*v1.User
 	err = executeAndUnmarshal(headscale,
 		[]string{
 			"headscale",
@@ -61,8 +75,8 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
+	slices.SortFunc(listUsers, sortWithID)
 	result := []string{listUsers[0].GetName(), listUsers[1].GetName()}
-	sort.Strings(result)
 
 	assert.Equal(
 		t,
@@ -75,15 +89,14 @@ func TestUserCommand(t *testing.T) {
 			"headscale",
 			"users",
 			"rename",
-			"--output",
-			"json",
-			"user2",
-			"newname",
+			"--output=json",
+			fmt.Sprintf("--identifier=%d", listUsers[1].GetId()),
+			"--new-name=newname",
 		},
 	)
 	assertNoErr(t, err)
 
-	var listAfterRenameUsers []v1.User
+	var listAfterRenameUsers []*v1.User
 	err = executeAndUnmarshal(headscale,
 		[]string{
 			"headscale",
@@ -96,14 +109,131 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
+	slices.SortFunc(listUsers, sortWithID)
 	result = []string{listAfterRenameUsers[0].GetName(), listAfterRenameUsers[1].GetName()}
-	sort.Strings(result)
 
 	assert.Equal(
 		t,
-		[]string{"newname", "user1"},
+		[]string{"user1", "newname"},
 		result,
 	)
+
+	var listByUsername []*v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+			"--name=user1",
+		},
+		&listByUsername,
+	)
+	assertNoErr(t, err)
+
+	slices.SortFunc(listByUsername, sortWithID)
+	want := []*v1.User{
+		{
+			Id:   1,
+			Name: "user1",
+		},
+	}
+
+	if diff := tcmp.Diff(want, listByUsername, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Errorf("unexpected users (-want +got):\n%s", diff)
+	}
+
+	var listByID []*v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+			"--identifier=1",
+		},
+		&listByID,
+	)
+	assertNoErr(t, err)
+
+	slices.SortFunc(listByID, sortWithID)
+	want = []*v1.User{
+		{
+			Id:   1,
+			Name: "user1",
+		},
+	}
+
+	if diff := tcmp.Diff(want, listByID, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Errorf("unexpected users (-want +got):\n%s", diff)
+	}
+
+	deleteResult, err := headscale.Execute(
+		[]string{
+			"headscale",
+			"users",
+			"destroy",
+			"--force",
+			// Delete "user1"
+			"--identifier=1",
+		},
+	)
+	assert.Nil(t, err)
+	assert.Contains(t, deleteResult, "User destroyed")
+
+	var listAfterIDDelete []*v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listAfterIDDelete,
+	)
+	assertNoErr(t, err)
+
+	slices.SortFunc(listAfterIDDelete, sortWithID)
+	want = []*v1.User{
+		{
+			Id:   2,
+			Name: "newname",
+		},
+	}
+
+	if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Errorf("unexpected users (-want +got):\n%s", diff)
+	}
+
+	deleteResult, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"users",
+			"destroy",
+			"--force",
+			"--name=newname",
+		},
+	)
+	assert.Nil(t, err)
+	assert.Contains(t, deleteResult, "User destroyed")
+
+	var listAfterNameDelete []v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listAfterNameDelete,
+	)
+	assertNoErr(t, err)
+
+	require.Len(t, listAfterNameDelete, 0)
 }
 
 func TestPreAuthKeyCommand(t *testing.T) {
@@ -405,7 +535,14 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		user2: 0,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipak"))
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		[]tsic.Option{},
+		hsic.WithTestName("clipak"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+	)
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -779,117 +916,85 @@ func TestNodeTagCommand(t *testing.T) {
 	)
 }
 
-func TestNodeAdvertiseTagNoACLCommand(t *testing.T) {
+func TestNodeAdvertiseTagCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	spec := map[string]int{
-		"user1": 1,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:test"})}, hsic.WithTestName("cliadvtags"))
-	assertNoErr(t, err)
-
-	headscale, err := scenario.Headscale()
-	assertNoErr(t, err)
-
-	// Test list all nodes after added seconds
-	resultMachines := make([]*v1.Node, spec["user1"])
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--tags",
-			"--output", "json",
+	tests := []struct {
+		name    string
+		policy  *policy.ACLPolicy
+		wantTag bool
+	}{
+		{
+			name:    "no-policy",
+			wantTag: false,
 		},
-		&resultMachines,
-	)
-	assert.Nil(t, err)
-	found := false
-	for _, node := range resultMachines {
-		if node.GetInvalidTags() != nil {
-			for _, tag := range node.GetInvalidTags() {
-				if tag == "tag:test" {
-					found = true
-				}
-			}
-		}
-	}
-	assert.Equal(
-		t,
-		true,
-		found,
-		"should not find a node with the tag 'tag:test' in the list of nodes",
-	)
-}
-
-func TestNodeAdvertiseTagWithACLCommand(t *testing.T) {
-	IntegrationSkip(t)
-	t.Parallel()
-
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	spec := map[string]int{
-		"user1": 1,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:exists"})}, hsic.WithTestName("cliadvtags"), hsic.WithACLPolicy(
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
-				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+		{
+			name: "with-policy",
+			policy: &policy.ACLPolicy{
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:test": {"user1"},
 				},
 			},
-			TagOwners: map[string][]string{
-				"tag:exists": {"user1"},
-			},
+			wantTag: true,
 		},
-	))
-	assertNoErr(t, err)
+	}
 
-	headscale, err := scenario.Headscale()
-	assertNoErr(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scenario, err := NewScenario(dockertestMaxWait())
+			assertNoErr(t, err)
+			// defer scenario.ShutdownAssertNoPanics(t)
 
-	// Test list all nodes after added seconds
-	resultMachines := make([]*v1.Node, spec["user1"])
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--tags",
-			"--output", "json",
-		},
-		&resultMachines,
-	)
-	assert.Nil(t, err)
-	found := false
-	for _, node := range resultMachines {
-		if node.GetValidTags() != nil {
-			for _, tag := range node.GetValidTags() {
-				if tag == "tag:exists" {
-					found = true
+			spec := map[string]int{
+				"user1": 1,
+			}
+
+			err = scenario.CreateHeadscaleEnv(spec,
+				[]tsic.Option{tsic.WithTags([]string{"tag:test"})},
+				hsic.WithTestName("cliadvtags"),
+				hsic.WithACLPolicy(tt.policy),
+			)
+			assertNoErr(t, err)
+
+			headscale, err := scenario.Headscale()
+			assertNoErr(t, err)
+
+			// Test list all nodes after added seconds
+			resultMachines := make([]*v1.Node, spec["user1"])
+			err = executeAndUnmarshal(
+				headscale,
+				[]string{
+					"headscale",
+					"nodes",
+					"list",
+					"--tags",
+					"--output", "json",
+				},
+				&resultMachines,
+			)
+			assert.Nil(t, err)
+			found := false
+			for _, node := range resultMachines {
+				if tags := node.GetValidTags(); tags != nil {
+					found = slices.Contains(tags, "tag:test")
 				}
 			}
-		}
+			assert.Equalf(
+				t,
+				tt.wantTag,
+				found,
+				"'tag:test' found(%t) is the list of nodes, expected %t", found, tt.wantTag,
+			)
+		})
 	}
-	assert.Equal(
-		t,
-		true,
-		found,
-		"should not find a node with the tag 'tag:exists' in the list of nodes",
-	)
 }
 
 func TestNodeCommand(t *testing.T) {
@@ -1725,7 +1830,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 			policyFilePath,
 		},
 	)
-	assert.ErrorContains(t, err, "verifying policy rules: invalid action")
+	assert.ErrorContains(t, err, "compiling filter rules: invalid action")
 
 	// The new policy was invalid, the old one should still be in place, which
 	// is none.

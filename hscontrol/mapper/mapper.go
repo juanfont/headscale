@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
@@ -56,6 +55,7 @@ type Mapper struct {
 	cfg     *types.Config
 	derpMap *tailcfg.DERPMap
 	notif   *notifier.Notifier
+	polMan  policy.PolicyManager
 
 	uid     string
 	created time.Time
@@ -72,6 +72,7 @@ func NewMapper(
 	cfg *types.Config,
 	derpMap *tailcfg.DERPMap,
 	notif *notifier.Notifier,
+	polMan policy.PolicyManager,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
@@ -80,6 +81,7 @@ func NewMapper(
 		cfg:     cfg,
 		derpMap: derpMap,
 		notif:   notif,
+		polMan:  polMan,
 
 		uid:     uid,
 		created: time.Now(),
@@ -95,10 +97,10 @@ func generateUserProfiles(
 	node *types.Node,
 	peers types.Nodes,
 ) []tailcfg.UserProfile {
-	userMap := make(map[string]types.User)
-	userMap[node.User.Name] = node.User
+	userMap := make(map[uint]types.User)
+	userMap[node.User.ID] = node.User
 	for _, peer := range peers {
-		userMap[peer.User.Name] = peer.User // not worth checking if already is there
+		userMap[peer.User.ID] = peer.User // not worth checking if already is there
 	}
 
 	var profiles []tailcfg.UserProfile
@@ -112,41 +114,13 @@ func generateUserProfiles(
 
 func generateDNSConfig(
 	cfg *types.Config,
-	baseDomain string,
 	node *types.Node,
-	peers types.Nodes,
 ) *tailcfg.DNSConfig {
-	if cfg.DNSConfig == nil {
+	if cfg.TailcfgDNSConfig == nil {
 		return nil
 	}
 
-	dnsConfig := cfg.DNSConfig.Clone()
-
-	// if MagicDNS is enabled
-	if dnsConfig.Proxied {
-		if cfg.DNSUserNameInMagicDNS {
-			// Only inject the Search Domain of the current user
-			// shared nodes should use their full FQDN
-			dnsConfig.Domains = append(
-				dnsConfig.Domains,
-				fmt.Sprintf(
-					"%s.%s",
-					node.User.Name,
-					baseDomain,
-				),
-			)
-
-			userSet := mapset.NewSet[types.User]()
-			userSet.Add(node.User)
-			for _, p := range peers {
-				userSet.Add(p.User)
-			}
-			for _, user := range userSet.ToSlice() {
-				dnsRoute := fmt.Sprintf("%v.%v", user.Name, baseDomain)
-				dnsConfig.Routes[dnsRoute] = nil
-			}
-		}
-	}
+	dnsConfig := cfg.TailcfgDNSConfig.Clone()
 
 	addNextDNSMetadata(dnsConfig.Resolvers, node)
 
@@ -182,10 +156,9 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 func (m *Mapper) fullMapResponse(
 	node *types.Node,
 	peers types.Nodes,
-	pol *policy.ACLPolicy,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
-	resp, err := m.baseWithConfigMapResponse(node, pol, capVer)
+	resp, err := m.baseWithConfigMapResponse(node, capVer)
 	if err != nil {
 		return nil, err
 	}
@@ -193,10 +166,9 @@ func (m *Mapper) fullMapResponse(
 	err = appendPeerChanges(
 		resp,
 		true, // full change
-		pol,
+		m.polMan,
 		node,
 		capVer,
-		peers,
 		peers,
 		m.cfg,
 	)
@@ -211,7 +183,6 @@ func (m *Mapper) fullMapResponse(
 func (m *Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
 	peers, err := m.ListPeers(node.ID)
@@ -219,7 +190,7 @@ func (m *Mapper) FullMapResponse(
 		return nil, err
 	}
 
-	resp, err := m.fullMapResponse(node, peers, pol, mapRequest.Version)
+	resp, err := m.fullMapResponse(node, peers, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -233,10 +204,9 @@ func (m *Mapper) FullMapResponse(
 func (m *Mapper) ReadOnlyMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
-	resp, err := m.baseWithConfigMapResponse(node, pol, mapRequest.Version)
+	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +242,6 @@ func (m *Mapper) PeerChangedResponse(
 	node *types.Node,
 	changed map[types.NodeID]bool,
 	patches []*tailcfg.PeerChange,
-	pol *policy.ACLPolicy,
 	messages ...string,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
@@ -302,10 +271,9 @@ func (m *Mapper) PeerChangedResponse(
 	err = appendPeerChanges(
 		&resp,
 		false, // partial change
-		pol,
+		m.polMan,
 		node,
 		mapRequest.Version,
-		peers,
 		changedNodes,
 		m.cfg,
 	)
@@ -332,7 +300,7 @@ func (m *Mapper) PeerChangedResponse(
 
 	// Add the node itself, it might have changed, and particularly
 	// if there are no patches or changes, this is a self update.
-	tailnode, err := tailNode(node, mapRequest.Version, pol, m.cfg)
+	tailnode, err := tailNode(node, mapRequest.Version, m.polMan, m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +315,6 @@ func (m *Mapper) PeerChangedPatchResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	changed []*tailcfg.PeerChange,
-	pol *policy.ACLPolicy,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 	resp.PeersChangedPatch = changed
@@ -476,12 +443,11 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 // incremental.
 func (m *Mapper) baseWithConfigMapResponse(
 	node *types.Node,
-	pol *policy.ACLPolicy,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, capVer, pol, m.cfg)
+	tailnode, err := tailNode(node, capVer, m.polMan, m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -534,39 +500,30 @@ func appendPeerChanges(
 	resp *tailcfg.MapResponse,
 
 	fullChange bool,
-	pol *policy.ACLPolicy,
+	polMan policy.PolicyManager,
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
-	peers types.Nodes,
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
-	packetFilter, err := pol.CompileFilterRules(append(peers, node))
-	if err != nil {
-		return err
-	}
+	filter := polMan.Filter()
 
-	sshPolicy, err := pol.CompileSSHPolicy(node, peers)
+	sshPolicy, err := polMan.SSHPolicy(node)
 	if err != nil {
 		return err
 	}
 
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access each-other at all and remove them from the peers.
-	if len(packetFilter) > 0 {
-		changed = policy.FilterNodesByACL(node, changed, packetFilter)
+	if len(filter) > 0 {
+		changed = policy.FilterNodesByACL(node, changed, filter)
 	}
 
 	profiles := generateUserProfiles(node, changed)
 
-	dnsConfig := generateDNSConfig(
-		cfg,
-		cfg.BaseDomain,
-		node,
-		peers,
-	)
+	dnsConfig := generateDNSConfig(cfg, node)
 
-	tailPeers, err := tailNodes(changed, capVer, pol, cfg)
+	tailPeers, err := tailNodes(changed, capVer, polMan, cfg)
 	if err != nil {
 		return err
 	}
@@ -591,7 +548,7 @@ func appendPeerChanges(
 		// new PacketFilters field and "base" allows us to send a full update when we
 		// have to send an empty list, avoiding the hack in the else block.
 		resp.PacketFilters = map[string][]tailcfg.FilterRule{
-			"base": policy.ReduceFilterRules(node, packetFilter),
+			"base": policy.ReduceFilterRules(node, filter),
 		}
 	} else {
 		// This is a hack to avoid sending an empty list of packet filters.
@@ -599,11 +556,11 @@ func appendPeerChanges(
 		// be omitted, causing the client to consider it unchanged, keeping the
 		// previous packet filter. Worst case, this can cause a node that previously
 		// has access to a node to _not_ loose access if an empty (allow none) is sent.
-		reduced := policy.ReduceFilterRules(node, packetFilter)
+		reduced := policy.ReduceFilterRules(node, filter)
 		if len(reduced) > 0 {
 			resp.PacketFilter = reduced
 		} else {
-			resp.PacketFilter = packetFilter
+			resp.PacketFilter = filter
 		}
 	}
 

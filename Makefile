@@ -38,10 +38,20 @@ test_integration:
 lint:
 	golangci-lint run --fix --timeout 10m
 
-fmt:
+fmt: fmt-go fmt-prettier fmt-proto
+
+fmt-prettier:
 	prettier --write '**/**.{ts,js,md,yaml,yml,sass,css,scss,html}'
-	golines --max-len=88 --base-formatter=gofumpt -w $(GO_SOURCES)
-	clang-format -style="{BasedOnStyle: Google, IndentWidth: 4, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true, ColumnLimit: 0}" -i $(PROTO_SOURCES)
+	prettier --write --print-width 80 --prose-wrap always CHANGELOG.md
+
+fmt-go:
+	# TODO(kradalby): Reeval if we want to use 88 in the future.
+	# golines --max-len=88 --base-formatter=gofumpt -w $(GO_SOURCES)
+	gofumpt -l -w .
+	golangci-lint run --fix
+
+fmt-proto:
+	clang-format -i $(PROTO_SOURCES)
 
 proto-lint:
 	cd proto/ && go run github.com/bufbuild/buf/cmd/buf lint

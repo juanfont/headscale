@@ -12,6 +12,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
+	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
@@ -28,6 +30,9 @@ func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
 			Hostname: hostname,
 			UserID:   userid,
 			User: types.User{
+				Model: gorm.Model{
+					ID: userid,
+				},
 				Name: username,
 			},
 		}
@@ -72,14 +77,9 @@ func TestDNSConfigMapResponse(t *testing.T) {
 		{
 			magicDNS: true,
 			want: &tailcfg.DNSConfig{
-				Routes: map[string][]*dnstype.Resolver{
-					"shared1.foobar.headscale.net": {},
-					"shared2.foobar.headscale.net": {},
-					"shared3.foobar.headscale.net": {},
-				},
+				Routes: map[string][]*dnstype.Resolver{},
 				Domains: []string{
 					"foobar.headscale.net",
-					"shared1.foobar.headscale.net",
 				},
 				Proxied: true,
 			},
@@ -114,25 +114,12 @@ func TestDNSConfigMapResponse(t *testing.T) {
 			}
 
 			nodeInShared1 := mach("test_get_shared_nodes_1", "shared1", 1)
-			nodeInShared2 := mach("test_get_shared_nodes_2", "shared2", 2)
-			nodeInShared3 := mach("test_get_shared_nodes_3", "shared3", 3)
-			node2InShared1 := mach("test_get_shared_nodes_4", "shared1", 1)
-
-			peersOfNodeInShared1 := types.Nodes{
-				nodeInShared1,
-				nodeInShared2,
-				nodeInShared3,
-				node2InShared1,
-			}
 
 			got := generateDNSConfig(
 				&types.Config{
-					DNSConfig:             &dnsConfigOrig,
-					DNSUserNameInMagicDNS: true,
+					TailcfgDNSConfig: &dnsConfigOrig,
 				},
-				baseDomain,
 				nodeInShared1,
-				peersOfNodeInShared1,
 			)
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
@@ -172,6 +159,9 @@ func Test_fullMapResponse(t *testing.T) {
 	lastSeen := time.Date(2009, time.November, 10, 23, 9, 0, 0, time.UTC)
 	expire := time.Date(2500, time.November, 11, 23, 0, 0, 0, time.UTC)
 
+	user1 := types.User{Model: gorm.Model{ID: 0}, Name: "mini"}
+	user2 := types.User{Model: gorm.Model{ID: 1}, Name: "peer2"}
+
 	mini := &types.Node{
 		ID: 0,
 		MachineKey: mustMK(
@@ -186,8 +176,8 @@ func Test_fullMapResponse(t *testing.T) {
 		IPv4:       iap("100.64.0.1"),
 		Hostname:   "mini",
 		GivenName:  "mini",
-		UserID:     0,
-		User:       types.User{Name: "mini"},
+		UserID:     user1.ID,
+		User:       user1,
 		ForcedTags: []string{},
 		AuthKey:    &types.PreAuthKey{},
 		LastSeen:   &lastSeen,
@@ -195,19 +185,19 @@ func Test_fullMapResponse(t *testing.T) {
 		Hostinfo:   &tailcfg.Hostinfo{},
 		Routes: []types.Route{
 			{
-				Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),
+				Prefix:     tsaddr.AllIPv4(),
 				Advertised: true,
 				Enabled:    true,
 				IsPrimary:  false,
 			},
 			{
-				Prefix:     types.IPPrefix(netip.MustParsePrefix("192.168.0.0/24")),
+				Prefix:     netip.MustParsePrefix("192.168.0.0/24"),
 				Advertised: true,
 				Enabled:    true,
 				IsPrimary:  true,
 			},
 			{
-				Prefix:     types.IPPrefix(netip.MustParsePrefix("172.0.0.0/10")),
+				Prefix:     netip.MustParsePrefix("172.0.0.0/10"),
 				Advertised: true,
 				Enabled:    false,
 				IsPrimary:  true,
@@ -234,7 +224,7 @@ func Test_fullMapResponse(t *testing.T) {
 		Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 		AllowedIPs: []netip.Prefix{
 			netip.MustParsePrefix("100.64.0.1/32"),
-			netip.MustParsePrefix("0.0.0.0/0"),
+			tsaddr.AllIPv4(),
 			netip.MustParsePrefix("192.168.0.0/24"),
 		},
 		DERP:              "127.3.3.40:0",
@@ -266,8 +256,8 @@ func Test_fullMapResponse(t *testing.T) {
 		IPv4:       iap("100.64.0.2"),
 		Hostname:   "peer1",
 		GivenName:  "peer1",
-		UserID:     0,
-		User:       types.User{Name: "mini"},
+		UserID:     user1.ID,
+		User:       user1,
 		ForcedTags: []string{},
 		LastSeen:   &lastSeen,
 		Expiry:     &expire,
@@ -321,8 +311,8 @@ func Test_fullMapResponse(t *testing.T) {
 		IPv4:       iap("100.64.0.3"),
 		Hostname:   "peer2",
 		GivenName:  "peer2",
-		UserID:     1,
-		User:       types.User{Name: "peer2"},
+		UserID:     user2.ID,
+		User:       user2,
 		ForcedTags: []string{},
 		LastSeen:   &lastSeen,
 		Expiry:     &expire,
@@ -359,7 +349,7 @@ func Test_fullMapResponse(t *testing.T) {
 			derpMap: &tailcfg.DERPMap{},
 			cfg: &types.Config{
 				BaseDomain:          "",
-				DNSConfig:           &tailcfg.DNSConfig{},
+				TailcfgDNSConfig:    &tailcfg.DNSConfig{},
 				LogTail:             types.LogTailConfig{Enabled: false},
 				RandomizeClientPort: false,
 			},
@@ -391,7 +381,7 @@ func Test_fullMapResponse(t *testing.T) {
 			derpMap: &tailcfg.DERPMap{},
 			cfg: &types.Config{
 				BaseDomain:          "",
-				DNSConfig:           &tailcfg.DNSConfig{},
+				TailcfgDNSConfig:    &tailcfg.DNSConfig{},
 				LogTail:             types.LogTailConfig{Enabled: false},
 				RandomizeClientPort: false,
 			},
@@ -434,7 +424,7 @@ func Test_fullMapResponse(t *testing.T) {
 			derpMap: &tailcfg.DERPMap{},
 			cfg: &types.Config{
 				BaseDomain:          "",
-				DNSConfig:           &tailcfg.DNSConfig{},
+				TailcfgDNSConfig:    &tailcfg.DNSConfig{},
 				LogTail:             types.LogTailConfig{Enabled: false},
 				RandomizeClientPort: false,
 			},
@@ -471,17 +461,19 @@ func Test_fullMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+
 			mappy := NewMapper(
 				nil,
 				tt.cfg,
 				tt.derpMap,
 				nil,
+				polMan,
 			)
 
 			got, err := mappy.fullMapResponse(
 				tt.node,
 				tt.peers,
-				tt.pol,
 				0,
 			)
 

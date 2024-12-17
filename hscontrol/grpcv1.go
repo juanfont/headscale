@@ -21,7 +21,6 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -37,18 +36,6 @@ func newHeadscaleV1APIServer(h *Headscale) v1.HeadscaleServiceServer {
 	}
 }
 
-func (api headscaleV1APIServer) GetUser(
-	ctx context.Context,
-	request *v1.GetUserRequest,
-) (*v1.GetUserResponse, error) {
-	user, err := api.h.db.GetUser(request.GetName())
-	if err != nil {
-		return nil, err
-	}
-
-	return &v1.GetUserResponse{User: user.Proto()}, nil
-}
-
 func (api headscaleV1APIServer) CreateUser(
 	ctx context.Context,
 	request *v1.CreateUserRequest,
@@ -58,6 +45,11 @@ func (api headscaleV1APIServer) CreateUser(
 		return nil, err
 	}
 
+	err = usersChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using user: %w", err)
+	}
+
 	return &v1.CreateUserResponse{User: user.Proto()}, nil
 }
 
@@ -65,26 +57,41 @@ func (api headscaleV1APIServer) RenameUser(
 	ctx context.Context,
 	request *v1.RenameUserRequest,
 ) (*v1.RenameUserResponse, error) {
-	err := api.h.db.RenameUser(request.GetOldName(), request.GetNewName())
+	oldUser, err := api.h.db.GetUserByID(types.UserID(request.GetOldId()))
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := api.h.db.GetUser(request.GetNewName())
+	err = api.h.db.RenameUser(types.UserID(oldUser.ID), request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.RenameUserResponse{User: user.Proto()}, nil
+	newUser, err := api.h.db.GetUserByName(request.GetNewName())
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.RenameUserResponse{User: newUser.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) DeleteUser(
 	ctx context.Context,
 	request *v1.DeleteUserRequest,
 ) (*v1.DeleteUserResponse, error) {
-	err := api.h.db.DestroyUser(request.GetName())
+	user, err := api.h.db.GetUserByID(types.UserID(request.GetId()))
 	if err != nil {
 		return nil, err
+	}
+
+	err = api.h.db.DestroyUser(types.UserID(user.ID))
+	if err != nil {
+		return nil, err
+	}
+
+	err = usersChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using user: %w", err)
 	}
 
 	return &v1.DeleteUserResponse{}, nil
@@ -94,7 +101,19 @@ func (api headscaleV1APIServer) ListUsers(
 	ctx context.Context,
 	request *v1.ListUsersRequest,
 ) (*v1.ListUsersResponse, error) {
-	users, err := api.h.db.ListUsers()
+	var err error
+	var users []types.User
+
+	switch {
+	case request.GetName() != "":
+		users, err = api.h.db.ListUsers(&types.User{Name: request.GetName()})
+	case request.GetEmail() != "":
+		users, err = api.h.db.ListUsers(&types.User{Email: request.GetEmail()})
+	case request.GetId() != 0:
+		users, err = api.h.db.ListUsers(&types.User{Model: gorm.Model{ID: uint(request.GetId())}})
+	default:
+		users, err = api.h.db.ListUsers()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +126,6 @@ func (api headscaleV1APIServer) ListUsers(
 	sort.Slice(response, func(i, j int) bool {
 		return response[i].Id < response[j].Id
 	})
-
-	log.Trace().Caller().Interface("users", response).Msg("")
 
 	return &v1.ListUsersResponse{Users: response}, nil
 }
@@ -131,8 +148,13 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		}
 	}
 
+	user, err := api.h.db.GetUserByName(request.GetUser())
+	if err != nil {
+		return nil, err
+	}
+
 	preAuthKey, err := api.h.db.CreatePreAuthKey(
-		request.GetUser(),
+		types.UserID(user.ID),
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
@@ -168,7 +190,12 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
 ) (*v1.ListPreAuthKeysResponse, error) {
-	preAuthKeys, err := api.h.db.ListPreAuthKeys(request.GetUser())
+	user, err := api.h.db.GetUserByName(request.GetUser())
+	if err != nil {
+		return nil, err
+	}
+
+	preAuthKeys, err := api.h.db.ListPreAuthKeys(types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -205,19 +232,25 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, err
 	}
 
-	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		return db.RegisterNodeFromAuthCallback(
-			tx,
-			api.h.registrationCache,
-			mkey,
-			request.GetUser(),
-			nil,
-			util.RegisterMethodCLI,
-			ipv4, ipv6,
-		)
-	})
+	user, err := api.h.db.GetUserByName(request.GetUser())
+	if err != nil {
+		return nil, fmt.Errorf("looking up user: %w", err)
+	}
+
+	node, err := api.h.db.RegisterNodeFromAuthCallback(
+		mkey,
+		types.UserID(user.ID),
+		nil,
+		util.RegisterMethodCLI,
+		ipv4, ipv6,
+	)
 	if err != nil {
 		return nil, err
+	}
+
+	err = nodesChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
+	if err != nil {
+		return nil, fmt.Errorf("updating resources using node: %w", err)
 	}
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
@@ -405,10 +438,20 @@ func (api headscaleV1APIServer) ListNodes(
 	ctx context.Context,
 	request *v1.ListNodesRequest,
 ) (*v1.ListNodesResponse, error) {
+	// TODO(kradalby): it looks like this can be simplified a lot,
+	// the filtering of nodes by user, vs nodes as a whole can
+	// probably be done once.
+	// TODO(kradalby): This should be done in one tx.
+
 	isLikelyConnected := api.h.nodeNotifier.LikelyConnectedMap()
 	if request.GetUser() != "" {
+		user, err := api.h.db.GetUserByName(request.GetUser())
+		if err != nil {
+			return nil, err
+		}
+
 		nodes, err := db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
-			return db.ListNodesByUser(rx, request.GetUser())
+			return db.ListNodesByUser(rx, types.UserID(user.ID))
 		})
 		if err != nil {
 			return nil, err
@@ -449,10 +492,7 @@ func (api headscaleV1APIServer) ListNodes(
 			resp.Online = true
 		}
 
-		validTags, invalidTags := api.h.ACLPolicy.TagsOfNode(
-			node,
-		)
-		resp.InvalidTags = invalidTags
+		validTags := api.h.polMan.Tags(node)
 		resp.ValidTags = validTags
 		response[index] = resp
 	}
@@ -464,12 +504,18 @@ func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
 	request *v1.MoveNodeRequest,
 ) (*v1.MoveNodeResponse, error) {
+	// TODO(kradalby): This should be done in one tx.
 	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
 	if err != nil {
 		return nil, err
 	}
 
-	err = api.h.db.AssignNodeToUser(node, request.GetUser())
+	user, err := api.h.db.GetUserByName(request.GetUser())
+	if err != nil {
+		return nil, err
+	}
+
+	err = api.h.db.AssignNodeToUser(node, types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -722,11 +768,6 @@ func (api headscaleV1APIServer) SetPolicy(
 
 	p := request.GetPolicy()
 
-	pol, err := policy.LoadACLPolicyFromBytes([]byte(p))
-	if err != nil {
-		return nil, fmt.Errorf("loading ACL policy file: %w", err)
-	}
-
 	// Validate and reject configuration that would error when applied
 	// when creating a map response. This requires nodes, so there is still
 	// a scenario where they might be allowed if the server has no nodes
@@ -736,14 +777,13 @@ func (api headscaleV1APIServer) SetPolicy(
 	if err != nil {
 		return nil, fmt.Errorf("loading nodes from database to validate policy: %w", err)
 	}
-
-	_, err = pol.CompileFilterRules(nodes)
+	changed, err := api.h.polMan.SetPolicy([]byte(p))
 	if err != nil {
-		return nil, fmt.Errorf("verifying policy rules: %w", err)
+		return nil, fmt.Errorf("setting policy: %w", err)
 	}
 
 	if len(nodes) > 0 {
-		_, err = pol.CompileSSHPolicy(nodes[0], nodes)
+		_, err = api.h.polMan.SSHPolicy(nodes[0])
 		if err != nil {
 			return nil, fmt.Errorf("verifying SSH rules: %w", err)
 		}
@@ -754,12 +794,13 @@ func (api headscaleV1APIServer) SetPolicy(
 		return nil, err
 	}
 
-	api.h.ACLPolicy = pol
-
-	ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
-	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-		Type: types.StateFullUpdate,
-	})
+	// Only send update if the packet filter has changed.
+	if changed {
+		ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
 
 	response := &v1.SetPolicyResponse{
 		Policy:    updated.Data,
@@ -774,7 +815,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	ctx context.Context,
 	request *v1.DebugCreateNodeRequest,
 ) (*v1.DebugCreateNodeResponse, error) {
-	user, err := api.h.db.GetUser(request.GetUser())
+	user, err := api.h.db.GetUserByName(request.GetUser())
 	if err != nil {
 		return nil, err
 	}
@@ -823,7 +864,6 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	api.h.registrationCache.Set(
 		mkey.String(),
 		newNode,
-		registerCacheExpiration,
 	)
 
 	return &v1.DebugCreateNodeResponse{Node: newNode.Proto()}, nil

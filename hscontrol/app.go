@@ -18,7 +18,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
 	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -28,12 +27,12 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
 	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
+	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/patrickmn/go-cache"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/pkg/profile"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -41,7 +40,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
-	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -57,6 +55,7 @@ import (
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
 	"tailscale.com/util/dnsname"
+	zcache "zgo.at/zcache/v2"
 )
 
 var (
@@ -90,15 +89,16 @@ type Headscale struct {
 	DERPMap    *tailcfg.DERPMap
 	DERPServer *derpServer.DERPServer
 
-	ACLPolicy *policy.ACLPolicy
+	polManOnce     sync.Once
+	polMan         policy.PolicyManager
+	extraRecordMan *dns.ExtraRecordsMan
 
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
 
-	oidcProvider *oidc.Provider
-	oauth2Config *oauth2.Config
+	registrationCache *zcache.Cache[string, types.Node]
 
-	registrationCache *cache.Cache
+	authProvider AuthProvider
 
 	pollNetMapStreamWG sync.WaitGroup
 }
@@ -123,7 +123,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
-	registrationCache := cache.New(
+	registrationCache := zcache.New[string, types.Node](
 		registerCacheExpiration,
 		registerCacheCleanup,
 	)
@@ -138,7 +138,9 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	app.db, err = db.NewHeadscaleDatabase(
 		cfg.Database,
-		cfg.BaseDomain)
+		cfg.BaseDomain,
+		registrationCache,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -154,18 +156,37 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 	})
 
+	if err = app.loadPolicyManager(); err != nil {
+		return nil, fmt.Errorf("failed to load ACL policy: %w", err)
+	}
+
+	var authProvider AuthProvider
+	authProvider = NewAuthProviderWeb(cfg.ServerURL)
 	if cfg.OIDC.Issuer != "" {
-		err = app.initOIDC()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		oidcProvider, err := NewAuthProviderOIDC(
+			ctx,
+			cfg.ServerURL,
+			&cfg.OIDC,
+			app.db,
+			app.nodeNotifier,
+			app.ipAlloc,
+			app.polMan,
+		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
 				return nil, err
 			} else {
 				log.Warn().Err(err).Msg("failed to set up OIDC provider, falling back to CLI based authentication")
 			}
+		} else {
+			authProvider = oidcProvider
 		}
 	}
+	app.authProvider = authProvider
 
-	if app.cfg.DNSConfig != nil && app.cfg.DNSConfig.Proxied { // if MagicDNS
+	if app.cfg.TailcfgDNSConfig != nil && app.cfg.TailcfgDNSConfig.Proxied { // if MagicDNS
 		// TODO(kradalby): revisit why this takes a list.
 
 		var magicDNSDomains []dnsname.FQDN
@@ -177,11 +198,11 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 
 		// we might have routes already from Split DNS
-		if app.cfg.DNSConfig.Routes == nil {
-			app.cfg.DNSConfig.Routes = make(map[string][]*dnstype.Resolver)
+		if app.cfg.TailcfgDNSConfig.Routes == nil {
+			app.cfg.TailcfgDNSConfig.Routes = make(map[string][]*dnstype.Resolver)
 		}
 		for _, d := range magicDNSDomains {
-			app.cfg.DNSConfig.Routes[d.WithoutTrailingDot()] = nil
+			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
 	}
 
@@ -218,23 +239,38 @@ func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, target, http.StatusFound)
 }
 
-// expireExpiredNodes expires nodes that have an explicit expiry set
-// after that expiry time has passed.
-func (h *Headscale) expireExpiredNodes(ctx context.Context, every time.Duration) {
-	ticker := time.NewTicker(every)
+func (h *Headscale) scheduledTasks(ctx context.Context) {
+	expireTicker := time.NewTicker(updateInterval)
+	defer expireTicker.Stop()
 
-	lastCheck := time.Unix(0, 0)
-	var update types.StateUpdate
-	var changed bool
+	lastExpiryCheck := time.Unix(0, 0)
+
+	derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
+	defer derpTicker.Stop()
+	// If we dont want auto update, just stop the ticker
+	if !h.cfg.DERP.AutoUpdate {
+		derpTicker.Stop()
+	}
+
+	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
+	if h.extraRecordMan != nil {
+		extraRecordsUpdate = h.extraRecordMan.UpdateCh()
+	} else {
+		extraRecordsUpdate = make(chan []tailcfg.DNSRecord)
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			ticker.Stop()
+			log.Info().Caller().Msg("scheduled task worker is shutting down.")
 			return
-		case <-ticker.C:
+
+		case <-expireTicker.C:
+			var update types.StateUpdate
+			var changed bool
+
 			if err := h.db.Write(func(tx *gorm.DB) error {
-				lastCheck, update, changed = db.ExpireExpiredNodes(tx, lastCheck)
+				lastExpiryCheck, update, changed = db.ExpireExpiredNodes(tx, lastExpiryCheck)
 
 				return nil
 			}); err != nil {
@@ -248,24 +284,8 @@ func (h *Headscale) expireExpiredNodes(ctx context.Context, every time.Duration)
 				ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
 				h.nodeNotifier.NotifyAll(ctx, update)
 			}
-		}
-	}
-}
 
-// scheduledDERPMapUpdateWorker refreshes the DERPMap stored on the global object
-// at a set interval.
-func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
-	log.Info().
-		Dur("frequency", h.cfg.DERP.UpdateFrequency).
-		Msg("Setting up a DERPMap update worker")
-	ticker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
-
-	for {
-		select {
-		case <-cancelChan:
-			return
-
-		case <-ticker.C:
+		case <-derpTicker.C:
 			log.Info().Msg("Fetching DERPMap updates")
 			h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
 			if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
@@ -277,6 +297,19 @@ func (h *Headscale) scheduledDERPMapUpdateWorker(cancelChan <-chan struct{}) {
 			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
 				Type:    types.StateDERPUpdated,
 				DERPMap: h.DERPMap,
+			})
+
+		case records, ok := <-extraRecordsUpdate:
+			if !ok {
+				continue
+			}
+			h.cfg.TailcfgDNSConfig.ExtraRecords = records
+
+			ctx := types.NotifyCtx(context.Background(), "dns-extrarecord", "all")
+			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+				// TODO(kradalby): We can probably do better than sending a full update here,
+				// but for now this will ensure that all of the nodes get the new records.
+				Type: types.StateFullUpdate,
 			})
 		}
 	}
@@ -429,10 +462,11 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/register/{mkey}", h.RegisterWebAPI).Methods(http.MethodGet)
+	router.HandleFunc("/register/{mkey}", h.authProvider.RegisterHandler).Methods(http.MethodGet)
 
-	router.HandleFunc("/oidc/register/{mkey}", h.RegisterOIDC).Methods(http.MethodGet)
-	router.HandleFunc("/oidc/callback", h.OIDCCallback).Methods(http.MethodGet)
+	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
+		router.HandleFunc("/oidc/callback", provider.OIDCCallbackHandler).Methods(http.MethodGet)
+	}
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
 		Methods(http.MethodGet)
@@ -443,9 +477,12 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router.HandleFunc("/swagger/v1/openapiv2.json", headscale.SwaggerAPIv1).
 		Methods(http.MethodGet)
 
+	router.HandleFunc("/verify", h.VerifyHandler).Methods(http.MethodPost)
+
 	if h.cfg.DERP.ServerEnabled {
 		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
+		router.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
 		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.DERPMap))
 	}
 
@@ -456,6 +493,52 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router.PathPrefix("/").HandlerFunc(notFoundHandler)
 
 	return router
+}
+
+// TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
+// Maybe we should attempt a new in memory state and not go via the DB?
+func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+	users, err := db.ListUsers()
+	if err != nil {
+		return err
+	}
+
+	changed, err := polMan.SetUsers(users)
+	if err != nil {
+		return err
+	}
+
+	if changed {
+		ctx := types.NotifyCtx(context.Background(), "acl-users-change", "all")
+		notif.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
+
+	return nil
+}
+
+// TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
+// Maybe we should attempt a new in memory state and not go via the DB?
+func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+	nodes, err := db.ListNodes()
+	if err != nil {
+		return err
+	}
+
+	changed, err := polMan.SetNodes(nodes)
+	if err != nil {
+		return err
+	}
+
+	if changed {
+		ctx := types.NotifyCtx(context.Background(), "acl-nodes-change", "all")
+		notif.NotifyAll(ctx, types.StateUpdate{
+			Type: types.StateFullUpdate,
+		})
+	}
+
+	return nil
 }
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
@@ -473,19 +556,13 @@ func (h *Headscale) Serve() error {
 		}
 	}
 
-	var err error
-
-	if err = h.loadACLPolicy(); err != nil {
-		return fmt.Errorf("failed to load ACL policy: %w", err)
-	}
-
 	if dumpConfig {
 		spew.Dump(h.cfg)
 	}
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier)
+	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier, h.polMan)
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
@@ -505,12 +582,6 @@ func (h *Headscale) Serve() error {
 		go h.DERPServer.ServeSTUN()
 	}
 
-	if h.cfg.DERP.AutoUpdate {
-		derpMapCancelChannel := make(chan struct{})
-		defer func() { derpMapCancelChannel <- struct{}{} }()
-		go h.scheduledDERPMapUpdateWorker(derpMapCancelChannel)
-	}
-
 	if len(h.DERPMap.Regions) == 0 {
 		return errEmptyInitialDERPMap
 	}
@@ -528,9 +599,21 @@ func (h *Headscale) Serve() error {
 		h.ephemeralGC.Schedule(node.ID, h.cfg.EphemeralNodeInactivityTimeout)
 	}
 
-	expireNodeCtx, expireNodeCancel := context.WithCancel(context.Background())
-	defer expireNodeCancel()
-	go h.expireExpiredNodes(expireNodeCtx, updateInterval)
+	if h.cfg.DNSConfig.ExtraRecordsPath != "" {
+		h.extraRecordMan, err = dns.NewExtraRecordsManager(h.cfg.DNSConfig.ExtraRecordsPath)
+		if err != nil {
+			return fmt.Errorf("setting up extrarecord manager: %w", err)
+		}
+		h.cfg.TailcfgDNSConfig.ExtraRecords = h.extraRecordMan.Records()
+		go h.extraRecordMan.Run()
+		defer h.extraRecordMan.Close()
+	}
+
+	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
+	// records updates
+	scheduleCtx, scheduleCancel := context.WithCancel(context.Background())
+	defer scheduleCancel()
+	go h.scheduledTasks(scheduleCtx)
 
 	if zl.GlobalLevel() == zl.TraceLevel {
 		zerolog.RespLog = true
@@ -755,12 +838,25 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received SIGHUP, reloading ACL and Config")
 
-				// TODO(kradalby): Reload config on SIGHUP
-				if err := h.loadACLPolicy(); err != nil {
-					log.Error().Err(err).Msg("failed to reload ACL policy")
+				if h.cfg.Policy.IsEmpty() {
+					continue
 				}
 
-				if h.ACLPolicy != nil {
+				if err := h.loadPolicyManager(); err != nil {
+					log.Error().Err(err).Msg("failed to reload Policy")
+				}
+
+				pol, err := h.policyBytes()
+				if err != nil {
+					log.Error().Err(err).Msg("failed to get policy blob")
+				}
+
+				changed, err := h.polMan.SetPolicy(pol)
+				if err != nil {
+					log.Error().Err(err).Msg("failed to set new policy")
+				}
+
+				if changed {
 					log.Info().
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
@@ -775,7 +871,7 @@ func (h *Headscale) Serve() error {
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
 
-				expireNodeCancel()
+				scheduleCancel()
 				h.ephemeralGC.Close()
 
 				// Gracefully shut down servers
@@ -979,27 +1075,50 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	return &machineKey, nil
 }
 
-func (h *Headscale) loadACLPolicy() error {
-	var (
-		pol *policy.ACLPolicy
-		err error
-	)
-
+// policyBytes returns the appropriate policy for the
+// current configuration as a []byte array.
+func (h *Headscale) policyBytes() ([]byte, error) {
 	switch h.cfg.Policy.Mode {
 	case types.PolicyModeFile:
 		path := h.cfg.Policy.Path
 
 		// It is fine to start headscale without a policy file.
 		if len(path) == 0 {
-			return nil
+			return nil, nil
 		}
 
 		absPath := util.AbsolutePathFromConfigPath(path)
-		pol, err = policy.LoadACLPolicyFromPath(absPath)
+		policyFile, err := os.Open(absPath)
 		if err != nil {
-			return fmt.Errorf("failed to load ACL policy from file: %w", err)
+			return nil, err
+		}
+		defer policyFile.Close()
+
+		return io.ReadAll(policyFile)
+
+	case types.PolicyModeDB:
+		p, err := h.db.GetPolicy()
+		if err != nil {
+			if errors.Is(err, types.ErrPolicyNotFound) {
+				return nil, nil
+			}
+
+			return nil, err
 		}
 
+		if p.Data == "" {
+			return nil, nil
+		}
+
+		return []byte(p.Data), err
+	}
+
+	return nil, fmt.Errorf("unsupported policy mode: %s", h.cfg.Policy.Mode)
+}
+
+func (h *Headscale) loadPolicyManager() error {
+	var errOut error
+	h.polManOnce.Do(func() {
 		// Validate and reject configuration that would error when applied
 		// when creating a map response. This requires nodes, so there is still
 		// a scenario where they might be allowed if the server has no nodes
@@ -1010,42 +1129,35 @@ func (h *Headscale) loadACLPolicy() error {
 		// allowed to be written to the database.
 		nodes, err := h.db.ListNodes()
 		if err != nil {
-			return fmt.Errorf("loading nodes from database to validate policy: %w", err)
+			errOut = fmt.Errorf("loading nodes from database to validate policy: %w", err)
+			return
+		}
+		users, err := h.db.ListUsers()
+		if err != nil {
+			errOut = fmt.Errorf("loading users from database to validate policy: %w", err)
+			return
 		}
 
-		_, err = pol.CompileFilterRules(nodes)
+		pol, err := h.policyBytes()
 		if err != nil {
-			return fmt.Errorf("verifying policy rules: %w", err)
+			errOut = fmt.Errorf("loading policy bytes: %w", err)
+			return
+		}
+
+		h.polMan, err = policy.NewPolicyManager(pol, users, nodes)
+		if err != nil {
+			errOut = fmt.Errorf("creating policy manager: %w", err)
+			return
 		}
 
 		if len(nodes) > 0 {
-			_, err = pol.CompileSSHPolicy(nodes[0], nodes)
+			_, err = h.polMan.SSHPolicy(nodes[0])
 			if err != nil {
-				return fmt.Errorf("verifying SSH rules: %w", err)
+				errOut = fmt.Errorf("verifying SSH rules: %w", err)
+				return
 			}
 		}
+	})
 
-	case types.PolicyModeDB:
-		p, err := h.db.GetPolicy()
-		if err != nil {
-			if errors.Is(err, types.ErrPolicyNotFound) {
-				return nil
-			}
-
-			return fmt.Errorf("failed to get policy from database: %w", err)
-		}
-
-		pol, err = policy.LoadACLPolicyFromBytes([]byte(p.Data))
-		if err != nil {
-			return fmt.Errorf("failed to parse policy: %w", err)
-		}
-	default:
-		log.Fatal().
-			Str("mode", string(h.cfg.Policy.Mode)).
-			Msg("Unknown ACL policy mode")
-	}
-
-	h.ACLPolicy = pol
-
-	return nil
+	return errOut
 }

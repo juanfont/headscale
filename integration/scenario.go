@@ -14,12 +14,15 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/dsic"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	xmaps "golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
 )
@@ -140,6 +143,7 @@ type Scenario struct {
 	// TODO(kradalby): support multiple headcales for later, currently only
 	// use one.
 	controlServers *xsync.MapOf[string, ControlServer]
+	derpServers    []*dsic.DERPServerInContainer
 
 	users map[string]*User
 
@@ -203,11 +207,11 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 
 		if t != nil {
 			stdout, err := os.ReadFile(stdoutPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotContains(t, string(stdout), "panic")
 
 			stderr, err := os.ReadFile(stderrPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotContains(t, string(stderr), "panic")
 		}
 
@@ -217,10 +221,27 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	for userName, user := range s.users {
 		for _, client := range user.Clients {
 			log.Printf("removing client %s in user %s", client.Hostname(), userName)
-			err := client.Shutdown()
+			stdoutPath, stderrPath, err := client.Shutdown()
 			if err != nil {
 				log.Printf("failed to tear down client: %s", err)
 			}
+
+			if t != nil {
+				stdout, err := os.ReadFile(stdoutPath)
+				require.NoError(t, err)
+				assert.NotContains(t, string(stdout), "panic")
+
+				stderr, err := os.ReadFile(stderrPath)
+				require.NoError(t, err)
+				assert.NotContains(t, string(stderr), "panic")
+			}
+		}
+	}
+
+	for _, derp := range s.derpServers {
+		err := derp.Shutdown()
+		if err != nil {
+			log.Printf("failed to tear down derp server: %s", err)
 		}
 	}
 
@@ -353,7 +374,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 
 			s.mu.Lock()
 			opts = append(opts,
-				tsic.WithHeadscaleTLS(cert),
+				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
 			)
 			s.mu.Unlock()
@@ -496,23 +517,26 @@ func (s *Scenario) CreateHeadscaleEnv(
 		return err
 	}
 
-	for userName, clientCount := range users {
-		err = s.CreateUser(userName)
+	usernames := xmaps.Keys(users)
+	sort.Strings(usernames)
+	for _, username := range usernames {
+		clientCount := users[username]
+		err = s.CreateUser(username)
 		if err != nil {
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount, tsOpts...)
+		err = s.CreateTailscaleNodesInUser(username, "all", clientCount, tsOpts...)
 		if err != nil {
 			return err
 		}
 
-		key, err := s.CreatePreAuthKey(userName, true, false)
+		key, err := s.CreatePreAuthKey(username, true, false)
 		if err != nil {
 			return err
 		}
 
-		err = s.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+		err = s.RunTailscaleUp(username, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
 			return err
 		}
@@ -654,4 +678,21 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 	}
 
 	return nil
+}
+
+// CreateDERPServer creates a new DERP server in a container.
+func (s *Scenario) CreateDERPServer(version string, opts ...dsic.Option) (*dsic.DERPServerInContainer, error) {
+	derp, err := dsic.New(s.pool, version, s.network, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DERP server: %w", err)
+	}
+
+	err = derp.WaitForRunning()
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach DERP server: %w", err)
+	}
+
+	s.derpServers = append(s.derpServers, derp)
+
+	return derp, nil
 }

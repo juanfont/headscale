@@ -1,16 +1,17 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/patrickmn/go-cache"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -90,15 +91,15 @@ func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 	})
 }
 
-func (hsdb *HSDatabase) getNode(user string, name string) (*types.Node, error) {
+func (hsdb *HSDatabase) getNode(uid types.UserID, name string) (*types.Node, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
-		return getNode(rx, user, name)
+		return getNode(rx, uid, name)
 	})
 }
 
 // getNode finds a Node by name and user and returns the Node struct.
-func getNode(tx *gorm.DB, user string, name string) (*types.Node, error) {
-	nodes, err := ListNodesByUser(tx, user)
+func getNode(tx *gorm.DB, uid types.UserID, name string) (*types.Node, error) {
+	nodes, err := ListNodesByUser(tx, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -206,21 +207,26 @@ func SetTags(
 ) error {
 	if len(tags) == 0 {
 		// if no tags are provided, we remove all forced tags
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", types.StringList{}).Error; err != nil {
+		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", "[]").Error; err != nil {
 			return fmt.Errorf("failed to remove tags for node in the database: %w", err)
 		}
 
 		return nil
 	}
 
-	var newTags types.StringList
+	var newTags []string
 	for _, tag := range tags {
-		if !util.StringOrPrefixListContains(newTags, tag) {
+		if !slices.Contains(newTags, tag) {
 			newTags = append(newTags, tag)
 		}
 	}
 
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", newTags).Error; err != nil {
+	b, err := json.Marshal(newTags)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", string(b)).Error; err != nil {
 		return fmt.Errorf("failed to update tags for node in the database: %w", err)
 	}
 
@@ -313,26 +319,17 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
 }
 
-func RegisterNodeFromAuthCallback(
-	tx *gorm.DB,
-	cache *cache.Cache,
+func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 	mkey key.MachinePublic,
-	userName string,
+	userID types.UserID,
 	nodeExpiry *time.Time,
 	registrationMethod string,
 	ipv4 *netip.Addr,
 	ipv6 *netip.Addr,
 ) (*types.Node, error) {
-	log.Debug().
-		Str("machine_key", mkey.ShortString()).
-		Str("userName", userName).
-		Str("registrationMethod", registrationMethod).
-		Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
-		Msg("Registering node from API/CLI or auth callback")
-
-	if nodeInterface, ok := cache.Get(mkey.String()); ok {
-		if registrationNode, ok := nodeInterface.(types.Node); ok {
-			user, err := GetUser(tx, userName)
+	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
+		if node, ok := hsdb.regCache.Get(mkey.String()); ok {
+			user, err := GetUserByID(tx, userID)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"failed to find user in register node from auth callback, %w",
@@ -340,37 +337,42 @@ func RegisterNodeFromAuthCallback(
 				)
 			}
 
+			log.Debug().
+				Str("machine_key", mkey.ShortString()).
+				Str("username", user.Username()).
+				Str("registrationMethod", registrationMethod).
+				Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
+				Msg("Registering node from API/CLI or auth callback")
+
 			// Registration of expired node with different user
-			if registrationNode.ID != 0 &&
-				registrationNode.UserID != user.ID {
+			if node.ID != 0 &&
+				node.UserID != user.ID {
 				return nil, ErrDifferentRegisteredUser
 			}
 
-			registrationNode.UserID = user.ID
-			registrationNode.User = *user
-			registrationNode.RegisterMethod = registrationMethod
+			node.UserID = user.ID
+			node.User = *user
+			node.RegisterMethod = registrationMethod
 
 			if nodeExpiry != nil {
-				registrationNode.Expiry = nodeExpiry
+				node.Expiry = nodeExpiry
 			}
 
 			node, err := RegisterNode(
 				tx,
-				registrationNode,
+				node,
 				ipv4, ipv6,
 			)
 
 			if err == nil {
-				cache.Delete(mkey.String())
+				hsdb.regCache.Delete(mkey.String())
 			}
 
 			return node, err
-		} else {
-			return nil, ErrCouldNotConvertNodeInterface
 		}
-	}
 
-	return nil, ErrNodeNotFoundRegistrationCache
+		return nil, ErrNodeNotFoundRegistrationCache
+	})
 }
 
 func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
@@ -385,7 +387,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
-		Str("user", node.User.Name).
+		Str("user", node.User.Username()).
 		Msg("Registering node")
 
 	// If the node exists and it already has IP(s), we just save it
@@ -401,7 +403,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("node", node.Hostname).
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
-			Str("user", node.User.Name).
+			Str("user", node.User.Username()).
 			Msg("Node authorized again")
 
 		return &node, nil
@@ -538,34 +540,24 @@ func IsRoutesEnabled(tx *gorm.DB, node *types.Node, routeStr string) bool {
 
 func (hsdb *HSDatabase) enableRoutes(
 	node *types.Node,
-	routeStrs ...string,
+	newRoutes ...netip.Prefix,
 ) (*types.StateUpdate, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return enableRoutes(tx, node, routeStrs...)
+		return enableRoutes(tx, node, newRoutes...)
 	})
 }
 
 // enableRoutes enables new routes based on a list of new routes.
 func enableRoutes(tx *gorm.DB,
-	node *types.Node, routeStrs ...string,
+	node *types.Node, newRoutes ...netip.Prefix,
 ) (*types.StateUpdate, error) {
-	newRoutes := make([]netip.Prefix, len(routeStrs))
-	for index, routeStr := range routeStrs {
-		route, err := netip.ParsePrefix(routeStr)
-		if err != nil {
-			return nil, err
-		}
-
-		newRoutes[index] = route
-	}
-
 	advertisedRoutes, err := GetAdvertisedRoutes(tx, node)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, newRoute := range newRoutes {
-		if !util.StringOrPrefixListContains(advertisedRoutes, newRoute) {
+		if !slices.Contains(advertisedRoutes, newRoute) {
 			return nil, fmt.Errorf(
 				"route (%s) is not available on node %s: %w",
 				node.Hostname,
@@ -578,7 +570,7 @@ func enableRoutes(tx *gorm.DB,
 	for _, prefix := range newRoutes {
 		route := types.Route{}
 		err := tx.Preload("Node").
-			Where("node_id = ? AND prefix = ?", node.ID, types.IPPrefix(prefix)).
+			Where("node_id = ? AND prefix = ?", node.ID, prefix.String()).
 			First(&route).Error
 		if err == nil {
 			route.Enabled = true
@@ -607,12 +599,6 @@ func enableRoutes(tx *gorm.DB,
 
 	node.Routes = nRoutes
 
-	log.Trace().
-		Caller().
-		Str("node", node.Hostname).
-		Strs("routes", routeStrs).
-		Msg("enabling routes")
-
 	return &types.StateUpdate{
 		Type:        types.StatePeerChanged,
 		ChangeNodes: []types.NodeID{node.ID},
@@ -621,18 +607,16 @@ func enableRoutes(tx *gorm.DB,
 }
 
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
-	normalizedHostname, err := util.NormalizeToFQDNRulesConfigFromViper(
-		suppliedName,
-	)
-	if err != nil {
-		return "", err
+	suppliedName = util.ConvertWithFQDNRules(suppliedName)
+	if len(suppliedName) > util.LabelHostnameLength {
+		return "", types.ErrHostnameTooLong
 	}
 
 	if randomSuffix {
 		// Trim if a hostname will be longer than 63 chars after adding the hash.
 		trimmedHostnameLength := util.LabelHostnameLength - NodeGivenNameHashLength - NodeGivenNameTrimSize
-		if len(normalizedHostname) > trimmedHostnameLength {
-			normalizedHostname = normalizedHostname[:trimmedHostnameLength]
+		if len(suppliedName) > trimmedHostnameLength {
+			suppliedName = suppliedName[:trimmedHostnameLength]
 		}
 
 		suffix, err := util.GenerateRandomStringDNSSafe(NodeGivenNameHashLength)
@@ -640,10 +624,10 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 			return "", err
 		}
 
-		normalizedHostname += "-" + suffix
+		suppliedName += "-" + suffix
 	}
 
-	return normalizedHostname, nil
+	return suppliedName, nil
 }
 
 func isUnqiueName(tx *gorm.DB, name string) (bool, error) {

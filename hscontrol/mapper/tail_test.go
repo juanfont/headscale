@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -108,19 +109,19 @@ func TestTailNode(t *testing.T) {
 				Hostinfo:   &tailcfg.Hostinfo{},
 				Routes: []types.Route{
 					{
-						Prefix:     types.IPPrefix(netip.MustParsePrefix("0.0.0.0/0")),
+						Prefix:     tsaddr.AllIPv4(),
 						Advertised: true,
 						Enabled:    true,
 						IsPrimary:  false,
 					},
 					{
-						Prefix:     types.IPPrefix(netip.MustParsePrefix("192.168.0.0/24")),
+						Prefix:     netip.MustParsePrefix("192.168.0.0/24"),
 						Advertised: true,
 						Enabled:    true,
 						IsPrimary:  true,
 					},
 					{
-						Prefix:     types.IPPrefix(netip.MustParsePrefix("172.0.0.0/10")),
+						Prefix:     netip.MustParsePrefix("172.0.0.0/10"),
 						Advertised: true,
 						Enabled:    false,
 						IsPrimary:  true,
@@ -152,7 +153,7 @@ func TestTailNode(t *testing.T) {
 				Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 				AllowedIPs: []netip.Prefix{
 					netip.MustParsePrefix("100.64.0.1/32"),
-					netip.MustParsePrefix("0.0.0.0/0"),
+					tsaddr.AllIPv4(),
 					netip.MustParsePrefix("192.168.0.0/24"),
 				},
 				DERP:     "127.3.3.40:0",
@@ -183,15 +184,16 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{}, types.Nodes{tt.node})
 			cfg := &types.Config{
 				BaseDomain:          tt.baseDomain,
-				DNSConfig:           tt.dnsConfig,
+				TailcfgDNSConfig:    tt.dnsConfig,
 				RandomizeClientPort: false,
 			}
 			got, err := tailNode(
 				tt.node,
 				0,
-				tt.pol,
+				polMan,
 				cfg,
 			)
 
@@ -244,7 +246,7 @@ func TestNodeExpiry(t *testing.T) {
 			tn, err := tailNode(
 				node,
 				0,
-				&policy.ACLPolicy{},
+				&policy.PolicyManagerV1{},
 				&types.Config{},
 			)
 			if err != nil {

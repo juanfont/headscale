@@ -9,6 +9,7 @@ on:
 
 jobs:
   goreleaser:
+    if: github.repository == 'juanfont/headscale'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

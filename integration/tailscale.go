@@ -15,7 +15,7 @@ import (
 // nolint
 type TailscaleClient interface {
 	Hostname() string
-	Shutdown() error
+	Shutdown() (string, string, error)
 	Version() string
 	Execute(
 		command []string,
@@ -30,6 +30,7 @@ type TailscaleClient interface {
 	FQDN() (string, error)
 	Status(...bool) (*ipnstate.Status, error)
 	Netmap() (*netmap.NetworkMap, error)
+	DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error)
 	Netcheck() (*netcheck.Report, error)
 	WaitForNeedsLogin() error
 	WaitForRunning() error

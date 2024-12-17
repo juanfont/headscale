@@ -11,6 +11,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
 )
 
@@ -48,7 +49,7 @@ func getRoutesByPrefix(tx *gorm.DB, pref netip.Prefix) (types.Routes, error) {
 	err := tx.
 		Preload("Node").
 		Preload("Node.User").
-		Where("prefix = ?", types.IPPrefix(pref)).
+		Where("prefix = ?", pref.String()).
 		Find(&routes).Error
 	if err != nil {
 		return nil, err
@@ -116,13 +117,13 @@ func EnableRoute(tx *gorm.DB, id uint64) (*types.StateUpdate, error) {
 	if route.IsExitRoute() {
 		return enableRoutes(
 			tx,
-			&route.Node,
-			types.ExitRouteV4.String(),
-			types.ExitRouteV6.String(),
+			route.Node,
+			tsaddr.AllIPv4(),
+			tsaddr.AllIPv6(),
 		)
 	}
 
-	return enableRoutes(tx, &route.Node, netip.Prefix(route.Prefix).String())
+	return enableRoutes(tx, route.Node, netip.Prefix(route.Prefix))
 }
 
 func DisableRoute(tx *gorm.DB,
@@ -153,7 +154,7 @@ func DisableRoute(tx *gorm.DB,
 			return nil, err
 		}
 	} else {
-		routes, err = GetNodeRoutes(tx, &node)
+		routes, err = GetNodeRoutes(tx, node)
 		if err != nil {
 			return nil, err
 		}
@@ -200,24 +201,26 @@ func DeleteRoute(
 		return nil, err
 	}
 
+	if route.Node == nil {
+		// If the route is not assigned to a node, just delete it,
+		// there are no updates to be sent as no nodes are
+		// dependent on it
+		if err := tx.Unscoped().Delete(&route).Error; err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
 	var routes types.Routes
 	node := route.Node
 
 	// Tailscale requires both IPv4 and IPv6 exit routes to
 	// be enabled at the same time, as per
 	// https://github.com/juanfont/headscale/issues/804#issuecomment-1399314002
+	// This means that if we delete a route which is an exit route, delete both.
 	var update []types.NodeID
-	if !route.IsExitRoute() {
-		update, err = failoverRouteTx(tx, isLikelyConnected, route)
-		if err != nil {
-			return nil, nil
-		}
-
-		if err := tx.Unscoped().Delete(&route).Error; err != nil {
-			return nil, err
-		}
-	} else {
-		routes, err = GetNodeRoutes(tx, &node)
+	if route.IsExitRoute() {
+		routes, err = GetNodeRoutes(tx, node)
 		if err != nil {
 			return nil, err
 		}
@@ -232,13 +235,22 @@ func DeleteRoute(
 		if err := tx.Unscoped().Delete(&routesToDelete).Error; err != nil {
 			return nil, err
 		}
+	} else {
+		update, err = failoverRouteTx(tx, isLikelyConnected, route)
+		if err != nil {
+			return nil, nil
+		}
+
+		if err := tx.Unscoped().Delete(&route).Error; err != nil {
+			return nil, err
+		}
 	}
 
 	// If update is empty, it means that one was not created
 	// by failover (as a failover was not necessary), create
 	// one and return to the caller.
 	if routes == nil {
-		routes, err = GetNodeRoutes(tx, &node)
+		routes, err = GetNodeRoutes(tx, node)
 		if err != nil {
 			return nil, err
 		}
@@ -285,7 +297,7 @@ func isUniquePrefix(tx *gorm.DB, route types.Route) bool {
 	var count int64
 	tx.Model(&types.Route{}).
 		Where("prefix = ? AND node_id != ? AND advertised = ? AND enabled = ?",
-			route.Prefix,
+			route.Prefix.String(),
 			route.NodeID,
 			true, true).Count(&count)
 
@@ -296,7 +308,7 @@ func getPrimaryRoute(tx *gorm.DB, prefix netip.Prefix) (*types.Route, error) {
 	var route types.Route
 	err := tx.
 		Preload("Node").
-		Where("prefix = ? AND advertised = ? AND enabled = ? AND is_primary = ?", types.IPPrefix(prefix), true, true, true).
+		Where("prefix = ? AND advertised = ? AND enabled = ? AND is_primary = ?", prefix.String(), true, true, true).
 		First(&route).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -391,7 +403,7 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 		if !exists {
 			route := types.Route{
 				NodeID:     node.ID.Uint64(),
-				Prefix:     types.IPPrefix(prefix),
+				Prefix:     prefix,
 				Advertised: true,
 				Enabled:    false,
 			}
@@ -597,18 +609,18 @@ func failoverRoute(
 }
 
 func (hsdb *HSDatabase) EnableAutoApprovedRoutes(
-	aclPolicy *policy.ACLPolicy,
+	polMan policy.PolicyManager,
 	node *types.Node,
 ) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
-		return EnableAutoApprovedRoutes(tx, aclPolicy, node)
+		return EnableAutoApprovedRoutes(tx, polMan, node)
 	})
 }
 
 // EnableAutoApprovedRoutes enables any routes advertised by a node that match the ACL autoApprovers policy.
 func EnableAutoApprovedRoutes(
 	tx *gorm.DB,
-	aclPolicy *policy.ACLPolicy,
+	polMan policy.PolicyManager,
 	node *types.Node,
 ) error {
 	if node.IPv4 == nil && node.IPv6 == nil {
@@ -629,26 +641,21 @@ func EnableAutoApprovedRoutes(
 			continue
 		}
 
-		routeApprovers, err := aclPolicy.AutoApprovers.GetRouteApprovers(
-			netip.Prefix(advertisedRoute.Prefix),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to resolve autoApprovers for route(%d) for node(%s %d): %w", advertisedRoute.ID, node.Hostname, node.ID, err)
-		}
+		routeApprovers := polMan.ApproversForRoute(netip.Prefix(advertisedRoute.Prefix))
 
 		log.Trace().
 			Str("node", node.Hostname).
-			Str("user", node.User.Name).
+			Uint("user.id", node.User.ID).
 			Strs("routeApprovers", routeApprovers).
 			Str("prefix", netip.Prefix(advertisedRoute.Prefix).String()).
 			Msg("looking up route for autoapproving")
 
 		for _, approvedAlias := range routeApprovers {
-			if approvedAlias == node.User.Name {
+			if approvedAlias == node.User.Username() {
 				approvedRoutes = append(approvedRoutes, advertisedRoute)
 			} else {
 				// TODO(kradalby): figure out how to get this to depend on less stuff
-				approvedIps, err := aclPolicy.ExpandAlias(types.Nodes{node}, approvedAlias)
+				approvedIps, err := polMan.ExpandAlias(approvedAlias)
 				if err != nil {
 					return fmt.Errorf("expanding alias %q for autoApprovers: %w", approvedAlias, err)
 				}
