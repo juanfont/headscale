@@ -59,7 +59,7 @@ process. Headscale logs the result of ACL policy processing after each reload.
 
 Here are the ACL's to implement the same permissions as above:
 
-```json
+```json title="acl.json"
 {
   // groups are collections of users having a common scope. A user can be in multiple groups
   // groups cannot be composed of groups

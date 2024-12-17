@@ -54,7 +54,7 @@ headscale apikeys expire --prefix "<PREFIX>"
 
     === "Minimal YAML configuration file"
 
-        ```yaml
+        ```yaml title="config.yaml"
         cli:
             address: <HEADSCALE_ADDRESS>:<PORT>
             api_key: <API_KEY_FROM_PREVIOUS_STEP>

@@ -94,7 +94,7 @@ systemd.
 1.  In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a path that is writable by the
     `headscale` user or group:
 
-    ```yaml
+    ```yaml title="config.yaml"
     unix_socket: /var/run/headscale/headscale.sock
     ```
 

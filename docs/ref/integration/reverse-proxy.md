@@ -23,7 +23,7 @@ Running headscale behind a cloudflare proxy or cloudflare tunnel is not supporte
 
 Headscale can be configured not to use TLS, leaving it to the reverse proxy to handle. Add the following configuration values to your headscale config file.
 
-```yaml
+```yaml title="config.yaml"
 server_url: https://<YOUR_SERVER_NAME> # This should be the FQDN at which headscale will be served
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:9090
@@ -35,7 +35,7 @@ tls_key_path: ""
 
 The following example configuration can be used in your nginx setup, substituting values as necessary. `<IP:PORT>` should be the IP address and port where headscale is running. In most cases, this will be `http://localhost:8080`.
 
-```Nginx
+```nginx title="nginx.conf"
 map $http_upgrade $connection_upgrade {
     default      upgrade;
     ''           close;
@@ -113,7 +113,7 @@ spec:
 
 The following Caddyfile is all that is necessary to use Caddy as a reverse proxy for headscale, in combination with the `config.yaml` specifications above to disable headscale's built in TLS. Replace values as necessary - `<YOUR_SERVER_NAME>` should be the FQDN at which headscale will be served, and `<IP:PORT>` should be the IP address and port where headscale is running. In most cases, this will be `localhost:8080`.
 
-```
+```none title="Caddyfile"
 <YOUR_SERVER_NAME> {
     reverse_proxy <IP:PORT>
 }
@@ -127,7 +127,7 @@ For a slightly more complex configuration which utilizes Docker containers to ma
 
 The following minimal Apache config will proxy traffic to the headscale instance on `<IP:PORT>`. Note that `upgrade=any` is required as a parameter for `ProxyPass` so that WebSockets traffic whose `Upgrade` header value is not equal to `WebSocket` (i. e. Tailscale Control Protocol) is forwarded correctly. See the [Apache docs](https://httpd.apache.org/docs/2.4/mod/mod_proxy_wstunnel.html) for more information on this.
 
-```
+```apache title="apache.conf"
 <VirtualHost *:443>
 	ServerName <YOUR_SERVER_NAME>
 

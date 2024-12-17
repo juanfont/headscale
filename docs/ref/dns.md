@@ -30,7 +30,7 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
 
     === "Static entries, via `dns.extra_records`"
 
-        ```yaml
+        ```yaml title="config.yaml"
         dns:
           ...
           extra_records:
@@ -48,7 +48,7 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
 
     === "Dynamic entries, via `dns.extra_records_path`"
 
-        ```json
+        ```json title="extra-records.json"
         [
           {
             "name": "grafana.myvpn.example.com",
@@ -93,7 +93,7 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
     The motivating example here was to be able to access internal monitoring services on the same host without
     specifying a port, depicted as NGINX configuration snippet:
 
-    ```
+    ```nginx title="nginx.conf"
     server {
         listen 80;
         listen [::]:80;
