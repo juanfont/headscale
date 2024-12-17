@@ -133,7 +133,7 @@ jobs:
               --volume $PWD/control_logs:/tmp/control \
               --env HEADSCALE_INTEGRATION_POSTGRES=${{env.USE_POSTGRES}} \
               golang:1 \
-                go run gotest.tools/gotestsum@latest -- -race ./... \
+                go run gotest.tools/gotestsum@latest -- ./... \
                   -failfast \
                   -timeout 120m \
                   -parallel 1 \

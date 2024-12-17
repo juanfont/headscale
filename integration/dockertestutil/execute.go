@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ory/dockertest/v3"
