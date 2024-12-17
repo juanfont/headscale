@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -21,6 +22,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -457,19 +459,7 @@ func (api headscaleV1APIServer) ListNodes(
 			return nil, err
 		}
 
-		response := make([]*v1.Node, len(nodes))
-		for index, node := range nodes {
-			resp := node.Proto()
-
-			// Populate the online field based on
-			// currently connected nodes.
-			if val, ok := isLikelyConnected.Load(node.ID); ok && val {
-				resp.Online = true
-			}
-
-			response[index] = resp
-		}
-
+		response := nodesToProto(api.h.polMan, isLikelyConnected, nodes)
 		return &v1.ListNodesResponse{Nodes: response}, nil
 	}
 
@@ -482,6 +472,11 @@ func (api headscaleV1APIServer) ListNodes(
 		return nodes[i].ID < nodes[j].ID
 	})
 
+	response := nodesToProto(api.h.polMan, isLikelyConnected, nodes)
+	return &v1.ListNodesResponse{Nodes: response}, nil
+}
+
+func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[types.NodeID, bool], nodes types.Nodes) []*v1.Node {
 	response := make([]*v1.Node, len(nodes))
 	for index, node := range nodes {
 		resp := node.Proto()
@@ -492,12 +487,12 @@ func (api headscaleV1APIServer) ListNodes(
 			resp.Online = true
 		}
 
-		validTags := api.h.polMan.Tags(node)
+		validTags := polMan.Tags(node)
 		resp.ValidTags = validTags
 		response[index] = resp
 	}
 
-	return &v1.ListNodesResponse{Nodes: response}, nil
+	return response
 }
 
 func (api headscaleV1APIServer) MoveNode(
