@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
 	"tailscale.com/control/controlbase"
-	"tailscale.com/control/controlhttp"
+	"tailscale.com/control/controlhttp/controlhttpserver"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -71,7 +71,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		challenge: key.NewChallenge(),
 	}
 
-	noiseConn, err := controlhttp.AcceptHTTP(
+	noiseConn, err := controlhttpserver.AcceptHTTP(
 		req.Context(),
 		writer,
 		req,

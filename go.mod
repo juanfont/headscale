@@ -18,7 +18,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0
 	github.com/jagottsicher/termcolor v1.0.2
-	github.com/klauspost/compress v1.17.9
+	github.com/klauspost/compress v1.17.11
 	github.com/oauth2-proxy/mockoidc v0.0.0-20240214162133-caebfff84d25
 	github.com/ory/dockertest/v3 v3.11.0
 	github.com/philip-bui/grpc-zerolog v1.0.1
@@ -49,7 +49,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.11
-	tailscale.com v1.75.0-pre.0.20240926101731-7d1160ddaab7
+	tailscale.com v1.78.3
 	zgo.at/zcache/v2 v2.1.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
@@ -207,7 +207,7 @@ require (
 	github.com/tailscale/setec v0.0.0-20240314234648-9da8e7407257 // indirect
 	github.com/tailscale/squibble v0.0.0-20240418235321-9ee0eeb78185 // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20240226180453-5db17b287bf1 // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20240905161824-799c1978fafc // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20241113014420-4e883d38c8d3 // indirect
 	github.com/tcnksm/go-httpstat v0.2.0 // indirect
 	github.com/u-root/uio v0.0.0-20240118234441-a3c409a6018e // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
