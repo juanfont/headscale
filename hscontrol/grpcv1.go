@@ -13,6 +13,7 @@ import (
 
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -487,8 +488,8 @@ func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[ty
 			resp.Online = true
 		}
 
-		validTags := polMan.Tags(node)
-		resp.ValidTags = validTags
+		tags := polMan.Tags(node)
+		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags...))
 		response[index] = resp
 	}
 
