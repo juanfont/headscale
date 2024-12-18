@@ -945,6 +945,25 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 			},
 			wantTag: true,
 		},
+		{
+			name: "with-policy-groups",
+			policy: &policy.ACLPolicy{
+				Groups: policy.Groups{
+					"group:admins": []string{"user1"},
+				},
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:test": {"group:admins"},
+				},
+			},
+			wantTag: true,
+		},
 	}
 
 	for _, tt := range tests {
