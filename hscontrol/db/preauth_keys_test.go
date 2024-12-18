@@ -15,7 +15,7 @@ func (*Suite) TestCreatePreAuthKey(c *check.C) {
 	_, err := db.CreatePreAuthKey(12345, true, false, nil, nil)
 	c.Assert(err, check.NotNil)
 
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	key, err := db.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
@@ -41,7 +41,7 @@ func (*Suite) TestCreatePreAuthKey(c *check.C) {
 }
 
 func (*Suite) TestExpiredPreAuthKey(c *check.C) {
-	user, err := db.CreateUser("test2")
+	user, err := db.CreateUser(types.User{Name: "test2"})
 	c.Assert(err, check.IsNil)
 
 	now := time.Now().Add(-5 * time.Second)
@@ -60,7 +60,7 @@ func (*Suite) TestPreAuthKeyDoesNotExist(c *check.C) {
 }
 
 func (*Suite) TestValidateKeyOk(c *check.C) {
-	user, err := db.CreateUser("test3")
+	user, err := db.CreateUser(types.User{Name: "test3"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
@@ -72,7 +72,7 @@ func (*Suite) TestValidateKeyOk(c *check.C) {
 }
 
 func (*Suite) TestAlreadyUsedKey(c *check.C) {
-	user, err := db.CreateUser("test4")
+	user, err := db.CreateUser(types.User{Name: "test4"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -94,7 +94,7 @@ func (*Suite) TestAlreadyUsedKey(c *check.C) {
 }
 
 func (*Suite) TestReusableBeingUsedKey(c *check.C) {
-	user, err := db.CreateUser("test5")
+	user, err := db.CreateUser(types.User{Name: "test5"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
@@ -116,7 +116,7 @@ func (*Suite) TestReusableBeingUsedKey(c *check.C) {
 }
 
 func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
-	user, err := db.CreateUser("test6")
+	user, err := db.CreateUser(types.User{Name: "test6"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -128,7 +128,7 @@ func (*Suite) TestNotReusableNotBeingUsedKey(c *check.C) {
 }
 
 func (*Suite) TestExpirePreauthKey(c *check.C) {
-	user, err := db.CreateUser("test3")
+	user, err := db.CreateUser(types.User{Name: "test3"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
@@ -145,7 +145,7 @@ func (*Suite) TestExpirePreauthKey(c *check.C) {
 }
 
 func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
-	user, err := db.CreateUser("test6")
+	user, err := db.CreateUser(types.User{Name: "test6"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -158,7 +158,7 @@ func (*Suite) TestNotReusableMarkedAsUsed(c *check.C) {
 }
 
 func (*Suite) TestPreAuthKeyACLTags(c *check.C) {
-	user, err := db.CreateUser("test8")
+	user, err := db.CreateUser(types.User{Name: "test8"})
 	c.Assert(err, check.IsNil)
 
 	_, err = db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, []string{"badtag"})

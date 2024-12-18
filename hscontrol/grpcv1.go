@@ -43,7 +43,13 @@ func (api headscaleV1APIServer) CreateUser(
 	ctx context.Context,
 	request *v1.CreateUserRequest,
 ) (*v1.CreateUserResponse, error) {
-	user, err := api.h.db.CreateUser(request.GetName())
+	newUser := types.User{
+		Name:          request.GetName(),
+		DisplayName:   request.GetDisplayName(),
+		Email:         request.GetEmail(),
+		ProfilePicURL: request.GetPictureUrl(),
+	}
+	user, err := api.h.db.CreateUser(newUser)
 	if err != nil {
 		return nil, err
 	}

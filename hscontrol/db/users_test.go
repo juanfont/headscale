@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Suite) TestCreateAndDestroyUser(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 	c.Assert(user.Name, check.Equals, "test")
 
@@ -30,7 +30,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	err := db.DestroyUser(9998)
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -43,7 +43,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	// destroying a user also deletes all associated preauthkeys
 	c.Assert(result.Error, check.Equals, gorm.ErrRecordNotFound)
 
-	user, err = db.CreateUser("test")
+	user, err = db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err = db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -64,7 +64,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 }
 
 func (s *Suite) TestRenameUser(c *check.C) {
-	userTest, err := db.CreateUser("test")
+	userTest, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 	c.Assert(userTest.Name, check.Equals, "test")
 
@@ -86,7 +86,7 @@ func (s *Suite) TestRenameUser(c *check.C) {
 	err = db.RenameUser(99988, "test")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	userTest2, err := db.CreateUser("test2")
+	userTest2, err := db.CreateUser(types.User{Name: "test2"})
 	c.Assert(err, check.IsNil)
 	c.Assert(userTest2.Name, check.Equals, "test2")
 
@@ -98,10 +98,10 @@ func (s *Suite) TestRenameUser(c *check.C) {
 }
 
 func (s *Suite) TestSetMachineUser(c *check.C) {
-	oldUser, err := db.CreateUser("old")
+	oldUser, err := db.CreateUser(types.User{Name: "old"})
 	c.Assert(err, check.IsNil)
 
-	newUser, err := db.CreateUser("new")
+	newUser, err := db.CreateUser(types.User{Name: "new"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(oldUser.ID), false, false, nil, nil)

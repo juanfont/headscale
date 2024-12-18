@@ -25,21 +25,21 @@ func init() {
 	enableRouteCmd.Flags().Uint64P("route", "r", 0, "Route identifier (ID)")
 	err := enableRouteCmd.MarkFlagRequired("route")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	routesCmd.AddCommand(enableRouteCmd)
 
 	disableRouteCmd.Flags().Uint64P("route", "r", 0, "Route identifier (ID)")
 	err = disableRouteCmd.MarkFlagRequired("route")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	routesCmd.AddCommand(disableRouteCmd)
 
 	deleteRouteCmd.Flags().Uint64P("route", "r", 0, "Route identifier (ID)")
 	err = deleteRouteCmd.MarkFlagRequired("route")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	routesCmd.AddCommand(deleteRouteCmd)
 }

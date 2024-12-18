@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"net/url"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -40,6 +41,9 @@ func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
 func init() {
 	rootCmd.AddCommand(userCmd)
 	userCmd.AddCommand(createUserCmd)
+	createUserCmd.Flags().StringP("display-name", "d", "", "Display name")
+	createUserCmd.Flags().StringP("email", "e", "", "Email")
+	createUserCmd.Flags().StringP("picture-url", "p", "", "Profile picture URL")
 	userCmd.AddCommand(listUsersCmd)
 	usernameAndIDFlag(listUsersCmd)
 	listUsersCmd.Flags().StringP("email", "e", "", "Email")
@@ -82,6 +86,28 @@ var createUserCmd = &cobra.Command{
 		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
 
 		request := &v1.CreateUserRequest{Name: userName}
+
+		if displayName, _ := cmd.Flags().GetString("display-name"); displayName != "" {
+			request.DisplayName = displayName
+		}
+
+		if email, _ := cmd.Flags().GetString("email"); email != "" {
+			request.Email = email
+		}
+
+		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
+			if _, err := url.Parse(pictureURL); err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf(
+						"Invalid Picture URL: %s",
+						err,
+					),
+					output,
+				)
+			}
+			request.PictureUrl = pictureURL
+		}
 
 		log.Trace().Interface("request", request).Msg("Sending CreateUser request")
 		response, err := client.CreateUser(ctx, request)
