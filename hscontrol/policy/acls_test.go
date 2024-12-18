@@ -3539,6 +3539,11 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 }
 
 func TestSSHRules(t *testing.T) {
+	users := []types.User{
+		{
+			Name: "user1",
+		},
+	}
 	tests := []struct {
 		name  string
 		node  types.Node
@@ -3552,18 +3557,14 @@ func TestSSHRules(t *testing.T) {
 				Hostname: "testnodes",
 				IPv4:     iap("100.64.99.42"),
 				UserID:   0,
-				User: types.User{
-					Name: "user1",
-				},
+				User:     users[0],
 			},
 			peers: types.Nodes{
 				&types.Node{
 					Hostname: "testnodes2",
 					IPv4:     iap("100.64.0.1"),
 					UserID:   0,
-					User: types.User{
-						Name: "user1",
-					},
+					User:     users[0],
 				},
 			},
 			pol: ACLPolicy{
@@ -3676,18 +3677,14 @@ func TestSSHRules(t *testing.T) {
 				Hostname: "testnodes",
 				IPv4:     iap("100.64.0.1"),
 				UserID:   0,
-				User: types.User{
-					Name: "user1",
-				},
+				User:     users[0],
 			},
 			peers: types.Nodes{
 				&types.Node{
 					Hostname: "testnodes2",
 					IPv4:     iap("100.64.99.42"),
 					UserID:   0,
-					User: types.User{
-						Name: "user1",
-					},
+					User:     users[0],
 				},
 			},
 			pol: ACLPolicy{
@@ -3725,7 +3722,7 @@ func TestSSHRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.pol.CompileSSHPolicy(&tt.node, []types.User{}, tt.peers)
+			got, err := tt.pol.CompileSSHPolicy(&tt.node, users, tt.peers)
 			require.NoError(t, err)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
