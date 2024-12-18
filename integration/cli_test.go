@@ -951,7 +951,7 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			scenario, err := NewScenario(dockertestMaxWait())
 			assertNoErr(t, err)
-			// defer scenario.ShutdownAssertNoPanics(t)
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			spec := map[string]int{
 				"user1": 1,
