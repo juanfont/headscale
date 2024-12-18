@@ -702,7 +702,7 @@ func (t *HeadscaleInContainer) WaitForRunning() error {
 func (t *HeadscaleInContainer) CreateUser(
 	user string,
 ) error {
-	command := []string{"headscale", "users", "create", user}
+	command := []string{"headscale", "users", "create", user, fmt.Sprintf("--email=%s@test.no", user)}
 
 	_, _, err := dockertestutil.ExecuteCommand(
 		t.container,

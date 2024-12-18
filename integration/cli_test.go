@@ -930,7 +930,23 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 			wantTag: false,
 		},
 		{
-			name: "with-policy",
+			name: "with-policy-email",
+			policy: &policy.ACLPolicy{
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:test": {"user1@test.no"},
+				},
+			},
+			wantTag: true,
+		},
+		{
+			name: "with-policy-username",
 			policy: &policy.ACLPolicy{
 				ACLs: []policy.ACL{
 					{
