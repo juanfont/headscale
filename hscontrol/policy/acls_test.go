@@ -2735,6 +2735,12 @@ func TestReduceFilterRules(t *testing.T) {
 }
 
 func Test_getTags(t *testing.T) {
+	users := []types.User{
+		{
+			Model: gorm.Model{ID: 1},
+			Name:  "joe",
+		},
+	}
 	type args struct {
 		aclPolicy *ACLPolicy
 		node      *types.Node
@@ -2754,9 +2760,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:valid"},
 					},
@@ -2774,9 +2778,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:valid", "tag:invalid"},
 					},
@@ -2794,9 +2796,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{
 							"tag:invalid",
@@ -2818,9 +2818,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:invalid", "very-invalid"},
 					},
@@ -2834,9 +2832,7 @@ func Test_getTags(t *testing.T) {
 			args: args{
 				aclPolicy: &ACLPolicy{},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:invalid", "very-invalid"},
 					},
@@ -2849,6 +2845,7 @@ func Test_getTags(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			gotValid, gotInvalid := test.args.aclPolicy.TagsOfNode(
+				users,
 				test.args.node,
 			)
 			for _, valid := range gotValid {

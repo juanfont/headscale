@@ -934,6 +934,7 @@ func isAutoGroup(str string) bool {
 // Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
 // Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
 func (pol *ACLPolicy) TagsOfNode(
+	users []types.User,
 	node *types.Node,
 ) ([]string, []string) {
 	var validTags []string
@@ -956,7 +957,12 @@ func (pol *ACLPolicy) TagsOfNode(
 			}
 			var found bool
 			for _, owner := range owners {
-				if node.User.Username() == owner {
+				user, err := findUserFromTokenOrErr(users, owner)
+				if err != nil {
+					log.Trace().Caller().Err(err).Msg("could not determine user to filter tags by")
+				}
+
+				if node.User.ID == user.ID {
 					found = true
 				}
 			}
@@ -988,29 +994,11 @@ func (pol *ACLPolicy) TagsOfNode(
 func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) types.Nodes {
 	var out types.Nodes
 
-	var potentialUsers []types.User
-	for _, user := range users {
-		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == userToken {
-			// If a user is matching with a known unique field,
-			// disgard all other users and only keep the current
-			// user.
-			potentialUsers = []types.User{user}
-
-			break
-		}
-		if user.Email == userToken {
-			potentialUsers = append(potentialUsers, user)
-		}
-		if user.Name == userToken {
-			potentialUsers = append(potentialUsers, user)
-		}
+	user, err := findUserFromTokenOrErr(users, userToken)
+	if err != nil {
+		log.Trace().Caller().Err(err).Msg("could not determine user to filter nodes by")
+		return out
 	}
-
-	if len(potentialUsers) != 1 {
-		return nil
-	}
-
-	user := potentialUsers[0]
 
 	for _, node := range nodes {
 		if node.User.ID == user.ID {
@@ -1019,6 +1007,44 @@ func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) 
 	}
 
 	return out
+}
+
+var (
+	ErrorNoUserMatching       = errors.New("no user matching")
+	ErrorMultipleUserMatching = errors.New("multiple users matching")
+)
+
+func findUserFromTokenOrErr(
+	users []types.User,
+	token string,
+) (types.User, error) {
+	var potentialUsers []types.User
+	for _, user := range users {
+		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == token {
+			// If a user is matching with a known unique field,
+			// disgard all other users and only keep the current
+			// user.
+			potentialUsers = []types.User{user}
+
+			break
+		}
+		if user.Email == token {
+			potentialUsers = append(potentialUsers, user)
+		}
+		if user.Name == token {
+			potentialUsers = append(potentialUsers, user)
+		}
+	}
+
+	if len(potentialUsers) == 0 {
+		return types.User{}, fmt.Errorf("user with token %q not found: %w", token, ErrorNoUserMatching)
+	}
+
+	if len(potentialUsers) > 1 {
+		return types.User{}, fmt.Errorf("multiple users with token %q found: %w", token, ErrorNoUserMatching)
+	}
+
+	return potentialUsers[0], nil
 }
 
 // FilterNodesByACL returns the list of peers authorized to be accessed from a given node.

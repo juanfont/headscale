@@ -162,7 +162,7 @@ func (pm *PolicyManagerV1) Tags(node *types.Node) []string {
 		return nil
 	}
 
-	tags, invalid := pm.pol.TagsOfNode(node)
+	tags, invalid := pm.pol.TagsOfNode(pm.users, node)
 	log.Debug().Strs("authorised_tags", tags).Strs("unauthorised_tags", invalid).Uint64("node.id", node.ID.Uint64()).Msg("tags provided by policy")
 	return tags
 }
