@@ -1039,6 +1039,15 @@
       "properties": {
         "name": {
           "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "pictureUrl": {
+          "type": "string"
         }
       }
     },
