@@ -135,8 +135,9 @@ func TestUserCommand(t *testing.T) {
 	slices.SortFunc(listByUsername, sortWithID)
 	want := []*v1.User{
 		{
-			Id:   1,
-			Name: "user1",
+			Id:    1,
+			Name:  "user1",
+			Email: "user1@test.no",
 		},
 	}
 
@@ -161,8 +162,9 @@ func TestUserCommand(t *testing.T) {
 	slices.SortFunc(listByID, sortWithID)
 	want = []*v1.User{
 		{
-			Id:   1,
-			Name: "user1",
+			Id:    1,
+			Name:  "user1",
+			Email: "user1@test.no",
 		},
 	}
 
@@ -199,8 +201,9 @@ func TestUserCommand(t *testing.T) {
 	slices.SortFunc(listAfterIDDelete, sortWithID)
 	want = []*v1.User{
 		{
-			Id:   2,
-			Name: "newname",
+			Id:    2,
+			Name:  "newname",
+			Email: "user2@test.no",
 		},
 	}
 
