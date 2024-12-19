@@ -282,7 +282,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			allClients, err := scenario.ListTailscaleClients()
 			require.NoError(t, err)
 
-			err = scenario.WaitForTailscaleSyncWithPeerCount(testCase.want["user1"])
+			err = scenario.WaitForTailscaleSyncWithPeerCount(testCase.want["user1@test.no"])
 			require.NoError(t, err)
 
 			for _, client := range allClients {
