@@ -629,16 +629,16 @@ func (t *tamperVerifierTransport) RoundTrip(req *http.Request) (*http.Response, 
 			log.Printf("Error parsing form: %v", err)
 			return nil, err
 		}
-		if verifier := req.Form.Get("code_verifier"); verifier != "" {
+		if verifier := req.Form.Get("code_challenge"); verifier != "" {
 			log.Printf("Found POST verifier: %s", verifier)
 			// Tamper with the verifier
-			req.Form.Set("code_verifier", verifier+"_tampered")
-			log.Printf("Modified POST verifier to: %s", req.Form.Get("code_verifier"))
+			req.Form.Set("code_challenge", verifier+"_tampered")
+			log.Printf("Modified POST verifier to: %s", req.Form.Get("code_challenge"))
 			// Update request body with modified form
 			req.Body = io.NopCloser(strings.NewReader(req.Form.Encode()))
 			req.ContentLength = int64(len(req.Form.Encode()))
 		} else {
-			log.Printf("No code_verifier found in POST form data")
+			log.Printf("No code_challenge found in POST form data")
 		}
 	}
 
@@ -646,13 +646,13 @@ func (t *tamperVerifierTransport) RoundTrip(req *http.Request) (*http.Response, 
 	if req.Method == http.MethodGet {
 		log.Printf("Processing GET request")
 		q := req.URL.Query()
-		if verifier := q.Get("code_verifier"); verifier != "" {
+		if verifier := q.Get("code_challenge"); verifier != "" {
 			log.Printf("Found GET verifier: %s", verifier)
-			q.Set("code_verifier", verifier+"_tampered")
+			q.Set("code_challenge", verifier+"_tampered")
 			req.URL.RawQuery = q.Encode()
 			log.Printf("Modified URL to: %s", req.URL.String())
 		} else {
-			log.Printf("No code_verifier found in GET query params")
+			log.Printf("No code_challenge found in GET query params")
 		}
 	}
 
