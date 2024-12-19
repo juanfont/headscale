@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"net/netip"
 	"os"
 	"slices"
@@ -361,37 +362,67 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			)
 		}
 
-		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
-		for innerIndex, rawSrc := range sshACL.Sources {
-			if isWildcard(rawSrc) {
-				principals = append(principals, &tailcfg.SSHPrincipal{
+		var principals []*tailcfg.SSHPrincipal
+		for innerIndex, srcToken := range sshACL.Sources {
+			if isWildcard(srcToken) {
+				principals = []*tailcfg.SSHPrincipal{{
 					Any: true,
-				})
-			} else if isGroup(rawSrc) {
-				users, err := pol.expandUsersFromGroup(rawSrc)
+				}}
+				break
+			}
+
+			// If the token is a group, expand the users and validate
+			// them. Then use the .Username() to get the login name
+			// that corresponds with the User info in the netmap.
+			if isGroup(srcToken) {
+				usersFromGroup, err := pol.expandUsersFromGroup(srcToken)
 				if err != nil {
 					return nil, fmt.Errorf("parsing SSH policy, expanding user from group, index: %d->%d: %w", index, innerIndex, err)
 				}
 
-				for _, user := range users {
+				for _, userStr := range usersFromGroup {
+					user, err := findUserFromTokenOrErr(users, userStr)
+					if err != nil {
+						log.Trace().Err(err).Msg("user not found")
+						continue
+					}
+
 					principals = append(principals, &tailcfg.SSHPrincipal{
-						UserLogin: user,
+						UserLogin: user.Username(),
 					})
 				}
-			} else {
-				expandedSrcs, err := pol.ExpandAlias(
-					peers,
-					users,
-					rawSrc,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
-				}
-				for _, expandedSrc := range expandedSrcs.Prefixes() {
-					principals = append(principals, &tailcfg.SSHPrincipal{
-						NodeIP: expandedSrc.Addr().String(),
-					})
-				}
+
+				continue
+			}
+
+			// Try to check if the token is a user, if it is, then we
+			// can use the .Username() to get the login name that
+			// corresponds with the User info in the netmap.
+			// TODO(kradalby): This is a bit of a hack, and it should go
+			// away with the new policy where users can be reliably determined.
+			if user, err := findUserFromTokenOrErr(users, srcToken); err == nil {
+				principals = append(principals, &tailcfg.SSHPrincipal{
+					UserLogin: user.Username(),
+				})
+				continue
+			}
+
+			// This is kind of then non-ideal scenario where we dont really know
+			// what to do with the token, so we expand it to IP addresses of nodes.
+			// The pro here is that we have a pretty good lockdown on the mapping
+			// between users and node, but it can explode if a user owns many nodes.
+			ips, err := pol.ExpandAlias(
+				peers,
+				users,
+				srcToken,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
+			}
+			for addr := range ipSetAll(ips) {
+				principals = append(principals, &tailcfg.SSHPrincipal{
+					NodeIP: addr.String(),
+				})
 			}
 		}
 
@@ -409,6 +440,19 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 	return &tailcfg.SSHPolicy{
 		Rules: rules,
 	}, nil
+}
+
+// ipSetAll returns a function that iterates over all the IPs in the IPSet.
+func ipSetAll(ipSet *netipx.IPSet) iter.Seq[netip.Addr] {
+	return func(yield func(netip.Addr) bool) {
+		for _, rng := range ipSet.Ranges() {
+			for ip := rng.From(); ip.Compare(rng.To()) <= 0; ip = ip.Next() {
+				if !yield(ip) {
+					return
+				}
+			}
+		}
+	}
 }
 
 func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {
@@ -934,6 +978,7 @@ func isAutoGroup(str string) bool {
 // Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
 // Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
 func (pol *ACLPolicy) TagsOfNode(
+	users []types.User,
 	node *types.Node,
 ) ([]string, []string) {
 	var validTags []string
@@ -956,7 +1001,12 @@ func (pol *ACLPolicy) TagsOfNode(
 			}
 			var found bool
 			for _, owner := range owners {
-				if node.User.Username() == owner {
+				user, err := findUserFromTokenOrErr(users, owner)
+				if err != nil {
+					log.Trace().Caller().Err(err).Msg("could not determine user to filter tags by")
+				}
+
+				if node.User.ID == user.ID {
 					found = true
 				}
 			}
@@ -988,29 +1038,11 @@ func (pol *ACLPolicy) TagsOfNode(
 func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) types.Nodes {
 	var out types.Nodes
 
-	var potentialUsers []types.User
-	for _, user := range users {
-		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == userToken {
-			// If a user is matching with a known unique field,
-			// disgard all other users and only keep the current
-			// user.
-			potentialUsers = []types.User{user}
-
-			break
-		}
-		if user.Email == userToken {
-			potentialUsers = append(potentialUsers, user)
-		}
-		if user.Name == userToken {
-			potentialUsers = append(potentialUsers, user)
-		}
+	user, err := findUserFromTokenOrErr(users, userToken)
+	if err != nil {
+		log.Trace().Caller().Err(err).Msg("could not determine user to filter nodes by")
+		return out
 	}
-
-	if len(potentialUsers) != 1 {
-		return nil
-	}
-
-	user := potentialUsers[0]
 
 	for _, node := range nodes {
 		if node.User.ID == user.ID {
@@ -1019,6 +1051,44 @@ func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) 
 	}
 
 	return out
+}
+
+var (
+	ErrorNoUserMatching       = errors.New("no user matching")
+	ErrorMultipleUserMatching = errors.New("multiple users matching")
+)
+
+func findUserFromTokenOrErr(
+	users []types.User,
+	token string,
+) (types.User, error) {
+	var potentialUsers []types.User
+	for _, user := range users {
+		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == token {
+			// If a user is matching with a known unique field,
+			// disgard all other users and only keep the current
+			// user.
+			potentialUsers = []types.User{user}
+
+			break
+		}
+		if user.Email == token {
+			potentialUsers = append(potentialUsers, user)
+		}
+		if user.Name == token {
+			potentialUsers = append(potentialUsers, user)
+		}
+	}
+
+	if len(potentialUsers) == 0 {
+		return types.User{}, fmt.Errorf("user with token %q not found: %w", token, ErrorNoUserMatching)
+	}
+
+	if len(potentialUsers) > 1 {
+		return types.User{}, fmt.Errorf("multiple users with token %q found: %w", token, ErrorNoUserMatching)
+	}
+
+	return potentialUsers[0], nil
 }
 
 // FilterNodesByACL returns the list of peers authorized to be accessed from a given node.

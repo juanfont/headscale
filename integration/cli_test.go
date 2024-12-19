@@ -135,8 +135,9 @@ func TestUserCommand(t *testing.T) {
 	slices.SortFunc(listByUsername, sortWithID)
 	want := []*v1.User{
 		{
-			Id:   1,
-			Name: "user1",
+			Id:    1,
+			Name:  "user1",
+			Email: "user1@test.no",
 		},
 	}
 
@@ -161,8 +162,9 @@ func TestUserCommand(t *testing.T) {
 	slices.SortFunc(listByID, sortWithID)
 	want = []*v1.User{
 		{
-			Id:   1,
-			Name: "user1",
+			Id:    1,
+			Name:  "user1",
+			Email: "user1@test.no",
 		},
 	}
 
@@ -199,8 +201,9 @@ func TestUserCommand(t *testing.T) {
 	slices.SortFunc(listAfterIDDelete, sortWithID)
 	want = []*v1.User{
 		{
-			Id:   2,
-			Name: "newname",
+			Id:    2,
+			Name:  "newname",
+			Email: "user2@test.no",
 		},
 	}
 
@@ -930,7 +933,23 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 			wantTag: false,
 		},
 		{
-			name: "with-policy",
+			name: "with-policy-email",
+			policy: &policy.ACLPolicy{
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:test": {"user1@test.no"},
+				},
+			},
+			wantTag: true,
+		},
+		{
+			name: "with-policy-username",
 			policy: &policy.ACLPolicy{
 				ACLs: []policy.ACL{
 					{
@@ -945,13 +964,32 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 			},
 			wantTag: true,
 		},
+		{
+			name: "with-policy-groups",
+			policy: &policy.ACLPolicy{
+				Groups: policy.Groups{
+					"group:admins": []string{"user1"},
+				},
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:test": {"group:admins"},
+				},
+			},
+			wantTag: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			scenario, err := NewScenario(dockertestMaxWait())
 			assertNoErr(t, err)
-			// defer scenario.ShutdownAssertNoPanics(t)
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			spec := map[string]int{
 				"user1": 1,

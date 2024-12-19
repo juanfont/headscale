@@ -278,9 +278,9 @@ func TestConstraints(t *testing.T) {
 		{
 			name: "no-duplicate-username-if-no-oidc",
 			run: func(t *testing.T, db *gorm.DB) {
-				_, err := CreateUser(db, "user1")
+				_, err := CreateUser(db, types.User{Name: "user1"})
 				require.NoError(t, err)
-				_, err = CreateUser(db, "user1")
+				_, err = CreateUser(db, types.User{Name: "user1"})
 				requireConstraintFailed(t, err)
 			},
 		},
@@ -331,7 +331,7 @@ func TestConstraints(t *testing.T) {
 		{
 			name: "allow-duplicate-username-cli-then-oidc",
 			run: func(t *testing.T, db *gorm.DB) {
-				_, err := CreateUser(db, "user1") // Create CLI username
+				_, err := CreateUser(db, types.User{Name: "user1"}) // Create CLI username
 				require.NoError(t, err)
 
 				user := types.User{
@@ -354,7 +354,7 @@ func TestConstraints(t *testing.T) {
 				err := db.Save(&user).Error
 				require.NoError(t, err)
 
-				_, err = CreateUser(db, "user1") // Create CLI username
+				_, err = CreateUser(db, types.User{Name: "user1"}) // Create CLI username
 				require.NoError(t, err)
 			},
 		},

@@ -119,8 +119,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3, // ns1 + ns2
-				"user2": 3, // ns2 + ns1
+				"user1@test.no": 3, // ns1 + ns2
+				"user2@test.no": 3, // ns2 + ns1
 			},
 		},
 		// Test that when we have two users, which cannot see
@@ -145,8 +145,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					},
 				},
 			}, want: map[string]int{
-				"user1": 1,
-				"user2": 1,
+				"user1@test.no": 1,
+				"user2@test.no": 1,
 			},
 		},
 		// Test that when we have two users, with ACLs and they
@@ -181,8 +181,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3,
-				"user2": 3,
+				"user1@test.no": 3,
+				"user2@test.no": 3,
 			},
 		},
 		// Test that when we have two users, that are isolated,
@@ -213,8 +213,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3, // ns1 + ns2
-				"user2": 3, // ns1 + ns2 (return path)
+				"user1@test.no": 3, // ns1 + ns2
+				"user2@test.no": 3, // ns1 + ns2 (return path)
 			},
 		},
 		"very-large-destination-prefix-1372": {
@@ -241,8 +241,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3, // ns1 + ns2
-				"user2": 3, // ns1 + ns2 (return path)
+				"user1@test.no": 3, // ns1 + ns2
+				"user2@test.no": 3, // ns1 + ns2 (return path)
 			},
 		},
 		"ipv6-acls-1470": {
@@ -259,8 +259,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3, // ns1 + ns2
-				"user2": 3, // ns2 + ns1
+				"user1@test.no": 3, // ns1 + ns2
+				"user2@test.no": 3, // ns2 + ns1
 			},
 		},
 	}
@@ -282,7 +282,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			allClients, err := scenario.ListTailscaleClients()
 			require.NoError(t, err)
 
-			err = scenario.WaitForTailscaleSyncWithPeerCount(testCase.want["user1"])
+			err = scenario.WaitForTailscaleSyncWithPeerCount(testCase.want["user1@test.no"])
 			require.NoError(t, err)
 
 			for _, client := range allClients {

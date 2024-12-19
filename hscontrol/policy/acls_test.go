@@ -2735,6 +2735,12 @@ func TestReduceFilterRules(t *testing.T) {
 }
 
 func Test_getTags(t *testing.T) {
+	users := []types.User{
+		{
+			Model: gorm.Model{ID: 1},
+			Name:  "joe",
+		},
+	}
 	type args struct {
 		aclPolicy *ACLPolicy
 		node      *types.Node
@@ -2754,9 +2760,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:valid"},
 					},
@@ -2774,9 +2778,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:valid", "tag:invalid"},
 					},
@@ -2794,9 +2796,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{
 							"tag:invalid",
@@ -2818,9 +2818,7 @@ func Test_getTags(t *testing.T) {
 					},
 				},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:invalid", "very-invalid"},
 					},
@@ -2834,9 +2832,7 @@ func Test_getTags(t *testing.T) {
 			args: args{
 				aclPolicy: &ACLPolicy{},
 				node: &types.Node{
-					User: types.User{
-						Name: "joe",
-					},
+					User: users[0],
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:invalid", "very-invalid"},
 					},
@@ -2849,6 +2845,7 @@ func Test_getTags(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			gotValid, gotInvalid := test.args.aclPolicy.TagsOfNode(
+				users,
 				test.args.node,
 			)
 			for _, valid := range gotValid {
@@ -3542,6 +3539,11 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 }
 
 func TestSSHRules(t *testing.T) {
+	users := []types.User{
+		{
+			Name: "user1",
+		},
+	}
 	tests := []struct {
 		name  string
 		node  types.Node
@@ -3555,18 +3557,14 @@ func TestSSHRules(t *testing.T) {
 				Hostname: "testnodes",
 				IPv4:     iap("100.64.99.42"),
 				UserID:   0,
-				User: types.User{
-					Name: "user1",
-				},
+				User:     users[0],
 			},
 			peers: types.Nodes{
 				&types.Node{
 					Hostname: "testnodes2",
 					IPv4:     iap("100.64.0.1"),
 					UserID:   0,
-					User: types.User{
-						Name: "user1",
-					},
+					User:     users[0],
 				},
 			},
 			pol: ACLPolicy{
@@ -3679,18 +3677,14 @@ func TestSSHRules(t *testing.T) {
 				Hostname: "testnodes",
 				IPv4:     iap("100.64.0.1"),
 				UserID:   0,
-				User: types.User{
-					Name: "user1",
-				},
+				User:     users[0],
 			},
 			peers: types.Nodes{
 				&types.Node{
 					Hostname: "testnodes2",
 					IPv4:     iap("100.64.99.42"),
 					UserID:   0,
-					User: types.User{
-						Name: "user1",
-					},
+					User:     users[0],
 				},
 			},
 			pol: ACLPolicy{
@@ -3728,7 +3722,7 @@ func TestSSHRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.pol.CompileSSHPolicy(&tt.node, []types.User{}, tt.peers)
+			got, err := tt.pol.CompileSSHPolicy(&tt.node, users, tt.peers)
 			require.NoError(t, err)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {

@@ -32,7 +32,7 @@ var mp = func(p string) netip.Prefix {
 }
 
 func (s *Suite) TestGetRoutes(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -76,7 +76,7 @@ func (s *Suite) TestGetRoutes(c *check.C) {
 }
 
 func (s *Suite) TestGetEnableRoutes(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -150,7 +150,7 @@ func (s *Suite) TestGetEnableRoutes(c *check.C) {
 }
 
 func (s *Suite) TestIsUniquePrefix(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -231,7 +231,7 @@ func (s *Suite) TestIsUniquePrefix(c *check.C) {
 }
 
 func (s *Suite) TestDeleteRoutes(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)

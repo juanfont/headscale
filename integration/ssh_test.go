@@ -69,9 +69,6 @@ func sshScenario(t *testing.T, policy *policy.ACLPolicy, clientsPerUser int) *Sc
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("ssh"),
-		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_EXPERIMENTAL_FEATURE_SSH": "1",
-		}),
 	)
 	assertNoErr(t, err)
 

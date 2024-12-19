@@ -39,33 +39,33 @@ func init() {
 
 	err := registerNodeCmd.MarkFlagRequired("user")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
 	err = registerNodeCmd.MarkFlagRequired("key")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(registerNodeCmd)
 
 	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = expireNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(expireNodeCmd)
 
 	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = renameNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(renameNodeCmd)
 
 	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = deleteNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(deleteNodeCmd)
 
@@ -73,7 +73,7 @@ func init() {
 
 	err = moveNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 
 	moveNodeCmd.Flags().StringP("user", "u", "", "New user")
@@ -85,7 +85,7 @@ func init() {
 
 	err = moveNodeCmd.MarkFlagRequired("user")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(moveNodeCmd)
 
@@ -93,7 +93,7 @@ func init() {
 
 	err = tagCmd.MarkFlagRequired("identifier")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 	tagCmd.Flags().
 		StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
