@@ -619,22 +619,51 @@ type tamperVerifierTransport struct {
 }
 
 func (t *tamperVerifierTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// If this is a token exchange request, tamper with the verifier
-	if strings.Contains(req.URL.Path, "/token") && req.Method == http.MethodPost {
+	log.Printf("RoundTrip: %s %s", req.Method, req.URL.String())
+
+	// For POST requests, tamper with form data
+	if req.Method == http.MethodPost {
+		log.Printf("Processing POST request")
 		err := req.ParseForm()
 		if err != nil {
+			log.Printf("Error parsing form: %v", err)
 			return nil, err
 		}
 		if verifier := req.Form.Get("code_verifier"); verifier != "" {
+			log.Printf("Found POST verifier: %s", verifier)
 			// Tamper with the verifier
 			req.Form.Set("code_verifier", verifier+"_tampered")
+			log.Printf("Modified POST verifier to: %s", req.Form.Get("code_verifier"))
 			// Update request body with modified form
 			req.Body = io.NopCloser(strings.NewReader(req.Form.Encode()))
 			req.ContentLength = int64(len(req.Form.Encode()))
+		} else {
+			log.Printf("No code_verifier found in POST form data")
 		}
 	}
+
+	// For GET requests, tamper with URL query parameters
+	if req.Method == http.MethodGet {
+		log.Printf("Processing GET request")
+		q := req.URL.Query()
+		if verifier := q.Get("code_verifier"); verifier != "" {
+			log.Printf("Found GET verifier: %s", verifier)
+			q.Set("code_verifier", verifier+"_tampered")
+			req.URL.RawQuery = q.Encode()
+			log.Printf("Modified URL to: %s", req.URL.String())
+		} else {
+			log.Printf("No code_verifier found in GET query params")
+		}
+	}
+
 	// Forward the request with the tampered verifier
-	return t.base.RoundTrip(req)
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		log.Printf("RoundTrip error: %v", err)
+		return nil, err
+	}
+	log.Printf("Response status: %s", resp.Status)
+	return resp, err
 }
 
 func TestOIDCAuthenticationWithPKCEVerifierTampering(t *testing.T) {
