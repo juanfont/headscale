@@ -614,6 +614,111 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	}
 }
 
+type tamperVerifierTransport struct {
+	base http.RoundTripper
+}
+
+func (t *tamperVerifierTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// If this is a token exchange request, tamper with the verifier
+	if strings.Contains(req.URL.Path, "/token") && req.Method == http.MethodPost {
+		err := req.ParseForm()
+		if err != nil {
+			return nil, err
+		}
+		if verifier := req.Form.Get("code_verifier"); verifier != "" {
+			// Tamper with the verifier
+			req.Form.Set("code_verifier", verifier+"_tampered")
+			// Update request body with modified form
+			req.Body = io.NopCloser(strings.NewReader(req.Form.Encode()))
+			req.ContentLength = int64(len(req.Form.Encode()))
+		}
+	}
+	// Forward the request with the tampered verifier
+	return t.base.RoundTrip(req)
+}
+
+func TestOIDCAuthenticationWithPKCEVerifierTampering(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	baseScenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+
+	scenario := AuthOIDCScenario{
+		Scenario: baseScenario,
+	}
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Single user with one node for testing PKCE flow
+	spec := map[string]int{
+		"user1": 1,
+	}
+
+	mockusers := []mockoidc.MockUser{
+		oidcMockUser("user1", true),
+	}
+
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
+	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
+	defer scenario.mockOIDC.Close()
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
+		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_PKCE_ENABLED":       "1", // Enable PKCE
+		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
+	}
+
+	// Create a transport that modifies the PKCE verifier in transit
+	baseTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	tamperTransport := &tamperVerifierTransport{
+		base: baseTransport,
+	}
+
+	err = scenario.CreateHeadscaleEnvWithHttpModifier(
+		spec,
+		func(cli *http.Client) {
+			cli.Transport = tamperTransport
+		},
+		hsic.WithTestName("oidcauthpkce"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+	)
+	if err == nil {
+		t.Error("expected authentication to fail due to PKCE verifier tampering, but it succeeded")
+	} else {
+		log.Printf("auth got error: %s", err)
+	}
+
+	// Verify no users were created since authentication should fail
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	var listUsers []v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listUsers,
+	)
+	assertNoErr(t, err)
+
+	if len(listUsers) > 0 {
+		t.Errorf("expected no users to be created, but found %d users", len(listUsers))
+	}
+}
+
 func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 	users map[string]int,
 	opts ...hsic.Option,
@@ -648,6 +753,49 @@ func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 		}
 
 		err = s.runTailscaleUp(userName, headscale.GetEndpoint())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *AuthOIDCScenario) CreateHeadscaleEnvWithHttpModifier(
+	users map[string]int,
+	httpModifier func(*http.Client),
+	opts ...hsic.Option,
+) error {
+	headscale, err := s.Headscale(opts...)
+	if err != nil {
+		return err
+	}
+
+	err = headscale.WaitForRunning()
+	if err != nil {
+		return err
+	}
+
+	for userName, clientCount := range users {
+		if clientCount != 1 {
+			// OIDC scenario only supports one client per user.
+			// This is because the MockOIDC server can only serve login
+			// requests based on a queue it has been given on startup.
+			// We currently only populates it with one login request per user.
+			return fmt.Errorf("client count must be 1 for OIDC scenario.")
+		}
+		log.Printf("creating user %s with %d clients", userName, clientCount)
+		err = s.CreateUser(userName)
+		if err != nil {
+			return err
+		}
+
+		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount)
+		if err != nil {
+			return err
+		}
+
+		err = s.runTailscaleUpWithModifier(userName, headscale.GetEndpoint(), httpModifier)
 		if err != nil {
 			return err
 		}
@@ -839,7 +987,7 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
 }
 
-func (s *AuthOIDCScenario) runTailscaleUpPKCE(
+func (s *AuthOIDCScenario) runTailscaleUpWithModifier(
 	userStr string,
 	loginServer string,
 	httpClientModifier func(*http.Client),
@@ -849,193 +997,84 @@ func (s *AuthOIDCScenario) runTailscaleUpPKCE(
 		return err
 	}
 
-	allClients, err := s.ListTailscaleClients()
-	if err != nil {
-		return fmt.Errorf("failed to list tailscale clients: %w", err)
-	}
+	log.Printf("running tailscale up for user %s", userStr)
+	if user, ok := s.users[userStr]; ok {
+		for _, client := range user.Clients {
+			c := client
+			err := func() error {
+				status, err := c.Status()
+				if err != nil {
+					log.Printf("%s failed to get status: %s", c.Hostname(), err)
+					return err
+				}
 
-	for _, client := range allClients {
-		status, err := client.Status()
-		if err != nil {
-			log.Printf("%s failed to get status: %s", client.Hostname(), err)
+				if status.BackendState == "Running" {
+					log.Printf("%s is already running", c.Hostname())
+					return nil
+				}
 
-			continue
+				log.Printf("%s running tailscale up", c.Hostname())
+
+				loginURL, err := c.LoginWithURL(loginServer)
+				if err != nil {
+					log.Printf("%s failed to run tailscale up: %s", c.Hostname(), err)
+					return err
+				}
+
+				loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetIP())
+				loginURL.Scheme = "http"
+
+				if len(headscale.GetCert()) > 0 {
+					loginURL.Scheme = "https"
+				}
+
+				insecureTransport := &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
+				}
+
+				log.Printf("%s login url: %s\n", c.Hostname(), loginURL.String())
+
+				log.Printf("%s logging in with url", c.Hostname())
+				httpClient := &http.Client{Transport: insecureTransport}
+
+				// Allow the test to modify the HTTP client
+				if httpClientModifier != nil {
+					httpClientModifier(httpClient)
+				}
+
+				ctx := context.Background()
+				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
+				resp, err := httpClient.Do(req)
+				if err != nil {
+					log.Printf(
+						"%s failed to login using url %s: %s",
+						c.Hostname(),
+						loginURL,
+						err,
+					)
+
+					return err
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					log.Printf("%s response code of oidc login request was %s", c.Hostname(), resp.Status)
+					body, _ := io.ReadAll(resp.Body)
+					log.Printf("body: %s", body)
+
+					return errStatusCodeNotOK
+				}
+
+				return nil
+			}()
+			if err != nil {
+				return err
+			}
 		}
-
-		if status.BackendState == "Running" {
-			log.Printf("%s is already running", client.Hostname())
-
-			continue
-		}
-
-		log.Printf("%s running tailscale up", client.Hostname())
-
-		loginURL, err := client.LoginWithURL(loginServer)
-		if err != nil {
-			log.Printf("%s failed to run tailscale up: %s", client.Hostname(), err)
-		}
-
-		loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetIP())
-		loginURL.Scheme = "http"
-
-		if len(headscale.GetCert()) > 0 {
-			loginURL.Scheme = "https"
-		}
-
-		insecureTransport := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
-		}
-
-		log.Printf("%s login url: %s\n", client.Hostname(), loginURL.String())
-
-		log.Printf("%s logging in with url", client.Hostname())
-		httpClient := &http.Client{Transport: insecureTransport}
-
-		// Allow the test to modify the HTTP client
-		if httpClientModifier != nil {
-			httpClientModifier(httpClient)
-		}
-
-		ctx := context.Background()
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			log.Printf(
-				"%s failed to login using url %s: %s",
-				client.Hostname(),
-				loginURL,
-				err,
-			)
-
-			return err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("%s response code of oidc login request was %s", client.Hostname(), resp.Status)
-			body, _ := io.ReadAll(resp.Body)
-			log.Printf("body: %s", body)
-
-			return errStatusCodeNotOK
-		}
-
 		return nil
 	}
 
 	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
-}
-
-type tamperVerifierTransport struct {
-	base http.RoundTripper
-}
-
-func (t *tamperVerifierTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// If this is a token exchange request, tamper with the verifier
-	if strings.Contains(req.URL.Path, "/token") && req.Method == http.MethodPost {
-		err := req.ParseForm()
-		if err != nil {
-			return nil, err
-		}
-		if verifier := req.Form.Get("code_verifier"); verifier != "" {
-			// Tamper with the verifier
-			req.Form.Set("code_verifier", verifier+"_tampered")
-			// Update request body with modified form
-			req.Body = io.NopCloser(strings.NewReader(req.Form.Encode()))
-			req.ContentLength = int64(len(req.Form.Encode()))
-		}
-	}
-	// Forward the request with the tampered verifier
-	return t.base.RoundTrip(req)
-}
-
-func TestOIDCAuthenticationWithPKCEVerifierTampering(t *testing.T) {
-	IntegrationSkip(t)
-	t.Parallel()
-
-	baseScenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-
-	scenario := AuthOIDCScenario{
-		Scenario: baseScenario,
-	}
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	// Single user with one node for testing PKCE flow
-	spec := map[string]int{
-		"user1": 1,
-	}
-
-	mockusers := []mockoidc.MockUser{
-		oidcMockUser("user1", true),
-	}
-
-	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
-	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
-	defer scenario.mockOIDC.Close()
-
-	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
-		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
-		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
-		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
-		"HEADSCALE_OIDC_PKCE_ENABLED":       "1", // Enable PKCE
-		"HEADSCALE_OIDC_PKCE_METHOD":        "S256",
-		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
-		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
-	}
-
-	err = scenario.CreateHeadscaleEnv(
-		spec,
-		hsic.WithTestName("oidcauthpkcetampered"),
-		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
-		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
-	)
-	assertNoErrHeadscaleEnv(t, err)
-
-	// Create a transport that modifies the PKCE verifier in transit
-	baseTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	tamperTransport := &tamperVerifierTransport{
-		base: baseTransport,
-	}
-
-	// Get all clients
-	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
-
-	// Try to authenticate each client with the tampered PKCE verifier
-	for _, client := range allClients {
-		err := scenario.runTailscaleUpPKCE("user1", "user1", func(client *http.Client) {
-			client.Transport = tamperTransport
-		})
-		if err == nil {
-			t.Errorf("expected authentication to fail for client %s due to PKCE verifier tampering, but it succeeded", client.Hostname())
-		}
-	}
-
-	// Verify no users were created since authentication should fail
-	headscale, err := scenario.Headscale()
-	assertNoErr(t, err)
-
-	var listUsers []v1.User
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listUsers,
-	)
-	assertNoErr(t, err)
-
-	if len(listUsers) > 0 {
-		t.Errorf("expected no users to be created, but found %d users", len(listUsers))
-	}
 }
 
 func (s *AuthOIDCScenario) Shutdown() {
