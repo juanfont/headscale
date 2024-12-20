@@ -26,11 +26,14 @@ import (
 const (
 	defaultOIDCExpiryTime               = 180 * 24 * time.Hour // 180 Days
 	maxDuration           time.Duration = 1<<63 - 1
+	PKCEMethodPlain       string        = "plain"
+	PKCEMethodS256        string        = "S256"
 )
 
 var (
 	errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
 	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
+	errInvalidPKCEMethod     = errors.New("pkce.method must be either 'plain' or 'S256'")
 )
 
 type IPAllocationStrategy string
@@ -162,6 +165,11 @@ type LetsEncryptConfig struct {
 	ChallengeType string
 }
 
+type PKCEConfig struct {
+	Enabled bool
+	Method  string
+}
+
 type OIDCConfig struct {
 	OnlyStartIfOIDCIsAvailable bool
 	Issuer                     string
@@ -176,6 +184,7 @@ type OIDCConfig struct {
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
 	MapLegacyUsers             bool
+	PKCE                       PKCEConfig
 }
 
 type DERPConfig struct {
@@ -224,6 +233,13 @@ type Tuning struct {
 	NotifierSendTimeout            time.Duration
 	BatchChangeDelay               time.Duration
 	NodeMapSessionBufferedChanSize int
+}
+
+func validatePKCEMethod(method string) error {
+	if method != PKCEMethodPlain && method != PKCEMethodS256 {
+		return errInvalidPKCEMethod
+	}
+	return nil
 }
 
 // LoadConfig prepares and loads the Headscale configuration into Viper.
@@ -293,6 +309,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
 	viper.SetDefault("oidc.map_legacy_users", true)
+	viper.SetDefault("oidc.pkce.enabled", false)
+	viper.SetDefault("oidc.pkce.method", "S256")
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -339,6 +357,12 @@ func validateServerConfig() error {
 	// TODO(kradalby): Reintroduce when strip_email_domain is removed
 	// after #2170 is cleaned up
 	// depr.fatal("oidc.strip_email_domain")
+
+	if viper.GetBool("oidc.enabled") {
+		if err := validatePKCEMethod(viper.GetString("oidc.pkce.method")); err != nil {
+			return err
+		}
+	}
 
 	depr.Log()
 
@@ -928,6 +952,10 @@ func LoadServerConfig() (*Config, error) {
 			// after #2170 is cleaned up
 			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
 			MapLegacyUsers:   viper.GetBool("oidc.map_legacy_users"),
+			PKCE: PKCEConfig{
+				Enabled: viper.GetBool("oidc.pkce.enabled"),
+				Method:  viper.GetString("oidc.pkce.method"),
+			},
 		},
 
 		LogTail:             logTailConfig,
