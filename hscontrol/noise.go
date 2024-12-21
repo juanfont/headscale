@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -99,6 +101,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 	router.HandleFunc("/machine/register", noiseServer.NoiseRegistrationHandler).
 		Methods(http.MethodPost)
 	router.HandleFunc("/machine/map", noiseServer.NoisePollNetMapHandler)
+	router.HandleFunc("/machine/set-dns", noiseServer.SetDNSHandler).Methods(http.MethodPost)
 
 	noiseServer.httpBaseConfig = &http.Server{
 		Handler:           router,
@@ -231,4 +234,71 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	} else {
 		sess.serveLongPoll()
 	}
+}
+
+func (ns *noiseServer) SetDNSHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	body, _ := io.ReadAll(req.Body)
+
+	setDnsRequest := tailcfg.SetDNSRequest{}
+	if err := json.Unmarshal(body, &setDnsRequest); err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Cannot parse MapRequest")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+		return
+	}
+
+	log.Info().
+		Caller().
+		Str("handler", "NoisePollNetMap").
+		Any("headers", req.Header).
+		Str("NodeKey", setDnsRequest.NodeKey.ShortString()).
+		Str("Name", setDnsRequest.Name).
+		Str("Type", setDnsRequest.Type).
+		Str("Value", setDnsRequest.Value).
+		Msg("SetDNSHandler called")
+
+	if !ns.headscale.cfg.CertificatesFeatureConfig.Enabled {
+		http.Error(writer, "certificates feature is not enabled in headscale", http.StatusForbidden)
+		return
+	}
+	cmd := exec.Command(ns.headscale.cfg.CertificatesFeatureConfig.SetDNSCommand, setDnsRequest.Name, setDnsRequest.Type, setDnsRequest.Value)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+
+	if err != nil {
+		log.Error().AnErr("error", err).
+			Strs("args", cmd.Args).
+			Str("NodeKey", setDnsRequest.NodeKey.ShortString()).
+			Str("DnsName", setDnsRequest.Name).
+			Msg("Error running set_dns_command")
+		http.Error(writer, "Failed to execute SetDNSCommand", http.StatusInternalServerError)
+		return
+	}
+
+	resp := tailcfg.SetDNSResponse{}
+	respBody, err := json.Marshal(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Msg("Cannot encode message")
+		http.Error(writer, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, err = writer.Write(respBody)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
+
 }
