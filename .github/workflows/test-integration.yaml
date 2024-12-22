@@ -25,6 +25,7 @@ jobs:
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestOIDC024UserCreation
+          - TestOIDCAuthenticationWithPKCE
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
           - TestUserCommand
