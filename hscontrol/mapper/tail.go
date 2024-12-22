@@ -120,6 +120,10 @@ func tailNode(
 		tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 	}
 
+	if cfg.CertificatesFeatureConfig.Enabled {
+		tNode.CapMap[tailcfg.CapabilityHTTPS] = []tailcfg.RawMessage{}
+	}
+
 	if cfg.RandomizeClientPort {
 		tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
 	}

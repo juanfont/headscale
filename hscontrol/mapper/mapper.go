@@ -124,6 +124,13 @@ func generateDNSConfig(
 
 	addNextDNSMetadata(dnsConfig.Resolvers, node)
 
+	hostname, err := node.GetFQDN(cfg.BaseDomain)
+	if err != nil {
+		log.Warn().Msgf("failed to get FQDN of node %s for certDomains: %s", node.ID, err)
+	} else {
+		dnsConfig.CertDomains = append(dnsConfig.CertDomains, hostname)
+	}
+
 	return dnsConfig
 }
 

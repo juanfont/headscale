@@ -81,6 +81,8 @@ type Config struct {
 	// it can be used directly when sending Netmaps to clients.
 	TailcfgDNSConfig *tailcfg.DNSConfig
 
+	CertificatesFeatureConfig CertificatesFeatureConfig
+
 	UnixSocket           string
 	UnixSocketPermission fs.FileMode
 
@@ -160,6 +162,11 @@ type LetsEncryptConfig struct {
 	Hostname      string
 	CacheDir      string
 	ChallengeType string
+}
+
+type CertificatesFeatureConfig struct {
+	Enabled       bool
+	SetDNSCommand string
 }
 
 type OIDCConfig struct {
@@ -256,6 +263,9 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
 	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
+
+	viper.SetDefault("certificates.enabled", false)
+	viper.SetDefault("certificates.set_dns_command", "")
 
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", TextLogFormat)
@@ -381,6 +391,10 @@ func validateServerConfig() error {
 	if (viper.GetString("tls_letsencrypt_challenge_type") != HTTP01ChallengeType) &&
 		(viper.GetString("tls_letsencrypt_challenge_type") != TLSALPN01ChallengeType) {
 		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
+	}
+
+	if (viper.GetBool("certificates.enabled") == true) && viper.GetString("certificates.set_dns_command") == "" {
+		errorText += "Fatal config error: certificates.enabled is set to true, but certificates.set_dns_command is not set\n"
 	}
 
 	if !strings.HasPrefix(viper.GetString("server_url"), "http://") &&
@@ -892,6 +906,11 @@ func LoadServerConfig() (*Config, error) {
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
+
+		CertificatesFeatureConfig: CertificatesFeatureConfig{
+			Enabled:       viper.GetBool("certificates.enabled"),
+			SetDNSCommand: os.ExpandEnv(viper.GetString("certificates.set_dns_command")),
+		},
 
 		UnixSocket:           viper.GetString("unix_socket"),
 		UnixSocketPermission: util.GetFileMode("unix_socket_permission"),

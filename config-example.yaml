@@ -242,6 +242,15 @@ policy:
   # HuJSON file containing ACL policies.
   path: ""
 
+
+certificates:
+  enabled: false
+  # Path to an executable that will be called when dns01 challenge is raised by tailscale client.
+  # Command will be called with 3 arguments:  <domain>,<type>,<value>
+  #     Eg: /path/to/set-dns-command "_acme-challenge.node1.example.com" "TXT" "jYhsfThsdf_Lo3shgdBRY7hNxe"
+  set_dns_command: ""
+
+
 ## DNS
 #
 # headscale supports Tailscale's DNS configuration and MagicDNS.
