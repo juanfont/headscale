@@ -364,10 +364,17 @@ unix_socket_permission: "0770"
 #   allowed_users:
 #     - alice@example.com
 #
-#   # Optional: Enable PKCE (Proof Key for Code Exchange) support for enhanced security
-#   # and prevent CSRF attacks.
+#   # Optional: PKCE (Proof Key for Code Exchange) configuration
+#   # PKCE adds an additional layer of security to the OAuth 2.0 authorization code flow
+#   # by preventing authorization code interception attacks
 #   # See https://datatracker.ietf.org/doc/html/rfc7636
-#   enable_pkce: false
+#   pkce:
+#     # Enable or disable PKCE support (default: false)
+#     enabled: false
+#     # PKCE method to use:
+#     # - plain: Use plain code verifier
+#     # - S256: Use SHA256 hashed code verifier (default, recommended)
+#     method: S256
 #
 #   # Map legacy users from pre-0.24.0 versions of headscale to the new OIDC users
 #   # by taking the username from the legacy user and matching it with the username

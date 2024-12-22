@@ -48,6 +48,7 @@ oidc:
   # Optional: PKCE (Proof Key for Code Exchange) configuration
   # PKCE adds an additional layer of security to the OAuth 2.0 authorization code flow
   # by preventing authorization code interception attacks
+  # See https://datatracker.ietf.org/doc/html/rfc7636
   pkce:
     # Enable or disable PKCE support (default: false)
     enabled: false
