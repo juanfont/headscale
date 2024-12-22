@@ -172,6 +172,7 @@ This will also affect the way you
   [#2261](https://github.com/juanfont/headscale/pull/2261)
 - Add `dns.extra_records_path` configuration option [#2262](https://github.com/juanfont/headscale/issues/2262)
 - Support client verify for DERP [#2046](https://github.com/juanfont/headscale/pull/2046)
+- Add PKCE Verifier for OIDC [#2314](https://github.com/juanfont/headscale/pull/2314)
 
 ## 0.23.0 (2024-09-18)
 
