@@ -12,6 +12,10 @@
 #
 server_url: http://127.0.0.1:8080
 
+# Tailnet organization base domain
+# Used to differentiate multiple tailnets in GUIs.
+base_domain: example.com
+
 # Address to listen to / bind to on the server
 #
 # For production:

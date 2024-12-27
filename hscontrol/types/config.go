@@ -62,9 +62,12 @@ type Config struct {
 	PrefixV6                       *netip.Prefix
 	IPAllocation                   IPAllocationStrategy
 	NoisePrivateKeyPath            string
-	BaseDomain                     string
-	Log                            LogConfig
-	DisableUpdateCheck             bool
+	// This is the organization base domain and used to differentiate between tailnets in GUIs.
+	// Tailscale calls this Organization Name in their dashboard.
+	// This is not used for DNS resolution.
+	BaseDomain         string
+	Log                LogConfig
+	DisableUpdateCheck bool
 
 	Database DatabaseConfig
 
@@ -884,6 +887,12 @@ func LoadServerConfig() (*Config, error) {
 		}
 	}
 
+	orgBaseDomain := viper.GetString("base_domain")
+	// Fallback to the dns base domain if no base_domain is configured
+	if orgBaseDomain == "" {
+		orgBaseDomain = dnsConfig.BaseDomain
+	}
+
 	return &Config{
 		ServerURL:          serverURL,
 		Addr:               viper.GetString("listen_addr"),
@@ -899,7 +908,7 @@ func LoadServerConfig() (*Config, error) {
 		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),
 		),
-		BaseDomain: dnsConfig.BaseDomain,
+		BaseDomain: orgBaseDomain,
 
 		DERP: derpConfig,
 
