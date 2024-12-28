@@ -10,13 +10,14 @@ import (
 
 // ACLPolicy represents a Tailscale ACL Policy.
 type ACLPolicy struct {
-	Groups        Groups        `json:"groups"`
-	Hosts         Hosts         `json:"hosts"`
-	TagOwners     TagOwners     `json:"tagOwners"`
-	ACLs          []ACL         `json:"acls"`
-	Tests         []ACLTest     `json:"tests"`
-	AutoApprovers AutoApprovers `json:"autoApprovers"`
-	SSHs          []SSH         `json:"ssh"`
+	Groups         Groups           `json:"groups"`
+	Hosts          Hosts            `json:"hosts"`
+	TagOwners      TagOwners        `json:"tagOwners"`
+	ACLs           []ACL            `json:"acls"`
+	Tests          []ACLTest        `json:"tests"`
+	AutoApprovers  AutoApprovers    `json:"autoApprovers"`
+	SSHs           []SSH            `json:"ssh"`
+	NodeAttributes []NodeAttributes `json:"nodeAttrs"`
 }
 
 // ACL is a basic rule for the ACL Policy.
@@ -48,6 +49,12 @@ type ACLTest struct {
 type AutoApprovers struct {
 	Routes   map[string][]string `json:"routes"`
 	ExitNode []string            `json:"exitNode"`
+}
+
+// NodeAttributes is for applying additional attributes to specific devices
+type NodeAttributes struct {
+	Targets    []string `json:"target"`
+	Attributes []string `json:"attr"`
 }
 
 // SSH controls who can ssh into which machines.

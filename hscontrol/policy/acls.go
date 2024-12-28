@@ -442,6 +442,42 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 	}, nil
 }
 
+func (pol *ACLPolicy) GetAttributesForNode(
+	node *types.Node,
+	users []types.User,
+	peers types.Nodes,
+) ([]string, error) {
+	if pol == nil {
+		return nil, nil
+	}
+
+	var attributes []string
+
+	for _, nodeAttr := range pol.NodeAttributes {
+		var dest netipx.IPSetBuilder
+		for _, target := range nodeAttr.Targets {
+			expanded, err := pol.ExpandAlias(append(peers, node), users, target)
+			if err != nil {
+				return nil, err
+			}
+			dest.AddSet(expanded)
+		}
+
+		destSet, err := dest.IPSet()
+		if err != nil {
+			return nil, err
+		}
+
+		if !node.InIPSet(destSet) {
+			continue
+		}
+
+		attributes = append(attributes, nodeAttr.Attributes...)
+	}
+
+	return attributes, nil
+}
+
 // ipSetAll returns a function that iterates over all the IPs in the IPSet.
 func ipSetAll(ipSet *netipx.IPSet) iter.Seq[netip.Addr] {
 	return func(yield func(netip.Addr) bool) {

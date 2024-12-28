@@ -120,6 +120,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 					TailcfgDNSConfig: &dnsConfigOrig,
 				},
 				nodeInShared1,
+				[]string{},
 			)
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {

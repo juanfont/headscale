@@ -20,11 +20,18 @@ func tailNodes(
 	tNodes := make([]*tailcfg.Node, len(nodes))
 
 	for index, node := range nodes {
+
+		nodeAttrs, err := polMan.NodeAttributes(node)
+		if err != nil {
+			return nil, err
+		}
+
 		node, err := tailNode(
 			node,
 			capVer,
 			polMan,
 			cfg,
+			nodeAttrs,
 		)
 		if err != nil {
 			return nil, err
@@ -42,6 +49,7 @@ func tailNode(
 	capVer tailcfg.CapabilityVersion,
 	polMan policy.PolicyManager,
 	cfg *types.Config,
+	nodeAttrs []string,
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
 
@@ -122,6 +130,10 @@ func tailNode(
 
 	if cfg.RandomizeClientPort {
 		tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
+	}
+
+	for _, nodeAttr := range nodeAttrs {
+		tNode.CapMap[tailcfg.NodeCapability(nodeAttr)] = []tailcfg.RawMessage{}
 	}
 
 	if node.IsOnline == nil || !*node.IsOnline {
