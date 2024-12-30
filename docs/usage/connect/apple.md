@@ -19,20 +19,7 @@ Install the official Tailscale iOS client from the [App Store](https://apps.appl
 - Click the account icon in the top-right corner and select “Log in…”.
 - Tap the top-right options menu button and select “Use custom coordination server”.
 - Enter your instance url
-
-<details>
-  <summary>Older app versions</summary>
-
-- Open Settings on the iOS device
-- Scroll down to the `third party apps` section, under `Game Center` or `TV Provider`
-- Find Tailscale and select it
-  - If the iOS device was previously logged into Tailscale, switch the `Reset Keychain` toggle to `on`
-- Enter the URL of your headscale instance (e.g `https://headscale.example.com`) under `Alternate Coordination Server URL`
-- Restart the app by closing it from the iOS app switcher, open the app and select the regular sign in option
-  _(non-SSO)_. It should open up to the headscale authentication page.
 - Enter your credentials and log in. Headscale should now be working on your iOS device.
-
-</details>
 
 ## macOS
 
