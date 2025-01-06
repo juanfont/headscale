@@ -130,6 +130,114 @@ func TestDNSConfigMapResponse(t *testing.T) {
 	}
 }
 
+func TestAddNextDNSMetadata(t *testing.T) {
+	tests := []struct {
+		name  string
+		attrs []string
+		in    []*dnstype.Resolver
+		want  []*dnstype.Resolver
+	}{
+		{
+			name:  "With NextDNS resolver, without nodeattrs",
+			attrs: []string{},
+			in: []*dnstype.Resolver{
+				{
+					Addr: "https://dns.nextdns.io/abcdef",
+				},
+			},
+			want: []*dnstype.Resolver{
+				{
+					Addr: "https://dns.nextdns.io/abcdef?device_ip=100.64.0.1&device_model=linux&device_name=testnode",
+				},
+			},
+		},
+		{
+			name: "With NextDNS resolver, with nodeattrs [nextdns:fedcba]",
+			attrs: []string{
+				"nextdns:fedcba",
+			},
+			in: []*dnstype.Resolver{
+				{
+					Addr: "https://dns.nextdns.io/abcdef",
+				},
+			},
+			want: []*dnstype.Resolver{
+				{
+					Addr: "https://dns.nextdns.io/fedcba?device_ip=100.64.0.1&device_model=linux&device_name=testnode",
+				},
+			},
+		},
+		{
+			name: "With NextDNS resolver, with nodeattrs [nextdns:no-device-info]",
+			attrs: []string{
+				"nextdns:no-device-info",
+			},
+			in: []*dnstype.Resolver{
+				{
+					Addr: "https://dns.nextdns.io/abcdef",
+				},
+			},
+			want: []*dnstype.Resolver{
+				{
+					Addr: "https://dns.nextdns.io/abcdef",
+				},
+			},
+		},
+		{
+			name: "With NextDNS resolver, with nodeattrs: [nextdns:fedcba, nextdns:no-device-info]",
+			attrs: []string{
+				"nextdns:fedcba",
+				"nextdns:no-device-info",
+			},
+			in: []*dnstype.Resolver{
+				{
+					Addr: "https://dns.nextdns.io/abcdef",
+				},
+			},
+			want: []*dnstype.Resolver{
+				{
+					Addr: "https://dns.nextdns.io/fedcba",
+				},
+			},
+		},
+		{
+			name: "No NextDNS resolver, with nodeattrs: [nextdns:fedcba, nextdns:no-device-info]",
+			attrs: []string{
+				"nextdns:fedcba",
+				"nextdns:no-device-info",
+			},
+			in: []*dnstype.Resolver{
+				{
+					Addr: "1.1.1.1",
+				},
+			},
+			want: []*dnstype.Resolver{
+				{
+					Addr: "1.1.1.1",
+				},
+			},
+		},
+	}
+
+	node := &types.Node{
+		Hostname: "testnode",
+		Hostinfo: &tailcfg.Hostinfo{
+			OS: "linux",
+		},
+		IPv4: iap("100.64.0.1"),
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addNextDNSMetadata(tt.in, node, tt.attrs)
+
+			if diff := cmp.Diff(tt.want, tt.in, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("addNextDNSMetadata() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func Test_fullMapResponse(t *testing.T) {
 	mustNK := func(str string) key.NodePublic {
 		var k key.NodePublic
