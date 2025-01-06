@@ -151,8 +151,11 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node, nodeAtt
 			}
 
 			attrs := url.Values{
-				"device_name":  []string{node.Hostname},
-				"device_model": []string{node.Hostinfo.OS},
+				"device_name": []string{node.Hostname},
+			}
+
+			if node.Hostinfo != nil {
+				attrs.Add("device_model", node.Hostinfo.OS)
 			}
 
 			if len(node.IPs()) > 0 {
