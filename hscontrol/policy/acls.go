@@ -62,7 +62,7 @@ func theInternet() *netipx.IPSet {
 	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
 
 	// Delete "cant find DHCP networks"
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-loca
+	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-local
 	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
 
 	theInternetSet, _ := internetBuilder.IPSet()

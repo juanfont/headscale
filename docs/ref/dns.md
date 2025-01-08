@@ -1,13 +1,13 @@
 # DNS
 
-Headscale supports [most DNS features](../about/features.md) from Tailscale. DNS releated settings can be configured
+Headscale supports [most DNS features](../about/features.md) from Tailscale. DNS related settings can be configured
 within `dns` section of the [configuration file](./configuration.md).
 
 ## Setting extra DNS records
 
 Headscale allows to set extra DNS records which are made available via
 [MagicDNS](https://tailscale.com/kb/1081/magicdns). Extra DNS records can be configured either via static entries in the
-[configuration file](./configuration.md) or from a JSON file that Headscale continously watches for changes:
+[configuration file](./configuration.md) or from a JSON file that Headscale continuously watches for changes:
 
 * Use the `dns.extra_records` option in the [configuration file](./configuration.md) for entries that are static and
   don't change while Headscale is running. Those entries are processed when Headscale is starting up and changes to the

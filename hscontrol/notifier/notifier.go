@@ -243,7 +243,7 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 		// has shut down the channel and is waiting for the lock held here in RemoveNode.
 		// This means that there is potential for a deadlock which would stop all updates
 		// going out to clients. This timeout prevents that from happening by moving on to the
-		// next node if the context is cancelled. Afther sendAll releases the lock, the add/remove
+		// next node if the context is cancelled. After sendAll releases the lock, the add/remove
 		// call will succeed and the update will go to the correct nodes on the next call.
 		ctx, cancel := context.WithTimeout(context.Background(), n.cfg.Tuning.NotifierSendTimeout)
 		defer cancel()
