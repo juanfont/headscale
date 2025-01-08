@@ -245,7 +245,7 @@ func RenameNode(tx *gorm.DB,
 		return fmt.Errorf("renaming node: %w", err)
 	}
 
-	uniq, err := isUnqiueName(tx, newName)
+	uniq, err := isUniqueName(tx, newName)
 	if err != nil {
 		return fmt.Errorf("checking if name is unique: %w", err)
 	}
@@ -630,7 +630,7 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 	return suppliedName, nil
 }
 
-func isUnqiueName(tx *gorm.DB, name string) (bool, error) {
+func isUniqueName(tx *gorm.DB, name string) (bool, error) {
 	nodes := types.Nodes{}
 	if err := tx.
 		Where("given_name = ?", name).Find(&nodes).Error; err != nil {
@@ -649,7 +649,7 @@ func ensureUniqueGivenName(
 		return "", err
 	}
 
-	unique, err := isUnqiueName(tx, givenName)
+	unique, err := isUniqueName(tx, givenName)
 	if err != nil {
 		return "", err
 	}

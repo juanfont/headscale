@@ -153,7 +153,7 @@ This will also affect the way you
 
 ### Changes
 
-- Improved compatibilty of built-in DERP server with clients connecting over
+- Improved compatibility of built-in DERP server with clients connecting over
   WebSocket [#2132](https://github.com/juanfont/headscale/pull/2132)
 - Allow nodes to use SSH agent forwarding
   [#2145](https://github.com/juanfont/headscale/pull/2145)
@@ -262,7 +262,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
   - `prefixes.allocation` can be set to assign IPs at `sequential` or `random`.
     [#1869](https://github.com/juanfont/headscale/pull/1869)
 - MagicDNS domains no longer contain usernames []()
-  - This is in preperation to fix Headscales implementation of tags which
+  - This is in preparation to fix Headscales implementation of tags which
     currently does not correctly remove the link between a tagged device and a
     user. As tagged devices will not have a user, this will require a change to
     the DNS generation, removing the username, see
