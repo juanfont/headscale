@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -176,6 +177,8 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 	err := util.CheckForFQDNRules(claims.Username)
 	if err == nil {
 		u.Name = claims.Username
+	} else {
+		log.Debug().Err(err).Msgf("Username %s is not valid", claims.Username)
 	}
 
 	if claims.EmailVerified {
