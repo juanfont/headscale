@@ -242,6 +242,17 @@ func validatePKCEMethod(method string) error {
 	return nil
 }
 
+// Domain returns the hostname/domain part of the ServerURL.
+// If the ServerURL is not a valid URL, it returns the BaseDomain.
+func (c *Config) Domain() string {
+	u, err := url.Parse(c.ServerURL)
+	if err != nil {
+		return c.BaseDomain
+	}
+
+	return u.Hostname()
+}
+
 // LoadConfig prepares and loads the Headscale configuration into Viper.
 // This means it sets the default values, reads the configuration file and
 // environment variables, and handles deprecated configuration options.
