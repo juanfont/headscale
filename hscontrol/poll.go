@@ -387,7 +387,7 @@ func (m *mapSession) serveLongPoll() {
 
 func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
 	update, err := db.Write(m.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return db.FailoverNodeRoutesIfNeccessary(tx, m.h.nodeNotifier.LikelyConnectedMap(), node)
+		return db.FailoverNodeRoutesIfNecessary(tx, m.h.nodeNotifier.LikelyConnectedMap(), node)
 	})
 	if err != nil {
 		m.errf(err, fmt.Sprintf("failed to ensure failover routes, %s", where))
@@ -453,7 +453,7 @@ func (m *mapSession) handleEndpointUpdate() {
 	// If there is no NetInfo, keep the previous one.
 	// From 1.66 the client only sends it if changed:
 	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
-	// TODO(kradalby): evaulate if we need better comparing of hostinfo
+	// TODO(kradalby): evaluate if we need better comparing of hostinfo
 	// before we take the changes.
 	if m.req.Hostinfo.NetInfo == nil && m.node.Hostinfo != nil {
 		m.req.Hostinfo.NetInfo = m.node.Hostinfo.NetInfo

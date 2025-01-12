@@ -417,10 +417,10 @@ func SaveNodeRoutes(tx *gorm.DB, node *types.Node) (bool, error) {
 	return sendUpdate, nil
 }
 
-// FailoverNodeRoutesIfNeccessary takes a node and checks if the node's route
+// FailoverNodeRoutesIfNecessary takes a node and checks if the node's route
 // need to be failed over to another host.
 // If needed, the failover will be attempted.
-func FailoverNodeRoutesIfNeccessary(
+func FailoverNodeRoutesIfNecessary(
 	tx *gorm.DB,
 	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
 	node *types.Node,
@@ -473,7 +473,7 @@ nodeRouteLoop:
 		return &types.StateUpdate{
 			Type:        types.StatePeerChanged,
 			ChangeNodes: chng,
-			Message:     "called from db.FailoverNodeRoutesIfNeccessary",
+			Message:     "called from db.FailoverNodeRoutesIfNecessary",
 		}, nil
 	}
 

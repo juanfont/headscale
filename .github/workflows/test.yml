@@ -34,4 +34,10 @@ jobs:
 
       - name: Run tests
         if: steps.changed-files.outputs.files == 'true'
+        env:
+          # As of 2025-01-06, these env vars was not automatically
+          # set anymore which breaks the initdb for postgres on
+          # some of the database migration tests.
+          LC_ALL: "en_US.UTF-8"
+          LC_CTYPE: "en_US.UTF-8"
         run: nix develop --command -- gotestsum

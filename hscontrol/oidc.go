@@ -3,9 +3,7 @@ package hscontrol
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	_ "embed"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
@@ -157,13 +155,19 @@ func (a *AuthProviderOIDC) RegisterHandler(
 		return
 	}
 
-	randomBlob := make([]byte, randomByteSize)
-	if _, err := rand.Read(randomBlob); err != nil {
+	// Set the state and nonce cookies to protect against CSRF attacks
+	state, err := setCSRFCookie(writer, req, "state")
+	if err != nil {
 		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	stateStr := hex.EncodeToString(randomBlob)[:32]
+	// Set the state and nonce cookies to protect against CSRF attacks
+	nonce, err := setCSRFCookie(writer, req, "nonce")
+	if err != nil {
+		http.Error(writer, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	// Initialize registration info with machine key
 	registrationInfo := RegistrationInfo{
@@ -191,11 +195,12 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	for k, v := range a.cfg.ExtraParams {
 		extras = append(extras, oauth2.SetAuthURLParam(k, v))
 	}
+	extras = append(extras, oidc.Nonce(nonce))
 
 	// Cache the registration info
-	a.registrationCache.Set(stateStr, registrationInfo)
+	a.registrationCache.Set(state, registrationInfo)
 
-	authURL := a.oauth2Config.AuthCodeURL(stateStr, extras...)
+	authURL := a.oauth2Config.AuthCodeURL(state, extras...)
 	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
 
 	http.Redirect(writer, req, authURL, http.StatusFound)
@@ -228,11 +233,34 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
+	log.Debug().Interface("cookies", req.Cookies()).Msg("Received oidc callback")
+	cookieState, err := req.Cookie("state")
+	if err != nil {
+		http.Error(writer, "state not found", http.StatusBadRequest)
+		return
+	}
+
+	if state != cookieState.Value {
+		http.Error(writer, "state did not match", http.StatusBadRequest)
+		return
+	}
+
 	idToken, err := a.extractIDToken(req.Context(), code, state)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	nonce, err := req.Cookie("nonce")
+	if err != nil {
+		http.Error(writer, "nonce not found", http.StatusBadRequest)
+		return
+	}
+	if idToken.Nonce != nonce.Value {
+		http.Error(writer, "nonce did not match", http.StatusBadRequest)
+		return
+	}
+
 	nodeExpiry := a.determineNodeExpiry(idToken.Expiry)
 
 	var claims types.OIDCClaims
@@ -591,4 +619,23 @@ func getUserName(
 	}
 
 	return userName, nil
+}
+
+func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
+	val, err := util.GenerateRandomStringURLSafe(64)
+	if err != nil {
+		return val, err
+	}
+
+	c := &http.Cookie{
+		Path:     "/oidc/callback",
+		Name:     name,
+		Value:    val,
+		MaxAge:   int(time.Hour.Seconds()),
+		Secure:   r.TLS != nil,
+		HttpOnly: true,
+	}
+	http.SetCookie(w, c)
+
+	return val, nil
 }

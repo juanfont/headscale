@@ -617,7 +617,7 @@ func dns() (DNSConfig, error) {
 	// UnmarshalKey is compatible with Environment Variables.
 	// err := viper.UnmarshalKey("dns", &dns)
 	// if err != nil {
-	// 	return DNSConfig{}, fmt.Errorf("unmarshaling dns config: %w", err)
+	// 	return DNSConfig{}, fmt.Errorf("unmarshalling dns config: %w", err)
 	// }
 
 	dns.MagicDNS = viper.GetBool("dns.magic_dns")
@@ -632,7 +632,7 @@ func dns() (DNSConfig, error) {
 
 		err := viper.UnmarshalKey("dns.extra_records", &extraRecords)
 		if err != nil {
-			return DNSConfig{}, fmt.Errorf("unmarshaling dns extra records: %w", err)
+			return DNSConfig{}, fmt.Errorf("unmarshalling dns extra records: %w", err)
 		}
 		dns.ExtraRecords = extraRecords
 	}

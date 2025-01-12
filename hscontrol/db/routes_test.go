@@ -342,7 +342,7 @@ func dbForTest(t *testing.T, testName string) *HSDatabase {
 	return db
 }
 
-func TestFailoverNodeRoutesIfNeccessary(t *testing.T) {
+func TestFailoverNodeRoutesIfNecessary(t *testing.T) {
 	su := func(nids ...types.NodeID) *types.StateUpdate {
 		return &types.StateUpdate{
 			ChangeNodes: nids,
@@ -648,7 +648,7 @@ func TestFailoverNodeRoutesIfNeccessary(t *testing.T) {
 				want := tt.want[step]
 
 				got, err := Write(db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-					return FailoverNodeRoutesIfNeccessary(tx, smap(isConnected), node)
+					return FailoverNodeRoutesIfNecessary(tx, smap(isConnected), node)
 				})
 
 				if (err != nil) != tt.wantErr {
