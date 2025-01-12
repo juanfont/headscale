@@ -41,8 +41,12 @@ func Apple(url string) *elem.Element {
 				),
 				elem.Li(
 					nil,
-					elem.Text("Enter your instance URL: "),
-					elem.Text(url),
+					elem.Text(
+						fmt.Sprintf(
+							`Enter your instance URL: "%s"`,
+							url,
+						),
+					),
 				),
 				elem.Li(
 					nil,
