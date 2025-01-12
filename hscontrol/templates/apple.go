@@ -33,11 +33,11 @@ func Apple(url string) *elem.Element {
 				),
 				elem.Li(
 					nil,
-					elem.Text("Click the account icon in the top-right corner and select 'Log in…'."),
+					elem.Text(`Click the account icon in the top-right corner and select "Log in…".`),
 				),
 				elem.Li(
 					nil,
-					elem.Text("Tap the top-right options menu button and select 'Use custom coordination server'."),
+					elem.Text(`Tap the top-right options menu button and select "Use custom coordination server".`),
 				),
 				elem.Li(
 					nil,
