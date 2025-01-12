@@ -16,9 +16,9 @@ Install the official Tailscale iOS client from the [App Store](https://apps.appl
 ### Configuring the headscale URL
 
 - Open the Tailscale app
-- Click the account icon in the top-right corner and select “Log in…”.
-- Tap the top-right options menu button and select “Use custom coordination server”.
-- Enter your instance url
+- Click the account icon in the top-right corner and select `Log in…`.
+- Tap the top-right options menu button and select `Use custom coordination server`.
+- Enter your instance url (e.g `https://headscale.example.com`)
 - Enter your credentials and log in. Headscale should now be working on your iOS device.
 
 ## macOS
