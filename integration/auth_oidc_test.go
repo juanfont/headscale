@@ -11,8 +11,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
-	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"sort"
 	"strconv"
 	"testing"
@@ -770,11 +770,6 @@ func (t LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 func (s *AuthOIDCScenario) runTailscaleUp(
 	userStr, loginServer string,
 ) error {
-	headscale, err := s.Headscale()
-	if err != nil {
-		return err
-	}
-
 	log.Printf("running tailscale up for user %s", userStr)
 	if user, ok := s.users[userStr]; ok {
 		for _, client := range user.Clients {
@@ -785,59 +780,11 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 					log.Printf("%s failed to run tailscale up: %s", tsc.Hostname(), err)
 				}
 
-				loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetHostname())
-				loginURL.Scheme = "http"
-
-				if len(headscale.GetCert()) > 0 {
-					loginURL.Scheme = "https"
-				}
-
-				httptest.NewRecorder()
-				hc := &http.Client{
-					Transport: LoggingRoundTripper{},
-				}
-				hc.Jar, err = cookiejar.New(nil)
+				_, err = doLoginURL(tsc.Hostname(), loginURL)
 				if err != nil {
-					log.Printf("failed to create cookie jar: %s", err)
-				}
-
-				log.Printf("%s login url: %s\n", tsc.Hostname(), loginURL.String())
-
-				log.Printf("%s logging in with url", tsc.Hostname())
-				ctx := context.Background()
-				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
-				resp, err := hc.Do(req)
-				if err != nil {
-					log.Printf(
-						"%s failed to login using url %s: %s",
-						tsc.Hostname(),
-						loginURL,
-						err,
-					)
-
 					return err
 				}
 
-				log.Printf("cookies: %+v", hc.Jar.Cookies(loginURL))
-
-				if resp.StatusCode != http.StatusOK {
-					log.Printf("%s response code of oidc login request was %s", tsc.Hostname(), resp.Status)
-					body, _ := io.ReadAll(resp.Body)
-					log.Printf("body: %s", body)
-
-					return errStatusCodeNotOK
-				}
-
-				defer resp.Body.Close()
-
-				_, err = io.ReadAll(resp.Body)
-				if err != nil {
-					log.Printf("%s failed to read response body: %s", tsc.Hostname(), err)
-
-					return err
-				}
-
-				log.Printf("Finished request for %s to join tailnet", tsc.Hostname())
 				return nil
 			})
 
@@ -863,6 +810,49 @@ func (s *AuthOIDCScenario) runTailscaleUp(
 	}
 
 	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
+}
+
+// doLoginURL visits the given login URL and returns the body as a
+// string.
+func doLoginURL(hostname string, loginURL *url.URL) (string, error) {
+	log.Printf("%s login url: %s\n", hostname, loginURL.String())
+
+	var err error
+	hc := &http.Client{
+		Transport: LoggingRoundTripper{},
+	}
+	hc.Jar, err = cookiejar.New(nil)
+	if err != nil {
+		return "", fmt.Errorf("%s failed to create cookiejar	: %w", hostname, err)
+	}
+
+	log.Printf("%s logging in with url", hostname)
+	ctx := context.Background()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("%s failed to send http request: %w", hostname, err)
+	}
+
+	log.Printf("cookies: %+v", hc.Jar.Cookies(loginURL))
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("body: %s", body)
+
+		return "", fmt.Errorf("%s response code of login request was %w", hostname, err)
+	}
+
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("%s failed to read response body: %s", hostname, err)
+
+		return "", fmt.Errorf("%s failed to read response body: %w", hostname, err)
+	}
+
+	return string(body), nil
 }
 
 func (s *AuthOIDCScenario) Shutdown() {

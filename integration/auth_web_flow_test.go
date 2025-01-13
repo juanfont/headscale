@@ -1,13 +1,9 @@
 package integration
 
 import (
-	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"net/netip"
 	"net/url"
 	"strings"
@@ -273,38 +269,10 @@ func (s *AuthWebFlowScenario) runTailscaleUp(
 }
 
 func (s *AuthWebFlowScenario) runHeadscaleRegister(userStr string, loginURL *url.URL) error {
-	headscale, err := s.Headscale()
+	body, err := doLoginURL("web-auth-not-set", loginURL)
 	if err != nil {
 		return err
 	}
-
-	log.Printf("loginURL: %s", loginURL)
-	loginURL.Host = fmt.Sprintf("%s:8080", headscale.GetIP())
-	loginURL.Scheme = "http"
-
-	if len(headscale.GetCert()) > 0 {
-		loginURL.Scheme = "https"
-	}
-
-	insecureTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
-	}
-	httpClient := &http.Client{
-		Transport: insecureTransport,
-	}
-	ctx := context.Background()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
 
 	// see api.go HTML template
 	codeSep := strings.Split(string(body), "</code>")
