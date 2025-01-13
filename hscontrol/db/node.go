@@ -158,6 +158,30 @@ func GetNodeByMachineKey(
 	return &mach, nil
 }
 
+func (hsdb *HSDatabase) GetNodeByNodeKey(nodeKey key.NodePublic) (*types.Node, error) {
+	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
+		return GetNodeByNodeKey(rx, nodeKey)
+	})
+}
+
+// GetNodeByNodeKey finds a Node by its NodeKey and returns the Node struct.
+func GetNodeByNodeKey(
+	tx *gorm.DB,
+	nodeKey key.NodePublic,
+) (*types.Node, error) {
+	mach := types.Node{}
+	if result := tx.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Preload("Routes").
+		First(&mach, "node_key = ?", nodeKey.String()); result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &mach, nil
+}
+
 func (hsdb *HSDatabase) GetNodeByAnyKey(
 	machineKey key.MachinePublic,
 	nodeKey key.NodePublic,
