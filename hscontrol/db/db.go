@@ -41,7 +41,7 @@ type KV struct {
 type HSDatabase struct {
 	DB       *gorm.DB
 	cfg      *types.DatabaseConfig
-	regCache *zcache.Cache[string, types.Node]
+	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
 
 	baseDomain string
 }
@@ -51,7 +51,7 @@ type HSDatabase struct {
 func NewHeadscaleDatabase(
 	cfg types.DatabaseConfig,
 	baseDomain string,
-	regCache *zcache.Cache[string, types.Node],
+	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode],
 ) (*HSDatabase, error) {
 	dbConn, err := openDB(cfg)
 	if err != nil {

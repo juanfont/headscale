@@ -227,11 +227,10 @@ func (api headscaleV1APIServer) RegisterNode(
 ) (*v1.RegisterNodeResponse, error) {
 	log.Trace().
 		Str("user", request.GetUser()).
-		Str("machine_key", request.GetKey()).
+		Str("registration_id", request.GetKey()).
 		Msg("Registering node")
 
-	var mkey key.MachinePublic
-	err := mkey.UnmarshalText([]byte(request.GetKey()))
+	registrationId, err := types.RegistrationIDFromString(request.GetKey())
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +246,7 @@ func (api headscaleV1APIServer) RegisterNode(
 	}
 
 	node, err := api.h.db.RegisterNodeFromAuthCallback(
-		mkey,
+		registrationId,
 		types.UserID(user.ID),
 		nil,
 		util.RegisterMethodCLI,
@@ -839,36 +838,37 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Hostname:    "DebugTestNode",
 	}
 
-	var mkey key.MachinePublic
-	err = mkey.UnmarshalText([]byte(request.GetKey()))
+	registrationId, err := types.RegistrationIDFromString(request.GetKey())
 	if err != nil {
 		return nil, err
 	}
 
 	nodeKey := key.NewNode()
 
-	newNode := types.Node{
-		MachineKey: mkey,
-		NodeKey:    nodeKey.Public(),
-		Hostname:   request.GetName(),
-		User:       *user,
+	newNode := types.RegisterNode{
+		Node: types.Node{
+			NodeKey:  nodeKey.Public(),
+			Hostname: request.GetName(),
+			User:     *user,
 
-		Expiry:   &time.Time{},
-		LastSeen: &time.Time{},
+			Expiry:   &time.Time{},
+			LastSeen: &time.Time{},
 
-		Hostinfo: &hostinfo,
+			Hostinfo: &hostinfo,
+		},
+		Registered: make(chan struct{}),
 	}
 
 	log.Debug().
-		Str("machine_key", mkey.ShortString()).
+		Str("registration_id", registrationId.String()).
 		Msg("adding debug machine via CLI, appending to registration cache")
 
 	api.h.registrationCache.Set(
-		mkey.String(),
+		registrationId,
 		newNode,
 	)
 
-	return &v1.DebugCreateNodeResponse{Node: newNode.Proto()}, nil
+	return &v1.DebugCreateNodeResponse{Node: newNode.Node.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}

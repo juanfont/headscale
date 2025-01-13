@@ -21,7 +21,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
-	"tailscale.com/types/key"
 	"zgo.at/zcache/v2"
 )
 
@@ -49,8 +48,8 @@ var (
 
 // RegistrationInfo contains both machine key and verifier information for OIDC validation.
 type RegistrationInfo struct {
-	MachineKey key.MachinePublic
-	Verifier   *string
+	RegistrationID types.RegistrationID
+	Verifier       *string
 }
 
 type AuthProviderOIDC struct {
@@ -112,11 +111,11 @@ func NewAuthProviderOIDC(
 	}, nil
 }
 
-func (a *AuthProviderOIDC) AuthURL(mKey key.MachinePublic) string {
+func (a *AuthProviderOIDC) AuthURL(registrationID types.RegistrationID) string {
 	return fmt.Sprintf(
 		"%s/register/%s",
 		strings.TrimSuffix(a.serverURL, "/"),
-		mKey.String())
+		registrationID.String())
 }
 
 func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) time.Time {
@@ -129,31 +128,28 @@ func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) time
 
 // RegisterOIDC redirects to the OIDC provider for authentication
 // Puts NodeKey in cache so the callback can retrieve it using the oidc state param
-// Listens in /register/:mKey.
+// Listens in /register/:registration_id.
 func (a *AuthProviderOIDC) RegisterHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-	machineKeyStr, ok := vars["mkey"]
-
-	log.Debug().
-		Caller().
-		Str("machine_key", machineKeyStr).
-		Bool("ok", ok).
-		Msg("Received oidc register call")
+	registrationIdStr, ok := vars["registration_id"]
 
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
 	// the template and log an error.
-	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText(
-		[]byte(machineKeyStr),
-	)
+	registrationId, err := types.RegistrationIDFromString(registrationIdStr)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusBadRequest)
+		http.Error(writer, "invalid registration ID", http.StatusBadRequest)
 		return
 	}
+
+	log.Debug().
+		Caller().
+		Str("registration_id", registrationId.String()).
+		Bool("ok", ok).
+		Msg("Received oidc register call")
 
 	// Set the state and nonce cookies to protect against CSRF attacks
 	state, err := setCSRFCookie(writer, req, "state")
@@ -171,7 +167,7 @@ func (a *AuthProviderOIDC) RegisterHandler(
 
 	// Initialize registration info with machine key
 	registrationInfo := RegistrationInfo{
-		MachineKey: machineKey,
+		RegistrationID: registrationId,
 	}
 
 	extras := make([]oauth2.AuthCodeOption, 0, len(a.cfg.ExtraParams)+defaultOAuthOptionsCount)
@@ -326,8 +322,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	}
 
 	// Register the node if it does not exist.
-	if mKey != nil {
-		if err := a.registerNode(user, mKey, nodeExpiry); err != nil {
+	if registrationId != nil {
+		if err := a.registerNode(user, *registrationId, nodeExpiry); err != nil {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -456,22 +452,14 @@ func validateOIDCAllowedUsers(
 	return nil
 }
 
-// getMachineKeyFromState retrieves the machine key from the state
-// cache. If the machine key is found, it will try retrieve the
-// node information from the database.
-func (a *AuthProviderOIDC) getMachineKeyFromState(state string) (*types.Node, *key.MachinePublic) {
+// getRegistrationIDFromState retrieves the registration ID from the state.
+func (a *AuthProviderOIDC) getRegistrationIDFromState(state string) *types.RegistrationID {
 	regInfo, ok := a.registrationCache.Get(state)
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
-	// retrieve node information if it exist
-	// The error is not important, because if it does not
-	// exist, then this is a new node and we will move
-	// on to registration.
-	node, _ := a.db.GetNodeByMachineKey(regInfo.MachineKey)
-
-	return node, &regInfo.MachineKey
+	return &regInfo.RegistrationID
 }
 
 // reauthenticateNode updates the node expiry in the database
@@ -558,7 +546,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 
 func (a *AuthProviderOIDC) registerNode(
 	user *types.User,
-	machineKey *key.MachinePublic,
+	registrationID types.RegistrationID,
 	expiry time.Time,
 ) error {
 	ipv4, ipv6, err := a.ipAlloc.Next()
@@ -567,7 +555,7 @@ func (a *AuthProviderOIDC) registerNode(
 	}
 
 	if _, err := a.db.RegisterNodeFromAuthCallback(
-		*machineKey,
+		registrationID,
 		types.UserID(user.ID),
 		&expiry,
 		util.RegisterMethodOIDC,

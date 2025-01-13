@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
 	"github.com/chasefleming/elem-go/styles"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/templates"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -32,8 +32,6 @@ const (
 	// See also https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go
 	NoiseCapabilityVersion = 39
 
-	// TODO(juan): remove this once https://github.com/juanfont/headscale/issues/727 is fixed.
-	registrationHoldoff        = time.Second * 5
 	reservedResponseHeaderSize = 4
 )
 
@@ -239,11 +237,11 @@ func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
 	}
 }
 
-func (a *AuthProviderWeb) AuthURL(mKey key.MachinePublic) string {
+func (a *AuthProviderWeb) AuthURL(registrationId types.RegistrationID) string {
 	return fmt.Sprintf(
 		"%s/register/%s",
 		strings.TrimSuffix(a.serverURL, "/"),
-		mKey.String())
+		registrationId.String())
 }
 
 // RegisterWebAPI shows a simple message in the browser to point to the CLI

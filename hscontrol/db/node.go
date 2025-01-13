@@ -320,7 +320,7 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 }
 
 func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
-	mkey key.MachinePublic,
+	registrationID types.RegistrationID,
 	userID types.UserID,
 	nodeExpiry *time.Time,
 	registrationMethod string,
@@ -328,7 +328,7 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 	ipv6 *netip.Addr,
 ) (*types.Node, error) {
 	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
-		if node, ok := hsdb.regCache.Get(mkey.String()); ok {
+		if reg, ok := hsdb.regCache.Get(registrationID); ok {
 			user, err := GetUserByID(tx, userID)
 			if err != nil {
 				return nil, fmt.Errorf(
@@ -338,36 +338,40 @@ func (hsdb *HSDatabase) RegisterNodeFromAuthCallback(
 			}
 
 			log.Debug().
-				Str("machine_key", mkey.ShortString()).
+				Str("registration_id", registrationID.String()).
 				Str("username", user.Username()).
 				Str("registrationMethod", registrationMethod).
 				Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
 				Msg("Registering node from API/CLI or auth callback")
 
+			// TODO(kradalby): This looks quite wrong? why ID 0?
+			// Why not always?
 			// Registration of expired node with different user
-			if node.ID != 0 &&
-				node.UserID != user.ID {
+			if reg.Node.ID != 0 &&
+				reg.Node.UserID != user.ID {
 				return nil, ErrDifferentRegisteredUser
 			}
 
-			node.UserID = user.ID
-			node.User = *user
-			node.RegisterMethod = registrationMethod
+			reg.Node.UserID = user.ID
+			reg.Node.User = *user
+			reg.Node.RegisterMethod = registrationMethod
 
 			if nodeExpiry != nil {
-				node.Expiry = nodeExpiry
+				reg.Node.Expiry = nodeExpiry
 			}
 
 			node, err := RegisterNode(
 				tx,
-				node,
+				reg.Node,
 				ipv4, ipv6,
 			)
 
 			if err == nil {
-				hsdb.regCache.Delete(mkey.String())
+				hsdb.regCache.Delete(registrationID)
 			}
 
+			// Signal to waiting clients that the machine has been registered.
+			close(reg.Registered)
 			return node, err
 		}
 
