@@ -616,6 +616,284 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
+func TestOIDCReloginSameNode(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	baseScenario, err := NewScenario(dockertestMaxWait())
+	assertNoErr(t, err)
+
+	scenario := AuthOIDCScenario{
+		Scenario: baseScenario,
+	}
+	// defer scenario.ShutdownAssertNoPanics(t)
+
+	// Create no nodes and no users
+	spec := map[string]int{}
+
+	// First login creates the first OIDC user
+	// Second login logs in the same node, which creates a new node
+	// Third login logs in the same node back into the original user
+	mockusers := []mockoidc.MockUser{
+		oidcMockUser("user1", true),
+		oidcMockUser("user2", true),
+		oidcMockUser("user1", true),
+	}
+
+	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
+	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
+	// defer scenario.mockOIDC.Close()
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
+		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		// TODO(kradalby): Remove when strip_email_domain is removed
+		// after #2170 is cleaned up
+		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
+		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		spec,
+		hsic.WithTestName("oidcauthrelog"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithHostnameAsServerURL(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithHostnameAsServerURL(),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	var listUsers []v1.User
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listUsers,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, listUsers, 0)
+
+	ts, err := scenario.CreateTailscaleNode("unstable")
+	assertNoErr(t, err)
+
+	u, err := ts.LoginWithURL(headscale.GetEndpoint())
+	assertNoErr(t, err)
+
+	_, err = doLoginURL(ts.Hostname(), u)
+	assertNoErr(t, err)
+
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listUsers,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, listUsers, 1)
+	wantUsers := []v1.User{
+		{
+			Id:         1,
+			Name:       "user1",
+			Email:      "user1@headscale.net",
+			Provider:   "oidc",
+			ProviderId: oidcConfig.Issuer + "/user1",
+		},
+	}
+
+	sort.Slice(listUsers, func(i, j int) bool {
+		return listUsers[i].GetId() < listUsers[j].GetId()
+	})
+
+	if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Fatalf("unexpected users: %s", diff)
+	}
+
+	var listNodes []v1.Node
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&listNodes,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, listNodes, 1)
+
+	// Log out user1 and log in user2, this should create a new node
+	// for user2, the node should have the same machine key and
+	// a new node key.
+	err = ts.Logout()
+	assertNoErr(t, err)
+
+	time.Sleep(5 * time.Second)
+
+	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
+	// logs in immediately after the first logout and I cannot reproduce it
+	// manually.
+	err = ts.Logout()
+	assertNoErr(t, err)
+
+	u, err = ts.LoginWithURL(headscale.GetEndpoint())
+	assertNoErr(t, err)
+
+	_, err = doLoginURL(ts.Hostname(), u)
+	assertNoErr(t, err)
+
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listUsers,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, listUsers, 2)
+	wantUsers = []v1.User{
+		{
+			Id:         1,
+			Name:       "user1",
+			Email:      "user1@headscale.net",
+			Provider:   "oidc",
+			ProviderId: oidcConfig.Issuer + "/user1",
+		},
+		{
+			Id:         2,
+			Name:       "user2",
+			Email:      "user2@headscale.net",
+			Provider:   "oidc",
+			ProviderId: oidcConfig.Issuer + "/user2",
+		},
+	}
+
+	sort.Slice(listUsers, func(i, j int) bool {
+		return listUsers[i].GetId() < listUsers[j].GetId()
+	})
+
+	if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Fatalf("unexpected users: %s", diff)
+	}
+
+	var listNodesAfterNewUserLogin []v1.Node
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&listNodesAfterNewUserLogin,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, listNodesAfterNewUserLogin, 2)
+
+	// Machine key is the same as the "machine" has not changed,
+	// but Node key is not as it is a new node
+	assert.Equal(t, listNodes[0].MachineKey, listNodesAfterNewUserLogin[0].MachineKey)
+	assert.Equal(t, listNodesAfterNewUserLogin[0].MachineKey, listNodesAfterNewUserLogin[1].MachineKey)
+	assert.NotEqual(t, listNodesAfterNewUserLogin[0].NodeKey, listNodesAfterNewUserLogin[1].NodeKey)
+
+	// Log out user2, and log into user1, no new node should be created,
+	// the node should now "become" node1 again
+	err = ts.Logout()
+	assertNoErr(t, err)
+
+	time.Sleep(5 * time.Second)
+
+	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
+	// logs in immediately after the first logout and I cannot reproduce it
+	// manually.
+	err = ts.Logout()
+	assertNoErr(t, err)
+
+	u, err = ts.LoginWithURL(headscale.GetEndpoint())
+	assertNoErr(t, err)
+
+	_, err = doLoginURL(ts.Hostname(), u)
+	assertNoErr(t, err)
+
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"users",
+			"list",
+			"--output",
+			"json",
+		},
+		&listUsers,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, listUsers, 2)
+	wantUsers = []v1.User{
+		{
+			Id:         1,
+			Name:       "user1",
+			Email:      "user1@headscale.net",
+			Provider:   "oidc",
+			ProviderId: oidcConfig.Issuer + "/user1",
+		},
+		{
+			Id:         2,
+			Name:       "user2",
+			Email:      "user2@headscale.net",
+			Provider:   "oidc",
+			ProviderId: oidcConfig.Issuer + "/user2",
+		},
+	}
+
+	sort.Slice(listUsers, func(i, j int) bool {
+		return listUsers[i].GetId() < listUsers[j].GetId()
+	})
+
+	if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		t.Fatalf("unexpected users: %s", diff)
+	}
+
+	var listNodesAfterLoggingBackIn []v1.Node
+	err = executeAndUnmarshal(headscale,
+		[]string{
+			"headscale",
+			"nodes",
+			"list",
+			"--output",
+			"json",
+		},
+		&listNodesAfterLoggingBackIn,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, listNodesAfterLoggingBackIn, 2)
+
+	// Machine key is the same as the "machine" has not changed,
+	// but Node key is not as it is a new node
+	assert.Equal(t, listNodes[0].MachineKey, listNodesAfterNewUserLogin[0].MachineKey)
+	assert.Equal(t, listNodes[0].MachineKey, listNodesAfterLoggingBackIn[0].MachineKey)
+	assert.Equal(t, listNodes[0].NodeKey, listNodesAfterNewUserLogin[0].NodeKey)
+	assert.Equal(t, listNodes[0].NodeKey, listNodesAfterLoggingBackIn[0].NodeKey)
+	assert.Equal(t, listNodesAfterLoggingBackIn[0].MachineKey, listNodesAfterLoggingBackIn[1].MachineKey)
+	assert.NotEqual(t, listNodesAfterLoggingBackIn[0].NodeKey, listNodesAfterLoggingBackIn[1].NodeKey)
+}
+
 func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 	users map[string]int,
 	opts ...hsic.Option,
