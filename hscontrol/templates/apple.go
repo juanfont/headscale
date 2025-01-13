@@ -27,48 +27,25 @@ func Apple(url string) *elem.Element {
 						elem.Text("App store"),
 					),
 				),
-				elem.Li(nil,
-					elem.Text("Open Tailscale and make sure you are "),
-					elem.I(nil, elem.Text("not ")),
-					elem.Text("logged in to any account"),
-				),
-				elem.Li(nil,
-					elem.Text("Open Settings on the iOS device"),
+				elem.Li(
+					nil,
+					elem.Text("Open the Tailscale app"),
 				),
 				elem.Li(
 					nil,
-					elem.Text(
-						`Scroll down to the "third party apps" section, under "Game Center" or "TV Provider"`,
-					),
+					elem.Text(`Click the account icon in the top-right corner and select "Log in…".`),
 				),
-				elem.Li(nil,
-					elem.Text("Find Tailscale and select it"),
-					elem.Ul(nil,
-						elem.Li(
-							nil,
-							elem.Text(
-								`If the iOS device was previously logged into Tailscale, switch the "Reset Keychain" toggle to "on"`,
-							),
-						),
-					),
+				elem.Li(
+					nil,
+					elem.Text(`Tap the top-right options menu button and select "Use custom coordination server".`),
 				),
 				elem.Li(
 					nil,
 					elem.Text(
 						fmt.Sprintf(
-							`Enter "%s" under "Alternate Coordination Server URL"`,
+							`Enter your instance URL: "%s"`,
 							url,
 						),
-					),
-				),
-				elem.Li(
-					nil,
-					elem.Text(
-						"Restart the app by closing it from the iOS app switcher, open the app and select the regular sign in option ",
-					),
-					elem.I(nil, elem.Text("(non-SSO)")),
-					elem.Text(
-						". It should open up to the headscale authentication page.",
 					),
 				),
 				elem.Li(
