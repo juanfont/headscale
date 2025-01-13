@@ -32,7 +32,8 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 func GenerateRandomStringURLSafe(n int) (string, error) {
 	b, err := GenerateRandomBytes(n)
 
-	return base64.RawURLEncoding.EncodeToString(b), err
+	uenc := base64.RawURLEncoding.EncodeToString(b)
+	return uenc[:n], err
 }
 
 // GenerateRandomStringDNSSafe returns a DNS-safe
