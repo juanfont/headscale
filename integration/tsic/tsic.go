@@ -506,7 +506,12 @@ func (t *TailscaleInContainer) Logout() error {
 		return err
 	}
 
-	return nil
+	stdout, stderr, _ = t.Execute([]string{"tailscale", "status"})
+	if !strings.Contains(stdout+stderr, "Logged out.") {
+		return fmt.Errorf("failed to logout, stdout: %s, stderr: %s", stdout, stderr)
+	}
+
+	return t.waitForBackendState("NeedsLogin")
 }
 
 // Helper that runs `tailscale up` with no arguments.
@@ -830,28 +835,16 @@ func (t *TailscaleInContainer) FailingPeersAsString() (string, bool, error) {
 // WaitForNeedsLogin blocks until the Tailscale (tailscaled) instance has
 // started and needs to be logged into.
 func (t *TailscaleInContainer) WaitForNeedsLogin() error {
-	return t.pool.Retry(func() error {
-		status, err := t.Status()
-		if err != nil {
-			return errTailscaleStatus(t.hostname, err)
-		}
-
-		// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
-		// https://github.com/tailscale/tailscale/pull/3865
-		//
-		// Before that, we can check the BackendState to see if the
-		// tailscaled daemon is connected to the control system.
-		if status.BackendState == "NeedsLogin" {
-			return nil
-		}
-
-		return errTailscaledNotReadyForLogin
-	})
+	return t.waitForBackendState("NeedsLogin")
 }
 
 // WaitForRunning blocks until the Tailscale (tailscaled) instance is logged in
 // and ready to be used.
 func (t *TailscaleInContainer) WaitForRunning() error {
+	return t.waitForBackendState("Running")
+}
+
+func (t *TailscaleInContainer) waitForBackendState(state string) error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
 		if err != nil {
@@ -863,7 +856,7 @@ func (t *TailscaleInContainer) WaitForRunning() error {
 		//
 		// Before that, we can check the BackendState to see if the
 		// tailscaled daemon is connected to the control system.
-		if status.BackendState == "Running" {
+		if status.BackendState == state {
 			return nil
 		}
 
