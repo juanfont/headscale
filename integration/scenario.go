@@ -347,6 +347,51 @@ func (s *Scenario) CreateUser(user string) error {
 
 /// Client related stuff
 
+func (s *Scenario) CreateTailscaleNode(
+	version string,
+	opts ...tsic.Option,
+) (TailscaleClient, error) {
+	headscale, err := s.Headscale()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tailscale node (version: %s): %w", version, err)
+	}
+
+	cert := headscale.GetCert()
+	hostname := headscale.GetHostname()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	opts = append(opts,
+		tsic.WithCACert(cert),
+		tsic.WithHeadscaleName(hostname),
+	)
+
+	tsClient, err := tsic.New(
+		s.pool,
+		version,
+		s.network,
+		opts...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to create tailscale (%s) node: %w",
+			tsClient.Hostname(),
+			err,
+		)
+	}
+
+	err = tsClient.WaitForNeedsLogin()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to wait for tailscaled (%s) to need login: %w",
+			tsClient.Hostname(),
+			err,
+		)
+	}
+
+	return tsClient, nil
+}
+
 // CreateTailscaleNodesInUser creates and adds a new TailscaleClient to a
 // User in the Scenario.
 func (s *Scenario) CreateTailscaleNodesInUser(
