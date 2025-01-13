@@ -475,13 +475,17 @@ func (t *TailscaleInContainer) LoginWithURL(
 		"--accept-routes=false",
 	}
 
-	_, stderr, err := t.Execute(command)
+	stdout, stderr, err := t.Execute(command)
 	if errors.Is(err, errTailscaleNotLoggedIn) {
 		return nil, errTailscaleCannotUpWithoutAuthkey
 	}
 
-	urlStr := strings.ReplaceAll(stderr, "\nTo authenticate, visit:\n\n\t", "")
+	urlStr := strings.ReplaceAll(stdout+stderr, "\nTo authenticate, visit:\n\n\t", "")
 	urlStr = strings.TrimSpace(urlStr)
+
+	if urlStr == "" {
+		return nil, fmt.Errorf("failed to get login URL: stdout: %s, stderr: %s", stdout, stderr)
+	}
 
 	// parse URL
 	loginURL, err := url.Parse(urlStr)
@@ -497,7 +501,7 @@ func (t *TailscaleInContainer) LoginWithURL(
 
 // Logout runs the logout routine on the given Tailscale instance.
 func (t *TailscaleInContainer) Logout() error {
-	_, _, err := t.Execute([]string{"tailscale", "logout"})
+	stdout, stderr, err := t.Execute([]string{"tailscale", "logout"})
 	if err != nil {
 		return err
 	}
