@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"go4.org/netipx"
 	"tailscale.com/util/dnsname"
@@ -20,9 +21,39 @@ const (
 	LabelHostnameLength = 63
 )
 
+var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var ErrInvalidUserName = errors.New("invalid user name")
+
+func ValidateUsername(username string) error {
+	// Ensure the username meets the minimum length requirement
+	if len(username) < 2 {
+		return errors.New("username must be at least 2 characters long")
+	}
+
+	// Ensure the username does not start with a number
+	if unicode.IsDigit(rune(username[0])) {
+		return errors.New("username cannot start with a number")
+	}
+
+	atCount := 0
+	for _, char := range username {
+		switch {
+		case unicode.IsLetter(char), unicode.IsDigit(char), char == '-':
+			// Valid characters
+		case char == '@':
+			atCount++
+			if atCount > 1 {
+				return errors.New("username cannot contain more than one '@'")
+			}
+		default:
+			return fmt.Errorf("username contains invalid character: '%c'", char)
+		}
+	}
+
+	return nil
+}
 
 func CheckForFQDNRules(name string) error {
 	if len(name) > LabelHostnameLength {
@@ -39,7 +70,7 @@ func CheckForFQDNRules(name string) error {
 			ErrInvalidUserName,
 		)
 	}
-	if invalidCharsInUserRegex.MatchString(name) {
+	if invalidDNSRegex.MatchString(name) {
 		return fmt.Errorf(
 			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
 			name,
@@ -52,7 +83,7 @@ func CheckForFQDNRules(name string) error {
 
 func ConvertWithFQDNRules(name string) string {
 	name = strings.ToLower(name)
-	name = invalidCharsInUserRegex.ReplaceAllString(name, "")
+	name = invalidDNSRegex.ReplaceAllString(name, "")
 
 	return name
 }
@@ -197,7 +228,7 @@ func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
 	} else {
 		name = strings.ReplaceAll(name, "@", ".")
 	}
-	name = invalidCharsInUserRegex.ReplaceAllString(name, "-")
+	name = invalidDNSRegex.ReplaceAllString(name, "-")
 
 	for _, elt := range strings.Split(name, ".") {
 		if len(elt) > LabelHostnameLength {

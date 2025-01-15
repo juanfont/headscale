@@ -174,7 +174,7 @@ func (c *OIDCClaims) Identifier() string {
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	err := util.CheckForFQDNRules(claims.Username)
+	err := util.ValidateUsername(claims.Username)
 	if err == nil {
 		u.Name = claims.Username
 	} else {
