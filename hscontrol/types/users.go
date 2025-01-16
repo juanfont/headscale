@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -173,9 +174,11 @@ func (c *OIDCClaims) Identifier() string {
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	err := util.CheckForFQDNRules(claims.Username)
+	err := util.ValidateUsername(claims.Username)
 	if err == nil {
 		u.Name = claims.Username
+	} else {
+		log.Debug().Err(err).Msgf("Username %s is not valid", claims.Username)
 	}
 
 	if claims.EmailVerified {
