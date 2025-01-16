@@ -349,7 +349,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	// Neither node nor machine key was found in the state cache meaning
 	// that we could not reauth nor register the node.
-	http.Error(writer, err.Error(), http.StatusInternalServerError)
+	http.Error(writer, "login session expired, try again", http.StatusInternalServerError)
 	return
 }
 
