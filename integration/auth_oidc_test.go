@@ -30,6 +30,7 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/cmd/testwrapper/flakytest"
 )
 
 const (
@@ -244,6 +245,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 //   - stripped email domain on/off
 func TestOIDC024UserCreation(t *testing.T) {
 	IntegrationSkip(t)
+	flakytest.Mark(t, "https://github.com/juanfont/headscale/issues/2299")
 
 	tests := []struct {
 		name          string
