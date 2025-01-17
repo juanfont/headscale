@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -115,18 +116,8 @@ func (h *Headscale) NoiseUpgradeHandler(
 }
 
 func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
-	log.Trace().
-		Caller().
-		Int("protocol_version", protocolVersion).
-		Str("challenge", ns.challenge.Public().String()).
-		Msg("earlyNoise called")
-
-	if protocolVersion < earlyNoiseCapabilityVersion {
-		log.Trace().
-			Caller().
-			Msgf("protocol version %d does not support early noise", protocolVersion)
-
-		return nil
+	if !isSupportedVersion(tailcfg.CapabilityVersion(protocolVersion)) {
+		return fmt.Errorf("unsupported client version: %d", protocolVersion)
 	}
 
 	earlyJSON, err := json.Marshal(&tailcfg.EarlyNoise{
@@ -162,6 +153,26 @@ const (
 	MinimumCapVersion tailcfg.CapabilityVersion = 82
 )
 
+func isSupportedVersion(version tailcfg.CapabilityVersion) bool {
+	return version >= MinimumCapVersion
+}
+
+func rejectUnsupported(writer http.ResponseWriter, version tailcfg.CapabilityVersion) bool {
+	// Reject unsupported versions
+	if !isSupportedVersion(version) {
+		log.Info().
+			Caller().
+			Int("min_version", int(MinimumCapVersion)).
+			Int("client_version", int(version)).
+			Msg("unsupported client connected")
+		http.Error(writer, "unsupported client version", http.StatusBadRequest)
+
+		return true
+	}
+
+	return false
+}
+
 // NoisePollNetMapHandler takes care of /machine/:id/map using the Noise protocol
 //
 // This is the busiest endpoint, as it keeps the HTTP long poll that updates
@@ -177,7 +188,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 ) {
 	body, _ := io.ReadAll(req.Body)
 
-	mapRequest := tailcfg.MapRequest{}
+	var mapRequest tailcfg.MapRequest
 	if err := json.Unmarshal(body, &mapRequest); err != nil {
 		log.Error().
 			Caller().
@@ -197,14 +208,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		Msg("PollNetMapHandler called")
 
 	// Reject unsupported versions
-	if mapRequest.Version < MinimumCapVersion {
-		log.Info().
-			Caller().
-			Int("min_version", int(MinimumCapVersion)).
-			Int("client_version", int(mapRequest.Version)).
-			Msg("unsupported client connected")
-		http.Error(writer, "Internal error", http.StatusBadRequest)
-
+	if rejectUnsupported(writer, mapRequest.Version) {
 		return
 	}
 
@@ -251,7 +255,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		Msg("Headers")
 
 	body, _ := io.ReadAll(req.Body)
-	registerRequest := tailcfg.RegisterRequest{}
+	var registerRequest tailcfg.RegisterRequest
 	if err := json.Unmarshal(body, &registerRequest); err != nil {
 		log.Error().
 			Caller().
@@ -263,14 +267,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	}
 
 	// Reject unsupported versions
-	if registerRequest.Version < MinimumCapVersion {
-		log.Info().
-			Caller().
-			Int("min_version", int(MinimumCapVersion)).
-			Int("client_version", int(registerRequest.Version)).
-			Msg("unsupported client connected")
-		http.Error(writer, "unsupported client version", http.StatusBadRequest)
-
+	if rejectUnsupported(writer, registerRequest.Version) {
 		return
 	}
 
