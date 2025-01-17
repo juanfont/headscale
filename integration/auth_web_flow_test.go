@@ -222,11 +222,12 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
 func (s *AuthWebFlowScenario) runTailscaleUp(
 	userStr, loginServer string,
 ) error {
-	log.Printf("running tailscale up for user %s", userStr)
+	log.Printf("running tailscale up for user %q", userStr)
 	if user, ok := s.users[userStr]; ok {
 		for _, client := range user.Clients {
 			c := client
 			user.joinWaitGroup.Go(func() error {
+				log.Printf("logging %q into %q", c.Hostname(), loginServer)
 				loginURL, err := c.LoginWithURL(loginServer)
 				if err != nil {
 					log.Printf("failed to run tailscale up (%s): %s", c.Hostname(), err)

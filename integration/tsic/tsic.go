@@ -466,7 +466,7 @@ func (t *TailscaleInContainer) Login(
 // This login mechanism uses web + command line flow for authentication.
 func (t *TailscaleInContainer) LoginWithURL(
 	loginServer string,
-) (*url.URL, error) {
+) (loginURL *url.URL, err error) {
 	command := []string{
 		"tailscale",
 		"up",
@@ -480,6 +480,12 @@ func (t *TailscaleInContainer) LoginWithURL(
 		return nil, errTailscaleCannotUpWithoutAuthkey
 	}
 
+	defer func() {
+		if err != nil {
+			log.Printf("join command: %q", strings.Join(command, " "))
+		}
+	}()
+
 	urlStr := strings.ReplaceAll(stdout+stderr, "\nTo authenticate, visit:\n\n\t", "")
 	urlStr = strings.TrimSpace(urlStr)
 
@@ -488,11 +494,8 @@ func (t *TailscaleInContainer) LoginWithURL(
 	}
 
 	// parse URL
-	loginURL, err := url.Parse(urlStr)
+	loginURL, err = url.Parse(urlStr)
 	if err != nil {
-		log.Printf("Could not parse login URL: %s", err)
-		log.Printf("Original join command result: %s", stderr)
-
 		return nil, err
 	}
 
