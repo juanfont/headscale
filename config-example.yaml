@@ -384,10 +384,10 @@ unix_socket_permission: "0770"
 #   # Note that this will only work if the username from the legacy user is the same
 #   # and there is a possibility for account takeover should a username have changed
 #   # with the provider.
-#   # Disabling this feature will cause all new logins to be created as new users.
+#   # When this feature is disabled, it will cause all new logins to be created as new users.
 #   # Note this option will be removed in the future and should be set to false
 #   # on all new installations, or when all users have logged in with OIDC once.
-#   map_legacy_users: true
+#   map_legacy_users: false
 
 # Logtail configuration
 # Logtail is Tailscales logging and auditing infrastructure, it allows the control panel
