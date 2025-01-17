@@ -130,7 +130,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	for userName := range spec {
 		err = scenario.runTailscaleUp(userName, headscale.GetEndpoint())
 		if err != nil {
-			t.Fatalf("failed to run tailscale up: %s", err)
+			t.Fatalf("failed to run tailscale up (%q): %s", headscale.GetEndpoint(), err)
 		}
 	}
 
