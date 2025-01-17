@@ -255,14 +255,18 @@ func (h *Headscale) handleRegister(
 		// TODO(juan): RegisterRequest includes an Expiry time, that we could optionally use
 		node.Expiry = &time.Time{}
 
+		// TODO(kradalby): do we need to rethink this as part of authflow?
 		// If we are here it means the client needs to be reauthorized,
 		// we need to make sure the NodeKey matches the one in the request
 		// TODO(juan): What happens when using fast user switching between two
 		// headscale-managed tailnets?
 		node.NodeKey = regReq.NodeKey
 		h.registrationCache.Set(
-			machineKey.String(),
-			*node,
+			registrationId,
+			types.RegisterNode{
+				Node:       *node,
+				Registered: make(chan struct{}),
+			},
 		)
 
 		return
