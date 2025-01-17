@@ -286,49 +286,27 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	// Retrieve the node and the machine key from the state cache and
-	// database.
+	// TODO(kradalby): Is this comment right?
 	// If the node exists, then the node should be reauthenticated,
 	// if the node does not exist, and the machine key exists, then
 	// this is a new node that should be registered.
-	node, mKey := a.getMachineKeyFromState(state)
-
-	// Reauthenticate the node if it does exists.
-	if node != nil {
-		err := a.reauthenticateNode(node, nodeExpiry)
-		if err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// TODO(kradalby): replace with go-elem
-		var content bytes.Buffer
-		if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-			User: user.DisplayNameOrUsername(),
-			Verb: "Reauthenticated",
-		}); err != nil {
-			http.Error(writer, fmt.Errorf("rendering OIDC callback template: %w", err).Error(), http.StatusInternalServerError)
-			return
-		}
-
-		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-		writer.WriteHeader(http.StatusOK)
-		_, err = writer.Write(content.Bytes())
-		if err != nil {
-			util.LogErr(err, "Failed to write response")
-		}
-
-		return
-	}
+	registrationId := a.getRegistrationIDFromState(state)
 
 	// Register the node if it does not exist.
 	if registrationId != nil {
-		if err := a.registerNode(user, *registrationId, nodeExpiry); err != nil {
+		verb := "Reauthenticated"
+		newNode, err := a.handleRegistrationID(user, *registrationId, nodeExpiry)
+		if err != nil {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		content, err := renderOIDCCallbackTemplate(user)
+		if newNode {
+			verb = "Authenticated"
+		}
+
+		// TODO(kradalby): replace with go-elem
+		content, err := renderOIDCCallbackTemplate(user, verb)
 		if err != nil {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
@@ -462,33 +440,6 @@ func (a *AuthProviderOIDC) getRegistrationIDFromState(state string) *types.Regis
 	return &regInfo.RegistrationID
 }
 
-// reauthenticateNode updates the node expiry in the database
-// and notifies the node and its peers about the change.
-func (a *AuthProviderOIDC) reauthenticateNode(
-	node *types.Node,
-	expiry time.Time,
-) error {
-	err := a.db.NodeSetExpiry(node.ID, expiry)
-	if err != nil {
-		return err
-	}
-
-	ctx := types.NotifyCtx(context.Background(), "oidc-expiry-self", node.Hostname)
-	a.notifier.NotifyByNodeID(
-		ctx,
-		types.StateUpdate{
-			Type:        types.StateSelfUpdate,
-			ChangeNodes: []types.NodeID{node.ID},
-		},
-		node.ID,
-	)
-
-	ctx = types.NotifyCtx(context.Background(), "oidc-expiry-peers", node.Hostname)
-	a.notifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, expiry), node.ID)
-
-	return nil
-}
-
 func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	claims *types.OIDCClaims,
 ) (*types.User, error) {
@@ -544,43 +495,63 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	return user, nil
 }
 
-func (a *AuthProviderOIDC) registerNode(
+func (a *AuthProviderOIDC) handleRegistrationID(
 	user *types.User,
 	registrationID types.RegistrationID,
 	expiry time.Time,
-) error {
+) (bool, error) {
 	ipv4, ipv6, err := a.ipAlloc.Next()
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	if _, err := a.db.RegisterNodeFromAuthCallback(
+	node, newNode, err := a.db.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
 		&expiry,
 		util.RegisterMethodOIDC,
 		ipv4, ipv6,
-	); err != nil {
-		return fmt.Errorf("could not register node: %w", err)
-	}
-
-	err = nodesChangedHook(a.db, a.polMan, a.notifier)
+	)
 	if err != nil {
-		return fmt.Errorf("updating resources using node: %w", err)
+		return false, fmt.Errorf("could not register node: %w", err)
 	}
 
-	return nil
+	// Send an update to all nodes if this is a new node that they need to know
+	// about.
+	// If this is a refresh, just send new expiry updates.
+	if newNode {
+		err = nodesChangedHook(a.db, a.polMan, a.notifier)
+		if err != nil {
+			return false, fmt.Errorf("updating resources using node: %w", err)
+		}
+	} else {
+		ctx := types.NotifyCtx(context.Background(), "oidc-expiry-self", node.Hostname)
+		a.notifier.NotifyByNodeID(
+			ctx,
+			types.StateUpdate{
+				Type:        types.StateSelfUpdate,
+				ChangeNodes: []types.NodeID{node.ID},
+			},
+			node.ID,
+		)
+
+		ctx = types.NotifyCtx(context.Background(), "oidc-expiry-peers", node.Hostname)
+		a.notifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, expiry), node.ID)
+	}
+
+	return newNode, nil
 }
 
 // TODO(kradalby):
 // Rewrite in elem-go.
 func renderOIDCCallbackTemplate(
 	user *types.User,
+	verb string,
 ) (*bytes.Buffer, error) {
 	var content bytes.Buffer
 	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
 		User: user.DisplayNameOrUsername(),
-		Verb: "Authenticated",
+		Verb: verb,
 	}); err != nil {
 		return nil, fmt.Errorf("rendering OIDC callback template: %w", err)
 	}

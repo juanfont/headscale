@@ -245,7 +245,7 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, fmt.Errorf("looking up user: %w", err)
 	}
 
-	node, err := api.h.db.RegisterNodeFromAuthCallback(
+	node, _, err := api.h.db.HandleNodeFromAuthPath(
 		registrationId,
 		types.UserID(user.ID),
 		nil,

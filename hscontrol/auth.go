@@ -124,6 +124,9 @@ func (h *Headscale) handleRegister(
 	logInfo, logTrace, _ := logAuthFunc(regReq, machineKey, registrationId)
 	now := time.Now().UTC()
 	logTrace("handleRegister called, looking up machine in DB")
+
+	// TODO(kradalby): Use reqs NodeKey and OldNodeKey as indicators for new registrations vs
+	// key refreshes. This will allow us to remove the machineKey from the registration request.
 	node, err := h.db.GetNodeByAnyKey(machineKey, regReq.NodeKey, regReq.OldNodeKey)
 	logTrace("handleRegister database lookup has returned")
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -329,6 +332,8 @@ func (h *Headscale) handleAuthKey(
 	// The error is not important, because if it does not
 	// exist, then this is a new node and we will move
 	// on to registration.
+	// TODO(kradalby): Use reqs NodeKey and OldNodeKey as indicators for new registrations vs
+	// key refreshes. This will allow us to remove the machineKey from the registration request.
 	node, _ := h.db.GetNodeByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
 	if node != nil {
 		log.Trace().
