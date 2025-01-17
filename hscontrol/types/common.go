@@ -139,6 +139,14 @@ func NewRegistrationID() (RegistrationID, error) {
 	return RegistrationID(rid), nil
 }
 
+func MustRegistrationID() RegistrationID {
+	rid, err := NewRegistrationID()
+	if err != nil {
+		panic(err)
+	}
+	return rid
+}
+
 func RegistrationIDFromString(str string) (RegistrationID, error) {
 	if len(str) != RegistrationIDLength {
 		return "", fmt.Errorf("registration ID must be %d characters long", RegistrationIDLength)

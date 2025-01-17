@@ -843,13 +843,12 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		return nil, err
 	}
 
-	nodeKey := key.NewNode()
-
 	newNode := types.RegisterNode{
 		Node: types.Node{
-			NodeKey:  nodeKey.Public(),
-			Hostname: request.GetName(),
-			User:     *user,
+			NodeKey:    key.NewNode().Public(),
+			MachineKey: key.NewMachine().Public(),
+			Hostname:   request.GetName(),
+			User:       *user,
 
 			Expiry:   &time.Time{},
 			LastSeen: &time.Time{},

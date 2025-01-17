@@ -122,7 +122,7 @@ var registerNodeCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		machineKey, err := cmd.Flags().GetString("key")
+		registrationID, err := cmd.Flags().GetString("key")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -132,7 +132,7 @@ var registerNodeCmd = &cobra.Command{
 		}
 
 		request := &v1.RegisterNodeRequest{
-			Key:  machineKey,
+			Key:  registrationID,
 			User: user,
 		}
 
