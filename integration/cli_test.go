@@ -545,7 +545,6 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		hsic.WithTestName("clipak"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErr(t, err)
 

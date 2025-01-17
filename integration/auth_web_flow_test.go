@@ -43,7 +43,6 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 		hsic.WithTestName("webauthping"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 

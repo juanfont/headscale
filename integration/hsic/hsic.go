@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -166,17 +164,6 @@ func WithHostname(hostname string) Option {
 	}
 }
 
-// WithHostnameAsServerURL sets the Headscale ServerURL based on
-// the Hostname.
-func WithHostnameAsServerURL() Option {
-	return func(hsic *HeadscaleInContainer) {
-		hsic.env["HEADSCALE_SERVER_URL"] = fmt.Sprintf("http://%s",
-			net.JoinHostPort(hsic.GetHostname(),
-				fmt.Sprintf("%d", hsic.port)),
-		)
-	}
-}
-
 // WithFileInContainer adds a file to the container at the given path.
 func WithFileInContainer(path string, contents []byte) Option {
 	return func(hsic *HeadscaleInContainer) {
@@ -297,16 +284,6 @@ func New(
 
 	portProto := fmt.Sprintf("%d/tcp", hsic.port)
 
-	serverURL, err := url.Parse(hsic.env["HEADSCALE_SERVER_URL"])
-	if err != nil {
-		return nil, err
-	}
-
-	if len(hsic.tlsCert) != 0 && len(hsic.tlsKey) != 0 {
-		serverURL.Scheme = "https"
-		hsic.env["HEADSCALE_SERVER_URL"] = serverURL.String()
-	}
-
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: IntegrationTestDockerFileName,
 		ContextDir: dockerContextPath,
@@ -352,6 +329,12 @@ func New(
 		hsic.env["HEADSCALE_TLS_CERT_PATH"] = tlsCertPath
 		hsic.env["HEADSCALE_TLS_KEY_PATH"] = tlsKeyPath
 	}
+
+	// Server URL and Listen Addr should not be overridable outside of
+	// the configuration passed to docker.
+	hsic.env["HEADSCALE_SERVER_URL"] = hsic.GetEndpoint()
+	hsic.env["HEADSCALE_LISTEN_ADDR"] = fmt.Sprintf("0.0.0.0:%d", hsic.port)
+
 	for key, value := range hsic.env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
@@ -649,7 +632,7 @@ func (t *HeadscaleInContainer) GetHealthEndpoint() string {
 // GetEndpoint returns the Headscale endpoint for the HeadscaleInContainer.
 func (t *HeadscaleInContainer) GetEndpoint() string {
 	hostEndpoint := fmt.Sprintf("%s:%d",
-		t.GetIP(),
+		t.GetHostname(),
 		t.port)
 
 	if t.hasTLS() {

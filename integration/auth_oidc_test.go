@@ -91,7 +91,6 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		hsic.WithTestName("oidcauthping"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
 	)
 	assertNoErrHeadscaleEnv(t, err)
@@ -206,7 +205,6 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 		spec,
 		hsic.WithTestName("oidcexpirenodes"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -497,7 +495,6 @@ func TestOIDC024UserCreation(t *testing.T) {
 				hsic.WithTestName("oidcmigration"),
 				hsic.WithConfigEnv(oidcMap),
 				hsic.WithTLS(),
-				hsic.WithHostnameAsServerURL(),
 				hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
 			)
 			assertNoErrHeadscaleEnv(t, err)
@@ -576,7 +573,6 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 		hsic.WithTestName("oidcauthpkce"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
 	)
 	assertNoErrHeadscaleEnv(t, err)

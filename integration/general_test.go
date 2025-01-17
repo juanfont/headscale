@@ -44,7 +44,6 @@ func TestPingAllByIP(t *testing.T) {
 		hsic.WithTestName("pingallbyip"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
 	)
 	assertNoErrHeadscaleEnv(t, err)
@@ -127,7 +126,6 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 					hsic.WithTestName("pingallbyip"),
 					hsic.WithEmbeddedDERPServerOnly(),
 					hsic.WithTLS(),
-					hsic.WithHostnameAsServerURL(),
 				}
 			}
 
@@ -1050,7 +1048,6 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		hsic.WithTestName("pingallbyipmany"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -1133,7 +1130,6 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 		hsic.WithTestName("deletenocrash"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
