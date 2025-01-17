@@ -82,7 +82,10 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 		"user2": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, hsic.WithTestName("weblogout"))
+	err = scenario.CreateHeadscaleEnv(spec,
+		hsic.WithTestName("weblogout"),
+		hsic.WithTLS(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
