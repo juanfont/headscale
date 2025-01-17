@@ -122,11 +122,9 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 
 			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
 			if https {
-				opts = []hsic.Option{
-					hsic.WithTestName("pingallbyip"),
-					hsic.WithEmbeddedDERPServerOnly(),
+				opts = append(opts, []hsic.Option{
 					hsic.WithTLS(),
-				}
+				}...)
 			}
 
 			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, opts...)
@@ -170,7 +168,7 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
-				time.Sleep(3 * time.Minute)
+				time.Sleep(5 * time.Minute)
 			}
 
 			for userName := range spec {
