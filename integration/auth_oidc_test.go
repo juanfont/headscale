@@ -56,7 +56,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	scenario := AuthOIDCScenario{
 		Scenario: baseScenario,
 	}
-	// defer scenario.ShutdownAssertNoPanics(t)
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	// Logins to MockOIDC is served by a queue with a strict order,
 	// if we use more than one node per user, the order of the logins
