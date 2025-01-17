@@ -2,7 +2,7 @@
 
 ## Next
 
-## 0.24.0 (2024-01-17)
+## 0.24.0 (2025-01-17)
 
 ### Security fix: OIDC changes in Headscale 0.24.0
 
