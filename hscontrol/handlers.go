@@ -9,15 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chasefleming/elem-go"
-	"github.com/chasefleming/elem-go/attrs"
 	"github.com/chasefleming/elem-go/styles"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/key"
 )
 
 const (
@@ -202,31 +199,6 @@ var codeStyleRegisterWebAPI = styles.Props{
 	styles.BackgroundColor: "#eee",
 }
 
-func registerWebHTML(key string) *elem.Element {
-	return elem.Html(nil,
-		elem.Head(
-			nil,
-			elem.Title(nil, elem.Text("Registration - Headscale")),
-			elem.Meta(attrs.Props{
-				attrs.Name:    "viewport",
-				attrs.Content: "width=device-width, initial-scale=1",
-			}),
-		),
-		elem.Body(attrs.Props{
-			attrs.Style: styles.Props{
-				styles.FontFamily: "sans",
-			}.ToInline(),
-		},
-			elem.H1(nil, elem.Text("headscale")),
-			elem.H2(nil, elem.Text("Machine registration")),
-			elem.P(nil, elem.Text("Run the command below in the headscale server to add this machine to your network:")),
-			elem.Code(attrs.Props{attrs.Style: codeStyleRegisterWebAPI.ToInline()},
-				elem.Text(fmt.Sprintf("headscale nodes register --user USERNAME --key %s", key)),
-			),
-		),
-	)
-}
-
 type AuthProviderWeb struct {
 	serverURL string
 }
@@ -245,7 +217,7 @@ func (a *AuthProviderWeb) AuthURL(registrationId types.RegistrationID) string {
 }
 
 // RegisterWebAPI shows a simple message in the browser to point to the CLI
-// Listens in /register/:nkey.
+// Listens in /register/:registration_id.
 //
 // This is not part of the Tailscale control API, as we could send whatever URL
 // in the RegisterResponse.AuthURL field.
@@ -254,39 +226,23 @@ func (a *AuthProviderWeb) RegisterHandler(
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-	machineKeyStr := vars["mkey"]
+	registrationIdStr := vars["registration_id"]
 
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
 	// the template and log an error.
-	var machineKey key.MachinePublic
-	err := machineKey.UnmarshalText(
-		[]byte(machineKeyStr),
-	)
+	registrationId, err := types.RegistrationIDFromString(registrationIdStr)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to parse incoming machinekey")
-
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusBadRequest)
-		_, err := writer.Write([]byte("Wrong params"))
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
-
+		http.Error(writer, "invalid registration ID", http.StatusBadRequest)
 		return
 	}
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	if _, err := writer.Write([]byte(registerWebHTML(machineKey.String()).Render())); err != nil {
-		if _, err := writer.Write([]byte(templates.RegisterWeb(machineKey.String()).Render())); err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
+	if _, err := writer.Write([]byte(templates.RegisterWeb(registrationId).Render())); err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
 	}
 }
