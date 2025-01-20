@@ -1,5 +1,5 @@
 {
-  "swagger": "2.0",
+  "openapi": "3.0.0",
   "info": {
     "title": "headscale/v1/headscale.proto",
     "version": "version not set"
@@ -9,11 +9,10 @@
       "name": "HeadscaleService"
     }
   ],
-  "consumes": [
-    "application/json"
-  ],
-  "produces": [
-    "application/json"
+  "security": [
+    {
+      "apiKey": []
+    }
   ],
   "paths": {
     "/api/v1/apikey": {
@@ -22,14 +21,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ListApiKeysResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1ListApiKeysResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -43,27 +50,35 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1CreateApiKeyResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1CreateApiKeyResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/v1CreateApiKeyRequest"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1CreateApiKeyRequest"
+              }
             }
           }
-        ],
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -75,27 +90,35 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ExpireApiKeyResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1ExpireApiKeyResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/v1ExpireApiKeyRequest"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1ExpireApiKeyRequest"
+              }
             }
           }
-        ],
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -107,14 +130,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1DeleteApiKeyResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1DeleteApiKeyResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -123,7 +154,9 @@
             "name": "prefix",
             "in": "path",
             "required": true,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "tags": [
@@ -138,27 +171,35 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1DebugCreateNodeResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1DebugCreateNodeResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/v1DebugCreateNodeRequest"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1DebugCreateNodeRequest"
+              }
             }
           }
-        ],
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -170,14 +211,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ListNodesResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1ListNodesResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -185,8 +234,9 @@
           {
             "name": "user",
             "in": "query",
-            "required": false,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "tags": [
@@ -200,14 +250,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1BackfillNodeIPsResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1BackfillNodeIPsResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -215,8 +273,9 @@
           {
             "name": "confirmed",
             "in": "query",
-            "required": false,
-            "type": "boolean"
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "tags": [
@@ -230,14 +289,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1RegisterNodeResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1RegisterNodeResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -245,14 +312,16 @@
           {
             "name": "user",
             "in": "query",
-            "required": false,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "key",
             "in": "query",
-            "required": false,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "tags": [
@@ -266,14 +335,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetNodeResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1GetNodeResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -282,8 +359,10 @@
             "name": "nodeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           }
         ],
         "tags": [
@@ -295,14 +374,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1DeleteNodeResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1DeleteNodeResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -311,8 +398,10 @@
             "name": "nodeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           }
         ],
         "tags": [
@@ -326,14 +415,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ExpireNodeResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1ExpireNodeResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -342,8 +439,10 @@
             "name": "nodeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           }
         ],
         "tags": [
@@ -357,14 +456,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1RenameNodeResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1RenameNodeResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -373,14 +480,18 @@
             "name": "nodeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           },
           {
             "name": "newName",
             "in": "path",
             "required": true,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "tags": [
@@ -394,14 +505,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetNodeRoutesResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1GetNodeRoutesResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -410,8 +529,10 @@
             "name": "nodeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           }
         ],
         "tags": [
@@ -425,14 +546,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1SetTagsResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1SetTagsResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -441,18 +570,22 @@
             "name": "nodeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
             "schema": {
-              "$ref": "#/definitions/HeadscaleServiceSetTagsBody"
+              "type": "string",
+              "format": "uint64"
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeadscaleServiceSetTagsBody"
+              }
+            }
+          }
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -464,14 +597,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1MoveNodeResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1MoveNodeResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -480,18 +621,22 @@
             "name": "nodeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
             "schema": {
-              "$ref": "#/definitions/HeadscaleServiceMoveNodeBody"
+              "type": "string",
+              "format": "uint64"
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeadscaleServiceMoveNodeBody"
+              }
+            }
+          }
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -504,14 +649,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetPolicyResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1GetPolicyResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -524,27 +677,35 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1SetPolicyResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1SetPolicyResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/v1SetPolicyRequest"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1SetPolicyRequest"
+              }
             }
           }
-        ],
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -556,14 +717,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ListPreAuthKeysResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1ListPreAuthKeysResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -572,7 +741,9 @@
             "name": "user",
             "in": "query",
             "required": false,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "tags": [
@@ -585,27 +756,35 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1CreatePreAuthKeyResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1CreatePreAuthKeyResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/v1CreatePreAuthKeyRequest"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1CreatePreAuthKeyRequest"
+              }
             }
           }
-        ],
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -617,27 +796,35 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ExpirePreAuthKeyResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1ExpirePreAuthKeyResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/v1ExpirePreAuthKeyRequest"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1ExpirePreAuthKeyRequest"
+              }
             }
           }
-        ],
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -650,14 +837,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetRoutesResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1GetRoutesResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -672,14 +867,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1DeleteRouteResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1DeleteRouteResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -688,8 +891,10 @@
             "name": "routeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           }
         ],
         "tags": [
@@ -703,14 +908,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1DisableRouteResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1DisableRouteResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -719,8 +932,10 @@
             "name": "routeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           }
         ],
         "tags": [
@@ -734,14 +949,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1EnableRouteResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1EnableRouteResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -750,8 +973,10 @@
             "name": "routeId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           }
         ],
         "tags": [
@@ -765,14 +990,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ListUsersResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1ListUsersResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -781,20 +1014,26 @@
             "name": "id",
             "in": "query",
             "required": false,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           },
           {
             "name": "name",
             "in": "query",
             "required": false,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "email",
             "in": "query",
             "required": false,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "tags": [
@@ -807,27 +1046,35 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1CreateUserResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1CreateUserResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/v1CreateUserRequest"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1CreateUserRequest"
+              }
             }
           }
-        ],
+        },
         "tags": [
           "HeadscaleService"
         ]
@@ -839,14 +1086,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1DeleteUserResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1DeleteUserResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -855,8 +1110,10 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           }
         ],
         "tags": [
@@ -870,14 +1127,22 @@
         "responses": {
           "200": {
             "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1RenameUserResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1RenameUserResponse"
+                }
+              }
             }
           },
           "default": {
             "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
             }
           }
         },
@@ -886,14 +1151,18 @@
             "name": "oldId",
             "in": "path",
             "required": true,
-            "type": "string",
-            "format": "uint64"
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
           },
           {
             "name": "newName",
             "in": "path",
             "required": true,
-            "type": "string"
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "tags": [
@@ -902,577 +1171,579 @@
       }
     }
   },
-  "definitions": {
-    "HeadscaleServiceMoveNodeBody": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "type": "string"
-        }
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Api Token"
       }
     },
-    "HeadscaleServiceSetTagsBody": {
-      "type": "object",
-      "properties": {
-        "tags": {
-          "type": "array",
-          "items": {
+    "schemas": {
+      "HeadscaleServiceMoveNodeBody": {
+        "type": "object",
+        "properties": {
+          "user": {
             "type": "string"
           }
-        }
-      }
-    },
-    "protobufAny": {
-      "type": "object",
-      "properties": {
-        "@type": {
-          "type": "string"
         }
       },
-      "additionalProperties": {}
-    },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/protobufAny"
+      "HeadscaleServiceSetTagsBody": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
-      }
-    },
-    "v1ApiKey": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "format": "uint64"
-        },
-        "prefix": {
-          "type": "string"
-        },
-        "expiration": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "lastSeen": {
-          "type": "string",
-          "format": "date-time"
-        }
-      }
-    },
-    "v1BackfillNodeIPsResponse": {
-      "type": "object",
-      "properties": {
-        "changes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "v1CreateApiKeyRequest": {
-      "type": "object",
-      "properties": {
-        "expiration": {
-          "type": "string",
-          "format": "date-time"
-        }
-      }
-    },
-    "v1CreateApiKeyResponse": {
-      "type": "object",
-      "properties": {
-        "apiKey": {
-          "type": "string"
-        }
-      }
-    },
-    "v1CreatePreAuthKeyRequest": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "type": "string"
-        },
-        "reusable": {
-          "type": "boolean"
-        },
-        "ephemeral": {
-          "type": "boolean"
-        },
-        "expiration": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "aclTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "v1CreatePreAuthKeyResponse": {
-      "type": "object",
-      "properties": {
-        "preAuthKey": {
-          "$ref": "#/definitions/v1PreAuthKey"
-        }
-      }
-    },
-    "v1CreateUserRequest": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "displayName": {
-          "type": "string"
-        },
-        "email": {
-          "type": "string"
-        },
-        "pictureUrl": {
-          "type": "string"
-        }
-      }
-    },
-    "v1CreateUserResponse": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "$ref": "#/definitions/v1User"
-        }
-      }
-    },
-    "v1DebugCreateNodeRequest": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "type": "string"
-        },
-        "key": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "routes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "v1DebugCreateNodeResponse": {
-      "type": "object",
-      "properties": {
-        "node": {
-          "$ref": "#/definitions/v1Node"
-        }
-      }
-    },
-    "v1DeleteApiKeyResponse": {
-      "type": "object"
-    },
-    "v1DeleteNodeResponse": {
-      "type": "object"
-    },
-    "v1DeleteRouteResponse": {
-      "type": "object"
-    },
-    "v1DeleteUserResponse": {
-      "type": "object"
-    },
-    "v1DisableRouteResponse": {
-      "type": "object"
-    },
-    "v1EnableRouteResponse": {
-      "type": "object"
-    },
-    "v1ExpireApiKeyRequest": {
-      "type": "object",
-      "properties": {
-        "prefix": {
-          "type": "string"
-        }
-      }
-    },
-    "v1ExpireApiKeyResponse": {
-      "type": "object"
-    },
-    "v1ExpireNodeResponse": {
-      "type": "object",
-      "properties": {
-        "node": {
-          "$ref": "#/definitions/v1Node"
-        }
-      }
-    },
-    "v1ExpirePreAuthKeyRequest": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "type": "string"
-        },
-        "key": {
-          "type": "string"
-        }
-      }
-    },
-    "v1ExpirePreAuthKeyResponse": {
-      "type": "object"
-    },
-    "v1GetNodeResponse": {
-      "type": "object",
-      "properties": {
-        "node": {
-          "$ref": "#/definitions/v1Node"
-        }
-      }
-    },
-    "v1GetNodeRoutesResponse": {
-      "type": "object",
-      "properties": {
-        "routes": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1Route"
-          }
-        }
-      }
-    },
-    "v1GetPolicyResponse": {
-      "type": "object",
-      "properties": {
-        "policy": {
-          "type": "string"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
-      }
-    },
-    "v1GetRoutesResponse": {
-      "type": "object",
-      "properties": {
-        "routes": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1Route"
-          }
-        }
-      }
-    },
-    "v1ListApiKeysResponse": {
-      "type": "object",
-      "properties": {
-        "apiKeys": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1ApiKey"
-          }
-        }
-      }
-    },
-    "v1ListNodesResponse": {
-      "type": "object",
-      "properties": {
-        "nodes": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1Node"
-          }
-        }
-      }
-    },
-    "v1ListPreAuthKeysResponse": {
-      "type": "object",
-      "properties": {
-        "preAuthKeys": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1PreAuthKey"
-          }
-        }
-      }
-    },
-    "v1ListUsersResponse": {
-      "type": "object",
-      "properties": {
-        "users": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1User"
-          }
-        }
-      }
-    },
-    "v1MoveNodeResponse": {
-      "type": "object",
-      "properties": {
-        "node": {
-          "$ref": "#/definitions/v1Node"
-        }
-      }
-    },
-    "v1Node": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "format": "uint64"
-        },
-        "machineKey": {
-          "type": "string"
-        },
-        "nodeKey": {
-          "type": "string"
-        },
-        "discoKey": {
-          "type": "string"
-        },
-        "ipAddresses": {
-          "type": "array",
-          "items": {
+      },
+      "protobufAny": {
+        "type": "object",
+        "properties": {
+          "@type": {
             "type": "string"
           }
         },
-        "name": {
-          "type": "string"
-        },
-        "user": {
-          "$ref": "#/definitions/v1User"
-        },
-        "lastSeen": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "expiry": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "preAuthKey": {
-          "$ref": "#/definitions/v1PreAuthKey"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "registerMethod": {
-          "$ref": "#/definitions/v1RegisterMethod"
-        },
-        "forcedTags": {
-          "type": "array",
-          "items": {
+        "additionalProperties": {}
+      },
+      "rpcStatus": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "message": {
             "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/protobufAny"
+            }
           }
-        },
-        "invalidTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "validTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "givenName": {
-          "type": "string"
-        },
-        "online": {
-          "type": "boolean"
         }
-      }
-    },
-    "v1PreAuthKey": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "type": "string"
-        },
-        "id": {
-          "type": "string"
-        },
-        "key": {
-          "type": "string"
-        },
-        "reusable": {
-          "type": "boolean"
-        },
-        "ephemeral": {
-          "type": "boolean"
-        },
-        "used": {
-          "type": "boolean"
-        },
-        "expiration": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "aclTags": {
-          "type": "array",
-          "items": {
+      },
+      "v1ApiKey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "expiration": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "v1BackfillNodeIPsResponse": {
+        "type": "object",
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "v1CreateApiKeyRequest": {
+        "type": "object",
+        "properties": {
+          "expiration": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "v1CreateApiKeyResponse": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
             "type": "string"
           }
         }
-      }
-    },
-    "v1RegisterMethod": {
-      "type": "string",
-      "enum": [
-        "REGISTER_METHOD_UNSPECIFIED",
-        "REGISTER_METHOD_AUTH_KEY",
-        "REGISTER_METHOD_CLI",
-        "REGISTER_METHOD_OIDC"
-      ],
-      "default": "REGISTER_METHOD_UNSPECIFIED"
-    },
-    "v1RegisterNodeResponse": {
-      "type": "object",
-      "properties": {
-        "node": {
-          "$ref": "#/definitions/v1Node"
+      },
+      "v1CreatePreAuthKeyRequest": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "string"
+          },
+          "reusable": {
+            "type": "boolean"
+          },
+          "ephemeral": {
+            "type": "boolean"
+          },
+          "expiration": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "aclTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
-      }
-    },
-    "v1RenameNodeResponse": {
-      "type": "object",
-      "properties": {
-        "node": {
-          "$ref": "#/definitions/v1Node"
+      },
+      "v1CreatePreAuthKeyResponse": {
+        "type": "object",
+        "properties": {
+          "preAuthKey": {
+            "$ref": "#/components/schemas/v1PreAuthKey"
+          }
         }
-      }
-    },
-    "v1RenameUserResponse": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "$ref": "#/definitions/v1User"
+      },
+      "v1CreateUserRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "pictureUrl": {
+            "type": "string"
+          }
         }
-      }
-    },
-    "v1Route": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "format": "uint64"
-        },
-        "node": {
-          "$ref": "#/definitions/v1Node"
-        },
-        "prefix": {
-          "type": "string"
-        },
-        "advertised": {
-          "type": "boolean"
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "isPrimary": {
-          "type": "boolean"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "deletedAt": {
-          "type": "string",
-          "format": "date-time"
+      },
+      "v1CreateUserResponse": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/v1User"
+          }
         }
-      }
-    },
-    "v1SetPolicyRequest": {
-      "type": "object",
-      "properties": {
-        "policy": {
-          "type": "string"
+      },
+      "v1DebugCreateNodeRequest": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
-      }
-    },
-    "v1SetPolicyResponse": {
-      "type": "object",
-      "properties": {
-        "policy": {
-          "type": "string"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
+      },
+      "v1DebugCreateNodeResponse": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/v1Node"
+          }
         }
-      }
-    },
-    "v1SetTagsResponse": {
-      "type": "object",
-      "properties": {
-        "node": {
-          "$ref": "#/definitions/v1Node"
+      },
+      "v1DeleteApiKeyResponse": {
+        "type": "object"
+      },
+      "v1DeleteNodeResponse": {
+        "type": "object"
+      },
+      "v1DeleteRouteResponse": {
+        "type": "object"
+      },
+      "v1DeleteUserResponse": {
+        "type": "object"
+      },
+      "v1DisableRouteResponse": {
+        "type": "object"
+      },
+      "v1EnableRouteResponse": {
+        "type": "object"
+      },
+      "v1ExpireApiKeyRequest": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": "string"
+          }
         }
-      }
-    },
-    "v1User": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "format": "uint64"
-        },
-        "name": {
-          "type": "string"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "displayName": {
-          "type": "string"
-        },
-        "email": {
-          "type": "string"
-        },
-        "providerId": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "profilePicUrl": {
-          "type": "string"
+      },
+      "v1ExpireApiKeyResponse": {
+        "type": "object"
+      },
+      "v1ExpireNodeResponse": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/v1Node"
+          }
+        }
+      },
+      "v1ExpirePreAuthKeyRequest": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        }
+      },
+      "v1ExpirePreAuthKeyResponse": {
+        "type": "object"
+      },
+      "v1GetNodeResponse": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/v1Node"
+          }
+        }
+      },
+      "v1GetNodeRoutesResponse": {
+        "type": "object",
+        "properties": {
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/v1Route"
+            }
+          }
+        }
+      },
+      "v1GetPolicyResponse": {
+        "type": "object",
+        "properties": {
+          "policy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "v1GetRoutesResponse": {
+        "type": "object",
+        "properties": {
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/v1Route"
+            }
+          }
+        }
+      },
+      "v1ListApiKeysResponse": {
+        "type": "object",
+        "properties": {
+          "apiKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/v1ApiKey"
+            }
+          }
+        }
+      },
+      "v1ListNodesResponse": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/v1Node"
+            }
+          }
+        }
+      },
+      "v1ListPreAuthKeysResponse": {
+        "type": "object",
+        "properties": {
+          "preAuthKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/v1PreAuthKey"
+            }
+          }
+        }
+      },
+      "v1ListUsersResponse": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/v1User"
+            }
+          }
+        }
+      },
+      "v1MoveNodeResponse": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/v1Node"
+          }
+        }
+      },
+      "v1Node": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "machineKey": {
+            "type": "string"
+          },
+          "nodeKey": {
+            "type": "string"
+          },
+          "discoKey": {
+            "type": "string"
+          },
+          "ipAddresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/v1User"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiry": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "preAuthKey": {
+            "$ref": "#/components/schemas/v1PreAuthKey"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "registerMethod": {
+            "$ref": "#/components/schemas/v1RegisterMethod"
+          },
+          "forcedTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "invalidTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "validTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "givenName": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          }
+        }
+      },
+      "v1PreAuthKey": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "reusable": {
+            "type": "boolean"
+          },
+          "ephemeral": {
+            "type": "boolean"
+          },
+          "used": {
+            "type": "boolean"
+          },
+          "expiration": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "aclTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "v1RegisterMethod": {
+        "type": "string",
+        "enum": [
+          "REGISTER_METHOD_UNSPECIFIED",
+          "REGISTER_METHOD_AUTH_KEY",
+          "REGISTER_METHOD_CLI",
+          "REGISTER_METHOD_OIDC"
+        ],
+        "default": "REGISTER_METHOD_UNSPECIFIED"
+      },
+      "v1RegisterNodeResponse": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/v1Node"
+          }
+        }
+      },
+      "v1RenameNodeResponse": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/v1Node"
+          }
+        }
+      },
+      "v1RenameUserResponse": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/v1User"
+          }
+        }
+      },
+      "v1Route": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "node": {
+            "$ref": "#/components/schemas/v1Node"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "advertised": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "v1SetPolicyRequest": {
+        "type": "object",
+        "properties": {
+          "policy": {
+            "type": "string"
+          }
+        }
+      },
+      "v1SetPolicyResponse": {
+        "type": "object",
+        "properties": {
+          "policy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "v1SetTagsResponse": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/v1Node"
+          }
+        }
+      },
+      "v1User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "profilePicUrl": {
+            "type": "string"
+          }
         }
       }
     }
