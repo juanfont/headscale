@@ -4,7 +4,7 @@ Several Linux distributions and community members provide packages for headscale
 the [official releases](./official.md) provided by the headscale maintainers. Such packages offer improved integration
 for their targeted operating system and usually:
 
-- setup a dedicated user account to run headscale
+- setup a dedicated local user account to run headscale
 - provide a default configuration
 - install headscale as system service
 

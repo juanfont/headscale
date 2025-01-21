@@ -89,7 +89,7 @@ not work with alternatives like [Podman](https://podman.io). The Docker image ca
     curl http://127.0.0.1:9090/metrics
     ```
 
-1.  Create a user ([tailnet](https://tailscale.com/kb/1136/tailnet/)):
+1.  Create a headscale user:
 
     ```shell
     docker exec -it headscale \
