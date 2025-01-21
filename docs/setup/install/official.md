@@ -6,8 +6,8 @@ Both are available on the [GitHub releases page](https://github.com/juanfont/hea
 ## Using packages for Debian/Ubuntu (recommended)
 
 It is recommended to use our DEB packages to install headscale on a Debian based system as those packages configure a
-user to run headscale, provide a default configuration and ship with a systemd service file. Supported distributions are
-Ubuntu 20.04 or newer, Debian 11 or newer.
+local user to run headscale, provide a default configuration and ship with a systemd service file. Supported
+distributions are Ubuntu 20.04 or newer, Debian 11 or newer.
 
 1.  Download the [latest headscale package](https://github.com/juanfont/headscale/releases/latest) for your platform (`.deb` for Ubuntu and Debian).
 
@@ -46,13 +46,13 @@ Ubuntu 20.04 or newer, Debian 11 or newer.
 
 !!! warning "Advanced"
 
-    This installation method is considered advanced as one needs to take care of the headscale user and the systemd
+    This installation method is considered advanced as one needs to take care of the local user and the systemd
     service themselves. If possible, use the [DEB packages](#using-packages-for-debianubuntu-recommended) or a
     [community package](./community.md) instead.
 
 This section describes the installation of headscale according to the [Requirements and
-assumptions](../requirements.md#assumptions). Headscale is run by a dedicated user and the service itself is managed by
-systemd.
+assumptions](../requirements.md#assumptions). Headscale is run by a dedicated local user and the service itself is
+managed by systemd.
 
 1.  Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
 
@@ -67,7 +67,7 @@ systemd.
     sudo chmod +x /usr/local/bin/headscale
     ```
 
-1.  Add a dedicated user to run headscale:
+1.  Add a dedicated local user to run headscale:
 
     ```shell
     sudo useradd \
