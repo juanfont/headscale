@@ -25,7 +25,7 @@ provides on overview of headscale's feature and compatibility with the Tailscale
     - [ ] `autogroup:member`
 * [ ] Node registration using Single-Sign-On (OpenID Connect) ([GitHub label "OIDC"](https://github.com/juanfont/headscale/labels/OIDC))
     - [x] Basic registration
-    - [ ] Update user profile from identity provider
+    - [x] Update user profile from identity provider
     - [ ] Dynamic ACL support
     - [ ] OIDC groups cannot be used in ACLs
 - [ ] [Funnel](https://tailscale.com/kb/1223/funnel) ([#1040](https://github.com/juanfont/headscale/issues/1040))
