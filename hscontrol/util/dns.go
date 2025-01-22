@@ -26,6 +26,11 @@ var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var ErrInvalidUserName = errors.New("invalid user name")
 
+// ValidateUsername checks if a username is valid.
+// It must be at least 2 characters long, start with a letter, and contain
+// only letters, numbers, hyphens, dots, and underscores.
+// It cannot contain more than one '@'.
+// It cannot contain invalid characters.
 func ValidateUsername(username string) error {
 	// Ensure the username meets the minimum length requirement
 	if len(username) < 2 {
@@ -40,7 +45,11 @@ func ValidateUsername(username string) error {
 	atCount := 0
 	for _, char := range username {
 		switch {
-		case unicode.IsLetter(char), unicode.IsDigit(char), char == '-':
+		case unicode.IsLetter(char),
+			unicode.IsDigit(char),
+			char == '-',
+			char == '.',
+			char == '_':
 			// Valid characters
 		case char == '@':
 			atCount++

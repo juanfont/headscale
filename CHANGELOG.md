@@ -1,8 +1,13 @@
 # CHANGELOG
 
-## Next
+## 0.24.1 (2025-01-xx)
 
-## 0.24.0 (2024-01-17)
+### Changes
+
+- Relax username validation to allow emails
+  [#2364](https://github.com/juanfont/headscale/pull/2364)
+
+## 0.24.0 (2025-01-17)
 
 ### Security fix: OIDC changes in Headscale 0.24.0
 
