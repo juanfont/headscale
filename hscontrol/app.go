@@ -245,11 +245,11 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 	lastExpiryCheck := time.Unix(0, 0)
 
-	derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
-	defer derpTicker.Stop()
-	// If we dont want auto update, just stop the ticker
-	if !h.cfg.DERP.AutoUpdate {
-		derpTicker.Stop()
+	// Only start the ticker if auto update is enabled
+	var derpTicker *time.Ticker
+	if h.cfg.DERP.AutoUpdate && h.cfg.DERP.UpdateFrequency > 0 {
+		derpTicker = time.NewTicker(h.cfg.DERP.UpdateFrequency)
+		defer derpTicker.Stop()
 	}
 
 	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
