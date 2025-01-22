@@ -13,6 +13,8 @@
 
 - Relax username validation to allow emails
   [#2364](https://github.com/juanfont/headscale/pull/2364)
+- Don't panic on NewTicker if DERP autoupdate is disabled
+  [#2370](https://github.com/juanfont/headscale/pull/2370)
 
 ## 0.24.0 (2025-01-17)
 

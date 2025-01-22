@@ -245,7 +245,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 	lastExpiryCheck := time.Unix(0, 0)
 
-	// Only start the ticker if auto update is enabled
+	// Only start the ticker if auto update is enabled and has nonzero duration
 	var derpTicker *time.Ticker
 	if h.cfg.DERP.AutoUpdate && h.cfg.DERP.UpdateFrequency > 0 {
 		derpTicker = time.NewTicker(h.cfg.DERP.UpdateFrequency)
