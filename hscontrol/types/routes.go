@@ -13,7 +13,7 @@ import (
 type Route struct {
 	gorm.Model
 
-	NodeID uint64
+	NodeID uint64 `gorm:"not null"`
 	Node   *Node
 
 	// TODO(kradalby): change this custom type to netip.Prefix
@@ -79,13 +79,16 @@ func (rs Routes) Proto() []*v1.Route {
 	for _, route := range rs {
 		protoRoute := v1.Route{
 			Id:         uint64(route.ID),
-			Node:       route.Node.Proto(),
 			Prefix:     route.Prefix.String(),
 			Advertised: route.Advertised,
 			Enabled:    route.Enabled,
 			IsPrimary:  route.IsPrimary,
 			CreatedAt:  timestamppb.New(route.CreatedAt),
 			UpdatedAt:  timestamppb.New(route.UpdatedAt),
+		}
+
+		if route.Node != nil {
+			protoRoute.Node = route.Node.Proto()
 		}
 
 		if route.DeletedAt.Valid {
