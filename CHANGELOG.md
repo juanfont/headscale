@@ -4,6 +4,8 @@
 
 ### Changes
 
+- Fix migration issue with user table for PostgreSQL
+  [#2367](https://github.com/juanfont/headscale/pull/2367)
 - Relax username validation to allow emails
   [#2364](https://github.com/juanfont/headscale/pull/2364)
 - Remove invalid routes and add stronger constraints for routes to avoid API panic
