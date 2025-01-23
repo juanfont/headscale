@@ -17,6 +17,8 @@
   [#2364](https://github.com/juanfont/headscale/pull/2364)
 - Remove invalid routes and add stronger constraints for routes to avoid API panic
   [#2371](https://github.com/juanfont/headscale/pull/2371)
+- Fix panic when `derp.update_frequency` is 0
+  [#2368](https://github.com/juanfont/headscale/pull/2368)
 
 ## 0.24.0 (2025-01-17)
 
