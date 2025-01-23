@@ -251,10 +251,15 @@ func routesToPtables(routes []*v1.Route) pterm.TableData {
 			isPrimaryStr = strconv.FormatBool(route.GetIsPrimary())
 		}
 
+		var nodeName string
+		if route.GetNode() != nil {
+			nodeName = route.GetNode().GetGivenName()
+		}
+
 		tableData = append(tableData,
 			[]string{
 				strconv.FormatUint(route.GetId(), Base10),
-				route.GetNode().GetGivenName(),
+				nodeName,
 				route.GetPrefix(),
 				strconv.FormatBool(route.GetAdvertised()),
 				strconv.FormatBool(route.GetEnabled()),
