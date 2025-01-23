@@ -245,11 +245,11 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 	lastExpiryCheck := time.Unix(0, 0)
 
-	derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
-	defer derpTicker.Stop()
-	// If we dont want auto update, just stop the ticker
-	if !h.cfg.DERP.AutoUpdate {
-		derpTicker.Stop()
+	derpTickerChan := make(<-chan time.Time)
+	if h.cfg.DERP.AutoUpdate && h.cfg.DERP.UpdateFrequency != 0 {
+		derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
+		defer derpTicker.Stop()
+		derpTickerChan = derpTicker.C
 	}
 
 	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
@@ -285,7 +285,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				h.nodeNotifier.NotifyAll(ctx, update)
 			}
 
-		case <-derpTicker.C:
+		case <-derpTickerChan:
 			log.Info().Msg("Fetching DERPMap updates")
 			h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
 			if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
