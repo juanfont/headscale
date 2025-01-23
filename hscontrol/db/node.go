@@ -182,38 +182,6 @@ func GetNodeByNodeKey(
 	return &mach, nil
 }
 
-func (hsdb *HSDatabase) GetNodeByAnyKey(
-	machineKey key.MachinePublic,
-	nodeKey key.NodePublic,
-	oldNodeKey key.NodePublic,
-) (*types.Node, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
-		return GetNodeByAnyKey(rx, machineKey, nodeKey, oldNodeKey)
-	})
-}
-
-// GetNodeByAnyKey finds a Node by its MachineKey, its current NodeKey or the old one, and returns the Node struct.
-// TODO(kradalby): see if we can remove this.
-func GetNodeByAnyKey(
-	tx *gorm.DB,
-	machineKey key.MachinePublic, nodeKey key.NodePublic, oldNodeKey key.NodePublic,
-) (*types.Node, error) {
-	node := types.Node{}
-	if result := tx.
-		Preload("AuthKey").
-		Preload("AuthKey.User").
-		Preload("User").
-		Preload("Routes").
-		First(&node, "machine_key = ? OR node_key = ? OR node_key = ?",
-			machineKey.String(),
-			nodeKey.String(),
-			oldNodeKey.String()); result.Error != nil {
-		return nil, result.Error
-	}
-
-	return &node, nil
-}
-
 func (hsdb *HSDatabase) SetTags(
 	nodeID types.NodeID,
 	tags []string,

@@ -127,7 +127,7 @@ func (h *Headscale) handleRegister(
 
 	// TODO(kradalby): Use reqs NodeKey and OldNodeKey as indicators for new registrations vs
 	// key refreshes. This will allow us to remove the machineKey from the registration request.
-	node, err := h.db.GetNodeByAnyKey(machineKey, regReq.NodeKey, regReq.OldNodeKey)
+	node, err := h.db.GetNodeByNodeKey(regReq.NodeKey)
 	logTrace("handleRegister database lookup has returned")
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the node has AuthKey set, handle registration via PreAuthKeys
@@ -338,7 +338,7 @@ func (h *Headscale) handleAuthKey(
 	// on to registration.
 	// TODO(kradalby): Use reqs NodeKey and OldNodeKey as indicators for new registrations vs
 	// key refreshes. This will allow us to remove the machineKey from the registration request.
-	node, _ := h.db.GetNodeByAnyKey(machineKey, registerRequest.NodeKey, registerRequest.OldNodeKey)
+	node, _ := h.db.GetNodeByNodeKey(registerRequest.NodeKey)
 	if node != nil {
 		log.Trace().
 			Caller().
