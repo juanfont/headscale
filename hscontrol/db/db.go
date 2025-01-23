@@ -521,6 +521,27 @@ func NewHeadscaleDatabase(
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Add a constraint to routes ensuring they cannot exist without a node.
+				ID: "202501221827",
+				Migrate: func(tx *gorm.DB) error {
+					// Remove any invalid routes associated with a node that does not exist.
+					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) {
+						err := tx.Exec("delete from routes where node_id not in (select id from nodes)").Error
+						if err != nil {
+							return err
+						}
+					}
+
+					err := tx.AutoMigrate(&types.Route{})
+					if err != nil {
+						return err
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

@@ -13,7 +13,7 @@ import (
 type Route struct {
 	gorm.Model
 
-	NodeID uint64
+	NodeID uint64 `gorm:"not null"`
 	Node   *Node
 
 	// TODO(kradalby): change this custom type to netip.Prefix
