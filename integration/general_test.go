@@ -147,6 +147,19 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 				clientIPs[client] = ips
 			}
 
+			headscale, err := scenario.Headscale()
+			assertNoErrGetHeadscale(t, err)
+
+			var listNodes []*v1.Node
+			for username := range spec {
+				nodes, err := headscale.ListNodesInUser(username)
+				assertNoErr(t, err)
+				listNodes = append(listNodes, nodes...)
+			}
+			assert.Equal(t, len(listNodes), len(allClients))
+			nodeCountBeforeLogout := len(listNodes)
+			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
+
 			for _, client := range allClients {
 				err := client.Logout()
 				if err != nil {
@@ -158,9 +171,6 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 			assertNoErrLogout(t, err)
 
 			t.Logf("all clients logged out")
-
-			headscale, err := scenario.Headscale()
-			assertNoErrGetHeadscale(t, err)
 
 			// if the server is not running with HTTPS, we have to wait a bit before
 			// reconnection as the newest Tailscale client has a measure that will only
@@ -200,6 +210,15 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 
 			success := pingAllHelper(t, allClients, allAddrs)
 			t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+			listNodes = nil
+			for username := range spec {
+				nodes, err := headscale.ListNodesInUser(username)
+				assertNoErr(t, err)
+				listNodes = append(listNodes, nodes...)
+			}
+			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
+			t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
 
 			for _, client := range allClients {
 				ips, err := client.IPs()
