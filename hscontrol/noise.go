@@ -245,5 +245,37 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 
 	ns.nodeKey = registerRequest.NodeKey
 
-	ns.headscale.handleRegister(writer, req, registerRequest, ns.conn.Peer())
+	resp, err := ns.headscale.handleRegister(req.Context(), registerRequest, ns.conn.Peer())
+	// TODO(kradalby): Here we could have two error types, one that is surfaced to the client
+	// and one that returns 500.
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Error handling registration")
+		http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+		return
+	}
+
+	respBody, err := json.Marshal(resp)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Error handling registration")
+		http.Error(writer, "Internal server error", http.StatusInternalServerError)
+
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+	_, err = writer.Write(respBody)
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
 }

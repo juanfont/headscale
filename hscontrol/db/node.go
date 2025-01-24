@@ -405,6 +405,18 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("user", node.User.Username()).
 		Msg("Registering node")
 
+	// If the a new node is registered with the same machine key, to the same user,
+	// update the existing node.
+	// If the same node is registered again, but to a new user, then that is considered
+	// a new node.
+	oldNode, _ := GetNodeByMachineKey(tx, node.MachineKey)
+	if oldNode != nil && oldNode.UserID == node.UserID {
+		node.ID = oldNode.ID
+		node.GivenName = oldNode.GivenName
+		ipv4 = oldNode.IPv4
+		ipv6 = oldNode.IPv6
+	}
+
 	// If the node exists and it already has IP(s), we just save it
 	// so we store the node.Expire and node.Nodekey that has been set when
 	// adding it to the registrationCache
