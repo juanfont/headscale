@@ -1840,7 +1840,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 			{
 				// This is an unknown action, so it will return an error
 				// and the config will not be applied.
-				Action:       "acccept",
+				Action:       "accept",
 				Sources:      []string{"*"},
 				Destinations: []string{"*:*"},
 			},

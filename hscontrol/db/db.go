@@ -103,7 +103,7 @@ func NewHeadscaleDatabase(
 
 					dbConn.Model(&types.Node{}).Where("auth_key_id = ?", 0).Update("auth_key_id", nil)
 					// If the Node table has a column for registered,
-					// find all occourences of "false" and drop them. Then
+					// find all occurrences of "false" and drop them. Then
 					// remove the column.
 					if tx.Migrator().HasColumn(&types.Node{}, "registered") {
 						log.Info().
@@ -641,7 +641,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		}
 
 		// The pure Go SQLite library does not handle locking in
-		// the same way as the C based one and we cant use the gorm
+		// the same way as the C based one and we can't use the gorm
 		// connection pool as of 2022/02/23.
 		sqlDB, _ := db.DB()
 		sqlDB.SetMaxIdleConns(1)
@@ -704,7 +704,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 }
 
 func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormigrate.Gormigrate) error {
-	// Turn off foreign keys for the duration of the migration if using sqllite to
+	// Turn off foreign keys for the duration of the migration if using sqlite to
 	// prevent data loss due to the way the GORM migrator handles certain schema
 	// changes.
 	if cfg.Type == types.DatabaseSqlite {

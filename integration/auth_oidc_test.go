@@ -230,7 +230,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 
 	// This is not great, but this sadly is a time dependent test, so the
 	// safe thing to do is wait out the whole TTL time before checking if
-	// the clients have logged out. The Wait function cant do it itself
+	// the clients have logged out. The Wait function can't do it itself
 	// as it has an upper bound of 1 min.
 	time.Sleep(shortAccessTTL)
 
