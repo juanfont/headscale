@@ -521,25 +521,28 @@ func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *not
 
 // TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
 // Maybe we should attempt a new in memory state and not go via the DB?
-func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+// A bool is returned indicating if a full update was sent to all nodes
+func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) (bool, error) {
 	nodes, err := db.ListNodes()
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	changed, err := polMan.SetNodes(nodes)
+	filterChanged, err := polMan.SetNodes(nodes)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	if changed {
+	if filterChanged {
 		ctx := types.NotifyCtx(context.Background(), "acl-nodes-change", "all")
 		notif.NotifyAll(ctx, types.StateUpdate{
 			Type: types.StateFullUpdate,
 		})
+
+		return true, nil
 	}
 
-	return nil
+	return false, nil
 }
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
