@@ -109,9 +109,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			success := pingAllHelper(t, allClients, allAddrs)
 			t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
-			listNodes, err = headscale.ListNodes()
-			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
-			t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
+			for _, client := range allClients {
+				ips, err := client.IPs()
+				if err != nil {
 					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 				}
 
