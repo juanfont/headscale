@@ -119,7 +119,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	listUsers, err := headscale.ListUsers()
 	assertNoErr(t, err)
 
-	want := []v1.User{
+	want := []*v1.User{
 		{
 			Id:    1,
 			Name:  "user1",
