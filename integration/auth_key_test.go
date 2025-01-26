@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
@@ -59,12 +58,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			headscale, err := scenario.Headscale()
 			assertNoErrGetHeadscale(t, err)
 
-			var listNodes []*v1.Node
-			for username := range spec {
-				nodes, err := headscale.ListNodesInUser(username)
-				assertNoErr(t, err)
-				listNodes = append(listNodes, nodes...)
-			}
+			listNodes, err := headscale.ListNodes()
 			assert.Equal(t, len(listNodes), len(allClients))
 			nodeCountBeforeLogout := len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -115,18 +109,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			success := pingAllHelper(t, allClients, allAddrs)
 			t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
-			listNodes = nil
-			for username := range spec {
-				nodes, err := headscale.ListNodesInUser(username)
-				assertNoErr(t, err)
-				listNodes = append(listNodes, nodes...)
-			}
+			listNodes, err = headscale.ListNodes()
 			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
 			t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
-
-			for _, client := range allClients {
-				ips, err := client.IPs()
-				if err != nil {
 					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 				}
 
@@ -193,12 +178,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErrGetHeadscale(t, err)
 
-	var listNodes []*v1.Node
-	for username := range spec {
-		nodes, err := headscale.ListNodesInUser(username)
-		assertNoErr(t, err)
-		listNodes = append(listNodes, nodes...)
-	}
+	listNodes, err := headscale.ListNodes()
 	assert.Equal(t, len(listNodes), len(allClients))
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -230,12 +210,12 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 		}
 	}
 
-	user1Nodes, err := headscale.ListNodesInUser("user1")
+	user1Nodes, err := headscale.ListNodes("user1")
 	assertNoErr(t, err)
 	assert.Len(t, user1Nodes, len(allClients))
 
 	// Validate that all the old nodes are still present with user2
-	user2Nodes, err := headscale.ListNodesInUser("user2")
+	user2Nodes, err := headscale.ListNodes("user2")
 	assertNoErr(t, err)
 	assert.Len(t, user2Nodes, len(allClients)/2)
 

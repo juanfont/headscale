@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -112,12 +111,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErrGetHeadscale(t, err)
 
-	var listNodes []*v1.Node
-	for username := range spec {
-		nodes, err := headscale.ListNodesInUser(username)
-		assertNoErr(t, err)
-		listNodes = append(listNodes, nodes...)
-	}
+	listNodes, err := headscale.ListNodes()
 	assert.Equal(t, len(listNodes), len(allClients))
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -165,12 +159,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	success = pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
-	listNodes = nil
-	for username := range spec {
-		nodes, err := headscale.ListNodesInUser(username)
-		assertNoErr(t, err)
-		listNodes = append(listNodes, nodes...)
-	}
+	listNodes, err = headscale.ListNodes()
 	require.Equal(t, nodeCountBeforeLogout, len(listNodes))
 	t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
 

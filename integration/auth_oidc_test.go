@@ -116,17 +116,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	var listUsers []v1.User
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listUsers,
-	)
+	listUsers, err := headscale.ListUsers()
 	assertNoErr(t, err)
 
 	want := []v1.User{
@@ -249,7 +239,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 		emailVerified bool
 		cliUsers      []string
 		oidcUsers     []string
-		want          func(iss string) []v1.User
+		want          func(iss string) []*v1.User
 	}{
 		{
 			name: "no-migration-verified-email",
@@ -259,8 +249,8 @@ func TestOIDC024UserCreation(t *testing.T) {
 			emailVerified: true,
 			cliUsers:      []string{"user1", "user2"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []v1.User {
-				return []v1.User{
+			want: func(iss string) []*v1.User {
+				return []*v1.User{
 					{
 						Id:    1,
 						Name:  "user1",
@@ -296,8 +286,8 @@ func TestOIDC024UserCreation(t *testing.T) {
 			emailVerified: false,
 			cliUsers:      []string{"user1", "user2"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []v1.User {
-				return []v1.User{
+			want: func(iss string) []*v1.User {
+				return []*v1.User{
 					{
 						Id:    1,
 						Name:  "user1",
@@ -332,8 +322,8 @@ func TestOIDC024UserCreation(t *testing.T) {
 			emailVerified: true,
 			cliUsers:      []string{"user1", "user2"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []v1.User {
-				return []v1.User{
+			want: func(iss string) []*v1.User {
+				return []*v1.User{
 					{
 						Id:         1,
 						Name:       "user1",
@@ -360,8 +350,8 @@ func TestOIDC024UserCreation(t *testing.T) {
 			emailVerified: false,
 			cliUsers:      []string{"user1", "user2"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []v1.User {
-				return []v1.User{
+			want: func(iss string) []*v1.User {
+				return []*v1.User{
 					{
 						Id:    1,
 						Name:  "user1",
@@ -396,8 +386,8 @@ func TestOIDC024UserCreation(t *testing.T) {
 			emailVerified: true,
 			cliUsers:      []string{"user1.headscale.net", "user2.headscale.net"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []v1.User {
-				return []v1.User{
+			want: func(iss string) []*v1.User {
+				return []*v1.User{
 					// Hmm I think we will have to overwrite the initial name here
 					// createuser with "user1.headscale.net", but oidc with "user1"
 					{
@@ -426,8 +416,8 @@ func TestOIDC024UserCreation(t *testing.T) {
 			emailVerified: false,
 			cliUsers:      []string{"user1.headscale.net", "user2.headscale.net"},
 			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []v1.User {
-				return []v1.User{
+			want: func(iss string) []*v1.User {
+				return []*v1.User{
 					{
 						Id:    1,
 						Name:  "user1.headscale.net",
@@ -509,17 +499,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 
 			want := tt.want(oidcConfig.Issuer)
 
-			var listUsers []v1.User
-			err = executeAndUnmarshal(headscale,
-				[]string{
-					"headscale",
-					"users",
-					"list",
-					"--output",
-					"json",
-				},
-				&listUsers,
-			)
+			listUsers, err := headscale.ListUsers()
 			assertNoErr(t, err)
 
 			sort.Slice(listUsers, func(i, j int) bool {
@@ -587,23 +567,6 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	// Verify PKCE was used in authentication
-	headscale, err := scenario.Headscale()
-	assertNoErr(t, err)
-
-	var listUsers []v1.User
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listUsers,
-	)
-	assertNoErr(t, err)
-
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
 	})
@@ -664,17 +627,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	var listUsers []v1.User
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listUsers,
-	)
+	listUsers, err := headscale.ListUsers()
 	assertNoErr(t, err)
 	assert.Len(t, listUsers, 0)
 
@@ -687,19 +640,10 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	_, err = doLoginURL(ts.Hostname(), u)
 	assertNoErr(t, err)
 
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listUsers,
-	)
+	listUsers, err = headscale.ListUsers()
 	assertNoErr(t, err)
 	assert.Len(t, listUsers, 1)
-	wantUsers := []v1.User{
+	wantUsers := []*v1.User{
 		{
 			Id:         1,
 			Name:       "user1",
@@ -717,17 +661,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		t.Fatalf("unexpected users: %s", diff)
 	}
 
-	var listNodes []v1.Node
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--output",
-			"json",
-		},
-		&listNodes,
-	)
+	listNodes, err := headscale.ListNodes()
 	assertNoErr(t, err)
 	assert.Len(t, listNodes, 1)
 
@@ -751,19 +685,10 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	_, err = doLoginURL(ts.Hostname(), u)
 	assertNoErr(t, err)
 
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listUsers,
-	)
+	listUsers, err = headscale.ListUsers()
 	assertNoErr(t, err)
 	assert.Len(t, listUsers, 2)
-	wantUsers = []v1.User{
+	wantUsers = []*v1.User{
 		{
 			Id:         1,
 			Name:       "user1",
@@ -788,17 +713,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		t.Fatalf("unexpected users: %s", diff)
 	}
 
-	var listNodesAfterNewUserLogin []v1.Node
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--output",
-			"json",
-		},
-		&listNodesAfterNewUserLogin,
-	)
+	listNodesAfterNewUserLogin, err := headscale.ListNodes()
 	assertNoErr(t, err)
 	assert.Len(t, listNodesAfterNewUserLogin, 2)
 
@@ -827,19 +742,10 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	_, err = doLoginURL(ts.Hostname(), u)
 	assertNoErr(t, err)
 
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listUsers,
-	)
+	listUsers, err = headscale.ListUsers()
 	assertNoErr(t, err)
 	assert.Len(t, listUsers, 2)
-	wantUsers = []v1.User{
+	wantUsers = []*v1.User{
 		{
 			Id:         1,
 			Name:       "user1",
@@ -864,17 +770,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		t.Fatalf("unexpected users: %s", diff)
 	}
 
-	var listNodesAfterLoggingBackIn []v1.Node
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--output",
-			"json",
-		},
-		&listNodesAfterLoggingBackIn,
-	)
+	listNodesAfterLoggingBackIn, err := headscale.ListNodes()
 	assertNoErr(t, err)
 	assert.Len(t, listNodesAfterLoggingBackIn, 2)
 

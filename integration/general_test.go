@@ -183,19 +183,9 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 
 	t.Logf("all clients logged out")
 
-	for userName := range spec {
-		nodes, err := headscale.ListNodesInUser(userName)
-		if err != nil {
-			log.Error().
-				Err(err).
-				Str("user", userName).
-				Msg("Error listing nodes in user")
-
-			return
-		}
-
-		require.Len(t, nodes, 0)
-	}
+	nodes, err := headscale.ListNodes()
+	assertNoErr(t, err)
+	require.Len(t, nodes, 0)
 }
 
 // TestEphemeral2006DeletedTooQuickly verifies that ephemeral nodes are not
@@ -298,7 +288,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 	time.Sleep(3 * time.Minute)
 
 	for userName := range spec {
-		nodes, err := headscale.ListNodesInUser(userName)
+		nodes, err := headscale.ListNodes(userName)
 		if err != nil {
 			log.Error().
 				Err(err).
