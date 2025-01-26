@@ -1,6 +1,6 @@
 package main
 
-//go:generate go run ./main.go
+//go:generate go run ./gh-action-integration-generator.go
 
 import (
 	"bytes"
@@ -42,15 +42,19 @@ func updateYAML(tests []string) {
 	testsForYq := fmt.Sprintf("[%s]", strings.Join(tests, ", "))
 
 	yqCommand := fmt.Sprintf(
-		"yq eval '.jobs.integration-test.strategy.matrix.test = %s' ../../.github/workflows/test-integration.yaml -i",
+		"yq eval '.jobs.integration-test.strategy.matrix.test = %s' ./test-integration.yaml -i",
 		testsForYq,
 	)
 	cmd := exec.Command("bash", "-c", yqCommand)
 
-	var out bytes.Buffer
-	cmd.Stdout = &out
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
+		log.Printf("stdout: %s", stdout.String())
+		log.Printf("stderr: %s", stderr.String())
 		log.Fatalf("failed to run yq command: %s", err)
 	}
 

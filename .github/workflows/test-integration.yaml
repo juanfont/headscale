@@ -22,11 +22,13 @@ jobs:
           - TestACLNamedHostsCanReach
           - TestACLDevice1CanAccessDevice2
           - TestPolicyUpdateWhileRunningWithCLIInDatabase
+          - TestAuthKeyLogoutAndReloginSameUser
+          - TestAuthKeyLogoutAndReloginNewUser
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestOIDC024UserCreation
           - TestOIDCAuthenticationWithPKCE
-          - TestOIDCReloginSameNode
+          - TestOIDCReloginSameNodeNewUser
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
           - TestUserCommand
@@ -51,7 +53,6 @@ jobs:
           - TestDERPServerWebsocketScenario
           - TestPingAllByIP
           - TestPingAllByIPPublicDERP
-          - TestAuthKeyLogoutAndRelogin
           - TestEphemeral
           - TestEphemeralInAlternateTimezone
           - TestEphemeral2006DeletedTooQuickly
