@@ -69,7 +69,6 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		hsic.WithHostname(hostname),
 		hsic.WithPort(headscalePort),
 		hsic.WithCustomTLS(certHeadscale, keyHeadscale),
-		hsic.WithHostnameAsServerURL(),
 		hsic.WithDERPConfig(derpMap))
 	assertNoErrHeadscaleEnv(t, err)
 

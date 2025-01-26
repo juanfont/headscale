@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
-	"tailscale.com/types/key"
 )
 
 const (
@@ -79,7 +79,7 @@ var createNodeCmd = &cobra.Command{
 			)
 		}
 
-		machineKey, err := cmd.Flags().GetString("key")
+		registrationID, err := cmd.Flags().GetString("key")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -88,8 +88,7 @@ var createNodeCmd = &cobra.Command{
 			)
 		}
 
-		var mkey key.MachinePublic
-		err = mkey.UnmarshalText([]byte(machineKey))
+		_, err = types.RegistrationIDFromString(registrationID)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -108,7 +107,7 @@ var createNodeCmd = &cobra.Command{
 		}
 
 		request := &v1.DebugCreateNodeRequest{
-			Key:    machineKey,
+			Key:    registrationID,
 			Name:   name,
 			User:   user,
 			Routes: routes,

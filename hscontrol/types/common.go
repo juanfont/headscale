@@ -3,8 +3,10 @@ package types
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/ctxkey"
 )
@@ -122,4 +124,41 @@ func NotifyCtx(ctx context.Context, origin, hostname string) context.Context {
 	ctx2 = NotifyOriginKey.WithValue(ctx2, origin)
 	ctx2 = NotifyHostnameKey.WithValue(ctx2, hostname)
 	return ctx2
+}
+
+const RegistrationIDLength = 24
+
+type RegistrationID string
+
+func NewRegistrationID() (RegistrationID, error) {
+	rid, err := util.GenerateRandomStringURLSafe(RegistrationIDLength)
+	if err != nil {
+		return "", err
+	}
+
+	return RegistrationID(rid), nil
+}
+
+func MustRegistrationID() RegistrationID {
+	rid, err := NewRegistrationID()
+	if err != nil {
+		panic(err)
+	}
+	return rid
+}
+
+func RegistrationIDFromString(str string) (RegistrationID, error) {
+	if len(str) != RegistrationIDLength {
+		return "", fmt.Errorf("registration ID must be %d characters long", RegistrationIDLength)
+	}
+	return RegistrationID(str), nil
+}
+
+func (r RegistrationID) String() string {
+	return string(r)
+}
+
+type RegisterNode struct {
+	Node       Node
+	Registered chan struct{}
 }

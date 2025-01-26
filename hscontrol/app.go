@@ -96,7 +96,7 @@ type Headscale struct {
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
 
-	registrationCache *zcache.Cache[string, types.Node]
+	registrationCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
 
 	authProvider AuthProvider
 
@@ -123,7 +123,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
-	registrationCache := zcache.New[string, types.Node](
+	registrationCache := zcache.New[types.RegistrationID, types.RegisterNode](
 		registerCacheExpiration,
 		registerCacheCleanup,
 	)
@@ -462,7 +462,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/register/{mkey}", h.authProvider.RegisterHandler).Methods(http.MethodGet)
+	router.HandleFunc("/register/{registration_id}", h.authProvider.RegisterHandler).Methods(http.MethodGet)
 
 	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
 		router.HandleFunc("/oidc/callback", provider.OIDCCallbackHandler).Methods(http.MethodGet)

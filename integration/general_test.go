@@ -44,7 +44,6 @@ func TestPingAllByIP(t *testing.T) {
 		hsic.WithTestName("pingallbyip"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
 	)
 	assertNoErrHeadscaleEnv(t, err)
@@ -123,12 +122,9 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 
 			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
 			if https {
-				opts = []hsic.Option{
-					hsic.WithTestName("pingallbyip"),
-					hsic.WithEmbeddedDERPServerOnly(),
+				opts = append(opts, []hsic.Option{
 					hsic.WithTLS(),
-					hsic.WithHostnameAsServerURL(),
-				}
+				}...)
 			}
 
 			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, opts...)
@@ -172,7 +168,7 @@ func TestAuthKeyLogoutAndRelogin(t *testing.T) {
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
-				time.Sleep(3 * time.Minute)
+				time.Sleep(5 * time.Minute)
 			}
 
 			for userName := range spec {
@@ -1050,7 +1046,6 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		hsic.WithTestName("pingallbyipmany"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -1133,7 +1128,6 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 		hsic.WithTestName("deletenocrash"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 

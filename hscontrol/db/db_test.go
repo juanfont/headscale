@@ -260,8 +260,8 @@ func testCopyOfDatabase(src string) (string, error) {
 	return dst, err
 }
 
-func emptyCache() *zcache.Cache[string, types.Node] {
-	return zcache.New[string, types.Node](time.Minute, time.Hour)
+func emptyCache() *zcache.Cache[types.RegistrationID, types.RegisterNode] {
+	return zcache.New[types.RegistrationID, types.RegisterNode](time.Minute, time.Hour)
 }
 
 // requireConstraintFailed checks if the error is a constraint failure with

@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -544,7 +545,6 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		hsic.WithTestName("clipak"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 	)
 	assertNoErr(t, err)
 
@@ -812,14 +812,14 @@ func TestNodeTagCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	machineKeys := []string{
-		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
+	regIDs := []string{
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
 	}
-	nodes := make([]*v1.Node, len(machineKeys))
+	nodes := make([]*v1.Node, len(regIDs))
 	assert.Nil(t, err)
 
-	for index, machineKey := range machineKeys {
+	for index, regID := range regIDs {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -830,7 +830,7 @@ func TestNodeTagCommand(t *testing.T) {
 				"--user",
 				"user1",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -847,7 +847,7 @@ func TestNodeTagCommand(t *testing.T) {
 				"user1",
 				"register",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -857,7 +857,7 @@ func TestNodeTagCommand(t *testing.T) {
 
 		nodes[index] = &node
 	}
-	assert.Len(t, nodes, len(machineKeys))
+	assert.Len(t, nodes, len(regIDs))
 
 	var node v1.Node
 	err = executeAndUnmarshal(
@@ -889,7 +889,7 @@ func TestNodeTagCommand(t *testing.T) {
 	assert.ErrorContains(t, err, "tag must start with the string 'tag:'")
 
 	// Test list all nodes after added seconds
-	resultMachines := make([]*v1.Node, len(machineKeys))
+	resultMachines := make([]*v1.Node, len(regIDs))
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1054,18 +1054,17 @@ func TestNodeCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Pregenerated machine keys
-	machineKeys := []string{
-		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+	regIDs := []string{
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
 	}
-	nodes := make([]*v1.Node, len(machineKeys))
+	nodes := make([]*v1.Node, len(regIDs))
 	assert.Nil(t, err)
 
-	for index, machineKey := range machineKeys {
+	for index, regID := range regIDs {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -1076,7 +1075,7 @@ func TestNodeCommand(t *testing.T) {
 				"--user",
 				"node-user",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -1093,7 +1092,7 @@ func TestNodeCommand(t *testing.T) {
 				"node-user",
 				"register",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -1104,7 +1103,7 @@ func TestNodeCommand(t *testing.T) {
 		nodes[index] = &node
 	}
 
-	assert.Len(t, nodes, len(machineKeys))
+	assert.Len(t, nodes, len(regIDs))
 
 	// Test list all nodes after added seconds
 	var listAll []v1.Node
@@ -1135,14 +1134,14 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "node-4", listAll[3].GetName())
 	assert.Equal(t, "node-5", listAll[4].GetName())
 
-	otherUserMachineKeys := []string{
-		"mkey:b5b444774186d4217adcec407563a1223929465ee2c68a4da13af0d0185b4f8e",
-		"mkey:dc721977ac7415aafa87f7d4574cbe07c6b171834a6d37375782bdc1fb6b3584",
+	otherUserRegIDs := []string{
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
 	}
-	otherUserMachines := make([]*v1.Node, len(otherUserMachineKeys))
+	otherUserMachines := make([]*v1.Node, len(otherUserRegIDs))
 	assert.Nil(t, err)
 
-	for index, machineKey := range otherUserMachineKeys {
+	for index, regID := range otherUserRegIDs {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -1153,7 +1152,7 @@ func TestNodeCommand(t *testing.T) {
 				"--user",
 				"other-user",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -1170,7 +1169,7 @@ func TestNodeCommand(t *testing.T) {
 				"other-user",
 				"register",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -1181,7 +1180,7 @@ func TestNodeCommand(t *testing.T) {
 		otherUserMachines[index] = &node
 	}
 
-	assert.Len(t, otherUserMachines, len(otherUserMachineKeys))
+	assert.Len(t, otherUserMachines, len(otherUserRegIDs))
 
 	// Test list all nodes after added otherUser
 	var listAllWithotherUser []v1.Node
@@ -1294,17 +1293,16 @@ func TestNodeExpireCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Pregenerated machine keys
-	machineKeys := []string{
-		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
+	regIDs := []string{
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
 	}
-	nodes := make([]*v1.Node, len(machineKeys))
+	nodes := make([]*v1.Node, len(regIDs))
 
-	for index, machineKey := range machineKeys {
+	for index, regID := range regIDs {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -1315,7 +1313,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				"--user",
 				"node-expire-user",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -1332,7 +1330,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				"node-expire-user",
 				"register",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -1343,7 +1341,7 @@ func TestNodeExpireCommand(t *testing.T) {
 		nodes[index] = &node
 	}
 
-	assert.Len(t, nodes, len(machineKeys))
+	assert.Len(t, nodes, len(regIDs))
 
 	var listAll []v1.Node
 	err = executeAndUnmarshal(
@@ -1421,18 +1419,17 @@ func TestNodeRenameCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	// Pregenerated machine keys
-	machineKeys := []string{
-		"mkey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-		"mkey:8bc13285cee598acf76b1824a6f4490f7f2e3751b201e28aeb3b07fe81d5b4a1",
-		"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		"mkey:6abd00bb5fdda622db51387088c68e97e71ce58e7056aa54f592b6a8219d524c",
-		"mkey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
+	regIDs := []string{
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
+		types.MustRegistrationID().String(),
 	}
-	nodes := make([]*v1.Node, len(machineKeys))
+	nodes := make([]*v1.Node, len(regIDs))
 	assert.Nil(t, err)
 
-	for index, machineKey := range machineKeys {
+	for index, regID := range regIDs {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -1443,7 +1440,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				"--user",
 				"node-rename-command",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -1460,7 +1457,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				"node-rename-command",
 				"register",
 				"--key",
-				machineKey,
+				regID,
 				"--output",
 				"json",
 			},
@@ -1471,7 +1468,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		nodes[index] = &node
 	}
 
-	assert.Len(t, nodes, len(machineKeys))
+	assert.Len(t, nodes, len(regIDs))
 
 	var listAll []v1.Node
 	err = executeAndUnmarshal(
@@ -1589,7 +1586,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	// Randomly generated node key
-	machineKey := "mkey:688411b767663479632d44140f08a9fde87383adc7cdeb518f62ce28a17ef0aa"
+	regID := types.MustRegistrationID()
 
 	_, err = headscale.Execute(
 		[]string{
@@ -1601,7 +1598,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"--user",
 			"old-user",
 			"--key",
-			machineKey,
+			regID.String(),
 			"--output",
 			"json",
 		},
@@ -1618,7 +1615,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"old-user",
 			"register",
 			"--key",
-			machineKey,
+			regID.String(),
 			"--output",
 			"json",
 		},

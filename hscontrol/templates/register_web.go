@@ -6,6 +6,7 @@ import (
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
 	"github.com/chasefleming/elem-go/styles"
+	"github.com/juanfont/headscale/hscontrol/types"
 )
 
 var codeStyleRegisterWebAPI = styles.Props{
@@ -15,7 +16,7 @@ var codeStyleRegisterWebAPI = styles.Props{
 	styles.BackgroundColor: "#eee",
 }
 
-func RegisterWeb(key string) *elem.Element {
+func RegisterWeb(registrationID types.RegistrationID) *elem.Element {
 	return HtmlStructure(
 		elem.Title(nil, elem.Text("Registration - Headscale")),
 		elem.Body(attrs.Props{
@@ -27,7 +28,7 @@ func RegisterWeb(key string) *elem.Element {
 			elem.H2(nil, elem.Text("Machine registration")),
 			elem.P(nil, elem.Text("Run the command below in the headscale server to add this machine to your network: ")),
 			elem.Code(attrs.Props{attrs.Style: codeStyleRegisterWebAPI.ToInline()},
-				elem.Text(fmt.Sprintf("headscale nodes register --user USERNAME --key %s", key)),
+				elem.Text(fmt.Sprintf("headscale nodes register --user USERNAME --key %s", registrationID.String())),
 			),
 		),
 	)

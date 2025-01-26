@@ -105,7 +105,6 @@ func derpServerScenario(
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithPort(443),
 		hsic.WithTLS(),
-		hsic.WithHostnameAsServerURL(),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED": "true",
 			"HEADSCALE_DERP_UPDATE_FREQUENCY":    "10s",
