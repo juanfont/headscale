@@ -344,9 +344,7 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 			return
 		}
 
-		if len(nodes) != 0 {
-			t.Fatalf("expected no nodes, got %d in user %s", len(nodes), userName)
-		}
+		require.Len(t, nodes, 0)
 	}
 }
 
