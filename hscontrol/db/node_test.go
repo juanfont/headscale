@@ -756,7 +756,7 @@ func TestListEphemeralNodes(t *testing.T) {
 	assert.Equal(t, nodeEph.Hostname, ephemeralNodes[0].Hostname)
 }
 
-func TestRenameNode(t *testing.T) {
+func TestNodeNaming(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
@@ -786,6 +786,26 @@ func TestRenameNode(t *testing.T) {
 		RegisterMethod: util.RegisterMethodAuthKey,
 	}
 
+	// Using non-ASCII characters in the hostname can
+	// break your network, so they should be replaced when registering
+	// a node.
+	// https://github.com/juanfont/headscale/issues/2343
+	nodeInvalidHostname := types.Node{
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "我的电脑",
+		UserID:         user2.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+	}
+
+	nodeShortHostname := types.Node{
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "a",
+		UserID:         user2.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+	}
+
 	err = db.DB.Save(&node).Error
 	require.NoError(t, err)
 
@@ -798,6 +818,11 @@ func TestRenameNode(t *testing.T) {
 			return err
 		}
 		_, err = RegisterNode(tx, node2, nil, nil)
+		if err != nil {
+			return err
+		}
+		_, err = RegisterNode(tx, nodeInvalidHostname, ptr.To(mpp("100.64.0.66/32").Addr()), nil)
+		_, err = RegisterNode(tx, nodeShortHostname, ptr.To(mpp("100.64.0.67/32").Addr()), nil)
 		return err
 	})
 	require.NoError(t, err)
@@ -805,10 +830,12 @@ func TestRenameNode(t *testing.T) {
 	nodes, err := db.ListNodes()
 	require.NoError(t, err)
 
-	assert.Len(t, nodes, 2)
+	assert.Len(t, nodes, 4)
 
 	t.Logf("node1 %s %s", nodes[0].Hostname, nodes[0].GivenName)
 	t.Logf("node2 %s %s", nodes[1].Hostname, nodes[1].GivenName)
+	t.Logf("node3 %s %s", nodes[2].Hostname, nodes[2].GivenName)
+	t.Logf("node4 %s %s", nodes[3].Hostname, nodes[3].GivenName)
 
 	assert.Equal(t, nodes[0].Hostname, nodes[0].GivenName)
 	assert.NotEqual(t, nodes[1].Hostname, nodes[1].GivenName)
@@ -820,6 +847,10 @@ func TestRenameNode(t *testing.T) {
 	assert.Len(t, nodes[1].Hostname, 4)
 	assert.Len(t, nodes[0].GivenName, 4)
 	assert.Len(t, nodes[1].GivenName, 13)
+	assert.Contains(t, nodes[2].Hostname, "invalid-") // invalid chars
+	assert.Contains(t, nodes[2].GivenName, "invalid-")
+	assert.Contains(t, nodes[3].Hostname, "invalid-") // too short
+	assert.Contains(t, nodes[3].GivenName, "invalid-")
 
 	// Nodes can be renamed to a unique name
 	err = db.Write(func(tx *gorm.DB) error {
@@ -829,7 +860,7 @@ func TestRenameNode(t *testing.T) {
 
 	nodes, err = db.ListNodes()
 	require.NoError(t, err)
-	assert.Len(t, nodes, 2)
+	assert.Len(t, nodes, 4)
 	assert.Equal(t, "test", nodes[0].Hostname)
 	assert.Equal(t, "newname", nodes[0].GivenName)
 
@@ -841,7 +872,7 @@ func TestRenameNode(t *testing.T) {
 
 	nodes, err = db.ListNodes()
 	require.NoError(t, err)
-	assert.Len(t, nodes, 2)
+	assert.Len(t, nodes, 4)
 	assert.Equal(t, "test", nodes[0].Hostname)
 	assert.Equal(t, "newname", nodes[0].GivenName)
 	assert.Equal(t, "test", nodes[1].GivenName)
@@ -851,4 +882,16 @@ func TestRenameNode(t *testing.T) {
 		return RenameNode(tx, nodes[0].ID, "test")
 	})
 	assert.ErrorContains(t, err, "name is not unique")
+
+	// Rename invalid chars
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[2].ID, "我的电脑")
+	})
+	assert.ErrorContains(t, err, "lowercase ASCII letters numbers")
+
+	// Rename too short
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[3].ID, "a")
+	})
+	assert.ErrorContains(t, err, "longer than 2 or more characters")
 }

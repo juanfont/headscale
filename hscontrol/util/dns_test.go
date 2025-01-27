@@ -46,7 +46,7 @@ func TestCheckForFQDNRules(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := CheckForFQDNRules(tt.args.name); (err != nil) != tt.wantErr {
+			if err := ValidateHostname(tt.args.name); (err != nil) != tt.wantErr {
 				t.Errorf("CheckForFQDNRules() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

@@ -24,7 +24,7 @@ const (
 var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
-var ErrInvalidUserName = errors.New("invalid user name")
+var ErrInvalidHostName = errors.New("invalid hostname")
 
 // ValidateUsername checks if a username is valid.
 // It must be at least 2 characters long, start with a letter, and contain
@@ -64,26 +64,33 @@ func ValidateUsername(username string) error {
 	return nil
 }
 
-func CheckForFQDNRules(name string) error {
+func ValidateHostname(name string) error {
+	if len(name) < 2 {
+		return fmt.Errorf(
+			"hostname must be longer than 2 or more characters. %q doesn't comply with this rule: %w",
+			name,
+			ErrInvalidHostName,
+		)
+	}
 	if len(name) > LabelHostnameLength {
 		return fmt.Errorf(
-			"DNS segment must not be over 63 chars. %v doesn't comply with this rule: %w",
+			"DNS segment must not be over 63 chars. %q doesn't comply with this rule: %w",
 			name,
-			ErrInvalidUserName,
+			ErrInvalidHostName,
 		)
 	}
 	if strings.ToLower(name) != name {
 		return fmt.Errorf(
-			"DNS segment should be lowercase. %v doesn't comply with this rule: %w",
+			"DNS segment should be lowercase. %q doesn't comply with this rule: %w",
 			name,
-			ErrInvalidUserName,
+			ErrInvalidHostName,
 		)
 	}
 	if invalidDNSRegex.MatchString(name) {
 		return fmt.Errorf(
-			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
+			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %q doesn't comply with theses rules: %w",
 			name,
-			ErrInvalidUserName,
+			ErrInvalidHostName,
 		)
 	}
 
@@ -244,7 +251,7 @@ func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
 			return "", fmt.Errorf(
 				"label %v is more than 63 chars: %w",
 				elt,
-				ErrInvalidUserName,
+				ErrInvalidHostName,
 			)
 		}
 	}

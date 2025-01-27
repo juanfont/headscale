@@ -368,12 +368,18 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 		return
 	}
 
-	if node.Hostname != hostInfo.Hostname {
+	newHostname := strings.ToLower(hostInfo.Hostname)
+
+	if err := util.ValidateHostname(newHostname); err != nil {
+		newHostname = util.InvalidString()
+	}
+
+	if node.Hostname != newHostname {
 		if node.GivenNameHasBeenChanged() {
-			node.GivenName = util.ConvertWithFQDNRules(hostInfo.Hostname)
+			node.GivenName = util.ConvertWithFQDNRules(newHostname)
 		}
 
-		node.Hostname = hostInfo.Hostname
+		node.Hostname = newHostname
 	}
 }
 
