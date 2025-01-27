@@ -156,7 +156,12 @@ func isSupportedVersion(version tailcfg.CapabilityVersion) bool {
 	return version >= MinimumCapVersion
 }
 
-func rejectUnsupported(writer http.ResponseWriter, version tailcfg.CapabilityVersion, mkey key.MachinePublic, nkey key.NodePublic) bool {
+func rejectUnsupported(
+	writer http.ResponseWriter,
+	version tailcfg.CapabilityVersion,
+	mkey key.MachinePublic,
+	nkey key.NodePublic,
+) bool {
 	// Reject unsupported versions
 	if !isSupportedVersion(version) {
 		log.Error().
@@ -230,12 +235,38 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		return
 	}
 
-	body, _ := io.ReadAll(req.Body)
-	var registerRequest tailcfg.RegisterRequest
-	if err := json.Unmarshal(body, &registerRequest); err != nil {
-		httpError(writer, err, "Internal error", http.StatusInternalServerError)
+	registerRequest, registerResponse, err := func() (*tailcfg.RegisterRequest, []byte, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, nil, err
+		}
+		var registerRequest tailcfg.RegisterRequest
+		if err := json.Unmarshal(body, &registerRequest); err != nil {
+			return nil, nil, err
+		}
 
-		return
+		ns.nodeKey = registerRequest.NodeKey
+
+		resp, err := ns.headscale.handleRegister(req.Context(), registerRequest, ns.conn.Peer())
+		// TODO(kradalby): Here we could have two error types, one that is surfaced to the client
+		// and one that returns 500.
+		if err != nil {
+			return nil, nil, err
+		}
+
+		respBody, err := json.Marshal(resp)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return &registerRequest, respBody, nil
+	}()
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Error handling registration")
+		http.Error(writer, "Internal server error", http.StatusInternalServerError)
 	}
 
 	// Reject unsupported versions
@@ -243,35 +274,9 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		return
 	}
 
-	ns.nodeKey = registerRequest.NodeKey
-
-	resp, err := ns.headscale.handleRegister(req.Context(), registerRequest, ns.conn.Peer())
-	// TODO(kradalby): Here we could have two error types, one that is surfaced to the client
-	// and one that returns 500.
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Error handling registration")
-		http.Error(writer, "Internal error", http.StatusInternalServerError)
-
-		return
-	}
-
-	respBody, err := json.Marshal(resp)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Error handling registration")
-		http.Error(writer, "Internal server error", http.StatusInternalServerError)
-
-		return
-	}
-
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	_, err = writer.Write(respBody)
+	_, err = writer.Write(registerResponse)
 	if err != nil {
 		log.Error().
 			Caller().
