@@ -2,6 +2,7 @@ package util
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,94 +10,173 @@ import (
 	"tailscale.com/util/must"
 )
 
-func TestCheckForFQDNRules(t *testing.T) {
+func TestNormaliseHostname(t *testing.T) {
 	type args struct {
 		name string
 	}
 	tests := []struct {
 		name    string
 		args    args
+		want    string
 		wantErr bool
 	}{
 		{
-			name:    "valid: user",
+			name:    "valid: lowercase user",
 			args:    args{name: "valid-user"},
+			want:    "valid-user",
 			wantErr: false,
 		},
 		{
-			name:    "invalid: capitalized user",
+			name:    "normalise: capitalized user",
 			args:    args{name: "Invalid-CapItaLIzed-user"},
-			wantErr: true,
+			want:    "invalid-capitalized-user",
+			wantErr: false,
 		},
 		{
-			name:    "invalid: email as user",
+			name:    "normalise: email as user",
 			args:    args{name: "foo.bar@example.com"},
-			wantErr: true,
+			want:    "foo.barexample.com",
+			wantErr: false,
 		},
 		{
-			name:    "invalid: chars in user name",
+			name:    "normalise: chars in user name",
 			args:    args{name: "super-user+name"},
-			wantErr: true,
+			want:    "super-username",
+			wantErr: false,
 		},
 		{
-			name: "invalid: too long name for user",
+			name: "invalid: too long name truncated leaves trailing hyphen",
 			args: args{
 				name: "super-long-useruseruser-name-that-should-be-a-little-more-than-63-chars",
 			},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid: emoji stripped leaves trailing hyphen",
+			args:    args{name: "hostname-with-💩"},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name:    "normalise: multiple emojis stripped",
+			args:    args{name: "node-🎉-🚀-test"},
+			want:    "node---test",
+			wantErr: false,
+		},
+		{
+			name:    "invalid: only emoji becomes empty",
+			args:    args{name: "💩"},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid: emoji at start leaves leading hyphen",
+			args:    args{name: "🚀-rocket-node"},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid: emoji at end leaves trailing hyphen",
+			args:    args{name: "node-test-🎉"},
+			want:    "",
 			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := CheckForFQDNRules(tt.args.name); (err != nil) != tt.wantErr {
-				t.Errorf("CheckForFQDNRules() error = %v, wantErr %v", err, tt.wantErr)
+			got, err := NormaliseHostname(tt.args.name)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NormaliseHostname() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("NormaliseHostname() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestConvertWithFQDNRules(t *testing.T) {
+func TestValidateHostname(t *testing.T) {
 	tests := []struct {
-		name        string
-		hostname    string
-		dnsHostName string
+		name          string
+		hostname      string
+		wantErr       bool
+		errorContains string
 	}{
 		{
-			name:        "User1.test",
-			hostname:    "User1.Test",
-			dnsHostName: "user1.test",
+			name:     "valid lowercase",
+			hostname: "valid-hostname",
+			wantErr:  false,
 		},
 		{
-			name:        "User'1$2.test",
-			hostname:    "User'1$2.Test",
-			dnsHostName: "user12.test",
+			name:          "uppercase rejected",
+			hostname:      "MyHostname",
+			wantErr:       true,
+			errorContains: "must be lowercase",
 		},
 		{
-			name:        "User-^_12.local.test",
-			hostname:    "User-^_12.local.Test",
-			dnsHostName: "user-12.local.test",
+			name:          "too short",
+			hostname:      "a",
+			wantErr:       true,
+			errorContains: "too short",
 		},
 		{
-			name:        "User-MacBook-Pro",
-			hostname:    "User-MacBook-Pro",
-			dnsHostName: "user-macbook-pro",
+			name:          "too long",
+			hostname:      "a" + strings.Repeat("b", 63),
+			wantErr:       true,
+			errorContains: "too long",
 		},
 		{
-			name:        "User-Linux-Ubuntu/Fedora",
-			hostname:    "User-Linux-Ubuntu/Fedora",
-			dnsHostName: "user-linux-ubuntufedora",
+			name:          "emoji rejected",
+			hostname:      "hostname-💩",
+			wantErr:       true,
+			errorContains: "invalid characters",
 		},
 		{
-			name:        "User-[Space]123",
-			hostname:    "User-[ ]123",
-			dnsHostName: "user-123",
+			name:          "starts with hyphen",
+			hostname:      "-hostname",
+			wantErr:       true,
+			errorContains: "cannot start or end with a hyphen",
+		},
+		{
+			name:          "ends with hyphen",
+			hostname:      "hostname-",
+			wantErr:       true,
+			errorContains: "cannot start or end with a hyphen",
+		},
+		{
+			name:          "starts with dot",
+			hostname:      ".hostname",
+			wantErr:       true,
+			errorContains: "cannot start or end with a dot",
+		},
+		{
+			name:          "ends with dot",
+			hostname:      "hostname.",
+			wantErr:       true,
+			errorContains: "cannot start or end with a dot",
+		},
+		{
+			name:          "special characters",
+			hostname:      "host!@#$name",
+			wantErr:       true,
+			errorContains: "invalid characters",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fqdnHostName := ConvertWithFQDNRules(tt.hostname)
-			assert.Equal(t, tt.dnsHostName, fqdnHostName)
+			err := ValidateHostname(tt.hostname)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateHostname() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errorContains != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("ValidateHostname() error = %v, should contain %q", err, tt.errorContains)
+				}
+			}
 		})
 	}
 }

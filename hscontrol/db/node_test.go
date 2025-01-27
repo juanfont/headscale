@@ -640,7 +640,7 @@ func TestListEphemeralNodes(t *testing.T) {
 	assert.Equal(t, nodeEph.Hostname, ephemeralNodes[0].Hostname)
 }
 
-func TestRenameNode(t *testing.T) {
+func TestNodeNaming(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	if err != nil {
 		t.Fatalf("creating db: %s", err)
@@ -672,6 +672,26 @@ func TestRenameNode(t *testing.T) {
 		Hostinfo:       &tailcfg.Hostinfo{},
 	}
 
+	// Using non-ASCII characters in the hostname can
+	// break your network, so they should be replaced when registering
+	// a node.
+	// https://github.com/juanfont/headscale/issues/2343
+	nodeInvalidHostname := types.Node{
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "我的电脑",
+		UserID:         user2.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+	}
+
+	nodeShortHostname := types.Node{
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "a",
+		UserID:         user2.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+	}
+
 	err = db.DB.Save(&node).Error
 	require.NoError(t, err)
 
@@ -684,7 +704,11 @@ func TestRenameNode(t *testing.T) {
 			return err
 		}
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
-
+		if err != nil {
+			return err
+		}
+		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, ptr.To(mpp("100.64.0.66/32").Addr()), nil)
+		_, err = RegisterNodeForTest(tx, nodeShortHostname, ptr.To(mpp("100.64.0.67/32").Addr()), nil)
 		return err
 	})
 	require.NoError(t, err)
@@ -692,10 +716,12 @@ func TestRenameNode(t *testing.T) {
 	nodes, err := db.ListNodes()
 	require.NoError(t, err)
 
-	assert.Len(t, nodes, 2)
+	assert.Len(t, nodes, 4)
 
 	t.Logf("node1 %s %s", nodes[0].Hostname, nodes[0].GivenName)
 	t.Logf("node2 %s %s", nodes[1].Hostname, nodes[1].GivenName)
+	t.Logf("node3 %s %s", nodes[2].Hostname, nodes[2].GivenName)
+	t.Logf("node4 %s %s", nodes[3].Hostname, nodes[3].GivenName)
 
 	assert.Equal(t, nodes[0].Hostname, nodes[0].GivenName)
 	assert.NotEqual(t, nodes[1].Hostname, nodes[1].GivenName)
@@ -707,6 +733,10 @@ func TestRenameNode(t *testing.T) {
 	assert.Len(t, nodes[1].Hostname, 4)
 	assert.Len(t, nodes[0].GivenName, 4)
 	assert.Len(t, nodes[1].GivenName, 13)
+	assert.Contains(t, nodes[2].Hostname, "invalid-") // invalid chars
+	assert.Contains(t, nodes[2].GivenName, "invalid-")
+	assert.Contains(t, nodes[3].Hostname, "invalid-") // too short
+	assert.Contains(t, nodes[3].GivenName, "invalid-")
 
 	// Nodes can be renamed to a unique name
 	err = db.Write(func(tx *gorm.DB) error {
@@ -716,7 +746,7 @@ func TestRenameNode(t *testing.T) {
 
 	nodes, err = db.ListNodes()
 	require.NoError(t, err)
-	assert.Len(t, nodes, 2)
+	assert.Len(t, nodes, 4)
 	assert.Equal(t, "test", nodes[0].Hostname)
 	assert.Equal(t, "newname", nodes[0].GivenName)
 
@@ -728,7 +758,7 @@ func TestRenameNode(t *testing.T) {
 
 	nodes, err = db.ListNodes()
 	require.NoError(t, err)
-	assert.Len(t, nodes, 2)
+	assert.Len(t, nodes, 4)
 	assert.Equal(t, "test", nodes[0].Hostname)
 	assert.Equal(t, "newname", nodes[0].GivenName)
 	assert.Equal(t, "test", nodes[1].GivenName)
@@ -738,6 +768,149 @@ func TestRenameNode(t *testing.T) {
 		return RenameNode(tx, nodes[0].ID, "test")
 	})
 	assert.ErrorContains(t, err, "name is not unique")
+
+	// Rename invalid chars
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[2].ID, "我的电脑")
+	})
+	assert.ErrorContains(t, err, "invalid characters")
+
+	// Rename too short
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[3].ID, "a")
+	})
+	assert.ErrorContains(t, err, "at least 2 characters")
+
+	// Rename with emoji
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[0].ID, "hostname-with-💩")
+	})
+	assert.ErrorContains(t, err, "invalid characters")
+
+	// Rename with only emoji
+	err = db.Write(func(tx *gorm.DB) error {
+		return RenameNode(tx, nodes[0].ID, "🚀")
+	})
+	assert.ErrorContains(t, err, "invalid characters")
+}
+
+func TestRenameNodeComprehensive(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	if err != nil {
+		t.Fatalf("creating db: %s", err)
+	}
+
+	user, err := db.CreateUser(types.User{Name: "test"})
+	require.NoError(t, err)
+
+	node := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "testnode",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
+	}
+
+	err = db.DB.Save(&node).Error
+	require.NoError(t, err)
+
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := RegisterNodeForTest(tx, node, nil, nil)
+		return err
+	})
+	require.NoError(t, err)
+
+	nodes, err := db.ListNodes()
+	require.NoError(t, err)
+	assert.Len(t, nodes, 1)
+
+	tests := []struct {
+		name    string
+		newName string
+		wantErr string
+	}{
+		{
+			name:    "uppercase_rejected",
+			newName: "User2-Host",
+			wantErr: "must be lowercase",
+		},
+		{
+			name:    "underscore_rejected",
+			newName: "test_node",
+			wantErr: "invalid characters",
+		},
+		{
+			name:    "at_sign_uppercase_rejected",
+			newName: "Test@Host",
+			wantErr: "must be lowercase",
+		},
+		{
+			name:    "at_sign_rejected",
+			newName: "test@host",
+			wantErr: "invalid characters",
+		},
+		{
+			name:    "chinese_chars_with_dash_rejected",
+			newName: "server-北京-01",
+			wantErr: "invalid characters",
+		},
+		{
+			name:    "chinese_only_rejected",
+			newName: "我的电脑",
+			wantErr: "invalid characters",
+		},
+		{
+			name:    "emoji_with_text_rejected",
+			newName: "laptop-🚀",
+			wantErr: "invalid characters",
+		},
+		{
+			name:    "mixed_chinese_emoji_rejected",
+			newName: "测试💻机器",
+			wantErr: "invalid characters",
+		},
+		{
+			name:    "only_emojis_rejected",
+			newName: "🎉🎊",
+			wantErr: "invalid characters",
+		},
+		{
+			name:    "only_at_signs_rejected",
+			newName: "@@@",
+			wantErr: "invalid characters",
+		},
+		{
+			name:    "starts_with_dash_rejected",
+			newName: "-test",
+			wantErr: "cannot start or end with a hyphen",
+		},
+		{
+			name:    "ends_with_dash_rejected",
+			newName: "test-",
+			wantErr: "cannot start or end with a hyphen",
+		},
+		{
+			name:    "too_long_hostname_rejected",
+			newName: "this-is-a-very-long-hostname-that-exceeds-sixty-three-characters-limit",
+			wantErr: "must not exceed 63 characters",
+		},
+		{
+			name:    "too_short_hostname_rejected",
+			newName: "a",
+			wantErr: "at least 2 characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := db.Write(func(tx *gorm.DB) error {
+				return RenameNode(tx, nodes[0].ID, tt.newName)
+			})
+			assert.ErrorContains(t, err, tt.wantErr)
+		})
+	}
 }
 
 func TestListPeers(t *testing.T) {

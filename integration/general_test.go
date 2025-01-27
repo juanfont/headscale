@@ -514,7 +514,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 
 	hostnames := map[string]string{
 		"1": "user1-host",
-		"2": "User2-Host",
+		"2": "user2-host",
 		"3": "user3-host",
 	}
 
@@ -577,7 +577,11 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		for _, node := range nodes {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			assert.Equal(ct, hostname, node.GetName(), "Node name should match hostname")
-			assert.Equal(ct, util.ConvertWithFQDNRules(hostname), node.GetGivenName(), "Given name should match FQDN rules")
+
+			// GivenName is normalized (lowercase, invalid chars stripped)
+			normalised, err := util.NormaliseHostname(hostname)
+			assert.NoError(ct, err)
+			assert.Equal(ct, normalised, node.GetGivenName(), "Given name should match FQDN rules")
 		}
 	}, 20*time.Second, 1*time.Second)
 
@@ -675,12 +679,13 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		for _, node := range nodes {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			givenName := fmt.Sprintf("%d-givenname", node.GetId())
-			if node.GetName() != hostname+"NEW" || node.GetGivenName() != givenName {
+			// Hostnames are lowercased before being stored, so "NEW" becomes "new"
+			if node.GetName() != hostname+"new" || node.GetGivenName() != givenName {
 				return false
 			}
 		}
 		return true
-	}, time.Second, 50*time.Millisecond, "hostname updates should be reflected in node list with NEW suffix")
+	}, time.Second, 50*time.Millisecond, "hostname updates should be reflected in node list with new suffix")
 }
 
 func TestExpireNode(t *testing.T) {
