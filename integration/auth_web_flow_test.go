@@ -146,9 +146,6 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 
 	t.Logf("all clients logged in again")
 
-	allClients, err = scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
-
 	allIps, err = scenario.ListTailscaleClientsIPs()
 	assertNoErrListClientIPs(t, err)
 
