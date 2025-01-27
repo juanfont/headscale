@@ -152,7 +152,7 @@ func (h *Headscale) handleRegister(
 		newNode := types.RegisterNode{
 			Node: types.Node{
 				MachineKey: machineKey,
-				Hostname:   regReq.Hostinfo.Hostname,
+				Hostname:   strings.ToLower(regReq.Hostinfo.Hostname),
 				NodeKey:    regReq.NodeKey,
 				LastSeen:   &now,
 				Expiry:     &time.Time{},
@@ -386,7 +386,7 @@ func (h *Headscale) handleAuthKey(
 		now := time.Now().UTC()
 
 		nodeToRegister := types.Node{
-			Hostname:       registerRequest.Hostinfo.Hostname,
+			Hostname:       strings.ToLower(registerRequest.Hostinfo.Hostname),
 			UserID:         pak.User.ID,
 			User:           pak.User,
 			MachineKey:     machineKey,

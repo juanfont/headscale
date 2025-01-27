@@ -262,7 +262,7 @@ func SetTags(
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	err := util.CheckForFQDNRules(
+	err := util.ValidateHostname(
 		newName,
 	)
 	if err != nil {
@@ -458,6 +458,12 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 
 	node.IPv4 = ipv4
 	node.IPv6 = ipv6
+
+	if err := util.ValidateHostname(node.Hostname); err != nil {
+		newHostname := util.InvalidString()
+		log.Info().Err(err).Str("invalid-hostname", node.Hostname).Str("new-hostname", newHostname).Msgf("Invalid hostname, replacing")
+		node.Hostname = newHostname
+	}
 
 	if node.GivenName == "" {
 		givenName, err := ensureUniqueGivenName(tx, node.Hostname)
