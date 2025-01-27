@@ -80,9 +80,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		noiseServer.earlyNoise,
 	)
 	if err != nil {
-		log.Error().Err(err).Msg("noise upgrade failed")
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-
+		httpError(writer, err, "noise upgrade failed", http.StatusInternalServerError)
 		return
 	}
 

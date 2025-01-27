@@ -134,34 +134,28 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-	registrationIdStr, ok := vars["registration_id"]
+	registrationIdStr, _ := vars["registration_id"]
 
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
 	// the template and log an error.
 	registrationId, err := types.RegistrationIDFromString(registrationIdStr)
 	if err != nil {
-		http.Error(writer, "invalid registration ID", http.StatusBadRequest)
+		httpError(writer, err, "invalid registration ID", http.StatusBadRequest)
 		return
 	}
-
-	log.Debug().
-		Caller().
-		Str("registration_id", registrationId.String()).
-		Bool("ok", ok).
-		Msg("Received oidc register call")
 
 	// Set the state and nonce cookies to protect against CSRF attacks
 	state, err := setCSRFCookie(writer, req, "state")
 	if err != nil {
-		http.Error(writer, "Internal server error", http.StatusInternalServerError)
+		httpError(writer, err, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	// Set the state and nonce cookies to protect against CSRF attacks
 	nonce, err := setCSRFCookie(writer, req, "nonce")
 	if err != nil {
-		http.Error(writer, "Internal server error", http.StatusInternalServerError)
+		httpError(writer, err, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -225,35 +219,34 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 ) {
 	code, state, err := extractCodeAndStateParamFromRequest(req)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusBadRequest)
+		httpError(writer, err, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	log.Debug().Interface("cookies", req.Cookies()).Msg("Received oidc callback")
 	cookieState, err := req.Cookie("state")
 	if err != nil {
-		http.Error(writer, "state not found", http.StatusBadRequest)
+		httpError(writer, err, "state not found", http.StatusBadRequest)
 		return
 	}
 
 	if state != cookieState.Value {
-		http.Error(writer, "state did not match", http.StatusBadRequest)
+		httpError(writer, err, "state did not match", http.StatusBadRequest)
 		return
 	}
 
 	idToken, err := a.extractIDToken(req.Context(), code, state)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusBadRequest)
+		httpError(writer, err, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	nonce, err := req.Cookie("nonce")
 	if err != nil {
-		http.Error(writer, "nonce not found", http.StatusBadRequest)
+		httpError(writer, err, "nonce not found", http.StatusBadRequest)
 		return
 	}
 	if idToken.Nonce != nonce.Value {
-		http.Error(writer, "nonce did not match", http.StatusBadRequest)
+		httpError(writer, err, "nonce did not match", http.StatusBadRequest)
 		return
 	}
 
@@ -261,28 +254,29 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	var claims types.OIDCClaims
 	if err := idToken.Claims(&claims); err != nil {
-		http.Error(writer, fmt.Errorf("failed to decode ID token claims: %w", err).Error(), http.StatusInternalServerError)
+		err = fmt.Errorf("decoding ID token claims: %w", err)
+		httpError(writer, err, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if err := validateOIDCAllowedDomains(a.cfg.AllowedDomains, &claims); err != nil {
-		http.Error(writer, err.Error(), http.StatusUnauthorized)
+		httpError(writer, err, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	if err := validateOIDCAllowedGroups(a.cfg.AllowedGroups, &claims); err != nil {
-		http.Error(writer, err.Error(), http.StatusUnauthorized)
+		httpError(writer, err, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	if err := validateOIDCAllowedUsers(a.cfg.AllowedUsers, &claims); err != nil {
-		http.Error(writer, err.Error(), http.StatusUnauthorized)
+		httpError(writer, err, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	user, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		httpError(writer, err, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -297,7 +291,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		verb := "Reauthenticated"
 		newNode, err := a.handleRegistrationID(user, *registrationId, nodeExpiry)
 		if err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError)
+			httpError(writer, err, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -308,7 +302,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		// TODO(kradalby): replace with go-elem
 		content, err := renderOIDCCallbackTemplate(user, verb)
 		if err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError)
+			httpError(writer, err, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -323,7 +317,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	// Neither node nor machine key was found in the state cache meaning
 	// that we could not reauth nor register the node.
-	http.Error(writer, "login session expired, try again", http.StatusInternalServerError)
+	httpError(writer, nil, "login session expired, try again", http.StatusInternalServerError)
 	return
 }
 
@@ -423,7 +417,6 @@ func validateOIDCAllowedUsers(
 ) error {
 	if len(allowedUsers) > 0 &&
 		!slices.Contains(allowedUsers, claims.Email) {
-		log.Trace().Msg("authenticated principal does not match any allowed user")
 		return errOIDCAllowedUsers
 	}
 
