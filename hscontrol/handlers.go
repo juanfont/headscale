@@ -32,6 +32,12 @@ const (
 	reservedResponseHeaderSize = 4
 )
 
+// httpError logs an error and sends an HTTP error response with the given
+func httpError(w http.ResponseWriter, err error, userError string, code int) {
+	log.Error().Err(err).Msg(userError)
+	http.Error(w, userError, code)
+}
+
 var ErrRegisterMethodCLIDoesNotSupportExpire = errors.New(
 	"machines registered with CLI does not support expire",
 )
@@ -52,7 +58,7 @@ func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error)
 	return tailcfg.CapabilityVersion(clientCapabilityVersion), nil
 }
 
-func (h *Headscale) handleVerifyRequest(
+func (h *Headscale) derpRequestIsAllowed(
 	req *http.Request,
 ) (bool, error) {
 	body, err := io.ReadAll(req.Body)
@@ -79,21 +85,14 @@ func (h *Headscale) VerifyHandler(
 	req *http.Request,
 ) {
 	if req.Method != http.MethodPost {
-		http.Error(writer, "Wrong method", http.StatusMethodNotAllowed)
-
+		httpError(writer, nil, "Wrong method", http.StatusMethodNotAllowed)
 		return
 	}
-	log.Debug().
-		Str("handler", "/verify").
-		Msg("verify client")
 
-	allow, err := h.handleVerifyRequest(req)
+	allow, err := h.derpRequestIsAllowed(req)
 	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to verify client")
-		http.Error(writer, "Internal error", http.StatusInternalServerError)
+		httpError(writer, err, "Internal error", http.StatusInternalServerError)
+		return
 	}
 
 	resp := tailcfg.DERPAdmitClientResponse{
@@ -101,14 +100,7 @@ func (h *Headscale) VerifyHandler(
 	}
 
 	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(writer).Encode(resp)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
-	}
+	json.NewEncoder(writer).Encode(resp)
 }
 
 // KeyHandler provides the Headscale pub key
@@ -120,20 +112,9 @@ func (h *Headscale) KeyHandler(
 	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
 	capVer, err := parseCabailityVersion(req)
 	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("could not get capability version")
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		writer.WriteHeader(http.StatusInternalServerError)
-
+		httpError(writer, err, "Internal error", http.StatusInternalServerError)
 		return
 	}
-
-	log.Debug().
-		Str("handler", "/key").
-		Int("cap_ver", int(capVer)).
-		Msg("New noise client")
 
 	// TS2021 (Tailscale v2 protocol) requires to have a different key
 	if capVer >= NoiseCapabilityVersion {
@@ -141,14 +122,7 @@ func (h *Headscale) KeyHandler(
 			PublicKey: h.noisePrivateKey.Public(),
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		writer.WriteHeader(http.StatusOK)
-		err = json.NewEncoder(writer).Encode(resp)
-		if err != nil {
-			log.Error().
-				Caller().
-				Err(err).
-				Msg("Failed to write response")
-		}
+		json.NewEncoder(writer).Encode(resp)
 
 		return
 	}
@@ -169,18 +143,10 @@ func (h *Headscale) HealthHandler(
 
 		if err != nil {
 			writer.WriteHeader(http.StatusInternalServerError)
-			log.Error().Caller().Err(err).Msg("health check failed")
 			res.Status = "fail"
 		}
 
-		buf, err := json.Marshal(res)
-		if err != nil {
-			log.Error().Caller().Err(err).Msg("marshal failed")
-		}
-		_, err = writer.Write(buf)
-		if err != nil {
-			log.Error().Caller().Err(err).Msg("write failed")
-		}
+		json.NewEncoder(writer).Encode(res)
 	}
 
 	if err := h.db.PingDB(req.Context()); err != nil {
@@ -233,16 +199,11 @@ func (a *AuthProviderWeb) RegisterHandler(
 	// the template and log an error.
 	registrationId, err := types.RegistrationIDFromString(registrationIdStr)
 	if err != nil {
-		http.Error(writer, "invalid registration ID", http.StatusBadRequest)
+		httpError(writer, err, "invalid registration ID", http.StatusBadRequest)
 		return
 	}
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	if _, err := writer.Write([]byte(templates.RegisterWeb(registrationId).Render())); err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
-	}
+	writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
 }

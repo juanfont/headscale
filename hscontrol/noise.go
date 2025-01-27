@@ -160,12 +160,7 @@ func isSupportedVersion(version tailcfg.CapabilityVersion) bool {
 func rejectUnsupported(writer http.ResponseWriter, version tailcfg.CapabilityVersion) bool {
 	// Reject unsupported versions
 	if !isSupportedVersion(version) {
-		log.Info().
-			Caller().
-			Int("min_version", int(MinimumCapVersion)).
-			Int("client_version", int(version)).
-			Msg("unsupported client connected")
-		http.Error(writer, "unsupported client version", http.StatusBadRequest)
+		httpError(writer, nil, "unsupported client version", http.StatusBadRequest)
 
 		return true
 	}
@@ -190,22 +185,9 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 	var mapRequest tailcfg.MapRequest
 	if err := json.Unmarshal(body, &mapRequest); err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot parse MapRequest")
-		http.Error(writer, "Internal error", http.StatusInternalServerError)
-
+		httpError(writer, err, "Internal error", http.StatusInternalServerError)
 		return
 	}
-
-	log.Trace().
-		Caller().
-		Str("handler", "NoisePollNetMap").
-		Any("headers", req.Header).
-		Str("node", mapRequest.Hostinfo.Hostname).
-		Int("capver", int(mapRequest.Version)).
-		Msg("PollNetMapHandler called")
 
 	// Reject unsupported versions
 	if rejectUnsupported(writer, mapRequest.Version) {
@@ -220,11 +202,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		key.NodePublic{},
 	)
 	if err != nil {
-		log.Error().
-			Str("handler", "NoisePollNetMap").
-			Msgf("Failed to fetch node from the database with node key: %s", mapRequest.NodeKey.String())
-		http.Error(writer, "Internal error", http.StatusInternalServerError)
-
+		httpError(writer, err, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
@@ -242,26 +220,16 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	log.Trace().Caller().Msgf("Noise registration handler for client %s", req.RemoteAddr)
 	if req.Method != http.MethodPost {
-		http.Error(writer, "Wrong method", http.StatusMethodNotAllowed)
+		httpError(writer, nil, "Wrong method", http.StatusMethodNotAllowed)
 
 		return
 	}
 
-	log.Trace().
-		Any("headers", req.Header).
-		Caller().
-		Msg("Headers")
-
 	body, _ := io.ReadAll(req.Body)
 	var registerRequest tailcfg.RegisterRequest
 	if err := json.Unmarshal(body, &registerRequest); err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Cannot parse RegisterRequest")
-		http.Error(writer, "Internal error", http.StatusInternalServerError)
+		httpError(writer, err, "Internal error", http.StatusInternalServerError)
 
 		return
 	}
