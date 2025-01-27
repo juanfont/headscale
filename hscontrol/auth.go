@@ -169,9 +169,10 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		UserID:         pak.User.ID,
 		User:           pak.User,
 		MachineKey:     machineKey,
-		RegisterMethod: util.RegisterMethodAuthKey,
 		NodeKey:        regReq.NodeKey,
+		Hostinfo:       regReq.Hostinfo,
 		LastSeen:       ptr.To(time.Now()),
+		RegisterMethod: util.RegisterMethodAuthKey,
 
 		// TODO(kradalby): This should not be set on the node,
 		// they should be looked up through the key, which is
@@ -241,9 +242,10 @@ func (h *Headscale) handleRegisterInteractive(
 
 	newNode := types.RegisterNode{
 		Node: types.Node{
-			MachineKey: machineKey,
 			Hostname:   regReq.Hostinfo.Hostname,
+			MachineKey: machineKey,
 			NodeKey:    regReq.NodeKey,
+			Hostinfo:   regReq.Hostinfo,
 			LastSeen:   ptr.To(time.Now()),
 		},
 		Registered: make(chan struct{}),
