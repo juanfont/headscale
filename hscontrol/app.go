@@ -24,6 +24,7 @@ import (
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
 	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
@@ -559,6 +560,11 @@ func (h *Headscale) Serve() error {
 	if dumpConfig {
 		spew.Dump(h.cfg)
 	}
+
+	log.Info().
+		Caller().
+		Str("minimum_version", capver.TailscaleVersion(MinimumCapVersion)).
+		Msg("Clients with a lower minimum version will be rejected")
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
