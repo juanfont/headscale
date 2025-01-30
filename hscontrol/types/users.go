@@ -29,8 +29,9 @@ type User struct {
 	// you can have multiple users with the same name in OIDC,
 	// but not if you only run with CLI users.
 
-	// Username for the user, is used if email is empty
+	// Name (username) for the user, is used if email is empty
 	// Should not be used, please use Username().
+	// It is unique if ProviderIdentifier is not set.
 	Name string
 
 	// Typically the full name of the user
@@ -40,9 +41,11 @@ type User struct {
 	// Should not be used, please use Username().
 	Email string
 
-	// Unique identifier of the user from OIDC,
-	// comes from `sub` claim in the OIDC token
-	// and is used to lookup the user.
+	// ProviderIdentifier is a unique or not set identifier of the
+	// user from OIDC. It is the combination of `iss`
+	// and `sub` claim in the OIDC token.
+	// It is unique if set.
+	// It is unique together with Name.
 	ProviderIdentifier sql.NullString
 
 	// Provider is the origin of the user account,
