@@ -7,7 +7,14 @@
 - `oidc.map_legacy_users` is now `false` by default
   [#2350](https://github.com/juanfont/headscale/pull/2350)
 
-## 0.24.1 (2025-01-xx)
+## 0.24.2 (2025-01-30)
+
+### Changes
+
+- Fix issue where email and username being equal fails to match in Policy
+  [#2388](https://github.com/juanfont/headscale/pull/2388)
+
+## 0.24.1 (2025-01-23)
 
 ### Changes
 
