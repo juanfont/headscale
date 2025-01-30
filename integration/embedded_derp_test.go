@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 	"testing"
 	"time"
 
@@ -48,6 +50,28 @@ func TestDERPServerScenario(t *testing.T) {
 				t.Fail()
 			}
 		}
+
+		hsServer, err := scenario.Headscale()
+		assertNoErrGetHeadscale(t, err)
+
+		derpRegion := tailcfg.DERPRegion{
+			RegionCode: "test-derpverify",
+			RegionName: "TestDerpVerify",
+			Nodes: []*tailcfg.DERPNode{
+				{
+					Name:             "TestDerpVerify",
+					RegionID:         900,
+					HostName:         hsServer.GetHostname(),
+					STUNPort:         3478,
+					STUNOnly:         false,
+					DERPPort:         443,
+					InsecureForTests: true,
+				},
+			},
+		}
+
+		fakeKey := key.NewNode()
+		DERPVerify(t, fakeKey, derpRegion, false)
 	})
 }
 
@@ -106,9 +130,10 @@ func derpServerScenario(
 		hsic.WithPort(443),
 		hsic.WithTLS(),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED": "true",
-			"HEADSCALE_DERP_UPDATE_FREQUENCY":    "10s",
-			"HEADSCALE_LISTEN_ADDR":              "0.0.0.0:443",
+			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":   "true",
+			"HEADSCALE_DERP_UPDATE_FREQUENCY":      "10s",
+			"HEADSCALE_LISTEN_ADDR":                "0.0.0.0:443",
+			"HEADSCALE_DERP_SERVER_VERIFY_CLIENTS": "true",
 		}),
 	)
 	assertNoErrHeadscaleEnv(t, err)
