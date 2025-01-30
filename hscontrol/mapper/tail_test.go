@@ -195,6 +195,7 @@ func TestTailNode(t *testing.T) {
 				0,
 				polMan,
 				cfg,
+				[]string{},
 			)
 
 			if (err != nil) != tt.wantErr {
@@ -248,6 +249,7 @@ func TestNodeExpiry(t *testing.T) {
 				0,
 				&policy.PolicyManagerV1{},
 				&types.Config{},
+				[]string{},
 			)
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)

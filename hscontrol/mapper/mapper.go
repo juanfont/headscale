@@ -114,6 +114,7 @@ func generateUserProfiles(
 func generateDNSConfig(
 	cfg *types.Config,
 	node *types.Node,
+	nodeAttrs []string,
 ) *tailcfg.DNSConfig {
 	if cfg.TailcfgDNSConfig == nil {
 		return nil
@@ -121,7 +122,7 @@ func generateDNSConfig(
 
 	dnsConfig := cfg.TailcfgDNSConfig.Clone()
 
-	addNextDNSMetadata(dnsConfig.Resolvers, node)
+	addNextDNSMetadata(dnsConfig.Resolvers, node, nodeAttrs)
 
 	return dnsConfig
 }
@@ -133,12 +134,27 @@ func generateDNSConfig(
 //
 // This will produce a resolver like:
 // `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
-func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
+func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node, nodeAttrs []string) {
 	for _, resolver := range resolvers {
 		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
+
+			idx := slices.IndexFunc(nodeAttrs, func(item string) bool { return strings.HasPrefix(item, "nextdns:") && item != "nextdns:no-device-info" })
+
+			if idx != -1 {
+				nextDNSProfile := strings.Split(nodeAttrs[idx], ":")[1]
+				resolver.Addr = fmt.Sprintf("%s/%s", nextDNSDoHPrefix, nextDNSProfile)
+			}
+
+			if slices.Contains(nodeAttrs, "nextdns:no-device-info") {
+				continue
+			}
+
 			attrs := url.Values{
-				"device_name":  []string{node.Hostname},
-				"device_model": []string{node.Hostinfo.OS},
+				"device_name": []string{node.Hostname},
+			}
+
+			if node.Hostinfo != nil {
+				attrs.Add("device_model", node.Hostinfo.OS)
 			}
 
 			if len(node.IPs()) > 0 {
@@ -157,7 +173,13 @@ func (m *Mapper) fullMapResponse(
 	peers types.Nodes,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
-	resp, err := m.baseWithConfigMapResponse(node, capVer)
+
+	nodeAttrs, err := m.polMan.NodeAttributes(node)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := m.baseWithConfigMapResponse(node, capVer, nodeAttrs)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +192,7 @@ func (m *Mapper) fullMapResponse(
 		capVer,
 		peers,
 		m.cfg,
+		nodeAttrs,
 	)
 	if err != nil {
 		return nil, err
@@ -205,7 +228,13 @@ func (m *Mapper) ReadOnlyMapResponse(
 	node *types.Node,
 	messages ...string,
 ) ([]byte, error) {
-	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version)
+
+	nodeAttrs, err := m.polMan.NodeAttributes(node)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version, nodeAttrs)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +296,11 @@ func (m *Mapper) PeerChangedResponse(
 		}
 	}
 
+	nodeAttrs, err := m.polMan.NodeAttributes(node)
+	if err != nil {
+		return nil, err
+	}
+
 	err = appendPeerChanges(
 		&resp,
 		false, // partial change
@@ -275,6 +309,7 @@ func (m *Mapper) PeerChangedResponse(
 		mapRequest.Version,
 		changedNodes,
 		m.cfg,
+		nodeAttrs,
 	)
 	if err != nil {
 		return nil, err
@@ -299,7 +334,7 @@ func (m *Mapper) PeerChangedResponse(
 
 	// Add the node itself, it might have changed, and particularly
 	// if there are no patches or changes, this is a self update.
-	tailnode, err := tailNode(node, mapRequest.Version, m.polMan, m.cfg)
+	tailnode, err := tailNode(node, mapRequest.Version, m.polMan, m.cfg, nodeAttrs)
 	if err != nil {
 		return nil, err
 	}
@@ -443,10 +478,11 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 func (m *Mapper) baseWithConfigMapResponse(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
+	nodeAttrs []string,
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, capVer, m.polMan, m.cfg)
+	tailnode, err := tailNode(node, capVer, m.polMan, m.cfg, nodeAttrs)
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +540,7 @@ func appendPeerChanges(
 	capVer tailcfg.CapabilityVersion,
 	changed types.Nodes,
 	cfg *types.Config,
+	attrs []string,
 ) error {
 	filter := polMan.Filter()
 
@@ -520,7 +557,7 @@ func appendPeerChanges(
 
 	profiles := generateUserProfiles(node, changed)
 
-	dnsConfig := generateDNSConfig(cfg, node)
+	dnsConfig := generateDNSConfig(cfg, node, attrs)
 
 	tailPeers, err := tailNodes(changed, capVer, polMan, cfg)
 	if err != nil {

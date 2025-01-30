@@ -17,6 +17,7 @@ import (
 type PolicyManager interface {
 	Filter() []tailcfg.FilterRule
 	SSHPolicy(*types.Node) (*tailcfg.SSHPolicy, error)
+	NodeAttributes(node *types.Node) ([]string, error)
 	Tags(*types.Node) []string
 	ApproversForRoute(netip.Prefix) []string
 	ExpandAlias(string) (*netipx.IPSet, error)
@@ -138,6 +139,13 @@ func (pm *PolicyManagerV1) SetPolicy(polB []byte) (bool, error) {
 	pm.pol = pol
 
 	return pm.updateLocked()
+}
+
+func (pm *PolicyManagerV1) NodeAttributes(node *types.Node) ([]string, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	return pm.pol.GetAttributesForNode(node, pm.users, pm.nodes)
 }
 
 // SetUsers updates the users in the policy manager and updates the filter rules.

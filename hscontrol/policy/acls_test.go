@@ -411,6 +411,195 @@ func TestParsing(t *testing.T) {
 	}
 }
 
+func TestGetAttributesForNode(t *testing.T) {
+	tests := []struct {
+		name    string
+		format  string
+		useTag  bool
+		acl     string
+		want    []string
+		wantErr bool
+	}{
+		{
+			name:   "invalid-hujson",
+			format: "hujson",
+			useTag: false,
+			acl: `
+{
+		`,
+			want:    []string{},
+			wantErr: true,
+		},
+		{
+			name:   "attributes-for-node-using-user",
+			format: "hujson",
+			useTag: false,
+			acl: `
+{
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"nodeAttrs": [
+		{
+			"target": ["testuser"],
+			"attr": [ "test" ]
+		},
+		{
+			"target": ["testuser1"],
+			"attr": [ "test1" ]
+		}
+	],
+}
+		`,
+			want:    []string{"test"},
+			wantErr: false,
+		},
+		{
+			name:   "attributes-for-node-using-wildcard",
+			format: "hujson",
+			useTag: false,
+			acl: `
+{
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"nodeAttrs": [
+		{
+			"target": ["*"],
+			"attr": [ "test" ]
+		}
+	],
+}
+		`,
+			want:    []string{"test"},
+			wantErr: false,
+		},
+		{
+			name:   "attributes-for-node-using-group",
+			format: "hujson",
+			useTag: false,
+			acl: `
+{
+	"groups": {
+		"group:example": [
+			"testuser",
+		],
+		"group:example1": [
+		],
+	},
+
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"nodeAttrs": [
+		{
+			"target": ["group:example"],
+			"attr": [ "test" ]
+		},
+		{
+			"target": ["group:example1"],
+			"attr": [ "test" ]
+		}
+	],
+}
+		`,
+			want:    []string{"test"},
+			wantErr: false,
+		},
+		{
+			name:   "attributes-for-node-using-tag",
+			format: "hujson",
+			useTag: true,
+			acl: `
+{
+	"tagOwners": {
+    	"tag:example": ["testuser"],
+  	},
+
+	"hosts": {
+		"host-1": "100.100.100.100",
+		"subnet-1": "100.100.101.100/24",
+	},
+
+	"nodeAttrs": [
+		{
+			"target": ["tag:example"],
+			"attr": [ "test" ]
+		}
+	],
+}
+		`,
+			want:    []string{"test"},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pol, err := LoadACLPolicyFromBytes([]byte(tt.acl))
+
+			if tt.wantErr && err == nil {
+				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			} else if !tt.wantErr && err != nil {
+				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			}
+
+			if err != nil {
+				return
+			}
+
+			user := types.User{
+				Model: gorm.Model{ID: 1},
+				Name:  "testuser",
+			}
+
+			node := types.Node{
+				IPv4:     iap("100.100.100.100"),
+				User:     user,
+				Hostinfo: &tailcfg.Hostinfo{},
+			}
+
+			if tt.useTag {
+				node.Hostinfo.RequestTags = []string{"tag:example"}
+			}
+
+			rules, err := pol.GetAttributesForNode(
+				&node,
+				[]types.User{
+					user,
+				},
+				types.Nodes{
+					&node,
+					&types.Node{
+						IPv4:     iap("200.200.200.200"),
+						User:     user,
+						Hostinfo: &tailcfg.Hostinfo{},
+					},
+				})
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, rules); diff != "" {
+				t.Errorf("parsing() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func (s *Suite) TestRuleInvalidGeneration(c *check.C) {
 	acl := []byte(`
 {
