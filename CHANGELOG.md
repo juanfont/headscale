@@ -7,6 +7,8 @@
 
 - Fix issue where email and username being equal fails to match in Policy
   [#2388](https://github.com/juanfont/headscale/pull/2388)
+- Delete invalid routes before adding a NOT NULL constraint on node_id
+  [#2386](https://github.com/juanfont/headscale/pull/2386)
 
 ## 0.24.1 (2025-01-23)
 

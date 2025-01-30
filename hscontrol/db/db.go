@@ -565,6 +565,14 @@ COMMIT;
 						}
 					}
 
+					// Remove any invalid routes without a node_id.
+					if tx.Migrator().HasTable(&types.Route{}) {
+						err := tx.Exec("delete from routes where node_id is null").Error
+						if err != nil {
+							return err
+						}
+					}
+
 					err := tx.AutoMigrate(&types.Route{})
 					if err != nil {
 						return err
