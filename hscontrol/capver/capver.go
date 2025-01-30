@@ -6,6 +6,7 @@ import (
 
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/tailcfg"
+	"tailscale.com/util/set"
 )
 
 func tailscaleVersSorted() []string {
@@ -48,6 +49,31 @@ func TailscaleLatest(n int) []string {
 	}
 
 	return tsSorted[len(tsSorted)-n:]
+}
+
+// TailscaleLatestMajorMinor returns the n latest Tailscale versions (e.g. 1.80).
+func TailscaleLatestMajorMinor(n int, stripV bool) []string {
+	if n <= 0 {
+		return nil
+	}
+
+	majors := set.Set[string]{}
+	for _, vers := range tailscaleVersSorted() {
+		if stripV {
+			vers = strings.TrimPrefix(vers, "v")
+		}
+		v := strings.Split(vers, ".")
+		majors.Add(v[0] + "." + v[1])
+	}
+
+	majorSl := majors.Slice()
+	sort.Strings(majorSl)
+
+	if n > len(majorSl) {
+		return majorSl
+	}
+
+	return majorSl[len(majorSl)-n:]
 }
 
 // CapVerLatest returns the n latest CapabilityVersions.
