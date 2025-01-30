@@ -6,6 +6,8 @@
 
 - `oidc.map_legacy_users` is now `false` by default
   [#2350](https://github.com/juanfont/headscale/pull/2350)
+- Print Tailscale version instead of capability versions for outdated nodes
+  [#2391](https://github.com/juanfont/headscale/pull/2391)
 
 ## 0.24.2 (2025-01-30)
 
@@ -24,8 +26,8 @@
   [#2367](https://github.com/juanfont/headscale/pull/2367)
 - Relax username validation to allow emails
   [#2364](https://github.com/juanfont/headscale/pull/2364)
-- Remove invalid routes and add stronger constraints for routes to avoid API panic
-  [#2371](https://github.com/juanfont/headscale/pull/2371)
+- Remove invalid routes and add stronger constraints for routes to avoid API
+  panic [#2371](https://github.com/juanfont/headscale/pull/2371)
 - Fix panic when `derp.update_frequency` is 0
   [#2368](https://github.com/juanfont/headscale/pull/2368)
 
@@ -60,8 +62,7 @@ and have it populate to Headscale automatically the next time they log in.
 However, this may affect the way you reference users in policies.
 
 Headscale v0.23.0 and earlier never recorded the `iss` and `sub` fields, so all
-legacy (existing) OIDC accounts _need to be migrated_ to be properly
-secured.
+legacy (existing) OIDC accounts _need to be migrated_ to be properly secured.
 
 #### What do I need to do to migrate?
 
@@ -73,8 +74,8 @@ The migration will mostly be done automatically, with one exception. If your
 OIDC does not provide an `email_verified` claim, Headscale will ignore the
 `email`. This means that either the administrator will have to mark the user
 emails as verified, or ensure the users verify their emails. Any unverified
-emails will be ignored, meaning that the users will get new accounts instead
-of being migrated.
+emails will be ignored, meaning that the users will get new accounts instead of
+being migrated.
 
 After this exception is ensured, make all users log into Headscale with their
 account, and Headscale will automatically update the account record. This will
@@ -175,7 +176,8 @@ This will also affect the way you
 - User gRPC/API [#2261](https://github.com/juanfont/headscale/pull/2261):
   - If you depend on a Headscale Web UI, you should wait with this update until
     the UI have been updated to match the new API.
-  - `GET /api/v1/user/{name}` and `GetUser` have been removed in favour of `ListUsers` with an ID parameter
+  - `GET /api/v1/user/{name}` and `GetUser` have been removed in favour of
+    `ListUsers` with an ID parameter
   - `RenameUser` and `DeleteUser` now require an ID instead of a name.
 
 ### Changes
@@ -197,9 +199,12 @@ This will also affect the way you
 - CLI for managing users now accepts `--identifier` in addition to `--name`,
   usage of `--identifier` is recommended
   [#2261](https://github.com/juanfont/headscale/pull/2261)
-- Add `dns.extra_records_path` configuration option [#2262](https://github.com/juanfont/headscale/issues/2262)
-- Support client verify for DERP [#2046](https://github.com/juanfont/headscale/pull/2046)
-- Add PKCE Verifier for OIDC [#2314](https://github.com/juanfont/headscale/pull/2314)
+- Add `dns.extra_records_path` configuration option
+  [#2262](https://github.com/juanfont/headscale/issues/2262)
+- Support client verify for DERP
+  [#2046](https://github.com/juanfont/headscale/pull/2046)
+- Add PKCE Verifier for OIDC
+  [#2314](https://github.com/juanfont/headscale/pull/2314)
 
 ## 0.23.0 (2024-09-18)
 
@@ -730,8 +735,8 @@ behaviour.
   - All machines can communicate with all machines by default
   - Tags should now work correctly and adding a host to Headscale should now
     reload the rules.
-  - The documentation have a [fictional example](./docs/ref/acls.md) that should cover
-    some use cases of the ACLs features
+  - The documentation have a [fictional example](./docs/ref/acls.md) that should
+    cover some use cases of the ACLs features
 
 ### Features
 
@@ -749,7 +754,8 @@ behaviour.
 
 - Add IPv6 support to the prefix assigned to namespaces
 - Add API Key support
-  - Enable remote control of `headscale` via CLI [docs](./docs/ref/remote-cli.md)
+  - Enable remote control of `headscale` via CLI
+    [docs](./docs/ref/remote-cli.md)
   - Enable HTTP API (beta, subject to change)
 - OpenID Connect users will be mapped per namespaces
   - Each user will get its own namespace, created if it does not exist
