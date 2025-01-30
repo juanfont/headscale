@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
@@ -155,10 +156,19 @@ func isSupportedVersion(version tailcfg.CapabilityVersion) bool {
 	return version >= MinimumCapVersion
 }
 
-func rejectUnsupported(writer http.ResponseWriter, version tailcfg.CapabilityVersion) bool {
+func rejectUnsupported(writer http.ResponseWriter, version tailcfg.CapabilityVersion, mkey key.MachinePublic, nkey key.NodePublic) bool {
 	// Reject unsupported versions
 	if !isSupportedVersion(version) {
-		httpError(writer, nil, "unsupported client version", http.StatusBadRequest)
+		log.Error().
+			Caller().
+			Int("minimum_cap_ver", int(MinimumCapVersion)).
+			Int("client_cap_ver", int(version)).
+			Str("minimum_version", capver.TailscaleVersion(MinimumCapVersion)).
+			Str("client_version", capver.TailscaleVersion(version)).
+			Str("node_key", nkey.ShortString()).
+			Str("machine_key", mkey.ShortString()).
+			Msg("unsupported client connected")
+		http.Error(writer, "unsupported client version", http.StatusBadRequest)
 
 		return true
 	}
@@ -188,7 +198,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	}
 
 	// Reject unsupported versions
-	if rejectUnsupported(writer, mapRequest.Version) {
+	if rejectUnsupported(writer, mapRequest.Version, ns.machineKey, mapRequest.NodeKey) {
 		return
 	}
 
@@ -233,7 +243,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	}
 
 	// Reject unsupported versions
-	if rejectUnsupported(writer, registerRequest.Version) {
+	if rejectUnsupported(writer, registerRequest.Version, ns.machineKey, registerRequest.NodeKey) {
 		return
 	}
 
