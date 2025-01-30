@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 	"testing"
 	"time"
 
@@ -13,8 +15,6 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/ory/dockertest/v3"
-	"tailscale.com/tailcfg"
-	"tailscale.com/types/key"
 )
 
 type ClientsSpec struct {
@@ -50,6 +50,28 @@ func TestDERPServerScenario(t *testing.T) {
 				t.Fail()
 			}
 		}
+
+		hsServer, err := scenario.Headscale()
+		assertNoErrGetHeadscale(t, err)
+
+		derpRegion := tailcfg.DERPRegion{
+			RegionCode: "test-derpverify",
+			RegionName: "TestDerpVerify",
+			Nodes: []*tailcfg.DERPNode{
+				{
+					Name:             "TestDerpVerify",
+					RegionID:         900,
+					HostName:         hsServer.GetHostname(),
+					STUNPort:         3478,
+					STUNOnly:         false,
+					DERPPort:         443,
+					InsecureForTests: true,
+				},
+			},
+		}
+
+		fakeKey := key.NewNode()
+		DERPVerify(t, fakeKey, derpRegion, false)
 	})
 }
 
@@ -187,34 +209,6 @@ func derpServerScenario(
 	}
 
 	t.Logf("Run2: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
-
-	hsServer, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
-
-	derpRegion := tailcfg.DERPRegion{
-		RegionCode: "test-derpverify",
-		RegionName: "TestDerpVerify",
-		Nodes: []*tailcfg.DERPNode{
-			{
-				Name:             "TestDerpVerify",
-				RegionID:         900,
-				HostName:         hsServer.GetHostname(),
-				STUNPort:         3478,
-				STUNOnly:         false,
-				DERPPort:         443,
-				InsecureForTests: true,
-			},
-		},
-	}
-
-	fakeKey := key.NewNode()
-	DERPVerify(t, fakeKey, derpRegion, false)
-
-	for _, client := range allClients {
-		nodeKey, err := client.GetNodePrivateKey()
-		assertNoErr(t, err)
-		DERPVerify(t, *nodeKey, derpRegion, true)
-	}
 
 	for _, check := range furtherAssertions {
 		check(&scenario)

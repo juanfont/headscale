@@ -96,7 +96,7 @@ func DERPVerify(
 	region tailcfg.DERPRegion,
 	expectSuccess bool,
 ) {
-	IntegrationSkip(t)
+	t.Helper()
 
 	c := derphttp.NewRegionClient(nodeKey, t.Logf, netmon.NewStatic(), func() *tailcfg.DERPRegion {
 		return &region
