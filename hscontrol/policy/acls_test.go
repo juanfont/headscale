@@ -4046,3 +4046,315 @@ func TestValidTagInvalidUser(t *testing.T) {
 		t.Errorf("TestValidTagInvalidUser() unexpected result (-want +got):\n%s", diff)
 	}
 }
+
+func TestFindUserByToken(t *testing.T) {
+	tests := []struct {
+		name    string
+		users   []types.User
+		token   string
+		want    types.User
+		wantErr bool
+	}{
+		{
+			name: "exact match by ProviderIdentifier",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "token1"}},
+				{Email: "user2@example.com"},
+			},
+			token:   "token1",
+			want:    types.User{ProviderIdentifier: sql.NullString{Valid: true, String: "token1"}},
+			wantErr: false,
+		},
+		{
+			name: "no matches found",
+			users: []types.User{
+				{Email: "user1@example.com"},
+				{Name: "username"},
+			},
+			token:   "nonexistent-token",
+			want:    types.User{},
+			wantErr: true,
+		},
+		{
+			name: "multiple matches by email and name",
+			users: []types.User{
+				{Email: "token2", Name: "notoken"},
+				{Name: "token2", Email: "notoken@example.com"},
+			},
+			token:   "token2",
+			want:    types.User{},
+			wantErr: true,
+		},
+		{
+			name: "match by email",
+			users: []types.User{
+				{Email: "token3@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "othertoken"}},
+			},
+			token:   "token3@example.com",
+			want:    types.User{Email: "token3@example.com"},
+			wantErr: false,
+		},
+		{
+			name: "match by name",
+			users: []types.User{
+				{Name: "token4"},
+				{Email: "user5@example.com"},
+			},
+			token:   "token4",
+			want:    types.User{Name: "token4"},
+			wantErr: false,
+		},
+		{
+			name: "provider identifier takes precedence over email and name matches",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "token5"}},
+				{Email: "token5@example.com", Name: "token5"},
+			},
+			token:   "token5",
+			want:    types.User{ProviderIdentifier: sql.NullString{Valid: true, String: "token5"}},
+			wantErr: false,
+		},
+		{
+			name: "empty token finds no users",
+			users: []types.User{
+				{Email: "user6@example.com"},
+				{Name: "username6"},
+			},
+			token:   "",
+			want:    types.User{},
+			wantErr: true,
+		},
+		// Test case 1: Duplicate Emails with Unique ProviderIdentifiers
+		{
+			name: "duplicate emails with unique provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid1"}, Email: "user@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid2"}, Email: "user@example.com"},
+			},
+			token:   "user@example.com",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 2: Duplicate Names with Unique ProviderIdentifiers
+		{
+			name: "duplicate names with unique provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid3"}, Name: "John Doe"},
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid4"}, Name: "John Doe"},
+			},
+			token:   "John Doe",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 3: Duplicate Emails and Names with Unique ProviderIdentifiers
+		{
+			name: "duplicate emails and names with unique provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid5"}, Email: "user@example.com", Name: "John Doe"},
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid6"}, Email: "user@example.com", Name: "John Doe"},
+			},
+			token:   "user@example.com",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 4: Unique Names without ProviderIdentifiers
+		{
+			name: "unique names without provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "johndoe@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "Jane Smith", Email: "janesmith@example.com"},
+			},
+			token:   "John Doe",
+			want:    types.User{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "johndoe@example.com"},
+			wantErr: false,
+		},
+
+		// Test case 5: Duplicate Emails without ProviderIdentifiers but Unique Names
+		{
+			name: "duplicate emails without provider identifiers but unique names",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "Jane Smith", Email: "user@example.com"},
+			},
+			token:   "John Doe",
+			want:    types.User{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+			wantErr: false,
+		},
+
+		// Test case 6: Duplicate Names and Emails without ProviderIdentifiers
+		{
+			name: "duplicate names and emails without provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+			},
+			token:   "John Doe",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 7: Multiple Users with the Same Email but Different Names and Unique ProviderIdentifiers
+		{
+			name: "multiple users with same email, different names, unique provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid7"}, Email: "user@example.com", Name: "John Doe"},
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid8"}, Email: "user@example.com", Name: "Jane Smith"},
+			},
+			token:   "user@example.com",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 8: Multiple Users with the Same Name but Different Emails and Unique ProviderIdentifiers
+		{
+			name: "multiple users with same name, different emails, unique provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid9"}, Email: "johndoe@example.com", Name: "John Doe"},
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid10"}, Email: "janedoe@example.com", Name: "John Doe"},
+			},
+			token:   "John Doe",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 9: Multiple Users with Same Email and Name but Unique ProviderIdentifiers
+		{
+			name: "multiple users with same email and name, unique provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid11"}, Email: "user@example.com", Name: "John Doe"},
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid12"}, Email: "user@example.com", Name: "John Doe"},
+			},
+			token:   "user@example.com",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 10: Multiple Users without ProviderIdentifiers but with Unique Names and Emails
+		{
+			name: "multiple users without provider identifiers, unique names and emails",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "johndoe@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "Jane Smith", Email: "janesmith@example.com"},
+			},
+			token:   "John Doe",
+			want:    types.User{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "johndoe@example.com"},
+			wantErr: false,
+		},
+
+		// Test case 11: Multiple Users without ProviderIdentifiers and Duplicate Emails but Unique Names
+		{
+			name: "multiple users without provider identifiers, duplicate emails but unique names",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "Jane Smith", Email: "user@example.com"},
+			},
+			token:   "John Doe",
+			want:    types.User{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+			wantErr: false,
+		},
+
+		// Test case 12: Multiple Users without ProviderIdentifiers and Duplicate Names but Unique Emails
+		{
+			name: "multiple users without provider identifiers, duplicate names but unique emails",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "johndoe@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "janedoe@example.com"},
+			},
+			token:   "John Doe",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 13: Multiple Users without ProviderIdentifiers and Duplicate Both Names and Emails
+		{
+			name: "multiple users without provider identifiers, duplicate names and emails",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+			},
+			token:   "John Doe",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 14: Multiple Users with Same Email Without ProviderIdentifiers
+		{
+			name: "multiple users with same email without provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "user@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "Jane Smith", Email: "user@example.com"},
+			},
+			token:   "user@example.com",
+			want:    types.User{},
+			wantErr: true,
+		},
+
+		// Test case 15: Multiple Users with Same Name Without ProviderIdentifiers
+		{
+			name: "multiple users with same name without provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "johndoe@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "John Doe", Email: "janedoe@example.com"},
+			},
+			token:   "John Doe",
+			want:    types.User{},
+			wantErr: true,
+		},
+		{
+			name: "Name field used as email address match",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid3"}, Name: "user@example.com", Email: "another@example.com"},
+			},
+			token:   "user@example.com",
+			want:    types.User{ProviderIdentifier: sql.NullString{Valid: true, String: "pid3"}, Name: "user@example.com", Email: "another@example.com"},
+			wantErr: false,
+		},
+		{
+			name: "multiple users with same name as email and unique provider identifiers",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid4"}, Name: "user@example.com", Email: "user1@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: true, String: "pid5"}, Name: "user@example.com", Email: "user2@example.com"},
+			},
+			token:   "user@example.com",
+			want:    types.User{},
+			wantErr: true,
+		},
+		{
+			name: "no provider identifier and duplicate names as emails",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "user@example.com", Email: "another1@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "user@example.com", Email: "another2@example.com"},
+			},
+			token:   "user@example.com",
+			want:    types.User{},
+			wantErr: true,
+		},
+		{
+			name: "name as email with multiple matches when provider identifier is not set",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "user@example.com", Email: "another1@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "user@example.com", Email: "another2@example.com"},
+			},
+			token:   "user@example.com",
+			want:    types.User{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotUser, err := findUserFromToken(tt.users, tt.token)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("findUserFromToken() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if diff := cmp.Diff(tt.want, gotUser, util.Comparers...); diff != "" {
+				t.Errorf("findUserFromToken() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

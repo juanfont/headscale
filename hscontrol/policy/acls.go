@@ -381,7 +381,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 				}
 
 				for _, userStr := range usersFromGroup {
-					user, err := findUserFromTokenOrErr(users, userStr)
+					user, err := findUserFromToken(users, userStr)
 					if err != nil {
 						log.Trace().Err(err).Msg("user not found")
 						continue
@@ -400,7 +400,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			// corresponds with the User info in the netmap.
 			// TODO(kradalby): This is a bit of a hack, and it should go
 			// away with the new policy where users can be reliably determined.
-			if user, err := findUserFromTokenOrErr(users, srcToken); err == nil {
+			if user, err := findUserFromToken(users, srcToken); err == nil {
 				principals = append(principals, &tailcfg.SSHPrincipal{
 					UserLogin: user.Username(),
 				})
@@ -1001,7 +1001,7 @@ func (pol *ACLPolicy) TagsOfNode(
 			}
 			var found bool
 			for _, owner := range owners {
-				user, err := findUserFromTokenOrErr(users, owner)
+				user, err := findUserFromToken(users, owner)
 				if err != nil {
 					log.Trace().Caller().Err(err).Msg("could not determine user to filter tags by")
 				}
@@ -1038,7 +1038,7 @@ func (pol *ACLPolicy) TagsOfNode(
 func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) types.Nodes {
 	var out types.Nodes
 
-	user, err := findUserFromTokenOrErr(users, userToken)
+	user, err := findUserFromToken(users, userToken)
 	if err != nil {
 		log.Trace().Caller().Err(err).Msg("could not determine user to filter nodes by")
 		return out
@@ -1058,24 +1058,19 @@ var (
 	ErrorMultipleUserMatching = errors.New("multiple users matching")
 )
 
-func findUserFromTokenOrErr(
-	users []types.User,
-	token string,
-) (types.User, error) {
+// findUserFromToken finds and returns a user based on the given token, prioritizing matches by ProviderIdentifier, followed by email or name.
+// If no matching user is found, it returns an error of type ErrorNoUserMatching.
+// If multiple users match the token, it returns an error indicating multiple matches.
+func findUserFromToken(users []types.User, token string) (types.User, error) {
 	var potentialUsers []types.User
+
 	for _, user := range users {
 		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == token {
-			// If a user is matching with a known unique field,
-			// disgard all other users and only keep the current
-			// user.
-			potentialUsers = []types.User{user}
+			// Prioritize ProviderIdentifier match and exit early
+			return user, nil
+		}
 
-			break
-		}
-		if user.Email == token {
-			potentialUsers = append(potentialUsers, user)
-		}
-		if user.Name == token {
+		if user.Email == token || user.Name == token {
 			potentialUsers = append(potentialUsers, user)
 		}
 	}
