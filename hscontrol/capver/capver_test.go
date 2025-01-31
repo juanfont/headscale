@@ -13,8 +13,8 @@ func TestTailscaleLatestMajorMinor(t *testing.T) {
 		stripV   bool
 		expected []string
 	}{
-		{3, false, []string{"v1.74", "v1.76", "v1.78"}},
-		{2, true, []string{"1.76", "1.78"}},
+		{3, false, []string{"v1.76", "v1.78", "v1.80"}},
+		{2, true, []string{"1.78", "1.80"}},
 		{0, false, nil},
 	}
 
