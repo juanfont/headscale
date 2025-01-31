@@ -80,10 +80,8 @@ func (u *User) profilePicURL() string {
 func (u *User) TailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
 		ID:            tailcfg.UserID(u.ID),
-		LoginName:     u.Username(),
 		DisplayName:   u.DisplayNameOrUsername(),
 		ProfilePicURL: u.profilePicURL(),
-		Logins:        []tailcfg.LoginID{},
 		Created:       u.CreatedAt,
 	}
 
