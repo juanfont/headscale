@@ -72,7 +72,7 @@ func (h *Headscale) handleExistingNode(
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
 	if node.MachineKey != machineKey {
-		return nil, errors.New("node already exists with different machine key")
+		return nil, NewHTTPError(http.StatusUnauthorized, "node exist with different machine key", nil)
 	}
 
 	expired := node.IsExpired()
@@ -81,7 +81,7 @@ func (h *Headscale) handleExistingNode(
 
 		// The client is trying to extend their key, this is not allowed.
 		if requestExpiry.After(time.Now()) {
-			return nil, errors.New("extending key is not allowed")
+			return nil, NewHTTPError(http.StatusBadRequest, "extending key is not allowed", nil)
 		}
 
 		// If the request expiry is in the past, we consider it a logout.
@@ -159,6 +159,8 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
+	// TODO(kradalby) Refactor and get the validate away from the database
+	// so we can return nice http errors.
 	pak, err := h.db.ValidatePreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
 		return nil, fmt.Errorf("invalid pre auth key: %w", err)

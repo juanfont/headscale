@@ -70,12 +70,12 @@ func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error)
 	clientCapabilityStr := req.URL.Query().Get("v")
 
 	if clientCapabilityStr == "" {
-		return 0, ErrNoCapabilityVersion
+		return 0, NewHTTPError(http.StatusBadRequest, "capability version must be set", nil)
 	}
 
 	clientCapabilityVersion, err := strconv.Atoi(clientCapabilityStr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse capability version: %w", err)
+		return 0, NewHTTPError(http.StatusBadRequest, "invalid capability version", fmt.Errorf("failed to parse capability version: %w", err))
 	}
 
 	return tailcfg.CapabilityVersion(clientCapabilityVersion), nil
@@ -108,13 +108,13 @@ func (h *Headscale) VerifyHandler(
 	req *http.Request,
 ) {
 	if req.Method != http.MethodPost {
-		httpError(writer, nil, "Wrong method", http.StatusMethodNotAllowed)
+		httpError(writer, errMethodNotAllowed)
 		return
 	}
 
 	allow, err := h.derpRequestIsAllowed(req)
 	if err != nil {
-		httpError(writer, err, "Internal error", http.StatusInternalServerError)
+		httpError(writer, err)
 		return
 	}
 
@@ -135,7 +135,7 @@ func (h *Headscale) KeyHandler(
 	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
 	capVer, err := parseCabailityVersion(req)
 	if err != nil {
-		httpError(writer, err, "Internal error", http.StatusInternalServerError)
+		httpError(writer, err)
 		return
 	}
 
@@ -222,7 +222,7 @@ func (a *AuthProviderWeb) RegisterHandler(
 	// the template and log an error.
 	registrationId, err := types.RegistrationIDFromString(registrationIdStr)
 	if err != nil {
-		httpError(writer, err, "invalid registration ID", http.StatusBadRequest)
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid registration id", err))
 		return
 	}
 
