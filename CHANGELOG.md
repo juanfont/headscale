@@ -8,6 +8,8 @@
   [#2350](https://github.com/juanfont/headscale/pull/2350)
 - Print Tailscale version instead of capability versions for outdated nodes
   [#2391](https://github.com/juanfont/headscale/pull/2391)
+- Do not allow renaming of users from OIDC
+  [#2393](https://github.com/juanfont/headscale/pull/2393)
 
 ## 0.24.2 (2025-01-30)
 

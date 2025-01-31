@@ -81,6 +81,8 @@ func (hsdb *HSDatabase) RenameUser(uid types.UserID, newName string) error {
 	})
 }
 
+var ErrCannotChangeOIDCUser = errors.New("cannot edit OIDC user")
+
 // RenameUser renames a User. Returns error if the User does
 // not exist or if another User exists with the new name.
 func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
@@ -92,6 +94,10 @@ func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 	err = util.ValidateUsername(newName)
 	if err != nil {
 		return err
+	}
+
+	if oldUser.Provider == util.RegisterMethodOIDC {
+		return ErrCannotChangeOIDCUser
 	}
 
 	oldUser.Name = newName
