@@ -33,10 +33,33 @@ const (
 )
 
 // httpError logs an error and sends an HTTP error response with the given
-func httpError(w http.ResponseWriter, err error, userError string, code int) {
-	log.Error().Err(err).Msg(userError)
-	http.Error(w, userError, code)
+func httpError(w http.ResponseWriter, err error) {
+	var herr HTTPError
+	if errors.As(err, &herr) {
+		http.Error(w, herr.Msg, herr.Code)
+		log.Error().Err(herr.Err).Int("code", herr.Code).Msgf("user msg: %s", herr.Msg)
+	} else {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Error().Err(err).Int("code", http.StatusInternalServerError).Msg("http internal server error")
+	}
 }
+
+// HTTPError represents an error that is surfaced to the user via web.
+type HTTPError struct {
+	Code int    // HTTP response code to send to client; 0 means 500
+	Msg  string // Response body to send to client
+	Err  error  // Detailed error to log on the server
+}
+
+func (e HTTPError) Error() string { return fmt.Sprintf("http error[%d]: %s, %s", e.Code, e.Msg, e.Err) }
+func (e HTTPError) Unwrap() error { return e.Err }
+
+// Error returns an HTTPError containing the given information.
+func NewHTTPError(code int, msg string, err error) HTTPError {
+	return HTTPError{Code: code, Msg: msg, Err: err}
+}
+
+var errMethodNotAllowed = NewHTTPError(http.StatusMethodNotAllowed, "method not allowed", nil)
 
 var ErrRegisterMethodCLIDoesNotSupportExpire = errors.New(
 	"machines registered with CLI does not support expire",
