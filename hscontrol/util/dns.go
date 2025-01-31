@@ -65,6 +65,11 @@ func ValidateUsername(username string) error {
 }
 
 func CheckForFQDNRules(name string) error {
+	// Ensure the username meets the minimum length requirement
+	if len(name) < 2 {
+		return errors.New("name must be at least 2 characters long")
+	}
+
 	if len(name) > LabelHostnameLength {
 		return fmt.Errorf(
 			"DNS segment must not be over 63 chars. %v doesn't comply with this rule: %w",

@@ -10,6 +10,8 @@
   [#2391](https://github.com/juanfont/headscale/pull/2391)
 - Do not allow renaming of users from OIDC
   [#2393](https://github.com/juanfont/headscale/pull/2393)
+- Change minimum hostname length to 2
+  [#2393](https://github.com/juanfont/headscale/pull/2393)
 
 ## 0.24.2 (2025-01-30)
 
