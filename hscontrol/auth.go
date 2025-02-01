@@ -155,15 +155,42 @@ func (h *Headscale) waitForFollowup(
 	}
 }
 
+// canUsePreAuthKey checks if a pre auth key can be used.
+func canUsePreAuthKey(pak *types.PreAuthKey) error {
+	if pak == nil {
+		return NewHTTPError(http.StatusUnauthorized, "invalid authkey", nil)
+	}
+	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
+		return NewHTTPError(http.StatusUnauthorized, "authkey expired", nil)
+	}
+
+	// we don't need to check if has been used before
+	if pak.Reusable {
+		return nil
+	}
+
+	if pak.Used {
+		return NewHTTPError(http.StatusUnauthorized, "authkey already used", nil)
+	}
+
+	return nil
+}
+
 func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	// TODO(kradalby) Refactor and get the validate away from the database
-	// so we can return nice http errors.
-	pak, err := h.db.ValidatePreAuthKey(regReq.Auth.AuthKey)
+	pak, err := h.db.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
-		return nil, fmt.Errorf("invalid pre auth key: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
+		}
+		return nil, err
+	}
+
+	err = canUsePreAuthKey(pak)
+	if err != nil {
+		return nil, err
 	}
 
 	nodeToRegister := types.Node{
