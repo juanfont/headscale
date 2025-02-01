@@ -24,6 +24,8 @@
   [#2396](https://github.com/juanfont/headscale/pull/2396)
 - Pre auth keys that are used by a node can no longer be deleted
   [#2396](https://github.com/juanfont/headscale/pull/2396)
+- Rehaul HTTP errors, return better status code and errors to users
+  [#2398](https://github.com/juanfont/headscale/pull/2398)
 
 ## 0.24.2 (2025-01-30)
 
