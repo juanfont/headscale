@@ -181,9 +181,13 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
 	err := api.h.db.Write(func(tx *gorm.DB) error {
-		preAuthKey, err := db.GetPreAuthKey(tx, request.GetUser(), request.Key)
+		preAuthKey, err := db.GetPreAuthKey(tx, request.Key)
 		if err != nil {
 			return err
+		}
+
+		if preAuthKey.User.Name != request.GetUser() {
+			return fmt.Errorf("preauth key does not belong to user")
 		}
 
 		return db.ExpirePreAuthKey(tx, preAuthKey)

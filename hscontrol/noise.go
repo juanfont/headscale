@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
+	"gorm.io/gorm"
 	"tailscale.com/control/controlbase"
 	"tailscale.com/control/controlhttp/controlhttpserver"
 	"tailscale.com/tailcfg"
@@ -81,7 +83,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		noiseServer.earlyNoise,
 	)
 	if err != nil {
-		httpError(writer, err, "noise upgrade failed", http.StatusInternalServerError)
+		httpError(writer, fmt.Errorf("noise upgrade failed: %w", err))
 		return
 	}
 
@@ -198,7 +200,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 	var mapRequest tailcfg.MapRequest
 	if err := json.Unmarshal(body, &mapRequest); err != nil {
-		httpError(writer, err, "Internal error", http.StatusInternalServerError)
+		httpError(writer, err)
 		return
 	}
 
@@ -211,7 +213,11 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 	node, err := ns.headscale.db.GetNodeByNodeKey(mapRequest.NodeKey)
 	if err != nil {
-		httpError(writer, err, "Internal error", http.StatusInternalServerError)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			httpError(writer, NewHTTPError(http.StatusNotFound, "node not found", nil))
+			return
+		}
+		httpError(writer, err)
 		return
 	}
 
@@ -230,7 +236,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	req *http.Request,
 ) {
 	if req.Method != http.MethodPost {
-		httpError(writer, nil, "Wrong method", http.StatusMethodNotAllowed)
+		httpError(writer, errMethodNotAllowed)
 
 		return
 	}

@@ -39,19 +39,19 @@ func (h *Headscale) ApplePlatformConfig(
 	vars := mux.Vars(req)
 	platform, ok := vars["platform"]
 	if !ok {
-		httpError(writer, nil, "No platform specified", http.StatusBadRequest)
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "no platform specified", nil))
 		return
 	}
 
 	id, err := uuid.NewV4()
 	if err != nil {
-		httpError(writer, nil, "Failed to create UUID", http.StatusInternalServerError)
+		httpError(writer, err)
 		return
 	}
 
 	contentID, err := uuid.NewV4()
 	if err != nil {
-		httpError(writer, nil, "Failed to create UUID", http.StatusInternalServerError)
+		httpError(writer, err)
 		return
 	}
 
@@ -65,21 +65,21 @@ func (h *Headscale) ApplePlatformConfig(
 	switch platform {
 	case "macos-standalone":
 		if err := macosStandaloneTemplate.Execute(&payload, platformConfig); err != nil {
-			httpError(writer, err, "Could not render Apple macOS template", http.StatusInternalServerError)
+			httpError(writer, err)
 			return
 		}
 	case "macos-app-store":
 		if err := macosAppStoreTemplate.Execute(&payload, platformConfig); err != nil {
-			httpError(writer, err, "Could not render Apple macOS template", http.StatusInternalServerError)
+			httpError(writer, err)
 			return
 		}
 	case "ios":
 		if err := iosTemplate.Execute(&payload, platformConfig); err != nil {
-			httpError(writer, err, "Could not render Apple iOS template", http.StatusInternalServerError)
+			httpError(writer, err)
 			return
 		}
 	default:
-		httpError(writer, err, "Invalid platform. Only ios, macos-app-store and macos-standalone are supported", http.StatusInternalServerError)
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "platform must be ios, macos-app-store or macos-standalone", nil))
 		return
 	}
 
@@ -91,7 +91,7 @@ func (h *Headscale) ApplePlatformConfig(
 
 	var content bytes.Buffer
 	if err := commonTemplate.Execute(&content, config); err != nil {
-		httpError(writer, err, "Could not render platform iOS template", http.StatusInternalServerError)
+		httpError(writer, err)
 		return
 	}
 

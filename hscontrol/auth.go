@@ -72,7 +72,7 @@ func (h *Headscale) handleExistingNode(
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
 	if node.MachineKey != machineKey {
-		return nil, errors.New("node already exists with different machine key")
+		return nil, NewHTTPError(http.StatusUnauthorized, "node exist with different machine key", nil)
 	}
 
 	expired := node.IsExpired()
@@ -81,7 +81,7 @@ func (h *Headscale) handleExistingNode(
 
 		// The client is trying to extend their key, this is not allowed.
 		if requestExpiry.After(time.Now()) {
-			return nil, errors.New("extending key is not allowed")
+			return nil, NewHTTPError(http.StatusBadRequest, "extending key is not allowed", nil)
 		}
 
 		// If the request expiry is in the past, we consider it a logout.
@@ -155,13 +155,42 @@ func (h *Headscale) waitForFollowup(
 	}
 }
 
+// canUsePreAuthKey checks if a pre auth key can be used.
+func canUsePreAuthKey(pak *types.PreAuthKey) error {
+	if pak == nil {
+		return NewHTTPError(http.StatusUnauthorized, "invalid authkey", nil)
+	}
+	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
+		return NewHTTPError(http.StatusUnauthorized, "authkey expired", nil)
+	}
+
+	// we don't need to check if has been used before
+	if pak.Reusable {
+		return nil
+	}
+
+	if pak.Used {
+		return NewHTTPError(http.StatusUnauthorized, "authkey already used", nil)
+	}
+
+	return nil
+}
+
 func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	pak, err := h.db.ValidatePreAuthKey(regReq.Auth.AuthKey)
+	pak, err := h.db.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
-		return nil, fmt.Errorf("invalid pre auth key: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
+		}
+		return nil, err
+	}
+
+	err = canUsePreAuthKey(pak)
+	if err != nil {
+		return nil, err
 	}
 
 	nodeToRegister := types.Node{
