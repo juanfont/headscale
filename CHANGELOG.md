@@ -20,6 +20,10 @@
   [#2350](https://github.com/juanfont/headscale/pull/2350)
 - Print Tailscale version instead of capability versions for outdated nodes
   [#2391](https://github.com/juanfont/headscale/pull/2391)
+- Do not allow renaming of users from OIDC
+  [#2393](https://github.com/juanfont/headscale/pull/2393)
+- Change minimum hostname length to 2
+  [#2393](https://github.com/juanfont/headscale/pull/2393)
 - Pre auth keys belonging to a user are no longer deleted with the user
   [#2396](https://github.com/juanfont/headscale/pull/2396)
 - Pre auth keys that are used by a node can no longer be deleted
