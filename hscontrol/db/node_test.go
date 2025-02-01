@@ -84,37 +84,6 @@ func (s *Suite) TestGetNodeByID(c *check.C) {
 	c.Assert(err, check.IsNil)
 }
 
-func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
-	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
-
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.GetNodeByID(0)
-	c.Assert(err, check.NotNil)
-
-	nodeKey := key.NewNode()
-	oldNodeKey := key.NewNode()
-
-	machineKey := key.NewMachine()
-
-	node := types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "testnode",
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
-	}
-	trx := db.DB.Save(&node)
-	c.Assert(trx.Error, check.IsNil)
-
-	_, err = db.GetNodeByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
-	c.Assert(err, check.IsNil)
-}
-
 func (s *Suite) TestHardDeleteNode(c *check.C) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)

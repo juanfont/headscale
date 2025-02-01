@@ -182,38 +182,6 @@ func GetNodeByNodeKey(
 	return &mach, nil
 }
 
-func (hsdb *HSDatabase) GetNodeByAnyKey(
-	machineKey key.MachinePublic,
-	nodeKey key.NodePublic,
-	oldNodeKey key.NodePublic,
-) (*types.Node, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
-		return GetNodeByAnyKey(rx, machineKey, nodeKey, oldNodeKey)
-	})
-}
-
-// GetNodeByAnyKey finds a Node by its MachineKey, its current NodeKey or the old one, and returns the Node struct.
-// TODO(kradalby): see if we can remove this.
-func GetNodeByAnyKey(
-	tx *gorm.DB,
-	machineKey key.MachinePublic, nodeKey key.NodePublic, oldNodeKey key.NodePublic,
-) (*types.Node, error) {
-	node := types.Node{}
-	if result := tx.
-		Preload("AuthKey").
-		Preload("AuthKey.User").
-		Preload("User").
-		Preload("Routes").
-		First(&node, "machine_key = ? OR node_key = ? OR node_key = ?",
-			machineKey.String(),
-			nodeKey.String(),
-			oldNodeKey.String()); result.Error != nil {
-		return nil, result.Error
-	}
-
-	return &node, nil
-}
-
 func (hsdb *HSDatabase) SetTags(
 	nodeID types.NodeID,
 	tags []string,
@@ -436,6 +404,18 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("node_key", node.NodeKey.ShortString()).
 		Str("user", node.User.Username()).
 		Msg("Registering node")
+
+	// If the a new node is registered with the same machine key, to the same user,
+	// update the existing node.
+	// If the same node is registered again, but to a new user, then that is considered
+	// a new node.
+	oldNode, _ := GetNodeByMachineKey(tx, node.MachineKey)
+	if oldNode != nil && oldNode.UserID == node.UserID {
+		node.ID = oldNode.ID
+		node.GivenName = oldNode.GivenName
+		ipv4 = oldNode.IPv4
+		ipv6 = oldNode.IPv6
+	}
 
 	// If the node exists and it already has IP(s), we just save it
 	// so we store the node.Expire and node.Nodekey that has been set when

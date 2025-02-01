@@ -256,9 +256,16 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, err
 	}
 
-	err = nodesChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
+	updateSent, err := nodesChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
 	if err != nil {
 		return nil, fmt.Errorf("updating resources using node: %w", err)
+	}
+	if !updateSent {
+		ctx = types.NotifyCtx(context.Background(), "web-node-login", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			Type:        types.StatePeerChanged,
+			ChangeNodes: []types.NodeID{node.ID},
+		})
 	}
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
