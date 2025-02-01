@@ -77,9 +77,12 @@ type Node struct {
 
 	ForcedTags []string `gorm:"serializer:json"`
 
-	// TODO(kradalby): This seems like irrelevant information?
-	AuthKeyID *uint64     `sql:"DEFAULT:NULL"`
-	AuthKey   *PreAuthKey `gorm:"constraint:OnDelete:SET NULL;"`
+	// When a node has been created with a PreAuthKey, we need to
+	// prevent the preauthkey from being deleted before the node.
+	// The preauthkey can define "tags" of the node so we need it
+	// around.
+	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
+	AuthKey   *PreAuthKey
 
 	LastSeen *time.Time
 	Expiry   *time.Time
