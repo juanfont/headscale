@@ -512,24 +512,21 @@ func (a *AuthProviderOIDC) handleRegistrationID(
 	// Send an update to all nodes if this is a new node that they need to know
 	// about.
 	// If this is a refresh, just send new expiry updates.
-	if newNode {
-		err = nodesChangedHook(a.db, a.polMan, a.notifier)
-		if err != nil {
-			return false, fmt.Errorf("updating resources using node: %w", err)
-		}
-	} else {
+	updateSent, err := nodesChangedHook(a.db, a.polMan, a.notifier)
+	if err != nil {
+		return false, fmt.Errorf("updating resources using node: %w", err)
+	}
+
+	if !updateSent {
 		ctx := types.NotifyCtx(context.Background(), "oidc-expiry-self", node.Hostname)
 		a.notifier.NotifyByNodeID(
 			ctx,
-			types.StateUpdate{
-				Type:        types.StateSelfUpdate,
-				ChangeNodes: []types.NodeID{node.ID},
-			},
+			types.StateSelf(node.ID),
 			node.ID,
 		)
 
 		ctx = types.NotifyCtx(context.Background(), "oidc-expiry-peers", node.Hostname)
-		a.notifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, expiry), node.ID)
+		a.notifier.NotifyWithIgnore(ctx, types.StateUpdatePeerAdded(node.ID), node.ID)
 	}
 
 	return newNode, nil

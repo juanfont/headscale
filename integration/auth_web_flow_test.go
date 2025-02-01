@@ -11,6 +11,8 @@ import (
 
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var errParseAuthPage = errors.New("failed to parse auth page")
@@ -106,6 +108,14 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	listNodes, err := headscale.ListNodes()
+	assert.Equal(t, len(listNodes), len(allClients))
+	nodeCountBeforeLogout := len(listNodes)
+	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
+
 	clientIPs := make(map[TailscaleClient][]netip.Addr)
 	for _, client := range allClients {
 		ips, err := client.IPs()
@@ -127,9 +137,6 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 
 	t.Logf("all clients logged out")
 
-	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
-
 	for userName := range spec {
 		err = scenario.runTailscaleUp(userName, headscale.GetEndpoint())
 		if err != nil {
@@ -138,9 +145,6 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	}
 
 	t.Logf("all clients logged in again")
-
-	allClients, err = scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
 
 	allIps, err = scenario.ListTailscaleClientsIPs()
 	assertNoErrListClientIPs(t, err)
@@ -151,6 +155,10 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 
 	success = pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	listNodes, err = headscale.ListNodes()
+	require.Equal(t, nodeCountBeforeLogout, len(listNodes))
+	t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
 
 	for _, client := range allClients {
 		ips, err := client.IPs()

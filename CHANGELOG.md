@@ -2,6 +2,18 @@
 
 ## Next
 
+### BREAKING
+
+- Authentication flow has been rewritten
+  [#2374](https://github.com/juanfont/headscale/pull/2374) This change should be
+  transparent to users with the exception of some buxfixes that has been
+  discovered and was fixed as part of the rewrite.
+  - When a node is registered with _a new user_, it will be registered as a new
+    node ([#2327](https://github.com/juanfont/headscale/issues/2327) and
+    [#1310](https://github.com/juanfont/headscale/issues/1310)).
+  - A logged out node logging in with the same user will replace the existing
+    node.
+
 ### Changes
 
 - `oidc.map_legacy_users` is now `false` by default
@@ -12,6 +24,10 @@
   [#2393](https://github.com/juanfont/headscale/pull/2393)
 - Change minimum hostname length to 2
   [#2393](https://github.com/juanfont/headscale/pull/2393)
+- Pre auth keys belonging to a user are no longer deleted with the user
+  [#2396](https://github.com/juanfont/headscale/pull/2396)
+- Pre auth keys that are used by a node can no longer be deleted
+  [#2396](https://github.com/juanfont/headscale/pull/2396)
 
 ## 0.24.2 (2025-01-30)
 

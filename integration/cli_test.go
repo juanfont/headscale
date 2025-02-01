@@ -606,22 +606,12 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		t.Fatalf("expected node to be logged in as userid:2, got: %s", status.Self.UserID.String())
 	}
 
-	var listNodes []v1.Node
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--output",
-			"json",
-		},
-		&listNodes,
-	)
+	listNodes, err := headscale.ListNodes()
 	assert.Nil(t, err)
-	assert.Len(t, listNodes, 1)
+	assert.Len(t, listNodes, 2)
 
-	assert.Equal(t, "user2", listNodes[0].GetUser().GetName())
+	assert.Equal(t, "user1", listNodes[0].GetUser().GetName())
+	assert.Equal(t, "user2", listNodes[1].GetUser().GetName())
 }
 
 func TestApiKeyCommand(t *testing.T) {

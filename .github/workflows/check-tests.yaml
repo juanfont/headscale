@@ -32,7 +32,7 @@ jobs:
       - name: Generate and check integration tests
         if: steps.changed-files.outputs.files == 'true'
         run: |
-          nix develop --command bash -c "cd cmd/gh-action-integration-generator/ && go generate"
+          nix develop --command bash -c "cd .github/workflows && go generate"
           git diff --exit-code .github/workflows/test-integration.yaml
 
       - name: Show missing tests
