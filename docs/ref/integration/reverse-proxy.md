@@ -139,3 +139,82 @@ The following minimal Apache config will proxy traffic to the headscale instance
 	SSLCertificateKeyFile <PATH_CERT_KEY>
 </VirtualHost>
 ```
+
+## nginx proxy manager
+
+    ssl_stapling off;
+
+    add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+    add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
+
+    location /web/ {
+        proxy_pass http://<HEADSCALE_SERVER_IP>:8080/web;
+        
+        # to use with headscale-admin for CORS
+    	if ($http_origin = "https://<HEADSCALE_ADMIN_IP>:8443") {
+        	set $cors_origin "https://HEADSCALE_ADMIN_IP:8443";
+    	}
+    	
+    	# to use with headscale-ui for CORS
+    	if ($http_origin = "http://HEADSCALE_UI_IP:3000") {
+        	set $cors_origin "HEADSCALE_UI_IP:3000";
+    	}
+        # default
+    	if ($cors_origin = "") {
+        	set $cors_origin $http_origin;
+    	}
+
+        add_header Access-Control-Allow-Origin $cors_origin always;
+        
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
+
+        # Se a requisição for OPTIONS, retorne um status 204 com os cabeçalhos CORS
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+    }
+
+    # Configuração para /api/
+    location /api {
+        proxy_pass http://<HEADSCALE_SERVER_IP>:8080/api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+
+        # to use with headscale-ui for CORS
+    	if ($http_origin = "http://HEADSCALE_UI_IP:3000") {
+        	set $cors_origin "HEADSCALE_UI_IP:3000";
+    	}
+    	if ($cors_origin = "") {
+        	set $cors_origin $http_origin;
+    	}
+
+    	# default
+    	if ($cors_origin = "") {
+        	set $cors_origin $http_origin;
+    	}
+
+        add_header Access-Control-Allow-Origin $cors_origin always;
+
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
+
+        # if OPTIONS received, return status 204 CORS headers
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+
+        # Timeouts
+        send_timeout 5m;
+        proxy_read_timeout 240;
+        proxy_send_timeout 240;
+        proxy_connect_timeout 240;
+    }
+
+   location / {
+      return 404;
+   }
+   
+```
