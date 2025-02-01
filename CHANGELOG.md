@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.24.3 (2025-02-07)
+
+### Changes
+- Pre auth keys belonging to a user are no longer deleted with the user
+  [#2396](https://github.com/juanfont/headscale/pull/2396)
+- Pre auth keys that are used by a node can no longer be deleted
+  [#2396](https://github.com/juanfont/headscale/pull/2396)
 
 ## 0.24.2 (2025-01-30)
 

@@ -2,10 +2,13 @@ package db
 
 import (
 	"sort"
+	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/check.v1"
 	"tailscale.com/types/ptr"
 )
@@ -174,4 +177,26 @@ func (*Suite) TestPreAuthKeyACLTags(c *check.C) {
 	gotTags := listedPaks[0].Proto().GetAclTags()
 	sort.Sort(sort.StringSlice(gotTags))
 	c.Assert(gotTags, check.DeepEquals, tags)
+}
+
+func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+	user, err := db.CreateUser(types.User{Name: "test8"})
+	assert.NoError(t, err)
+
+	key, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, []string{"tag:good"})
+	assert.NoError(t, err)
+
+	node := types.Node{
+		ID:             0,
+		Hostname:       "testest",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		AuthKeyID:      ptr.To(key.ID),
+	}
+	db.DB.Save(&node)
+
+	err = db.DB.Delete(key).Error
+	require.ErrorContains(t, err, "constraint failed: FOREIGN KEY constraint failed")
 }

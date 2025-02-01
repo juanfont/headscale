@@ -582,6 +582,24 @@ COMMIT;
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Add back constraint so you cannot delete preauth keys that
+			// is still used by a node.
+			{
+				ID: "202501311657",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.PreAuthKey{})
+					if err != nil {
+						return err
+					}
+					err = tx.AutoMigrate(&types.Node{})
+					if err != nil {
+						return err
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
