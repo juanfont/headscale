@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   integration-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
