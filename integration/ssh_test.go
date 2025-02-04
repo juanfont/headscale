@@ -13,6 +13,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func isSSHNoAccessStdError(stderr string) bool {
+	return strings.Contains(stderr, "Permission denied (tailscale)") ||
+		// Since https://github.com/tailscale/tailscale/pull/14853
+		strings.Contains(stderr, "failed to evaluate SSH policy")
+}
+
 var retry = func(times int, sleepInterval time.Duration,
 	doWork func() (string, string, error),
 ) (string, string, error) {
@@ -32,7 +38,7 @@ var retry = func(times int, sleepInterval time.Duration,
 
 		// If we get a permission denied error, we can fail immediately
 		// since that is something we wont recover from by retrying.
-		if err != nil && strings.Contains(stderr, "Permission denied (tailscale)") {
+		if err != nil && isSSHNoAccessStdError(stderr) {
 			return result, stderr, err
 		}
 
@@ -410,11 +416,11 @@ func assertSSHHostname(t *testing.T, client TailscaleClient, peer TailscaleClien
 func assertSSHPermissionDenied(t *testing.T, client TailscaleClient, peer TailscaleClient) {
 	t.Helper()
 
-	result, stderr, _ := doSSH(t, client, peer)
+	result, stderr, err := doSSH(t, client, peer)
 
 	assert.Empty(t, result)
 
-	assertContains(t, stderr, "Permission denied (tailscale)")
+	assertSSHNoAccessStdError(t, err, stderr)
 }
 
 func assertSSHTimeout(t *testing.T, client TailscaleClient, peer TailscaleClient) {
@@ -427,5 +433,13 @@ func assertSSHTimeout(t *testing.T, client TailscaleClient, peer TailscaleClient
 	if !strings.Contains(stderr, "Connection timed out") &&
 		!strings.Contains(stderr, "Operation timed out") {
 		t.Fatalf("connection did not time out")
+	}
+}
+
+func assertSSHNoAccessStdError(t *testing.T, err error, stderr string) {
+	t.Helper()
+	assert.Error(t, err)
+	if !isSSHNoAccessStdError(stderr) {
+		t.Errorf("expected stderr output suggesting access denied, got: %s", stderr)
 	}
 }
