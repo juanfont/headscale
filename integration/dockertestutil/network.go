@@ -3,6 +3,7 @@ package dockertestutil
 import (
 	"errors"
 	"net"
+	"fmt"
 
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
@@ -12,7 +13,10 @@ var ErrContainerNotFound = errors.New("container not found")
 
 func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (*dockertest.Network, error) {
 	networks, err := pool.NetworksByName(name)
-	if err != nil || len(networks) == 0 {
+	if err != nil {
+		return nil, fmt.Errorf("looking up network names: %w", err)
+	}
+	if len(networks) == 0 {
 		if _, err := pool.CreateNetwork(name); err == nil {
 			// Create does not give us an updated version of the resource, so we need to
 			// get it again.
@@ -22,6 +26,8 @@ func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (*dockertest.Ne
 			}
 
 			return &networks[0], nil
+		} else {
+			return nil, fmt.Errorf("creating network: %w", err)
 		}
 	}
 
