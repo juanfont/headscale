@@ -34,19 +34,6 @@ const (
 
 var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
 
-func enabledVersions(vs map[string]bool) []string {
-	var ret []string
-	for version, enabled := range vs {
-		if enabled {
-			ret = append(ret, version)
-		}
-	}
-
-	sort.Sort(sort.Reverse(sort.StringSlice(ret)))
-
-	return ret
-}
-
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
 	errNoUserAvailable      = errors.New("no user available")
