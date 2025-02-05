@@ -61,7 +61,7 @@ func theInternet() *netipx.IPSet {
 	internetBuilder.RemovePrefix(tsaddr.TailscaleULARange())
 	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
 
-	// Delete "cant find DHCP networks"
+	// Delete "can't find DHCP networks"
 	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-local
 	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
 
@@ -251,7 +251,7 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 	DEST_LOOP:
 		for _, dest := range rule.DstPorts {
 			expanded, err := util.ParseIPSet(dest.IP, nil)
-			// Fail closed, if we cant parse it, then we should not allow
+			// Fail closed, if we can't parse it, then we should not allow
 			// access.
 			if err != nil {
 				continue DEST_LOOP
@@ -934,7 +934,7 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 	build.AddPrefix(prefix)
 
 	// This is suboptimal and quite expensive, but if we only add the prefix, we will miss all the relevant IPv6
-	// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
+	// addresses for the hosts that belong to tailscale. This doesn't really affect stuff like subnet routers.
 	for _, node := range nodes {
 		for _, ip := range node.IPs() {
 			// log.Trace().

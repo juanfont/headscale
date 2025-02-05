@@ -156,7 +156,7 @@ func (m *mapSession) serve() {
 	// current configuration.
 	//
 	// If OmitPeers is true, Stream is false, and ReadOnly is false,
-	// then te server will let clients update their endpoints without
+	// then the server will let clients update their endpoints without
 	// breaking existing long-polling (Stream == true) connections.
 	// In this case, the server can omit the entire response; the client
 	// only checks the HTTP response status code.
@@ -691,7 +691,7 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 	}
 
 	// Services is mostly useful for discovery and not critical,
-	// except for peerapi, which is how nodes talk to eachother.
+	// except for peerapi, which is how nodes talk to each other.
 	// If peerapi was not part of the initial mapresponse, we
 	// need to make sure its sent out later as it is needed for
 	// Taildrop.

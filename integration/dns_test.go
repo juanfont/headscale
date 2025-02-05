@@ -348,7 +348,7 @@ func TestValidateResolvConf(t *testing.T) {
 				"HEADSCALE_DNS_BASE_DOMAIN":        "all-of.it",
 				"HEADSCALE_DNS_NAMESERVERS_GLOBAL": `8.8.8.8`,
 				"HEADSCALE_DNS_SEARCH_DOMAINS":     "test1.no test2.no",
-				// TODO(kradalby): this currently isnt working, need to fix it
+				// TODO(kradalby): this currently isn't working, need to fix it
 				// "HEADSCALE_DNS_NAMESERVERS_SPLIT": `{foo.bar.com: ["1.1.1.1"]}`,
 				// "HEADSCALE_DNS_EXTRA_RECORDS":     `[{ name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.4" }]`,
 			},

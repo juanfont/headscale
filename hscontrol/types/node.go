@@ -108,7 +108,7 @@ func (node *Node) GivenNameHasBeenChanged() bool {
 // IsExpired returns whether the node registration has expired.
 func (node Node) IsExpired() bool {
 	// If Expiry is not set, the client has not indicated that
-	// it wants an expiry time, it is therefor considered
+	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
 	if node.Expiry == nil || node.Expiry.IsZero() {
 		return false
@@ -183,7 +183,7 @@ func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
 	src := node.IPs()
 	allowedIPs := node2.IPs()
 
-	// TODO(kradalby): Regenerate this everytime the filter change, instead of
+	// TODO(kradalby): Regenerate this every time the filter change, instead of
 	// every time we use it.
 	matchers := make([]matcher.Match, len(filter))
 	for i, rule := range filter {

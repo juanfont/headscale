@@ -366,8 +366,8 @@ func New(
 		}
 	}
 
-	// dockertest isnt very good at handling containers that has already
-	// been created, this is an attempt to make sure this container isnt
+	// dockertest isn't very good at handling containers that has already
+	// been created, this is an attempt to make sure this container isn't
 	// present.
 	err = pool.RemoveContainerByName(hsic.hostname)
 	if err != nil {

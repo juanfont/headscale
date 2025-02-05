@@ -124,7 +124,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			},
 		},
 		// Test that when we have two users, which cannot see
-		// eachother, each node has only the number of pairs from
+		// each other, each node has only the number of pairs from
 		// their own user.
 		"two-isolated-users": {
 			users: map[string]int{
