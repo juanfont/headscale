@@ -40,12 +40,15 @@ grpc_listen_addr: 127.0.0.1:50443
 # are doing.
 grpc_allow_insecure: false
 
-# The Access-Control-Allow-Origin header specifies which origins are allowed to access resources.
+# The allow_origins list will allow you to set the Access-Control-Allow-Origin header to the origin in the list.
+# This will allow you to enable cors and set headscale without a reverse proxy.
+# Multiple origins can be set in the allow_origins list.
 # Options:
-# - "*" to allow access from any origin (not recommended for sensitive data).
-# - "http://example.com" to only allow access from a specific origin.
-# - "" to disable Cross-Origin Resource Sharing (CORS).
-access_control_allow_origin: ""
+# - "*" is disabled (due to security risks).
+# - "https://example.com" to only allow access from a specific origin.
+# - "https://example.com:1234" to allow access from a specific origin with a port.
+cors:
+  allow_origins: []
 
 # The Noise section includes specific configuration for the
 # TS2021 Noise protocol

@@ -66,7 +66,7 @@ type Config struct {
 	Log                            LogConfig
 	DisableUpdateCheck             bool
 
-	AccessControlAllowOrigins string
+	AllowedOrigins CorsConfig
 
 	Database DatabaseConfig
 
@@ -208,6 +208,10 @@ type DERPConfig struct {
 
 type LogTailConfig struct {
 	Enabled bool
+}
+
+type CorsConfig struct {
+	Origins []string
 }
 
 type CLIConfig struct {
@@ -531,6 +535,14 @@ func logtailConfig() LogTailConfig {
 
 	return LogTailConfig{
 		Enabled: enabled,
+	}
+}
+
+func corsConfig() CorsConfig {
+	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
+
+	return CorsConfig{
+		Origins: allowedOrigins,
 	}
 }
 
@@ -907,7 +919,7 @@ func LoadServerConfig() (*Config, error) {
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: false,
 
-		AccessControlAllowOrigins: viper.GetString("access_control_allow_origin"),
+		AllowedOrigins: corsConfig(),
 
 		PrefixV4:     prefix4,
 		PrefixV6:     prefix6,

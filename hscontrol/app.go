@@ -455,18 +455,63 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
+// corsHeaderMiddleware will add an "Access-Control-Allow-Origin" to enable CORS.
 func (h *Headscale) corsHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", h.cfg.AccessControlAllowOrigins)
+		// skip disabled CORS endpoints
+		if !h.enabledCorsRoutes(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		origin := r.Header.Get("Origin")
+		// we compare origin from the allowed Origins list. Then add the header with origin
+		for _, allowedOrigin := range h.cfg.AllowedOrigins.Origins {
+			if allowedOrigin == origin {
+				w.Header().Set("Vary", "Origin")
+				w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+				break
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (h *Headscale) enabledCorsRoutes(routerPath string) bool {
+	// enable all api endpoints
+	if strings.HasPrefix(routerPath, "/api/") {
+		return true
+	}
+
+	// A list of enabled CORS endpoints
+	enabledRoutes := []string{
+		"/health",
+		"/key",
+		"/register/{registration_id}",
+		"/oidc/callback",
+		"/verify",
+		"/derp",
+		"/derp/probe",
+		"/derp/latency-check",
+		"/bootstrap-dns",
+		"/machine/register",
+		"/machine/map",
+	}
+
+	for _, routes := range enabledRoutes {
+		if routes == routerPath {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 	router.Use(prometheusMiddleware)
 
-	if h.cfg.AccessControlAllowOrigins != "" {
+	if len(h.cfg.AllowedOrigins.Origins) != 0 {
 		router.Use(h.corsHeadersMiddleware)
 	}
 
