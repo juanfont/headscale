@@ -407,7 +407,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
   [#1391](https://github.com/juanfont/headscale/pull/1391)
 - Improvements on Noise implementation
   [#1379](https://github.com/juanfont/headscale/pull/1379)
-- Replace node filter logic, ensuring nodes with access can see eachother
+- Replace node filter logic, ensuring nodes with access can see each other
   [#1381](https://github.com/juanfont/headscale/pull/1381)
 - Disable (or delete) both exit routes at the same time
   [#1428](https://github.com/juanfont/headscale/pull/1428)

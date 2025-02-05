@@ -56,7 +56,7 @@ func AddContainerToNetwork(
 		return err
 	}
 
-	// TODO(kradalby): This doesnt work reliably, but calling the exact same functions
+	// TODO(kradalby): This doesn't work reliably, but calling the exact same functions
 	// seem to work fine...
 	// if container, ok := pool.ContainerByName("/" + testContainer); ok {
 	// 	err := container.ConnectToNetwork(network)

@@ -86,7 +86,7 @@ func CheckForFQDNRules(name string) error {
 	}
 	if invalidDNSRegex.MatchString(name) {
 		return fmt.Errorf(
-			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
+			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with these rules: %w",
 			name,
 			ErrInvalidUserName,
 		)

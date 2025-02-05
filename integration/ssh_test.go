@@ -37,7 +37,7 @@ var retry = func(times int, sleepInterval time.Duration,
 		}
 
 		// If we get a permission denied error, we can fail immediately
-		// since that is something we wont recover from by retrying.
+		// since that is something we won-t recover from by retrying.
 		if err != nil && isSSHNoAccessStdError(stderr) {
 			return result, stderr, err
 		}

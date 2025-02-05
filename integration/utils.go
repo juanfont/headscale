@@ -261,7 +261,7 @@ func assertValidStatus(t *testing.T, client TailscaleClient) {
 
 	assert.Truef(t, status.Self.InNetworkMap, "%q is not in network map", client.Hostname())
 
-	// This isnt really relevant for Self as it wont be in its own socket/wireguard.
+	// This isn't really relevant for Self as it won't be in its own socket/wireguard.
 	// assert.Truef(t, status.Self.InMagicSock, "%q is not tracked by magicsock", client.Hostname())
 	// assert.Truef(t, status.Self.InEngine, "%q is not in in wireguard engine", client.Hostname())
 

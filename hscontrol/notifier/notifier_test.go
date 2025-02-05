@@ -223,7 +223,7 @@ func TestBatcher(t *testing.T) {
 					// so do not run the worker.
 					BatchChangeDelay: time.Hour,
 
-					// Since we do not load the config, we wont get the
+					// Since we do not load the config, we won't get the
 					// default, so set it manually so we dont time out
 					// and have flakes.
 					NotifierSendTimeout: time.Second,
