@@ -2,6 +2,9 @@
 
 ## Next
 
+
+## 0.25.0 (2025-02-xx)
+
 ### BREAKING
 
 - Authentication flow has been rewritten
@@ -13,6 +16,8 @@
     [#1310](https://github.com/juanfont/headscale/issues/1310)).
   - A logged out node logging in with the same user will replace the existing
     node.
+- Remove support for Tailscale clients older than 1.62 (Capability version 87)
+      [#2405](https://github.com/juanfont/headscale/pull/2405)
 
 ### Changes
 

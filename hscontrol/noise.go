@@ -150,12 +150,8 @@ func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
 	return nil
 }
 
-const (
-	MinimumCapVersion tailcfg.CapabilityVersion = 82
-)
-
 func isSupportedVersion(version tailcfg.CapabilityVersion) bool {
-	return version >= MinimumCapVersion
+	return version >= capver.MinSupportedCapabilityVersion
 }
 
 func rejectUnsupported(
@@ -168,9 +164,9 @@ func rejectUnsupported(
 	if !isSupportedVersion(version) {
 		log.Error().
 			Caller().
-			Int("minimum_cap_ver", int(MinimumCapVersion)).
+			Int("minimum_cap_ver", int(capver.MinSupportedCapabilityVersion)).
 			Int("client_cap_ver", int(version)).
-			Str("minimum_version", capver.TailscaleVersion(MinimumCapVersion)).
+			Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 			Str("client_version", capver.TailscaleVersion(version)).
 			Str("node_key", nkey.ShortString()).
 			Str("machine_key", mkey.ShortString()).

@@ -547,6 +547,8 @@ func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *not
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
+	capver.CanOldCodeBeCleanedUp()
+
 	if profilingEnabled {
 		if profilingPath != "" {
 			err := os.MkdirAll(profilingPath, os.ModePerm)
@@ -566,7 +568,7 @@ func (h *Headscale) Serve() error {
 
 	log.Info().
 		Caller().
-		Str("minimum_version", capver.TailscaleVersion(MinimumCapVersion)).
+		Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 		Msg("Clients with a lower minimum version will be rejected")
 
 	// Fetch an initial DERP Map before we start serving

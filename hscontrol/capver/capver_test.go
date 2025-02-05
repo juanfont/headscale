@@ -15,6 +15,19 @@ func TestTailscaleLatestMajorMinor(t *testing.T) {
 	}{
 		{3, false, []string{"v1.76", "v1.78", "v1.80"}},
 		{2, true, []string{"1.78", "1.80"}},
+		// Lazy way to see all supported versions
+		{10, true, []string{
+			"1.62",
+			"1.64",
+			"1.66",
+			"1.68",
+			"1.70",
+			"1.72",
+			"1.74",
+			"1.76",
+			"1.78",
+			"1.80",
+		}},
 		{0, false, nil},
 	}
 
