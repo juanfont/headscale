@@ -62,11 +62,16 @@ func tailNode(
 		}
 	}
 
-	var derp string
+	var derp int
+
+	// TODO(kradalby): legacyDERP was removed in tailscale/tailscale@2fc4455e6dd9ab7f879d4e2f7cffc2be81f14077
+	// and should be removed after 111 is the minimum capver.
+	var legacyDERP string
 	if node.Hostinfo != nil && node.Hostinfo.NetInfo != nil {
-		derp = fmt.Sprintf("127.3.3.40:%d", node.Hostinfo.NetInfo.PreferredDERP)
+		legacyDERP = fmt.Sprintf("127.3.3.40:%d", node.Hostinfo.NetInfo.PreferredDERP)
+		derp = node.Hostinfo.NetInfo.PreferredDERP
 	} else {
-		derp = "127.3.3.40:0" // Zero means disconnected or unknown.
+		legacyDERP = "127.3.3.40:0" // Zero means disconnected or unknown.
 	}
 
 	var keyExpiry time.Time
@@ -95,14 +100,15 @@ func tailNode(
 		Key:       node.NodeKey,
 		KeyExpiry: keyExpiry.UTC(),
 
-		Machine:    node.MachineKey,
-		DiscoKey:   node.DiscoKey,
-		Addresses:  addrs,
-		AllowedIPs: allowedIPs,
-		Endpoints:  node.Endpoints,
-		DERP:       derp,
-		Hostinfo:   node.Hostinfo.View(),
-		Created:    node.CreatedAt.UTC(),
+		Machine:          node.MachineKey,
+		DiscoKey:         node.DiscoKey,
+		Addresses:        addrs,
+		AllowedIPs:       allowedIPs,
+		Endpoints:        node.Endpoints,
+		HomeDERP:         derp,
+		LegacyDERPString: legacyDERP,
+		Hostinfo:         node.Hostinfo.View(),
+		Created:          node.CreatedAt.UTC(),
 
 		Online: node.IsOnline,
 

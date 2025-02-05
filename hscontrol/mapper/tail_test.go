@@ -68,7 +68,8 @@ func TestTailNode(t *testing.T) {
 				StableID:          "0",
 				Addresses:         []netip.Prefix{},
 				AllowedIPs:        []netip.Prefix{},
-				DERP:              "127.3.3.40:0",
+				HomeDERP:          0,
+				LegacyDERPString:  "127.3.3.40:0",
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
 				Tags:              []string{},
 				PrimaryRoutes:     []netip.Prefix{},
@@ -156,9 +157,10 @@ func TestTailNode(t *testing.T) {
 					tsaddr.AllIPv4(),
 					netip.MustParsePrefix("192.168.0.0/24"),
 				},
-				DERP:     "127.3.3.40:0",
-				Hostinfo: hiview(tailcfg.Hostinfo{}),
-				Created:  created,
+				HomeDERP:         0,
+				LegacyDERPString: "127.3.3.40:0",
+				Hostinfo:         hiview(tailcfg.Hostinfo{}),
+				Created:          created,
 
 				Tags: []string{},
 
