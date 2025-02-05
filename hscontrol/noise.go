@@ -151,7 +151,7 @@ func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
 }
 
 const (
-	MinimumCapVersion tailcfg.CapabilityVersion = 82
+	MinSupportedCapabilityVersion tailcfg.CapabilityVersion = 88
 )
 
 func isSupportedVersion(version tailcfg.CapabilityVersion) bool {
