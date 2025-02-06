@@ -520,12 +520,12 @@ func (a *AuthProviderOIDC) handleRegistration(
 		ctx := types.NotifyCtx(context.Background(), "oidc-expiry-self", node.Hostname)
 		a.notifier.NotifyByNodeID(
 			ctx,
-			types.StateSelf(node.ID),
+			types.UpdateSelf(node.ID),
 			node.ID,
 		)
 
 		ctx = types.NotifyCtx(context.Background(), "oidc-expiry-peers", node.Hostname)
-		a.notifier.NotifyWithIgnore(ctx, types.StateUpdatePeerAdded(node.ID), node.ID)
+		a.notifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 	}
 
 	return newNode, nil

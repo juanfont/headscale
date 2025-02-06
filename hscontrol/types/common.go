@@ -102,21 +102,41 @@ func (su *StateUpdate) Empty() bool {
 	return false
 }
 
-func StateSelf(nodeID NodeID) StateUpdate {
+func UpdateFull() StateUpdate {
+	return StateUpdate{
+		Type: StateFullUpdate,
+	}
+}
+
+func UpdateSelf(nodeID NodeID) StateUpdate {
 	return StateUpdate{
 		Type:        StateSelfUpdate,
 		ChangeNodes: []NodeID{nodeID},
 	}
 }
 
-func StateUpdatePeerAdded(nodeIDs ...NodeID) StateUpdate {
+func UpdatePeerChanged(nodeIDs ...NodeID) StateUpdate {
 	return StateUpdate{
 		Type:        StatePeerChanged,
 		ChangeNodes: nodeIDs,
 	}
 }
 
-func StateUpdateExpire(nodeID NodeID, expiry time.Time) StateUpdate {
+func UpdatePeerPatch(changes ...*tailcfg.PeerChange) StateUpdate {
+	return StateUpdate{
+		Type:          StatePeerChangedPatch,
+		ChangePatches: changes,
+	}
+}
+
+func UpdatePeerRemoved(nodeIDs ...NodeID) StateUpdate {
+	return StateUpdate{
+		Type:    StatePeerRemoved,
+		Removed: nodeIDs,
+	}
+}
+
+func UpdateExpire(nodeID NodeID, expiry time.Time) StateUpdate {
 	return StateUpdate{
 		Type: StatePeerChangedPatch,
 		ChangePatches: []*tailcfg.PeerChange{

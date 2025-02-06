@@ -266,10 +266,7 @@ func (api headscaleV1APIServer) RegisterNode(
 	}
 	if !updateSent {
 		ctx = types.NotifyCtx(context.Background(), "web-node-login", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: []types.NodeID{node.ID},
-		})
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
 	}
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
@@ -319,11 +316,7 @@ func (api headscaleV1APIServer) SetTags(
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-settags", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
-		Type:        types.StatePeerChanged,
-		ChangeNodes: []types.NodeID{node.ID},
-		Message:     "called from api.SetTags",
-	}, node.ID)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -364,16 +357,10 @@ func (api headscaleV1APIServer) DeleteNode(
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
-	api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-		Type:    types.StatePeerRemoved,
-		Removed: []types.NodeID{node.ID},
-	})
+	api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
 
 	if changedNodes != nil {
-		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: changedNodes,
-		})
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(changedNodes...))
 	}
 
 	return &v1.DeleteNodeResponse{}, nil
@@ -401,14 +388,11 @@ func (api headscaleV1APIServer) ExpireNode(
 	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
 	api.h.nodeNotifier.NotifyByNodeID(
 		ctx,
-		types.StateUpdate{
-			Type:        types.StateSelfUpdate,
-			ChangeNodes: []types.NodeID{node.ID},
-		},
+		types.UpdateSelf(node.ID),
 		node.ID)
 
 	ctx = types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdateExpire(node.ID, now), node.ID)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, now), node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -439,11 +423,7 @@ func (api headscaleV1APIServer) RenameNode(
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
-		Type:        types.StatePeerChanged,
-		ChangeNodes: []types.NodeID{node.ID},
-		Message:     "called from api.RenameNode",
-	}, node.ID)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -602,10 +582,7 @@ func (api headscaleV1APIServer) DisableRoute(
 
 	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-disableroute", "unknown")
-		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: update,
-		})
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(update...))
 	}
 
 	return &v1.DisableRouteResponse{}, nil
@@ -644,10 +621,7 @@ func (api headscaleV1APIServer) DeleteRoute(
 
 	if update != nil {
 		ctx := types.NotifyCtx(ctx, "cli-deleteroute", "unknown")
-		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: update,
-		})
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(update...))
 	}
 
 	return &v1.DeleteRouteResponse{}, nil
@@ -809,9 +783,7 @@ func (api headscaleV1APIServer) SetPolicy(
 	// Only send update if the packet filter has changed.
 	if changed {
 		ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
-		api.h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-			Type: types.StateFullUpdate,
-		})
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	response := &v1.SetPolicyResponse{

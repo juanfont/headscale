@@ -68,9 +68,7 @@ func (h *Headscale) newMapSession(
 		// to receive a message to make sure we dont block the entire
 		// notifier.
 		updateChan = make(chan types.StateUpdate, h.cfg.Tuning.NodeMapSessionBufferedChanSize)
-		updateChan <- types.StateUpdate{
-			Type: types.StateFullUpdate,
-		}
+		updateChan <- types.UpdateFull()
 	}
 
 	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)
@@ -428,12 +426,7 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 	}
 
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
-	h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
-		Type: types.StatePeerChangedPatch,
-		ChangePatches: []*tailcfg.PeerChange{
-			change,
-		},
-	}, node.ID)
+	h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerPatch(change), node.ID)
 }
 
 func (m *mapSession) handleEndpointUpdate() {
@@ -506,10 +499,7 @@ func (m *mapSession) handleEndpointUpdate() {
 		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
 		m.h.nodeNotifier.NotifyByNodeID(
 			ctx,
-			types.StateUpdate{
-				Type:        types.StateSelfUpdate,
-				ChangeNodes: []types.NodeID{m.node.ID},
-			},
+			types.UpdateSelf(m.node.ID),
 			m.node.ID)
 	}
 
@@ -530,11 +520,7 @@ func (m *mapSession) handleEndpointUpdate() {
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", m.node.Hostname)
 	m.h.nodeNotifier.NotifyWithIgnore(
 		ctx,
-		types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: []types.NodeID{m.node.ID},
-			Message:     "called from handlePoll -> update",
-		},
+		types.UpdatePeerChanged(m.node.ID),
 		m.node.ID,
 	)
 

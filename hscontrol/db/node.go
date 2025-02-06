@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 const (
@@ -626,11 +627,7 @@ func enableRoutes(tx *gorm.DB,
 
 	node.Routes = nRoutes
 
-	return &types.StateUpdate{
-		Type:        types.StatePeerChanged,
-		ChangeNodes: []types.NodeID{node.ID},
-		Message:     "created in db.enableRoutes",
-	}, nil
+	return ptr.To(types.UpdatePeerChanged(node.ID)), nil
 }
 
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
@@ -717,10 +714,7 @@ func ExpireExpiredNodes(tx *gorm.DB,
 	}
 
 	if len(expired) > 0 {
-		return started, types.StateUpdate{
-			Type:          types.StatePeerChangedPatch,
-			ChangePatches: expired,
-		}, true
+		return started, types.UpdatePeerPatch(expired...), true
 	}
 
 	return started, types.StateUpdate{}, false
