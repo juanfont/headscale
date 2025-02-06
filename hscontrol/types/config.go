@@ -180,10 +180,8 @@ type OIDCConfig struct {
 	AllowedDomains             []string
 	AllowedUsers               []string
 	AllowedGroups              []string
-	StripEmaildomain           bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
-	MapLegacyUsers             bool
 	PKCE                       PKCEConfig
 }
 
@@ -315,11 +313,9 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.sqlite.wal_autocheckpoint", 1000) // SQLite default
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
-	viper.SetDefault("oidc.strip_email_domain", true)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
-	viper.SetDefault("oidc.map_legacy_users", false)
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
 
@@ -365,9 +361,9 @@ func validateServerConfig() error {
 	depr.fatal("dns.use_username_in_magic_dns")
 	depr.fatal("dns_config.use_username_in_magic_dns")
 
-	// TODO(kradalby): Reintroduce when strip_email_domain is removed
-	// after #2170 is cleaned up
-	// depr.fatal("oidc.strip_email_domain")
+	// Removed since version v0.26.0
+	depr.fatal("oidc.strip_email_domain")
+	depr.fatal("oidc.map_legacy_users")
 
 	if viper.GetBool("oidc.enabled") {
 		if err := validatePKCEMethod(viper.GetString("oidc.pkce.method")); err != nil {
@@ -376,19 +372,6 @@ func validateServerConfig() error {
 	}
 
 	depr.Log()
-
-	for _, removed := range []string{
-		// TODO(kradalby): Reintroduce when strip_email_domain is removed
-		// after #2170 is cleaned up
-		// "oidc.strip_email_domain",
-		"dns.use_username_in_magic_dns",
-		"dns_config.use_username_in_magic_dns",
-	} {
-		if viper.IsSet(removed) {
-			log.Fatal().
-				Msgf("Fatal config error: %s has been removed. Please remove it from your config file", removed)
-		}
-	}
 
 	if viper.IsSet("dns.extra_records") && viper.IsSet("dns.extra_records_path") {
 		log.Fatal().Msg("Fatal config error: dns.extra_records and dns.extra_records_path are mutually exclusive. Please remove one of them from your config file")
@@ -959,10 +942,6 @@ func LoadServerConfig() (*Config, error) {
 				}
 			}(),
 			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
-			// TODO(kradalby): Remove when strip_email_domain is removed
-			// after #2170 is cleaned up
-			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
-			MapLegacyUsers:   viper.GetBool("oidc.map_legacy_users"),
 			PKCE: PKCEConfig{
 				Enabled: viper.GetBool("oidc.pkce.enabled"),
 				Method:  viper.GetString("oidc.pkce.method"),

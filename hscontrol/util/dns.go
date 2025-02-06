@@ -227,32 +227,3 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 
 	return fqdns
 }
-
-// TODO(kradalby): Reintroduce when strip_email_domain is removed
-// after #2170 is cleaned up
-// DEPRECATED: DO NOT USE
-// NormalizeToFQDNRules will replace forbidden chars in user
-// it can also return an error if the user doesn't respect RFC 952 and 1123.
-func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
-	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, "'", "")
-	atIdx := strings.Index(name, "@")
-	if stripEmailDomain && atIdx > 0 {
-		name = name[:atIdx]
-	} else {
-		name = strings.ReplaceAll(name, "@", ".")
-	}
-	name = invalidDNSRegex.ReplaceAllString(name, "-")
-
-	for _, elt := range strings.Split(name, ".") {
-		if len(elt) > LabelHostnameLength {
-			return "", fmt.Errorf(
-				"label %v is more than 63 chars: %w",
-				elt,
-				ErrInvalidUserName,
-			)
-		}
-	}
-
-	return name, nil
-}

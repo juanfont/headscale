@@ -80,10 +80,6 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
 		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
-		// TODO(kradalby): Remove when strip_email_domain is removed
-		// after #2170 is cleaned up
-		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
-		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -225,11 +221,6 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	assertTailscaleNodesLogout(t, allClients)
 }
 
-// TODO(kradalby):
-// - Test that creates a new user when one exists when migration is turned off
-// - Test that takes over a user when one exists when migration is turned on
-//   - But email is not verified
-//   - stripped email domain on/off
 func TestOIDC024UserCreation(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -242,10 +233,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 		want          func(iss string) []*v1.User
 	}{
 		{
-			name: "no-migration-verified-email",
-			config: map[string]string{
-				"HEADSCALE_OIDC_MAP_LEGACY_USERS": "0",
-			},
+			name:          "no-migration-verified-email",
 			emailVerified: true,
 			cliUsers:      []string{"user1", "user2"},
 			oidcUsers:     []string{"user1", "user2"},
@@ -279,10 +267,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 			},
 		},
 		{
-			name: "no-migration-not-verified-email",
-			config: map[string]string{
-				"HEADSCALE_OIDC_MAP_LEGACY_USERS": "0",
-			},
+			name:          "no-migration-not-verified-email",
 			emailVerified: false,
 			cliUsers:      []string{"user1", "user2"},
 			oidcUsers:     []string{"user1", "user2"},
@@ -314,105 +299,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 			},
 		},
 		{
-			name: "migration-strip-domains-verified-email",
-			config: map[string]string{
-				"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "1",
-				"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "1",
-			},
-			emailVerified: true,
-			cliUsers:      []string{"user1", "user2"},
-			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []*v1.User {
-				return []*v1.User{
-					{
-						Id:         1,
-						Name:       "user1",
-						Email:      "user1@headscale.net",
-						Provider:   "oidc",
-						ProviderId: iss + "/user1",
-					},
-					{
-						Id:         2,
-						Name:       "user2",
-						Email:      "user2@headscale.net",
-						Provider:   "oidc",
-						ProviderId: iss + "/user2",
-					},
-				}
-			},
-		},
-		{
-			name: "migration-strip-domains-not-verified-email",
-			config: map[string]string{
-				"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "1",
-				"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "1",
-			},
-			emailVerified: false,
-			cliUsers:      []string{"user1", "user2"},
-			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []*v1.User {
-				return []*v1.User{
-					{
-						Id:    1,
-						Name:  "user1",
-						Email: "user1@test.no",
-					},
-					{
-						Id:         2,
-						Name:       "user1",
-						Provider:   "oidc",
-						ProviderId: iss + "/user1",
-					},
-					{
-						Id:    3,
-						Name:  "user2",
-						Email: "user2@test.no",
-					},
-					{
-						Id:         4,
-						Name:       "user2",
-						Provider:   "oidc",
-						ProviderId: iss + "/user2",
-					},
-				}
-			},
-		},
-		{
-			name: "migration-no-strip-domains-verified-email",
-			config: map[string]string{
-				"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "1",
-				"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
-			},
-			emailVerified: true,
-			cliUsers:      []string{"user1.headscale.net", "user2.headscale.net"},
-			oidcUsers:     []string{"user1", "user2"},
-			want: func(iss string) []*v1.User {
-				return []*v1.User{
-					// Hmm I think we will have to overwrite the initial name here
-					// createuser with "user1.headscale.net", but oidc with "user1"
-					{
-						Id:         1,
-						Name:       "user1",
-						Email:      "user1@headscale.net",
-						Provider:   "oidc",
-						ProviderId: iss + "/user1",
-					},
-					{
-						Id:         2,
-						Name:       "user2",
-						Email:      "user2@headscale.net",
-						Provider:   "oidc",
-						ProviderId: iss + "/user2",
-					},
-				}
-			},
-		},
-		{
-			name: "migration-no-strip-domains-not-verified-email",
-			config: map[string]string{
-				"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "1",
-				"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
-			},
+			name:          "migration-no-strip-domains-not-verified-email",
 			emailVerified: false,
 			cliUsers:      []string{"user1.headscale.net", "user2.headscale.net"},
 			oidcUsers:     []string{"user1", "user2"},
@@ -544,8 +431,6 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
 		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 		"HEADSCALE_OIDC_PKCE_ENABLED":       "1", // Enable PKCE
-		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
-		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -608,10 +493,6 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
 		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
-		// TODO(kradalby): Remove when strip_email_domain is removed
-		// after #2170 is cleaned up
-		"HEADSCALE_OIDC_MAP_LEGACY_USERS":   "0",
-		"HEADSCALE_OIDC_STRIP_EMAIL_DOMAIN": "0",
 	}
 
 	err = scenario.CreateHeadscaleEnv(

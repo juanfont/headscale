@@ -56,12 +56,6 @@ oidc:
     # - plain: Use plain code verifier
     # - S256: Use SHA256 hashed code verifier (default, recommended)
     method: S256
-
-  # If `strip_email_domain` is set to `true`, the domain part of the username email address will be removed.
-  # This will transform `first-name.last-name@example.com` to the user `first-name.last-name`
-  # If `strip_email_domain` is set to `false` the domain part will NOT be removed resulting to the following
-  # user: `first-name.last-name.example.com`
-  strip_email_domain: true
 ```
 
 ## Azure AD example
