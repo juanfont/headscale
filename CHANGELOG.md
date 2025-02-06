@@ -3,6 +3,12 @@
 ## Next
 
 
+### Changes
+
+- `oidc.map_legacy_users` and `oidc.strip_email_domain` has been removed
+  [#2411](https://github.com/juanfont/headscale/pull/2411)
+
+
 ## 0.25.0 (2025-02-xx)
 
 ### BREAKING
