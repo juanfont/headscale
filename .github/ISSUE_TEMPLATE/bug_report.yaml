@@ -44,10 +44,16 @@ body:
     attributes:
       label: Environment
       description: |
+        Please provide information about your environment.
+        If you are using a container, always provide the headscale version and not only the Docker image version.
+        Please do not put "latest".
+
+        If you are experiencing a problem during an upgrade, please provide the versions of the old and new versions of Headscale and Tailscale.
+
         examples:
-          - **OS**: Ubuntu 20.04
-          - **Headscale version**: 0.22.3
-          - **Tailscale version**: 1.64.0
+          - **OS**: Ubuntu 24.04
+          - **Headscale version**: 0.24.3
+          - **Tailscale version**: 1.80.0
       value: |
         - OS:
         - Headscale version:
