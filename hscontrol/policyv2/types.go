@@ -246,24 +246,40 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 		return nil, err
 	}
 
+	ips.AddPrefix(netip.Prefix(pref))
+
 	// If the IP is a single host, look for a node to ensure we add all the IPs of
 	// the node to the IPSet.
-	appendIfNodeHasIP(nodes, &ips, pref)
-	ips.AddPrefix(netip.Prefix(pref))
+	// appendIfNodeHasIP(nodes, &ips, pref)
+
+	// TODO(kradalby): I am a bit unsure what is the correct way to do this,
+	// should a host with a non single IP be able to resolve the full host (inc all IPs).
+	ipsTemp, err := ips.IPSet()
+	if err != nil {
+		return nil, err
+	}
+	for _, node := range nodes {
+		if node.InIPSet(ipsTemp) {
+			node.AppendToIPSet(&ips)
+		}
+	}
 
 	return ips.IPSet()
 }
 
-func appendIfNodeHasIP(nodes types.Nodes, ips *netipx.IPSetBuilder, pref Prefix) {
-	if netip.Prefix(pref).IsSingleIP() {
-		addr := netip.Prefix(pref).Addr()
-		for _, node := range nodes {
-			if node.HasIP(addr) {
-				node.AppendToIPSet(ips)
-			}
-		}
-	}
-}
+// func appendIfNodeHasIP(nodes types.Nodes, ips *netipx.IPSetBuilder, pref Prefix) {
+// 	if netip.Prefix(pref).IsSingleIP() {
+// 		addr := netip.Prefix(pref).Addr()
+// 		for _, node := range nodes {
+// 			log.Printf("node ips: %v", node.IPsAsString())
+// 			log.Printf("checking: %s", addr.String())
+// 			if node.HasIP(addr) {
+// 				log.Printf("ADDING")
+// 				node.AppendToIPSet(ips)
+// 			}
+// 		}
+// 	}
+// }
 
 type Prefix netip.Prefix
 
@@ -316,8 +332,29 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
-	appendIfNodeHasIP(nodes, &ips, p)
 	ips.AddPrefix(netip.Prefix(p))
+	// If the IP is a single host, look for a node to ensure we add all the IPs of
+	// the node to the IPSet.
+	// appendIfNodeHasIP(nodes, &ips, pref)
+
+	// TODO(kradalby): I am a bit unsure what is the correct way to do this,
+	// should a host with a non single IP be able to resolve the full host (inc all IPs).
+	// Currently this is done because the old implementation did this, we might want to
+	// drop it before releasing.
+	// For example:
+	// If a src or dst includes "64.0.0.0/2:*", it will include 100.64/16 range, which
+	// means that it will need to fetch the IPv6 addrs of the node to include the full range.
+	// Clearly, if a user sets the dst to be "64.0.0.0/2:*", it is likely more of a exit node
+	// and this would be strange behaviour.
+	ipsTemp, err := ips.IPSet()
+	if err != nil {
+		return nil, err
+	}
+	for _, node := range nodes {
+		if node.InIPSet(ipsTemp) {
+			node.AppendToIPSet(&ips)
+		}
+	}
 
 	return ips.IPSet()
 }

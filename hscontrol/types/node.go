@@ -205,12 +205,8 @@ func (node *Node) Prefixes() []netip.Prefix {
 func (node *Node) IPsAsString() []string {
 	var ret []string
 
-	if node.IPv4 != nil {
-		ret = append(ret, node.IPv4.String())
-	}
-
-	if node.IPv6 != nil {
-		ret = append(ret, node.IPv6.String())
+	for _, ip := range node.IPs() {
+		ret = append(ret, ip.String())
 	}
 
 	return ret
