@@ -566,8 +566,8 @@ func (h *Headscale) Serve() error {
 		spew.Dump(h.cfg)
 	}
 
+	log.Info().Str("version", types.Version).Str("commit", types.GitCommitHash).Msg("Starting Headscale")
 	log.Info().
-		Caller().
 		Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 		Msg("Clients with a lower minimum version will be rejected")
 
