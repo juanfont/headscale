@@ -100,31 +100,34 @@ func (u Username) CanBeTagOwner() bool {
 	return true
 }
 
-func (u Username) resolveUser(users types.Users) (*types.User, error) {
-	var potentialUsers types.Users
-	for _, user := range users {
-		if user.ProviderIdentifier == string(u) {
-			potentialUsers = append(potentialUsers, user)
+var (
+	ErrorNoUserMatching       = errors.New("no user matching")
+	ErrorMultipleUserMatching = errors.New("multiple users matching")
+)
 
-			break
+func (u Username) resolveUser(users types.Users) (types.User, error) {
+	var potentialUsers []types.User
+
+	for _, user := range users {
+		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == u.String() {
+			// Prioritize ProviderIdentifier match and exit early
+			return user, nil
 		}
-		if user.Email == string(u) {
+
+		if user.Email == u.String() || user.Name == u.String() {
 			potentialUsers = append(potentialUsers, user)
 		}
-		if user.Name == string(u) {
-			potentialUsers = append(potentialUsers, user)
-		}
+	}
+
+	if len(potentialUsers) == 0 {
+		return types.User{}, fmt.Errorf("user with token %q not found: %w", u.String(), ErrorNoUserMatching)
 	}
 
 	if len(potentialUsers) > 1 {
-		return nil, fmt.Errorf("unable to resolve user identifier to distinct: %s matched multiple %s", u, potentialUsers)
-	} else if len(potentialUsers) == 0 {
-		return nil, fmt.Errorf("unable to resolve user identifier, no user found: %s not in %s", u, users)
+		return types.User{}, fmt.Errorf("multiple users with token %q found: %w", u.String(), ErrorNoUserMatching)
 	}
 
-	user := potentialUsers[0]
-
-	return &user, nil
+	return potentialUsers[0], nil
 }
 
 func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
@@ -614,6 +617,21 @@ func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (a SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+	var ips netipx.IPSetBuilder
+
+	for _, alias := range a {
+		aips, err := alias.Resolve(p, users, nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		ips.AddSet(aips)
+	}
+
+	return ips.IPSet()
+}
+
 // SSHDstAliases is a list of aliases that can be used as destinations in an SSH rule.
 // It can be a list of usernames, tags or autogroups.
 type SSHDstAliases []Alias
@@ -638,6 +656,10 @@ func (a *SSHDstAliases) UnmarshalJSON(b []byte) error {
 }
 
 type SSHUser string
+
+func (u SSHUser) String() string {
+	return string(u)
+}
 
 func policyFromBytes(b []byte) (*Policy, error) {
 	var policy Policy
