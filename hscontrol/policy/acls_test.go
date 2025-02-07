@@ -13,7 +13,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
 	"gopkg.in/check.v1"
@@ -681,8 +680,6 @@ func Test_expandGroup(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			viper.Set("oidc.strip_email_domain", test.args.stripEmail)
-
 			got, err := test.field.pol.expandUsersFromGroup(
 				test.args.group,
 			)
