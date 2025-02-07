@@ -371,11 +371,11 @@ func p(pref string) Prefix        { return Prefix(netip.MustParsePrefix(pref)) }
 
 func TestResolvePolicy(t *testing.T) {
 	users := map[string]types.User{
-		"testuser":   types.User{Model: gorm.Model{ID: 1}, Name: "testuser"},
-		"groupuser":  types.User{Model: gorm.Model{ID: 2}, Name: "groupuser"},
-		"groupuser1": types.User{Model: gorm.Model{ID: 3}, Name: "groupuser1"},
-		"groupuser2": types.User{Model: gorm.Model{ID: 4}, Name: "groupuser2"},
-		"notme":      types.User{Model: gorm.Model{ID: 5}, Name: "notme"},
+		"testuser":   {Model: gorm.Model{ID: 1}, Name: "testuser"},
+		"groupuser":  {Model: gorm.Model{ID: 2}, Name: "groupuser"},
+		"groupuser1": {Model: gorm.Model{ID: 3}, Name: "groupuser1"},
+		"groupuser2": {Model: gorm.Model{ID: 4}, Name: "groupuser2"},
+		"notme":      {Model: gorm.Model{ID: 5}, Name: "notme"},
 	}
 	tests := []struct {
 		name      string
