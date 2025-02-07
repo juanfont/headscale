@@ -2,12 +2,16 @@ package policyv2
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	xmaps "golang.org/x/exp/maps"
+	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
 )
@@ -146,20 +150,14 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Action:   "accept",
 						Protocol: "tcp",
 						Sources: Aliases{
-							// TODO(kradalby): Should this be host?
-							// It is:
-							// All traffic originating from Tailscale devices in your tailnet,
-							// any approved subnets and autogroup:shared.
-							// It does not allow traffic originating from
-							// non-tailscale devices (unless it is an approved route).
-							hp("*"),
+							Wildcard,
 						},
 						Destinations: []AliasWithPorts{
 							{
 								// TODO(kradalby): Should this be host?
 								// It is:
 								// Includes any destination (no restrictions).
-								Alias: hp("*"),
+								Alias: Wildcard,
 								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
 							},
 						},
@@ -342,25 +340,19 @@ func TestUnmarshalPolicy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			policy, err := policyFromBytes([]byte(tt.input))
-			// TODO(kradalby): This error checking is broken,
-			// but so is my brain, #longflight
-			if err == nil {
-				if tt.wantErr == "" {
-					return
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("got %v; want no error", err)
 				}
-				t.Fatalf("got success; wanted error %q", tt.wantErr)
-			}
-			if err.Error() != tt.wantErr {
-				t.Fatalf("got error %q; want %q", err, tt.wantErr)
-				// } else if err.Error() == tt.wantErr {
-				// 	return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected err: %q", err)
+			} else {
+				if err == nil {
+					t.Fatalf("got nil; want error %q", tt.wantErr)
+				} else if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("got err %v; want error %q", err, tt.wantErr)
+				}
 			}
 
-			if diff := cmp.Diff(tt.want, &policy, cmps...); diff != "" {
+			if diff := cmp.Diff(tt.want, policy, cmps...); diff != "" {
 				t.Fatalf("unexpected policy (-want +got):\n%s", diff)
 			}
 		})
@@ -378,12 +370,20 @@ func pp(pref string) *Prefix      { return ptr.To(Prefix(netip.MustParsePrefix(p
 func p(pref string) Prefix        { return Prefix(netip.MustParsePrefix(pref)) }
 
 func TestResolvePolicy(t *testing.T) {
+	users := map[string]types.User{
+		"testuser":   types.User{Model: gorm.Model{ID: 1}, Name: "testuser"},
+		"groupuser":  types.User{Model: gorm.Model{ID: 2}, Name: "groupuser"},
+		"groupuser1": types.User{Model: gorm.Model{ID: 3}, Name: "groupuser1"},
+		"groupuser2": types.User{Model: gorm.Model{ID: 4}, Name: "groupuser2"},
+		"notme":      types.User{Model: gorm.Model{ID: 5}, Name: "notme"},
+	}
 	tests := []struct {
 		name      string
 		nodes     types.Nodes
 		pol       *Policy
 		toResolve Alias
 		want      []netip.Prefix
+		wantErr   string
 	}{
 		{
 			name:      "prefix",
@@ -406,39 +406,29 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: types.User{
-						Name: "notme",
-					},
+					User: users["notme"],
 					IPv4: ap("100.100.101.1"),
 				},
 				// Not matching forced tags
 				{
-					User: types.User{
-						Name: "testuser",
-					},
+					User:       users["testuser"],
 					ForcedTags: []string{"tag:anything"},
 					IPv4:       ap("100.100.101.2"),
 				},
 				// not matchin pak tag
 				{
-					User: types.User{
-						Name: "testuser",
-					},
+					User: users["testuser"],
 					AuthKey: &types.PreAuthKey{
 						Tags: []string{"alsotagged"},
 					},
 					IPv4: ap("100.100.101.3"),
 				},
 				{
-					User: types.User{
-						Name: "testuser",
-					},
+					User: users["testuser"],
 					IPv4: ap("100.100.101.103"),
 				},
 				{
-					User: types.User{
-						Name: "testuser",
-					},
+					User: users["testuser"],
 					IPv4: ap("100.100.101.104"),
 				},
 			},
@@ -450,39 +440,29 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: types.User{
-						Name: "notmetoo",
-					},
+					User: users["notme"],
 					IPv4: ap("100.100.101.4"),
 				},
 				// Not matching forced tags
 				{
-					User: types.User{
-						Name: "groupuser",
-					},
+					User:       users["groupuser"],
 					ForcedTags: []string{"tag:anything"},
 					IPv4:       ap("100.100.101.5"),
 				},
 				// not matchin pak tag
 				{
-					User: types.User{
-						Name: "groupuser",
-					},
+					User: users["groupuser"],
 					AuthKey: &types.PreAuthKey{
 						Tags: []string{"tag:alsotagged"},
 					},
 					IPv4: ap("100.100.101.6"),
 				},
 				{
-					User: types.User{
-						Name: "groupuser",
-					},
+					User: users["groupuser"],
 					IPv4: ap("100.100.101.203"),
 				},
 				{
-					User: types.User{
-						Name: "groupuser",
-					},
+					User: users["groupuser"],
 					IPv4: ap("100.100.101.204"),
 				},
 			},
@@ -500,9 +480,7 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: types.User{
-						Name: "notmetoo",
-					},
+					User: users["notme"],
 					IPv4: ap("100.100.101.9"),
 				},
 				// Not matching forced tags
@@ -534,18 +512,103 @@ func TestResolvePolicy(t *testing.T) {
 			pol:  &Policy{},
 			want: []netip.Prefix{mp("100.100.101.234/32"), mp("100.100.101.239/32")},
 		},
+		{
+			name:      "empty-policy",
+			toResolve: pp("100.100.101.101/32"),
+			pol:       &Policy{},
+			want:      []netip.Prefix{mp("100.100.101.101/32")},
+		},
+		{
+			name:      "invalid-host",
+			toResolve: hp("invalidhost"),
+			pol: &Policy{
+				Hosts: Hosts{
+					"testhost": p("100.100.101.102/32"),
+				},
+			},
+			wantErr: `unable to resolve host: "invalidhost"`,
+		},
+		{
+			name:      "multiple-groups",
+			toResolve: ptr.To(Group("group:testgroup")),
+			nodes: types.Nodes{
+				{
+					User: users["groupuser1"],
+					IPv4: ap("100.100.101.203"),
+				},
+				{
+					User: users["groupuser2"],
+					IPv4: ap("100.100.101.204"),
+				},
+			},
+			pol: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"groupuser1", "groupuser2"},
+				},
+			},
+			want: []netip.Prefix{mp("100.100.101.203/32"), mp("100.100.101.204/32")},
+		},
+		{
+			name:      "autogroup-internet",
+			toResolve: agp("autogroup:internet"),
+			want:      theInternet().Prefixes(),
+		},
+		{
+			name:      "invalid-username",
+			toResolve: ptr.To(Username("invaliduser")),
+			nodes: types.Nodes{
+				{
+					User: users["testuser"],
+					IPv4: ap("100.100.101.103"),
+				},
+			},
+			wantErr: `user with token "invaliduser" not found`,
+		},
+		{
+			name:      "invalid-tag",
+			toResolve: tp("tag:invalid"),
+			nodes: types.Nodes{
+				{
+					ForcedTags: []string{"tag:test"},
+					IPv4:       ap("100.100.101.234"),
+				},
+			},
+			want: []netip.Prefix{},
+		},
+		{
+			name:      "ipv6-address",
+			toResolve: pp("fd7a:115c:a1e0::1/128"),
+			want:      []netip.Prefix{mp("fd7a:115c:a1e0::1/128")},
+		},
+		{
+			name:      "wildcard-alias",
+			toResolve: Wildcard,
+			want:      []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ips, err := tt.toResolve.Resolve(tt.pol,
-				types.Users{},
+				xmaps.Values(users),
 				tt.nodes)
-			if err != nil {
-				t.Fatalf("failed to resolve: %s", err)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("got %v; want no error", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("got nil; want error %q", tt.wantErr)
+				} else if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("got err %v; want error %q", err, tt.wantErr)
+				}
 			}
 
-			prefs := ips.Prefixes()
+			var prefs []netip.Prefix
+
+			if ips != nil {
+				prefs = ips.Prefixes()
+			}
 
 			if diff := cmp.Diff(tt.want, prefs, util.Comparers...); diff != "" {
 				t.Fatalf("unexpected prefs (-want +got):\n%s", diff)
