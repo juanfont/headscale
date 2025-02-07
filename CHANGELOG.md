@@ -35,6 +35,8 @@
   [#2396](https://github.com/juanfont/headscale/pull/2396)
 - Rehaul HTTP errors, return better status code and errors to users
   [#2398](https://github.com/juanfont/headscale/pull/2398)
+- Print headscale version and commit on server startup
+  [#2415](https://github.com/juanfont/headscale/pull/2415)
 
 ## 0.24.2 (2025-01-30)
 
