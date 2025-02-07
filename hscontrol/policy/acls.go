@@ -418,7 +418,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			if err != nil {
 				return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
 			}
-			for addr := range util.IPSetAll(ips) {
+			for addr := range util.IPSetAddrIter(ips) {
 				principals = append(principals, &tailcfg.SSHPrincipal{
 					NodeIP: addr.String(),
 				})

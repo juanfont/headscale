@@ -128,7 +128,7 @@ func (pol *Policy) CompileSSHPolicy(
 			return nil, fmt.Errorf("resolving source ips: %w", err)
 		}
 
-		for addr := range util.IPSetAll(srcIPs) {
+		for addr := range util.IPSetAddrIter(srcIPs) {
 			principals = append(principals, &tailcfg.SSHPrincipal{
 				NodeIP: addr.String(),
 			})
