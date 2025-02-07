@@ -12,17 +12,15 @@
     flake-utils,
     ...
   }: let
-    headscaleVersion =
-      if (self ? shortRev)
-      then self.shortRev
-      else "dev";
+    headscaleVersion = self.shortRev or self.dirtyShortRev;
+    commitHash = self.rev or self.dirtyRev;
   in
     {
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
         buildGo = pkgs.buildGo123Module;
       in {
-        headscale = buildGo rec {
+        headscale = buildGo {
           pname = "headscale";
           version = headscaleVersion;
           src = pkgs.lib.cleanSource self;
@@ -36,7 +34,12 @@
 
           subPackages = ["cmd/headscale"];
 
-          ldflags = ["-s" "-w" "-X github.com/juanfont/headscale/cmd/headscale/cli.Version=v${version}"];
+          ldflags = [
+            "-s"
+            "-w"
+            "-X github.com/juanfont/headscale/hscontrol/types.Version=${headscaleVersion}"
+            "-X github.com/juanfont/headscale/hscontrol/types.GitCommitHash=${commitHash}"
+          ];
         };
 
         protoc-gen-grpc-gateway = buildGo rec {

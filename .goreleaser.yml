@@ -27,7 +27,9 @@ builds:
     flags:
       - -mod=readonly
     ldflags:
-      - -s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=v{{.Version}}
+      - -s -w
+      - -X github.com/juanfont/headscale/hscontrol/types.Version={{ .Version }}
+      - -X github.com/juanfont/headscale/hscontrol/types.GitCommitHash={{ .Commit }}
     tags:
       - ts2019
 

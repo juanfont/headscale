@@ -18,7 +18,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go install -ldflags="-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$VERSION" -a ./cmd/headscale && test -e /go/bin/headscale
+RUN CGO_ENABLED=0 GOOS=linux go install -a ./cmd/headscale && test -e /go/bin/headscale
 
 # Need to reset the entrypoint or everything will run as a busybox script
 ENTRYPOINT []
