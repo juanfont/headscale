@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"iter"
 	"net/netip"
 	"os"
 	"slices"
@@ -419,7 +418,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			if err != nil {
 				return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
 			}
-			for addr := range ipSetAll(ips) {
+			for addr := range util.IPSetAll(ips) {
 				principals = append(principals, &tailcfg.SSHPrincipal{
 					NodeIP: addr.String(),
 				})
@@ -440,19 +439,6 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 	return &tailcfg.SSHPolicy{
 		Rules: rules,
 	}, nil
-}
-
-// ipSetAll returns a function that iterates over all the IPs in the IPSet.
-func ipSetAll(ipSet *netipx.IPSet) iter.Seq[netip.Addr] {
-	return func(yield func(netip.Addr) bool) {
-		for _, rng := range ipSet.Ranges() {
-			for ip := rng.From(); ip.Compare(rng.To()) <= 0; ip = ip.Next() {
-				if !yield(ip) {
-					return
-				}
-			}
-		}
-	}
 }
 
 func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {

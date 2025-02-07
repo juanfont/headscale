@@ -1102,6 +1102,7 @@ func TestReduceFilterRules(t *testing.T) {
 				t.Fatalf("parsing policy: %s", err)
 			}
 			filterV1, _ := polV1.CompileFilterRules(
+				users,
 				append(tt.peers, tt.node),
 			)
 			pm, err := NewPolicyManager([]byte(tt.pol), users, append(tt.peers, tt.node))

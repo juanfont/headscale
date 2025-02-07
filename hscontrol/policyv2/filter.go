@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 )
@@ -122,41 +123,20 @@ func (pol *Policy) CompileSSHPolicy(
 		}
 
 		var principals []*tailcfg.SSHPrincipal
-		for _, src := range rule.Sources {
-			if isWildcard(rawSrc) {
-				principals = append(principals, &tailcfg.SSHPrincipal{
-					Any: true,
-				})
-			} else if isGroup(rawSrc) {
-				users, err := pol.expandUsersFromGroup(rawSrc)
-				if err != nil {
-					return nil, fmt.Errorf("parsing SSH policy, expanding user from group, index: %d->%d: %w", index, innerIndex, err)
-				}
+		srcIPs, err := rule.Sources.Resolve(pol, users, nodes)
+		if err != nil {
+			return nil, fmt.Errorf("resolving source ips: %w", err)
+		}
 
-				for _, user := range users {
-					principals = append(principals, &tailcfg.SSHPrincipal{
-						UserLogin: user,
-					})
-				}
-			} else {
-				expandedSrcs, err := pol.ExpandAlias(
-					peers,
-					rawSrc,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
-				}
-				for _, expandedSrc := range expandedSrcs.Prefixes() {
-					principals = append(principals, &tailcfg.SSHPrincipal{
-						NodeIP: expandedSrc.Addr().String(),
-					})
-				}
-			}
+		for addr := range util.IPSetAll(srcIPs) {
+			principals = append(principals, &tailcfg.SSHPrincipal{
+				NodeIP: addr.String(),
+			})
 		}
 
 		userMap := make(map[string]string, len(rule.Users))
 		for _, user := range rule.Users {
-			userMap[user] = "="
+			userMap[user.String()] = "="
 		}
 		rules = append(rules, &tailcfg.SSHRule{
 			Principals: principals,
