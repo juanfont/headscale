@@ -201,6 +201,26 @@ func TestMigrationsSQLite(t *testing.T) {
 				}
 			},
 		},
+		{
+			dbPath: "testdata/failing-node-preauth-constraint.sqlite",
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				require.NoError(t, err)
+
+				for _, node := range nodes {
+					assert.Falsef(t, node.MachineKey.IsZero(), "expected non zero machinekey")
+					assert.Contains(t, node.MachineKey.String(), "mkey:")
+					assert.Falsef(t, node.NodeKey.IsZero(), "expected non zero nodekey")
+					assert.Contains(t, node.NodeKey.String(), "nodekey:")
+					assert.Falsef(t, node.DiscoKey.IsZero(), "expected non zero discokey")
+					assert.Contains(t, node.DiscoKey.String(), "discokey:")
+					assert.Nil(t, node.AuthKey)
+					assert.Nil(t, node.AuthKeyID)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
