@@ -84,7 +84,7 @@ func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
 
 func (pol *Policy) CompileSSHPolicy(
 	users types.Users,
-	node types.Node,
+	node *types.Node,
 	nodes types.Nodes,
 ) (*tailcfg.SSHPolicy, error) {
 	if pol == nil {
