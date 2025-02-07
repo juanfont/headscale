@@ -51,6 +51,8 @@ func theInternet() *netipx.IPSet {
 	return theInternetSet
 }
 
+const Wildcard = Asterix(0)
+
 type Asterix int
 
 func (a Asterix) Validate() error {
@@ -78,7 +80,7 @@ func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.I
 type Username string
 
 func (u Username) Validate() error {
-	if strings.Contains(string(u), "@") {
+	if isUser(string(u)) {
 		return nil
 	}
 	return fmt.Errorf("Username has to contain @, got: %q", u)
@@ -155,7 +157,7 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*net
 type Group string
 
 func (g Group) Validate() error {
-	if strings.HasPrefix(string(g), "group:") {
+	if isGroup(string(g)) {
 		return nil
 	}
 	return fmt.Errorf(`Group has to start with "group:", got: %q`, g)
@@ -192,7 +194,7 @@ func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx
 type Tag string
 
 func (t Tag) Validate() error {
-	if strings.HasPrefix(string(t), "tag:") {
+	if isTag(string(t)) {
 		return nil
 	}
 	return fmt.Errorf(`tag has to start with "tag:", got: %q`, t)
@@ -222,6 +224,7 @@ func (t Tag) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet
 type Host string
 
 func (h Host) Validate() error {
+	// TODO(kradalby): figure out if the same type of validating makes sense here
 	return nil
 }
 
@@ -408,11 +411,31 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func isWildcard(str string) bool {
+	return str == "*"
+}
+
+func isUser(str string) bool {
+	return strings.Contains(str, "@")
+}
+
+func isGroup(str string) bool {
+	return strings.HasPrefix(str, "group:")
+}
+
+func isTag(str string) bool {
+	return strings.HasPrefix(str, "tag:")
+}
+
+func isAutoGroup(str string) bool {
+	return strings.HasPrefix(str, "autogroup:")
+}
+
+func isHost(str string) bool {
+	return !isUser(str) && !strings.Contains(str, ":")
+}
+
 func parseAlias(vs string) Alias {
-	// case netip.Addr:
-	// 	ve.Alias = Addr(val)
-	// case netip.Prefix:
-	// 	ve.Alias = Prefix(val)
 	var pref Prefix
 	err := pref.parseString(vs)
 	if err == nil {
@@ -420,19 +443,19 @@ func parseAlias(vs string) Alias {
 	}
 
 	switch {
-	case vs == "*":
-		return Asterix(0)
-	case strings.Contains(vs, "@"):
+	case isWildcard(vs):
+		return Wildcard
+	case isUser(vs):
 		return ptr.To(Username(vs))
-	case strings.HasPrefix(vs, "group:"):
+	case isGroup(vs):
 		return ptr.To(Group(vs))
-	case strings.HasPrefix(vs, "tag:"):
+	case isTag(vs):
 		return ptr.To(Tag(vs))
-	case strings.HasPrefix(vs, "autogroup:"):
+	case isAutoGroup(vs):
 		return ptr.To(AutoGroup(vs))
 	}
 
-	if !strings.Contains(vs, "@") && !strings.Contains(vs, ":") {
+	if isHost(vs) {
 		return ptr.To(Host(vs))
 	}
 
@@ -514,9 +537,9 @@ func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
 	case string:
 
 		switch {
-		case strings.Contains(val, "@"):
+		case isUser(val):
 			ve.Owner = ptr.To(Username(val))
-		case strings.HasPrefix(val, "group:"):
+		case isGroup(val):
 			ve.Owner = ptr.To(Group(val))
 		}
 	default:
@@ -545,6 +568,27 @@ type Usernames []Username
 
 // Groups are a map of Group to a list of Username.
 type Groups map[Group]Usernames
+
+// UnmarshalJSON overrides the default JSON unmarshalling for Groups to ensure
+// that each group name is validated using the isGroup function. This ensures
+// that all group names conform to the expected format, which is always prefixed
+// with "group:". If any group name is invalid, an error is returned.
+func (g *Groups) UnmarshalJSON(b []byte) error {
+	var rawGroups map[string]Usernames
+	if err := json.Unmarshal(b, &rawGroups); err != nil {
+		return err
+	}
+
+	*g = make(Groups)
+	for key, value := range rawGroups {
+		group := Group(key)
+		if err := group.Validate(); err != nil {
+			return err
+		}
+		(*g)[group] = value
+	}
+	return nil
+}
 
 // Hosts are alias for IP addresses or subnets.
 type Hosts map[Host]Prefix
