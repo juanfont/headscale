@@ -29,12 +29,24 @@
   [#2393](https://github.com/juanfont/headscale/pull/2393)
 - Change minimum hostname length to 2
   [#2393](https://github.com/juanfont/headscale/pull/2393)
+- Fix migration error caused by nodes having invalid auth keys
+  [#2412](https://github.com/juanfont/headscale/pull/2412)
 - Pre auth keys belonging to a user are no longer deleted with the user
   [#2396](https://github.com/juanfont/headscale/pull/2396)
 - Pre auth keys that are used by a node can no longer be deleted
   [#2396](https://github.com/juanfont/headscale/pull/2396)
 - Rehaul HTTP errors, return better status code and errors to users
   [#2398](https://github.com/juanfont/headscale/pull/2398)
+
+## 0.24.3 (2025-02-07)
+
+### Changes
+- Fix migration error caused by nodes having invalid auth keys
+  [#2412](https://github.com/juanfont/headscale/pull/2412)
+- Pre auth keys belonging to a user are no longer deleted with the user
+  [#2396](https://github.com/juanfont/headscale/pull/2396)
+- Pre auth keys that are used by a node can no longer be deleted
+  [#2396](https://github.com/juanfont/headscale/pull/2396)
 
 ## 0.24.2 (2025-01-30)
 
