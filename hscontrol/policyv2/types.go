@@ -6,12 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
@@ -385,12 +383,12 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 		var err error
 
 		if strings.Contains(vs, ":") {
-			vs, portsPart, err = splitDestination(vs)
+			vs, portsPart, err = splitDestinationAndPort(vs)
 			if err != nil {
 				return err
 			}
 
-			ports, err := parsePorts(portsPart)
+			ports, err := parsePortRange(portsPart)
 			if err != nil {
 				return err
 			}
@@ -726,162 +724,3 @@ func policyFromBytes(b []byte) (*Policy, error) {
 const (
 	expectedTokenItems = 2
 )
-
-// TODO(kradalby): copy tests from parseDestination in policy
-func splitDestination(dest string) (string, string, error) {
-	var tokens []string
-
-	// Check if there is a IPv4/6:Port combination, IPv6 has more than
-	// three ":".
-	tokens = strings.Split(dest, ":")
-	if len(tokens) < expectedTokenItems || len(tokens) > 3 {
-		port := tokens[len(tokens)-1]
-
-		maybeIPv6Str := strings.TrimSuffix(dest, ":"+port)
-
-		filteredMaybeIPv6Str := maybeIPv6Str
-		if strings.Contains(maybeIPv6Str, "/") {
-			networkParts := strings.Split(maybeIPv6Str, "/")
-			filteredMaybeIPv6Str = networkParts[0]
-		}
-
-		if maybeIPv6, err := netip.ParseAddr(filteredMaybeIPv6Str); err != nil && !maybeIPv6.Is6() {
-			return "", "", fmt.Errorf(
-				"failed to split destination: %v",
-				tokens,
-			)
-		} else {
-			tokens = []string{maybeIPv6Str, port}
-		}
-	}
-
-	var alias string
-	// We can have here stuff like:
-	// git-server:*
-	// 192.168.1.0/24:22
-	// fd7a:115c:a1e0::2:22
-	// fd7a:115c:a1e0::2/128:22
-	// tag:montreal-webserver:80,443
-	// tag:api-server:443
-	// example-host-1:*
-	if len(tokens) == expectedTokenItems {
-		alias = tokens[0]
-	} else {
-		alias = fmt.Sprintf("%s:%s", tokens[0], tokens[1])
-	}
-
-	return alias, tokens[len(tokens)-1], nil
-}
-
-// TODO(kradalby): write/copy tests from expandPorts in policy
-func parsePorts(portsStr string) ([]tailcfg.PortRange, error) {
-	if portsStr == "*" {
-		return []tailcfg.PortRange{
-			tailcfg.PortRangeAny,
-		}, nil
-	}
-
-	var ports []tailcfg.PortRange
-	for _, portStr := range strings.Split(portsStr, ",") {
-		rang := strings.Split(portStr, "-")
-		switch len(rang) {
-		case 1:
-			port, err := strconv.ParseUint(rang[0], util.Base10, util.BitSize16)
-			if err != nil {
-				return nil, err
-			}
-			ports = append(ports, tailcfg.PortRange{
-				First: uint16(port),
-				Last:  uint16(port),
-			})
-
-		case expectedTokenItems:
-			start, err := strconv.ParseUint(rang[0], util.Base10, util.BitSize16)
-			if err != nil {
-				return nil, err
-			}
-			last, err := strconv.ParseUint(rang[1], util.Base10, util.BitSize16)
-			if err != nil {
-				return nil, err
-			}
-			ports = append(ports, tailcfg.PortRange{
-				First: uint16(start),
-				Last:  uint16(last),
-			})
-
-		default:
-			return nil, errors.New("invalid ports")
-		}
-	}
-
-	return ports, nil
-}
-
-// For some reason golang.org/x/net/internal/iana is an internal package.
-const (
-	protocolICMP     = 1   // Internet Control Message
-	protocolIGMP     = 2   // Internet Group Management
-	protocolIPv4     = 4   // IPv4 encapsulation
-	protocolTCP      = 6   // Transmission Control
-	protocolEGP      = 8   // Exterior Gateway Protocol
-	protocolIGP      = 9   // any private interior gateway (used by Cisco for their IGRP)
-	protocolUDP      = 17  // User Datagram
-	protocolGRE      = 47  // Generic Routing Encapsulation
-	protocolESP      = 50  // Encap Security Payload
-	protocolAH       = 51  // Authentication Header
-	protocolIPv6ICMP = 58  // ICMP for IPv6
-	protocolSCTP     = 132 // Stream Control Transmission Protocol
-	ProtocolFC       = 133 // Fibre Channel
-)
-
-// parseProtocol reads the proto field of the ACL and generates a list of
-// protocols that will be allowed, following the IANA IP protocol number
-// https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
-//
-// If the ACL proto field is empty, it allows ICMPv4, ICMPv6, TCP, and UDP,
-// as per Tailscale behaviour (see tailcfg.FilterRule).
-//
-// Also returns a boolean indicating if the protocol
-// requires all the destinations to use wildcard as port number (only TCP,
-// UDP and SCTP support specifying ports).
-func parseProtocol(protocol string) ([]int, bool, error) {
-	switch protocol {
-	case "":
-		return nil, false, nil
-	case "igmp":
-		return []int{protocolIGMP}, true, nil
-	case "ipv4", "ip-in-ip":
-		return []int{protocolIPv4}, true, nil
-	case "tcp":
-		return []int{protocolTCP}, false, nil
-	case "egp":
-		return []int{protocolEGP}, true, nil
-	case "igp":
-		return []int{protocolIGP}, true, nil
-	case "udp":
-		return []int{protocolUDP}, false, nil
-	case "gre":
-		return []int{protocolGRE}, true, nil
-	case "esp":
-		return []int{protocolESP}, true, nil
-	case "ah":
-		return []int{protocolAH}, true, nil
-	case "sctp":
-		return []int{protocolSCTP}, false, nil
-	case "icmp":
-		return []int{protocolICMP, protocolIPv6ICMP}, true, nil
-
-	default:
-		protocolNumber, err := strconv.Atoi(protocol)
-		if err != nil {
-			return nil, false, fmt.Errorf("parsing protocol number: %w", err)
-		}
-
-		// TODO(kradalby): What is this?
-		needsWildcard := protocolNumber != protocolTCP &&
-			protocolNumber != protocolUDP &&
-			protocolNumber != protocolSCTP
-
-		return []int{protocolNumber}, needsWildcard, nil
-	}
-}
