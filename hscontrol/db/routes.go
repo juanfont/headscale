@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
+	"tailscale.com/types/ptr"
 	"tailscale.com/util/set"
 )
 
@@ -470,11 +471,7 @@ nodeRouteLoop:
 	})
 
 	if len(changedNodes) != 0 {
-		return &types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: chng,
-			Message:     "called from db.FailoverNodeRoutesIfNecessary",
-		}, nil
+		return ptr.To(types.UpdatePeerChanged(chng...)), nil
 	}
 
 	return nil, nil

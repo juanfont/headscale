@@ -307,11 +307,9 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
 			ctx := types.NotifyCtx(context.Background(), "dns-extrarecord", "all")
-			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-				// TODO(kradalby): We can probably do better than sending a full update here,
-				// but for now this will ensure that all of the nodes get the new records.
-				Type: types.StateFullUpdate,
-			})
+			// TODO(kradalby): We can probably do better than sending a full update here,
+			// but for now this will ensure that all of the nodes get the new records.
+			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 		}
 	}
 }
@@ -511,9 +509,7 @@ func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *not
 
 	if changed {
 		ctx := types.NotifyCtx(context.Background(), "acl-users-change", "all")
-		notif.NotifyAll(ctx, types.StateUpdate{
-			Type: types.StateFullUpdate,
-		})
+		notif.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	return nil
@@ -535,9 +531,7 @@ func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *not
 
 	if filterChanged {
 		ctx := types.NotifyCtx(context.Background(), "acl-nodes-change", "all")
-		notif.NotifyAll(ctx, types.StateUpdate{
-			Type: types.StateFullUpdate,
-		})
+		notif.NotifyAll(ctx, types.UpdateFull())
 
 		return true, nil
 	}
@@ -872,9 +866,7 @@ func (h *Headscale) Serve() error {
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
 					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-						Type: types.StateFullUpdate,
-					})
+					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 				}
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }

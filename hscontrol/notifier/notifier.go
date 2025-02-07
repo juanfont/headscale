@@ -388,19 +388,13 @@ func (b *batcher) flush() {
 		})
 
 		if b.changedNodeIDs.Slice().Len() > 0 {
-			update := types.StateUpdate{
-				Type:        types.StatePeerChanged,
-				ChangeNodes: changedNodes,
-			}
+			update := types.UpdatePeerChanged(changedNodes...)
 
 			b.n.sendAll(update)
 		}
 
 		if len(patches) > 0 {
-			patchUpdate := types.StateUpdate{
-				Type:          types.StatePeerChangedPatch,
-				ChangePatches: patches,
-			}
+			patchUpdate := types.UpdatePeerPatch(patches...)
 
 			b.n.sendAll(patchUpdate)
 		}
