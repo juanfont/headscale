@@ -512,7 +512,7 @@ COMMIT;
 
 					err := tx.AutoMigrate(&types.User{})
 					if err != nil {
-						return err
+						return fmt.Errorf("automigrating types.User: %w", err)
 					}
 
 					return nil
@@ -527,7 +527,7 @@ COMMIT;
 				Migrate: func(tx *gorm.DB) error {
 					err := tx.AutoMigrate(&types.User{})
 					if err != nil {
-						return err
+						return fmt.Errorf("automigrating types.User: %w", err)
 					}
 
 					// Set up indexes and unique constraints outside of GORM, it does not support
@@ -575,7 +575,7 @@ COMMIT;
 
 					err := tx.AutoMigrate(&types.Route{})
 					if err != nil {
-						return err
+						return fmt.Errorf("automigrating types.Route: %w", err)
 					}
 
 					return nil
@@ -589,11 +589,33 @@ COMMIT;
 				Migrate: func(tx *gorm.DB) error {
 					err := tx.AutoMigrate(&types.PreAuthKey{})
 					if err != nil {
-						return err
+						return fmt.Errorf("automigrating types.PreAuthKey: %w", err)
 					}
 					err = tx.AutoMigrate(&types.Node{})
 					if err != nil {
-						return err
+						return fmt.Errorf("automigrating types.Node: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Ensure there are no nodes refering to a deleted preauthkey.
+			{
+				ID: "202502070949",
+				Migrate: func(tx *gorm.DB) error {
+					if tx.Migrator().HasTable(&types.PreAuthKey{}) {
+						err := tx.Exec(`
+UPDATE nodes
+SET auth_key_id = NULL
+WHERE auth_key_id IS NOT NULL
+AND auth_key_id NOT IN (
+    SELECT id FROM pre_auth_keys
+);
+							`).Error
+						if err != nil {
+							return fmt.Errorf("setting auth_key to null on nodes with non-existing keys: %w", err)
+						}
 					}
 
 					return nil
