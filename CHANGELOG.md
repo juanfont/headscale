@@ -2,12 +2,15 @@
 
 ## Next
 
-
 ### Changes
 
 - `oidc.map_legacy_users` and `oidc.strip_email_domain` has been removed
   [#2411](https://github.com/juanfont/headscale/pull/2411)
-
+- Add more information to `/debug` endpoint
+  [#2420](https://github.com/juanfont/headscale/pull/2420)
+  - It is now possible to inspect running goroutines and take profiles
+  - View of config, policy, filter, ssh policy per node, connected nodes and
+    DERPmap
 
 ## 0.25.0 (2025-02-xx)
 
@@ -23,7 +26,7 @@
   - A logged out node logging in with the same user will replace the existing
     node.
 - Remove support for Tailscale clients older than 1.62 (Capability version 87)
-      [#2405](https://github.com/juanfont/headscale/pull/2405)
+  [#2405](https://github.com/juanfont/headscale/pull/2405)
 
 ### Changes
 
@@ -49,6 +52,7 @@
 ## 0.24.3 (2025-02-07)
 
 ### Changes
+
 - Fix migration error caused by nodes having invalid auth keys
   [#2412](https://github.com/juanfont/headscale/pull/2412)
 - Pre auth keys belonging to a user are no longer deleted with the user
