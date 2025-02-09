@@ -20,6 +20,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		config, err := json.MarshalIndent(h.cfg, "", "  ")
 		if err != nil {
 			httpError(w, err)
+			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
@@ -29,6 +30,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		pol, err := h.policyBytes()
 		if err != nil {
 			httpError(w, err)
+			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
@@ -40,6 +42,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		filterJSON, err := json.MarshalIndent(filter, "", "  ")
 		if err != nil {
 			httpError(w, err)
+			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
@@ -51,6 +54,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		dmJSON, err := json.MarshalIndent(dm, "", "  ")
 		if err != nil {
 			httpError(w, err)
+			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
@@ -60,6 +64,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		registrationsJSON, err := json.MarshalIndent(h.registrationCache.Items(), "", "  ")
 		if err != nil {
 			httpError(w, err)
+			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
