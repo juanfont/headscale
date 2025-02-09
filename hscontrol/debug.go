@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/arl/statsviz"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tailscale.com/tailcfg"
@@ -99,6 +100,11 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.WriteHeader(http.StatusOK)
 		w.Write(registrationsJSON)
 	}))
+
+	err := statsviz.Register(debugMux)
+	if err == nil {
+		debug.URL("/debug/statsviz", "Statsviz (visualise go metrics)")
+	}
 
 	debug.URL("/metrics", "Prometheus metrics")
 	debugMux.Handle("/metrics", promhttp.Handler())
