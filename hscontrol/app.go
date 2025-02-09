@@ -53,6 +53,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tsweb"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
 	"tailscale.com/util/dnsname"
@@ -787,11 +788,12 @@ func (h *Headscale) Serve() error {
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
 	debugMux := http.NewServeMux()
-	debugMux.Handle("/debug/pprof/", http.DefaultServeMux)
-	debugMux.HandleFunc("/debug/notifier", func(w http.ResponseWriter, r *http.Request) {
+	debug := tsweb.Debugger(debugMux)
+	debug.Handle("notifier", "Inspect notifier", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(h.nodeNotifier.String()))
-	})
+	}))
+	debug.URL("/metrics", "Prometheus metrics")
 	debugMux.Handle("/metrics", promhttp.Handler())
 
 	debugHTTPServer := &http.Server{
