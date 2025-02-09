@@ -105,6 +105,11 @@ var (
 	ErrorMultipleUserMatching = errors.New("multiple users matching")
 )
 
+// resolveUser attempts to find a user in the provided [types.Users] slice that matches the Username.
+// It prioritizes matching the ProviderIdentifier, and if not found, it falls back to matching the Email or Name.
+// If no matching user is found, it returns an error indicating no user matching.
+// If multiple matching users are found, it returns an error indicating multiple users matching.
+// It returns the matched types.User and a nil error if exactly one match is found.
 func (u Username) resolveUser(users types.Users) (types.User, error) {
 	var potentialUsers []types.User
 
@@ -124,7 +129,7 @@ func (u Username) resolveUser(users types.Users) (types.User, error) {
 	}
 
 	if len(potentialUsers) > 1 {
-		return types.User{}, fmt.Errorf("multiple users with token %q found: %w", u.String(), ErrorNoUserMatching)
+		return types.User{}, fmt.Errorf("multiple users with token %q found: %w", u.String(), ErrorMultipleUserMatching)
 	}
 
 	return potentialUsers[0], nil
@@ -329,6 +334,11 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// Resolve resolves the Prefix to an IPSet. The IPSet will contain all the IP
+// addresses that the Prefix represents within Headscale. It is the product
+// of the Prefix and the Policy, Users, and Nodes.
+//
+// See [Policy], [types.Users], and [types.Nodes] for more details.
 func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
@@ -398,6 +408,12 @@ func (ag AutoGroup) Resolve(_ *Policy, _ types.Users, _ types.Nodes) (*netipx.IP
 type Alias interface {
 	Validate() error
 	UnmarshalJSON([]byte) error
+
+	// Resolve resolves the Alias to an IPSet. The IPSet will contain all the IP
+	// addresses that the Alias represents within Headscale. It is the product
+	// of the Alias and the Policy, Users and Nodes.
+	// This is an interface definition and the implementation is independent of
+	// the Alias type.
 	Resolve(*Policy, types.Users, types.Nodes) (*netipx.IPSet, error)
 }
 
