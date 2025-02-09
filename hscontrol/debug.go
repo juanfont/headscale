@@ -2,10 +2,12 @@ package hscontrol
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"tailscale.com/tailcfg"
 	"tailscale.com/tsweb"
 )
 
@@ -47,6 +49,33 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		w.Write(filterJSON)
+	}))
+	debug.Handle("ssh", "SSH Policy per node", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nodes, err := h.db.ListNodes()
+		if err != nil {
+			httpError(w, err)
+			return
+		}
+
+		sshPol := make(map[string]*tailcfg.SSHPolicy)
+		for _, node := range nodes {
+			pol, err := h.polMan.SSHPolicy(node)
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+
+			sshPol[fmt.Sprintf("id:%d  hostname:%s givenname:%s", node.ID, node.Hostname, node.GivenName)] = pol
+		}
+
+		sshJSON, err := json.MarshalIndent(sshPol, "", "  ")
+		if err != nil {
+			httpError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write(sshJSON)
 	}))
 	debug.Handle("derpmap", "Current DERPMap", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dm := h.DERPMap
