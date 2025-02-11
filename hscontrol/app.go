@@ -36,7 +36,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/pkg/profile"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/acme"
@@ -786,26 +785,12 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
-	debugMux := http.NewServeMux()
-	debugMux.Handle("/debug/pprof/", http.DefaultServeMux)
-	debugMux.HandleFunc("/debug/notifier", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(h.nodeNotifier.String()))
-	})
-	debugMux.Handle("/metrics", promhttp.Handler())
-
-	debugHTTPServer := &http.Server{
-		Addr:         h.cfg.MetricsAddr,
-		Handler:      debugMux,
-		ReadTimeout:  types.HTTPTimeout,
-		WriteTimeout: 0,
-	}
-
 	debugHTTPListener, err := net.Listen("tcp", h.cfg.MetricsAddr)
 	if err != nil {
 		return fmt.Errorf("failed to bind to TCP address: %w", err)
 	}
 
+	debugHTTPServer := h.debugHTTPServer()
 	errorGroup.Go(func() error { return debugHTTPServer.Serve(debugHTTPListener) })
 
 	log.Info().
