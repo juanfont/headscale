@@ -12,7 +12,7 @@
   - View of config, policy, filter, ssh policy per node, connected nodes and
     DERPmap
 
-## 0.25.0 (2025-02-xx)
+## 0.25.0 (2025-02-11)
 
 ### BREAKING
 
