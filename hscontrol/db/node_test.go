@@ -15,7 +15,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/check.v1"
@@ -102,7 +101,7 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 	trx := db.DB.Save(&node)
 	c.Assert(trx.Error, check.IsNil)
 
-	_, err = db.DeleteNode(&node, xsync.NewMapOf[types.NodeID, bool]())
+	err = db.DeleteNode(&node)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode3")
