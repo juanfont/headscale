@@ -49,17 +49,8 @@ func tailNode(
 		[]netip.Prefix{},
 		addrs...) // we append the node own IP, as it is required by the clients
 
-	primaryPrefixes := []netip.Prefix{}
-
-	for _, route := range node.Routes {
-		if route.Enabled {
-			if route.IsPrimary {
-				allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix))
-				primaryPrefixes = append(primaryPrefixes, netip.Prefix(route.Prefix))
-			} else if route.IsExitRoute() {
-				allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix))
-			}
-		}
+	for _, route := range node.SubnetRoutes() {
+		allowedIPs = append(allowedIPs, netip.Prefix(route))
 	}
 
 	var derp int
@@ -113,8 +104,6 @@ func tailNode(
 		Online: node.IsOnline,
 
 		Tags: tags,
-
-		PrimaryRoutes: primaryPrefixes,
 
 		MachineAuthorized: !node.IsExpired(),
 		Expired:           node.IsExpired(),

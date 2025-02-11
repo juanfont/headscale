@@ -12,12 +12,10 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 const (
@@ -267,9 +265,9 @@ func NodeSetExpiry(tx *gorm.DB,
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry).Error
 }
 
-func (hsdb *HSDatabase) DeleteNode(node *types.Node, isLikelyConnected *xsync.MapOf[types.NodeID, bool]) ([]types.NodeID, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
-		return DeleteNode(tx, node, isLikelyConnected)
+func (hsdb *HSDatabase) DeleteNode(node *types.Node) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return DeleteNode(tx, node)
 	})
 }
 
@@ -277,19 +275,13 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node, isLikelyConnected *xsync.Ma
 // Caller is responsible for notifying all of change.
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
-	isLikelyConnected *xsync.MapOf[types.NodeID, bool],
-) ([]types.NodeID, error) {
-	changed, err := deleteNodeRoutes(tx, node, isLikelyConnected)
-	if err != nil {
-		return changed, err
-	}
-
+) error {
 	// Unscoped causes the node to be fully removed from the database.
 	if err := tx.Unscoped().Delete(&types.Node{}, node.ID).Error; err != nil {
-		return changed, err
+		return err
 	}
 
-	return changed, nil
+	return nil
 }
 
 // DeleteEphemeralNode deletes a Node from the database, note that this method
@@ -497,141 +489,6 @@ func NodeSetMachineKey(
 // TODO(kradalby): Remove this func, just use Save.
 func NodeSave(tx *gorm.DB, node *types.Node) error {
 	return tx.Save(node).Error
-}
-
-func (hsdb *HSDatabase) GetAdvertisedRoutes(node *types.Node) ([]netip.Prefix, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) ([]netip.Prefix, error) {
-		return GetAdvertisedRoutes(rx, node)
-	})
-}
-
-// GetAdvertisedRoutes returns the routes that are be advertised by the given node.
-func GetAdvertisedRoutes(tx *gorm.DB, node *types.Node) ([]netip.Prefix, error) {
-	routes := types.Routes{}
-
-	err := tx.
-		Preload("Node").
-		Where("node_id = ? AND advertised = ?", node.ID, true).Find(&routes).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("getting advertised routes for node(%d): %w", node.ID, err)
-	}
-
-	var prefixes []netip.Prefix
-	for _, route := range routes {
-		prefixes = append(prefixes, netip.Prefix(route.Prefix))
-	}
-
-	return prefixes, nil
-}
-
-func (hsdb *HSDatabase) GetEnabledRoutes(node *types.Node) ([]netip.Prefix, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) ([]netip.Prefix, error) {
-		return GetEnabledRoutes(rx, node)
-	})
-}
-
-// GetEnabledRoutes returns the routes that are enabled for the node.
-func GetEnabledRoutes(tx *gorm.DB, node *types.Node) ([]netip.Prefix, error) {
-	routes := types.Routes{}
-
-	err := tx.
-		Preload("Node").
-		Where("node_id = ? AND advertised = ? AND enabled = ?", node.ID, true, true).
-		Find(&routes).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("getting enabled routes for node(%d): %w", node.ID, err)
-	}
-
-	var prefixes []netip.Prefix
-	for _, route := range routes {
-		prefixes = append(prefixes, netip.Prefix(route.Prefix))
-	}
-
-	return prefixes, nil
-}
-
-func IsRoutesEnabled(tx *gorm.DB, node *types.Node, routeStr string) bool {
-	route, err := netip.ParsePrefix(routeStr)
-	if err != nil {
-		return false
-	}
-
-	enabledRoutes, err := GetEnabledRoutes(tx, node)
-	if err != nil {
-		return false
-	}
-
-	for _, enabledRoute := range enabledRoutes {
-		if route == enabledRoute {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (hsdb *HSDatabase) enableRoutes(
-	node *types.Node,
-	newRoutes ...netip.Prefix,
-) (*types.StateUpdate, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return enableRoutes(tx, node, newRoutes...)
-	})
-}
-
-// enableRoutes enables new routes based on a list of new routes.
-func enableRoutes(tx *gorm.DB,
-	node *types.Node, newRoutes ...netip.Prefix,
-) (*types.StateUpdate, error) {
-	advertisedRoutes, err := GetAdvertisedRoutes(tx, node)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, newRoute := range newRoutes {
-		if !slices.Contains(advertisedRoutes, newRoute) {
-			return nil, fmt.Errorf(
-				"route (%s) is not available on node %s: %w",
-				node.Hostname,
-				newRoute, ErrNodeRouteIsNotAvailable,
-			)
-		}
-	}
-
-	// Separate loop so we don't leave things in a half-updated state
-	for _, prefix := range newRoutes {
-		route := types.Route{}
-		err := tx.Preload("Node").
-			Where("node_id = ? AND prefix = ?", node.ID, prefix.String()).
-			First(&route).Error
-		if err == nil {
-			route.Enabled = true
-
-			// Mark already as primary if there is only this node offering this subnet
-			// (and is not an exit route)
-			if !route.IsExitRoute() {
-				route.IsPrimary = isUniquePrefix(tx, route)
-			}
-
-			err = tx.Save(&route).Error
-			if err != nil {
-				return nil, fmt.Errorf("failed to enable route: %w", err)
-			}
-		} else {
-			return nil, fmt.Errorf("failed to find route: %w", err)
-		}
-	}
-
-	// Ensure the node has the latest routes when notifying the other
-	// nodes
-	nRoutes, err := GetNodeRoutes(tx, node)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read back routes: %w", err)
-	}
-
-	node.Routes = nRoutes
-
-	return ptr.To(types.UpdatePeerChanged(node.ID)), nil
 }
 
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
