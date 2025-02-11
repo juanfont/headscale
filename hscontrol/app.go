@@ -32,6 +32,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	zerolog "github.com/philip-bui/grpc-zerolog"
@@ -92,6 +93,7 @@ type Headscale struct {
 	polManOnce     sync.Once
 	polMan         policy.PolicyManager
 	extraRecordMan *dns.ExtraRecordsMan
+	primaryRoutes  *routes.PrimaryRoutes
 
 	mapper       *mapper.Mapper
 	nodeNotifier *notifier.Notifier
@@ -134,6 +136,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
 		nodeNotifier:       notifier.NewNotifier(cfg),
+		primaryRoutes:      routes.New(),
 	}
 
 	app.db, err = db.NewHeadscaleDatabase(
@@ -495,6 +498,8 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 // TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
 // Maybe we should attempt a new in memory state and not go via the DB?
+// Maybe this should be implemented as an event bus?
+// A bool is returned indicating if a full update was sent to all nodes
 func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
 	users, err := db.ListUsers()
 	if err != nil {
@@ -516,6 +521,7 @@ func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *not
 
 // TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
 // Maybe we should attempt a new in memory state and not go via the DB?
+// Maybe this should be implemented as an event bus?
 // A bool is returned indicating if a full update was sent to all nodes
 func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) (bool, error) {
 	nodes, err := db.ListNodes()
@@ -566,7 +572,7 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier, h.polMan)
+	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier, h.polMan, h.primaryRoutes)
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server

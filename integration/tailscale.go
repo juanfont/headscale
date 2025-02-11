@@ -29,6 +29,7 @@ type TailscaleClient interface {
 	IPs() ([]netip.Addr, error)
 	FQDN() (string, error)
 	Status(...bool) (*ipnstate.Status, error)
+	MustStatus() *ipnstate.Status
 	Netmap() (*netmap.NetworkMap, error)
 	DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error)
 	Netcheck() (*netcheck.Report, error)

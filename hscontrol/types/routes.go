@@ -1,102 +1,31 @@
 package types
 
 import (
-	"fmt"
 	"net/netip"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
-	"tailscale.com/net/tsaddr"
 )
 
+// Deprecated: Approval of routes is denormalised onto the relevant node.
+// Struct is kept for GORM migrations only.
 type Route struct {
 	gorm.Model
 
 	NodeID uint64 `gorm:"not null"`
 	Node   *Node
 
-	// TODO(kradalby): change this custom type to netip.Prefix
 	Prefix netip.Prefix `gorm:"serializer:text"`
 
+	// Advertised is now only stored as part of [Node.Hostinfo].
 	Advertised bool
-	Enabled    bool
-	IsPrimary  bool
+
+	// Enabled is stored directly on the node as ApprovedRoutes.
+	Enabled bool
+
+	// IsPrimary is only determined in memory as it is only relevant
+	// when the server is up.
+	IsPrimary bool
 }
 
+// Deprecated: Approval of routes is denormalised onto the relevant node.
 type Routes []Route
-
-func (r *Route) String() string {
-	return fmt.Sprintf("%s:%s", r.Node.Hostname, netip.Prefix(r.Prefix).String())
-}
-
-func (r *Route) IsExitRoute() bool {
-	return tsaddr.IsExitRoute(r.Prefix)
-}
-
-func (r *Route) IsAnnouncable() bool {
-	return r.Advertised && r.Enabled
-}
-
-func (rs Routes) Prefixes() []netip.Prefix {
-	prefixes := make([]netip.Prefix, len(rs))
-	for i, r := range rs {
-		prefixes[i] = netip.Prefix(r.Prefix)
-	}
-
-	return prefixes
-}
-
-// Primaries returns Primary routes from a list of routes.
-func (rs Routes) Primaries() Routes {
-	res := make(Routes, 0)
-	for _, route := range rs {
-		if route.IsPrimary {
-			res = append(res, route)
-		}
-	}
-
-	return res
-}
-
-func (rs Routes) PrefixMap() map[netip.Prefix][]Route {
-	res := map[netip.Prefix][]Route{}
-
-	for _, route := range rs {
-		if _, ok := res[route.Prefix]; ok {
-			res[route.Prefix] = append(res[route.Prefix], route)
-		} else {
-			res[route.Prefix] = []Route{route}
-		}
-	}
-
-	return res
-}
-
-func (rs Routes) Proto() []*v1.Route {
-	protoRoutes := []*v1.Route{}
-
-	for _, route := range rs {
-		protoRoute := v1.Route{
-			Id:         uint64(route.ID),
-			Prefix:     route.Prefix.String(),
-			Advertised: route.Advertised,
-			Enabled:    route.Enabled,
-			IsPrimary:  route.IsPrimary,
-			CreatedAt:  timestamppb.New(route.CreatedAt),
-			UpdatedAt:  timestamppb.New(route.UpdatedAt),
-		}
-
-		if route.Node != nil {
-			protoRoute.Node = route.Node.Proto()
-		}
-
-		if route.DeletedAt.Valid {
-			protoRoute.DeletedAt = timestamppb.New(route.DeletedAt.Time)
-		}
-
-		protoRoutes = append(protoRoutes, &protoRoute)
-	}
-
-	return protoRoutes
-}

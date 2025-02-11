@@ -2165,6 +2165,9 @@ func TestReduceFilterRules(t *testing.T) {
 						netip.MustParsePrefix("10.33.0.0/16"),
 					},
 				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.33.0.0/16"),
+				},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -2292,6 +2295,7 @@ func TestReduceFilterRules(t *testing.T) {
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
+				ApprovedRoutes: tsaddr.ExitRoutes(),
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -2398,6 +2402,7 @@ func TestReduceFilterRules(t *testing.T) {
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
+				ApprovedRoutes: tsaddr.ExitRoutes(),
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -2513,6 +2518,10 @@ func TestReduceFilterRules(t *testing.T) {
 						netip.MustParsePrefix("16.0.0.0/16"),
 					},
 				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("8.0.0.0/16"),
+					netip.MustParsePrefix("16.0.0.0/16"),
+				},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -2603,6 +2612,10 @@ func TestReduceFilterRules(t *testing.T) {
 						netip.MustParsePrefix("16.0.0.0/8"),
 					},
 				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("8.0.0.0/8"),
+					netip.MustParsePrefix("16.0.0.0/8"),
+				},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -2683,7 +2696,8 @@ func TestReduceFilterRules(t *testing.T) {
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
-				ForcedTags: []string{"tag:access-servers"},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
+				ForcedTags:     []string{"tag:access-servers"},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -3475,14 +3489,10 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPv4:     iap("100.64.0.2"),
 						Hostname: "router",
 						User:     types.User{Name: "router"},
-						Routes: types.Routes{
-							types.Route{
-								NodeID:    2,
-								Prefix:    netip.MustParsePrefix("10.33.0.0/16"),
-								IsPrimary: true,
-								Enabled:   true,
-							},
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 						},
+						ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -3508,14 +3518,10 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					IPv4:     iap("100.64.0.2"),
 					Hostname: "router",
 					User:     types.User{Name: "router"},
-					Routes: types.Routes{
-						types.Route{
-							NodeID:    2,
-							Prefix:    netip.MustParsePrefix("10.33.0.0/16"),
-							IsPrimary: true,
-							Enabled:   true,
-						},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 					},
+					ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 				},
 			},
 		},

@@ -2,6 +2,36 @@
 
 ## Next
 
+### BREAKING
+
+Route internals have been rewritten, removing the dedicated route table in the database.
+This was done to simplify the codebase, which had grown unnecessarily complex after
+the routes were split into separate tables. The overhead of having to go via the database
+and keeping the state in sync made the code very hard to reason about and prone to errors.
+The majority of the route state is only relevant when headscale is running, and is now only
+kept in memory.
+As part of this, the CLI and API has been simplified to reflect the changes;
+
+```console
+$ headscale nodes list-routes
+ID | Hostname           | Approved | Available       | Serving
+1  | ts-head-ruqsg8     |          | 0.0.0.0/0, ::/0 |
+2  | ts-unstable-fq7ob4 |          | 0.0.0.0/0, ::/0 |
+
+$ headscale nodes approve-routes --identifier 1 --routes 0.0.0.0/0,::/0
+Node updated
+
+$ headscale nodes list-routes
+ID | Hostname           | Approved        | Available       | Serving
+1  | ts-head-ruqsg8     | 0.0.0.0/0, ::/0 | 0.0.0.0/0, ::/0 | 0.0.0.0/0, ::/0
+2  | ts-unstable-fq7ob4 |                 | 0.0.0.0/0, ::/0 |
+```
+
+Note that if an exit route is approved (0.0.0.0/0 or ::/0), both IPv4 and IPv6 will be approved.
+
+- Route API and CLI has been removed [#2422](https://github.com/juanfont/headscale/pull/2422)
+- Routes are now managed via the Node API [#2422](https://github.com/juanfont/headscale/pull/2422)
+
 ### Changes
 
 - Use Go 1.24

@@ -243,6 +243,7 @@ func (pol *ACLPolicy) CompileFilterRules(
 // ReduceFilterRules takes a node and a set of rules and removes all rules and destinations
 // that are not relevant to that particular node.
 func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+	// TODO(kradalby): Make this nil and not alloc unless needed
 	ret := []tailcfg.FilterRule{}
 
 	for _, rule := range rules {
@@ -264,13 +265,11 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 
 			// If the node exposes routes, ensure they are note removed
 			// when the filters are reduced.
-			if node.Hostinfo != nil {
-				if len(node.Hostinfo.RoutableIPs) > 0 {
-					for _, routableIP := range node.Hostinfo.RoutableIPs {
-						if expanded.OverlapsPrefix(routableIP) {
-							dests = append(dests, dest)
-							continue DEST_LOOP
-						}
+			if len(node.SubnetRoutes()) > 0 {
+				for _, routableIP := range node.SubnetRoutes() {
+					if expanded.OverlapsPrefix(routableIP) {
+						dests = append(dests, dest)
+						continue DEST_LOOP
 					}
 				}
 			}

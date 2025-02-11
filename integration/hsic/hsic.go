@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/netip"
 	"os"
 	"path"
 	"sort"
@@ -815,6 +816,33 @@ func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
 	}
 
 	return users, nil
+}
+
+// ApproveRoutes approves routes for a node.
+func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (*v1.Node, error) {
+	command := []string{
+		"headscale", "nodes", "approve-routes",
+		"--output", "json",
+		"--identifier", strconv.FormatUint(id, 10),
+		fmt.Sprintf("--routes=%q", strings.Join(util.PrefixesToString(routes), ",")),
+	}
+
+	result, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute list node command: %w", err)
+	}
+
+	var node *v1.Node
+	err = json.Unmarshal([]byte(result), &node)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
+	}
+
+	return node, nil
 }
 
 // WriteFile save file inside the Headscale container.
