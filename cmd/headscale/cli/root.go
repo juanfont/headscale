@@ -58,10 +58,10 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	// logFormat := viper.GetString("log.format")
-	// if logFormat == types.JSONLogFormat {
-	// 	log.Logger = log.Output(os.Stdout)
-	// }
+	logFormat := viper.GetString("log.format")
+	if logFormat == types.JSONLogFormat {
+	 	log.Logger = log.Output(os.Stdout)
+	}
 
 	disableUpdateCheck := viper.GetBool("disable_check_updates")
 	if !disableUpdateCheck && !machineOutput {
