@@ -116,9 +116,13 @@ func (h *Headscale) NoiseUpgradeHandler(
 	)
 }
 
+func unsupportedClientError(version tailcfg.CapabilityVersion) error {
+	return fmt.Errorf("unsupported client version: %s (%d)", capver.TailscaleVersion(version), version)
+}
+
 func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
 	if !isSupportedVersion(tailcfg.CapabilityVersion(protocolVersion)) {
-		return fmt.Errorf("unsupported client version: %d", protocolVersion)
+		return unsupportedClientError(tailcfg.CapabilityVersion(protocolVersion))
 	}
 
 	earlyJSON, err := json.Marshal(&tailcfg.EarlyNoise{
@@ -171,7 +175,7 @@ func rejectUnsupported(
 			Str("node_key", nkey.ShortString()).
 			Str("machine_key", mkey.ShortString()).
 			Msg("unsupported client connected")
-		http.Error(writer, "unsupported client version", http.StatusBadRequest)
+		http.Error(writer, unsupportedClientError(version).Error(), http.StatusBadRequest)
 
 		return true
 	}
