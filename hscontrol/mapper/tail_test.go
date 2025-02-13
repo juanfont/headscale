@@ -107,28 +107,15 @@ func TestTailNode(t *testing.T) {
 				AuthKey:    &types.PreAuthKey{},
 				LastSeen:   &lastSeen,
 				Expiry:     &expire,
-				Hostinfo:   &tailcfg.Hostinfo{},
-				Routes: []types.Route{
-					{
-						Prefix:     tsaddr.AllIPv4(),
-						Advertised: true,
-						Enabled:    true,
-						IsPrimary:  false,
-					},
-					{
-						Prefix:     netip.MustParsePrefix("192.168.0.0/24"),
-						Advertised: true,
-						Enabled:    true,
-						IsPrimary:  true,
-					},
-					{
-						Prefix:     netip.MustParsePrefix("172.0.0.0/10"),
-						Advertised: true,
-						Enabled:    false,
-						IsPrimary:  true,
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						tsaddr.AllIPv4(),
+						netip.MustParsePrefix("192.168.0.0/24"),
+						netip.MustParsePrefix("172.0.0.0/10"),
 					},
 				},
-				CreatedAt: created,
+				ApprovedRoutes: []netip.Prefix{tsaddr.AllIPv4(), netip.MustParsePrefix("192.168.0.0/24")},
+				CreatedAt:      created,
 			},
 			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},

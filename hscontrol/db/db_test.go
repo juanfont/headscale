@@ -454,3 +454,32 @@ func TestMigrationsPostgres(t *testing.T) {
 		})
 	}
 }
+
+func dbForTest(t *testing.T, testName string) *HSDatabase {
+	t.Helper()
+
+	tmpDir, err := os.MkdirTemp("", testName)
+	if err != nil {
+		t.Fatalf("creating tempdir: %s", err)
+	}
+
+	dbPath := tmpDir + "/headscale_test.db"
+
+	db, err = NewHeadscaleDatabase(
+		types.DatabaseConfig{
+			Type: "sqlite3",
+			Sqlite: types.SqliteConfig{
+				Path: dbPath,
+			},
+		},
+		"",
+		emptyCache(),
+	)
+	if err != nil {
+		t.Fatalf("setting up database: %s", err)
+	}
+
+	t.Logf("database set up at: %s", dbPath)
+
+	return db
+}
