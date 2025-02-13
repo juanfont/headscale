@@ -3475,14 +3475,10 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 						IPv4:     iap("100.64.0.2"),
 						Hostname: "router",
 						User:     types.User{Name: "router"},
-						Routes: types.Routes{
-							types.Route{
-								NodeID:    2,
-								Prefix:    netip.MustParsePrefix("10.33.0.0/16"),
-								IsPrimary: true,
-								Enabled:   true,
-							},
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 						},
+						ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -3508,14 +3504,10 @@ func Test_getFilteredByACLPeers(t *testing.T) {
 					IPv4:     iap("100.64.0.2"),
 					Hostname: "router",
 					User:     types.User{Name: "router"},
-					Routes: types.Routes{
-						types.Route{
-							NodeID:    2,
-							Prefix:    netip.MustParsePrefix("10.33.0.0/16"),
-							IsPrimary: true,
-							Enabled:   true,
-						},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 					},
+					ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 				},
 			},
 		},
