@@ -148,34 +148,6 @@ func (pm *PolicyManager) Tags(node *types.Node) []string {
 	return []string{}
 }
 
-func (pm *PolicyManager) ApproversForRoute(route netip.Prefix) []string {
-	// TODO(kradalby): This can be a parse error of the address in the policy,
-	// in the new policy this will be typed and not a problem, in this policy
-	// we will just return empty list
-	// if pm.pol == nil {
-	// 	return nil
-	// }
-	// approvers, _ := pm.pol.AutoApprovers.GetRouteApprovers(route)
-	// return approvers
-
-	// TODO(kradalby): Implement this or ideally, make it unnecessary.
-	// It is used in the routes to determine if they can auto approve or not.
-	return nil
-}
-
-func (pm *PolicyManager) ExpandAlias(alias string) (*netipx.IPSet, error) {
-	// ips, err := pm.pol.ExpandAlias(pm.nodes, pm.users, alias)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// return ips, nil
-
-	// TODO(kradalby): Implement this or ideally, make it unnecessary.
-	// It is used in the routes to determine if they can auto approve or not.
-	var s netipx.IPSetBuilder
-	return s.IPSet()
-}
-
 func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
