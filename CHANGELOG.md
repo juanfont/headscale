@@ -4,6 +4,8 @@
 
 ### Changes
 
+- Use Go 1.24
+  [#2427](https://github.com/juanfont/headscale/pull/2427)
 - `oidc.map_legacy_users` and `oidc.strip_email_domain` has been removed
   [#2411](https://github.com/juanfont/headscale/pull/2411)
 - Add more information to `/debug` endpoint
