@@ -97,6 +97,10 @@
         gofumpt = prev.gofumpt.override {
           buildGoModule = buildGo;
         };
+
+        gopls = prev.gopls.override {
+          buildGoModule = buildGo;
+        };
       };
     }
     // flake-utils.lib.eachDefaultSystem
@@ -117,6 +121,7 @@
           gotestsum
           gotests
           gofumpt
+          gopls
           ksh
           ko
           yq-go
