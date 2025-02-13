@@ -648,13 +648,78 @@ type Hosts map[Host]Prefix
 type TagOwners map[Tag]Owners
 
 type AutoApprovers struct {
-	Routes   map[string][]string `json:"routes"`
-	ExitNode []string            `json:"exitNode"`
+	// Technically we should also allow Tags here, not only Owners (group and user).
+	// Initially we will only allow Owners.
+	// TODO(kradalby): add support for Tags
+	Routes   map[netip.Prefix]Owners `json:"routes"`
+	ExitNode Owners                  `json:"exitNode"`
+}
+
+// resolveAutoApprovers resolves the AutoApprovers to a map of netip.Prefix to netipx.IPSet.
+// The resulting map can be used to quickly look up if a node can self-approve a route.
+// It is intended for internal use in a PolicyManager.
+func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[netip.Prefix]*netipx.IPSet, error) {
+	routes := make(map[netip.Prefix]*netipx.IPSetBuilder)
+
+	for prefix, owners := range p.AutoApprovers.Routes {
+		if _, ok := routes[prefix]; !ok {
+			routes[prefix] = new(netipx.IPSetBuilder)
+		}
+		for _, owner := range owners {
+			o, ok := owner.(Alias)
+			if !ok {
+				// Should never happen
+				return nil, fmt.Errorf("owner %v is not an Alias", owner)
+			}
+			ips, err := o.Resolve(p, users, nodes)
+			if err != nil {
+				return nil, err
+			}
+			routes[prefix].AddSet(ips)
+		}
+	}
+
+	var exitNodeSetBuilder netipx.IPSetBuilder
+	if len(p.AutoApprovers.ExitNode) > 0 {
+		for _, owner := range p.AutoApprovers.ExitNode {
+			o, ok := owner.(Alias)
+			if !ok {
+				// Should never happen
+				return nil, fmt.Errorf("owner %v is not an Alias", owner)
+			}
+			ips, err := o.Resolve(p, users, nodes)
+			if err != nil {
+				return nil, err
+			}
+			exitNodeSetBuilder.AddSet(ips)
+		}
+	}
+
+	ret := make(map[netip.Prefix]*netipx.IPSet)
+	for prefix, builder := range routes {
+		ipSet, err := builder.IPSet()
+		if err != nil {
+			return nil, err
+		}
+		ret[prefix] = ipSet
+	}
+
+	if len(p.AutoApprovers.ExitNode) > 0 {
+		exitNodeSet, err := exitNodeSetBuilder.IPSet()
+		if err != nil {
+			return nil, err
+		}
+
+		ret[tsaddr.AllIPv4()] = exitNodeSet
+		ret[tsaddr.AllIPv6()] = exitNodeSet
+	}
+
+	return ret, nil
 }
 
 type ACL struct {
-	Action       string           `json:"action"`
-	Protocol     string           `json:"proto"`
+	Action       string           `json:"action"` // TODO(kradalby): add strict type
+	Protocol     string           `json:"proto"`  // TODO(kradalby): add strict type
 	Sources      Aliases          `json:"src"`
 	Destinations []AliasWithPorts `json:"dst"`
 }
@@ -682,7 +747,7 @@ type Policy struct {
 
 // SSH controls who can ssh into which machines.
 type SSH struct {
-	Action       string        `json:"action"`
+	Action       string        `json:"action"` // TODO(kradalby): add strict type
 	Sources      SSHSrcAliases `json:"src"`
 	Destinations SSHDstAliases `json:"dst"`
 	Users        []SSHUser     `json:"users"`

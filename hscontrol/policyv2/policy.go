@@ -21,8 +21,11 @@ type PolicyManager struct {
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
 
-	// TODO(kradalby): Implement SSH policy
-	sshPolicy *tailcfg.SSHPolicy
+	autoApproveMapHash deephash.Sum
+	autoApproveMap     map[netip.Prefix]*netipx.IPSet
+
+	// TODO(kradalby): Implement so we can have a cached version of  this.
+	// sshPolicy *tailcfg.SSHPolicy
 }
 
 // NewPolicyManager creates a new PolicyManager from a policy file and a list of users and nodes.
@@ -63,6 +66,19 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 
 	pm.filter = filter
 	pm.filterHash = filterHash
+
+	autoMap, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
+	if err != nil {
+		return false, fmt.Errorf("resolving auto approvers map: %w", err)
+	}
+
+	autoApproveMapHash := deephash.Hash(&autoMap)
+	if autoApproveMapHash == pm.autoApproveMapHash {
+		return false, nil
+	}
+
+	pm.autoApproveMap = autoMap
+	pm.autoApproveMapHash = autoApproveMapHash
 
 	return true, nil
 }
@@ -158,4 +174,19 @@ func (pm *PolicyManager) ExpandAlias(alias string) (*netipx.IPSet, error) {
 	// It is used in the routes to determine if they can auto approve or not.
 	var s netipx.IPSetBuilder
 	return s.IPSet()
+}
+
+func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	for _, nodeAddr := range node.IPs() {
+		if _, ok := pm.autoApproveMap[route]; ok {
+			if pm.autoApproveMap[route].Contains(nodeAddr) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

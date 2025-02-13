@@ -23,6 +23,7 @@ type PolicyManager interface {
 	SetPolicy([]byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)
 	SetNodes(nodes types.Nodes) (bool, error)
+	NodeCanApproveRoute(*types.Node, netip.Prefix) bool
 }
 
 func NewPolicyManagerFromPath(path string, users []types.User, nodes types.Nodes) (PolicyManager, error) {
@@ -184,4 +185,9 @@ func (pm *PolicyManagerV1) ExpandAlias(alias string) (*netipx.IPSet, error) {
 		return nil, err
 	}
 	return ips, nil
+}
+
+func (pm *PolicyManagerV1) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
+	// TODO(kradalby): Backport
+	return false
 }
