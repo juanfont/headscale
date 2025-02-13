@@ -908,3 +908,111 @@ func TestNodeCanApproveRoute(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveTagOwners(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+		{Model: gorm.Model{ID: 3}, Name: "user3"},
+	}
+
+	nodes := types.Nodes{
+		{
+			IPv4: ap("100.64.0.1"),
+			User: users[0],
+		},
+		{
+			IPv4: ap("100.64.0.2"),
+			User: users[1],
+		},
+		{
+			IPv4: ap("100.64.0.3"),
+			User: users[2],
+		},
+	}
+
+	tests := []struct {
+		name    string
+		policy  *Policy
+		want    map[Tag]*netipx.IPSet
+		wantErr bool
+	}{
+		{
+			name: "single-tag-owner",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("user1"))},
+				},
+			},
+			want: map[Tag]*netipx.IPSet{
+				Tag("tag:test"): mustIPSet("100.64.0.1/32"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple-tag-owners",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("user1")), ptr.To(Username("user2"))},
+				},
+			},
+			want: map[Tag]*netipx.IPSet{
+				Tag("tag:test"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "group-tag-owner",
+			policy: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"user1", "user2"},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
+				},
+			},
+			want: map[Tag]*netipx.IPSet{
+				Tag("tag:test"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid-user",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("invalid"))},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "invalid-group",
+			policy: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"invalid"},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+
+	cmps := append(util.Comparers, cmp.Comparer(ipSetComparer))
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveTagOwners(tt.policy, users, nodes)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveTagOwners() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
+				t.Errorf("resolveTagOwners() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
