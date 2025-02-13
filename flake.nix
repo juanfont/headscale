@@ -18,7 +18,7 @@
     {
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
-        buildGo = pkgs.buildGo123Module;
+        buildGo = pkgs.buildGo124Module;
       in {
         headscale = buildGo {
           pname = "headscale";
@@ -105,7 +105,7 @@
         overlays = [self.overlay];
         inherit system;
       };
-      buildDeps = with pkgs; [git go_1_23 gnumake];
+      buildDeps = with pkgs; [git go_1_24 gnumake];
       devDeps = with pkgs;
         buildDeps
         ++ [
