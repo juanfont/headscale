@@ -192,6 +192,14 @@ func (node *Node) HasTag(tag string) bool {
 	return false
 }
 
+func (node *Node) RequestTags() []string {
+	if node.Hostinfo == nil {
+		return []string{}
+	}
+
+	return node.Hostinfo.RequestTags
+}
+
 func (node *Node) Prefixes() []netip.Prefix {
 	addrs := []netip.Prefix{}
 	for _, nodeAddress := range node.IPs() {

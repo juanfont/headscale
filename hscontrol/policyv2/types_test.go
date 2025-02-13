@@ -1016,3 +1016,117 @@ func TestResolveTagOwners(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeCanHaveTag(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1@"},
+		{Model: gorm.Model{ID: 2}, Name: "user2@"},
+		{Model: gorm.Model{ID: 3}, Name: "user3@"},
+	}
+
+	nodes := types.Nodes{
+		{
+			IPv4: ap("100.64.0.1"),
+			User: users[0],
+		},
+		{
+			IPv4: ap("100.64.0.2"),
+			User: users[1],
+		},
+		{
+			IPv4: ap("100.64.0.3"),
+			User: users[2],
+		},
+	}
+
+	tests := []struct {
+		name    string
+		policy  *Policy
+		node    *types.Node
+		tag     string
+		want    bool
+		wantErr string
+	}{
+		{
+			name: "single-tag-owner",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("user1@"))},
+				},
+			},
+			node: nodes[0],
+			tag:  "tag:test",
+			want: true,
+		},
+		{
+			name: "multiple-tag-owners",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("user1@")), ptr.To(Username("user2@"))},
+				},
+			},
+			node: nodes[1],
+			tag:  "tag:test",
+			want: true,
+		},
+		{
+			name: "group-tag-owner",
+			policy: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"user1@", "user2@"},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
+				},
+			},
+			node: nodes[1],
+			tag:  "tag:test",
+			want: true,
+		},
+		{
+			name: "invalid-group",
+			policy: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"invalid"},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
+				},
+			},
+			node:    nodes[0],
+			tag:     "tag:test",
+			want:    false,
+			wantErr: "Username has to contain @",
+		},
+		{
+			name: "node-cannot-have-tag",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("user2@"))},
+				},
+			},
+			node: nodes[0],
+			tag:  "tag:test",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := json.Marshal(tt.policy)
+			require.NoError(t, err)
+
+			pm, err := NewPolicyManager(b, users, nodes)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+
+			got := pm.NodeCanHaveTag(tt.node, tt.tag)
+			if got != tt.want {
+				t.Errorf("NodeCanHaveTag() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -21,6 +21,9 @@ type PolicyManager struct {
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
 
+	tagOwnerMapHash deephash.Sum
+	tagOwnerMap     map[Tag]*netipx.IPSet
+
 	autoApproveMapHash deephash.Sum
 	autoApproveMap     map[netip.Prefix]*netipx.IPSet
 
@@ -79,6 +82,19 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 
 	pm.autoApproveMap = autoMap
 	pm.autoApproveMapHash = autoApproveMapHash
+
+	tagMap, err := resolveTagOwners(pm.pol, pm.users, pm.nodes)
+	if err != nil {
+		return false, fmt.Errorf("resolving tag owners map: %w", err)
+	}
+
+	tagOwnerMapHash := deephash.Hash(&tagMap)
+	if tagOwnerMapHash == pm.tagOwnerMapHash {
+		return false, nil
+	}
+
+	pm.tagOwnerMap = tagMap
+	pm.tagOwnerMapHash = tagOwnerMapHash
 
 	return true, nil
 }
@@ -146,6 +162,21 @@ func (pm *PolicyManager) Tags(node *types.Node) []string {
 	// We might be able to do this when the node request set them so we at least dont have
 	// check it everytime we use the tags (like in filter checks or mapresponse)
 	return []string{}
+}
+
+func (pm *PolicyManager) NodeCanHaveTag(node *types.Node, tag string) bool {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if ips, ok := pm.tagOwnerMap[Tag(tag)]; ok {
+		for _, nodeAddr := range node.IPs() {
+			if ips.Contains(nodeAddr) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
