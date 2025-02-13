@@ -16,10 +16,14 @@ import (
 type PolicyManager interface {
 	Filter() []tailcfg.FilterRule
 	SSHPolicy(*types.Node) (*tailcfg.SSHPolicy, error)
-	Tags(*types.Node) []string
 	SetPolicy([]byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)
 	SetNodes(nodes types.Nodes) (bool, error)
+
+	// NodeCanHaveTag reports whether the given node can have the given tag.
+	NodeCanHaveTag(*types.Node, string) bool
+
+	// NodeCanApproveRoute reports whether the given node can approve the given route.
 	NodeCanApproveRoute(*types.Node, netip.Prefix) bool
 }
 
@@ -155,14 +159,20 @@ func (pm *PolicyManagerV1) SetNodes(nodes types.Nodes) (bool, error) {
 	return pm.updateLocked()
 }
 
-func (pm *PolicyManagerV1) Tags(node *types.Node) []string {
-	if pm == nil {
-		return nil
-	}
+func (pm *PolicyManagerV1) NodeCanHaveTag(node *types.Node, tag string) bool {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 
 	tags, invalid := pm.pol.TagsOfNode(pm.users, node)
 	log.Debug().Strs("authorised_tags", tags).Strs("unauthorised_tags", invalid).Uint64("node.id", node.ID.Uint64()).Msg("tags provided by policy")
-	return tags
+
+	for _, t := range tags {
+		if t == tag {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (pm *PolicyManagerV1) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
