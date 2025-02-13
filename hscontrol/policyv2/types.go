@@ -647,6 +647,39 @@ type Hosts map[Host]Prefix
 // TagOwners are a map of Tag to a list of the UserEntities that own the tag.
 type TagOwners map[Tag]Owners
 
+// resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
+// The resulting map can be used to quickly look up the IPSet for a given Tag.
+// It is intended for internal use in a PolicyManager.
+func resolveTagOwners(p *Policy, users types.Users, nodes types.Nodes) (map[Tag]*netipx.IPSet, error) {
+	ret := make(map[Tag]*netipx.IPSet)
+
+	for tag, owners := range p.TagOwners {
+		var ips netipx.IPSetBuilder
+
+		for _, owner := range owners {
+			o, ok := owner.(Alias)
+			if !ok {
+				// Should never happen
+				return nil, fmt.Errorf("owner %v is not an Alias", owner)
+			}
+			resolved, err := o.Resolve(p, users, nodes)
+			if err != nil {
+				return nil, err
+			}
+			ips.AddSet(resolved)
+		}
+
+		ipSet, err := ips.IPSet()
+		if err != nil {
+			return nil, err
+		}
+
+		ret[tag] = ipSet
+	}
+
+	return ret, nil
+}
+
 type AutoApprovers struct {
 	// Technically we should also allow Tags here, not only Owners (group and user).
 	// Initially we will only allow Owners.
