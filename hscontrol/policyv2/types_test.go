@@ -1,6 +1,7 @@
 package policyv2
 
 import (
+	"encoding/json"
 	"net/netip"
 	"strings"
 	"testing"
@@ -9,6 +10,8 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/stretchr/testify/require"
+	"go4.org/netipx"
 	xmaps "golang.org/x/exp/maps"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -141,9 +144,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 					Tag("tag:userandgroup"): Owners{up("testuser@headscale.net"), gp("group:other")},
 				},
 				Hosts: Hosts{
-					"host-1":   Prefix(netip.MustParsePrefix("100.100.100.100/32")),
-					"subnet-1": Prefix(netip.MustParsePrefix("100.100.101.100/24")),
-					"outside":  Prefix(netip.MustParsePrefix("192.168.0.0/16")),
+					"host-1":   Prefix(mp("100.100.100.100/32")),
+					"subnet-1": Prefix(mp("100.100.101.100/24")),
+					"outside":  Prefix(mp("192.168.0.0/16")),
 				},
 				ACLs: []ACL{
 					{
@@ -366,8 +369,8 @@ func tp(s string) *Tag            { return ptr.To(Tag(s)) }
 func agp(s string) *AutoGroup     { return ptr.To(AutoGroup(s)) }
 func mp(pref string) netip.Prefix { return netip.MustParsePrefix(pref) }
 func ap(addr string) *netip.Addr  { return ptr.To(netip.MustParseAddr(addr)) }
-func pp(pref string) *Prefix      { return ptr.To(Prefix(netip.MustParsePrefix(pref))) }
-func p(pref string) Prefix        { return Prefix(netip.MustParsePrefix(pref)) }
+func pp(pref string) *Prefix      { return ptr.To(Prefix(mp(pref))) }
+func p(pref string) Prefix        { return Prefix(mp(pref)) }
 
 func TestResolvePolicy(t *testing.T) {
 	users := map[string]types.User{
@@ -612,6 +615,295 @@ func TestResolvePolicy(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, prefs, util.Comparers...); diff != "" {
 				t.Fatalf("unexpected prefs (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestResolveAutoApprovers(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+		{Model: gorm.Model{ID: 3}, Name: "user3"},
+	}
+
+	nodes := types.Nodes{
+		{
+			IPv4: ap("100.64.0.1"),
+			User: users[0],
+		},
+		{
+			IPv4: ap("100.64.0.2"),
+			User: users[1],
+		},
+		{
+			IPv4: ap("100.64.0.3"),
+			User: users[2],
+		},
+	}
+
+	tests := []struct {
+		name    string
+		policy  *Policy
+		want    map[netip.Prefix]*netipx.IPSet
+		wantErr bool
+	}{
+		{
+			name: "single-route",
+			policy: &Policy{
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Username("user1"))},
+					},
+				},
+			},
+			want: map[netip.Prefix]*netipx.IPSet{
+				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple-routes",
+			policy: &Policy{
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Username("user1"))},
+						mp("10.0.1.0/24"): {ptr.To(Username("user2"))},
+					},
+				},
+			},
+			want: map[netip.Prefix]*netipx.IPSet{
+				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32"),
+				mp("10.0.1.0/24"): mustIPSet("100.64.0.2/32"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "exit-node",
+			policy: &Policy{
+				AutoApprovers: AutoApprovers{
+					ExitNode: Owners{ptr.To(Username("user1"))},
+				},
+			},
+			want: map[netip.Prefix]*netipx.IPSet{
+				tsaddr.AllIPv4(): mustIPSet("100.64.0.1/32"),
+				tsaddr.AllIPv6(): mustIPSet("100.64.0.1/32"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "group-route",
+			policy: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"user1", "user2"},
+				},
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
+					},
+				},
+			},
+			want: map[netip.Prefix]*netipx.IPSet{
+				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "mixed-routes-and-exit-nodes",
+			policy: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"user1", "user2"},
+				},
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
+						mp("10.0.1.0/24"): {ptr.To(Username("user3"))},
+					},
+					ExitNode: Owners{ptr.To(Username("user1"))},
+				},
+			},
+			want: map[netip.Prefix]*netipx.IPSet{
+				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
+				mp("10.0.1.0/24"): mustIPSet("100.64.0.3/32"),
+				tsaddr.AllIPv4():  mustIPSet("100.64.0.1/32"),
+				tsaddr.AllIPv6():  mustIPSet("100.64.0.1/32"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid-user",
+			policy: &Policy{
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Username("invalid"))},
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+
+	cmps := append(util.Comparers, cmp.Comparer(ipSetComparer))
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveAutoApprovers(tt.policy, users, nodes)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveAutoApprovers() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
+				t.Errorf("resolveAutoApprovers() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func mustIPSet(prefixes ...string) *netipx.IPSet {
+	var builder netipx.IPSetBuilder
+	for _, p := range prefixes {
+		builder.AddPrefix(mp(p))
+	}
+	ipSet, _ := builder.IPSet()
+	return ipSet
+}
+
+func ipSetComparer(x, y *netipx.IPSet) bool {
+	if x == nil || y == nil {
+		return x == y
+	}
+	return cmp.Equal(x.Prefixes(), y.Prefixes(), util.Comparers...)
+}
+
+func TestNodeCanApproveRoute(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1@"},
+		{Model: gorm.Model{ID: 2}, Name: "user2@"},
+		{Model: gorm.Model{ID: 3}, Name: "user3@"},
+	}
+
+	nodes := types.Nodes{
+		{
+			IPv4: ap("100.64.0.1"),
+			User: users[0],
+		},
+		{
+			IPv4: ap("100.64.0.2"),
+			User: users[1],
+		},
+		{
+			IPv4: ap("100.64.0.3"),
+			User: users[2],
+		},
+	}
+
+	tests := []struct {
+		name    string
+		policy  *Policy
+		node    *types.Node
+		route   netip.Prefix
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "single-route-approval",
+			policy: &Policy{
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
+					},
+				},
+			},
+			node:  nodes[0],
+			route: mp("10.0.0.0/24"),
+			want:  true,
+		},
+		{
+			name: "multiple-routes-approval",
+			policy: &Policy{
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
+						mp("10.0.1.0/24"): {ptr.To(Username("user2@"))},
+					},
+				},
+			},
+			node:  nodes[1],
+			route: mp("10.0.1.0/24"),
+			want:  true,
+		},
+		{
+			name: "exit-node-approval",
+			policy: &Policy{
+				AutoApprovers: AutoApprovers{
+					ExitNode: Owners{ptr.To(Username("user1@"))},
+				},
+			},
+			node:  nodes[0],
+			route: tsaddr.AllIPv4(),
+			want:  true,
+		},
+		{
+			name: "group-route-approval",
+			policy: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"user1@", "user2@"},
+				},
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
+					},
+				},
+			},
+			node:  nodes[1],
+			route: mp("10.0.0.0/24"),
+			want:  true,
+		},
+		{
+			name: "mixed-routes-and-exit-nodes-approval",
+			policy: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"user1@", "user2@"},
+				},
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
+						mp("10.0.1.0/24"): {ptr.To(Username("user3@"))},
+					},
+					ExitNode: Owners{ptr.To(Username("user1@"))},
+				},
+			},
+			node:  nodes[0],
+			route: tsaddr.AllIPv4(),
+			want:  true,
+		},
+		{
+			name: "no-approval",
+			policy: &Policy{
+				AutoApprovers: AutoApprovers{
+					Routes: map[netip.Prefix]Owners{
+						mp("10.0.0.0/24"): {ptr.To(Username("user2@"))},
+					},
+				},
+			},
+			node:  nodes[0],
+			route: mp("10.0.0.0/24"),
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := json.Marshal(tt.policy)
+			require.NoError(t, err)
+
+			pm, err := NewPolicyManager(b, users, nodes)
+			require.NoErrorf(t, err, "NewPolicyManager() error = %v", err)
+
+			got := pm.NodeCanApproveRoute(tt.node, tt.route)
+			if got != tt.want {
+				t.Errorf("NodeCanApproveRoute() = %v, want %v", got, tt.want)
 			}
 		})
 	}
