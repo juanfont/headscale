@@ -449,7 +449,6 @@ func TestBackfillIPAddresses(t *testing.T) {
 		"UserID",
 		"Endpoints",
 		"Hostinfo",
-		"Routes",
 		"CreatedAt",
 		"UpdatedAt",
 	))

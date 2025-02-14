@@ -11,7 +11,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -22,51 +21,6 @@ import (
 var iap = func(ipStr string) *netip.Addr {
 	ip := netip.MustParseAddr(ipStr)
 	return &ip
-}
-
-func (s *Suite) TestGetMapResponseUserProfiles(c *check.C) {
-	mach := func(hostname, username string, userid uint) *types.Node {
-		return &types.Node{
-			Hostname: hostname,
-			UserID:   userid,
-			User: types.User{
-				Model: gorm.Model{
-					ID: userid,
-				},
-				Name: username,
-			},
-		}
-	}
-
-	nodeInShared1 := mach("test_get_shared_nodes_1", "user1", 1)
-	nodeInShared2 := mach("test_get_shared_nodes_2", "user2", 2)
-	nodeInShared3 := mach("test_get_shared_nodes_3", "user3", 3)
-	node2InShared1 := mach("test_get_shared_nodes_4", "user1", 1)
-
-	userProfiles := generateUserProfiles(
-		nodeInShared1,
-		types.Nodes{
-			nodeInShared2, nodeInShared3, node2InShared1,
-		},
-	)
-
-	c.Assert(len(userProfiles), check.Equals, 3)
-
-	users := []string{
-		"user1", "user2", "user3",
-	}
-
-	for _, user := range users {
-		found := false
-		for _, userProfile := range userProfiles {
-			if userProfile.DisplayName == user {
-				found = true
-
-				break
-			}
-		}
-		c.Assert(found, check.Equals, true)
-	}
 }
 
 func TestDNSConfigMapResponse(t *testing.T) {

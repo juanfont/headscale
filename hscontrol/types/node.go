@@ -202,11 +202,15 @@ func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
 	}
 
 	for _, matcher := range matchers {
-		if !matcher.SrcsContainsIPs(src) {
+		if !matcher.SrcsContainsIPs(src...) {
 			continue
 		}
 
-		if matcher.DestsContainsIP(allowedIPs) {
+		if matcher.DestsContainsIP(allowedIPs...) {
+			return true
+		}
+
+		if matcher.DestsOverlapsPrefixes(node2.SubnetRoutes()...) {
 			return true
 		}
 	}
