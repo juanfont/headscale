@@ -147,23 +147,6 @@ func (pm *PolicyManager) SetNodes(nodes types.Nodes) (bool, error) {
 	return pm.updateLocked()
 }
 
-func (pm *PolicyManager) Tags(node *types.Node) []string {
-	// if pm == nil {
-	// 	return nil
-	// }
-
-	// tags, invalid := pm.pol.TagsOfNode(pm.users, node)
-	// log.Debug().Strs("authorised_tags", tags).Strs("unauthorised_tags", invalid).Uint64("node.id", node.ID.Uint64()).Msg("tags provided by policy")
-	// return tags
-
-	// TODO(kradalby): Implement this or ideally, or potentially make it unnecessary.
-	// It is used to determine the tags of the nodes at mapresponse time.
-	// And to validate that they are allowed to have the tags they have in gRPC.
-	// We might be able to do this when the node request set them so we at least dont have
-	// check it everytime we use the tags (like in filter checks or mapresponse)
-	return []string{}
-}
-
 func (pm *PolicyManager) NodeCanHaveTag(node *types.Node, tag string) bool {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
