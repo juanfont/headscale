@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
@@ -159,11 +159,11 @@ func Test_fullMapResponse(t *testing.T) {
 	lastSeen := time.Date(2009, time.November, 10, 23, 9, 0, 0, time.UTC)
 	expire := time.Date(2500, time.November, 11, 23, 0, 0, 0, time.UTC)
 
-	user1 := types.User{Model: gorm.Model{ID: 0}, Name: "mini"}
-	user2 := types.User{Model: gorm.Model{ID: 1}, Name: "peer2"}
+	user1 := types.User{Model: gorm.Model{ID: 1}, Name: "user1"}
+	user2 := types.User{Model: gorm.Model{ID: 2}, Name: "user2"}
 
 	mini := &types.Node{
-		ID: 0,
+		ID: 1,
 		MachineKey: mustMK(
 			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		),
@@ -194,10 +194,10 @@ func Test_fullMapResponse(t *testing.T) {
 	}
 
 	tailMini := &tailcfg.Node{
-		ID:       0,
-		StableID: "0",
+		ID:       1,
+		StableID: "1",
 		Name:     "mini",
-		User:     0,
+		User:     tailcfg.UserID(user1.ID),
 		Key: mustNK(
 			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 		),
@@ -214,12 +214,17 @@ func Test_fullMapResponse(t *testing.T) {
 			tsaddr.AllIPv4(),
 			netip.MustParsePrefix("192.168.0.0/24"),
 		},
-		HomeDERP:          0,
-		LegacyDERPString:  "127.3.3.40:0",
-		Hostinfo:          hiview(tailcfg.Hostinfo{}),
+		HomeDERP:         0,
+		LegacyDERPString: "127.3.3.40:0",
+		Hostinfo: hiview(tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				tsaddr.AllIPv4(),
+				netip.MustParsePrefix("192.168.0.0/24"),
+				netip.MustParsePrefix("172.0.0.0/10"),
+			},
+		}),
 		Created:           created,
 		Tags:              []string{},
-		PrimaryRoutes:     []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
 		LastSeen:          &lastSeen,
 		MachineAuthorized: true,
 
@@ -231,7 +236,7 @@ func Test_fullMapResponse(t *testing.T) {
 	}
 
 	peer1 := &types.Node{
-		ID: 1,
+		ID: 2,
 		MachineKey: mustMK(
 			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
 		),
@@ -244,8 +249,8 @@ func Test_fullMapResponse(t *testing.T) {
 		IPv4:       iap("100.64.0.2"),
 		Hostname:   "peer1",
 		GivenName:  "peer1",
-		UserID:     user1.ID,
-		User:       user1,
+		UserID:     user2.ID,
+		User:       user2,
 		ForcedTags: []string{},
 		LastSeen:   &lastSeen,
 		Expiry:     &expire,
@@ -254,9 +259,10 @@ func Test_fullMapResponse(t *testing.T) {
 	}
 
 	tailPeer1 := &tailcfg.Node{
-		ID:       1,
-		StableID: "1",
+		ID:       2,
+		StableID: "2",
 		Name:     "peer1",
+		User:     tailcfg.UserID(user2.ID),
 		Key: mustNK(
 			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
 		),
@@ -274,7 +280,6 @@ func Test_fullMapResponse(t *testing.T) {
 		Hostinfo:          hiview(tailcfg.Hostinfo{}),
 		Created:           created,
 		Tags:              []string{},
-		PrimaryRoutes:     []netip.Prefix{},
 		LastSeen:          &lastSeen,
 		MachineAuthorized: true,
 
@@ -283,29 +288,6 @@ func Test_fullMapResponse(t *testing.T) {
 			tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
 			tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
 		},
-	}
-
-	peer2 := &types.Node{
-		ID: 2,
-		MachineKey: mustMK(
-			"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-		),
-		NodeKey: mustNK(
-			"nodekey:9b2ffa7e08cc421a3d2cca9012280f6a236fd0de0b4ce005b30a98ad930306fe",
-		),
-		DiscoKey: mustDK(
-			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
-		),
-		IPv4:       iap("100.64.0.3"),
-		Hostname:   "peer2",
-		GivenName:  "peer2",
-		UserID:     user2.ID,
-		User:       user2,
-		ForcedTags: []string{},
-		LastSeen:   &lastSeen,
-		Expiry:     &expire,
-		Hostinfo:   &tailcfg.Hostinfo{},
-		CreatedAt:  created,
 	}
 
 	tests := []struct {
@@ -349,7 +331,7 @@ func Test_fullMapResponse(t *testing.T) {
 				Domain:          "",
 				CollectServices: "false",
 				PacketFilter:    []tailcfg.FilterRule{},
-				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
+				UserProfiles:    []tailcfg.UserProfile{{ID: tailcfg.UserID(user1.ID), LoginName: "user1", DisplayName: "user1"}},
 				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime:     &time.Time{},
 				Debug: &tailcfg.Debug{
@@ -383,9 +365,12 @@ func Test_fullMapResponse(t *testing.T) {
 				Domain:          "",
 				CollectServices: "false",
 				PacketFilter:    []tailcfg.FilterRule{},
-				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
-				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
-				ControlTime:     &time.Time{},
+				UserProfiles: []tailcfg.UserProfile{
+					{ID: tailcfg.UserID(user1.ID), LoginName: "user1", DisplayName: "user1"},
+					{ID: tailcfg.UserID(user2.ID), LoginName: "user2", DisplayName: "user2"},
+				},
+				SSHPolicy:   &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
+				ControlTime: &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
 				},
@@ -395,6 +380,9 @@ func Test_fullMapResponse(t *testing.T) {
 		{
 			name: "with-pol-map-response",
 			pol: &policy.ACLPolicy{
+				Hosts: policy.Hosts{
+					"mini": netip.MustParsePrefix("100.64.0.1/32"),
+				},
 				ACLs: []policy.ACL{
 					{
 						Action:       "accept",
@@ -406,7 +394,6 @@ func Test_fullMapResponse(t *testing.T) {
 			node: mini,
 			peers: types.Nodes{
 				peer1,
-				peer2,
 			},
 			derpMap: &tailcfg.DERPMap{},
 			cfg: &types.Config{
@@ -434,7 +421,8 @@ func Test_fullMapResponse(t *testing.T) {
 					},
 				},
 				UserProfiles: []tailcfg.UserProfile{
-					{LoginName: "mini", DisplayName: "mini"},
+					{ID: tailcfg.UserID(user1.ID), LoginName: "user1", DisplayName: "user1"},
+					{ID: tailcfg.UserID(user2.ID), LoginName: "user2", DisplayName: "user2"},
 				},
 				SSHPolicy:   &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime: &time.Time{},
@@ -449,6 +437,12 @@ func Test_fullMapResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+			primary := routes.New()
+
+			primary.RegisterRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
+			for _, peer := range tt.peers {
+				primary.RegisterRoutes(peer.ID, peer.SubnetRoutes()...)
+			}
 
 			mappy := NewMapper(
 				nil,
@@ -456,6 +450,7 @@ func Test_fullMapResponse(t *testing.T) {
 				tt.derpMap,
 				nil,
 				polMan,
+				primary,
 			)
 
 			got, err := mappy.fullMapResponse(
@@ -469,8 +464,6 @@ func Test_fullMapResponse(t *testing.T) {
 
 				return
 			}
-
-			spew.Dump(got)
 
 			if diff := cmp.Diff(
 				tt.want,
