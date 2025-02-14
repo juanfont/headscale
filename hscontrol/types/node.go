@@ -99,7 +99,7 @@ type Node struct {
 	// as a subnet router. They are not necessarily the routes that the node
 	// announces at the moment.
 	// See [Node.Hostinfo]
-	ApprovedRoutes []netip.Prefix `gorm:"serializer:json"`
+	ApprovedRoutes []netip.Prefix `gorm:"column:approved_routes;serializer:json"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
