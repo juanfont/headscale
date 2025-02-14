@@ -18,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
@@ -56,6 +57,7 @@ type Mapper struct {
 	derpMap *tailcfg.DERPMap
 	notif   *notifier.Notifier
 	polMan  policy.PolicyManager
+	primary *routes.PrimaryRoutes
 
 	uid     string
 	created time.Time
@@ -73,6 +75,7 @@ func NewMapper(
 	derpMap *tailcfg.DERPMap,
 	notif *notifier.Notifier,
 	polMan policy.PolicyManager,
+	primary *routes.PrimaryRoutes,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
@@ -82,6 +85,7 @@ func NewMapper(
 		derpMap: derpMap,
 		notif:   notif,
 		polMan:  polMan,
+		primary: primary,
 
 		uid:     uid,
 		created: time.Now(),
@@ -166,6 +170,7 @@ func (m *Mapper) fullMapResponse(
 		resp,
 		true, // full change
 		m.polMan,
+		m.primary,
 		node,
 		capVer,
 		peers,
@@ -271,6 +276,7 @@ func (m *Mapper) PeerChangedResponse(
 		&resp,
 		false, // partial change
 		m.polMan,
+		m.primary,
 		node,
 		mapRequest.Version,
 		changedNodes,
@@ -299,7 +305,7 @@ func (m *Mapper) PeerChangedResponse(
 
 	// Add the node itself, it might have changed, and particularly
 	// if there are no patches or changes, this is a self update.
-	tailnode, err := tailNode(node, mapRequest.Version, m.polMan, m.cfg)
+	tailnode, err := tailNode(node, mapRequest.Version, m.polMan, m.primary, m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +452,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, capVer, m.polMan, m.cfg)
+	tailnode, err := tailNode(node, capVer, m.polMan, m.primary, m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -500,6 +506,7 @@ func appendPeerChanges(
 
 	fullChange bool,
 	polMan policy.PolicyManager,
+	primary *routes.PrimaryRoutes,
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 	changed types.Nodes,
@@ -522,7 +529,7 @@ func appendPeerChanges(
 
 	dnsConfig := generateDNSConfig(cfg, node)
 
-	tailPeers, err := tailNodes(changed, capVer, polMan, cfg)
+	tailPeers, err := tailNodes(changed, capVer, polMan, primary, cfg)
 	if err != nil {
 		return err
 	}

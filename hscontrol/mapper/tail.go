@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/samber/lo"
 	"tailscale.com/tailcfg"
@@ -15,6 +16,7 @@ func tailNodes(
 	nodes types.Nodes,
 	capVer tailcfg.CapabilityVersion,
 	polMan policy.PolicyManager,
+	primary *routes.PrimaryRoutes,
 	cfg *types.Config,
 ) ([]*tailcfg.Node, error) {
 	tNodes := make([]*tailcfg.Node, len(nodes))
@@ -24,6 +26,7 @@ func tailNodes(
 			node,
 			capVer,
 			polMan,
+			primary,
 			cfg,
 		)
 		if err != nil {
@@ -41,6 +44,7 @@ func tailNode(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 	polMan policy.PolicyManager,
+	primary *routes.PrimaryRoutes,
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
@@ -94,6 +98,7 @@ func tailNode(
 		Machine:          node.MachineKey,
 		DiscoKey:         node.DiscoKey,
 		Addresses:        addrs,
+		PrimaryRoutes:    primary.PrimaryRoutes(node.ID),
 		AllowedIPs:       allowedIPs,
 		Endpoints:        node.Endpoints,
 		HomeDERP:         derp,

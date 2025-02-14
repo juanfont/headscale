@@ -74,3 +74,21 @@ func TailMapResponseToString(resp tailcfg.MapResponse) string {
 		TailNodesToString(resp.Peers),
 	)
 }
+
+func TailcfgFilterRulesToString(rules []tailcfg.FilterRule) string {
+	var sb strings.Builder
+
+	for index, rule := range rules {
+		sb.WriteString(fmt.Sprintf(`
+{
+  SrcIPs: %v
+  DstIPs: %v
+}
+`, rule.SrcIPs, rule.DstPorts))
+		if index < len(rules)-1 {
+			sb.WriteString(", ")
+		}
+	}
+
+	return fmt.Sprintf("[ %s ](%d)", sb.String(), len(rules))
+}
