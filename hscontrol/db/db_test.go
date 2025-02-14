@@ -74,7 +74,7 @@ func TestMigrationsSQLite(t *testing.T) {
 				// 	r(32, "192.168.0.24/32", true, true, true),
 				// }
 				want := [][]netip.Prefix{
-					{ipp("0.0.0.0/0"), ipp("::/0"), ipp("10.9.110.0/24")},
+					{ipp("0.0.0.0/0"), ipp("10.9.110.0/24"), ipp("::/0")},
 					{ipp("172.100.100.0/24")},
 					{ipp("0.0.0.0/0"), ipp("::/0")},
 					{ipp("192.168.0.24/32")},
@@ -129,7 +129,7 @@ func TestMigrationsSQLite(t *testing.T) {
 					r(13, "::/0", true, true, false),
 					r(13, "10.18.80.2/32", true, true, true),
 				}
-				want := []netip.Prefix{ipp("0.0.0.0/0"), ipp("::/0"), ipp("10.18.80.2/32")}
+				want := []netip.Prefix{ipp("0.0.0.0/0"), ipp("10.18.80.2/32"), ipp("::/0")}
 				if diff := cmp.Diff(want, node.ApprovedRoutes, util.PrefixComparer); diff != "" {
 					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
 				}
