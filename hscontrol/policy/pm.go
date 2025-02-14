@@ -160,6 +160,10 @@ func (pm *PolicyManagerV1) SetNodes(nodes types.Nodes) (bool, error) {
 }
 
 func (pm *PolicyManagerV1) NodeCanHaveTag(node *types.Node, tag string) bool {
+	if pm == nil || pm.pol == nil {
+		return false
+	}
+
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -176,6 +180,13 @@ func (pm *PolicyManagerV1) NodeCanHaveTag(node *types.Node, tag string) bool {
 }
 
 func (pm *PolicyManagerV1) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
+	if pm == nil || pm.pol == nil {
+		return false
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
 	approvers, _ := pm.pol.AutoApprovers.GetRouteApprovers(route)
 
 	for _, approvedAlias := range approvers {

@@ -148,6 +148,10 @@ func (pm *PolicyManager) SetNodes(nodes types.Nodes) (bool, error) {
 }
 
 func (pm *PolicyManager) NodeCanHaveTag(node *types.Node, tag string) bool {
+	if pm == nil {
+		return false
+	}
+
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -163,6 +167,10 @@ func (pm *PolicyManager) NodeCanHaveTag(node *types.Node, tag string) bool {
 }
 
 func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
+	if pm == nil {
+		return false
+	}
+
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
