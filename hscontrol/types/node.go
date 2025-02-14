@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
