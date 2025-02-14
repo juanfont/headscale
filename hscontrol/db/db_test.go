@@ -48,25 +48,43 @@ func TestMigrationsSQLite(t *testing.T) {
 		{
 			dbPath: "testdata/0-22-3-to-0-23-0-routes-are-dropped-2063.sqlite",
 			wantFunc: func(t *testing.T, h *HSDatabase) {
-				routes, err := Read(h.DB, func(rx *gorm.DB) (types.Routes, error) {
-					return GetRoutes(rx)
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					n1, err := GetNodeByID(rx, 1)
+					n26, err := GetNodeByID(rx, 26)
+					n31, err := GetNodeByID(rx, 31)
+					n32, err := GetNodeByID(rx, 32)
+					if err != nil {
+						return nil, err
+					}
+
+					return types.Nodes{n1, n26, n31, n32}, nil
 				})
 				require.NoError(t, err)
 
-				assert.Len(t, routes, 10)
-				want := types.Routes{
-					r(1, "0.0.0.0/0", true, true, false),
-					r(1, "::/0", true, true, false),
-					r(1, "10.9.110.0/24", true, true, true),
-					r(26, "172.100.100.0/24", true, true, true),
-					r(26, "172.100.100.0/24", true, false, false),
-					r(31, "0.0.0.0/0", true, true, false),
-					r(31, "0.0.0.0/0", true, false, false),
-					r(31, "::/0", true, true, false),
-					r(31, "::/0", true, false, false),
-					r(32, "192.168.0.24/32", true, true, true),
+				// want := types.Routes{
+				// 	r(1, "0.0.0.0/0", true, true, false),
+				// 	r(1, "::/0", true, true, false),
+				// 	r(1, "10.9.110.0/24", true, true, true),
+				// 	r(26, "172.100.100.0/24", true, true, true),
+				// 	r(26, "172.100.100.0/24", true, false, false),
+				// 	r(31, "0.0.0.0/0", true, true, false),
+				// 	r(31, "0.0.0.0/0", true, false, false),
+				// 	r(31, "::/0", true, true, false),
+				// 	r(31, "::/0", true, false, false),
+				// 	r(32, "192.168.0.24/32", true, true, true),
+				// }
+				want := [][]netip.Prefix{
+					{ipp("0.0.0.0/0"), ipp("::/0"), ipp("10.9.110.0/24")},
+					{ipp("172.100.100.0/24")},
+					{ipp("0.0.0.0/0"), ipp("::/0")},
+					{ipp("192.168.0.24/32")},
 				}
-				if diff := cmp.Diff(want, routes, cmpopts.IgnoreFields(types.Route{}, "Model", "Node"), util.PrefixComparer); diff != "" {
+				var got [][]netip.Prefix
+				for _, node := range nodes {
+					got = append(got, node.ApprovedRoutes)
+				}
+
+				if diff := cmp.Diff(want, got, util.PrefixComparer); diff != "" {
 					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
 				}
 			},
@@ -74,13 +92,13 @@ func TestMigrationsSQLite(t *testing.T) {
 		{
 			dbPath: "testdata/0-22-3-to-0-23-0-routes-fail-foreign-key-2076.sqlite",
 			wantFunc: func(t *testing.T, h *HSDatabase) {
-				routes, err := Read(h.DB, func(rx *gorm.DB) (types.Routes, error) {
-					return GetRoutes(rx)
+				node, err := Read(h.DB, func(rx *gorm.DB) (*types.Node, error) {
+					return GetNodeByID(rx, 13)
 				})
 				require.NoError(t, err)
 
-				assert.Len(t, routes, 4)
-				want := types.Routes{
+				assert.Len(t, node.ApprovedRoutes, 3)
+				_ = types.Routes{
 					// These routes exists, but have no nodes associated with them
 					// when the migration starts.
 					// r(1, "0.0.0.0/0", true, true, false),
@@ -111,7 +129,8 @@ func TestMigrationsSQLite(t *testing.T) {
 					r(13, "::/0", true, true, false),
 					r(13, "10.18.80.2/32", true, true, true),
 				}
-				if diff := cmp.Diff(want, routes, cmpopts.IgnoreFields(types.Route{}, "Model", "Node"), util.PrefixComparer); diff != "" {
+				want := []netip.Prefix{ipp("0.0.0.0/0"), ipp("::/0"), ipp("10.18.80.2/32")}
+				if diff := cmp.Diff(want, node.ApprovedRoutes, util.PrefixComparer); diff != "" {
 					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
 				}
 			},
