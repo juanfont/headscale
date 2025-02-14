@@ -101,15 +101,20 @@ func generateUserProfiles(
 	node *types.Node,
 	peers types.Nodes,
 ) []tailcfg.UserProfile {
-	userMap := make(map[uint]types.User)
-	userMap[node.User.ID] = node.User
+	userMap := make(map[uint]*types.User)
+	ids := make([]uint, 0, len(userMap))
+	userMap[node.User.ID] = &node.User
+	ids = append(ids, node.User.ID)
 	for _, peer := range peers {
-		userMap[peer.User.ID] = peer.User // not worth checking if already is there
+		userMap[peer.User.ID] = &peer.User // not worth checking if already is there
+		ids = append(ids, peer.User.ID)
 	}
 
+	slices.Sort(ids)
+	slices.Compact(ids)
 	var profiles []tailcfg.UserProfile
-	for _, user := range userMap {
-		profiles = append(profiles, user.TailscaleUserProfile())
+	for _, id := range ids {
+		profiles = append(profiles, userMap[id].TailscaleUserProfile())
 	}
 
 	return profiles
