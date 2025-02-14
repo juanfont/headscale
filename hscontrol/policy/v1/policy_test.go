@@ -1,4 +1,4 @@
-package policy
+package v1
 
 import (
 	"testing"

@@ -1,11 +1,11 @@
-package policyv2
+package v2
 
 import (
 	"net/netip"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -1104,7 +1104,7 @@ func TestReduceFilterRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			polV1, err := policy.LoadACLPolicyFromBytes([]byte(tt.pol))
+			polV1, err := policyv1.LoadACLPolicyFromBytes([]byte(tt.pol))
 			if err != nil {
 				t.Fatalf("parsing policy: %s", err)
 			}
@@ -1124,7 +1124,7 @@ func TestReduceFilterRules(t *testing.T) {
 
 			// TODO(kradalby): Move this from v1, or
 			// rewrite.
-			filterV2 := policy.ReduceFilterRules(tt.node, pm.Filter())
+			filterV2 := policyv1.ReduceFilterRules(tt.node, pm.Filter())
 
 			if diff := cmp.Diff(tt.want, filterV2); diff != "" {
 				log.Trace().Interface("got", filterV2).Msg("result")
