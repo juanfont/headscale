@@ -48,7 +48,6 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Preload("Routes").
 		Where("id <> ?",
 			nodeID).Find(&nodes).Error; err != nil {
 		return types.Nodes{}, err
@@ -71,7 +70,6 @@ func ListNodes(tx *gorm.DB) (types.Nodes, error) {
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Preload("Routes").
 		Find(&nodes).Error; err != nil {
 		return nil, err
 	}
@@ -125,7 +123,6 @@ func GetNodeByID(tx *gorm.DB, id types.NodeID) (*types.Node, error) {
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Preload("Routes").
 		Find(&types.Node{ID: id}).First(&mach); result.Error != nil {
 		return nil, result.Error
 	}
@@ -149,7 +146,6 @@ func GetNodeByMachineKey(
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Preload("Routes").
 		First(&mach, "machine_key = ?", machineKey.String()); result.Error != nil {
 		return nil, result.Error
 	}
@@ -173,7 +169,6 @@ func GetNodeByNodeKey(
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Preload("Routes").
 		First(&mach, "node_key = ?", nodeKey.String()); result.Error != nil {
 		return nil, result.Error
 	}
