@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/puzpuzpuz/xsync/v3"
@@ -186,13 +186,13 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 		c.Assert(trx.Error, check.IsNil)
 	}
 
-	aclPolicy := &policy.ACLPolicy{
+	aclPolicy := &policyv1.ACLPolicy{
 		Groups: map[string][]string{
 			"group:test": {"admin"},
 		},
 		Hosts:     map[string]netip.Prefix{},
 		TagOwners: map[string][]string{},
-		ACLs: []policy.ACL{
+		ACLs: []policyv1.ACL{
 			{
 				Action:       "accept",
 				Sources:      []string{"admin"},
@@ -204,7 +204,7 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 				Destinations: []string{"test:*"},
 			},
 		},
-		Tests: []policy.ACLTest{},
+		Tests: []policyv1.ACLTest{},
 	}
 
 	adminNode, err := db.GetNodeByID(1)
@@ -225,14 +225,14 @@ func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(len(testPeers), check.Equals, 9)
 
-	adminRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers, []types.User{*stor[0].user, *stor[1].user})
+	adminRules, _, err := policyv1.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers, []types.User{*stor[0].user, *stor[1].user})
 	c.Assert(err, check.IsNil)
 
-	testRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers, []types.User{*stor[0].user, *stor[1].user})
+	testRules, _, err := policyv1.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers, []types.User{*stor[0].user, *stor[1].user})
 	c.Assert(err, check.IsNil)
 
-	peersOfAdminNode := policy.FilterNodesByACL(adminNode, adminPeers, adminRules)
-	peersOfTestNode := policy.FilterNodesByACL(testNode, testPeers, testRules)
+	peersOfAdminNode := policyv1.FilterNodesByACL(adminNode, adminPeers, adminRules)
+	peersOfTestNode := policyv1.FilterNodesByACL(testNode, testPeers, testRules)
 	c.Log(peersOfAdminNode)
 	c.Log(peersOfTestNode)
 
@@ -529,7 +529,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			adb, err := newSQLiteTestDB()
 			require.NoError(t, err)
-			pol, err := policy.LoadACLPolicyFromBytes([]byte(tt.acl))
+			pol, err := policyv1.LoadACLPolicyFromBytes([]byte(tt.acl))
 
 			require.NoError(t, err)
 			require.NotNil(t, pol)
@@ -575,7 +575,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 			nodes, err := adb.ListNodes()
 			assert.NoError(t, err)
 
-			pm, err := policy.NewPolicyManager([]byte(tt.acl), users, nodes)
+			pm, err := policyv1.NewPolicyManager([]byte(tt.acl), users, nodes)
 			assert.NoError(t, err)
 
 			// TODO(kradalby): Check state update
