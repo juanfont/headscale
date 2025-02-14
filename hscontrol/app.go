@@ -32,7 +32,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/policyv2"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	zerolog "github.com/philip-bui/grpc-zerolog"
@@ -1156,7 +1157,7 @@ func (h *Headscale) loadPolicyManager() error {
 				return
 			}
 		} else {
-			h.polMan, err = policy.NewPolicyManager(pol, users, nodes)
+			h.polMan, err = policyv1.NewPolicyManager(pol, users, nodes)
 			if err != nil {
 				errOut = fmt.Errorf("creating policy manager v1: %w", err)
 				return
