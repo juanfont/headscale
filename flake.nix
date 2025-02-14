@@ -18,7 +18,7 @@
     {
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
-        buildGo = pkgs.buildGo123Module;
+        buildGo = pkgs.buildGo124Module;
       in {
         headscale = buildGo {
           pname = "headscale";
@@ -97,6 +97,10 @@
         gofumpt = prev.gofumpt.override {
           buildGoModule = buildGo;
         };
+
+        gopls = prev.gopls.override {
+          buildGoModule = buildGo;
+        };
       };
     }
     // flake-utils.lib.eachDefaultSystem
@@ -105,7 +109,7 @@
         overlays = [self.overlay];
         inherit system;
       };
-      buildDeps = with pkgs; [git go_1_23 gnumake];
+      buildDeps = with pkgs; [git go_1_24 gnumake];
       devDeps = with pkgs;
         buildDeps
         ++ [
@@ -117,6 +121,7 @@
           gotestsum
           gotests
           gofumpt
+          gopls
           ksh
           ko
           yq-go

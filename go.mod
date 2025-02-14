@@ -1,9 +1,10 @@
 module github.com/juanfont/headscale
 
-go 1.23.1
+go 1.24
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
+	github.com/arl/statsviz v0.6.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/chasefleming/elem-go v0.30.0
 	github.com/coder/websocket v1.8.12
@@ -89,7 +90,6 @@ require (
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect
-	github.com/arl/statsviz v0.6.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.26.1 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.27.11 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.11 // indirect
