@@ -147,12 +147,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
-          name: ${{ matrix.test }}-${{matrix.database}}-logs
+          name: ${{ matrix.test }}-${{matrix.database}}-${{matrix.policy}}-logs
           path: "control_logs/*.log"
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
-          name: ${{ matrix.test }}-${{matrix.database}}-pprof
+          name: ${{ matrix.test }}-${{matrix.database}}-${{matrix.policy}}-pprof
           path: "control_logs/*.pprof.tar"
       - name: Setup a blocking tmux session
         if: ${{ env.HAS_TAILSCALE_SECRET }}
