@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -108,9 +107,7 @@ type Node struct {
 	IsOnline *bool `gorm:"-"`
 }
 
-type (
-	Nodes []*Node
-)
+type Nodes []*Node
 
 // GivenNameHasBeenChanged returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
 func (node *Node) GivenNameHasBeenChanged() bool {
