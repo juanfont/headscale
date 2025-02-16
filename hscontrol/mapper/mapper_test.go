@@ -9,7 +9,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
@@ -325,7 +325,7 @@ func Test_fullMapResponse(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		pol   *policy.ACLPolicy
+		pol   *policyv1.ACLPolicy
 		node  *types.Node
 		peers types.Nodes
 
@@ -337,7 +337,7 @@ func Test_fullMapResponse(t *testing.T) {
 		// {
 		// 	name:             "empty-node",
 		// 	node:          types.Node{},
-		// 	pol:              &policy.ACLPolicy{},
+		// 	pol:              &policyv1.ACLPolicy{},
 		// 	dnsConfig:        &tailcfg.DNSConfig{},
 		// 	baseDomain:       "",
 		// 	want:             nil,
@@ -345,7 +345,7 @@ func Test_fullMapResponse(t *testing.T) {
 		// },
 		{
 			name:    "no-pol-no-peers-map-response",
-			pol:     &policy.ACLPolicy{},
+			pol:     &policyv1.ACLPolicy{},
 			node:    mini,
 			peers:   types.Nodes{},
 			derpMap: &tailcfg.DERPMap{},
@@ -375,7 +375,7 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 		{
 			name: "no-pol-with-peer-map-response",
-			pol:  &policy.ACLPolicy{},
+			pol:  &policyv1.ACLPolicy{},
 			node: mini,
 			peers: types.Nodes{
 				peer1,
@@ -409,8 +409,8 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 		{
 			name: "with-pol-map-response",
-			pol: &policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			pol: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"100.64.0.2"},
@@ -463,7 +463,7 @@ func Test_fullMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+			polMan, _ := policyv1.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
 
 			mappy := NewMapper(
 				nil,

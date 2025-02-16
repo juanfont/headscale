@@ -12,7 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -835,8 +835,8 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"*"},
@@ -846,7 +846,7 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 			TagOwners: map[string][]string{
 				"tag:approve": {user},
 			},
-			AutoApprovers: policy.AutoApprovers{
+			AutoApprovers: policyv1.AutoApprovers{
 				Routes: map[string][]string{
 					expectedRoutes: {"tag:approve"},
 				},
@@ -977,8 +977,8 @@ func TestAutoApprovedSubRoute2068(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"*"},
@@ -988,7 +988,7 @@ func TestAutoApprovedSubRoute2068(t *testing.T) {
 			TagOwners: map[string][]string{
 				"tag:approve": {user},
 			},
-			AutoApprovers: policy.AutoApprovers{
+			AutoApprovers: policyv1.AutoApprovers{
 				Routes: map[string][]string{
 					"10.42.0.0/16": {"tag:approve"},
 				},
@@ -1068,11 +1068,11 @@ func TestSubnetRouteACL(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-		&policy.ACLPolicy{
-			Groups: policy.Groups{
+		&policyv1.ACLPolicy{
+			Groups: policyv1.Groups{
 				"group:admins": {user},
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"group:admins"},
