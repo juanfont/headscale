@@ -29,3 +29,11 @@ func ComparePrefix(p, p2 netip.Prefix) int {
 	}
 	return p.Addr().Compare(p2.Addr())
 }
+
+func PrefixesToString(prefixes []netip.Prefix) []string {
+	var ret []string
+	for _, prefix := range prefixes {
+		ret = append(ret, prefix.String())
+	}
+	return ret
+}

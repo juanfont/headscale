@@ -194,7 +194,7 @@ func SetTags(
 	if len(tags) == 0 {
 		// if no tags are provided, we remove all forced tags
 		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", "[]").Error; err != nil {
-			return fmt.Errorf("failed to remove tags for node in the database: %w", err)
+			return fmt.Errorf("removing tags: %w", err)
 		}
 
 		return nil
@@ -213,7 +213,34 @@ func SetTags(
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", string(b)).Error; err != nil {
-		return fmt.Errorf("failed to update tags for node in the database: %w", err)
+		return fmt.Errorf("updating tags: %w", err)
+	}
+
+	return nil
+}
+
+// SetTags takes a Node struct pointer and update the forced tags.
+func SetApprovedRoutes(
+	tx *gorm.DB,
+	nodeID types.NodeID,
+	routes []netip.Prefix,
+) error {
+	if len(routes) == 0 {
+		// if no routes are provided, we remove all
+		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error; err != nil {
+			return fmt.Errorf("removing approved routes: %w", err)
+		}
+
+		return nil
+	}
+
+	b, err := json.Marshal(routes)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", string(b)).Error; err != nil {
+		return fmt.Errorf("updating approved routes: %w", err)
 	}
 
 	return nil
