@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"sort"
 	"strings"
@@ -326,6 +327,37 @@ func (api headscaleV1APIServer) SetTags(
 	return &v1.SetTagsResponse{Node: node.Proto()}, nil
 }
 
+func (api headscaleV1APIServer) SetApprovedRoutes(
+	ctx context.Context,
+	request *v1.ApproveRoutesRequest,
+) (*v1.ApproveRoutesResponse, error) {
+	var routes []netip.Prefix
+	for _, route := range request.GetRoutes() {
+		prefix, err := netip.ParsePrefix(route)
+		if err != nil {
+			return nil, fmt.Errorf("parsing route: %w", err)
+		}
+		routes = append(routes, prefix)
+	}
+
+	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+		err := db.SetApprovedRoutes(tx, types.NodeID(request.GetNodeId()), routes)
+		if err != nil {
+			return nil, err
+		}
+
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
+	})
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	ctx = types.NotifyCtx(ctx, "cli-approveroutes", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+
+	return &v1.ApproveRoutesResponse{Node: node.Proto()}, nil
+}
+
 func validateTag(tag string) error {
 	if strings.Index(tag, "tag:") != 0 {
 		return errors.New("tag must start with the string 'tag:'")
@@ -525,111 +557,6 @@ func (api headscaleV1APIServer) BackfillNodeIPs(
 
 	return &v1.BackfillNodeIPsResponse{Changes: changes}, nil
 }
-
-// TODO(kradalby): Replace this with route management on a per node basis,
-// similar to how the tailscale client does it:
-//
-// List all (or specific) routes:
-// headscale nodes list-routes  [-i <node_id>]
-//
-// Approval of routes will overwrite all, so you define the ones you want,
-// you can approve routes that are not yet defined:
-//
-// headscale nodes approve-routes -i <node_id> "comma,separated,routes"
-//
-// func (api headscaleV1APIServer) GetRoutes(
-// 	ctx context.Context,
-// 	request *v1.GetRoutesRequest,
-// ) (*v1.GetRoutesResponse, error) {
-// 	routes, err := db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Routes, error) {
-// 		return db.GetRoutes(rx)
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &v1.GetRoutesResponse{
-// 		Routes: types.Routes(routes).Proto(),
-// 	}, nil
-// }
-
-// func (api headscaleV1APIServer) EnableRoute(
-// 	ctx context.Context,
-// 	request *v1.EnableRouteRequest,
-// ) (*v1.EnableRouteResponse, error) {
-// 	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-// 		return db.EnableRoute(tx, request.GetRouteId())
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if update != nil {
-// 		ctx := types.NotifyCtx(ctx, "cli-enableroute", "unknown")
-// 		api.h.nodeNotifier.NotifyAll(
-// 			ctx, *update)
-// 	}
-
-// 	return &v1.EnableRouteResponse{}, nil
-// }
-
-// func (api headscaleV1APIServer) DisableRoute(
-// 	ctx context.Context,
-// 	request *v1.DisableRouteRequest,
-// ) (*v1.DisableRouteResponse, error) {
-// 	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
-// 		return db.DisableRoute(tx, request.GetRouteId(), api.h.nodeNotifier.LikelyConnectedMap())
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if update != nil {
-// 		ctx := types.NotifyCtx(ctx, "cli-disableroute", "unknown")
-// 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(update...))
-// 	}
-
-// 	return &v1.DisableRouteResponse{}, nil
-// }
-
-// func (api headscaleV1APIServer) GetNodeRoutes(
-// 	ctx context.Context,
-// 	request *v1.GetNodeRoutesRequest,
-// ) (*v1.GetNodeRoutesResponse, error) {
-// 	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	routes, err := api.h.db.GetNodeRoutes(node)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &v1.GetNodeRoutesResponse{
-// 		Routes: types.Routes(routes).Proto(),
-// 	}, nil
-// }
-
-// func (api headscaleV1APIServer) DeleteRoute(
-// 	ctx context.Context,
-// 	request *v1.DeleteRouteRequest,
-// ) (*v1.DeleteRouteResponse, error) {
-// 	isConnected := api.h.nodeNotifier.LikelyConnectedMap()
-// 	update, err := db.Write(api.h.db.DB, func(tx *gorm.DB) ([]types.NodeID, error) {
-// 		return db.DeleteRoute(tx, request.GetRouteId(), isConnected)
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if update != nil {
-// 		ctx := types.NotifyCtx(ctx, "cli-deleteroute", "unknown")
-// 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(update...))
-// 	}
-
-// 	return &v1.DeleteRouteResponse{}, nil
-// }
 
 func (api headscaleV1APIServer) CreateApiKey(
 	ctx context.Context,

@@ -257,11 +257,14 @@ func (node *Node) Proto() *v1.Node {
 		DiscoKey: node.DiscoKey.String(),
 
 		// TODO(kradalby): replace list with v4, v6 field?
-		IpAddresses: node.IPsAsString(),
-		Name:        node.Hostname,
-		GivenName:   node.GivenName,
-		User:        node.User.Proto(),
-		ForcedTags:  node.ForcedTags,
+		IpAddresses:     node.IPsAsString(),
+		Name:            node.Hostname,
+		GivenName:       node.GivenName,
+		User:            node.User.Proto(),
+		ForcedTags:      node.ForcedTags,
+		ApprovedRoutes:  util.PrefixesToString(node.ApprovedRoutes),
+		AvailableRoutes: util.PrefixesToString(node.AnnouncedRoutes()),
+		SubnetRoutes:    util.PrefixesToString(node.SubnetRoutes()),
 
 		RegisterMethod: node.RegisterMethodToV1Enum(),
 

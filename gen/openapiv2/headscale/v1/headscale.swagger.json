@@ -320,6 +320,45 @@
         ]
       }
     },
+    "/api/v1/node/{nodeId}/approve_routes": {
+      "post": {
+        "operationId": "HeadscaleService_SetApprovedRoutes",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ApproveRoutesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/HeadscaleServiceSetApprovedRoutesBody"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/node/{nodeId}/expire": {
       "post": {
         "operationId": "HeadscaleService_ExpireNode",
@@ -764,6 +803,17 @@
         }
       }
     },
+    "HeadscaleServiceSetApprovedRoutesBody": {
+      "type": "object",
+      "properties": {
+        "routes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "HeadscaleServiceSetTagsBody": {
       "type": "object",
       "properties": {
@@ -824,6 +874,14 @@
         "lastSeen": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "v1ApproveRoutesResponse": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/definitions/v1Node"
         }
       }
     },
@@ -1129,6 +1187,18 @@
           "type": "boolean"
         },
         "approvedRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "availableRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subnetRoutes": {
           "type": "array",
           "items": {
             "type": "string"
