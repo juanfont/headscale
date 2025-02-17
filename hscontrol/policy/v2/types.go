@@ -15,6 +15,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
+	"tailscale.com/util/multierr"
 )
 
 const Wildcard = Asterix(0)
@@ -113,10 +114,11 @@ func (u Username) resolveUser(users types.Users) (types.User, error) {
 
 func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
+	var errs []error
 
 	user, err := u.resolveUser(users)
 	if err != nil {
-		return nil, err
+		errs = append(errs, err)
 	}
 
 	for _, node := range nodes {
@@ -129,7 +131,7 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*net
 		}
 	}
 
-	return ips.IPSet()
+	return buildIPSetMultiErr(&ips, errs)
 }
 
 // Group is a special string which is always prefixed with `group:`
@@ -160,17 +162,18 @@ func (g Group) CanBeAutoApprover() bool {
 
 func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
+	var errs []error
 
 	for _, user := range p.Groups[g] {
 		uips, err := user.Resolve(nil, users, nodes)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
 		}
 
 		ips.AddSet(uips)
 	}
 
-	return ips.IPSet()
+	return buildIPSetMultiErr(&ips, errs)
 }
 
 // Tag is a special string which is always prefixed with `tag:`
@@ -227,6 +230,7 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 
 func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
+	var errs []error
 
 	pref, ok := p.Hosts[h]
 	if !ok {
@@ -234,7 +238,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 	}
 	err := pref.Validate()
 	if err != nil {
-		return nil, err
+		errs = append(errs, err)
 	}
 
 	ips.AddPrefix(netip.Prefix(pref))
@@ -247,7 +251,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 	// should a host with a non single IP be able to resolve the full host (inc all IPs).
 	ipsTemp, err := ips.IPSet()
 	if err != nil {
-		return nil, err
+		errs = append(errs, err)
 	}
 	for _, node := range nodes {
 		if node.InIPSet(ipsTemp) {
@@ -255,7 +259,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 		}
 	}
 
-	return ips.IPSet()
+	return buildIPSetMultiErr(&ips, errs)
 }
 
 type Prefix netip.Prefix
@@ -313,6 +317,7 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 // See [Policy], [types.Users], and [types.Nodes] for more details.
 func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
+	var errs []error
 
 	ips.AddPrefix(netip.Prefix(p))
 	// If the IP is a single host, look for a node to ensure we add all the IPs of
@@ -330,7 +335,7 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 	// and this would be strange behaviour.
 	ipsTemp, err := ips.IPSet()
 	if err != nil {
-		return nil, err
+		errs = append(errs, err)
 	}
 	for _, node := range nodes {
 		if node.InIPSet(ipsTemp) {
@@ -338,7 +343,7 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 		}
 	}
 
-	return ips.IPSet()
+	return buildIPSetMultiErr(&ips, errs)
 }
 
 // AutoGroup is a special string which is always prefixed with `autogroup:`
@@ -518,17 +523,23 @@ func (a *Aliases) UnmarshalJSON(b []byte) error {
 
 func (a Aliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
+	var errs []error
 
 	for _, alias := range a {
 		aips, err := alias.Resolve(p, users, nodes)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
 		}
 
 		ips.AddSet(aips)
 	}
 
-	return ips.IPSet()
+	return buildIPSetMultiErr(&ips, errs)
+}
+
+func buildIPSetMultiErr(ipBuilder *netipx.IPSetBuilder, errs []error) (*netipx.IPSet, error) {
+	ips, err := ipBuilder.IPSet()
+	return ips, multierr.New(append(errs, err)...)
 }
 
 // Helper function to unmarshal a JSON string into either an AutoApprover or Owner pointer
@@ -873,17 +884,18 @@ func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 
 func (a SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
+	var errs []error
 
 	for _, alias := range a {
 		aips, err := alias.Resolve(p, users, nodes)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
 		}
 
 		ips.AddSet(aips)
 	}
 
-	return ips.IPSet()
+	return buildIPSetMultiErr(&ips, errs)
 }
 
 // SSHDstAliases is a list of aliases that can be used as destinations in an SSH rule.

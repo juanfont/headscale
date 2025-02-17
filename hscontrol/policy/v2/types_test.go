@@ -604,7 +604,6 @@ func TestResolvePolicy(t *testing.T) {
 					IPv4:       ap("100.100.101.234"),
 				},
 			},
-			want: []netip.Prefix{},
 		},
 		{
 			name:      "ipv6-address",
@@ -636,9 +635,10 @@ func TestResolvePolicy(t *testing.T) {
 			}
 
 			var prefs []netip.Prefix
-
 			if ips != nil {
-				prefs = ips.Prefixes()
+				if p := ips.Prefixes(); len(p) > 0 {
+					prefs = p
+				}
 			}
 
 			if diff := cmp.Diff(tt.want, prefs, util.Comparers...); diff != "" {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 )
@@ -34,7 +35,11 @@ func (pol *Policy) CompileFilterRules(
 
 		srcIPs, err := acl.Sources.Resolve(pol, users, nodes)
 		if err != nil {
-			return nil, fmt.Errorf("resolving source ips: %w", err)
+			log.Trace().Err(err).Msgf("resolving source ips")
+		}
+
+		if len(srcIPs.Prefixes()) == 0 {
+			continue
 		}
 
 		// TODO(kradalby): integrate type into schema
@@ -48,7 +53,7 @@ func (pol *Policy) CompileFilterRules(
 		for _, dest := range acl.Destinations {
 			ips, err := dest.Alias.Resolve(pol, users, nodes)
 			if err != nil {
-				return nil, err
+				log.Trace().Err(err).Msgf("resolving destination ips")
 			}
 
 			for _, pref := range ips.Prefixes() {
@@ -60,6 +65,10 @@ func (pol *Policy) CompileFilterRules(
 					destPorts = append(destPorts, pr)
 				}
 			}
+		}
+
+		if len(destPorts) == 0 {
+			continue
 		}
 
 		rules = append(rules, tailcfg.FilterRule{
