@@ -293,12 +293,6 @@ func (hsdb *HSDatabase) DeleteEphemeralNode(
 	})
 }
 
-// SetLastSeen sets a node's last seen field indicating that we
-// have recently communicating with this node.
-func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
-	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
-}
-
 // HandleNodeFromAuthPath is called from the OIDC or CLI auth path
 // with a registrationID to register or reauthenticate a node.
 // If the node found in the registration cache is not already registered,

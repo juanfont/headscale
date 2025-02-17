@@ -88,8 +88,11 @@ type Node struct {
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
 	AuthKey   *PreAuthKey
 
-	LastSeen *time.Time
-	Expiry   *time.Time
+	Expiry *time.Time
+
+	// LastSeen is when the node was last in contact with
+	// headscale. It is best effort and not persisted.
+	LastSeen *time.Time `gorm:"-"`
 
 	// DEPRECATED: Use the ApprovedRoutes field instead.
 	// TODO(kradalby): remove when ApprovedRoutes is used all over the code.
