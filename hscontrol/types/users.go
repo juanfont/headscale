@@ -85,9 +85,9 @@ func (u *User) Username() string {
 	)
 }
 
-// DisplayNameOrUsername returns the DisplayName if it exists, otherwise
+// Display returns the DisplayName if it exists, otherwise
 // it will return the Username.
-func (u *User) DisplayNameOrUsername() string {
+func (u *User) Display() string {
 	return cmp.Or(u.DisplayName, u.Username())
 }
 
@@ -99,7 +99,7 @@ func (u *User) profilePicURL() string {
 func (u *User) TailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
 		ID:            tailcfg.UserID(u.ID),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 		Created:       u.CreatedAt,
 	}
@@ -109,11 +109,10 @@ func (u *User) TailscaleUser() *tailcfg.User {
 
 func (u *User) TailscaleLogin() *tailcfg.Login {
 	login := tailcfg.Login{
-		ID: tailcfg.LoginID(u.ID),
-		// TODO(kradalby): this should reflect registration method.
+		ID:            tailcfg.LoginID(u.ID),
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 	}
 
@@ -124,7 +123,7 @@ func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 	return tailcfg.UserProfile{
 		ID:            tailcfg.UserID(u.ID),
 		LoginName:     u.Username(),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 	}
 }
