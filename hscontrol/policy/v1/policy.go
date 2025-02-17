@@ -52,21 +52,6 @@ func NewPolicyManager(polB []byte, users []types.User, nodes types.Nodes) (*Poli
 	return &pm, nil
 }
 
-func NewPolicyManagerForTest(pol *ACLPolicy, users []types.User, nodes types.Nodes) (*PolicyManager, error) {
-	pm := PolicyManager{
-		pol:   pol,
-		users: users,
-		nodes: nodes,
-	}
-
-	_, err := pm.updateLocked()
-	if err != nil {
-		return nil, err
-	}
-
-	return &pm, nil
-}
-
 type PolicyManager struct {
 	mu  sync.Mutex
 	pol *ACLPolicy
