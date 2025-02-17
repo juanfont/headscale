@@ -9,8 +9,9 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -325,7 +326,7 @@ func Test_fullMapResponse(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		pol   *policyv1.ACLPolicy
+		pol   []byte
 		node  *types.Node
 		peers types.Nodes
 
@@ -345,7 +346,6 @@ func Test_fullMapResponse(t *testing.T) {
 		// },
 		{
 			name:    "no-pol-no-peers-map-response",
-			pol:     &policyv1.ACLPolicy{},
 			node:    mini,
 			peers:   types.Nodes{},
 			derpMap: &tailcfg.DERPMap{},
@@ -363,9 +363,8 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				PacketFilter:    []tailcfg.FilterRule{},
+				PacketFilter:    tailcfg.FilterAllowAll,
 				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
-				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime:     &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
@@ -375,7 +374,6 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 		{
 			name: "no-pol-with-peer-map-response",
-			pol:  &policyv1.ACLPolicy{},
 			node: mini,
 			peers: types.Nodes{
 				peer1,
@@ -397,9 +395,8 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				PacketFilter:    []tailcfg.FilterRule{},
+				PacketFilter:    tailcfg.FilterAllowAll,
 				UserProfiles:    []tailcfg.UserProfile{{LoginName: "mini", DisplayName: "mini"}},
-				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime:     &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
@@ -409,15 +406,17 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 		{
 			name: "with-pol-map-response",
-			pol: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
-					{
-						Action:       "accept",
-						Sources:      []string{"100.64.0.2"},
-						Destinations: []string{"mini:*"},
-					},
-				},
-			},
+			pol: []byte(`
+				{
+					"acls": [
+						{
+							"action": "accept",
+							"src": ["100.64.0.2"],
+							"dst": ["mini:*"],
+						},
+					],
+				}
+				`),
 			node: mini,
 			peers: types.Nodes{
 				peer1,
@@ -448,10 +447,10 @@ func Test_fullMapResponse(t *testing.T) {
 						},
 					},
 				},
+				SSHPolicy: &tailcfg.SSHPolicy{},
 				UserProfiles: []tailcfg.UserProfile{
 					{LoginName: "mini", DisplayName: "mini"},
 				},
-				SSHPolicy:   &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime: &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
@@ -463,7 +462,8 @@ func Test_fullMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			polMan, _ := policyv1.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+			polMan, err := policy.NewPolicyManager(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+			require.NoError(t, err)
 
 			mappy := NewMapper(
 				nil,

@@ -8,8 +8,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -48,7 +49,7 @@ func TestTailNode(t *testing.T) {
 	tests := []struct {
 		name       string
 		node       *types.Node
-		pol        *policyv1.ACLPolicy
+		pol        []byte
 		dnsConfig  *tailcfg.DNSConfig
 		baseDomain string
 		want       *tailcfg.Node
@@ -60,7 +61,6 @@ func TestTailNode(t *testing.T) {
 				GivenName: "empty",
 				Hostinfo:  &tailcfg.Hostinfo{},
 			},
-			pol:        &policyv1.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
@@ -130,7 +130,6 @@ func TestTailNode(t *testing.T) {
 				},
 				CreatedAt: created,
 			},
-			pol:        &policyv1.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
@@ -186,7 +185,8 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			polMan, _ := policyv1.NewPolicyManagerForTest(tt.pol, []types.User{}, types.Nodes{tt.node})
+			polMan, err := policy.NewPolicyManager(tt.pol, []types.User{}, types.Nodes{tt.node})
+			require.NoError(t, err)
 			cfg := &types.Config{
 				BaseDomain:          tt.baseDomain,
 				TailcfgDNSConfig:    tt.dnsConfig,
