@@ -365,13 +365,14 @@ func TestAutoApproveRoutes(t *testing.T) {
 		acl    string
 		routes []netip.Prefix
 		want   []netip.Prefix
+		want2  []netip.Prefix
 	}{
 		{
-			name: "2068-approve-issue-sub",
+			name: "2068-approve-issue-sub-kube",
 			acl: `
 {
 	"groups": {
-		"group:k8s": ["test"]
+		"group:k8s": ["test@"]
 	},
 
 	"acls": [
@@ -380,7 +381,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 
 	"autoApprovers": {
 		"routes": {
-			"10.42.0.0/16": ["test"],
+			"10.42.0.0/16": ["test@"],
 		}
 	}
 }`,
@@ -388,15 +389,15 @@ func TestAutoApproveRoutes(t *testing.T) {
 			want:   []netip.Prefix{netip.MustParsePrefix("10.42.7.0/24")},
 		},
 		{
-			name: "2068-approve-issue-sub",
+			name: "2068-approve-issue-sub-exit-tag",
 			acl: `
 {
 	"tagOwners": {
-		"tag:exit": ["test"],
+		"tag:exit": ["test@"],
 	},
 
 	"groups": {
-		"group:test": ["test"]
+		"group:test": ["test@"]
 	},
 
 	"acls": [
@@ -407,7 +408,8 @@ func TestAutoApproveRoutes(t *testing.T) {
 		"exitNode": ["tag:exit"],
 		"routes": {
 			"10.10.0.0/16": ["group:test"],
-			"10.11.0.0/16": ["test"],
+			"10.11.0.0/16": ["test@"],
+			"8.11.0.0/24": ["test2@"], // No nodes
 		}
 	}
 }`,
@@ -416,11 +418,16 @@ func TestAutoApproveRoutes(t *testing.T) {
 				tsaddr.AllIPv6(),
 				netip.MustParsePrefix("10.10.0.0/16"),
 				netip.MustParsePrefix("10.11.0.0/24"),
+
+				// Not approved
+				netip.MustParsePrefix("8.11.0.0/24"),
 			},
 			want: []netip.Prefix{
-				tsaddr.AllIPv4(),
 				netip.MustParsePrefix("10.10.0.0/16"),
 				netip.MustParsePrefix("10.11.0.0/24"),
+			},
+			want2: []netip.Prefix{
+				tsaddr.AllIPv4(),
 				tsaddr.AllIPv6(),
 			},
 		},
@@ -429,44 +436,57 @@ func TestAutoApproveRoutes(t *testing.T) {
 	for _, tt := range tests {
 		pmfs := policy.PolicyManagerFuncsForTest([]byte(tt.acl))
 		for i, pmf := range pmfs {
-			t.Run(fmt.Sprintf("%s-v%d", tt.name, i+1), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s-policyv%d", tt.name, i+1), func(t *testing.T) {
 				adb, err := newSQLiteTestDB()
 				require.NoError(t, err)
 
-				user, err := adb.CreateUser(types.User{Name: "test"})
+				user, err := adb.CreateUser(types.User{Name: "test@"})
+				require.NoError(t, err)
+				_, err = adb.CreateUser(types.User{Name: "test2@"})
+				require.NoError(t, err)
+				taggedUser, err := adb.CreateUser(types.User{Name: "tagged@"})
 				require.NoError(t, err)
 
-				pak, err := adb.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-				require.NoError(t, err)
-
-				nodeKey := key.NewNode()
-				machineKey := key.NewMachine()
-
-				v4 := netip.MustParseAddr("100.64.0.1")
 				node := types.Node{
-					ID:             0,
-					MachineKey:     machineKey.Public(),
-					NodeKey:        nodeKey.Public(),
-					Hostname:       "test",
+					ID:             1,
+					MachineKey:     key.NewMachine().Public(),
+					NodeKey:        key.NewNode().Public(),
+					Hostname:       "testnode",
 					UserID:         user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
-					AuthKeyID:      ptr.To(pak.ID),
 					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:exit"},
 						RoutableIPs: tt.routes,
 					},
-					IPv4: &v4,
+					IPv4: ptr.To(netip.MustParseAddr("100.64.0.1")),
 				}
 
-				trx := adb.DB.Save(&node)
-				require.NoError(t, trx.Error)
+				err = adb.DB.Save(&node).Error
+				require.NoError(t, err)
+
+				nodeTagged := types.Node{
+					ID:             2,
+					MachineKey:     key.NewMachine().Public(),
+					NodeKey:        key.NewNode().Public(),
+					Hostname:       "taggednode",
+					UserID:         taggedUser.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: tt.routes,
+					},
+					ForcedTags: []string{"tag:exit"},
+					IPv4:       ptr.To(netip.MustParseAddr("100.64.0.2")),
+				}
+
+				err = adb.DB.Save(&nodeTagged).Error
+				require.NoError(t, err)
 
 				sendUpdate, err := adb.SaveNodeRoutes(&node)
 				require.NoError(t, err)
 				assert.False(t, sendUpdate)
 
-				node0ByID, err := adb.GetNodeByID(0)
+				sendUpdate, err = adb.SaveNodeRoutes(&nodeTagged)
 				require.NoError(t, err)
+				assert.False(t, sendUpdate)
 
 				users, err := adb.ListUsers()
 				assert.NoError(t, err)
@@ -475,19 +495,40 @@ func TestAutoApproveRoutes(t *testing.T) {
 				assert.NoError(t, err)
 
 				pm, err := pmf(users, nodes)
-				assert.NoError(t, err)
+				require.NoError(t, err)
+				require.NotNil(t, pm)
 
-				// TODO(kradalby): Check state update
-				err = adb.EnableAutoApprovedRoutes(pm, node0ByID)
+				node1ByID, err := adb.GetNodeByID(1)
 				require.NoError(t, err)
 
-				enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)
+				// TODO(kradalby): Check state update
+				err = adb.EnableAutoApprovedRoutes(pm, node1ByID)
+				require.NoError(t, err)
+
+				enabledRoutes, err := adb.GetEnabledRoutes(node1ByID)
 				require.NoError(t, err)
 				assert.Len(t, enabledRoutes, len(tt.want))
 
 				tsaddr.SortPrefixes(enabledRoutes)
 
 				if diff := cmp.Diff(tt.want, enabledRoutes, util.Comparers...); diff != "" {
+					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
+				}
+
+				node2ByID, err := adb.GetNodeByID(2)
+				require.NoError(t, err)
+
+				// TODO(kradalby): Check state update
+				err = adb.EnableAutoApprovedRoutes(pm, node2ByID)
+				require.NoError(t, err)
+
+				enabledRoutes2, err := adb.GetEnabledRoutes(node2ByID)
+				require.NoError(t, err)
+				assert.Len(t, enabledRoutes2, len(tt.want2))
+
+				tsaddr.SortPrefixes(enabledRoutes2)
+
+				if diff := cmp.Diff(tt.want2, enabledRoutes2, util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
 			})

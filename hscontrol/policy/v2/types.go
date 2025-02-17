@@ -10,44 +10,13 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
 )
-
-var theInternetSet *netipx.IPSet
-
-// theInternet returns the IPSet for the Internet.
-// https://www.youtube.com/watch?v=iDbyYGrswtg
-func theInternet() *netipx.IPSet {
-	if theInternetSet != nil {
-		return theInternetSet
-	}
-
-	var internetBuilder netipx.IPSetBuilder
-	internetBuilder.AddPrefix(netip.MustParsePrefix("2000::/3"))
-	internetBuilder.AddPrefix(tsaddr.AllIPv4())
-
-	// Delete Private network addresses
-	// https://datatracker.ietf.org/doc/html/rfc1918
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fc00::/7"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("10.0.0.0/8"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("172.16.0.0/12"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("192.168.0.0/16"))
-
-	// Delete Tailscale networks
-	internetBuilder.RemovePrefix(tsaddr.TailscaleULARange())
-	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
-
-	// Delete "cant find DHCP networks"
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-loca
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
-
-	theInternetSet, _ := internetBuilder.IPSet()
-	return theInternetSet
-}
 
 const Wildcard = Asterix(0)
 
@@ -97,6 +66,10 @@ func (u *Username) UnmarshalJSON(b []byte) error {
 }
 
 func (u Username) CanBeTagOwner() bool {
+	return true
+}
+
+func (u Username) CanBeAutoApprover() bool {
 	return true
 }
 
@@ -178,6 +151,10 @@ func (g Group) CanBeTagOwner() bool {
 	return true
 }
 
+func (g Group) CanBeAutoApprover() bool {
+	return true
+}
+
 func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
@@ -221,6 +198,10 @@ func (t Tag) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet
 	}
 
 	return ips.IPSet()
+}
+
+func (t Tag) CanBeAutoApprover() bool {
+	return true
 }
 
 // Host is a string that represents a hostname.
@@ -399,7 +380,7 @@ func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
 func (ag AutoGroup) Resolve(_ *Policy, _ types.Users, _ types.Nodes) (*netipx.IPSet, error) {
 	switch ag {
 	case AutoGroupInternet:
-		return theInternet(), nil
+		return util.TheInternet(), nil
 	}
 
 	return nil, nil
@@ -569,6 +550,53 @@ func (a Aliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*neti
 	return ips.IPSet()
 }
 
+type AutoApprover interface {
+	CanBeAutoApprover() bool
+	UnmarshalJSON([]byte) error
+}
+
+// AutoApproverEnc is used to deserialize a AutoApprover.
+type AutoApproverEnc struct{ AutoApprover }
+
+func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
+	// TODO(kradalby): use encoding/json/v2 (go-json-experiment)
+	dec := json.NewDecoder(bytes.NewReader(b))
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return err
+	}
+	switch val := v.(type) {
+	case string:
+		switch {
+		case isUser(val):
+			ve.AutoApprover = ptr.To(Username(val))
+		case isGroup(val):
+			ve.AutoApprover = ptr.To(Group(val))
+		case isTag(val):
+			ve.AutoApprover = ptr.To(Tag(val))
+		}
+	default:
+		return fmt.Errorf("type %T not supported", val)
+	}
+	return nil
+}
+
+type AutoApprovers []AutoApprover
+
+func (aa *AutoApprovers) UnmarshalJSON(b []byte) error {
+	var autoApprovers []AutoApproverEnc
+	err := json.Unmarshal(b, &autoApprovers)
+	if err != nil {
+		return err
+	}
+
+	*aa = make([]AutoApprover, len(autoApprovers))
+	for i, autoApprover := range autoApprovers {
+		(*aa)[i] = autoApprover.AutoApprover
+	}
+	return nil
+}
+
 type Owner interface {
 	CanBeTagOwner() bool
 	UnmarshalJSON([]byte) error
@@ -586,7 +614,6 @@ func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
 	}
 	switch val := v.(type) {
 	case string:
-
 		switch {
 		case isUser(val):
 			ve.Owner = ptr.To(Username(val))
@@ -680,12 +707,9 @@ func resolveTagOwners(p *Policy, users types.Users, nodes types.Nodes) (map[Tag]
 	return ret, nil
 }
 
-type AutoApprovers struct {
-	// Technically we should also allow Tags here, not only Owners (group and user).
-	// Initially we will only allow Owners.
-	// TODO(kradalby): add support for Tags
-	Routes   map[netip.Prefix]Owners `json:"routes"`
-	ExitNode Owners                  `json:"exitNode"`
+type AutoApproverPolicy struct {
+	Routes   map[netip.Prefix]AutoApprovers `json:"routes"`
+	ExitNode AutoApprovers                  `json:"exitNode"`
 }
 
 // resolveAutoApprovers resolves the AutoApprovers to a map of netip.Prefix to netipx.IPSet.
@@ -694,17 +718,17 @@ type AutoApprovers struct {
 func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[netip.Prefix]*netipx.IPSet, error) {
 	routes := make(map[netip.Prefix]*netipx.IPSetBuilder)
 
-	for prefix, owners := range p.AutoApprovers.Routes {
+	for prefix, autoApprovers := range p.AutoApprovers.Routes {
 		if _, ok := routes[prefix]; !ok {
 			routes[prefix] = new(netipx.IPSetBuilder)
 		}
-		for _, owner := range owners {
-			o, ok := owner.(Alias)
+		for _, autoApprover := range autoApprovers {
+			aa, ok := autoApprover.(Alias)
 			if !ok {
 				// Should never happen
-				return nil, fmt.Errorf("owner %v is not an Alias", owner)
+				return nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
 			}
-			ips, err := o.Resolve(p, users, nodes)
+			ips, err := aa.Resolve(p, users, nodes)
 			if err != nil {
 				return nil, err
 			}
@@ -714,13 +738,13 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[
 
 	var exitNodeSetBuilder netipx.IPSetBuilder
 	if len(p.AutoApprovers.ExitNode) > 0 {
-		for _, owner := range p.AutoApprovers.ExitNode {
-			o, ok := owner.(Alias)
+		for _, autoApprover := range p.AutoApprovers.ExitNode {
+			aa, ok := autoApprover.(Alias)
 			if !ok {
 				// Should never happen
-				return nil, fmt.Errorf("owner %v is not an Alias", owner)
+				return nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
 			}
-			ips, err := o.Resolve(p, users, nodes)
+			ips, err := aa.Resolve(p, users, nodes)
 			if err != nil {
 				return nil, err
 			}
@@ -770,12 +794,12 @@ type Policy struct {
 	// callers using it should panic if not
 	validated bool `json:"-"`
 
-	Groups        Groups        `json:"groups"`
-	Hosts         Hosts         `json:"hosts"`
-	TagOwners     TagOwners     `json:"tagOwners"`
-	ACLs          []ACL         `json:"acls"`
-	AutoApprovers AutoApprovers `json:"autoApprovers"`
-	SSHs          []SSH         `json:"ssh"`
+	Groups        Groups             `json:"groups"`
+	Hosts         Hosts              `json:"hosts"`
+	TagOwners     TagOwners          `json:"tagOwners"`
+	ACLs          []ACL              `json:"acls"`
+	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
+	SSHs          []SSH              `json:"ssh"`
 }
 
 // SSH controls who can ssh into which machines.

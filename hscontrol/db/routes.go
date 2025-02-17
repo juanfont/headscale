@@ -629,8 +629,6 @@ func EnableAutoApprovedRoutes(
 		return fmt.Errorf("getting advertised routes for node(%s %d): %w", node.Hostname, node.ID, err)
 	}
 
-	log.Trace().Interface("routes", routes).Msg("routes for autoapproving")
-
 	var approvedRoutes types.Routes
 
 	for _, advertisedRoute := range routes {
@@ -638,16 +636,9 @@ func EnableAutoApprovedRoutes(
 			continue
 		}
 
-		log.Trace().
-			Str("node", node.Hostname).
-			Uint("user.id", node.User.ID).
-			Str("prefix", netip.Prefix(advertisedRoute.Prefix).String()).
-			Msg("looking up route for autoapproving")
-
 		if polMan.NodeCanApproveRoute(node, netip.Prefix(advertisedRoute.Prefix)) {
 			approvedRoutes = append(approvedRoutes, advertisedRoute)
 		}
-
 	}
 
 	for _, approvedRoute := range approvedRoutes {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"go4.org/netipx"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/deephash"
 )
@@ -173,10 +174,38 @@ func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefi
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	for _, nodeAddr := range node.IPs() {
-		if _, ok := pm.autoApproveMap[route]; ok {
+	// The fast path is that a node requests to approve a prefix
+	// where there is an exact entry, e.g. 10.0.0.0/8, then
+	// check and return quickly
+	if _, ok := pm.autoApproveMap[route]; ok {
+		for _, nodeAddr := range node.IPs() {
 			if pm.autoApproveMap[route].Contains(nodeAddr) {
 				return true
+			}
+		}
+	}
+
+	// The slow path is that the node tries to approve
+	// 10.0.10.0/24, which is a part of 10.0.0.0/8, then we
+	// cannot just lookup in the prefix map and have to check
+	// if there is a "parent" prefix available.
+	for prefix, approveAddrs := range pm.autoApproveMap {
+		// We do not want the exit node entry to approve all
+		// sorts of routes. The logic here is that it would be
+		// unexpected behaviour to have specific routes approved
+		// just because the node is allowed to designate itself as
+		// an exit.
+		if tsaddr.IsExitRoute(prefix) {
+			continue
+		}
+
+		// Check if prefix is larger (so containing) and then overlaps
+		// the route to see if the node can approve a subset of an autoapprover
+		if prefix.Bits() <= route.Bits() && prefix.Overlaps(route) {
+			for _, nodeAddr := range node.IPs() {
+				if approveAddrs.Contains(nodeAddr) {
+					return true
+				}
 			}
 		}
 	}

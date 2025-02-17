@@ -554,7 +554,7 @@ func TestResolvePolicy(t *testing.T) {
 		{
 			name:      "autogroup-internet",
 			toResolve: agp("autogroup:internet"),
-			want:      theInternet().Prefixes(),
+			want:      util.TheInternet().Prefixes(),
 		},
 		{
 			name:      "invalid-username",
@@ -640,6 +640,14 @@ func TestResolveAutoApprovers(t *testing.T) {
 			IPv4: ap("100.64.0.3"),
 			User: users[2],
 		},
+		{
+			IPv4:       ap("100.64.0.4"),
+			ForcedTags: []string{"tag:testtag"},
+		},
+		{
+			IPv4:       ap("100.64.0.5"),
+			ForcedTags: []string{"tag:exittest"},
+		},
 	}
 
 	tests := []struct {
@@ -651,8 +659,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 		{
 			name: "single-route",
 			policy: &Policy{
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Username("user1"))},
 					},
 				},
@@ -665,8 +673,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 		{
 			name: "multiple-routes",
 			policy: &Policy{
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Username("user1"))},
 						mp("10.0.1.0/24"): {ptr.To(Username("user2"))},
 					},
@@ -681,8 +689,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 		{
 			name: "exit-node",
 			policy: &Policy{
-				AutoApprovers: AutoApprovers{
-					ExitNode: Owners{ptr.To(Username("user1"))},
+				AutoApprovers: AutoApproverPolicy{
+					ExitNode: AutoApprovers{ptr.To(Username("user1"))},
 				},
 			},
 			want: map[netip.Prefix]*netipx.IPSet{
@@ -697,8 +705,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 				Groups: Groups{
 					"group:testgroup": Usernames{"user1", "user2"},
 				},
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
 					},
 				},
@@ -709,17 +717,46 @@ func TestResolveAutoApprovers(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "tag-route-and-exit",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					"tag:testtag": Owners{
+						ptr.To(Username("user1")),
+						ptr.To(Username("user2")),
+					},
+					"tag:exittest": Owners{
+						ptr.To(Group("group:exitgroup")),
+					},
+				},
+				Groups: Groups{
+					"group:exitgroup": Usernames{"user2"},
+				},
+				AutoApprovers: AutoApproverPolicy{
+					ExitNode: AutoApprovers{ptr.To(Tag("tag:exittest"))},
+					Routes: map[netip.Prefix]AutoApprovers{
+						mp("10.0.1.0/24"): {ptr.To(Tag("tag:testtag"))},
+					},
+				},
+			},
+			want: map[netip.Prefix]*netipx.IPSet{
+				mp("10.0.1.0/24"): mustIPSet("100.64.0.4/32"),
+				tsaddr.AllIPv4():  mustIPSet("100.64.0.5/32"),
+				tsaddr.AllIPv6():  mustIPSet("100.64.0.5/32"),
+			},
+			wantErr: false,
+		},
+		{
 			name: "mixed-routes-and-exit-nodes",
 			policy: &Policy{
 				Groups: Groups{
 					"group:testgroup": Usernames{"user1", "user2"},
 				},
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
 						mp("10.0.1.0/24"): {ptr.To(Username("user3"))},
 					},
-					ExitNode: Owners{ptr.To(Username("user1"))},
+					ExitNode: AutoApprovers{ptr.To(Username("user1"))},
 				},
 			},
 			want: map[netip.Prefix]*netipx.IPSet{
@@ -733,8 +770,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 		{
 			name: "invalid-user",
 			policy: &Policy{
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Username("invalid"))},
 					},
 				},
@@ -809,8 +846,8 @@ func TestNodeCanApproveRoute(t *testing.T) {
 		{
 			name: "single-route-approval",
 			policy: &Policy{
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
 					},
 				},
@@ -822,8 +859,8 @@ func TestNodeCanApproveRoute(t *testing.T) {
 		{
 			name: "multiple-routes-approval",
 			policy: &Policy{
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
 						mp("10.0.1.0/24"): {ptr.To(Username("user2@"))},
 					},
@@ -836,8 +873,8 @@ func TestNodeCanApproveRoute(t *testing.T) {
 		{
 			name: "exit-node-approval",
 			policy: &Policy{
-				AutoApprovers: AutoApprovers{
-					ExitNode: Owners{ptr.To(Username("user1@"))},
+				AutoApprovers: AutoApproverPolicy{
+					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
 				},
 			},
 			node:  nodes[0],
@@ -850,8 +887,8 @@ func TestNodeCanApproveRoute(t *testing.T) {
 				Groups: Groups{
 					"group:testgroup": Usernames{"user1@", "user2@"},
 				},
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
 					},
 				},
@@ -866,12 +903,12 @@ func TestNodeCanApproveRoute(t *testing.T) {
 				Groups: Groups{
 					"group:testgroup": Usernames{"user1@", "user2@"},
 				},
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
 						mp("10.0.1.0/24"): {ptr.To(Username("user3@"))},
 					},
-					ExitNode: Owners{ptr.To(Username("user1@"))},
+					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
 				},
 			},
 			node:  nodes[0],
@@ -881,8 +918,8 @@ func TestNodeCanApproveRoute(t *testing.T) {
 		{
 			name: "no-approval",
 			policy: &Policy{
-				AutoApprovers: AutoApprovers{
-					Routes: map[netip.Prefix]Owners{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Username("user2@"))},
 					},
 				},

@@ -809,7 +809,7 @@ func TestFilterNodesByACL(t *testing.T) {
 						User: types.User{Name: "mickael"},
 					},
 				},
-				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
+				rules: []tailcfg.FilterRule{
 					{
 						SrcIPs: []string{"100.64.0.1", "100.64.0.2", "100.64.0.3"},
 						DstPorts: []tailcfg.NetPortRange{
