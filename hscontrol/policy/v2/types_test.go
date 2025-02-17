@@ -303,10 +303,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			wantErr: `Username has to contain @, got: "group:inner"`,
+			// wantErr: `Username has to contain @, got: "group:inner"`,
+			wantErr: `Nested groups are not allowed, found "group:inner" inside "group:example"`,
 		},
 		{
-			name: "invalid-prefix",
+			name: "invalid-addr",
 			input: `
 {
 	"hosts": {
@@ -314,8 +315,31 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			wantErr: `ParseAddr("10.0"): IPv4 address too short`,
+			// wantErr: `ParseAddr("10.0"): IPv4 address too short`,
+			wantErr: `Hostname "derp" contains an invalid IP address: "10.0"`,
 		},
+		{
+			name: "invalid-prefix",
+			input: `
+{
+			"hosts": {
+				"derp": "10.0/42",
+			},
+}
+`,
+			wantErr: `Hostname "derp" contains an invalid IP address: "10.0/42"`,
+		},
+		// 		{
+		// 			name: "invalid-hostname",
+		// 			input: `
+		// {
+		// 			"hosts": {
+		// 				"derp:merp": "10.0.0.0/31",
+		// 			},
+		// }
+		// `,
+		// 			wantErr: `Hostname "derp:merp" is invalid`,
+		// 		},
 		{
 			name: "invalid-auto-group",
 			input: `

@@ -37,6 +37,9 @@ func (a Asterix) UnmarshalJSON(b []byte) error {
 func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
+	// TODO(kradalby):
+	// Should this actually only be the CGNAT spaces? I do not think so, because
+	// we also want to include subnet routers right?
 	ips.AddPrefix(tsaddr.AllIPv4())
 	ips.AddPrefix(tsaddr.AllIPv6())
 
@@ -208,7 +211,9 @@ func (t Tag) CanBeAutoApprover() bool {
 type Host string
 
 func (h Host) Validate() error {
-	// TODO(kradalby): figure out if the same type of validating makes sense here
+	if isHost(string(h)) {
+		fmt.Errorf("Hostname %q is invalid", h)
+	}
 	return nil
 }
 
@@ -252,20 +257,6 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 
 	return ips.IPSet()
 }
-
-// func appendIfNodeHasIP(nodes types.Nodes, ips *netipx.IPSetBuilder, pref Prefix) {
-// 	if netip.Prefix(pref).IsSingleIP() {
-// 		addr := netip.Prefix(pref).Addr()
-// 		for _, node := range nodes {
-// 			log.Printf("node ips: %v", node.IPsAsString())
-// 			log.Printf("checking: %s", addr.String())
-// 			if node.HasIP(addr) {
-// 				log.Printf("ADDING")
-// 				node.AppendToIPSet(ips)
-// 			}
-// 		}
-// 	}
-// }
 
 type Prefix netip.Prefix
 
@@ -659,7 +650,7 @@ type Groups map[Group]Usernames
 // that all group names conform to the expected format, which is always prefixed
 // with "group:". If any group name is invalid, an error is returned.
 func (g *Groups) UnmarshalJSON(b []byte) error {
-	var rawGroups map[string]Usernames
+	var rawGroups map[string][]string
 	if err := json.Unmarshal(b, &rawGroups); err != nil {
 		return err
 	}
@@ -670,13 +661,52 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 		if err := group.Validate(); err != nil {
 			return err
 		}
-		(*g)[group] = value
+
+		var usernames Usernames
+
+		for _, u := range value {
+			username := Username(u)
+			if err := username.Validate(); err != nil {
+				if isGroup(u) {
+					return fmt.Errorf("Nested groups are not allowed, found %q inside %q", u, group)
+				}
+
+				return err
+			}
+			usernames = append(usernames, username)
+		}
+
+		(*g)[group] = usernames
 	}
 	return nil
 }
 
 // Hosts are alias for IP addresses or subnets.
 type Hosts map[Host]Prefix
+
+func (h *Hosts) UnmarshalJSON(b []byte) error {
+	var rawHosts map[string]string
+	if err := json.Unmarshal(b, &rawHosts); err != nil {
+		return err
+	}
+
+	*h = make(Hosts)
+	for key, value := range rawHosts {
+		host := Host(key)
+		if err := host.Validate(); err != nil {
+			return err
+		}
+
+		var pref Prefix
+		err := pref.parseString(value)
+		if err != nil {
+			return fmt.Errorf("Hostname %q contains an invalid IP address: %q", key, value)
+		}
+
+		(*h)[host] = pref
+	}
+	return nil
+}
 
 // TagOwners are a map of Tag to a list of the UserEntities that own the tag.
 type TagOwners map[Tag]Owners
