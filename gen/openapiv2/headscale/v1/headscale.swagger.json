@@ -388,37 +388,6 @@
         ]
       }
     },
-    "/api/v1/node/{nodeId}/routes": {
-      "get": {
-        "operationId": "HeadscaleService_GetNodeRoutes",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetNodeRoutesResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "nodeId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "uint64"
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      }
-    },
     "/api/v1/node/{nodeId}/tags": {
       "post": {
         "operationId": "HeadscaleService_SetTags",
@@ -636,122 +605,6 @@
             "schema": {
               "$ref": "#/definitions/v1ExpirePreAuthKeyRequest"
             }
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      }
-    },
-    "/api/v1/routes": {
-      "get": {
-        "summary": "--- Route start ---",
-        "operationId": "HeadscaleService_GetRoutes",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetRoutesResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "tags": [
-          "HeadscaleService"
-        ]
-      }
-    },
-    "/api/v1/routes/{routeId}": {
-      "delete": {
-        "operationId": "HeadscaleService_DeleteRoute",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1DeleteRouteResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "routeId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "uint64"
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      }
-    },
-    "/api/v1/routes/{routeId}/disable": {
-      "post": {
-        "operationId": "HeadscaleService_DisableRoute",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1DisableRouteResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "routeId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "uint64"
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      }
-    },
-    "/api/v1/routes/{routeId}/enable": {
-      "post": {
-        "operationId": "HeadscaleService_EnableRoute",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1EnableRouteResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "routeId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "uint64"
           }
         ],
         "tags": [
@@ -1093,16 +946,7 @@
     "v1DeleteNodeResponse": {
       "type": "object"
     },
-    "v1DeleteRouteResponse": {
-      "type": "object"
-    },
     "v1DeleteUserResponse": {
-      "type": "object"
-    },
-    "v1DisableRouteResponse": {
-      "type": "object"
-    },
-    "v1EnableRouteResponse": {
       "type": "object"
     },
     "v1ExpireApiKeyRequest": {
@@ -1146,18 +990,6 @@
         }
       }
     },
-    "v1GetNodeRoutesResponse": {
-      "type": "object",
-      "properties": {
-        "routes": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1Route"
-          }
-        }
-      }
-    },
     "v1GetPolicyResponse": {
       "type": "object",
       "properties": {
@@ -1167,18 +999,6 @@
         "updatedAt": {
           "type": "string",
           "format": "date-time"
-        }
-      }
-    },
-    "v1GetRoutesResponse": {
-      "type": "object",
-      "properties": {
-        "routes": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1Route"
-          }
         }
       }
     },
@@ -1307,6 +1127,12 @@
         },
         "online": {
           "type": "boolean"
+        },
+        "approvedRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -1378,42 +1204,6 @@
       "properties": {
         "user": {
           "$ref": "#/definitions/v1User"
-        }
-      }
-    },
-    "v1Route": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "format": "uint64"
-        },
-        "node": {
-          "$ref": "#/definitions/v1Node"
-        },
-        "prefix": {
-          "type": "string"
-        },
-        "advertised": {
-          "type": "boolean"
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "isPrimary": {
-          "type": "boolean"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "deletedAt": {
-          "type": "string",
-          "format": "date-time"
         }
       }
     },
