@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/puzpuzpuz/xsync/v3"
@@ -146,105 +146,6 @@ func (s *Suite) TestListPeers(c *check.C) {
 	c.Assert(peersOfNode0[0].Hostname, check.Equals, "testnode2")
 	c.Assert(peersOfNode0[5].Hostname, check.Equals, "testnode7")
 	c.Assert(peersOfNode0[8].Hostname, check.Equals, "testnode10")
-}
-
-func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
-	type base struct {
-		user *types.User
-		key  *types.PreAuthKey
-	}
-
-	stor := make([]base, 0)
-
-	for _, name := range []string{"test", "admin"} {
-		user, err := db.CreateUser(types.User{Name: name})
-		c.Assert(err, check.IsNil)
-		pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-		c.Assert(err, check.IsNil)
-		stor = append(stor, base{user, pak})
-	}
-
-	_, err := db.GetNodeByID(0)
-	c.Assert(err, check.NotNil)
-
-	for index := 0; index <= 10; index++ {
-		nodeKey := key.NewNode()
-		machineKey := key.NewMachine()
-
-		v4 := netip.MustParseAddr(fmt.Sprintf("100.64.0.%d", index+1))
-		node := types.Node{
-			ID:             types.NodeID(index),
-			MachineKey:     machineKey.Public(),
-			NodeKey:        nodeKey.Public(),
-			IPv4:           &v4,
-			Hostname:       "testnode" + strconv.Itoa(index),
-			UserID:         stor[index%2].user.ID,
-			RegisterMethod: util.RegisterMethodAuthKey,
-			AuthKeyID:      ptr.To(stor[index%2].key.ID),
-		}
-		trx := db.DB.Save(&node)
-		c.Assert(trx.Error, check.IsNil)
-	}
-
-	aclPolicy := &policyv1.ACLPolicy{
-		Groups: map[string][]string{
-			"group:test": {"admin"},
-		},
-		Hosts:     map[string]netip.Prefix{},
-		TagOwners: map[string][]string{},
-		ACLs: []policyv1.ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"admin"},
-				Destinations: []string{"*:*"},
-			},
-			{
-				Action:       "accept",
-				Sources:      []string{"test"},
-				Destinations: []string{"test:*"},
-			},
-		},
-		Tests: []policyv1.ACLTest{},
-	}
-
-	adminNode, err := db.GetNodeByID(1)
-	c.Logf("Node(%v), user: %v", adminNode.Hostname, adminNode.User)
-	c.Assert(adminNode.IPv4, check.NotNil)
-	c.Assert(adminNode.IPv6, check.IsNil)
-	c.Assert(err, check.IsNil)
-
-	testNode, err := db.GetNodeByID(2)
-	c.Logf("Node(%v), user: %v", testNode.Hostname, testNode.User)
-	c.Assert(err, check.IsNil)
-
-	adminPeers, err := db.ListPeers(adminNode.ID)
-	c.Assert(err, check.IsNil)
-	c.Assert(len(adminPeers), check.Equals, 9)
-
-	testPeers, err := db.ListPeers(testNode.ID)
-	c.Assert(err, check.IsNil)
-	c.Assert(len(testPeers), check.Equals, 9)
-
-	adminRules, _, err := policyv1.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers, []types.User{*stor[0].user, *stor[1].user})
-	c.Assert(err, check.IsNil)
-
-	testRules, _, err := policyv1.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers, []types.User{*stor[0].user, *stor[1].user})
-	c.Assert(err, check.IsNil)
-
-	peersOfAdminNode := policyv1.FilterNodesByACL(adminNode, adminPeers, adminRules)
-	peersOfTestNode := policyv1.FilterNodesByACL(testNode, testPeers, testRules)
-	c.Log(peersOfAdminNode)
-	c.Log(peersOfTestNode)
-
-	c.Assert(len(peersOfTestNode), check.Equals, 9)
-	c.Assert(peersOfTestNode[0].Hostname, check.Equals, "testnode1")
-	c.Assert(peersOfTestNode[1].Hostname, check.Equals, "testnode3")
-	c.Assert(peersOfTestNode[3].Hostname, check.Equals, "testnode5")
-
-	c.Assert(len(peersOfAdminNode), check.Equals, 9)
-	c.Assert(peersOfAdminNode[0].Hostname, check.Equals, "testnode2")
-	c.Assert(peersOfAdminNode[2].Hostname, check.Equals, "testnode4")
-	c.Assert(peersOfAdminNode[5].Hostname, check.Equals, "testnode7")
 }
 
 func (s *Suite) TestExpireNode(c *check.C) {
@@ -526,72 +427,71 @@ func TestAutoApproveRoutes(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			adb, err := newSQLiteTestDB()
-			require.NoError(t, err)
-			pol, err := policyv1.LoadACLPolicyFromBytes([]byte(tt.acl))
+		pmfs := policy.PolicyManagerFuncsForTest([]byte(tt.acl))
+		for i, pmf := range pmfs {
+			t.Run(fmt.Sprintf("%s-v%d", tt.name, i+1), func(t *testing.T) {
+				adb, err := newSQLiteTestDB()
+				require.NoError(t, err)
 
-			require.NoError(t, err)
-			require.NotNil(t, pol)
+				user, err := adb.CreateUser(types.User{Name: "test"})
+				require.NoError(t, err)
 
-			user, err := adb.CreateUser(types.User{Name: "test"})
-			require.NoError(t, err)
+				pak, err := adb.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+				require.NoError(t, err)
 
-			pak, err := adb.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-			require.NoError(t, err)
+				nodeKey := key.NewNode()
+				machineKey := key.NewMachine()
 
-			nodeKey := key.NewNode()
-			machineKey := key.NewMachine()
+				v4 := netip.MustParseAddr("100.64.0.1")
+				node := types.Node{
+					ID:             0,
+					MachineKey:     machineKey.Public(),
+					NodeKey:        nodeKey.Public(),
+					Hostname:       "test",
+					UserID:         user.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+					AuthKeyID:      ptr.To(pak.ID),
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:exit"},
+						RoutableIPs: tt.routes,
+					},
+					IPv4: &v4,
+				}
 
-			v4 := netip.MustParseAddr("100.64.0.1")
-			node := types.Node{
-				ID:             0,
-				MachineKey:     machineKey.Public(),
-				NodeKey:        nodeKey.Public(),
-				Hostname:       "test",
-				UserID:         user.ID,
-				RegisterMethod: util.RegisterMethodAuthKey,
-				AuthKeyID:      ptr.To(pak.ID),
-				Hostinfo: &tailcfg.Hostinfo{
-					RequestTags: []string{"tag:exit"},
-					RoutableIPs: tt.routes,
-				},
-				IPv4: &v4,
-			}
+				trx := adb.DB.Save(&node)
+				require.NoError(t, trx.Error)
 
-			trx := adb.DB.Save(&node)
-			require.NoError(t, trx.Error)
+				sendUpdate, err := adb.SaveNodeRoutes(&node)
+				require.NoError(t, err)
+				assert.False(t, sendUpdate)
 
-			sendUpdate, err := adb.SaveNodeRoutes(&node)
-			require.NoError(t, err)
-			assert.False(t, sendUpdate)
+				node0ByID, err := adb.GetNodeByID(0)
+				require.NoError(t, err)
 
-			node0ByID, err := adb.GetNodeByID(0)
-			require.NoError(t, err)
+				users, err := adb.ListUsers()
+				assert.NoError(t, err)
 
-			users, err := adb.ListUsers()
-			assert.NoError(t, err)
+				nodes, err := adb.ListNodes()
+				assert.NoError(t, err)
 
-			nodes, err := adb.ListNodes()
-			assert.NoError(t, err)
+				pm, err := pmf(users, nodes)
+				assert.NoError(t, err)
 
-			pm, err := policyv1.NewPolicyManager([]byte(tt.acl), users, nodes)
-			assert.NoError(t, err)
+				// TODO(kradalby): Check state update
+				err = adb.EnableAutoApprovedRoutes(pm, node0ByID)
+				require.NoError(t, err)
 
-			// TODO(kradalby): Check state update
-			err = adb.EnableAutoApprovedRoutes(pm, node0ByID)
-			require.NoError(t, err)
+				enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)
+				require.NoError(t, err)
+				assert.Len(t, enabledRoutes, len(tt.want))
 
-			enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)
-			require.NoError(t, err)
-			assert.Len(t, enabledRoutes, len(tt.want))
+				tsaddr.SortPrefixes(enabledRoutes)
 
-			tsaddr.SortPrefixes(enabledRoutes)
-
-			if diff := cmp.Diff(tt.want, enabledRoutes, util.Comparers...); diff != "" {
-				t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
-			}
-		})
+				if diff := cmp.Diff(tt.want, enabledRoutes, util.Comparers...); diff != "" {
+					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
+				}
+			})
+		}
 	}
 }
 

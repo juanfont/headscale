@@ -18,7 +18,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
@@ -516,7 +515,7 @@ func appendPeerChanges(
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access each-other at all and remove them from the peers.
 	if len(filter) > 0 {
-		changed = policyv1.FilterNodesByACL(node, changed, filter)
+		changed = policy.FilterNodesByACL(node, changed, filter)
 	}
 
 	profiles := generateUserProfiles(node, changed)
@@ -548,7 +547,7 @@ func appendPeerChanges(
 		// new PacketFilters field and "base" allows us to send a full update when we
 		// have to send an empty list, avoiding the hack in the else block.
 		resp.PacketFilters = map[string][]tailcfg.FilterRule{
-			"base": policyv1.ReduceFilterRules(node, filter),
+			"base": policy.ReduceFilterRules(node, filter),
 		}
 	} else {
 		// This is a hack to avoid sending an empty list of packet filters.
@@ -556,7 +555,7 @@ func appendPeerChanges(
 		// be omitted, causing the client to consider it unchanged, keeping the
 		// previous packet filter. Worst case, this can cause a node that previously
 		// has access to a node to _not_ loose access if an empty (allow none) is sent.
-		reduced := policyv1.ReduceFilterRules(node, filter)
+		reduced := policy.ReduceFilterRules(node, filter)
 		if len(reduced) > 0 {
 			resp.PacketFilter = reduced
 		} else {

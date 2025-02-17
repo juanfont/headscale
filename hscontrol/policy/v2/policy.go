@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"sync"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
@@ -34,7 +33,7 @@ type PolicyManager struct {
 // NewPolicyManager creates a new PolicyManager from a policy file and a list of users and nodes.
 // It returns an error if the policy file is invalid.
 // The policy manager will update the filter rules based on the users and nodes.
-func NewPolicyManager(b []byte, users []types.User, nodes types.Nodes) (policy.PolicyManager, error) {
+func NewPolicyManager(b []byte, users []types.User, nodes types.Nodes) (*PolicyManager, error) {
 	policy, err := policyFromBytes(b)
 	if err != nil {
 		return nil, fmt.Errorf("parsing policy: %w", err)
@@ -183,4 +182,8 @@ func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefi
 	}
 
 	return false
+}
+
+func (pm *PolicyManager) Version() int {
+	return 2
 }

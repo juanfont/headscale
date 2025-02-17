@@ -32,8 +32,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
-	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	zerolog "github.com/philip-bui/grpc-zerolog"
@@ -112,7 +110,6 @@ var (
 	tailsqlStateDir  = envknob.String("HEADSCALE_DEBUG_TAILSQL_STATE_DIR")
 	tailsqlTSKey     = envknob.String("TS_AUTHKEY")
 	dumpConfig       = envknob.Bool("HEADSCALE_DEBUG_DUMP_CONFIG")
-	polv2            = envknob.Bool("HEADSCALE_EXPERIMENTAL_POLICY_V2")
 )
 
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
@@ -1149,19 +1146,11 @@ func (h *Headscale) loadPolicyManager() error {
 			return
 		}
 
-		if polv2 {
-			h.polMan, err = policyv2.NewPolicyManager(pol, users, nodes)
-			log.Info().Msg("Using policy manager v2")
-			if err != nil {
-				errOut = fmt.Errorf("creating policy manager v2: %w", err)
-				return
-			}
-		} else {
-			h.polMan, err = policyv1.NewPolicyManager(pol, users, nodes)
-			if err != nil {
-				errOut = fmt.Errorf("creating policy manager v1: %w", err)
-				return
-			}
+		h.polMan, err = policy.NewPolicyManager(pol, users, nodes)
+		log.Info().Msgf("Using policy manager version: %d", h.polMan.Version())
+		if err != nil {
+			errOut = fmt.Errorf("creating policy manager v2: %w", err)
+			return
 		}
 
 		if len(nodes) > 0 {

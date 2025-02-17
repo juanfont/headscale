@@ -7,14 +7,13 @@ import (
 	"os"
 	"sync"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/deephash"
 )
 
-func NewPolicyManagerFromPath(path string, users []types.User, nodes types.Nodes) (policy.PolicyManager, error) {
+func NewPolicyManagerFromPath(path string, users []types.User, nodes types.Nodes) (*PolicyManager, error) {
 	policyFile, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -29,7 +28,7 @@ func NewPolicyManagerFromPath(path string, users []types.User, nodes types.Nodes
 	return NewPolicyManager(policyBytes, users, nodes)
 }
 
-func NewPolicyManager(polB []byte, users []types.User, nodes types.Nodes) (policy.PolicyManager, error) {
+func NewPolicyManager(polB []byte, users []types.User, nodes types.Nodes) (*PolicyManager, error) {
 	var pol *ACLPolicy
 	var err error
 	if polB != nil && len(polB) > 0 {
@@ -53,7 +52,7 @@ func NewPolicyManager(polB []byte, users []types.User, nodes types.Nodes) (polic
 	return &pm, nil
 }
 
-func NewPolicyManagerForTest(pol *ACLPolicy, users []types.User, nodes types.Nodes) (policy.PolicyManager, error) {
+func NewPolicyManagerForTest(pol *ACLPolicy, users []types.User, nodes types.Nodes) (*PolicyManager, error) {
 	pm := PolicyManager{
 		pol:   pol,
 		users: users,
@@ -192,4 +191,8 @@ func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefi
 		}
 	}
 	return false
+}
+
+func (pm *PolicyManager) Version() int {
+	return 1
 }
