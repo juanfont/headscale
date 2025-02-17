@@ -436,15 +436,21 @@ func TestAutoApproveRoutes(t *testing.T) {
 	for _, tt := range tests {
 		pmfs := policy.PolicyManagerFuncsForTest([]byte(tt.acl))
 		for i, pmf := range pmfs {
-			t.Run(fmt.Sprintf("%s-policyv%d", tt.name, i+1), func(t *testing.T) {
+			version := i + 1
+			t.Run(fmt.Sprintf("%s-policyv%d", tt.name, version), func(t *testing.T) {
 				adb, err := newSQLiteTestDB()
 				require.NoError(t, err)
 
-				user, err := adb.CreateUser(types.User{Name: "test@"})
+				suffix := ""
+				if version == 1 {
+					suffix = "@"
+				}
+
+				user, err := adb.CreateUser(types.User{Name: "test" + suffix})
 				require.NoError(t, err)
-				_, err = adb.CreateUser(types.User{Name: "test2@"})
+				_, err = adb.CreateUser(types.User{Name: "test2" + suffix})
 				require.NoError(t, err)
-				taggedUser, err := adb.CreateUser(types.User{Name: "tagged@"})
+				taggedUser, err := adb.CreateUser(types.User{Name: "tagged" + suffix})
 				require.NoError(t, err)
 
 				node := types.Node{
