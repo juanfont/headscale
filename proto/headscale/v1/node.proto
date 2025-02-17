@@ -48,6 +48,7 @@ message Node {
   repeated string valid_tags = 20;
   string given_name = 21;
   bool online = 22;
+  repeated string approved_routes = 23;
 }
 
 message RegisterNodeRequest {
