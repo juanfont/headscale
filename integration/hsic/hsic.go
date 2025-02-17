@@ -185,6 +185,13 @@ func WithPostgres() Option {
 	}
 }
 
+// WithPolicyV2 tells the integration test to use the new v2 filter.
+func WithPolicyV2() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_EXPERIMENTAL_POLICY_V2"] = "1"
+	}
+}
+
 // WithIPAllocationStrategy sets the tests IP Allocation strategy.
 func WithIPAllocationStrategy(strategy types.IPAllocationStrategy) Option {
 	return func(hsic *HeadscaleInContainer) {

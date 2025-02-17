@@ -77,6 +77,8 @@ func aclScenario(
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -310,8 +312,8 @@ func TestACLAllowUser80Dst(t *testing.T) {
 			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
-					Sources:      []string{"user1"},
-					Destinations: []string{"user2:80"},
+					Sources:      []string{"user1@"},
+					Destinations: []string{"user2@:80"},
 				},
 			},
 		},
