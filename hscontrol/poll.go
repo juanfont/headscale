@@ -9,14 +9,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
-	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -406,15 +404,6 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 		// lastSeen is only relevant if the node is disconnected.
 		node.LastSeen = &now
 		change.LastSeen = &now
-
-		err := h.db.Write(func(tx *gorm.DB) error {
-			return db.SetLastSeen(tx, node.ID, *node.LastSeen)
-		})
-		if err != nil {
-			log.Error().Err(err).Msg("Cannot update node LastSeen")
-
-			return
-		}
 	}
 
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
