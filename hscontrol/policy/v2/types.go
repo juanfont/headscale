@@ -429,9 +429,9 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 			ve.Ports = ports
 		}
 
-		ve.Alias = parseAlias(vs)
-		if ve.Alias == nil {
-			return fmt.Errorf("could not determine the type of %q", vs)
+		ve.Alias, err = parseAlias(vs)
+		if err != nil {
+			return err
 		}
 		if err := ve.Alias.Validate(); err != nil {
 			return err
@@ -467,55 +467,45 @@ func isHost(str string) bool {
 	return !isUser(str) && !strings.Contains(str, ":")
 }
 
-func parseAlias(vs string) Alias {
+func parseAlias(vs string) (Alias, error) {
 	var pref Prefix
 	err := pref.parseString(vs)
 	if err == nil {
-		return &pref
+		return &pref, nil
 	}
 
 	switch {
 	case isWildcard(vs):
-		return Wildcard
+		return Wildcard, nil
 	case isUser(vs):
-		return ptr.To(Username(vs))
+		return ptr.To(Username(vs)), nil
 	case isGroup(vs):
-		return ptr.To(Group(vs))
+		return ptr.To(Group(vs)), nil
 	case isTag(vs):
-		return ptr.To(Tag(vs))
+		return ptr.To(Tag(vs)), nil
 	case isAutoGroup(vs):
-		return ptr.To(AutoGroup(vs))
+		return ptr.To(AutoGroup(vs)), nil
 	}
 
 	if isHost(vs) {
-		return ptr.To(Host(vs))
+		return ptr.To(Host(vs)), nil
 	}
 
-	return nil
+	return nil, fmt.Errorf("unable to determine Alias type for %q", vs)
 }
 
 // AliasEnc is used to deserialize a Alias.
 type AliasEnc struct{ Alias }
 
 func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
-	// TODO(kradalby): use encoding/json/v2 (go-json-experiment)
-	dec := json.NewDecoder(bytes.NewReader(b))
-	var v any
-	if err := dec.Decode(&v); err != nil {
+	ptr, err := unmarshalPointer[Alias](
+		b,
+		parseAlias,
+	)
+	if err != nil {
 		return err
 	}
-	switch val := v.(type) {
-	case string:
-		ve.Alias = parseAlias(val)
-		if ve.Alias == nil {
-			return fmt.Errorf("could not determine the type of %q", val)
-		}
-		if err := ve.Alias.Validate(); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("type %T not supported", val)
-	}
+	ve.Alias = ptr
 	return nil
 }
 
@@ -550,35 +540,24 @@ func (a Aliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*neti
 	return ips.IPSet()
 }
 
+// Helper function to unmarshal a JSON string into either an AutoApprover or Owner pointer
+func unmarshalPointer[T any](
+	b []byte,
+	parseFunc func(string) (T, error),
+) (T, error) {
+	var s string
+	err := json.Unmarshal(b, &s)
+	if err != nil {
+		var t T
+		return t, err
+	}
+
+	return parseFunc(s)
+}
+
 type AutoApprover interface {
 	CanBeAutoApprover() bool
 	UnmarshalJSON([]byte) error
-}
-
-// AutoApproverEnc is used to deserialize a AutoApprover.
-type AutoApproverEnc struct{ AutoApprover }
-
-func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
-	// TODO(kradalby): use encoding/json/v2 (go-json-experiment)
-	dec := json.NewDecoder(bytes.NewReader(b))
-	var v any
-	if err := dec.Decode(&v); err != nil {
-		return err
-	}
-	switch val := v.(type) {
-	case string:
-		switch {
-		case isUser(val):
-			ve.AutoApprover = ptr.To(Username(val))
-		case isGroup(val):
-			ve.AutoApprover = ptr.To(Group(val))
-		case isTag(val):
-			ve.AutoApprover = ptr.To(Tag(val))
-		}
-	default:
-		return fmt.Errorf("type %T not supported", val)
-	}
-	return nil
 }
 
 type AutoApprovers []AutoApprover
@@ -597,6 +576,33 @@ func (aa *AutoApprovers) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func parseAutoApprover(s string) (AutoApprover, error) {
+	switch {
+	case isUser(s):
+		return ptr.To(Username(s)), nil
+	case isGroup(s):
+		return ptr.To(Group(s)), nil
+	case isTag(s):
+		return ptr.To(Tag(s)), nil
+	}
+	return nil, fmt.Errorf("unsupported autoapprover type: %q", s)
+}
+
+// AutoApproverEnc is used to deserialize a AutoApprover.
+type AutoApproverEnc struct{ AutoApprover }
+
+func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
+	ptr, err := unmarshalPointer[AutoApprover](
+		b,
+		parseAutoApprover,
+	)
+	if err != nil {
+		return err
+	}
+	ve.AutoApprover = ptr
+	return nil
+}
+
 type Owner interface {
 	CanBeTagOwner() bool
 	UnmarshalJSON([]byte) error
@@ -606,23 +612,14 @@ type Owner interface {
 type OwnerEnc struct{ Owner }
 
 func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
-	// TODO(kradalby): use encoding/json/v2 (go-json-experiment)
-	dec := json.NewDecoder(bytes.NewReader(b))
-	var v any
-	if err := dec.Decode(&v); err != nil {
+	ptr, err := unmarshalPointer[Owner](
+		b,
+		parseOwner,
+	)
+	if err != nil {
 		return err
 	}
-	switch val := v.(type) {
-	case string:
-		switch {
-		case isUser(val):
-			ve.Owner = ptr.To(Username(val))
-		case isGroup(val):
-			ve.Owner = ptr.To(Group(val))
-		}
-	default:
-		return fmt.Errorf("type %T not supported", val)
-	}
+	ve.Owner = ptr
 	return nil
 }
 
@@ -640,6 +637,16 @@ func (o *Owners) UnmarshalJSON(b []byte) error {
 		(*o)[i] = owner.Owner
 	}
 	return nil
+}
+
+func parseOwner(s string) (Owner, error) {
+	switch {
+	case isUser(s):
+		return ptr.To(Username(s)), nil
+	case isGroup(s):
+		return ptr.To(Group(s)), nil
+	}
+	return nil, fmt.Errorf("unsupported owner type: %q", s)
 }
 
 type Usernames []Username
