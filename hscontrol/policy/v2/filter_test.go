@@ -11,7 +11,7 @@ import (
 
 func TestParsing(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "testuser@"},
+		{Model: gorm.Model{ID: 1}, Name: "testuser"},
 	}
 	tests := []struct {
 		name    string

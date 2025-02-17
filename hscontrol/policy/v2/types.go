@@ -3,7 +3,6 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -76,36 +75,37 @@ func (u Username) CanBeAutoApprover() bool {
 	return true
 }
 
-var (
-	ErrorNoUserMatching       = errors.New("no user matching")
-	ErrorMultipleUserMatching = errors.New("multiple users matching")
-)
-
 // resolveUser attempts to find a user in the provided [types.Users] slice that matches the Username.
 // It prioritizes matching the ProviderIdentifier, and if not found, it falls back to matching the Email or Name.
 // If no matching user is found, it returns an error indicating no user matching.
 // If multiple matching users are found, it returns an error indicating multiple users matching.
 // It returns the matched types.User and a nil error if exactly one match is found.
 func (u Username) resolveUser(users types.Users) (types.User, error) {
-	var potentialUsers []types.User
+	var potentialUsers types.Users
+
+	// At parsetime, we require all usernames to contain an "@" character, if the
+	// username token does not naturally do so (like email), the user have to
+	// add it to the end of the username. We strip it here as we do not expect the
+	// usernames to be stored with the "@".
+	uTrimmed := strings.TrimSuffix(u.String(), "@")
 
 	for _, user := range users {
-		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == u.String() {
+		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == uTrimmed {
 			// Prioritize ProviderIdentifier match and exit early
 			return user, nil
 		}
 
-		if user.Email == u.String() || user.Name == u.String() {
+		if user.Email == uTrimmed || user.Name == uTrimmed {
 			potentialUsers = append(potentialUsers, user)
 		}
 	}
 
 	if len(potentialUsers) == 0 {
-		return types.User{}, fmt.Errorf("user with token %q not found: %w", u.String(), ErrorNoUserMatching)
+		return types.User{}, fmt.Errorf("user with token %q not found", u.String())
 	}
 
 	if len(potentialUsers) > 1 {
-		return types.User{}, fmt.Errorf("multiple users with token %q found: %w", u.String(), ErrorMultipleUserMatching)
+		return types.User{}, fmt.Errorf("multiple users with token %q found: %s", u.String(), potentialUsers.String())
 	}
 
 	return potentialUsers[0], nil

@@ -59,6 +59,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 		"group:other": [
 			"otheruser@headscale.net",
 		],
+		"group:noat": [
+			"noat@",
+		],
 	},
 
 	"tagOwners": {
@@ -137,6 +140,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				Groups: Groups{
 					Group("group:example"): []Username{Username("testuser@headscale.net")},
 					Group("group:other"):   []Username{Username("otheruser@headscale.net")},
+					Group("group:noat"):    []Username{Username("noat@")},
 				},
 				TagOwners: TagOwners{
 					Tag("tag:user"):         Owners{up("testuser@headscale.net")},
@@ -315,7 +319,6 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			// wantErr: `ParseAddr("10.0"): IPv4 address too short`,
 			wantErr: `Hostname "derp" contains an invalid IP address: "10.0"`,
 		},
 		{
@@ -329,6 +332,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `Hostname "derp" contains an invalid IP address: "10.0/42"`,
 		},
+		// TODO(kradalby): Figure out why this doesnt work.
 		// 		{
 		// 			name: "invalid-hostname",
 		// 			input: `
@@ -429,7 +433,7 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "username",
-			toResolve: ptr.To(Username("testuser")),
+			toResolve: ptr.To(Username("testuser@")),
 			nodes: types.Nodes{
 				// Not matching other user
 				{
@@ -570,7 +574,7 @@ func TestResolvePolicy(t *testing.T) {
 			},
 			pol: &Policy{
 				Groups: Groups{
-					"group:testgroup": Usernames{"groupuser1", "groupuser2"},
+					"group:testgroup": Usernames{"groupuser1@", "groupuser2@"},
 				},
 			},
 			want: []netip.Prefix{mp("100.100.101.203/32"), mp("100.100.101.204/32")},
@@ -582,14 +586,14 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "invalid-username",
-			toResolve: ptr.To(Username("invaliduser")),
+			toResolve: ptr.To(Username("invaliduser@")),
 			nodes: types.Nodes{
 				{
 					User: users["testuser"],
 					IPv4: ap("100.100.101.103"),
 				},
 			},
-			wantErr: `user with token "invaliduser" not found`,
+			wantErr: `user with token "invaliduser@" not found`,
 		},
 		{
 			name:      "invalid-tag",
@@ -685,7 +689,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Username("user1"))},
+						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
 					},
 				},
 			},
@@ -699,8 +703,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Username("user1"))},
-						mp("10.0.1.0/24"): {ptr.To(Username("user2"))},
+						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
+						mp("10.0.1.0/24"): {ptr.To(Username("user2@"))},
 					},
 				},
 			},
@@ -714,7 +718,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 			name: "exit-node",
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
-					ExitNode: AutoApprovers{ptr.To(Username("user1"))},
+					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
 				},
 			},
 			want: map[netip.Prefix]*netipx.IPSet{
@@ -727,7 +731,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 			name: "group-route",
 			policy: &Policy{
 				Groups: Groups{
-					"group:testgroup": Usernames{"user1", "user2"},
+					"group:testgroup": Usernames{"user1@", "user2@"},
 				},
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
@@ -745,15 +749,15 @@ func TestResolveAutoApprovers(t *testing.T) {
 			policy: &Policy{
 				TagOwners: TagOwners{
 					"tag:testtag": Owners{
-						ptr.To(Username("user1")),
-						ptr.To(Username("user2")),
+						ptr.To(Username("user1@")),
+						ptr.To(Username("user2@")),
 					},
 					"tag:exittest": Owners{
 						ptr.To(Group("group:exitgroup")),
 					},
 				},
 				Groups: Groups{
-					"group:exitgroup": Usernames{"user2"},
+					"group:exitgroup": Usernames{"user2@"},
 				},
 				AutoApprovers: AutoApproverPolicy{
 					ExitNode: AutoApprovers{ptr.To(Tag("tag:exittest"))},
@@ -778,9 +782,9 @@ func TestResolveAutoApprovers(t *testing.T) {
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
 						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
-						mp("10.0.1.0/24"): {ptr.To(Username("user3"))},
+						mp("10.0.1.0/24"): {ptr.To(Username("user3@"))},
 					},
-					ExitNode: AutoApprovers{ptr.To(Username("user1"))},
+					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
 				},
 			},
 			want: map[netip.Prefix]*netipx.IPSet{
@@ -796,7 +800,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Username("invalid"))},
+						mp("10.0.0.0/24"): {ptr.To(Username("invalid@"))},
 					},
 				},
 			},
@@ -839,9 +843,9 @@ func ipSetComparer(x, y *netipx.IPSet) bool {
 
 func TestNodeCanApproveRoute(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1@"},
-		{Model: gorm.Model{ID: 2}, Name: "user2@"},
-		{Model: gorm.Model{ID: 3}, Name: "user3@"},
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+		{Model: gorm.Model{ID: 3}, Name: "user3"},
 	}
 
 	nodes := types.Nodes{
@@ -1002,7 +1006,7 @@ func TestResolveTagOwners(t *testing.T) {
 			name: "single-tag-owner",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user1"))},
+					Tag("tag:test"): Owners{ptr.To(Username("user1@"))},
 				},
 			},
 			want: map[Tag]*netipx.IPSet{
@@ -1014,7 +1018,7 @@ func TestResolveTagOwners(t *testing.T) {
 			name: "multiple-tag-owners",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user1")), ptr.To(Username("user2"))},
+					Tag("tag:test"): Owners{ptr.To(Username("user1")), ptr.To(Username("user2@"))},
 				},
 			},
 			want: map[Tag]*netipx.IPSet{
@@ -1026,7 +1030,7 @@ func TestResolveTagOwners(t *testing.T) {
 			name: "group-tag-owner",
 			policy: &Policy{
 				Groups: Groups{
-					"group:testgroup": Usernames{"user1", "user2"},
+					"group:testgroup": Usernames{"user1@", "user2@"},
 				},
 				TagOwners: TagOwners{
 					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
@@ -1041,7 +1045,7 @@ func TestResolveTagOwners(t *testing.T) {
 			name: "invalid-user",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("invalid"))},
+					Tag("tag:test"): Owners{ptr.To(Username("invalid@"))},
 				},
 			},
 			want:    nil,
@@ -1051,7 +1055,7 @@ func TestResolveTagOwners(t *testing.T) {
 			name: "invalid-group",
 			policy: &Policy{
 				Groups: Groups{
-					"group:testgroup": Usernames{"invalid"},
+					"group:testgroup": Usernames{"invalid@"},
 				},
 				TagOwners: TagOwners{
 					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
@@ -1080,9 +1084,9 @@ func TestResolveTagOwners(t *testing.T) {
 
 func TestNodeCanHaveTag(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1@"},
-		{Model: gorm.Model{ID: 2}, Name: "user2@"},
-		{Model: gorm.Model{ID: 3}, Name: "user3@"},
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+		{Model: gorm.Model{ID: 3}, Name: "user3"},
 	}
 
 	nodes := types.Nodes{
