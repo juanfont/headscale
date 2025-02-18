@@ -487,7 +487,15 @@ func parseAlias(vs string) (Alias, error) {
 		return ptr.To(Host(vs)), nil
 	}
 
-	return nil, fmt.Errorf("unable to determine Alias type for %q", vs)
+	return nil, fmt.Errorf(`Invalid alias %q. An alias must be one of the following types:
+- wildcard (*)
+- user (containing an "@")
+- group (starting with "group:")
+- tag (starting with "tag:")
+- autogroup (starting with "autogroup:")
+- host
+
+Please check the format and try again.`, vs)
 }
 
 // AliasEnc is used to deserialize a Alias.
@@ -587,7 +595,13 @@ func parseAutoApprover(s string) (AutoApprover, error) {
 	case isTag(s):
 		return ptr.To(Tag(s)), nil
 	}
-	return nil, fmt.Errorf("unsupported autoapprover type: %q", s)
+
+	return nil, fmt.Errorf(`Invalid AutoApprover %q. An alias must be one of the following types:
+- user (containing an "@")
+- group (starting with "group:")
+- tag (starting with "tag:")
+
+Please check the format and try again.`, s)
 }
 
 // AutoApproverEnc is used to deserialize a AutoApprover.
@@ -648,7 +662,12 @@ func parseOwner(s string) (Owner, error) {
 	case isGroup(s):
 		return ptr.To(Group(s)), nil
 	}
-	return nil, fmt.Errorf("unsupported owner type: %q", s)
+	return nil, fmt.Errorf(`Invalid Owner %q. An alias must be one of the following types:
+- user (containing an "@")
+- group (starting with "group:")
+- tag (starting with "tag:")
+
+Please check the format and try again.`, s)
 }
 
 type Usernames []Username
@@ -726,6 +745,10 @@ type TagOwners map[Tag]Owners
 // The resulting map can be used to quickly look up the IPSet for a given Tag.
 // It is intended for internal use in a PolicyManager.
 func resolveTagOwners(p *Policy, users types.Users, nodes types.Nodes) (map[Tag]*netipx.IPSet, error) {
+	if p == nil {
+		return nil, nil
+	}
+
 	ret := make(map[Tag]*netipx.IPSet)
 
 	for tag, owners := range p.TagOwners {
@@ -737,10 +760,8 @@ func resolveTagOwners(p *Policy, users types.Users, nodes types.Nodes) (map[Tag]
 				// Should never happen
 				return nil, fmt.Errorf("owner %v is not an Alias", owner)
 			}
-			resolved, err := o.Resolve(p, users, nodes)
-			if err != nil {
-				return nil, err
-			}
+			// If it does not resolve, that means the tag is not associated with any IP addresses.
+			resolved, _ := o.Resolve(p, users, nodes)
 			ips.AddSet(resolved)
 		}
 
@@ -764,6 +785,10 @@ type AutoApproverPolicy struct {
 // The resulting map can be used to quickly look up if a node can self-approve a route.
 // It is intended for internal use in a PolicyManager.
 func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[netip.Prefix]*netipx.IPSet, error) {
+	if p == nil {
+		return nil, nil
+	}
+
 	routes := make(map[netip.Prefix]*netipx.IPSetBuilder)
 
 	for prefix, autoApprovers := range p.AutoApprovers.Routes {
@@ -776,10 +801,8 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[
 				// Should never happen
 				return nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
 			}
-			ips, err := aa.Resolve(p, users, nodes)
-			if err != nil {
-				return nil, err
-			}
+			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
+			ips, _ := aa.Resolve(p, users, nodes)
 			routes[prefix].AddSet(ips)
 		}
 	}
@@ -792,10 +815,8 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[
 				// Should never happen
 				return nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
 			}
-			ips, err := aa.Resolve(p, users, nodes)
-			if err != nil {
-				return nil, err
-			}
+			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
+			ips, _ := aa.Resolve(p, users, nodes)
 			exitNodeSetBuilder.AddSet(ips)
 		}
 	}
@@ -928,6 +949,10 @@ func (u SSHUser) String() string {
 }
 
 func policyFromBytes(b []byte) (*Policy, error) {
+	if b == nil || len(b) == 0 {
+		return nil, nil
+	}
+
 	var policy Policy
 	ast, err := hujson.Parse(b)
 	if err != nil {
