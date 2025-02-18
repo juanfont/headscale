@@ -14,6 +14,13 @@
   - View of config, policy, filter, ssh policy per node, connected nodes and
     DERPmap
 
+## 0.25.1 (2025-02-18)
+
+### Changes
+
+- Fix issue where registration errors are sent correctly
+  [#2435](https://github.com/juanfont/headscale/pull/2435)
+
 ## 0.25.0 (2025-02-11)
 
 ### BREAKING

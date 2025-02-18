@@ -228,3 +228,99 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 		assert.Equal(t, "user1@test.no", status.User[status.Self.UserID].LoginName)
 	}
 }
+
+func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	for _, https := range []bool{true, false} {
+		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
+			scenario, err := NewScenario(dockertestMaxWait())
+			assertNoErr(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
+
+			spec := map[string]int{
+				"user1": len(MustTestVersions),
+				"user2": len(MustTestVersions),
+			}
+
+			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
+			if https {
+				opts = append(opts, []hsic.Option{
+					hsic.WithTLS(),
+				}...)
+			}
+
+			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, opts...)
+			assertNoErrHeadscaleEnv(t, err)
+
+			allClients, err := scenario.ListTailscaleClients()
+			assertNoErrListClients(t, err)
+
+			err = scenario.WaitForTailscaleSync()
+			assertNoErrSync(t, err)
+
+			// assertClientsState(t, allClients)
+
+			clientIPs := make(map[TailscaleClient][]netip.Addr)
+			for _, client := range allClients {
+				ips, err := client.IPs()
+				if err != nil {
+					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
+				}
+				clientIPs[client] = ips
+			}
+
+			headscale, err := scenario.Headscale()
+			assertNoErrGetHeadscale(t, err)
+
+			listNodes, err := headscale.ListNodes()
+			assert.Equal(t, len(listNodes), len(allClients))
+			nodeCountBeforeLogout := len(listNodes)
+			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
+
+			for _, client := range allClients {
+				err := client.Logout()
+				if err != nil {
+					t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
+				}
+			}
+
+			err = scenario.WaitForTailscaleLogout()
+			assertNoErrLogout(t, err)
+
+			t.Logf("all clients logged out")
+
+			// if the server is not running with HTTPS, we have to wait a bit before
+			// reconnection as the newest Tailscale client has a measure that will only
+			// reconnect over HTTPS if they saw a noise connection previously.
+			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
+			// https://github.com/juanfont/headscale/issues/2164
+			if !https {
+				time.Sleep(5 * time.Minute)
+			}
+
+			for userName := range spec {
+				key, err := scenario.CreatePreAuthKey(userName, true, false)
+				if err != nil {
+					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
+				}
+
+				// Expire the key so it can't be used
+				_, err = headscale.Execute(
+					[]string{
+						"headscale",
+						"preauthkeys",
+						"--user",
+						userName,
+						"expire",
+						key.Key,
+					})
+				assertNoErr(t, err)
+
+				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+				assert.ErrorContains(t, err, "authkey expired")
+			}
+		})
+	}
+}

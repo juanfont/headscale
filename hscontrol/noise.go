@@ -230,6 +230,10 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	}
 }
 
+func regErr(err error) *tailcfg.RegisterResponse {
+	return &tailcfg.RegisterResponse{Error: err.Error()}
+}
+
 // NoiseRegistrationHandler handles the actual registration process of a node.
 func (ns *noiseServer) NoiseRegistrationHandler(
 	writer http.ResponseWriter,
@@ -241,52 +245,47 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		return
 	}
 
-	registerRequest, registerResponse, err := func() (*tailcfg.RegisterRequest, []byte, error) {
+	registerRequest, registerResponse := func() (*tailcfg.RegisterRequest, *tailcfg.RegisterResponse) {
+		var resp *tailcfg.RegisterResponse
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
-			return nil, nil, err
+			return &tailcfg.RegisterRequest{}, regErr(err)
 		}
-		var registerRequest tailcfg.RegisterRequest
-		if err := json.Unmarshal(body, &registerRequest); err != nil {
-			return nil, nil, err
+		var regReq tailcfg.RegisterRequest
+		if err := json.Unmarshal(body, &regReq); err != nil {
+			return &regReq, regErr(err)
 		}
 
-		ns.nodeKey = registerRequest.NodeKey
+		ns.nodeKey = regReq.NodeKey
 
-		resp, err := ns.headscale.handleRegister(req.Context(), registerRequest, ns.conn.Peer())
-		// TODO(kradalby): Here we could have two error types, one that is surfaced to the client
-		// and one that returns 500.
+		resp, err = ns.headscale.handleRegister(req.Context(), regReq, ns.conn.Peer())
 		if err != nil {
-			return nil, nil, err
+			var httpErr HTTPError
+			if errors.As(err, &httpErr) {
+				resp = &tailcfg.RegisterResponse{
+					Error: httpErr.Msg,
+				}
+				return &regReq, resp
+			} else {
+			}
+			return &regReq, regErr(err)
 		}
 
-		respBody, err := json.Marshal(resp)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		return &registerRequest, respBody, nil
+		return &regReq, resp
 	}()
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Error handling registration")
-		http.Error(writer, "Internal server error", http.StatusInternalServerError)
-	}
 
 	// Reject unsupported versions
 	if rejectUnsupported(writer, registerRequest.Version, ns.machineKey, registerRequest.NodeKey) {
 		return
 	}
 
+	respBody, err := json.Marshal(registerResponse)
+	if err != nil {
+		httpError(writer, err)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	_, err = writer.Write(registerResponse)
-	if err != nil {
-		log.Error().
-			Caller().
-			Err(err).
-			Msg("Failed to write response")
-	}
+	writer.Write(respBody)
 }
