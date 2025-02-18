@@ -191,10 +191,14 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 		var magicDNSDomains []dnsname.FQDN
 		if cfg.PrefixV4 != nil {
-			magicDNSDomains = append(magicDNSDomains, util.GenerateIPv4DNSRootDomain(*cfg.PrefixV4)...)
+			magicDNSDomains = append(
+				magicDNSDomains,
+				util.GenerateIPv4DNSRootDomain(*cfg.PrefixV4)...)
 		}
 		if cfg.PrefixV6 != nil {
-			magicDNSDomains = append(magicDNSDomains, util.GenerateIPv6DNSRootDomain(*cfg.PrefixV6)...)
+			magicDNSDomains = append(
+				magicDNSDomains,
+				util.GenerateIPv6DNSRootDomain(*cfg.PrefixV6)...)
 		}
 
 		// we might have routes already from Split DNS
@@ -456,11 +460,13 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	router := mux.NewRouter()
 	router.Use(prometheusMiddleware)
 
-	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).Methods(http.MethodPost, http.MethodGet)
+	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).
+		Methods(http.MethodPost, http.MethodGet)
 
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/register/{registration_id}", h.authProvider.RegisterHandler).Methods(http.MethodGet)
+	router.HandleFunc("/register/{registration_id}", h.authProvider.RegisterHandler).
+		Methods(http.MethodGet)
 
 	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
 		router.HandleFunc("/oidc/callback", provider.OIDCCallbackHandler).Methods(http.MethodGet)
@@ -495,7 +501,11 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 // TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
 // Maybe we should attempt a new in memory state and not go via the DB?
-func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+func usersChangedHook(
+	db *db.HSDatabase,
+	polMan policy.PolicyManager,
+	notif *notifier.Notifier,
+) error {
 	users, err := db.ListUsers()
 	if err != nil {
 		return err
@@ -517,7 +527,11 @@ func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *not
 // TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
 // Maybe we should attempt a new in memory state and not go via the DB?
 // A bool is returned indicating if a full update was sent to all nodes
-func nodesChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) (bool, error) {
+func nodesChangedHook(
+	db *db.HSDatabase,
+	polMan policy.PolicyManager,
+	notif *notifier.Notifier,
+) (bool, error) {
 	nodes, err := db.ListNodes()
 	if err != nil {
 		return false, err
@@ -1134,9 +1148,10 @@ func (h *Headscale) loadPolicyManager() error {
 
 		h.polMan, err = policy.NewPolicyManager(pol, users, nodes)
 		if err != nil {
-			errOut = fmt.Errorf("creating policy manager: %w", err)
+			errOut = fmt.Errorf("creating policy manager v2: %w", err)
 			return
 		}
+		log.Info().Msgf("Using policy manager version: %d", h.polMan.Version())
 
 		if len(nodes) > 0 {
 			_, err = h.polMan.SSHPolicy(nodes[0])

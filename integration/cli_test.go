@@ -11,7 +11,7 @@ import (
 	tcmp "github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -915,7 +915,7 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		policy  *policy.ACLPolicy
+		policy  *policyv1.ACLPolicy
 		wantTag bool
 	}{
 		{
@@ -924,8 +924,8 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 		},
 		{
 			name: "with-policy-email",
-			policy: &policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
@@ -940,8 +940,8 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 		},
 		{
 			name: "with-policy-username",
-			policy: &policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
@@ -956,11 +956,11 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 		},
 		{
 			name: "with-policy-groups",
-			policy: &policy.ACLPolicy{
-				Groups: policy.Groups{
+			policy: &policyv1.ACLPolicy{
+				Groups: policyv1.Groups{
 					"group:admins": []string{"user1"},
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
@@ -1742,8 +1742,8 @@ func TestPolicyCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	p := policy.ACLPolicy{
-		ACLs: []policy.ACL{
+	p := policyv1.ACLPolicy{
+		ACLs: []policyv1.ACL{
 			{
 				Action:       "accept",
 				Sources:      []string{"*"},
@@ -1778,7 +1778,7 @@ func TestPolicyCommand(t *testing.T) {
 
 	// Get the current policy and check
 	// if it is the same as the one we set.
-	var output *policy.ACLPolicy
+	var output *policyv1.ACLPolicy
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1822,8 +1822,8 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	p := policy.ACLPolicy{
-		ACLs: []policy.ACL{
+	p := policyv1.ACLPolicy{
+		ACLs: []policyv1.ACL{
 			{
 				// This is an unknown action, so it will return an error
 				// and the config will not be applied.

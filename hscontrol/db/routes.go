@@ -629,8 +629,6 @@ func EnableAutoApprovedRoutes(
 		return fmt.Errorf("getting advertised routes for node(%s %d): %w", node.Hostname, node.ID, err)
 	}
 
-	log.Trace().Interface("routes", routes).Msg("routes for autoapproving")
-
 	var approvedRoutes types.Routes
 
 	for _, advertisedRoute := range routes {
@@ -638,30 +636,8 @@ func EnableAutoApprovedRoutes(
 			continue
 		}
 
-		routeApprovers := polMan.ApproversForRoute(netip.Prefix(advertisedRoute.Prefix))
-
-		log.Trace().
-			Str("node", node.Hostname).
-			Uint("user.id", node.User.ID).
-			Strs("routeApprovers", routeApprovers).
-			Str("prefix", netip.Prefix(advertisedRoute.Prefix).String()).
-			Msg("looking up route for autoapproving")
-
-		for _, approvedAlias := range routeApprovers {
-			if approvedAlias == node.User.Username() {
-				approvedRoutes = append(approvedRoutes, advertisedRoute)
-			} else {
-				// TODO(kradalby): figure out how to get this to depend on less stuff
-				approvedIps, err := polMan.ExpandAlias(approvedAlias)
-				if err != nil {
-					return fmt.Errorf("expanding alias %q for autoApprovers: %w", approvedAlias, err)
-				}
-
-				// approvedIPs should contain all of node's IPs if it matches the rule, so check for first
-				if approvedIps.Contains(*node.IPv4) {
-					approvedRoutes = append(approvedRoutes, advertisedRoute)
-				}
-			}
+		if polMan.NodeCanApproveRoute(node, netip.Prefix(advertisedRoute.Prefix)) {
+			approvedRoutes = append(approvedRoutes, advertisedRoute)
 		}
 	}
 
