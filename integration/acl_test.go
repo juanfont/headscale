@@ -275,6 +275,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			err = scenario.CreateHeadscaleEnv(spec,
 				[]tsic.Option{},
 				hsic.WithACLPolicy(&testCase.policy),
+				hsic.WithTLS(),
+				hsic.WithEmbeddedDERPServerOnly(),
 			)
 			require.NoError(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
@@ -1046,6 +1048,8 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_POLICY_MODE": "database",
 		}),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
 	)
 	require.NoError(t, err)
 

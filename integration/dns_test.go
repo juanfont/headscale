@@ -26,7 +26,11 @@ func TestResolveMagicDNS(t *testing.T) {
 		"magicdns2": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("magicdns"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("magicdns"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -373,7 +377,11 @@ func TestValidateResolvConf(t *testing.T) {
 				"resolvconf2": 3,
 			}
 
-			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("resolvconf"), hsic.WithConfigEnv(tt.conf))
+			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("resolvconf"),
+				hsic.WithConfigEnv(tt.conf),
+				hsic.WithTLS(),
+				hsic.WithEmbeddedDERPServerOnly(),
+			)
 			assertNoErrHeadscaleEnv(t, err)
 
 			allClients, err := scenario.ListTailscaleClients()

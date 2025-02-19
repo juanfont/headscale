@@ -207,7 +207,8 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 		hsic.WithTestName("ephemeral2006"),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": "1m6s",
-		}),
+		}), hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -317,7 +318,11 @@ func TestPingAllByHostname(t *testing.T) {
 		"user4": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyname"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("pingallbyname"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -365,7 +370,11 @@ func TestTaildrop(t *testing.T) {
 		"taildrop": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("taildrop"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("taildrop"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -534,7 +543,11 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		user: 3,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("updatehostname"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("updatehostname"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -654,7 +667,11 @@ func TestExpireNode(t *testing.T) {
 		"user1": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("expirenode"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("expirenode"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -780,7 +797,11 @@ func TestNodeOnlineStatus(t *testing.T) {
 		"user1": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("online"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("online"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()

@@ -163,7 +163,6 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
 		hsic.WithTestName("keyrelognewuser"),
-		hsic.WithTLS(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
