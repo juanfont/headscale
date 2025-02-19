@@ -40,7 +40,11 @@ func TestEnablingRoutes(t *testing.T) {
 		user: 3,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("clienableroute"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -262,7 +266,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		user: 3,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("clienableroute"),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -834,25 +840,29 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 		user: 1,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
-				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})},
+		hsic.WithTestName("clienableroute"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithACLPolicy(
+			&policy.ACLPolicy{
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:approve": {user},
+				},
+				AutoApprovers: policy.AutoApprovers{
+					Routes: map[string][]string{
+						expectedRoutes: {"tag:approve"},
+					},
 				},
 			},
-			TagOwners: map[string][]string{
-				"tag:approve": {user},
-			},
-			AutoApprovers: policy.AutoApprovers{
-				Routes: map[string][]string{
-					expectedRoutes: {"tag:approve"},
-				},
-			},
-		},
-	))
+		))
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -976,25 +986,29 @@ func TestAutoApprovedSubRoute2068(t *testing.T) {
 		user: 1,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
-				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})},
+		hsic.WithTestName("clienableroute"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithACLPolicy(
+			&policy.ACLPolicy{
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:approve": {user},
+				},
+				AutoApprovers: policy.AutoApprovers{
+					Routes: map[string][]string{
+						"10.42.0.0/16": {"tag:approve"},
+					},
 				},
 			},
-			TagOwners: map[string][]string{
-				"tag:approve": {user},
-			},
-			AutoApprovers: policy.AutoApprovers{
-				Routes: map[string][]string{
-					"10.42.0.0/16": {"tag:approve"},
-				},
-			},
-		},
-	))
+		))
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -1067,30 +1081,33 @@ func TestSubnetRouteACL(t *testing.T) {
 		user: 2,
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-		&policy.ACLPolicy{
-			Groups: policy.Groups{
-				"group:admins": {user},
-			},
-			ACLs: []policy.ACL{
-				{
-					Action:       "accept",
-					Sources:      []string{"group:admins"},
-					Destinations: []string{"group:admins:*"},
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"),
+		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithACLPolicy(
+			&policy.ACLPolicy{
+				Groups: policy.Groups{
+					"group:admins": {user},
 				},
-				{
-					Action:       "accept",
-					Sources:      []string{"group:admins"},
-					Destinations: []string{"10.33.0.0/16:*"},
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"group:admins"},
+						Destinations: []string{"group:admins:*"},
+					},
+					{
+						Action:       "accept",
+						Sources:      []string{"group:admins"},
+						Destinations: []string{"10.33.0.0/16:*"},
+					},
+					// {
+					// 	Action:       "accept",
+					// 	Sources:      []string{"group:admins"},
+					// 	Destinations: []string{"0.0.0.0/0:*"},
+					// },
 				},
-				// {
-				// 	Action:       "accept",
-				// 	Sources:      []string{"group:admins"},
-				// 	Destinations: []string{"0.0.0.0/0:*"},
-				// },
 			},
-		},
-	))
+		))
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
