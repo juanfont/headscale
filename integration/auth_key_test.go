@@ -32,6 +32,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			if https {
 				opts = append(opts, []hsic.Option{
 					hsic.WithTLS(),
+					hsic.WithEmbeddedDERPServerOnly(),
 				}...)
 			}
 
@@ -164,6 +165,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
 		hsic.WithTestName("keyrelognewuser"),
 		hsic.WithTLS(),
+		hsic.WithEmbeddedDERPServerOnly(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
