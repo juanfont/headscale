@@ -93,7 +93,7 @@ func TestEnablingRoutes(t *testing.T) {
 				"headscale",
 				"nodes",
 				"approve-route",
-				"--i",
+				"--identifier",
 				strconv.Itoa(int(node.GetId())),
 				"--routes",
 				strings.Join(node.AvailableRoutes, ","),
