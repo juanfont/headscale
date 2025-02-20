@@ -7,6 +7,7 @@ dns:
   magic_dns: true
   base_domain: example.com
 
+  override_local_dns: false
   nameservers:
     global:
       - 1.1.1.1
