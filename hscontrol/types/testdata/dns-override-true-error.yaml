@@ -13,4 +13,4 @@ server_url: "https://server.derp.no"
 dns:
   magic_dns: true
   base_domain: derp.no
-  override_local_dns: false
+  override_local_dns: true

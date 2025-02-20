@@ -23,6 +23,7 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_PREFIXES_V6":                       "fd7a:115c:a1e0::/48",
 		"HEADSCALE_DNS_BASE_DOMAIN":                   "headscale.net",
 		"HEADSCALE_DNS_MAGIC_DNS":                     "true",
+		"HEADSCALE_DNS_OVERRIDE_LOCAL_DNS":            "false",
 		"HEADSCALE_DNS_NAMESERVERS_GLOBAL":            "127.0.0.11 1.1.1.1",
 		"HEADSCALE_PRIVATE_KEY_PATH":                  "/tmp/private.key",
 		"HEADSCALE_NOISE_PRIVATE_KEY_PATH":            "/tmp/noise_private.key",

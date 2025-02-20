@@ -92,6 +92,8 @@ The new policy can be used by setting the environment variable
 - node FQDNs in the netmap will now contain a dot (".") at the end. This aligns
   with behaviour of tailscale.com
   [#2503](https://github.com/juanfont/headscale/pull/2503)
+- Restore support for "Override local DNS"
+  [#2438](https://github.com/juanfont/headscale/pull/2438)
 
 ## 0.25.1 (2025-02-25)
 

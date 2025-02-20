@@ -12,5 +12,9 @@ server_url: "https://server.derp.no"
 
 dns:
   magic_dns: true
-  base_domain: derp.no
-  override_local_dns: false
+  base_domain: derp2.no
+  override_local_dns: true
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 1.0.0.1
