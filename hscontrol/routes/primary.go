@@ -112,6 +112,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 		}
 	}
 
+	// Populate the quick lookup index for primary routes
 	for _, nodeID := range pr.primaries {
 		pr.isPrimary[nodeID] = true
 	}
