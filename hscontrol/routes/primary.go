@@ -66,6 +66,9 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	// as the primary route.
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
 	sort.Sort(ids)
+
+	// Create a map of prefixes to nodes that serve them so we
+	// can determine the primary route for each prefix.
 	for _, id := range ids {
 		routes := pr.routes[id]
 		for route := range routes {
