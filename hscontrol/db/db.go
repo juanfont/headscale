@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/netip"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -617,6 +618,62 @@ AND auth_key_id NOT IN (
 							return fmt.Errorf("setting auth_key to null on nodes with non-existing keys: %w", err)
 						}
 					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Migrate all routes from the Route table to the new field ApprovedRoutes
+			// in the Node table. Then drop the Route table.
+			{
+				ID: "202502131714",
+				Migrate: func(tx *gorm.DB) error {
+					if !tx.Migrator().HasColumn(&types.Node{}, "approved_routes") {
+						err := tx.Migrator().AddColumn(&types.Node{}, "approved_routes")
+						if err != nil {
+							return fmt.Errorf("adding column types.Node: %w", err)
+						}
+					}
+					// Ensure the ApprovedRoutes exist.
+					// err := tx.AutoMigrate(&types.Node{})
+					// if err != nil {
+					// 	return fmt.Errorf("automigrating types.Node: %w", err)
+					// }
+
+					nodeRoutes := map[uint64][]netip.Prefix{}
+
+					var routes []types.Route
+					err = tx.Find(&routes).Error
+					if err != nil {
+						return fmt.Errorf("fetching routes: %w", err)
+					}
+
+					for _, route := range routes {
+						if route.Enabled {
+							nodeRoutes[route.NodeID] = append(nodeRoutes[route.NodeID], route.Prefix)
+						}
+					}
+
+					for nodeID, routes := range nodeRoutes {
+						slices.SortFunc(routes, util.ComparePrefix)
+						slices.Compact(routes)
+
+						data, err := json.Marshal(routes)
+
+						err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", data).Error
+						if err != nil {
+							return fmt.Errorf("saving approved routes to new column: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				ID: "202502171819",
+				Migrate: func(tx *gorm.DB) error {
+					_ = tx.Migrator().DropColumn(&types.Node{}, "last_seen")
 
 					return nil
 				},
