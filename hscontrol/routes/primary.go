@@ -80,6 +80,10 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 		}
 	}
 
+	// Go through all prefixes and determine the primary route for each.
+	// If the number of routes is below the minimum, remove the primary.
+	// If the current primary is still available, continue.
+	// If the current primary is not available, select a new one.
 	for prefix, nodes := range allPrimaries {
 		if node, ok := pr.primaries[prefix]; ok {
 			if len(nodes) < 2 {
