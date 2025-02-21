@@ -393,9 +393,9 @@ func Test_fullMapResponse(t *testing.T) {
 			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
 			primary := routes.New()
 
-			primary.RegisterRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
+			primary.SetRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
 			for _, peer := range tt.peers {
-				primary.RegisterRoutes(peer.ID, peer.SubnetRoutes()...)
+				primary.SetRoutes(peer.ID, peer.SubnetRoutes()...)
 			}
 
 			mappy := NewMapper(

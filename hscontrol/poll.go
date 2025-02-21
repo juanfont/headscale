@@ -208,7 +208,7 @@ func (m *mapSession) serveLongPoll() {
 			// send a full update to all nodes.
 			// TODO(kradalby): This can likely be made more effective, but likely most
 			// nodes has access to the same routes, so it might not be a big deal.
-			if m.h.primaryRoutes.DeregisterRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+			if m.h.primaryRoutes.SetRoutes(m.node.ID) {
 				ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
 				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 			}
@@ -222,7 +222,10 @@ func (m *mapSession) serveLongPoll() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	m.h.primaryRoutes.RegisterRoutes(m.node.ID, m.node.SubnetRoutes()...)
+	if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+		ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
+		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+	}
 
 	// Upgrade the writer to a ResponseController
 	rc := http.NewResponseController(m.w)
@@ -471,15 +474,24 @@ func (m *mapSession) handleEndpointUpdate() {
 			slices.Compact(newApproved)
 			m.node.ApprovedRoutes = newApproved
 
-			// TODO(kradalby): I am not sure if we need this?
-			// Send an update to the node itself with to ensure it
-			// has an updated packetfilter allowing the new route
-			// if it is defined in the ACL.
-			ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
-			m.h.nodeNotifier.NotifyByNodeID(
-				ctx,
-				types.UpdateSelf(m.node.ID),
-				m.node.ID)
+			if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+				ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
+				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+			} else {
+				ctx := types.NotifyCtx(m.ctx, "cli-approveroutes", m.node.Hostname)
+				m.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(m.node.ID), m.node.ID)
+
+				// TODO(kradalby): I am not sure if we need this?
+				// Send an update to the node itself with to ensure it
+				// has an updated packetfilter allowing the new route
+				// if it is defined in the ACL.
+				ctx = types.NotifyCtx(m.ctx, "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
+				m.h.nodeNotifier.NotifyByNodeID(
+					ctx,
+					types.UpdateSelf(m.node.ID),
+					m.node.ID)
+			}
+
 		}
 
 	}

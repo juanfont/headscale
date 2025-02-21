@@ -100,6 +100,11 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.WriteHeader(http.StatusOK)
 		w.Write(registrationsJSON)
 	}))
+	debug.Handle("routes", "Routes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(h.primaryRoutes.String()))
+	}))
 
 	err := statsviz.Register(debugMux)
 	if err == nil {

@@ -352,8 +352,13 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-approveroutes", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	if api.h.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...) {
+		ctx := types.NotifyCtx(ctx, "poll-primary-change", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+	} else {
+		ctx = types.NotifyCtx(ctx, "cli-approveroutes", node.Hostname)
+		api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	}
 
 	return &v1.ApproveRoutesResponse{Node: node.Proto()}, nil
 }

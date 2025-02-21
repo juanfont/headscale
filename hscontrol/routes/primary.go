@@ -1,11 +1,16 @@
 package routes
 
 import (
+	"fmt"
+	"log"
 	"net/netip"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/util/deephash"
 	"tailscale.com/util/set"
@@ -43,10 +48,18 @@ func New() *PrimaryRoutes {
 // 4. If the primary routes have changed, update the internal state and return true.
 // 5. Otherwise, return false.
 func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
+	defer func() {
+		log.Println()
+		log.Println("CURRENT MAP:")
+		log.Println(pr.stringLocked())
+		log.Println()
+		log.Println()
+	}()
+
 	// reset the primaries map, as we are going to recalculate it.
-	newPrimaries := make(map[netip.Prefix]types.NodeID)
+	allPrimaries := make(map[netip.Prefix][]types.NodeID)
 	pr.isPrimary = make(map[types.NodeID]bool)
-	count := make(map[netip.Prefix]int)
+	changed := false
 
 	// sort the node ids so we can iterate over them in a deterministic order.
 	// this is important so the same node is chosen two times in a row
@@ -54,45 +67,63 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
 	sort.Sort(ids)
 	for _, id := range ids {
-		prefixes := pr.routes[id]
-		for prefix := range prefixes {
-			if _, ok := count[prefix]; !ok {
-				count[prefix] = 1
+		routes := pr.routes[id]
+		for route := range routes {
+			if _, ok := allPrimaries[route]; !ok {
+				allPrimaries[route] = []types.NodeID{id}
 			} else {
-				count[prefix]++
-			}
-			if _, ok := newPrimaries[prefix]; !ok {
-				newPrimaries[prefix] = id
-				pr.isPrimary[id] = true
+				allPrimaries[route] = append(allPrimaries[route], id)
 			}
 		}
 	}
 
-	// A primary is a route that is advertised by at least two nodes.
-	for prefix, c := range count {
-		if c < 2 {
-			delete(newPrimaries, prefix)
+	for prefix, nodes := range allPrimaries {
+		if node, ok := pr.primaries[prefix]; ok {
+			if len(nodes) < 2 {
+				delete(pr.primaries, prefix)
+				changed = true
+				continue
+			}
+
+			// If the current primary is still available, continue.
+			if slices.Contains(nodes, node) {
+				continue
+			}
+
+		}
+		if len(nodes) >= 2 {
+			pr.primaries[prefix] = nodes[0]
+			changed = true
 		}
 	}
 
-	primariesHash := deephash.Hash(&newPrimaries)
-	if primariesHash == pr.primariesHash {
-		return false
+	for prefix := range pr.primaries {
+		if _, ok := allPrimaries[prefix]; !ok {
+			delete(pr.primaries, prefix)
+			changed = true
+		}
 	}
 
-	if len(newPrimaries) == 0 || len(newPrimaries) == len(pr.primaries) {
-		return false
+	for _, nodeID := range pr.primaries {
+		pr.isPrimary[nodeID] = true
 	}
 
-	pr.primaries = newPrimaries
-	pr.primariesHash = primariesHash
-
-	return true
+	return changed
 }
 
-func (pr *PrimaryRoutes) RegisterRoutes(node types.NodeID, prefix ...netip.Prefix) bool {
+func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefix ...netip.Prefix) bool {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
+
+	// If no routes are being set, remove the node from the routes map.
+	if len(prefix) == 0 {
+		log.Printf("Removing node %d from routes", node)
+		if _, ok := pr.routes[node]; ok {
+			delete(pr.routes, node)
+			return pr.updatePrimaryLocked()
+		}
+		return false
+	}
 
 	if _, ok := pr.routes[node]; !ok {
 		pr.routes[node] = make(set.Set[netip.Prefix], len(prefix))
@@ -100,21 +131,6 @@ func (pr *PrimaryRoutes) RegisterRoutes(node types.NodeID, prefix ...netip.Prefi
 
 	for _, p := range prefix {
 		pr.routes[node].Add(p)
-	}
-
-	return pr.updatePrimaryLocked()
-}
-
-func (pr *PrimaryRoutes) DeregisterRoutes(node types.NodeID, prefix ...netip.Prefix) bool {
-	pr.mu.Lock()
-	defer pr.mu.Unlock()
-
-	if _, ok := pr.routes[node]; !ok {
-		return false
-	}
-
-	for _, p := range prefix {
-		pr.routes[node].Delete(p)
 	}
 
 	return pr.updatePrimaryLocked()
@@ -142,4 +158,31 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 	}
 
 	return routes
+}
+
+func (pr *PrimaryRoutes) String() string {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	return pr.stringLocked()
+}
+
+func (pr *PrimaryRoutes) stringLocked() string {
+	var sb strings.Builder
+
+	fmt.Fprintln(&sb, "Available routes:")
+
+	ids := types.NodeIDs(xmaps.Keys(pr.routes))
+	sort.Sort(ids)
+	for _, id := range ids {
+		prefixes := pr.routes[id]
+		fmt.Fprintf(&sb, "\nNode %d: %s", id, strings.Join(util.PrefixesToString(prefixes.Slice()), ", "))
+	}
+
+	fmt.Fprintln(&sb, "\n\nCurrent primary routes:")
+	for route, nodeID := range pr.primaries {
+		fmt.Fprintf(&sb, "\nRoute %s: %d", route, nodeID)
+	}
+
+	return sb.String()
 }

@@ -186,11 +186,11 @@ func TestTailNode(t *testing.T) {
 				TailcfgDNSConfig:    tt.dnsConfig,
 				RandomizeClientPort: false,
 			}
-			_ = primary.RegisterRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
+			_ = primary.SetRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
 
 			// This is a hack to avoid having a second node to test the primary route.
 			// This should be baked into the test case proper if it is extended in the future.
-			_ = primary.RegisterRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
+			_ = primary.SetRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
 			got, err := tailNode(
 				tt.node,
 				0,
