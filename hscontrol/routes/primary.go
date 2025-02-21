@@ -104,6 +104,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 		}
 	}
 
+	// Clean up any remaining primaries that are no longer valid.
 	for prefix := range pr.primaries {
 		if _, ok := allPrimaries[prefix]; !ok {
 			delete(pr.primaries, prefix)
