@@ -37,3 +37,12 @@ func PrefixesToString(prefixes []netip.Prefix) []string {
 	}
 	return ret
 }
+
+func MustStringsToPrefixes(strings []string) []netip.Prefix {
+	var ret []netip.Prefix
+	for _, str := range strings {
+		prefix := netip.MustParsePrefix(str)
+		ret = append(ret, prefix)
+	}
+	return ret
+}

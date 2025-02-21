@@ -1,11 +1,11 @@
 package integration
 
 import (
-	"strconv"
-	"strings"
+	"net/netip"
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -69,7 +69,7 @@ func TestEnablingRoutes(t *testing.T) {
 	assertNoErr(t, err)
 
 	for _, node := range nodes {
-		assert.Len(t, node.AvailableRoutes, 3)
+		assert.Len(t, node.AvailableRoutes, 1)
 		assert.Len(t, node.ApprovedRoutes, 0)
 		assert.Len(t, node.SubnetRoutes, 0)
 	}
@@ -88,16 +88,10 @@ func TestEnablingRoutes(t *testing.T) {
 	}
 
 	for _, node := range nodes {
-		_, err = headscale.Execute(
-			[]string{
-				"headscale",
-				"nodes",
-				"approve-route",
-				"--identifier",
-				strconv.Itoa(int(node.GetId())),
-				"--routes",
-				strings.Join(node.AvailableRoutes, ","),
-			})
+		_, err := headscale.ApproveRoutes(
+			node.GetId(),
+			util.MustStringsToPrefixes(node.AvailableRoutes),
+		)
 		assertNoErr(t, err)
 	}
 
@@ -105,9 +99,9 @@ func TestEnablingRoutes(t *testing.T) {
 	assertNoErr(t, err)
 
 	for _, node := range nodes {
-		assert.Len(t, node.AvailableRoutes, 3)
-		assert.Len(t, node.ApprovedRoutes, 3)
-		assert.Len(t, node.SubnetRoutes, 3)
+		assert.Len(t, node.AvailableRoutes, 1)
+		assert.Len(t, node.ApprovedRoutes, 1)
+		assert.Len(t, node.SubnetRoutes, 1)
 	}
 
 	time.Sleep(5 * time.Second)
@@ -120,17 +114,12 @@ func TestEnablingRoutes(t *testing.T) {
 		for _, peerKey := range status.Peers() {
 			peerStatus := status.Peer[peerKey]
 
-			assert.NotNil(t, peerStatus.PrimaryRoutes)
-			if peerStatus.PrimaryRoutes == nil {
-				continue
-			}
+			assert.Nil(t, peerStatus.PrimaryRoutes)
 
-			pRoutes := peerStatus.PrimaryRoutes.AsSlice()
+			assert.Len(t, peerStatus.AllowedIPs.AsSlice(), 3)
 
-			assert.Len(t, pRoutes, 1)
-
-			if len(pRoutes) > 0 {
-				peerRoute := peerStatus.PrimaryRoutes.AsSlice()[0]
+			if peerStatus.AllowedIPs.Len() > 2 {
+				peerRoute := peerStatus.AllowedIPs.At(2)
 
 				// id starts at 1, we created routes with 0 index
 				assert.Equalf(
@@ -148,26 +137,16 @@ func TestEnablingRoutes(t *testing.T) {
 		}
 	}
 
-	_, err = headscale.Execute(
-		[]string{
-			"headscale",
-			"nodes",
-			"approve-route",
-			"--i",
-			"1",
-			"--routes",
-			"10.0.1.0/24",
-		})
+	_, err = headscale.ApproveRoutes(
+		1,
+		[]netip.Prefix{netip.MustParsePrefix("10.0.1.0/24")},
+	)
 	assertNoErr(t, err)
 
-	_, err = headscale.Execute(
-		[]string{
-			"headscale",
-			"nodes",
-			"approve-route",
-			"--i",
-			"2",
-		})
+	_, err = headscale.ApproveRoutes(
+		2,
+		[]netip.Prefix{},
+	)
 	assertNoErr(t, err)
 
 	time.Sleep(5 * time.Second)
@@ -177,17 +156,17 @@ func TestEnablingRoutes(t *testing.T) {
 
 	for _, node := range nodes {
 		if node.GetId() == 1 {
-			assert.Len(t, node.AvailableRoutes, 3)
-			assert.Len(t, node.ApprovedRoutes, 1)
-			assert.Len(t, node.SubnetRoutes, 1)
+			assert.Len(t, node.AvailableRoutes, 1) // 10.0.0.0/24
+			assert.Len(t, node.ApprovedRoutes, 1)  // 10.0.1.0/24
+			assert.Len(t, node.SubnetRoutes, 0)
 		} else if node.GetId() == 2 {
-			assert.Len(t, node.AvailableRoutes, 3)
+			assert.Len(t, node.AvailableRoutes, 1) // 10.0.1.0/24
 			assert.Len(t, node.ApprovedRoutes, 0)
 			assert.Len(t, node.SubnetRoutes, 0)
 		} else {
-			assert.Len(t, node.AvailableRoutes, 3)
-			assert.Len(t, node.ApprovedRoutes, 3)
-			assert.Len(t, node.SubnetRoutes, 3)
+			assert.Len(t, node.AvailableRoutes, 1) // 10.0.2.0/24
+			assert.Len(t, node.ApprovedRoutes, 1)  // 10.0.2.0/24
+			assert.Len(t, node.SubnetRoutes, 1)    // 10.0.2.0/24
 		}
 	}
 
@@ -199,20 +178,13 @@ func TestEnablingRoutes(t *testing.T) {
 		for _, peerKey := range status.Peers() {
 			peerStatus := status.Peer[peerKey]
 
+			assert.Nil(t, peerStatus.PrimaryRoutes)
 			if peerStatus.ID == "1" {
-				assert.Len(t, peerStatus.PrimaryRoutes, 1)
-				assert.Equal(t, peerStatus.AllowedIPs.Len(), 3) // Node's own IPs + route
+				assert.Len(t, peerStatus.AllowedIPs.AsSlice(), 2) // Node's own IPs (no valid approved routes)
 			} else if peerStatus.ID == "2" {
-				assert.Nilf(
-					t,
-					peerStatus.PrimaryRoutes,
-					"expected node %s to have no routes, got primary route (%v)",
-					peerStatus.HostName,
-					peerStatus.PrimaryRoutes,
-				)
-				assert.Equal(t, peerStatus.AllowedIPs.Len(), 2) // Node's own IPs + route
+				assert.Len(t, peerStatus.AllowedIPs.AsSlice(), 2) // Node's own IPs (no approved routes)
 			} else {
-				assert.Equal(t, peerStatus.AllowedIPs.Len(), 5) // Node's own IPs + route
+				assert.Len(t, peerStatus.AllowedIPs.AsSlice(), 3) // Node's own IPs + route
 			}
 		}
 	}
