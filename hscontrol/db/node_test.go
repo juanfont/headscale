@@ -744,6 +744,7 @@ func TestRenameNode(t *testing.T) {
 		Hostname:       "test",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
 	}
 
 	node2 := types.Node{
@@ -753,6 +754,7 @@ func TestRenameNode(t *testing.T) {
 		Hostname:       "test",
 		UserID:         user2.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
 	}
 
 	err = db.DB.Save(&node).Error

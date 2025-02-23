@@ -453,6 +453,10 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		return nil, fmt.Errorf("failed register(save) node in the database: %w", err)
 	}
 
+	if _, err := SaveNodeRoutes(tx, &node); err != nil {
+		return nil, fmt.Errorf("failed to save node routes: %w", err)
+	}
+
 	log.Trace().
 		Caller().
 		Str("node", node.Hostname).

@@ -80,6 +80,7 @@ type TailscaleInContainer struct {
 	withExtraHosts    []string
 	workdir           string
 	netfilter         string
+	extraLoginArgs    []string
 
 	// build options, solely for HEAD
 	buildConfig TailscaleInContainerBuildConfig
@@ -200,6 +201,14 @@ func WithBuildTag(tag string) Option {
 		tsic.buildConfig.tags = append(
 			tsic.buildConfig.tags, tag,
 		)
+	}
+}
+
+// WithExtraLoginArgs adds additional arguments to the `tailscale up` command
+// as part of the Login function.
+func WithExtraLoginArgs(args []string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.extraLoginArgs = args
 	}
 }
 
@@ -436,6 +445,10 @@ func (t *TailscaleInContainer) Login(
 		"--accept-routes=false",
 	}
 
+	if t.extraLoginArgs != nil {
+		command = append(command, t.extraLoginArgs...)
+	}
+
 	if t.withSSH {
 		command = append(command, "--ssh")
 	}
@@ -473,6 +486,10 @@ func (t *TailscaleInContainer) LoginWithURL(
 		"--login-server=" + loginServer,
 		"--hostname=" + t.hostname,
 		"--accept-routes=false",
+	}
+
+	if t.extraLoginArgs != nil {
+		command = append(command, t.extraLoginArgs...)
 	}
 
 	stdout, stderr, err := t.Execute(command)
