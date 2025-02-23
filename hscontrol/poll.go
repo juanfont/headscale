@@ -478,8 +478,6 @@ func (m *mapSession) handleEndpointUpdate() {
 			})
 			m.node.ApprovedRoutes = newApproved
 
-			log.Printf("APPROVING Auto approving routes: %v", newApproved)
-
 			if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
 				ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
 				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())

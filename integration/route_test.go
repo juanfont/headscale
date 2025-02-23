@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/types/ipproto"
+	"tailscale.com/types/views"
 	"tailscale.com/wgengine/filter"
 )
 
@@ -685,273 +687,228 @@ func TestAutoApprovedSubRoute2068(t *testing.T) {
 	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
 }
 
-// // TestSubnetRouteACL verifies that Subnet routes are distributed
-// // as expected when ACLs are activated.
-// // It implements the issue from
-// // https://github.com/juanfont/headscale/issues/1604
-// func TestSubnetRouteACL(t *testing.T) {
-// 	IntegrationSkip(t)
-// 	t.Parallel()
+// TestSubnetRouteACL verifies that Subnet routes are distributed
+// as expected when ACLs are activated.
+// It implements the issue from
+// https://github.com/juanfont/headscale/issues/1604
+func TestSubnetRouteACL(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
 
-// 	user := "subnet-route-acl"
+	user := "subnet-route-acl"
 
-// 	scenario, err := NewScenario(dockertestMaxWait())
-// 	require.NoErrorf(t, "failed to create scenario: %s", err)
-// 	defer scenario.ShutdownAssertNoPanics(t)
+	scenario, err := NewScenario(dockertestMaxWait())
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
 
-// 	spec := map[string]int{
-// 		user: 2,
-// 	}
+	spec := map[string]int{
+		user: 2,
+	}
 
-// 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-// 		&policy.ACLPolicy{
-// 			Groups: policy.Groups{
-// 				"group:admins": {user},
-// 			},
-// 			ACLs: []policy.ACL{
-// 				{
-// 					Action:       "accept",
-// 					Sources:      []string{"group:admins"},
-// 					Destinations: []string{"group:admins:*"},
-// 				},
-// 				{
-// 					Action:       "accept",
-// 					Sources:      []string{"group:admins"},
-// 					Destinations: []string{"10.33.0.0/16:*"},
-// 				},
-// 				// {
-// 				// 	Action:       "accept",
-// 				// 	Sources:      []string{"group:admins"},
-// 				// 	Destinations: []string{"0.0.0.0/0:*"},
-// 				// },
-// 			},
-// 		},
-// 	))
-// 	assertNoErrHeadscaleEnv(t, err)
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+		&policy.ACLPolicy{
+			Groups: policy.Groups{
+				"group:admins": {user},
+			},
+			ACLs: []policy.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"group:admins"},
+					Destinations: []string{"group:admins:*"},
+				},
+				{
+					Action:       "accept",
+					Sources:      []string{"group:admins"},
+					Destinations: []string{"10.33.0.0/16:*"},
+				},
+				// {
+				// 	Action:       "accept",
+				// 	Sources:      []string{"group:admins"},
+				// 	Destinations: []string{"0.0.0.0/0:*"},
+				// },
+			},
+		},
+	))
+	assertNoErrHeadscaleEnv(t, err)
 
-// 	allClients, err := scenario.ListTailscaleClients()
-// 	assertNoErrListClients(t, err)
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
 
-// 	err = scenario.WaitForTailscaleSync()
-// 	assertNoErrSync(t, err)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
 
-// 	headscale, err := scenario.Headscale()
-// 	assertNoErrGetHeadscale(t, err)
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
 
-// 	expectedRoutes := map[string]string{
-// 		"1": "10.33.0.0/16",
-// 	}
+	expectedRoutes := map[string]string{
+		"1": "10.33.0.0/16",
+	}
 
-// 	// Sort nodes by ID
-// 	sort.SliceStable(allClients, func(i, j int) bool {
-// 		statusI, err := allClients[i].Status()
-// 		if err != nil {
-// 			return false
-// 		}
+	// Sort nodes by ID
+	sort.SliceStable(allClients, func(i, j int) bool {
+		statusI, err := allClients[i].Status()
+		if err != nil {
+			return false
+		}
 
-// 		statusJ, err := allClients[j].Status()
-// 		if err != nil {
-// 			return false
-// 		}
+		statusJ, err := allClients[j].Status()
+		if err != nil {
+			return false
+		}
 
-// 		return statusI.Self.ID < statusJ.Self.ID
-// 	})
+		return statusI.Self.ID < statusJ.Self.ID
+	})
 
-// 	subRouter1 := allClients[0]
+	subRouter1 := allClients[0]
 
-// 	client := allClients[1]
+	client := allClients[1]
 
-// 	// advertise HA route on node 1 and 2
-// 	// ID 1 will be primary
-// 	// ID 2 will be secondary
-// 	for _, client := range allClients {
-// 		status, err := client.Status()
-// 		require.NoError(t, err)
+	for _, client := range allClients {
+		status, err := client.Status()
+		require.NoError(t, err)
 
-// 		if route, ok := expectedRoutes[string(status.Self.ID)]; ok {
-// 			command := []string{
-// 				"tailscale",
-// 				"set",
-// 				"--advertise-routes=" + route,
-// 			}
-// 			_, _, err = client.Execute(command)
-// 			require.NoErrorf(t, "failed to advertise route: %s", err)
-// 		}
-// 	}
+		if route, ok := expectedRoutes[string(status.Self.ID)]; ok {
+			command := []string{
+				"tailscale",
+				"set",
+				"--advertise-routes=" + route,
+			}
+			_, _, err = client.Execute(command)
+			require.NoErrorf(t, err, "failed to advertise route: %s", err)
+		}
+	}
 
-// 	err = scenario.WaitForTailscaleSync()
-// 	assertNoErrSync(t, err)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
 
-// 	var routes []*v1.Route
-// 	err = executeAndUnmarshal(
-// 		headscale,
-// 		[]string{
-// 			"headscale",
-// 			"routes",
-// 			"list",
-// 			"--output",
-// 			"json",
-// 		},
-// 		&routes,
-// 	)
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err)
+	require.Len(t, nodes, 2)
 
-// 	require.NoError(t, err)
-// 	assert.Len(t, routes, 1)
+	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
+	assertNodeRouteCount(t, nodes[1], 0, 0, 0)
 
-// 	for _, route := range routes {
-// 		assert.True(t, route.GetAdvertised())
-// 		assert.False(t, route.GetEnabled())
-// 		assert.False(t, route.GetIsPrimary())
-// 	}
+	// Verify that no routes has been sent to the client,
+	// they are not yet enabled.
+	for _, client := range allClients {
+		status, err := client.Status()
+		require.NoError(t, err)
 
-// 	// Verify that no routes has been sent to the client,
-// 	// they are not yet enabled.
-// 	for _, client := range allClients {
-// 		status, err := client.Status()
-// 		require.NoError(t, err)
+		for _, peerKey := range status.Peers() {
+			peerStatus := status.Peer[peerKey]
 
-// 		for _, peerKey := range status.Peers() {
-// 			peerStatus := status.Peer[peerKey]
+			assert.Nil(t, peerStatus.PrimaryRoutes)
+			assertPeerSubnetRoutes(t, peerStatus, nil)
+		}
+	}
 
-// 			assert.Nil(t, peerStatus.PrimaryRoutes)
-// 		}
-// 	}
+	_, err = headscale.ApproveRoutes(
+		1,
+		[]netip.Prefix{netip.MustParsePrefix(expectedRoutes["1"])},
+	)
+	require.NoError(t, err)
 
-// 	// Enable all routes
-// 	for _, route := range routes {
-// 		_, err = headscale.Execute(
-// 			[]string{
-// 				"headscale",
-// 				"routes",
-// 				"enable",
-// 				"--route",
-// 				strconv.Itoa(int(route.GetId())),
-// 			})
-// 		require.NoError(t, err)
-// 	}
+	time.Sleep(5 * time.Second)
 
-// 	time.Sleep(5 * time.Second)
+	nodes, err = headscale.ListNodes()
+	require.NoError(t, err)
+	require.Len(t, nodes, 2)
 
-// 	var enablingRoutes []*v1.Route
-// 	err = executeAndUnmarshal(
-// 		headscale,
-// 		[]string{
-// 			"headscale",
-// 			"routes",
-// 			"list",
-// 			"--output",
-// 			"json",
-// 		},
-// 		&enablingRoutes,
-// 	)
-// 	require.NoError(t, err)
-// 	assert.Len(t, enablingRoutes, 1)
+	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+	assertNodeRouteCount(t, nodes[1], 0, 0, 0)
 
-// 	// Node 1 has active route
-// 	assert.True(t, enablingRoutes[0].GetAdvertised())
-// 	assert.True(t, enablingRoutes[0].GetEnabled())
-// 	assert.True(t, enablingRoutes[0].GetIsPrimary())
+	// Verify that the client has routes from the primary machine
+	srs1, _ := subRouter1.Status()
 
-// 	// Verify that the client has routes from the primary machine
-// 	srs1, _ := subRouter1.Status()
+	clientStatus, err := client.Status()
+	require.NoError(t, err)
 
-// 	clientStatus, err := client.Status()
-// 	require.NoError(t, err)
+	srs1PeerStatus := clientStatus.Peer[srs1.Self.PublicKey]
 
-// 	srs1PeerStatus := clientStatus.Peer[srs1.Self.PublicKey]
+	assertPeerSubnetRoutes(t, srs1PeerStatus, []netip.Prefix{netip.MustParsePrefix(expectedRoutes["1"])})
 
-// 	require.NotNil(t, srs1PeerStatus.PrimaryRoutes)
+	clientNm, err := client.Netmap()
+	require.NoError(t, err)
 
-// 	t.Logf("subnet1 has following routes: %v", srs1PeerStatus.PrimaryRoutes.AsSlice())
-// 	assert.Len(t, srs1PeerStatus.PrimaryRoutes.AsSlice(), 1)
-// 	assert.Contains(
-// 		t,
-// 		srs1PeerStatus.PrimaryRoutes.AsSlice(),
-// 		netip.MustParsePrefix(expectedRoutes[string(srs1.Self.ID)]),
-// 	)
+	wantClientFilter := []filter.Match{
+		{
+			IPProto: views.SliceOf([]ipproto.Proto{
+				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+			}),
+			Srcs: []netip.Prefix{
+				netip.MustParsePrefix("100.64.0.1/32"),
+				netip.MustParsePrefix("100.64.0.2/32"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+			},
+			Dsts: []filter.NetPortRange{
+				{
+					Net:   netip.MustParsePrefix("100.64.0.2/32"),
+					Ports: allPorts,
+				},
+				{
+					Net:   netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+					Ports: allPorts,
+				},
+			},
+			Caps: []filter.CapMatch{},
+		},
+	}
 
-// 	clientNm, err := client.Netmap()
-// 	require.NoError(t, err)
+	if diff := cmp.Diff(wantClientFilter, clientNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
+		t.Errorf("Client (%s) filter, unexpected result (-want +got):\n%s", client.Hostname(), diff)
+	}
 
-// 	wantClientFilter := []filter.Match{
-// 		{
-// 			IPProto: views.SliceOf([]ipproto.Proto{
-// 				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
-// 			}),
-// 			Srcs: []netip.Prefix{
-// 				netip.MustParsePrefix("100.64.0.1/32"),
-// 				netip.MustParsePrefix("100.64.0.2/32"),
-// 				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
-// 				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
-// 			},
-// 			Dsts: []filter.NetPortRange{
-// 				{
-// 					Net:   netip.MustParsePrefix("100.64.0.2/32"),
-// 					Ports: allPorts,
-// 				},
-// 				{
-// 					Net:   netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
-// 					Ports: allPorts,
-// 				},
-// 			},
-// 			Caps: []filter.CapMatch{},
-// 		},
-// 	}
+	subnetNm, err := subRouter1.Netmap()
+	require.NoError(t, err)
 
-// 	if diff := cmp.Diff(wantClientFilter, clientNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
-// 		t.Errorf("Client (%s) filter, unexpected result (-want +got):\n%s", client.Hostname(), diff)
-// 	}
+	wantSubnetFilter := []filter.Match{
+		{
+			IPProto: views.SliceOf([]ipproto.Proto{
+				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+			}),
+			Srcs: []netip.Prefix{
+				netip.MustParsePrefix("100.64.0.1/32"),
+				netip.MustParsePrefix("100.64.0.2/32"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+			},
+			Dsts: []filter.NetPortRange{
+				{
+					Net:   netip.MustParsePrefix("100.64.0.1/32"),
+					Ports: allPorts,
+				},
+				{
+					Net:   netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+					Ports: allPorts,
+				},
+			},
+			Caps: []filter.CapMatch{},
+		},
+		{
+			IPProto: views.SliceOf([]ipproto.Proto{
+				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+			}),
+			Srcs: []netip.Prefix{
+				netip.MustParsePrefix("100.64.0.1/32"),
+				netip.MustParsePrefix("100.64.0.2/32"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+			},
+			Dsts: []filter.NetPortRange{
+				{
+					Net:   netip.MustParsePrefix("10.33.0.0/16"),
+					Ports: allPorts,
+				},
+			},
+			Caps: []filter.CapMatch{},
+		},
+	}
 
-// 	subnetNm, err := subRouter1.Netmap()
-// 	require.NoError(t, err)
-
-// 	wantSubnetFilter := []filter.Match{
-// 		{
-// 			IPProto: views.SliceOf([]ipproto.Proto{
-// 				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
-// 			}),
-// 			Srcs: []netip.Prefix{
-// 				netip.MustParsePrefix("100.64.0.1/32"),
-// 				netip.MustParsePrefix("100.64.0.2/32"),
-// 				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
-// 				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
-// 			},
-// 			Dsts: []filter.NetPortRange{
-// 				{
-// 					Net:   netip.MustParsePrefix("100.64.0.1/32"),
-// 					Ports: allPorts,
-// 				},
-// 				{
-// 					Net:   netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
-// 					Ports: allPorts,
-// 				},
-// 			},
-// 			Caps: []filter.CapMatch{},
-// 		},
-// 		{
-// 			IPProto: views.SliceOf([]ipproto.Proto{
-// 				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
-// 			}),
-// 			Srcs: []netip.Prefix{
-// 				netip.MustParsePrefix("100.64.0.1/32"),
-// 				netip.MustParsePrefix("100.64.0.2/32"),
-// 				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
-// 				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
-// 			},
-// 			Dsts: []filter.NetPortRange{
-// 				{
-// 					Net:   netip.MustParsePrefix("10.33.0.0/16"),
-// 					Ports: allPorts,
-// 				},
-// 			},
-// 			Caps: []filter.CapMatch{},
-// 		},
-// 	}
-
-// 	if diff := cmp.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
-// 		t.Errorf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff)
-// 	}
-// }
+	if diff := cmp.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
+		t.Errorf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff)
+	}
+}
 
 // assertPeerSubnetRoutes asserts that the peer has the expected subnet routes.
 func assertPeerSubnetRoutes(t *testing.T, status *ipnstate.PeerStatus, expected []netip.Prefix) {
