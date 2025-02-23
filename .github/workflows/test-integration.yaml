@@ -24,6 +24,7 @@ jobs:
           - TestPolicyUpdateWhileRunningWithCLIInDatabase
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
+          - TestAuthKeyLogoutAndReloginSameUserExpiredKey
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestOIDC024UserCreation
@@ -68,6 +69,7 @@ jobs:
           - TestEnableDisableAutoApprovedRoute
           - TestAutoApprovedSubRoute2068
           - TestSubnetRouteACL
+          - TestEnablingExitRoutes
           - TestHeadscale
           - TestCreateTailscale
           - TestTailscaleNodesJoiningHeadcale
