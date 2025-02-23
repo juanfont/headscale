@@ -13,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
 	"tailscale.com/net/tsaddr"
@@ -472,7 +473,12 @@ func (m *mapSession) handleEndpointUpdate() {
 			newApproved = append(newApproved, m.node.ApprovedRoutes...)
 			slices.SortFunc(newApproved, util.ComparePrefix)
 			slices.Compact(newApproved)
+			newApproved = lo.Filter(newApproved, func(route netip.Prefix, index int) bool {
+				return route.IsValid()
+			})
 			m.node.ApprovedRoutes = newApproved
+
+			log.Printf("APPROVING Auto approving routes: %v", newApproved)
 
 			if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
 				ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
