@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -48,7 +48,7 @@ var retry = func(times int, sleepInterval time.Duration,
 	return result, stderr, err
 }
 
-func sshScenario(t *testing.T, policy *policy.ACLPolicy, clientsPerUser int) *Scenario {
+func sshScenario(t *testing.T, policy *policyv1.ACLPolicy, clientsPerUser int) *Scenario {
 	t.Helper()
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
@@ -92,18 +92,18 @@ func TestSSHOneUserToAll(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policy.ACLPolicy{
+		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
 				"group:integration-test": {"user1"},
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"*"},
 					Destinations: []string{"*:*"},
 				},
 			},
-			SSHs: []policy.SSH{
+			SSHs: []policyv1.SSH{
 				{
 					Action:       "accept",
 					Sources:      []string{"group:integration-test"},
@@ -157,18 +157,18 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policy.ACLPolicy{
+		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
 				"group:integration-test": {"user1", "user2"},
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"*"},
 					Destinations: []string{"*:*"},
 				},
 			},
-			SSHs: []policy.SSH{
+			SSHs: []policyv1.SSH{
 				{
 					Action:       "accept",
 					Sources:      []string{"group:integration-test"},
@@ -210,18 +210,18 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policy.ACLPolicy{
+		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
 				"group:integration-test": {"user1"},
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"*"},
 					Destinations: []string{"*:*"},
 				},
 			},
-			SSHs: []policy.SSH{},
+			SSHs: []policyv1.SSH{},
 		},
 		len(MustTestVersions),
 	)
@@ -252,18 +252,18 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policy.ACLPolicy{
+		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
 				"group:integration-test": {"user1"},
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"*"},
 					Destinations: []string{"*:80"},
 				},
 			},
-			SSHs: []policy.SSH{
+			SSHs: []policyv1.SSH{
 				{
 					Action:       "accept",
 					Sources:      []string{"group:integration-test"},
@@ -301,19 +301,19 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policy.ACLPolicy{
+		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
 				"group:ssh1": {"user1"},
 				"group:ssh2": {"user2"},
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"*"},
 					Destinations: []string{"*:*"},
 				},
 			},
-			SSHs: []policy.SSH{
+			SSHs: []policyv1.SSH{
 				{
 					Action:       "accept",
 					Sources:      []string{"group:ssh1"},

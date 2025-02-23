@@ -79,6 +79,7 @@ jobs:
           - TestSSHIsBlockedInACL
           - TestSSHUserOnlyIsolation
         database: [postgres, sqlite]
+        policy: ["v1", "v2"]
     env:
       # Github does not allow us to access secrets in pull requests,
       # so this env var is used to check if we have the secret or not.
@@ -126,6 +127,7 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         env:
           USE_POSTGRES: ${{ matrix.database == 'postgres' && '1' || '0' }}
+          USE_POLICY_V2: ${{ matrix.policy == 'v2' && '1' || '0' }}
         with:
           attempt_limit: 5
           command: |
@@ -137,6 +139,7 @@ jobs:
               --volume /var/run/docker.sock:/var/run/docker.sock \
               --volume $PWD/control_logs:/tmp/control \
               --env HEADSCALE_INTEGRATION_POSTGRES=${{env.USE_POSTGRES}} \
+              --env HEADSCALE_EXPERIMENTAL_POLICY_V2=${{env.USE_POLICY_V2}} \
               golang:1 \
                 go run gotest.tools/gotestsum@latest -- ./... \
                   -failfast \
@@ -146,12 +149,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
-          name: ${{ matrix.test }}-${{matrix.database}}-logs
+          name: ${{ matrix.test }}-${{matrix.database}}-${{matrix.policy}}-logs
           path: "control_logs/*.log"
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
-          name: ${{ matrix.test }}-${{matrix.database}}-pprof
+          name: ${{ matrix.test }}-${{matrix.database}}-${{matrix.policy}}-pprof
           path: "control_logs/*.pprof.tar"
       - name: Setup a blocking tmux session
         if: ${{ env.HAS_TAILSCALE_SECRET }}
