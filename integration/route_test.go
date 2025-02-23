@@ -17,6 +17,8 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
 	"tailscale.com/wgengine/filter"
@@ -1314,5 +1316,125 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	if diff := cmp.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
 		t.Errorf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff)
+	}
+}
+
+// TestEnablingExitRoutes tests enabling exit routes for clients.
+// Its more or less the same as TestEnablingRoutes, but with the --advertise-exit-node flag
+// set during login instead of set.
+func TestEnablingExitRoutes(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	user := "user2"
+
+	scenario, err := NewScenario(dockertestMaxWait())
+	assertNoErrf(t, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	spec := map[string]int{
+		user: 2,
+	}
+
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{
+		tsic.WithExtraLoginArgs([]string{"--advertise-exit-node"}),
+	}, hsic.WithTestName("clienableroute"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	var routes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&routes,
+	)
+
+	assertNoErr(t, err)
+	assert.Len(t, routes, 4)
+
+	for _, route := range routes {
+		assert.True(t, route.GetAdvertised())
+		assert.False(t, route.GetEnabled())
+		assert.False(t, route.GetIsPrimary())
+	}
+
+	// Verify that no routes has been sent to the client,
+	// they are not yet enabled.
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		for _, peerKey := range status.Peers() {
+			peerStatus := status.Peer[peerKey]
+
+			assert.Nil(t, peerStatus.PrimaryRoutes)
+		}
+	}
+
+	// Enable all routes
+	for _, route := range routes {
+		_, err = headscale.Execute(
+			[]string{
+				"headscale",
+				"routes",
+				"enable",
+				"--route",
+				strconv.Itoa(int(route.GetId())),
+			})
+		assertNoErr(t, err)
+	}
+
+	var enablingRoutes []*v1.Route
+	err = executeAndUnmarshal(
+		headscale,
+		[]string{
+			"headscale",
+			"routes",
+			"list",
+			"--output",
+			"json",
+		},
+		&enablingRoutes,
+	)
+	assertNoErr(t, err)
+	assert.Len(t, enablingRoutes, 4)
+
+	for _, route := range enablingRoutes {
+		assert.True(t, route.GetAdvertised())
+		assert.True(t, route.GetEnabled())
+	}
+
+	time.Sleep(5 * time.Second)
+
+	// Verify that the clients can see the new routes
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+
+		for _, peerKey := range status.Peers() {
+			peerStatus := status.Peer[peerKey]
+
+			require.NotNil(t, peerStatus.AllowedIPs)
+			assert.Len(t, peerStatus.AllowedIPs.AsSlice(), 4)
+			assert.Contains(t, peerStatus.AllowedIPs.AsSlice(), tsaddr.AllIPv4())
+			assert.Contains(t, peerStatus.AllowedIPs.AsSlice(), tsaddr.AllIPv6())
+		}
 	}
 }
