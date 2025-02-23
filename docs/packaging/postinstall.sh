@@ -31,13 +31,13 @@ ensure_headscale_path() {
 
 create_headscale_user() {
 	printf "PostInstall: Adding headscale user %s\n" "$HEADSCALE_USER"
-	useradd -s "$HEADSCALE_SHELL" -d "$HEADSCALE_HOME_DIR" -c "headscale default user" "$HEADSCALE_USER"
+	useradd -r -s "$HEADSCALE_SHELL" -d "$HEADSCALE_HOME_DIR" -c "headscale default user" "$HEADSCALE_USER"
 }
 
 create_headscale_group() {
 	if command -V systemctl >/dev/null 2>&1; then
 		printf "PostInstall: Adding headscale group %s\n" "$HEADSCALE_GROUP"
-		groupadd "$HEADSCALE_GROUP"
+		groupadd -r "$HEADSCALE_GROUP"
 
 		printf "PostInstall: Adding headscale user %s to group %s\n" "$HEADSCALE_USER" "$HEADSCALE_GROUP"
 		usermod -a -G "$HEADSCALE_GROUP" "$HEADSCALE_USER"
@@ -45,7 +45,7 @@ create_headscale_group() {
 
 	if [ "$ID" = "alpine" ]; then
 		printf "PostInstall: Adding headscale group %s\n" "$HEADSCALE_GROUP"
-		addgroup "$HEADSCALE_GROUP"
+		addgroup -S "$HEADSCALE_GROUP"
 
 		printf "PostInstall: Adding headscale user %s to group %s\n" "$HEADSCALE_USER" "$HEADSCALE_GROUP"
 		addgroup "$HEADSCALE_USER" "$HEADSCALE_GROUP"
