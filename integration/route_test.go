@@ -616,98 +616,74 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
 }
 
-// func TestAutoApprovedSubRoute2068(t *testing.T) {
-// 	IntegrationSkip(t)
-// 	t.Parallel()
+func TestAutoApprovedSubRoute2068(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
 
-// 	expectedRoutes := "10.42.7.0/24"
+	expectedRoutes := "10.42.7.0/24"
 
-// 	user := "user1"
+	user := "user1"
 
-// 	scenario, err := NewScenario(dockertestMaxWait())
-// 	require.NoErrorf(t, "failed to create scenario: %s", err)
-// 	defer scenario.ShutdownAssertNoPanics(t)
+	scenario, err := NewScenario(dockertestMaxWait())
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
 
-// 	spec := map[string]int{
-// 		user: 1,
-// 	}
+	spec := map[string]int{
+		user: 1,
+	}
 
-// 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})},
-// 		hsic.WithTestName("clienableroute"),
-// 		hsic.WithEmbeddedDERPServerOnly(),
-// 		hsic.WithTLS(),
-// 		hsic.WithACLPolicy(
-// 			&policy.ACLPolicy{
-// 				ACLs: []policy.ACL{
-// 					{
-// 						Action:       "accept",
-// 						Sources:      []string{"*"},
-// 						Destinations: []string{"*:*"},
-// 					},
-// 				},
-// 				TagOwners: map[string][]string{
-// 					"tag:approve": {user},
-// 				},
-// 				AutoApprovers: policy.AutoApprovers{
-// 					Routes: map[string][]string{
-// 						"10.42.0.0/16": {"tag:approve"},
-// 					},
-// 				},
-// 			},
-// 		))
-// 	assertNoErrHeadscaleEnv(t, err)
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})},
+		hsic.WithTestName("clienableroute"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithACLPolicy(
+			&policy.ACLPolicy{
+				ACLs: []policy.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:approve": {user},
+				},
+				AutoApprovers: policy.AutoApprovers{
+					Routes: map[string][]string{
+						"10.42.0.0/16": {"tag:approve"},
+					},
+				},
+			},
+		))
+	assertNoErrHeadscaleEnv(t, err)
 
-// 	allClients, err := scenario.ListTailscaleClients()
-// 	assertNoErrListClients(t, err)
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
 
-// 	err = scenario.WaitForTailscaleSync()
-// 	assertNoErrSync(t, err)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
 
-// 	headscale, err := scenario.Headscale()
-// 	assertNoErrGetHeadscale(t, err)
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
 
-// 	subRouter1 := allClients[0]
+	subRouter1 := allClients[0]
 
-// 	// Initially advertise route
-// 	command := []string{
-// 		"tailscale",
-// 		"set",
-// 		"--advertise-routes=" + expectedRoutes,
-// 	}
-// 	_, _, err = subRouter1.Execute(command)
-// 	require.NoErrorf(t, "failed to advertise route: %s", err)
+	// Initially advertise route
+	command := []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=" + expectedRoutes,
+	}
+	_, _, err = subRouter1.Execute(command)
+	require.NoErrorf(t, err, "failed to advertise route: %s", err)
 
-// 	time.Sleep(10 * time.Second)
+	time.Sleep(10 * time.Second)
 
-// 	var routes []*v1.Route
-// 	err = executeAndUnmarshal(
-// 		headscale,
-// 		[]string{
-// 			"headscale",
-// 			"routes",
-// 			"list",
-// 			"--output",
-// 			"json",
-// 		},
-// 		&routes,
-// 	)
-// 	require.NoError(t, err)
-// 	assert.Len(t, routes, 1)
-
-// 	want := []*v1.Route{
-// 		{
-// 			Id:         1,
-// 			Prefix:     expectedRoutes,
-// 			Advertised: true,
-// 			Enabled:    true,
-// 			IsPrimary:  true,
-// 		},
-// 	}
-
-// 	if diff := cmp.Diff(want, routes, cmpopts.IgnoreUnexported(v1.Route{}), cmpopts.IgnoreFields(v1.Route{}, "Node", "CreatedAt", "UpdatedAt", "DeletedAt")); diff != "" {
-// 		t.Errorf("unexpected routes (-want +got):\n%s", diff)
-// 	}
-// }
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err)
+	assert.Len(t, nodes, 1)
+	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+}
 
 // // TestSubnetRouteACL verifies that Subnet routes are distributed
 // // as expected when ACLs are activated.
