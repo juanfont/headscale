@@ -102,6 +102,7 @@ type Config struct {
 type DNSConfig struct {
 	MagicDNS         bool   `mapstructure:"magic_dns"`
 	BaseDomain       string `mapstructure:"base_domain"`
+	OverrideLocalDNS bool   `mapstructure:"override_local_dns"`
 	Nameservers      Nameservers
 	SearchDomains    []string            `mapstructure:"search_domains"`
 	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
@@ -287,6 +288,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("dns.magic_dns", true)
 	viper.SetDefault("dns.base_domain", "")
+	viper.SetDefault("dns.override_local_dns", false)
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
@@ -351,9 +353,9 @@ func validateServerConfig() error {
 	depr.fatalIfNewKeyIsNotUsed("policy.path", "acl_policy_path")
 
 	// Move dns_config -> dns
-	depr.warn("dns_config.override_local_dns")
 	depr.fatalIfNewKeyIsNotUsed("dns.magic_dns", "dns_config.magic_dns")
 	depr.fatalIfNewKeyIsNotUsed("dns.base_domain", "dns_config.base_domain")
+	depr.fatalIfNewKeyIsNotUsed("dns.override_local_dns", "dns_config.override_local_dns")
 	depr.fatalIfNewKeyIsNotUsed("dns.nameservers.global", "dns_config.nameservers")
 	depr.fatalIfNewKeyIsNotUsed("dns.nameservers.split", "dns_config.restricted_nameservers")
 	depr.fatalIfNewKeyIsNotUsed("dns.search_domains", "dns_config.domains")
@@ -616,6 +618,7 @@ func dns() (DNSConfig, error) {
 
 	dns.MagicDNS = viper.GetBool("dns.magic_dns")
 	dns.BaseDomain = viper.GetString("dns.base_domain")
+	dns.OverrideLocalDNS = viper.GetBool("dns.override_local_dns")
 	dns.Nameservers.Global = viper.GetStringSlice("dns.nameservers.global")
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
@@ -721,7 +724,11 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 
 	cfg.Proxied = dns.MagicDNS
 	cfg.ExtraRecords = dns.ExtraRecords
-	cfg.Resolvers = dns.globalResolvers()
+	if dns.OverrideLocalDNS {
+		cfg.Resolvers = dns.globalResolvers()
+	} else {
+		cfg.FallbackResolvers = dns.globalResolvers()
+	}
 
 	routes := dns.splitResolvers()
 	cfg.Routes = routes
