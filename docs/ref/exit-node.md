@@ -19,25 +19,19 @@ To use a node as an exit node, IP forwarding must be enabled on the node. Check 
 ## On the control server
 
 ```console
-$ # list nodes
-$ headscale routes list
-ID | Node   | Prefix    | Advertised | Enabled | Primary
-1  |        | 0.0.0.0/0 | false      | false   | -
-2  |        | ::/0      | false      | false   | -
-3  | phobos | 0.0.0.0/0 | true       | false   | -
-4  | phobos | ::/0      | true       | false   | -
+$ headscale nodes list-routes
+ID | Hostname           | Approved | Available       | Serving
+1  | ts-head-ruqsg8     |          | 0.0.0.0/0, ::/0 |
+2  | ts-unstable-fq7ob4 |          | 0.0.0.0/0, ::/0 |
 
-$ # enable routes for phobos
-$ headscale routes enable -r 3
-$ headscale routes enable -r 4
+# Note that for exit nodes, it is sufficient to approve either the IPv4 or IPv6 route. The other will be added automatically.
+$ headscale nodes approve-routes --identifier 1 --routes 0.0.0.0/0
+Node updated
 
-$ # Check node list again. The routes are now enabled.
-$ headscale routes list
-ID | Node   | Prefix    | Advertised | Enabled | Primary
-1  |        | 0.0.0.0/0 | false      | false   | -
-2  |        | ::/0      | false      | false   | -
-3  | phobos | 0.0.0.0/0 | true       | true    | -
-4  | phobos | ::/0      | true       | true    | -
+$ headscale nodes list-routes
+ID | Hostname           | Approved        | Available       | Serving
+1  | ts-head-ruqsg8     | 0.0.0.0/0, ::/0 | 0.0.0.0/0, ::/0 | 0.0.0.0/0, ::/0
+2  | ts-unstable-fq7ob4 |                 | 0.0.0.0/0, ::/0 |
 ```
 
 ## On the client

@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -72,7 +73,6 @@ func TestTailNode(t *testing.T) {
 				LegacyDERPString:  "127.3.3.40:0",
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
 				Tags:              []string{},
-				PrimaryRoutes:     []netip.Prefix{},
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
@@ -107,28 +107,15 @@ func TestTailNode(t *testing.T) {
 				AuthKey:    &types.PreAuthKey{},
 				LastSeen:   &lastSeen,
 				Expiry:     &expire,
-				Hostinfo:   &tailcfg.Hostinfo{},
-				Routes: []types.Route{
-					{
-						Prefix:     tsaddr.AllIPv4(),
-						Advertised: true,
-						Enabled:    true,
-						IsPrimary:  false,
-					},
-					{
-						Prefix:     netip.MustParsePrefix("192.168.0.0/24"),
-						Advertised: true,
-						Enabled:    true,
-						IsPrimary:  true,
-					},
-					{
-						Prefix:     netip.MustParsePrefix("172.0.0.0/10"),
-						Advertised: true,
-						Enabled:    false,
-						IsPrimary:  true,
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						tsaddr.AllIPv4(),
+						netip.MustParsePrefix("192.168.0.0/24"),
+						netip.MustParsePrefix("172.0.0.0/10"),
 					},
 				},
-				CreatedAt: created,
+				ApprovedRoutes: []netip.Prefix{tsaddr.AllIPv4(), netip.MustParsePrefix("192.168.0.0/24")},
+				CreatedAt:      created,
 			},
 			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
@@ -159,8 +146,14 @@ func TestTailNode(t *testing.T) {
 				},
 				HomeDERP:         0,
 				LegacyDERPString: "127.3.3.40:0",
-				Hostinfo:         hiview(tailcfg.Hostinfo{}),
-				Created:          created,
+				Hostinfo: hiview(tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						tsaddr.AllIPv4(),
+						netip.MustParsePrefix("192.168.0.0/24"),
+						netip.MustParsePrefix("172.0.0.0/10"),
+					},
+				}),
+				Created: created,
 
 				Tags: []string{},
 
@@ -187,15 +180,22 @@ func TestTailNode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{}, types.Nodes{tt.node})
+			primary := routes.New()
 			cfg := &types.Config{
 				BaseDomain:          tt.baseDomain,
 				TailcfgDNSConfig:    tt.dnsConfig,
 				RandomizeClientPort: false,
 			}
+			_ = primary.SetRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
+
+			// This is a hack to avoid having a second node to test the primary route.
+			// This should be baked into the test case proper if it is extended in the future.
+			_ = primary.SetRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
 			got, err := tailNode(
 				tt.node,
 				0,
 				polMan,
+				primary,
 				cfg,
 			)
 
@@ -249,6 +249,7 @@ func TestNodeExpiry(t *testing.T) {
 				node,
 				0,
 				&policy.PolicyManagerV1{},
+				nil,
 				&types.Config{},
 			)
 			if err != nil {
