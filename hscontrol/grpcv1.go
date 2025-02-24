@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 
@@ -337,8 +339,17 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		if err != nil {
 			return nil, fmt.Errorf("parsing route: %w", err)
 		}
-		routes = append(routes, prefix)
+
+		// If the prefix is an exit route, add both. The client expect both
+		// to annotate the node as an exit node.
+		if prefix == tsaddr.AllIPv4() || prefix == tsaddr.AllIPv6() {
+			routes = append(routes, tsaddr.AllIPv4(), tsaddr.AllIPv6())
+		} else {
+			routes = append(routes, prefix)
+		}
 	}
+	slices.SortFunc(routes, util.ComparePrefix)
+	slices.Compact(routes)
 
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		err := db.SetApprovedRoutes(tx, types.NodeID(request.GetNodeId()), routes)
