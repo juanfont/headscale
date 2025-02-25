@@ -174,5 +174,5 @@ func (r RegistrationID) String() string {
 
 type RegisterNode struct {
 	Node       Node
-	Registered chan struct{}
+	Registered chan *Node
 }
