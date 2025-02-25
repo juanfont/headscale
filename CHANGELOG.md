@@ -1,8 +1,5 @@
 # CHANGELOG
 
-## Next
-
-
 ## 0.25.1 (2025-02-25)
 
 ### Changes
