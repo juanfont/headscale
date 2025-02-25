@@ -372,7 +372,12 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				}
 
 				// Signal to waiting clients that the machine has been registered.
+				select {
+				case reg.Registered <- node:
+				default:
+				}
 				close(reg.Registered)
+
 				newNode = true
 				return node, err
 			} else {

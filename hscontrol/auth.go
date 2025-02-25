@@ -43,10 +43,7 @@ func (h *Headscale) handleRegister(
 	}
 
 	if regReq.Followup != "" {
-		// TODO(kradalby): Does this need to return an error of some sort?
-		// Maybe if the registration fails down the line it can be sent
-		// on the channel and returned here?
-		h.waitForFollowup(ctx, regReq)
+		return h.waitForFollowup(ctx, regReq)
 	}
 
 	if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
@@ -111,42 +108,51 @@ func (h *Headscale) handleExistingNode(
 		h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, requestExpiry), node.ID)
 	}
 
+	return nodeToRegisterResponse(node), nil
+}
+
+func nodeToRegisterResponse(node *types.Node) *tailcfg.RegisterResponse {
 	return &tailcfg.RegisterResponse{
 		// TODO(kradalby): Only send for user-owned nodes
 		// and not tagged nodes when tags is working.
 		User:           *node.User.TailscaleUser(),
 		Login:          *node.User.TailscaleLogin(),
-		NodeKeyExpired: expired,
+		NodeKeyExpired: node.IsExpired(),
 
 		// Headscale does not implement the concept of machine authorization
 		// so we always return true here.
 		// Revisit this if #2176 gets implemented.
 		MachineAuthorized: true,
-	}, nil
+	}
 }
 
 func (h *Headscale) waitForFollowup(
 	ctx context.Context,
 	regReq tailcfg.RegisterRequest,
-) {
+) (*tailcfg.RegisterResponse, error) {
 	fu, err := url.Parse(regReq.Followup)
 	if err != nil {
-		return
+		return nil, NewHTTPError(http.StatusUnauthorized, "invalid followup URL", err)
 	}
 
 	followupReg, err := types.RegistrationIDFromString(strings.ReplaceAll(fu.Path, "/register/", ""))
 	if err != nil {
-		return
+		return nil, NewHTTPError(http.StatusUnauthorized, "invalid registration ID", err)
 	}
 
 	if reg, ok := h.registrationCache.Get(followupReg); ok {
 		select {
 		case <-ctx.Done():
-			return
-		case <-reg.Registered:
-			return
+			return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", err)
+		case node := <-reg.Registered:
+			if node == nil {
+				return nil, NewHTTPError(http.StatusUnauthorized, "node not found", nil)
+			}
+			return nodeToRegisterResponse(node), nil
 		}
 	}
+
+	return nil, NewHTTPError(http.StatusNotFound, "followup registration not found", nil)
 }
 
 // canUsePreAuthKey checks if a pre auth key can be used.
@@ -271,7 +277,7 @@ func (h *Headscale) handleRegisterInteractive(
 			Hostinfo:   regReq.Hostinfo,
 			LastSeen:   ptr.To(time.Now()),
 		},
-		Registered: make(chan struct{}),
+		Registered: make(chan *types.Node),
 	}
 
 	if !regReq.Expiry.IsZero() {

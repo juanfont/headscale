@@ -838,7 +838,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 
 			Hostinfo: &hostinfo,
 		},
-		Registered: make(chan struct{}),
+		Registered: make(chan *types.Node),
 	}
 
 	log.Debug().
