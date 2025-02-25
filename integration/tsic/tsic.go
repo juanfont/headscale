@@ -503,15 +503,7 @@ func (t *TailscaleInContainer) LoginWithURL(
 		}
 	}()
 
-	urlStr := strings.ReplaceAll(stdout+stderr, "\nTo authenticate, visit:\n\n\t", "")
-	urlStr = strings.TrimSpace(urlStr)
-
-	if urlStr == "" {
-		return nil, fmt.Errorf("failed to get login URL: stdout: %s, stderr: %s", stdout, stderr)
-	}
-
-	// parse URL
-	loginURL, err = url.Parse(urlStr)
+	loginURL, err = util.ParseLoginURLFromCLILogin(stdout + stderr)
 	if err != nil {
 		return nil, err
 	}
