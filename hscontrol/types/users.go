@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/mail"
 	"strconv"
+	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -17,6 +18,19 @@ import (
 )
 
 type UserID uint64
+
+type Users []User
+
+func (u Users) String() string {
+	var sb strings.Builder
+	sb.WriteString("[ ")
+	for _, user := range u {
+		fmt.Fprintf(&sb, "%d: %s, ", user.ID, user.Name)
+	}
+	sb.WriteString(" ]")
+
+	return sb.String()
+}
 
 // User is the way Headscale implements the concept of users in Tailscale
 //
@@ -74,12 +88,13 @@ func (u *User) Username() string {
 		u.Email,
 		u.Name,
 		u.ProviderIdentifier.String,
-		u.StringID())
+		u.StringID(),
+	)
 }
 
-// DisplayNameOrUsername returns the DisplayName if it exists, otherwise
+// Display returns the DisplayName if it exists, otherwise
 // it will return the Username.
-func (u *User) DisplayNameOrUsername() string {
+func (u *User) Display() string {
 	return cmp.Or(u.DisplayName, u.Username())
 }
 
@@ -91,7 +106,7 @@ func (u *User) profilePicURL() string {
 func (u *User) TailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
 		ID:            tailcfg.UserID(u.ID),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 		Created:       u.CreatedAt,
 	}
@@ -101,11 +116,10 @@ func (u *User) TailscaleUser() *tailcfg.User {
 
 func (u *User) TailscaleLogin() *tailcfg.Login {
 	login := tailcfg.Login{
-		ID: tailcfg.LoginID(u.ID),
-		// TODO(kradalby): this should reflect registration method.
+		ID:            tailcfg.LoginID(u.ID),
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 	}
 
@@ -116,7 +130,7 @@ func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 	return tailcfg.UserProfile{
 		ID:            tailcfg.UserID(u.ID),
 		LoginName:     u.Username(),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 	}
 }
