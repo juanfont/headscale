@@ -1726,7 +1726,7 @@ func TestPolicyCommand(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
-		"policy-user": 0,
+		"user1": 0,
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -1751,8 +1751,11 @@ func TestPolicyCommand(t *testing.T) {
 			},
 		},
 		TagOwners: map[string][]string{
-			"tag:exists": {"policy-user"},
+			"tag:exists": {"user1"},
 		},
+	}
+	if usePolicyV2ForTest {
+		hsic.RewritePolicyToV2(&p)
 	}
 
 	pBytes, _ := json.Marshal(p)
@@ -1794,7 +1797,11 @@ func TestPolicyCommand(t *testing.T) {
 
 	assert.Len(t, output.TagOwners, 1)
 	assert.Len(t, output.ACLs, 1)
-	assert.Equal(t, output.TagOwners["tag:exists"], []string{"policy-user"})
+	if usePolicyV2ForTest {
+		assert.Equal(t, output.TagOwners["tag:exists"], []string{"user1@"})
+	} else {
+		assert.Equal(t, output.TagOwners["tag:exists"], []string{"user1"})
+	}
 }
 
 func TestPolicyBrokenConfigCommand(t *testing.T) {
@@ -1806,7 +1813,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	spec := map[string]int{
-		"policy-user": 1,
+		"user1": 1,
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -1833,8 +1840,11 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 			},
 		},
 		TagOwners: map[string][]string{
-			"tag:exists": {"policy-user"},
+			"tag:exists": {"user1"},
 		},
+	}
+	if usePolicyV2ForTest {
+		hsic.RewritePolicyToV2(&p)
 	}
 
 	pBytes, _ := json.Marshal(p)

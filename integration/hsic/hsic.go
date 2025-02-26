@@ -71,6 +71,7 @@ type HeadscaleInContainer struct {
 	tlsKey           []byte
 	filesInContainer []fileInContainer
 	postgres         bool
+	policyV2         bool
 }
 
 // Option represent optional settings that can be given to a
@@ -184,6 +185,14 @@ func WithFileInContainer(path string, contents []byte) Option {
 func WithPostgres() Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.postgres = true
+	}
+}
+
+// WithPolicyV2 tells the integration test to use the new v2 filter.
+func WithPolicyV2() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.policyV2 = true
+		hsic.env["HEADSCALE_EXPERIMENTAL_POLICY_V2"] = "1"
 	}
 }
 
@@ -404,6 +413,10 @@ func New(
 	}
 
 	if hsic.aclPolicy != nil {
+		// Rewrite all user entries in the policy to have an @ at the end.
+		if hsic.policyV2 {
+			RewritePolicyToV2(hsic.aclPolicy)
+		}
 		data, err := json.Marshal(hsic.aclPolicy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal ACL Policy to JSON: %w", err)
@@ -869,4 +882,51 @@ func (t *HeadscaleInContainer) SendInterrupt() error {
 	}
 
 	return nil
+}
+
+// TODO(kradalby): Remove this function when v1 is deprecated
+func rewriteUsersToV2(strs []string) []string {
+	var result []string
+	userPattern := regexp.MustCompile(`^user\d+$`)
+
+	for _, username := range strs {
+		parts := strings.Split(username, ":")
+		if len(parts) == 0 {
+			result = append(result, username)
+			continue
+		}
+		firstPart := parts[0]
+		if userPattern.MatchString(firstPart) {
+			modifiedFirst := firstPart + "@"
+			if len(parts) > 1 {
+				rest := strings.Join(parts[1:], ":")
+				username = modifiedFirst + ":" + rest
+			} else {
+				username = modifiedFirst
+			}
+		}
+		result = append(result, username)
+	}
+
+	return result
+}
+
+// rewritePolicyToV2 rewrites the policy to v2 format.
+// This mostly means adding the @ prefix to user names.
+// replaces are done inplace
+func RewritePolicyToV2(pol *policyv1.ACLPolicy) {
+	for idx := range pol.ACLs {
+		pol.ACLs[idx].Sources = rewriteUsersToV2(pol.ACLs[idx].Sources)
+		pol.ACLs[idx].Destinations = rewriteUsersToV2(pol.ACLs[idx].Destinations)
+	}
+	for idx := range pol.Groups {
+		pol.Groups[idx] = rewriteUsersToV2(pol.Groups[idx])
+	}
+	for idx := range pol.TagOwners {
+		pol.TagOwners[idx] = rewriteUsersToV2(pol.TagOwners[idx])
+	}
+	for idx := range pol.SSHs {
+		pol.SSHs[idx].Sources = rewriteUsersToV2(pol.SSHs[idx].Sources)
+		pol.SSHs[idx].Destinations = rewriteUsersToV2(pol.SSHs[idx].Destinations)
+	}
 }
