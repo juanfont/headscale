@@ -335,9 +335,9 @@ func (node *Node) SubnetRoutes() []netip.Prefix {
 	return routes
 }
 
-// func (node *Node) String() string {
-// 	return node.Hostname
-// }
+func (node *Node) String() string {
+	return node.Hostname
+}
 
 // PeerChangeFromMapRequest takes a MapRequest and compares it to the node
 // to produce a PeerChange struct that can be used to updated the node and
