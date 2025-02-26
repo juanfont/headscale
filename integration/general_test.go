@@ -365,7 +365,11 @@ func TestTaildrop(t *testing.T) {
 		"taildrop": len(MustTestVersions),
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("taildrop"))
+	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+		hsic.WithTestName("taildrop"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
