@@ -84,16 +84,13 @@ func (h *Headscale) handleExistingNode(
 		// If the request expiry is in the past, we consider it a logout.
 		if requestExpiry.Before(time.Now()) {
 			if node.IsEphemeral() {
-				changedNodes, err := h.db.DeleteNode(node, h.nodeNotifier.LikelyConnectedMap())
+				err := h.db.DeleteNode(node)
 				if err != nil {
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
 
 				ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
 				h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
-				if changedNodes != nil {
-					h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(changedNodes...))
-				}
 			}
 
 			expired = true

@@ -10,8 +10,6 @@ issues:
 linters:
   enable-all: true
   disable:
-    - depguard
-
     - revive
     - lll
     - gofmt
@@ -28,6 +26,7 @@ linters:
     - musttag # causes issues with imported libs
     - depguard
     - exportloopref
+    - tenv
 
     # We should strive to enable these:
     - wrapcheck
@@ -59,6 +58,11 @@ linters-settings:
       - tt
       - tx
       - rx
+      - sb
+      - wg
+      - pr
+      - p
+      - p2
 
   gocritic:
     disabled-checks:

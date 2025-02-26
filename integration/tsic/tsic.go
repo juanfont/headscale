@@ -624,6 +624,16 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 	return &status, err
 }
 
+// Status returns the ipnstate.Status of the Tailscale instance.
+func (t *TailscaleInContainer) MustStatus() *ipnstate.Status {
+	status, err := t.Status()
+	if err != nil {
+		panic(err)
+	}
+
+	return status
+}
+
 // Netmap returns the current Netmap (netmap.NetworkMap) of the Tailscale instance.
 // Only works with Tailscale 1.56 and newer.
 // Panics if version is lower then minimum.

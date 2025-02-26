@@ -55,6 +55,13 @@ type User struct {
 	ProfilePicURL string
 }
 
+func (u *User) StringID() string {
+	if u == nil {
+		return ""
+	}
+	return strconv.FormatUint(uint64(u.ID), 10)
+}
+
 // Username is the main way to get the username of a user,
 // it will return the email if it exists, the name if it exists,
 // the OIDCIdentifier if it exists, and the ID if nothing else exists.
@@ -63,7 +70,11 @@ type User struct {
 // should be used throughout headscale, in information returned to the
 // user and the Policy engine.
 func (u *User) Username() string {
-	return cmp.Or(u.Email, u.Name, u.ProviderIdentifier.String, strconv.FormatUint(uint64(u.ID), 10))
+	return cmp.Or(
+		u.Email,
+		u.Name,
+		u.ProviderIdentifier.String,
+		u.StringID())
 }
 
 // DisplayNameOrUsername returns the DisplayName if it exists, otherwise

@@ -23,6 +23,9 @@ type PolicyManager interface {
 	SetPolicy([]byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)
 	SetNodes(nodes types.Nodes) (bool, error)
+
+	// NodeCanApproveRoute reports whether the given node can approve the given route.
+	NodeCanApproveRoute(*types.Node, netip.Prefix) bool
 }
 
 func NewPolicyManagerFromPath(path string, users []types.User, nodes types.Nodes) (PolicyManager, error) {
@@ -184,4 +187,33 @@ func (pm *PolicyManagerV1) ExpandAlias(alias string) (*netipx.IPSet, error) {
 		return nil, err
 	}
 	return ips, nil
+}
+
+func (pm *PolicyManagerV1) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
+	if pm.pol == nil {
+		return false
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	approvers, _ := pm.pol.AutoApprovers.GetRouteApprovers(route)
+
+	for _, approvedAlias := range approvers {
+		if approvedAlias == node.User.Username() {
+			return true
+		} else {
+			ips, err := pm.pol.ExpandAlias(pm.nodes, pm.users, approvedAlias)
+			if err != nil {
+				return false
+			}
+
+			// approvedIPs should contain all of node's IPs if it matches the rule, so check for first
+			if ips.Contains(*node.IPv4) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

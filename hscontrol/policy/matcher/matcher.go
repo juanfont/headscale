@@ -9,8 +9,8 @@ import (
 )
 
 type Match struct {
-	Srcs  *netipx.IPSet
-	Dests *netipx.IPSet
+	srcs  *netipx.IPSet
+	dests *netipx.IPSet
 }
 
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
@@ -42,16 +42,16 @@ func MatchFromStrings(sources, destinations []string) Match {
 	destsSet, _ := dests.IPSet()
 
 	match := Match{
-		Srcs:  srcsSet,
-		Dests: destsSet,
+		srcs:  srcsSet,
+		dests: destsSet,
 	}
 
 	return match
 }
 
-func (m *Match) SrcsContainsIPs(ips []netip.Addr) bool {
+func (m *Match) SrcsContainsIPs(ips ...netip.Addr) bool {
 	for _, ip := range ips {
-		if m.Srcs.Contains(ip) {
+		if m.srcs.Contains(ip) {
 			return true
 		}
 	}
@@ -59,9 +59,29 @@ func (m *Match) SrcsContainsIPs(ips []netip.Addr) bool {
 	return false
 }
 
-func (m *Match) DestsContainsIP(ips []netip.Addr) bool {
+func (m *Match) DestsContainsIP(ips ...netip.Addr) bool {
 	for _, ip := range ips {
-		if m.Dests.Contains(ip) {
+		if m.dests.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *Match) SrcsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
+	for _, prefix := range prefixes {
+		if m.srcs.ContainsPrefix(prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
+	for _, prefix := range prefixes {
+		if m.dests.ContainsPrefix(prefix) {
 			return true
 		}
 	}

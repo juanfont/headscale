@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"net/netip"
+
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/ory/dockertest/v3"
 )
@@ -19,6 +21,7 @@ type ControlServer interface {
 	CreateAuthKey(user string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
 	ListNodes(users ...string) ([]*v1.Node, error)
 	ListUsers() ([]*v1.User, error)
+	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
 	GetCert() []byte
 	GetHostname() string
 	GetIP() string

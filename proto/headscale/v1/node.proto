@@ -48,6 +48,9 @@ message Node {
   repeated string valid_tags = 20;
   string given_name = 21;
   bool online = 22;
+  repeated string approved_routes = 23;
+  repeated string available_routes = 24;
+  repeated string subnet_routes = 25;
 }
 
 message RegisterNodeRequest {
@@ -67,6 +70,13 @@ message SetTagsRequest {
 }
 
 message SetTagsResponse { Node node = 1; }
+
+message SetApprovedRoutesRequest {
+  uint64 node_id = 1;
+  repeated string routes = 2;
+}
+
+message SetApprovedRoutesResponse { Node node = 1; }
 
 message DeleteNodeRequest { uint64 node_id = 1; }
 

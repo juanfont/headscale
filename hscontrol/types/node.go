@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,8 +26,11 @@ var (
 )
 
 type NodeID uint64
+type NodeIDs []NodeID
 
-// type NodeConnectedMap *xsync.MapOf[NodeID, bool]
+func (n NodeIDs) Len() int           { return len(n) }
+func (n NodeIDs) Less(i, j int) bool { return n[i] < n[j] }
+func (n NodeIDs) Swap(i, j int)      { n[i], n[j] = n[j], n[i] }
 
 func (id NodeID) StableID() tailcfg.StableNodeID {
 	return tailcfg.StableNodeID(strconv.FormatUint(uint64(id), util.Base10))
@@ -84,10 +88,21 @@ type Node struct {
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
 	AuthKey   *PreAuthKey
 
-	LastSeen *time.Time
-	Expiry   *time.Time
+	Expiry *time.Time
 
-	Routes []Route `gorm:"constraint:OnDelete:CASCADE;"`
+	// LastSeen is when the node was last in contact with
+	// headscale. It is best effort and not persisted.
+	LastSeen *time.Time `gorm:"-"`
+
+	// DEPRECATED: Use the ApprovedRoutes field instead.
+	// TODO(kradalby): remove when ApprovedRoutes is used all over the code.
+	// Routes []Route `gorm:"constraint:OnDelete:CASCADE;"`
+
+	// ApprovedRoutes is a list of routes that the node is allowed to announce
+	// as a subnet router. They are not necessarily the routes that the node
+	// announces at the moment.
+	// See [Node.Hostinfo]
+	ApprovedRoutes []netip.Prefix `gorm:"column:approved_routes;serializer:json"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -96,9 +111,7 @@ type Node struct {
 	IsOnline *bool `gorm:"-"`
 }
 
-type (
-	Nodes []*Node
-)
+type Nodes []*Node
 
 // GivenNameHasBeenChanged returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
 func (node *Node) GivenNameHasBeenChanged() bool {
@@ -185,23 +198,22 @@ func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
 
 	// TODO(kradalby): Regenerate this every time the filter change, instead of
 	// every time we use it.
+	// Part of #2416
 	matchers := make([]matcher.Match, len(filter))
 	for i, rule := range filter {
 		matchers[i] = matcher.MatchFromFilterRule(rule)
 	}
 
-	for _, route := range node2.Routes {
-		if route.Enabled {
-			allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix).Addr())
-		}
-	}
-
 	for _, matcher := range matchers {
-		if !matcher.SrcsContainsIPs(src) {
+		if !matcher.SrcsContainsIPs(src...) {
 			continue
 		}
 
-		if matcher.DestsContainsIP(allowedIPs) {
+		if matcher.DestsContainsIP(allowedIPs...) {
+			return true
+		}
+
+		if matcher.DestsOverlapsPrefixes(node2.SubnetRoutes()...) {
 			return true
 		}
 	}
@@ -245,11 +257,14 @@ func (node *Node) Proto() *v1.Node {
 		DiscoKey: node.DiscoKey.String(),
 
 		// TODO(kradalby): replace list with v4, v6 field?
-		IpAddresses: node.IPsAsString(),
-		Name:        node.Hostname,
-		GivenName:   node.GivenName,
-		User:        node.User.Proto(),
-		ForcedTags:  node.ForcedTags,
+		IpAddresses:     node.IPsAsString(),
+		Name:            node.Hostname,
+		GivenName:       node.GivenName,
+		User:            node.User.Proto(),
+		ForcedTags:      node.ForcedTags,
+		ApprovedRoutes:  util.PrefixesToString(node.ApprovedRoutes),
+		AvailableRoutes: util.PrefixesToString(node.AnnouncedRoutes()),
+		SubnetRoutes:    util.PrefixesToString(node.SubnetRoutes()),
 
 		RegisterMethod: node.RegisterMethodToV1Enum(),
 
@@ -295,6 +310,29 @@ func (node *Node) GetFQDN(baseDomain string) (string, error) {
 	}
 
 	return hostname, nil
+}
+
+// AnnouncedRoutes returns the list of routes that the node announces.
+// It should be used instead of checking Hostinfo.RoutableIPs directly.
+func (node *Node) AnnouncedRoutes() []netip.Prefix {
+	if node.Hostinfo == nil {
+		return nil
+	}
+
+	return node.Hostinfo.RoutableIPs
+}
+
+// SubnetRoutes returns the list of routes that the node announces and are approved.
+func (node *Node) SubnetRoutes() []netip.Prefix {
+	var routes []netip.Prefix
+
+	for _, route := range node.AnnouncedRoutes() {
+		if slices.Contains(node.ApprovedRoutes, route) {
+			routes = append(routes, route)
+		}
+	}
+
+	return routes
 }
 
 // func (node *Node) String() string {
