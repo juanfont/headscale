@@ -525,7 +525,12 @@ func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[ty
 			resp.Online = true
 		}
 
-		tags := polMan.Tags(node)
+		var tags []string
+		for _, tag := range node.RequestTags() {
+			if polMan.NodeCanHaveTag(node, tag) {
+				tags = append(tags, tag)
+			}
+		}
 		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags...))
 		response[index] = resp
 	}
