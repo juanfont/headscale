@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -49,7 +50,7 @@ func TestTailNode(t *testing.T) {
 	tests := []struct {
 		name       string
 		node       *types.Node
-		pol        *policy.ACLPolicy
+		pol        []byte
 		dnsConfig  *tailcfg.DNSConfig
 		baseDomain string
 		want       *tailcfg.Node
@@ -61,7 +62,6 @@ func TestTailNode(t *testing.T) {
 				GivenName: "empty",
 				Hostinfo:  &tailcfg.Hostinfo{},
 			},
-			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
@@ -117,7 +117,6 @@ func TestTailNode(t *testing.T) {
 				ApprovedRoutes: []netip.Prefix{tsaddr.AllIPv4(), netip.MustParsePrefix("192.168.0.0/24")},
 				CreatedAt:      created,
 			},
-			pol:        &policy.ACLPolicy{},
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
@@ -179,7 +178,8 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{}, types.Nodes{tt.node})
+			polMan, err := policy.NewPolicyManager(tt.pol, []types.User{}, types.Nodes{tt.node})
+			require.NoError(t, err)
 			primary := routes.New()
 			cfg := &types.Config{
 				BaseDomain:          tt.baseDomain,
@@ -248,7 +248,7 @@ func TestNodeExpiry(t *testing.T) {
 			tn, err := tailNode(
 				node,
 				0,
-				&policy.PolicyManagerV1{},
+				nil, // TODO(kradalby): removed in merge but error?
 				nil,
 				&types.Config{},
 			)

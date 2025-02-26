@@ -1,11 +1,10 @@
-package policy
+package v1
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"iter"
 	"net/netip"
 	"os"
 	"slices"
@@ -18,7 +17,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -36,38 +34,6 @@ const (
 	portRangeEnd       = 65535
 	expectedTokenItems = 2
 )
-
-var theInternetSet *netipx.IPSet
-
-// theInternet returns the IPSet for the Internet.
-// https://www.youtube.com/watch?v=iDbyYGrswtg
-func theInternet() *netipx.IPSet {
-	if theInternetSet != nil {
-		return theInternetSet
-	}
-
-	var internetBuilder netipx.IPSetBuilder
-	internetBuilder.AddPrefix(netip.MustParsePrefix("2000::/3"))
-	internetBuilder.AddPrefix(tsaddr.AllIPv4())
-
-	// Delete Private network addresses
-	// https://datatracker.ietf.org/doc/html/rfc1918
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fc00::/7"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("10.0.0.0/8"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("172.16.0.0/12"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("192.168.0.0/16"))
-
-	// Delete Tailscale networks
-	internetBuilder.RemovePrefix(tsaddr.TailscaleULARange())
-	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
-
-	// Delete "can't find DHCP networks"
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-local
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
-
-	theInternetSet, _ := internetBuilder.IPSet()
-	return theInternetSet
-}
 
 // For some reason golang.org/x/net/internal/iana is an internal package.
 const (
@@ -240,53 +206,6 @@ func (pol *ACLPolicy) CompileFilterRules(
 	return rules, nil
 }
 
-// ReduceFilterRules takes a node and a set of rules and removes all rules and destinations
-// that are not relevant to that particular node.
-func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
-	// TODO(kradalby): Make this nil and not alloc unless needed
-	ret := []tailcfg.FilterRule{}
-
-	for _, rule := range rules {
-		// record if the rule is actually relevant for the given node.
-		var dests []tailcfg.NetPortRange
-	DEST_LOOP:
-		for _, dest := range rule.DstPorts {
-			expanded, err := util.ParseIPSet(dest.IP, nil)
-			// Fail closed, if we can't parse it, then we should not allow
-			// access.
-			if err != nil {
-				continue DEST_LOOP
-			}
-
-			if node.InIPSet(expanded) {
-				dests = append(dests, dest)
-				continue DEST_LOOP
-			}
-
-			// If the node exposes routes, ensure they are note removed
-			// when the filters are reduced.
-			if len(node.SubnetRoutes()) > 0 {
-				for _, routableIP := range node.SubnetRoutes() {
-					if expanded.OverlapsPrefix(routableIP) {
-						dests = append(dests, dest)
-						continue DEST_LOOP
-					}
-				}
-			}
-		}
-
-		if len(dests) > 0 {
-			ret = append(ret, tailcfg.FilterRule{
-				SrcIPs:   rule.SrcIPs,
-				DstPorts: dests,
-				IPProto:  rule.IPProto,
-			})
-		}
-	}
-
-	return ret
-}
-
 func (pol *ACLPolicy) CompileSSHPolicy(
 	node *types.Node,
 	users []types.User,
@@ -418,7 +337,7 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			if err != nil {
 				return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
 			}
-			for addr := range ipSetAll(ips) {
+			for addr := range util.IPSetAddrIter(ips) {
 				principals = append(principals, &tailcfg.SSHPrincipal{
 					NodeIP: addr.String(),
 				})
@@ -439,19 +358,6 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 	return &tailcfg.SSHPolicy{
 		Rules: rules,
 	}, nil
-}
-
-// ipSetAll returns a function that iterates over all the IPs in the IPSet.
-func ipSetAll(ipSet *netipx.IPSet) iter.Seq[netip.Addr] {
-	return func(yield func(netip.Addr) bool) {
-		for _, rng := range ipSet.Ranges() {
-			for ip := rng.From(); ip.Compare(rng.To()) <= 0; ip = ip.Next() {
-				if !yield(ip) {
-					return
-				}
-			}
-		}
-	}
 }
 
 func sshCheckAction(duration string) (*tailcfg.SSHAction, error) {
@@ -950,7 +856,7 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 func expandAutoGroup(alias string) (*netipx.IPSet, error) {
 	switch {
 	case strings.HasPrefix(alias, "autogroup:internet"):
-		return theInternet(), nil
+		return util.TheInternet(), nil
 
 	default:
 		return nil, fmt.Errorf("unknown autogroup %q", alias)
@@ -1083,25 +989,4 @@ func findUserFromToken(users []types.User, token string) (types.User, error) {
 	}
 
 	return potentialUsers[0], nil
-}
-
-// FilterNodesByACL returns the list of peers authorized to be accessed from a given node.
-func FilterNodesByACL(
-	node *types.Node,
-	nodes types.Nodes,
-	filter []tailcfg.FilterRule,
-) types.Nodes {
-	var result types.Nodes
-
-	for index, peer := range nodes {
-		if peer.ID == node.ID {
-			continue
-		}
-
-		if node.CanAccess(filter, nodes[index]) || peer.CanAccess(filter, node) {
-			result = append(result, peer)
-		}
-	}
-
-	return result
 }
