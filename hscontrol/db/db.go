@@ -22,6 +22,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
 	"zgo.at/zcache/v2"
 )
@@ -655,7 +656,7 @@ AND auth_key_id NOT IN (
 					}
 
 					for nodeID, routes := range nodeRoutes {
-						slices.SortFunc(routes, util.ComparePrefix)
+						tsaddr.SortPrefixes(routes)
 						slices.Compact(routes)
 
 						data, err := json.Marshal(routes)

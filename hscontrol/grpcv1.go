@@ -348,7 +348,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 			routes = append(routes, prefix)
 		}
 	}
-	slices.SortFunc(routes, util.ComparePrefix)
+	tsaddr.SortPrefixes(routes)
 	slices.Compact(routes)
 
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {

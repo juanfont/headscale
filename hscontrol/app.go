@@ -1153,6 +1153,7 @@ func (h *Headscale) loadPolicyManager() error {
 			errOut = fmt.Errorf("creating policy manager: %w", err)
 			return
 		}
+		log.Info().Msgf("Using policy manager version: %d", h.polMan.Version())
 
 		if len(nodes) > 0 {
 			_, err = h.polMan.SSHPolicy(nodes[0])
