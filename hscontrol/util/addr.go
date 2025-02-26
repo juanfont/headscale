@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"iter"
 	"net/netip"
 	"strings"
 
@@ -110,4 +111,17 @@ func StringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
 	}
 
 	return result, nil
+}
+
+// IPSetAddrIter returns a function that iterates over all the IPs in the IPSet.
+func IPSetAddrIter(ipSet *netipx.IPSet) iter.Seq[netip.Addr] {
+	return func(yield func(netip.Addr) bool) {
+		for _, rng := range ipSet.Ranges() {
+			for ip := rng.From(); ip.Compare(rng.To()) <= 0; ip = ip.Next() {
+				if !yield(ip) {
+					return
+				}
+			}
+		}
+	}
 }
