@@ -81,7 +81,12 @@ func tailNode(
 		return nil, fmt.Errorf("tailNode, failed to create FQDN: %s", err)
 	}
 
-	tags := polMan.Tags(node)
+	var tags []string
+	for _, tag := range node.RequestTags() {
+		if polMan.NodeCanHaveTag(node, tag) {
+			tags = append(tags, tag)
+		}
+	}
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
 	tNode := tailcfg.Node{

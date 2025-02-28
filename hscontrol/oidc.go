@@ -513,7 +513,7 @@ func renderOIDCCallbackTemplate(
 ) (*bytes.Buffer, error) {
 	var content bytes.Buffer
 	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-		User: user.DisplayNameOrUsername(),
+		User: user.Display(),
 		Verb: verb,
 	}); err != nil {
 		return nil, fmt.Errorf("rendering OIDC callback template: %w", err)
