@@ -43,6 +43,8 @@ Note that if an exit route is approved (0.0.0.0/0 or ::/0), both IPv4 and IPv6 w
   - It is now possible to inspect running goroutines and take profiles
   - View of config, policy, filter, ssh policy per node, connected nodes and
     DERPmap
+- Restore support for "Override local DNS"
+  [#2438](https://github.com/juanfont/headscale/pull/2438)
 
 ## 0.25.1 (2025-02-25)
 
