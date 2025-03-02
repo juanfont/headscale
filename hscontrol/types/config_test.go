@@ -36,6 +36,7 @@ func TestReadConfig(t *testing.T) {
 			want: DNSConfig{
 				MagicDNS:   true,
 				BaseDomain: "example.com",
+				OverrideLocalDNS: false,
 				Nameservers: Nameservers{
 					Global: []string{
 						"1.1.1.1",
@@ -70,7 +71,7 @@ func TestReadConfig(t *testing.T) {
 			want: &tailcfg.DNSConfig{
 				Proxied: true,
 				Domains: []string{"example.com", "test.com", "bar.com"},
-				Resolvers: []*dnstype.Resolver{
+				FallbackResolvers: []*dnstype.Resolver{
 					{Addr: "1.1.1.1"},
 					{Addr: "1.0.0.1"},
 					{Addr: "2606:4700:4700::1111"},
@@ -101,6 +102,7 @@ func TestReadConfig(t *testing.T) {
 			want: DNSConfig{
 				MagicDNS:   false,
 				BaseDomain: "example.com",
+				OverrideLocalDNS: false,
 				Nameservers: Nameservers{
 					Global: []string{
 						"1.1.1.1",
@@ -135,7 +137,7 @@ func TestReadConfig(t *testing.T) {
 			want: &tailcfg.DNSConfig{
 				Proxied: false,
 				Domains: []string{"example.com", "test.com", "bar.com"},
-				Resolvers: []*dnstype.Resolver{
+				FallbackResolvers: []*dnstype.Resolver{
 					{Addr: "1.1.1.1"},
 					{Addr: "1.0.0.1"},
 					{Addr: "2606:4700:4700::1111"},
@@ -254,6 +256,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 			configEnv: map[string]string{
 				"HEADSCALE_DNS_MAGIC_DNS":          "true",
 				"HEADSCALE_DNS_BASE_DOMAIN":        "example.com",
+				"HEADSCALE_DNS_OVERRIDE_LOCAL_DNS": "false",
 				"HEADSCALE_DNS_NAMESERVERS_GLOBAL": `1.1.1.1 8.8.8.8`,
 				"HEADSCALE_DNS_SEARCH_DOMAINS":     "test.com bar.com",
 
@@ -274,6 +277,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 			want: DNSConfig{
 				MagicDNS:   true,
 				BaseDomain: "example.com",
+				OverrideLocalDNS: false,
 				Nameservers: Nameservers{
 					Global: []string{"1.1.1.1", "8.8.8.8"},
 					Split:  map[string][]string{
