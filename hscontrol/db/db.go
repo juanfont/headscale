@@ -635,11 +635,6 @@ AND auth_key_id NOT IN (
 							return fmt.Errorf("adding column types.Node: %w", err)
 						}
 					}
-					// Ensure the ApprovedRoutes exist.
-					// err := tx.AutoMigrate(&types.Node{})
-					// if err != nil {
-					// 	return fmt.Errorf("automigrating types.Node: %w", err)
-					// }
 
 					nodeRoutes := map[uint64][]netip.Prefix{}
 
@@ -666,6 +661,9 @@ AND auth_key_id NOT IN (
 							return fmt.Errorf("saving approved routes to new column: %w", err)
 						}
 					}
+
+					// Drop the old table.
+					_ = tx.Migrator().DropTable(&types.Route{})
 
 					return nil
 				},
