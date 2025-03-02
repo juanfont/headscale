@@ -98,7 +98,7 @@ func init() {
 
 	approveRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	approveRoutesCmd.MarkFlagRequired("identifier")
-	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, "List of routes that will be approved")
+	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, `List of routes that will be approved (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24" or empty string to remove all approved routes)`)
 	nodeCmd.AddCommand(approveRoutesCmd)
 
 	nodeCmd.AddCommand(backfillNodeIPsCmd)
@@ -839,7 +839,7 @@ var approveRoutesCmd = &cobra.Command{
 			return
 		}
 
-		// Sending tags to node
+		// Sending routes to node
 		request := &v1.SetApprovedRoutesRequest{
 			NodeId: identifier,
 			Routes: routes,
