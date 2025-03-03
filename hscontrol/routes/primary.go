@@ -2,7 +2,6 @@ package routes
 
 import (
 	"fmt"
-	"log"
 	"net/netip"
 	"slices"
 	"sort"
@@ -114,7 +113,6 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefix ...netip.Prefix) bo
 
 	// If no routes are being set, remove the node from the routes map.
 	if len(prefix) == 0 {
-		log.Printf("Removing node %d from routes", node)
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
 			return pr.updatePrimaryLocked()
