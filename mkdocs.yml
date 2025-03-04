@@ -1,19 +1,15 @@
----
 site_name: Headscale
 site_url: https://juanfont.github.io/headscale/
-edit_uri: blob/main/docs/ # Change the master branch to main as we are using main as a main branch
+edit_uri: blob/main/docs/
 site_author: Headscale authors
 site_description: >-
   An open source, self-hosted implementation of the Tailscale control server.
 
-# Repository
 repo_name: juanfont/headscale
 repo_url: https://github.com/juanfont/headscale
 
-# Copyright
 copyright: Copyright &copy; 2025 Headscale authors
 
-# Configuration
 theme:
   name: material
   features:
@@ -22,24 +18,17 @@ theme:
     - content.action.view
     - content.code.annotate
     - content.code.copy
-    # - content.tabs.link
     - content.tooltips
-    # - header.autohide
-    # - navigation.expand
     - navigation.footer
     - navigation.indexes
-    # - navigation.instant
-    # - navigation.prune
     - navigation.sections
     - navigation.tabs
-    # - navigation.tabs.sticky
     - navigation.top
     - navigation.tracking
     - search.highlight
     - search.share
     - search.suggest
     - toc.follow
-    # - toc.integrate
   palette:
     - scheme: default
       primary: white
@@ -56,17 +45,15 @@ theme:
   favicon: assets/favicon.png
   logo: ./logo/headscale3-dots.svg
 
-# Excludes
 exclude_docs: |
   /packaging/README.md
   /packaging/postinstall.sh
   /packaging/postremove.sh
   /requirements.txt
 
-# Plugins
 plugins:
   - search:
-      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+      separator: '[\s\-,:!=$$()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
   - macros:
   - include-markdown:
   - minify:
@@ -88,8 +75,17 @@ plugins:
         tls.md: ref/tls.md
         web-ui.md: ref/integration/web-ui.md
         windows-client.md: usage/connect/windows.md
+  - i18n:
+      docs_structure: folder
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh
+          name: Chinese
+          build: true
 
-# Customization
 extra:
   version:
     alias: true
@@ -108,7 +104,6 @@ extra:
   headscale:
     version: 0.25.0
 
-# Extensions
 markdown_extensions:
   - abbr
   - admonition
@@ -150,41 +145,39 @@ markdown_extensions:
       custom_checkbox: true
   - pymdownx.tilde
 
-# Page tree
 nav:
   - Welcome: index.md
   - About:
-      - FAQ: about/faq.md
-      - Features: about/features.md
-      - Clients: about/clients.md
-      - Getting help: about/help.md
-      - Releases: about/releases.md
-      - Contributing: about/contributing.md
-      - Sponsor: about/sponsor.md
-
+    - FAQ: about/faq.md
+    - Features: about/features.md
+    - Clients: about/clients.md
+    - Getting help: about/help.md
+    - Releases: about/releases.md
+    - Contributing: about/contributing.md
+    - Sponsor: about/sponsor.md
   - Setup:
-      - Requirements and Assumptions: setup/requirements.md
-      - Installation:
-          - Official releases: setup/install/official.md
-          - Community packages: setup/install/community.md
-          - Container: setup/install/container.md
-          - Build from source: setup/install/source.md
+    - Requirements and Assumptions: setup/requirements.md
+    - Installation:
+      - Official releases: setup/install/official.md
+      - Community packages: setup/install/community.md
+      - Container: setup/install/container.md
+      - Build from source: setup/install/source.md
       - Upgrade: setup/upgrade.md
   - Usage:
-      - Getting started: usage/getting-started.md
-      - Connect a node:
-          - Android: usage/connect/android.md
-          - Apple: usage/connect/apple.md
-          - Windows: usage/connect/windows.md
+    - Getting started: usage/getting-started.md
+    - Connect a node:
+      - Android: usage/connect/android.md
+      - Apple: usage/connect/apple.md
+      - Windows: usage/connect/windows.md
   - Reference:
-      - Configuration: ref/configuration.md
-      - OIDC authentication: ref/oidc.md
-      - Exit node: ref/exit-node.md
-      - TLS: ref/tls.md
-      - ACLs: ref/acls.md
-      - DNS: ref/dns.md
-      - Remote CLI: ref/remote-cli.md
-      - Integration:
-          - Reverse proxy: ref/integration/reverse-proxy.md
-          - Web UI: ref/integration/web-ui.md
-          - Tools: ref/integration/tools.md
+    - Configuration: ref/configuration.md
+    - OIDC authentication: ref/oidc.md
+    - Exit node: ref/exit-node.md
+    - TLS: ref/tls.md
+    - ACLs: ref/acls.md
+    - DNS: ref/dns.md
+    - Remote CLI: ref/remote-cli.md
+  - Integration:
+    - Reverse proxy: ref/integration/reverse-proxy.md
+    - Web UI: ref/integration/web-ui.md
+    - Tools: ref/integration/tools.md

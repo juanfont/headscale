@@ -35,12 +35,12 @@ Please be aware that there are a number of reasons why we might not accept speci
 ## Do you support Y method of deploying headscale?
 
 We currently support deploying headscale using our binaries and the DEB packages. Visit our [installation guide using
-official releases](../setup/install/official.md) for more information.
+official releases](../../zh/setup/install/official.md) for more information.
 
 In addition to that, you may use packages provided by the community or from distributions. Learn more in the
-[installation guide using community packages](../setup/install/community.md).
+[installation guide using community packages](../../zh/setup/install/community.md).
 
-For convenience, we also [build Docker images with headscale](../setup/install/container.md). But **please be aware that
+For convenience, we also [build Docker images with headscale](../../zh/setup/install/container.md). But **please be aware that
 we don't officially support deploying headscale using Docker**. On our [Discord server](https://discord.gg/c84AZQhmpx)
 we have a "docker-issues" channel where you can ask for Docker-specific help to the community.
 
