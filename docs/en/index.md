@@ -8,7 +8,7 @@ hide:
 
 Headscale is an open source, self-hosted implementation of the Tailscale control server.
 
-This page contains the documentation for the latest version of headscale. Please also check our [FAQ](./about/faq.md).
+This page contains the documentation for the latest version of headscale. Please also check our [FAQ](about/faq.md).
 
 Join our [Discord server](https://discord.gg/c84AZQhmpx) for a chat and community support.
 
