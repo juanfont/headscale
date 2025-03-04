@@ -555,26 +555,12 @@ func appendPeerChanges(
 	resp.UserProfiles = profiles
 	resp.SSHPolicy = sshPolicy
 
-	// 81: 2023-11-17: MapResponse.PacketFilters (incremental packet filter updates)
-	if capVer >= 81 {
-		// Currently, we do not send incremental package filters, however using the
-		// new PacketFilters field and "base" allows us to send a full update when we
-		// have to send an empty list, avoiding the hack in the else block.
-		resp.PacketFilters = map[string][]tailcfg.FilterRule{
-			"base": policy.ReduceFilterRules(node, filter),
-		}
-	} else {
-		// This is a hack to avoid sending an empty list of packet filters.
-		// Since tailcfg.PacketFilter has omitempty, any empty PacketFilter will
-		// be omitted, causing the client to consider it unchanged, keeping the
-		// previous packet filter. Worst case, this can cause a node that previously
-		// has access to a node to _not_ loose access if an empty (allow none) is sent.
-		reduced := policy.ReduceFilterRules(node, filter)
-		if len(reduced) > 0 {
-			resp.PacketFilter = reduced
-		} else {
-			resp.PacketFilter = filter
-		}
+	// CapVer 81: 2023-11-17: MapResponse.PacketFilters (incremental packet filter updates)
+	// Currently, we do not send incremental package filters, however using the
+	// new PacketFilters field and "base" allows us to send a full update when we
+	// have to send an empty list, avoiding the hack in the else block.
+	resp.PacketFilters = map[string][]tailcfg.FilterRule{
+		"base": policy.ReduceFilterRules(node, filter),
 	}
 
 	return nil
