@@ -23,9 +23,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			spec := map[string]int{
-				"user1": len(MustTestVersions),
-				"user2": len(MustTestVersions),
+			spec := ScenarioSpec{
+				NodesPerUser: len(MustTestVersions),
+				Users:        []string{"user1", "user2"},
 			}
 
 			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
@@ -84,7 +84,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				time.Sleep(5 * time.Minute)
 			}
 
-			for userName := range spec {
+			for _, userName := range spec.Users {
 				key, err := scenario.CreatePreAuthKey(userName, true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
@@ -156,9 +156,9 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
@@ -203,7 +203,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	// Log in all clients as user1, iterating over the spec only returns the
 	// clients, not the usernames.
-	for userName := range spec {
+	for _, userName := range spec.Users {
 		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
 			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
@@ -239,9 +239,9 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			spec := map[string]int{
-				"user1": len(MustTestVersions),
-				"user2": len(MustTestVersions),
+			spec := ScenarioSpec{
+				NodesPerUser: len(MustTestVersions),
+				Users:        []string{"user1", "user2"},
 			}
 
 			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
@@ -300,7 +300,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 				time.Sleep(5 * time.Minute)
 			}
 
-			for userName := range spec {
+			for _, userName := range spec.Users {
 				key, err := scenario.CreatePreAuthKey(userName, true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)

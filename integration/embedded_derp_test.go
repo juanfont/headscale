@@ -315,7 +315,6 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
-					network,
 					opts...,
 				)
 				if err != nil {

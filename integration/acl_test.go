@@ -57,9 +57,9 @@ func aclScenario(
 	scenario, err := NewScenario(dockertestMaxWait())
 	require.NoError(t, err)
 
-	spec := map[string]int{
-		"user1": clientsPerUser,
-		"user2": clientsPerUser,
+	spec := ScenarioSpec{
+		NodesPerUser: clientsPerUser,
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -96,22 +96,24 @@ func aclScenario(
 func TestACLHostsInNetMapTable(t *testing.T) {
 	IntegrationSkip(t)
 
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1", "user2"},
+	}
+
 	// NOTE: All want cases currently checks the
 	// total count of expected peers, this would
 	// typically be the client count of the users
 	// they can access minus one (them self).
 	tests := map[string]struct {
-		users  map[string]int
+		users  ScenarioSpec
 		policy policyv1.ACLPolicy
 		want   map[string]int
 	}{
 		// Test that when we have no ACL, each client netmap has
 		// the amount of peers of the total amount of clients
 		"base-acls": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -129,10 +131,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// each other, each node has only the number of pairs from
 		// their own user.
 		"two-isolated-users": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -155,10 +154,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// are restricted to a single port, nodes are still present
 		// in the netmap.
 		"two-restricted-present-in-netmap": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -192,10 +188,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// of peers. This will still result in all the peers as we
 		// need them present on the other side for the "return path".
 		"two-ns-one-isolated": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -220,10 +213,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			},
 		},
 		"very-large-destination-prefix-1372": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -248,10 +238,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			},
 		},
 		"ipv6-acls-1470": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -1026,9 +1013,9 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": 1,
-		"user2": 1,
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,

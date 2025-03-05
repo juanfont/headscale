@@ -21,9 +21,9 @@ func TestResolveMagicDNS(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"magicdns1": len(MustTestVersions),
-		"magicdns2": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("magicdns"))
@@ -91,9 +91,9 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"magicdns1": 1,
-		"magicdns2": 1,
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
 	}
 
 	const erPath = "/tmp/extra_records.json"
@@ -368,9 +368,9 @@ func TestValidateResolvConf(t *testing.T) {
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			spec := map[string]int{
-				"resolvconf1": 3,
-				"resolvconf2": 3,
+			spec := ScenarioSpec{
+				NodesPerUser: 3,
+				Users:        []string{"user1", "user2"},
 			}
 
 			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("resolvconf"), hsic.WithConfigEnv(tt.conf))

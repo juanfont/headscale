@@ -52,9 +52,8 @@ func TestUserCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": 0,
-		"user2": 0,
+	spec := ScenarioSpec{
+		Users: []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -251,8 +250,8 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 0,
+	spec := ScenarioSpec{
+		Users: []string{user},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipak"))
@@ -393,8 +392,8 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 0,
+	spec := ScenarioSpec{
+		Users: []string{user},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipaknaexp"))
@@ -456,8 +455,8 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 0,
+	spec := ScenarioSpec{
+		Users: []string{user},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipakresueeph"))
@@ -534,9 +533,8 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user1: 1,
-		user2: 0,
+	spec := ScenarioSpec{
+		Users: []string{user1, user2},
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -624,9 +622,8 @@ func TestApiKeyCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": 0,
-		"user2": 0,
+	spec := ScenarioSpec{
+		Users: []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -792,8 +789,8 @@ func TestNodeTagCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": 0,
+	spec := ScenarioSpec{
+		Users: []string{"user1"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -981,8 +978,9 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			spec := map[string]int{
-				"user1": 1,
+			spec := ScenarioSpec{
+				NodesPerUser: 1,
+				Users:        []string{"user1"},
 			}
 
 			err = scenario.CreateHeadscaleEnv(spec,
@@ -996,7 +994,7 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 			assertNoErr(t, err)
 
 			// Test list all nodes after added seconds
-			resultMachines := make([]*v1.Node, spec["user1"])
+			resultMachines := make([]*v1.Node, spec.NodesPerUser)
 			err = executeAndUnmarshal(
 				headscale,
 				[]string{
@@ -1033,9 +1031,8 @@ func TestNodeCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"node-user":  0,
-		"other-user": 0,
+	spec := ScenarioSpec{
+		Users: []string{"node-user", "other-user"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -1273,8 +1270,8 @@ func TestNodeExpireCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"node-expire-user": 0,
+	spec := ScenarioSpec{
+		Users: []string{"node-expire-user"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -1399,8 +1396,8 @@ func TestNodeRenameCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"node-rename-command": 0,
+	spec := ScenarioSpec{
+		Users: []string{"node-rename-command"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -1564,9 +1561,8 @@ func TestNodeMoveCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"old-user": 0,
-		"new-user": 0,
+	spec := ScenarioSpec{
+		Users: []string{"old-user", "new-user"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
@@ -1725,8 +1721,8 @@ func TestPolicyCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": 0,
+	spec := ScenarioSpec{
+		Users: []string{"user1"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(
@@ -1812,8 +1808,9 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": 1,
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(

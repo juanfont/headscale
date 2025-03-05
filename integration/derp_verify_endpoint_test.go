@@ -35,8 +35,9 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
 	}
 
 	derper, err := scenario.CreateDERPServer("head",
