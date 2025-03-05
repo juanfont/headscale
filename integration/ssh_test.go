@@ -53,9 +53,9 @@ func sshScenario(t *testing.T, policy *policyv1.ACLPolicy, clientsPerUser int) *
 	scenario, err := NewScenario(dockertestMaxWait())
 	assertNoErr(t, err)
 
-	spec := map[string]int{
-		"user1": clientsPerUser,
-		"user2": clientsPerUser,
+	spec := ScenarioSpec{
+		NodesPerUser: clientsPerUser,
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,

@@ -101,26 +101,10 @@ func WithCACert(cert []byte) Option {
 	}
 }
 
-// WithOrCreateNetwork sets the Docker container network to use with
-// the Tailscale instance, if the parameter is nil, a new network,
-// isolating the TailscaleClient, will be created. If a network is
-// passed, the Tailscale instance will join the given network.
-func WithOrCreateNetwork(network *dockertest.Network) Option {
+// WithNetwork sets the Docker container network to use with
+// the Tailscale instance.
+func WithNetwork(network *dockertest.Network) Option {
 	return func(tsic *TailscaleInContainer) {
-		if network != nil {
-			tsic.network = network
-
-			return
-		}
-
-		network, err := dockertestutil.GetFirstOrCreateNetwork(
-			tsic.pool,
-			fmt.Sprintf("%s-network", tsic.hostname),
-		)
-		if err != nil {
-			log.Fatalf("failed to create network: %s", err)
-		}
-
 		tsic.network = network
 	}
 }
@@ -216,7 +200,6 @@ func WithExtraLoginArgs(args []string) Option {
 func New(
 	pool *dockertest.Pool,
 	version string,
-	network *dockertest.Network,
 	opts ...Option,
 ) (*TailscaleInContainer, error) {
 	hash, err := util.GenerateRandomStringDNSSafe(tsicHashLength)
@@ -230,8 +213,7 @@ func New(
 		version:  version,
 		hostname: hostname,
 
-		pool:    pool,
-		network: network,
+		pool: pool,
 
 		withEntrypoint: []string{
 			"/bin/sh",

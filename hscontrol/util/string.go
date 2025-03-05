@@ -57,6 +57,15 @@ func GenerateRandomStringDNSSafe(size int) (string, error) {
 	return str[:size], nil
 }
 
+func MustGenerateRandomStringDNSSafe(size int) string {
+	hash, err := GenerateRandomStringDNSSafe(size)
+	if err != nil {
+		panic(err)
+	}
+
+	return hash
+}
+
 func TailNodesToString(nodes []*tailcfg.Node) string {
 	temp := make([]string, len(nodes))
 

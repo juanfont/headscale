@@ -25,6 +25,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
@@ -512,7 +513,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	assertNoErr(t, err)
 	assert.Len(t, listUsers, 0)
 
-	ts, err := scenario.CreateTailscaleNode("unstable")
+	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[TestDefaultNetwork]))
 	assertNoErr(t, err)
 
 	u, err := ts.LoginWithURL(headscale.GetEndpoint())
@@ -743,7 +744,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users []mockoidc
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			docker.Port(portNotation): {{HostPort: strconv.Itoa(port)}},
 		},
-		Networks: s.Scenario.networks,
+		Networks: s.Scenario.Networks(),
 		Env: []string{
 			fmt.Sprintf("MOCKOIDC_ADDR=%s", hostname),
 			fmt.Sprintf("MOCKOIDC_PORT=%d", port),
