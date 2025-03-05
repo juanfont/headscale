@@ -743,7 +743,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users []mockoidc
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			docker.Port(portNotation): {{HostPort: strconv.Itoa(port)}},
 		},
-		Networks: []*dockertest.Network{s.Scenario.network},
+		Networks: s.Scenario.networks,
 		Env: []string{
 			fmt.Sprintf("MOCKOIDC_ADDR=%s", hostname),
 			fmt.Sprintf("MOCKOIDC_PORT=%d", port),
@@ -774,7 +774,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users []mockoidc
 	}
 
 	log.Println("Waiting for headscale mock oidc to be ready for tests")
-	hostEndpoint := fmt.Sprintf("%s:%d", s.mockOIDC.GetIPInNetwork(s.network), port)
+	hostEndpoint := fmt.Sprintf("%s:%d", hostname, port)
 
 	if err := s.pool.Retry(func() error {
 		oidcConfigURL := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
@@ -803,7 +803,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users []mockoidc
 	return &types.OIDCConfig{
 		Issuer: fmt.Sprintf(
 			"http://%s/oidc",
-			net.JoinHostPort(s.mockOIDC.GetIPInNetwork(s.network), strconv.Itoa(port)),
+			net.JoinHostPort(hostname, strconv.Itoa(port)),
 		),
 		ClientID:                   "superclient",
 		ClientSecret:               "supersecret",
