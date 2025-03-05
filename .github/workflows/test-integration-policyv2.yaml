@@ -1,4 +1,4 @@
-name: Integration Tests
+name: Integration Tests (policy v2)
 # To debug locally on a branch, and when needing secrets
 # change this to include `push` so the build is ran on
 # the main repository.
@@ -137,7 +137,7 @@ jobs:
               --volume /var/run/docker.sock:/var/run/docker.sock \
               --volume $PWD/control_logs:/tmp/control \
               --env HEADSCALE_INTEGRATION_POSTGRES=${{env.USE_POSTGRES}} \
-              --env HEADSCALE_EXPERIMENTAL_POLICY_V2=0 \
+              --env HEADSCALE_EXPERIMENTAL_POLICY_V2=1 \
               golang:1 \
                 go run gotest.tools/gotestsum@latest -- ./... \
                   -failfast \

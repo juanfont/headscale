@@ -38,12 +38,13 @@ func findTests() []string {
 	return tests
 }
 
-func updateYAML(tests []string) {
+func updateYAML(tests []string, testPath string) {
 	testsForYq := fmt.Sprintf("[%s]", strings.Join(tests, ", "))
 
 	yqCommand := fmt.Sprintf(
-		"yq eval '.jobs.integration-test.strategy.matrix.test = %s' ./test-integration.yaml -i",
+		"yq eval '.jobs.integration-test.strategy.matrix.test = %s' %s -i",
 		testsForYq,
+		testPath,
 	)
 	cmd := exec.Command("bash", "-c", yqCommand)
 
@@ -58,7 +59,7 @@ func updateYAML(tests []string) {
 		log.Fatalf("failed to run yq command: %s", err)
 	}
 
-	fmt.Println("YAML file updated successfully")
+	fmt.Printf("YAML file (%s) updated successfully\n", testPath)
 }
 
 func main() {
@@ -69,5 +70,6 @@ func main() {
 		quotedTests[i] = fmt.Sprintf("\"%s\"", test)
 	}
 
-	updateYAML(quotedTests)
+	updateYAML(quotedTests, "./test-integration.yaml")
+	updateYAML(quotedTests, "./test-integration-policyv2.yaml")
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -246,7 +247,7 @@ func Test_fullMapResponse(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		pol   *policy.ACLPolicy
+		pol   []byte
 		node  *types.Node
 		peers types.Nodes
 
@@ -258,7 +259,7 @@ func Test_fullMapResponse(t *testing.T) {
 		// {
 		// 	name:             "empty-node",
 		// 	node:          types.Node{},
-		// 	pol:              &policy.ACLPolicy{},
+		// 	pol:              &policyv1.ACLPolicy{},
 		// 	dnsConfig:        &tailcfg.DNSConfig{},
 		// 	baseDomain:       "",
 		// 	want:             nil,
@@ -266,7 +267,6 @@ func Test_fullMapResponse(t *testing.T) {
 		// },
 		{
 			name:    "no-pol-no-peers-map-response",
-			pol:     &policy.ACLPolicy{},
 			node:    mini,
 			peers:   types.Nodes{},
 			derpMap: &tailcfg.DERPMap{},
@@ -284,10 +284,15 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				PacketFilter:    []tailcfg.FilterRule{},
-				UserProfiles:    []tailcfg.UserProfile{{ID: tailcfg.UserID(user1.ID), LoginName: "user1", DisplayName: "user1"}},
-				SSHPolicy:       &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
-				ControlTime:     &time.Time{},
+				UserProfiles: []tailcfg.UserProfile{
+					{
+						ID:          tailcfg.UserID(user1.ID),
+						LoginName:   "user1",
+						DisplayName: "user1",
+					},
+				},
+				PacketFilter: tailcfg.FilterAllowAll,
+				ControlTime:  &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
 				},
@@ -296,7 +301,6 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 		{
 			name: "no-pol-with-peer-map-response",
-			pol:  &policy.ACLPolicy{},
 			node: mini,
 			peers: types.Nodes{
 				peer1,
@@ -318,13 +322,12 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				PacketFilter:    []tailcfg.FilterRule{},
 				UserProfiles: []tailcfg.UserProfile{
 					{ID: tailcfg.UserID(user1.ID), LoginName: "user1", DisplayName: "user1"},
 					{ID: tailcfg.UserID(user2.ID), LoginName: "user2", DisplayName: "user2"},
 				},
-				SSHPolicy:   &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
-				ControlTime: &time.Time{},
+				PacketFilter: tailcfg.FilterAllowAll,
+				ControlTime:  &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
 				},
@@ -333,18 +336,17 @@ func Test_fullMapResponse(t *testing.T) {
 		},
 		{
 			name: "with-pol-map-response",
-			pol: &policy.ACLPolicy{
-				Hosts: policy.Hosts{
-					"mini": netip.MustParsePrefix("100.64.0.1/32"),
-				},
-				ACLs: []policy.ACL{
-					{
-						Action:       "accept",
-						Sources:      []string{"100.64.0.2"},
-						Destinations: []string{"mini:*"},
-					},
-				},
-			},
+			pol: []byte(`
+				{
+					"acls": [
+						{
+							"action": "accept",
+							"src": ["100.64.0.2"],
+							"dst": ["user1:*"],
+						},
+					],
+				}
+				`),
 			node: mini,
 			peers: types.Nodes{
 				peer1,
@@ -374,11 +376,11 @@ func Test_fullMapResponse(t *testing.T) {
 						},
 					},
 				},
+				SSHPolicy: &tailcfg.SSHPolicy{},
 				UserProfiles: []tailcfg.UserProfile{
 					{ID: tailcfg.UserID(user1.ID), LoginName: "user1", DisplayName: "user1"},
 					{ID: tailcfg.UserID(user2.ID), LoginName: "user2", DisplayName: "user2"},
 				},
-				SSHPolicy:   &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 				ControlTime: &time.Time{},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
@@ -390,7 +392,8 @@ func Test_fullMapResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			polMan, _ := policy.NewPolicyManagerForTest(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+			polMan, err := policy.NewPolicyManager(tt.pol, []types.User{user1, user2}, append(tt.peers, tt.node))
+			require.NoError(t, err)
 			primary := routes.New()
 
 			primary.SetRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
