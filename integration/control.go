@@ -24,5 +24,4 @@ type ControlServer interface {
 	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
 	GetCert() []byte
 	GetHostname() string
-	GetIP() string
 }

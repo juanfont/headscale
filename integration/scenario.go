@@ -85,8 +85,8 @@ type Scenario struct {
 
 	users map[string]*User
 
-	pool    *dockertest.Pool
-	network *dockertest.Network
+	pool     *dockertest.Pool
+	networks []*dockertest.Network
 
 	mu sync.Mutex
 }
@@ -128,8 +128,8 @@ func NewScenario(maxWait time.Duration) (*Scenario, error) {
 		controlServers: xsync.NewMapOf[string, ControlServer](),
 		users:          make(map[string]*User),
 
-		pool:    pool,
-		network: network,
+		pool:     pool,
+		networks: []*dockertest.Network{network},
 	}, nil
 }
 
@@ -183,14 +183,11 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 		}
 	}
 
-	if err := s.pool.RemoveNetwork(s.network); err != nil {
-		log.Printf("failed to remove network: %s", err)
+	for _, network := range s.networks {
+		if err := network.Close(); err != nil {
+			log.Printf("failed to tear down network: %s", err)
+		}
 	}
-
-	// TODO(kradalby): This seem redundant to the previous call
-	// if err := s.network.Close(); err != nil {
-	// 	return fmt.Errorf("failed to tear down network: %w", err)
-	// }
 }
 
 // Shutdown shuts down and cleans up all the containers (ControlServer, TailscaleClient)
@@ -230,7 +227,7 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 		opts = append(opts, hsic.WithPostgres())
 	}
 
-	headscale, err := hsic.New(s.pool, s.network, opts...)
+	headscale, err := hsic.New(s.pool, s.networks, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create headscale container: %w", err)
 	}
@@ -307,7 +304,7 @@ func (s *Scenario) CreateTailscaleNode(
 	tsClient, err := tsic.New(
 		s.pool,
 		version,
-		s.network,
+		s.networks[0],
 		opts...,
 	)
 	if err != nil {
@@ -367,7 +364,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
-					s.network,
+					s.networks[0],
 					opts...,
 				)
 				s.mu.Unlock()
@@ -665,7 +662,7 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 
 // CreateDERPServer creates a new DERP server in a container.
 func (s *Scenario) CreateDERPServer(version string, opts ...dsic.Option) (*dsic.DERPServerInContainer, error) {
-	derp, err := dsic.New(s.pool, version, s.network, opts...)
+	derp, err := dsic.New(s.pool, version, s.networks, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DERP server: %w", err)
 	}
