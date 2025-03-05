@@ -55,7 +55,7 @@ type HeadscaleInContainer struct {
 
 	pool      *dockertest.Pool
 	container *dockertest.Resource
-	network   *dockertest.Network
+	networks  []*dockertest.Network
 
 	pgContainer *dockertest.Resource
 
@@ -258,7 +258,7 @@ func WithTimezone(timezone string) Option {
 // New returns a new HeadscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
-	network *dockertest.Network,
+	networks []*dockertest.Network,
 	opts ...Option,
 ) (*HeadscaleInContainer, error) {
 	hash, err := util.GenerateRandomStringDNSSafe(hsicHashLength)
@@ -272,8 +272,8 @@ func New(
 		hostname: hostname,
 		port:     headscaleDefaultPort,
 
-		pool:    pool,
-		network: network,
+		pool:     pool,
+		networks: networks,
 
 		env:              DefaultConfigEnv(),
 		filesInContainer: []fileInContainer{},
@@ -305,7 +305,7 @@ func New(
 				Name:       fmt.Sprintf("postgres-%s", hash),
 				Repository: "postgres",
 				Tag:        "latest",
-				Networks:   []*dockertest.Network{network},
+				Networks:   networks,
 				Env: []string{
 					"POSTGRES_USER=headscale",
 					"POSTGRES_PASSWORD=headscale",
@@ -347,7 +347,7 @@ func New(
 	runOptions := &dockertest.RunOptions{
 		Name:         hsic.hostname,
 		ExposedPorts: append([]string{portProto, "9090/tcp"}, hsic.extraPorts...),
-		Networks:     []*dockertest.Network{network},
+		Networks:     networks,
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
@@ -614,11 +614,6 @@ func (t *HeadscaleInContainer) Execute(
 	}
 
 	return stdout, nil
-}
-
-// GetIP returns the docker container IP as a string.
-func (t *HeadscaleInContainer) GetIP() string {
-	return t.container.GetIPInNetwork(t.network)
 }
 
 // GetPort returns the docker container port as a string.
