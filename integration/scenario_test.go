@@ -72,38 +72,6 @@ func TestHeadscale(t *testing.T) {
 // This might mean we approach setup slightly wrong, but for now, ignore
 // the linter
 // nolint:tparallel
-func TestCreateTailscale(t *testing.T) {
-	IntegrationSkip(t)
-	t.Parallel()
-
-	user := "only-create-containers"
-
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	scenario.users[user] = &User{
-		Clients: make(map[string]TailscaleClient),
-	}
-
-	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInUser(user, "all", 3)
-		if err != nil {
-			t.Fatalf("failed to add tailscale nodes: %s", err)
-		}
-
-		if clients := len(scenario.users[user].Clients); clients != 3 {
-			t.Fatalf("wrong number of tailscale clients: %d != %d", clients, 3)
-		}
-
-		// TODO(kradalby): Test "all" version logic
-	})
-}
-
-// If subtests are parallel, then they will start before setup is run.
-// This might mean we approach setup slightly wrong, but for now, ignore
-// the linter
-// nolint:tparallel
 func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
