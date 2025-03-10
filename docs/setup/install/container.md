@@ -8,8 +8,10 @@
     **It might be outdated and it might miss necessary steps**.
 
 This documentation has the goal of showing a user how-to set up and run headscale in a container.
-[Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it should
-not work with alternatives like [Podman](https://podman.io). The Docker image can be found on Docker Hub [here](https://hub.docker.com/r/headscale/headscale).
+[Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it
+should not work with alternatives like [Podman](https://podman.io). The container image can be found on
+[Docker Hub](https://hub.docker.com/r/headscale/headscale) and
+[GitHub Container Registry](https://github.com/juanfont/headscale/pkgs/container/headscale).
 
 ## Configure and run headscale
 

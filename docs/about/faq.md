@@ -40,7 +40,7 @@ official releases](../setup/install/official.md) for more information.
 In addition to that, you may use packages provided by the community or from distributions. Learn more in the
 [installation guide using community packages](../setup/install/community.md).
 
-For convenience, we also [build Docker images with headscale](../setup/install/container.md). But **please be aware that
+For convenience, we also [build container images with headscale](../setup/install/container.md). But **please be aware that
 we don't officially support deploying headscale using Docker**. On our [Discord server](https://discord.gg/c84AZQhmpx)
 we have a "docker-issues" channel where you can ask for Docker-specific help to the community.
 
