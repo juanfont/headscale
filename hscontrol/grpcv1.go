@@ -348,7 +348,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 			routes = append(routes, prefix)
 		}
 	}
-	slices.SortFunc(routes, util.ComparePrefix)
+	tsaddr.SortPrefixes(routes)
 	slices.Compact(routes)
 
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
@@ -525,7 +525,12 @@ func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[ty
 			resp.Online = true
 		}
 
-		tags := polMan.Tags(node)
+		var tags []string
+		for _, tag := range node.RequestTags() {
+			if polMan.NodeCanHaveTag(node, tag) {
+				tags = append(tags, tag)
+			}
+		}
 		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags...))
 		response[index] = resp
 	}

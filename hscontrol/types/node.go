@@ -150,6 +150,68 @@ func (node *Node) IPs() []netip.Addr {
 	return ret
 }
 
+// HasIP reports if a node has a given IP address.
+func (node *Node) HasIP(i netip.Addr) bool {
+	for _, ip := range node.IPs() {
+		if ip.Compare(i) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTagged reports if a device is tagged
+// and therefore should not be treated as a
+// user owned device.
+// Currently, this function only handles tags set
+// via CLI ("forced tags" and preauthkeys)
+func (node *Node) IsTagged() bool {
+	if len(node.ForcedTags) > 0 {
+		return true
+	}
+
+	if node.AuthKey != nil && len(node.AuthKey.Tags) > 0 {
+		return true
+	}
+
+	if node.Hostinfo == nil {
+		return false
+	}
+
+	// TODO(kradalby): Figure out how tagging should work
+	// and hostinfo.requestedtags.
+	// Do this in other work.
+
+	return false
+}
+
+// HasTag reports if a node has a given tag.
+// Currently, this function only handles tags set
+// via CLI ("forced tags" and preauthkeys)
+func (node *Node) HasTag(tag string) bool {
+	if slices.Contains(node.ForcedTags, tag) {
+		return true
+	}
+
+	if node.AuthKey != nil && slices.Contains(node.AuthKey.Tags, tag) {
+		return true
+	}
+
+	// TODO(kradalby): Figure out how tagging should work
+	// and hostinfo.requestedtags.
+	// Do this in other work.
+
+	return false
+}
+
+func (node *Node) RequestTags() []string {
+	if node.Hostinfo == nil {
+		return []string{}
+	}
+
+	return node.Hostinfo.RequestTags
+}
+
 func (node *Node) Prefixes() []netip.Prefix {
 	addrs := []netip.Prefix{}
 	for _, nodeAddress := range node.IPs() {
@@ -163,12 +225,8 @@ func (node *Node) Prefixes() []netip.Prefix {
 func (node *Node) IPsAsString() []string {
 	var ret []string
 
-	if node.IPv4 != nil {
-		ret = append(ret, node.IPv4.String())
-	}
-
-	if node.IPv6 != nil {
-		ret = append(ret, node.IPv6.String())
+	for _, ip := range node.IPs() {
+		ret = append(ret, ip.String())
 	}
 
 	return ret
@@ -335,9 +393,9 @@ func (node *Node) SubnetRoutes() []netip.Prefix {
 	return routes
 }
 
-// func (node *Node) String() string {
-// 	return node.Hostname
-// }
+func (node *Node) String() string {
+	return node.Hostname
+}
 
 // PeerChangeFromMapRequest takes a MapRequest and compares it to the node
 // to produce a PeerChange struct that can be used to updated the node and

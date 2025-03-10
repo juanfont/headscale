@@ -4,13 +4,13 @@
 
 ### BREAKING
 
-Route internals have been rewritten, removing the dedicated route table in the database.
-This was done to simplify the codebase, which had grown unnecessarily complex after
-the routes were split into separate tables. The overhead of having to go via the database
-and keeping the state in sync made the code very hard to reason about and prone to errors.
-The majority of the route state is only relevant when headscale is running, and is now only
-kept in memory.
-As part of this, the CLI and API has been simplified to reflect the changes;
+Route internals have been rewritten, removing the dedicated route table in the
+database. This was done to simplify the codebase, which had grown unnecessarily
+complex after the routes were split into separate tables. The overhead of having
+to go via the database and keeping the state in sync made the code very hard to
+reason about and prone to errors. The majority of the route state is only
+relevant when headscale is running, and is now only kept in memory. As part of
+this, the CLI and API has been simplified to reflect the changes;
 
 ```console
 $ headscale nodes list-routes
@@ -27,15 +27,55 @@ ID | Hostname           | Approved        | Available       | Serving
 2  | ts-unstable-fq7ob4 |                 | 0.0.0.0/0, ::/0 |
 ```
 
-Note that if an exit route is approved (0.0.0.0/0 or ::/0), both IPv4 and IPv6 will be approved.
+Note that if an exit route is approved (0.0.0.0/0 or ::/0), both IPv4 and IPv6
+will be approved.
 
-- Route API and CLI has been removed [#2422](https://github.com/juanfont/headscale/pull/2422)
-- Routes are now managed via the Node API [#2422](https://github.com/juanfont/headscale/pull/2422)
+- Route API and CLI has been removed
+  [#2422](https://github.com/juanfont/headscale/pull/2422)
+- Routes are now managed via the Node API
+  [#2422](https://github.com/juanfont/headscale/pull/2422)
+
+### Experimental Policy v2
+
+This release introduces a new experimental version of Headscales policy
+implementation. In this context, experimental means that the feature is not yet
+fully tested and may contain bugs or unexpected behavior and that we are still
+experimenting with how the final interface/behavior will be.
+
+#### Breaking changes
+
+- The policy is validated and "resolved" when loading, providing errors for
+  invalid rules and conditions.
+  - Previously this was done as a mix between load and runtime (when it was
+    applied to a node).
+  - This means that when you convert the first time, what was previously a
+    policy that loaded, but failed at runtime, will now fail at load time.
+- Error messages should be more descriptive and informative.
+  - There is still work to be here, but it is already improved with "typing"
+    (e.g. only Users can be put in Groups)
+- All users must contain an `@` character.
+  - If your user naturally contains and `@`, like an email, this will just work.
+  - If its based on usernames, or other identifiers not containing an `@`, an
+    `@` should be appended at the end. For example, if your user is `john`, it
+    must be written as `john@` in the policy.
+
+#### Current state
+
+The new policy is passing all tests, both integration and unit tests. This does
+not mean it is perfect, but it is a good start. Corner cases that is currently
+working in v1 and not tested might be broken in v2 (and vice versa).
+
+**We do need help testing this code**, and we think that most of the user facing
+API will not really change. We are not sure yet when this code will replace v1,
+but we are confident that it will, and all new changes and fixes will be made
+towards this code.
+
+The new policy can be used by setting the environment variable
+`HEADSCALE_EXPERIMENTAL_POLICY_V2` to `1`.
 
 ### Changes
 
-- Use Go 1.24
-  [#2427](https://github.com/juanfont/headscale/pull/2427)
+- Use Go 1.24 [#2427](https://github.com/juanfont/headscale/pull/2427)
 - `oidc.map_legacy_users` and `oidc.strip_email_domain` has been removed
   [#2411](https://github.com/juanfont/headscale/pull/2411)
 - Add more information to `/debug` endpoint

@@ -10,10 +10,9 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
 	"tailscale.com/net/tsaddr"
@@ -459,25 +458,10 @@ func (m *mapSession) handleEndpointUpdate() {
 		// TODO(kradalby): I am not sure if we need this?
 		nodesChangedHook(m.h.db, m.h.polMan, m.h.nodeNotifier)
 
-		// Take all the routes presented to us by the node and check
-		// if any of them should be auto approved by the policy.
-		// If any of them are, add them to the approved routes of the node.
-		// Keep all the old entries and compact the list to remove duplicates.
-		var newApproved []netip.Prefix
-		for _, route := range m.node.Hostinfo.RoutableIPs {
-			if m.h.polMan.NodeCanApproveRoute(m.node, route) {
-				newApproved = append(newApproved, route)
-			}
-		}
-		if newApproved != nil {
-			newApproved = append(newApproved, m.node.ApprovedRoutes...)
-			slices.SortFunc(newApproved, util.ComparePrefix)
-			slices.Compact(newApproved)
-			newApproved = lo.Filter(newApproved, func(route netip.Prefix, index int) bool {
-				return route.IsValid()
-			})
-			m.node.ApprovedRoutes = newApproved
-
+		// Approve routes if they are auto-approved by the policy.
+		// If any of them are approved, report them to the primary route tracker
+		// and send updates accordingly.
+		if policy.AutoApproveRoutes(m.h.polMan, m.node) {
 			if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
 				ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
 				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -50,7 +50,7 @@ var veryLargeDestination = []string{
 
 func aclScenario(
 	t *testing.T,
-	policy *policy.ACLPolicy,
+	policy *policyv1.ACLPolicy,
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
@@ -77,6 +77,8 @@ func aclScenario(
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -100,7 +102,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 	// they can access minus one (them self).
 	tests := map[string]struct {
 		users  map[string]int
-		policy policy.ACLPolicy
+		policy policyv1.ACLPolicy
 		want   map[string]int
 	}{
 		// Test that when we have no ACL, each client netmap has
@@ -110,8 +112,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
@@ -131,8 +133,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"user1"},
@@ -157,8 +159,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"user1"},
@@ -194,8 +196,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"user1"},
@@ -222,8 +224,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"user1"},
@@ -250,8 +252,8 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				"user1": 2,
 				"user2": 2,
 			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
@@ -306,8 +308,8 @@ func TestACLAllowUser80Dst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"user1"},
@@ -360,11 +362,11 @@ func TestACLDenyAllPort80(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
+		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
 				"group:integration-acl-test": {"user1", "user2"},
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"group:integration-acl-test"},
@@ -407,8 +409,8 @@ func TestACLAllowUserDst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"user1"},
@@ -463,8 +465,8 @@ func TestACLAllowStarDst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"user1"},
@@ -520,11 +522,11 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
-			Hosts: policy.Hosts{
+		&policyv1.ACLPolicy{
+			Hosts: policyv1.Hosts{
 				"all": netip.MustParsePrefix("100.64.0.0/24"),
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				// Everyone can curl test3
 				{
 					Action:       "accept",
@@ -617,16 +619,16 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 	IntegrationSkip(t)
 
 	tests := map[string]struct {
-		policy policy.ACLPolicy
+		policy policyv1.ACLPolicy
 	}{
 		"ipv4": {
-			policy: policy.ACLPolicy{
-				Hosts: policy.Hosts{
+			policy: policyv1.ACLPolicy{
+				Hosts: policyv1.Hosts{
 					"test1": netip.MustParsePrefix("100.64.0.1/32"),
 					"test2": netip.MustParsePrefix("100.64.0.2/32"),
 					"test3": netip.MustParsePrefix("100.64.0.3/32"),
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					// Everyone can curl test3
 					{
 						Action:       "accept",
@@ -643,13 +645,13 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			},
 		},
 		"ipv6": {
-			policy: policy.ACLPolicy{
-				Hosts: policy.Hosts{
+			policy: policyv1.ACLPolicy{
+				Hosts: policyv1.Hosts{
 					"test1": netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
 					"test2": netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
 					"test3": netip.MustParsePrefix("fd7a:115c:a1e0::3/128"),
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					// Everyone can curl test3
 					{
 						Action:       "accept",
@@ -866,11 +868,11 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 	IntegrationSkip(t)
 
 	tests := map[string]struct {
-		policy policy.ACLPolicy
+		policy policyv1.ACLPolicy
 	}{
 		"ipv4": {
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"100.64.0.1"},
@@ -880,8 +882,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"ipv6": {
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"fd7a:115c:a1e0::1"},
@@ -891,12 +893,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv4cidr": {
-			policy: policy.ACLPolicy{
-				Hosts: policy.Hosts{
+			policy: policyv1.ACLPolicy{
+				Hosts: policyv1.Hosts{
 					"test1": netip.MustParsePrefix("100.64.0.1/32"),
 					"test2": netip.MustParsePrefix("100.64.0.2/32"),
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"test1"},
@@ -906,12 +908,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv6cidr": {
-			policy: policy.ACLPolicy{
-				Hosts: policy.Hosts{
+			policy: policyv1.ACLPolicy{
+				Hosts: policyv1.Hosts{
 					"test1": netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
 					"test2": netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"test1"},
@@ -921,12 +923,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"group": {
-			policy: policy.ACLPolicy{
+			policy: policyv1.ACLPolicy{
 				Groups: map[string][]string{
 					"group:one": {"user1"},
 					"group:two": {"user2"},
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"group:one"},
@@ -1085,15 +1087,18 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	p := policy.ACLPolicy{
-		ACLs: []policy.ACL{
+	p := policyv1.ACLPolicy{
+		ACLs: []policyv1.ACL{
 			{
 				Action:       "accept",
 				Sources:      []string{"user1"},
 				Destinations: []string{"user2:*"},
 			},
 		},
-		Hosts: policy.Hosts{},
+		Hosts: policyv1.Hosts{},
+	}
+	if usePolicyV2ForTest {
+		hsic.RewritePolicyToV2(&p)
 	}
 
 	pBytes, _ := json.Marshal(p)
@@ -1118,7 +1123,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 
 	// Get the current policy and check
 	// if it is the same as the one we set.
-	var output *policy.ACLPolicy
+	var output *policyv1.ACLPolicy
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
