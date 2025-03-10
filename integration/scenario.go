@@ -135,6 +135,9 @@ func (s *Scenario) AddNetwork(name string) (*dockertest.Network, error) {
 }
 
 func (s *Scenario) Networks() []*dockertest.Network {
+	if len(s.networks) == 0 {
+		panic("Scenario.Networks called with empty network list")
+	}
 	return xmaps.Values(s.networks)
 }
 
