@@ -291,8 +291,8 @@ func Test_fullMapResponse(t *testing.T) {
 						DisplayName: "user1",
 					},
 				},
-				PacketFilter: tailcfg.FilterAllowAll,
-				ControlTime:  &time.Time{},
+				ControlTime:   &time.Time{},
+				PacketFilters: map[string][]tailcfg.FilterRule{"base": tailcfg.FilterAllowAll},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
 				},
@@ -326,8 +326,8 @@ func Test_fullMapResponse(t *testing.T) {
 					{ID: tailcfg.UserID(user1.ID), LoginName: "user1", DisplayName: "user1"},
 					{ID: tailcfg.UserID(user2.ID), LoginName: "user2", DisplayName: "user2"},
 				},
-				PacketFilter: tailcfg.FilterAllowAll,
-				ControlTime:  &time.Time{},
+				ControlTime:   &time.Time{},
+				PacketFilters: map[string][]tailcfg.FilterRule{"base": tailcfg.FilterAllowAll},
 				Debug: &tailcfg.Debug{
 					DisableLogTail: true,
 				},
@@ -368,11 +368,13 @@ func Test_fullMapResponse(t *testing.T) {
 				DNSConfig:       &tailcfg.DNSConfig{},
 				Domain:          "",
 				CollectServices: "false",
-				PacketFilter: []tailcfg.FilterRule{
-					{
-						SrcIPs: []string{"100.64.0.2/32"},
-						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.64.0.1/32", Ports: tailcfg.PortRangeAny},
+				PacketFilters: map[string][]tailcfg.FilterRule{
+					"base": {
+						{
+							SrcIPs: []string{"100.64.0.2/32"},
+							DstPorts: []tailcfg.NetPortRange{
+								{IP: "100.64.0.1/32", Ports: tailcfg.PortRangeAny},
+							},
 						},
 					},
 				},
